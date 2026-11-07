@@ -7,6 +7,12 @@ export const SERVICE_WORKER_MESSAGE_TYPES = {
   PROCESS_OFFLINE_QUEUES: "PROCESS_OFFLINE_QUEUES",
 } as const
 
+/**
+ * Worker-to-window notice that one queued record was dead-lettered. It names the queue and
+ * the reason only: no URL, payload, record id or account identity.
+ */
+export const OFFLINE_DEAD_LETTER_MESSAGE_TYPE = "offline-dead-letter"
+
 export type ApiCacheControlMessage =
   | {
       type: typeof SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY

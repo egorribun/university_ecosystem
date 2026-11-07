@@ -2,7 +2,7 @@ import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { ComponentProps, ReactNode } from "react"
+import { useState, type ComponentProps, type ReactNode } from "react"
 
 const { language } = vi.hoisted(() => ({ language: { current: "en" } }))
 const { campusTimezone } = vi.hoisted(() => ({
@@ -98,11 +98,17 @@ const createProps = (overrides: Partial<ComponentProps<typeof EventEditDialog>> 
   ...overrides,
 })
 
+const StatefulEventEditDialog = (props: ComponentProps<typeof EventEditDialog>) => {
+  const [currentDraft, setCurrentDraft] = useState(props.draft)
+  return <EventEditDialog {...props} draft={currentDraft} setDraft={setCurrentDraft} />
+}
+
 describe("EventEditDialog", () => {
   beforeEach(() => {
     language.current = "en"
     campusTimezone.current = "America/New_York"
     vi.clearAllMocks()
+    translationMock.mockImplementation((key: string) => key)
   })
 
   it("opens the image picker by keyboard and pointer without saving", async () => {
@@ -407,4 +413,45 @@ describe("EventEditDialog", () => {
     screen.getByRole("dialog")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
+
+  it.each([
+    ["en", "events:form.title_en", "Workshop", "End time must be after the start time"],
+    ["ru", "events:form.title", "Мастер-класс", "Время окончания должно быть позже начала"],
+  ] as const)(
+    "blocks a backwards event in %s and recovers when the end is corrected",
+    async (locale, titleLabel, titleValue, expectedMessage) => {
+      language.current = locale
+      translationMock.mockImplementation((key: string) =>
+        key === "events:form.errors.endsBeforeStarts" ? expectedMessage : key
+      )
+
+      const props = createProps({
+        draft: {
+          ...draft,
+          starts_at: "2026-06-15T16:00",
+          ends_at: "2026-06-15T14:00",
+        },
+        dateError: false,
+      })
+      const user = userEvent.setup()
+      render(<StatefulEventEditDialog {...props} />)
+
+      expect(screen.getByLabelText(titleLabel)).toHaveValue(titleValue)
+      const endInput = screen.getByLabelText("events:form.end")
+      const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
+      expect(endInput).toHaveAttribute("aria-invalid", "true")
+      expect(screen.getByRole("alert")).toHaveTextContent(expectedMessage)
+      expect(saveButton).toBeDisabled()
+
+      fireEvent.change(endInput, { target: { value: "2026-06-15T18:00" } })
+
+      expect(endInput).toHaveValue("2026-06-15T18:00")
+      expect(endInput).not.toHaveAttribute("aria-invalid")
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(saveButton).toBeEnabled()
+
+      await user.click(saveButton)
+      expect(props.onSave).toHaveBeenCalledOnce()
+    }
+  )
 })

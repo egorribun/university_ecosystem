@@ -166,10 +166,17 @@ def _valid_manifest_fixture(
         "source_roots": contract["source_roots"],
         "coverage_scope": contract["coverage_scope"],
         "tool_versions": {
-            "coverage.py": "7.10.0",
+            "@babel/parser": "8.0.8",
+            "@bcoe/v8-coverage": "1.0.2",
+            "ast-v8-to-istanbul": "1.0.7",
             "cargo-llvm-cov": "0.9.1",
+            "coverage.py": "7.10.0",
             "go": "1.26.0",
+            "istanbul-lib-coverage": "3.2.2",
+            "istanbul-lib-report": "3.0.1",
+            "istanbul-reports": "3.2.0",
             "node": "24.7.0",
+            "node-actions-node": "24.11.0",
             "python": "3.14.0",
             "quality-normalizer": "3.0.0",
             "rustc": "1.90.0",
@@ -242,6 +249,10 @@ def git_evidence_root(tmp_path: Path) -> Path:
     )
     quality_root = tmp_path / "quality"
     quality_root.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(
+        REPOSITORY_ROOT / "quality" / "coverage-source-policy.json",
+        quality_root / "coverage-source-policy.json",
+    )
     (quality_root / "ownership-mapping.json").write_text(
         json.dumps({"tier0_rules": ["**/spicedb/**"]}),
         encoding="utf-8",
@@ -687,9 +698,11 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
     assert contract["manifest_path"] == "artifacts/coverage/quality-manifest.json"
     paths = [report["path"] for report in contract["coverage_reports"]]
     assert contract["manifest_path"] not in paths
-    assert len(paths) == len(set(paths)) == 14
+    assert len(paths) == len(set(paths)) == 16
     assert "artifacts/coverage/python/coverage.json" in paths
     assert "frontend/coverage/coverage-final.json" in paths
+    assert "artifacts/coverage/node-actions/lcov.info" in paths
+    assert "artifacts/coverage/node-actions/coverage-final.json" in paths
     assert (
         sum(
             report["format"] == "llvm-cov-branch-json"

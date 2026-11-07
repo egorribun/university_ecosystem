@@ -47,7 +47,7 @@ compose_command=
 compose_command_index=0
 expect_project=0
 argument_index=0
-for argument do
+for argument; do
   argument_index=$((argument_index + 1))
   case "$argument" in
     -f*|-p?*|--file|--file=*|--project-directory|--project-directory=*|--env-file|--env-file=*)
@@ -74,7 +74,7 @@ if [ "$compose_command" = exec ]; then
   argument_index=0
   exec_service=
   exec_program=
-  for argument do
+  for argument; do
     argument_index=$((argument_index + 1))
     [ "$argument_index" -eq "$service_position" ] && exec_service=$argument
     [ "$argument_index" -eq "$program_position" ] && exec_program=$argument
@@ -87,7 +87,7 @@ if [ "$compose_command" = exec ]; then
   fi
 fi
 argument_index=0
-for argument do
+for argument; do
   argument_index=$((argument_index + 1))
   if [ "$exec_payload_start" -gt 0 ] && [ "$argument_index" -ge "$exec_payload_start" ]; then
     break
@@ -109,7 +109,7 @@ case "$compose_command" in
   ps|logs|config|stop|images|top|ls|version|events|port) guard_required=0 ;;
   down)
     guard_required=0
-    for argument do
+    for argument; do
       case "$argument" in
         -v|-v=*|--volume|--volume=*|--volumes|--volumes=*)
           echo "scripts/dc.sh: Refusing destructive Compose down --volumes; use a separately reviewed data cleanup procedure." >&2
@@ -139,9 +139,9 @@ if [ "$guard_required" -eq 1 ]; then
       project=university_ecosystem
     fi
     previous=
-    for argument do
+    for argument; do
       case "$previous" in
-        -p|--project-name) project=$argument; previous=; continue ;;
+        -p|--project-name) project=$argument; previous=""; continue ;;
       esac
       case "$argument" in
         -p|--project-name) previous=$argument ;;

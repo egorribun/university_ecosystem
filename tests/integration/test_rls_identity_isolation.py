@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db.listeners import register_tenant_listeners
+from app.core.tenant import get_bypass_rls, set_current_tenant, tenant_id_ctx
 from app.repositories.chat_repository import ChatRepository
 
 # Import the existing PostgreSQL fixtures into this module for pytest discovery.
@@ -43,16 +45,28 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
     admin_engine = request.getfixturevalue("pg_engine")
     rls_engine = request.getfixturevalue("non_superuser_engine")
 
+    tenant_id = str(uuid.uuid4())
     authorized_user_id = str(uuid.uuid4())
     unrelated_user_id = str(uuid.uuid4())
     chat_id = str(uuid.uuid4())
     message_id = str(uuid.uuid4())
     email_suffix = uuid.uuid4().hex
 
+    # Exercise the production after_begin listener, not a hand-written tenant GUC.
+    register_tenant_listeners()
+    tenant_token = set_current_tenant(tenant_id)
     try:
+        assert not get_bypass_rls()
         # Commit the synthetic rows so they remain available across the two
         # top-level transactions exercised below.
         async with admin_engine.begin() as admin_conn:
+            await admin_conn.execute(
+                text(
+                    "INSERT INTO tenants (id, name, slug) "
+                    "VALUES (:id, 'RLS identity test', :slug)"
+                ),
+                {"id": tenant_id, "slug": f"rls-identity-{email_suffix}"},
+            )
             for user_id, email in (
                 (authorized_user_id, f"rls_identity_a_{email_suffix}@example.test"),
                 (unrelated_user_id, f"rls_identity_b_{email_suffix}@example.test"),
@@ -60,10 +74,10 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
                 await admin_conn.execute(
                     text(
                         "INSERT INTO users "
-                        "(id, email, hashed_password, role, is_active, mfa_required) "
-                        "VALUES (:id, :email, 'x', 'student', true, false)"
+                        "(id, email, hashed_password, role, is_active, mfa_required, tenant_id) "
+                        "VALUES (:id, :email, 'x', 'student', true, false, :tenant_id)"
                     ),
-                    {"id": user_id, "email": email},
+                    {"id": user_id, "email": email, "tenant_id": tenant_id},
                 )
                 await admin_conn.execute(
                     text(
@@ -75,10 +89,10 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
 
             await admin_conn.execute(
                 text(
-                    "INSERT INTO chats (id, created_at, updated_at) "
-                    "VALUES (:id, NOW(), NOW())"
+                    "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+                    "VALUES (:id, NOW(), NOW(), :tenant_id)"
                 ),
-                {"id": chat_id},
+                {"id": chat_id, "tenant_id": tenant_id},
             )
             await admin_conn.execute(
                 text(
@@ -90,13 +104,14 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
             await admin_conn.execute(
                 text(
                     "INSERT INTO messages "
-                    "(id, chat_id, sender_id, content, created_at, read_status) "
-                    "VALUES (:id, :chat_id, :sender_id, 'transaction identity proof', NOW(), false)"
+                    "(id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                    "VALUES (:id, :chat_id, :sender_id, 'transaction identity proof', NOW(), false, :tenant_id)"
                 ),
                 {
                     "id": message_id,
                     "chat_id": chat_id,
                     "sender_id": authorized_user_id,
+                    "tenant_id": tenant_id,
                 },
             )
 
@@ -109,6 +124,12 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
                 async with session.begin():
                     current_role = await session.scalar(text("SELECT current_user"))
                     assert current_role == "rls_test_user"
+                    assert (
+                        await session.scalar(
+                            text("SELECT current_setting('app.current_tenant', TRUE)")
+                        )
+                        == tenant_id
+                    )
                     visible_messages, has_more, next_cursor = await repo.get_messages(
                         uuid.UUID(chat_id),
                         None,
@@ -127,6 +148,12 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
                         text("SELECT current_setting('app.current_user_id', TRUE)")
                     )
                     assert current_identity in (None, "")
+                    assert (
+                        await session.scalar(
+                            text("SELECT current_setting('app.current_tenant', TRUE)")
+                        )
+                        == tenant_id
+                    )
 
                     # A different user supplied on the next repository call
                     # receives only that identity's RLS view.
@@ -144,6 +171,7 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
                     )
                     assert current_identity == unrelated_user_id
     finally:
+        tenant_id_ctx.reset(tenant_token)
         # The test commits only isolated synthetic rows to cross a real
         # transaction boundary, then removes them even when an assertion fails.
         async with admin_engine.begin() as admin_conn:
@@ -156,3 +184,7 @@ async def test_repository_rls_identity_does_not_leak_between_transactions(
                     text("DELETE FROM users WHERE id = :user_id"),
                     {"user_id": user_id},
                 )
+            await admin_conn.execute(
+                text("DELETE FROM tenants WHERE id = :tenant_id"),
+                {"tenant_id": tenant_id},
+            )

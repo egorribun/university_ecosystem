@@ -373,7 +373,9 @@ describe("useLoginForm.onSubmit", () => {
     })
 
     await waitFor(() =>
-      expect(result.current.form.formState.errors.password?.message).toBe("Password is required")
+      expect(result.current.form.formState.errors.password?.message).toBe(
+        "auth:messages.passwordRequired"
+      )
     )
   })
 })

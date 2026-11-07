@@ -1071,7 +1071,7 @@ async def test_resend_rotates_recipient_digest_with_active_hmac_key(
         locale="en",
         now=NOW + timedelta(seconds=61),
     )
-    await rotated_service.verify(
+    verified = await rotated_service.verify(
         db_session,
         challenge_token=resent.challenge_token,
         code=resent.otp,
@@ -1081,6 +1081,15 @@ async def test_resend_rotates_recipient_digest_with_active_hmac_key(
         client_fingerprint=FINGERPRINT,
         client_ip=IP,
         now=NOW + timedelta(seconds=62),
+    )
+
+    assert resent.revision == issued.revision + 1
+    assert verified.id == issued.challenge_id
+    assert verified.state == ChallengeState.CONSUMED
+    assert verified.token_key_id == "new-hmac"
+    assert verified.otp_key_id == "new-hmac"
+    assert verified.recipient_digest == rotated_service._recipient_digest(
+        key_id="new-hmac", email=test_user.email
     )
 
 

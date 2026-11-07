@@ -49,6 +49,7 @@ def test_security_core_contract_passes_all_security_arguments():
         call(RequestIDMiddleware),
         call(
             TenantContextMiddleware,
+            mvp_tenant_id=None,
             internal_hmac_secret="internal-hmac-secret",  # pragma: allowlist secret
         ),
         call(SecurityHeadersMiddleware, settings=settings),

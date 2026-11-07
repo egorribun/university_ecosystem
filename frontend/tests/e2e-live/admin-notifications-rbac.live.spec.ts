@@ -5,6 +5,25 @@ import { reportLiveAdminQueueState } from "./live-ui-diagnostic"
 const DEAD_LETTER_PATH = "/api/v1/notifications/admin/dead-letter"
 const DEAD_LETTER_ENDPOINT = "/api/v1/notifications/admin/dead-letter?limit=20&offset=0"
 
+const queueRecordIds = (items: unknown): string[] => {
+  if (!Array.isArray(items) || items.length > 20) {
+    throw new Error("Invalid bounded notification queue page")
+  }
+  return items.map((item: unknown) => {
+    const recordId =
+      typeof item === "object" && item !== null && !Array.isArray(item)
+        ? (item as Record<string, unknown>).record_id
+        : undefined
+    if (
+      typeof recordId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(recordId)
+    ) {
+      throw new Error("Invalid notification queue record identity")
+    }
+    return recordId
+  })
+}
+
 test("admin can read the seeded notification queue without changing it", async ({
   page,
 }, testInfo) => {
@@ -16,7 +35,9 @@ test("admin can read the seeded notification queue without changing it", async (
     return (
       response.request().method() === "GET" &&
       url.origin === expectedOrigin &&
-      url.pathname === DEAD_LETTER_PATH
+      url.pathname === DEAD_LETTER_PATH &&
+      url.searchParams.get("limit") === "20" &&
+      url.searchParams.get("offset") === "0"
     )
   })
 
@@ -75,6 +96,62 @@ test("admin can read the seeded notification queue without changing it", async (
       await expect(queueTable).toBeVisible()
       await expect(queueTable.getByRole("row")).toHaveCount(itemCount + 1)
     }
+
+    expect(totalCount, "owned queue pagination fixture includes a second page").toBeGreaterThan(20)
+    expect(itemCount).toBe(20)
+    const firstRecordIds = queueRecordIds(items)
+    expect(new Set(firstRecordIds).size).toBe(20)
+    for (const recordId of firstRecordIds) {
+      await expect(queueTable.getByRole("cell", { name: recordId, exact: true })).toBeVisible()
+    }
+    const previousPage = page.getByRole("button", { name: /^(Go to previous page|Назад)$/u })
+    const nextPage = page.getByRole("button", { name: /^(Go to next page|Вперед)$/u })
+    await expect(previousPage).toBeDisabled()
+    await expect(nextPage).toBeEnabled()
+    const [secondResponse] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return (
+          response.request().method() === "GET" &&
+          url.origin === expectedOrigin &&
+          url.pathname === DEAD_LETTER_PATH &&
+          url.searchParams.get("limit") === "20" &&
+          url.searchParams.get("offset") === "20"
+        )
+      }),
+      nextPage.click(),
+    ])
+    expect(secondResponse.status()).toBe(200)
+    const secondPayload: unknown = await secondResponse.json()
+    const secondBody =
+      typeof secondPayload === "object" && secondPayload !== null && !Array.isArray(secondPayload)
+        ? (secondPayload as Record<string, unknown>)
+        : undefined
+    expect(secondBody?.total).toBe(totalCount)
+    const secondRecordIds = queueRecordIds(secondBody?.items)
+    expect(secondRecordIds.length).toBe(Math.min(20, totalCount - 20))
+    expect(new Set(secondRecordIds).size).toBe(secondRecordIds.length)
+    const firstPageIds = new Set(firstRecordIds)
+    expect(secondRecordIds.every((id) => !firstPageIds.has(id))).toBe(true)
+    await expect(queueTable.getByRole("row")).toHaveCount(secondRecordIds.length + 1)
+    for (const recordId of secondRecordIds) {
+      await expect(queueTable.getByRole("cell", { name: recordId, exact: true })).toBeVisible()
+    }
+    for (const recordId of firstRecordIds) {
+      await expect(queueTable.getByRole("cell", { name: recordId, exact: true })).toHaveCount(0)
+    }
+    await expect(previousPage).toBeEnabled()
+    await previousPage.click()
+    // A valid cached first page need not trigger a redundant network request.
+    await expect(previousPage).toBeDisabled()
+    await expect(queueTable.getByRole("row")).toHaveCount(21)
+    for (const recordId of firstRecordIds) {
+      await expect(queueTable.getByRole("cell", { name: recordId, exact: true })).toBeVisible()
+    }
+    for (const recordId of secondRecordIds) {
+      await expect(queueTable.getByRole("cell", { name: recordId, exact: true })).toHaveCount(0)
+    }
+    await expect(fetchErrorAlert).toHaveCount(0)
   } catch (error) {
     const [tableVisible, progressbarVisible, alertVisible, rowCount] = await Promise.all([
       queueTable.isVisible().catch(() => false),

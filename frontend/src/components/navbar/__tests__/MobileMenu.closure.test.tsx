@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -256,10 +257,11 @@ describe("MobileMenu closure paths", () => {
       "data-motion-transition",
       '{"type":"spring","stiffness":260,"damping":25,"mass":1}'
     )
-    const separator = document.querySelector('[style*="var(--glass-border)"]') as HTMLElement | null
-    expect(separator).toHaveStyle({
-      background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
-    })
+    const separator = dialog.querySelector('[style*="var(--glass-border)"]') as HTMLElement | null
+    expectInlineBackground(
+      separator,
+      "linear-gradient(90deg, transparent, var(--glass-border), transparent)"
+    )
 
     const navEntries = motionState.entries.filter(({ tag }) => tag === "li")
     expect(navEntries[0]?.props.initial).toEqual({ opacity: 0, x: 20 })

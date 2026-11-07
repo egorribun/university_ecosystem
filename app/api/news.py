@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from typing import Annotated, Any
 
@@ -57,6 +59,7 @@ from app.services.vector_service import (
     SemanticSearchUnavailableError,
     VectorService,
 )
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 logger = get_logger(__name__)
 
@@ -365,7 +368,11 @@ async def comment_on_news(
     }
 
 
-@router.get("/{id}/interactions", response_model=schemas.NewsInteractionsOut)
+@router.get(
+    "/{id}/interactions",
+    response_model=schemas.NewsInteractionsOut,
+    response_model_exclude_unset=True,
+)
 @inject
 async def get_news_interact(
     id: uuid.UUID,
@@ -373,20 +380,52 @@ async def get_news_interact(
     service: Annotated[NewsService, FromComponent(READ_COMPONENT)],
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000),
+    cursor: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=128,
+            description="Send 'start' to begin cursor paging, then pass next_cursor; omit for legacy offset paging.",
+        ),
+    ] = None,
     user: models.User | None = Depends(get_current_user_optional_from_dishka),
 ) -> schemas.NewsInteractionsOut:
     locale = resolve_locale(request=request)
+    cursor_key = None
+    if cursor is not None:
+        if offset:
+            raise HTTPException(status_code=422, detail="Invalid pagination cursor")
+        if cursor != "start":
+            decoded = decode_datetime_cursor(cursor)
+            if decoded is None:
+                raise HTTPException(status_code=422, detail="Invalid pagination cursor")
+            try:
+                cursor_key = (decoded[0], uuid.UUID(decoded[1]))
+            except ValueError:
+                raise HTTPException(
+                    status_code=422, detail="Invalid pagination cursor"
+                ) from None
     news = await service.get_news_item(id)
     if not news:
         raise_not_found("news", locale, resource_id=id)
 
-    interactions = await service.get_interactions(
-        id,
-        user.id if user else None,
-        limit=limit,
-        offset=offset,
-    )
-    return schemas.NewsInteractionsOut.model_validate(interactions)
+    if cursor_key is None:
+        interactions = await service.get_interactions(
+            id, user.id if user else None, limit=limit, offset=offset
+        )
+    else:
+        interactions = await service.get_interactions(
+            id, user.id if user else None, limit=limit, offset=offset, cursor=cursor_key
+        )
+    response = schemas.NewsInteractionsOut.model_validate(interactions)
+    if cursor is not None:
+        response.next_cursor = None
+        if len(response.comments) == limit:
+            last_comment = response.comments[-1]
+            response.next_cursor = encode_datetime_cursor(
+                last_comment.created_at, str(last_comment.id)
+            )
+    return response
 
 
 @router.patch("/comments/{comment_id}", response_model=schemas.NewsCommentOut)
@@ -501,7 +540,14 @@ async def semantic_search(
     # but we can use ETag based on the content version.
     cache = get_cache()
     version = await _get_news_list_version(cache)
-    etag_value = f"semantic:{version}:{query}:{limit}:{min_score}:{normalized_locale}"
+    etag_material = json.dumps(
+        [version, query, limit, min_score, normalized_locale],
+        ensure_ascii=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    etag_digest = hashlib.sha256(etag_material.encode("ascii")).hexdigest()
+    etag_value = f"semantic:{etag_digest}"
     if etag_matches(etag_value, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = format_etag(etag_value)

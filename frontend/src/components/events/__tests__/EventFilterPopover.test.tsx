@@ -108,7 +108,7 @@ describe("useEventFilterPopover", () => {
       "rounded-xl",
       "border",
       "border-glass-border",
-      "bg-(--bg-surface)/(--opacity-heavy)",
+      "bg-(--bg-surface)/[calc(var(--opacity-heavy)*100%)]",
       "p-4",
       "shadow-glass",
       "backdrop-blur-xl"

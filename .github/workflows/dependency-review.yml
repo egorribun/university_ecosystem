@@ -21,6 +21,8 @@ jobs:
         name: Review Dependencies
         runs-on: ubuntu-24.04
         timeout-minutes: 10
+        env:
+            DEPENDENCY_REVIEW_ACTION_REF: a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         steps:
             - name: "Checkout Repository"
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,6 +35,7 @@ jobs:
               env:
                   BASE_SHA: ${{ github.event.pull_request.base.sha }}
                   BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+                  HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
                   PR_AUTHOR: ${{ github.event.pull_request.user.login }}
               run: |
                   set -euo pipefail
@@ -40,7 +43,7 @@ jobs:
                       echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
                       exit 1
                   fi
-                  if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+                  if [[ -z "$GITHUB_REPOSITORY" || "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" || "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
                       echo "::error::security policy check refuses a cross-repository pull request" >&2
                       exit 1
                   fi
@@ -48,6 +51,7 @@ jobs:
                   policy_paths=(
                       ".github/workflows"
                       ".github/dependency-review-config.yml"
+                      ".github/actions/dependency-review-capture"
                       "go.work"
                       "scripts/quality/verify_dependency_review_scope.py"
                       "tests/test_verify_dependency_review_scope.py"
@@ -83,22 +87,16 @@ jobs:
             # MOD-W17-01 (Wave 17): Switched from deny-list to positive allow-list.
             # A deny-list of 2 licenses misses SSPL, BSL, EUPL, and other
             # copyleft/source-available licenses increasingly common in 2026.
+            - name: Produce Node action coverage in the current run
+              uses: ./.github/actions/node-actions-coverage
+
             - name: Dependency Review
               id: dependency_review
-              uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+              uses: ./.github/actions/dependency-review-capture
               with:
                   config-file: .github/dependency-review-config.yml
-
-            - name: Save full Dependency Review comparison in a bounded file
-              if: ${{ always() }}
-              shell: bash
-              env:
-                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
-                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-                  GITHUB_TOKEN: ${{ github.token }}
-              run: |
-                  set -euo pipefail
-                  python3 scripts/quality/verify_dependency_review_scope.py fetch --root . --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+                  upstream-commit: ${{ env.DEPENDENCY_REVIEW_ACTION_REF }}
+                  upstream-directory: ${{ github.workspace }}/.dependency-review-upstream
 
             - name: Verify exact Dependency Review license rows
               if: ${{ always() }}

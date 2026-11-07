@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -89,7 +89,7 @@ beforeEach(() => {
 })
 
 describe("useEmailMfa", () => {
-  it("keeps the challenge when the refreshed profile belongs to a different user", async () => {
+  it("warns after confirmation when the refreshed profile belongs to a different user", async () => {
     const setSnackbar = vi.fn()
     mocks.fetchQuery.mockResolvedValueOnce({ ...mocks.user, id: "different-user" })
     const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
@@ -100,10 +100,13 @@ describe("useEmailMfa", () => {
     await act(() => result.current.handleConfirmEmailMfa("135790"))
 
     expect(mocks.verifyMfaChallenge).toHaveBeenCalledOnce()
-    expect(result.current.emailChallenge).toEqual(challenge)
+    expect(result.current.emailChallenge).toBeNull()
     expect(result.current.emailMfaBusy).toBe(false)
     expect(mocks.setUser).not.toHaveBeenCalled()
-    expect(setSnackbar).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.snackbar.emailMfaSavedRefreshFailed",
+      severity: "warning",
+    })
   })
   it("starts enablement for a verified email and verifies the issued challenge", async () => {
     const setSnackbar = vi.fn()
@@ -303,6 +306,46 @@ describe("useEmailMfa", () => {
     expect(result.current.emailMfaBusy).toBe(false)
   })
 
+  it.each(["verification", "enablement"] as const)(
+    "clears a completed %s challenge and warns when profile refresh rejects",
+    async (mode) => {
+      mocks.user.email_verified_at = mode === "verification" ? null : "2026-08-01T00:00:00Z"
+      mocks.fetchQuery.mockRejectedValueOnce(new Error("profile refresh failed"))
+      const setSnackbar = vi.fn()
+      const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
+
+      await act(() => result.current.handleStartEmailMfa())
+      await act(() => result.current.handleConfirmEmailMfa("135790"))
+
+      expect(mocks.verifyMfaChallenge).toHaveBeenCalledOnce()
+      expect(result.current.emailChallenge).toBeNull()
+      expect(result.current.emailMfaError).toBeNull()
+      expect(result.current.emailMfaBusy).toBe(false)
+      expect(setSnackbar).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:security.snackbar.emailMfaSavedRefreshFailed",
+        severity: "warning",
+      })
+    }
+  )
+
+  it("warns and clears the completed challenge when refresh returns no profile", async () => {
+    mocks.fetchQuery.mockResolvedValueOnce(null)
+    const setSnackbar = vi.fn()
+    const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor: vi.fn() }))
+
+    await act(() => result.current.handleStartEmailMfa())
+    await act(() => result.current.handleConfirmEmailMfa("135790"))
+
+    expect(mocks.verifyMfaChallenge).toHaveBeenCalledOnce()
+    expect(result.current.emailChallenge).toBeNull()
+    expect(result.current.emailMfaError).toBeNull()
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:security.snackbar.emailMfaSavedRefreshFailed",
+      severity: "warning",
+    })
+  })
+
   it("reports resend failures and cancellation clears the challenge state", async () => {
     const setSnackbar = vi.fn()
     mocks.resendEmailMfaChallenge.mockRejectedValueOnce(axiosError(429, "Wait before resending"))
@@ -322,7 +365,7 @@ describe("useEmailMfa", () => {
     expect(result.current.emailMfaError).toBeNull()
   })
 
-  it("does not report disable success when the refreshed profile belongs to another user", async () => {
+  it("warns after disabling when the refreshed profile belongs to another user", async () => {
     mocks.user.email_mfa_enabled_at = "2026-01-01T00:00:00Z"
     const setSnackbar = vi.fn()
     let stepUpAction: (() => Promise<void>) | undefined
@@ -342,8 +385,84 @@ describe("useEmailMfa", () => {
 
     expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
     expect(mocks.setUser).not.toHaveBeenCalled()
-    expect(setSnackbar).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.snackbar.emailMfaSavedRefreshFailed",
+      severity: "warning",
+    })
   })
+
+  it.each(["rejection", "missing profile"] as const)(
+    "warns after disabling email MFA when refresh ends with %s",
+    async (failure) => {
+      if (failure === "rejection") {
+        mocks.fetchQuery.mockRejectedValueOnce(new Error("profile refresh failed"))
+      } else {
+        mocks.fetchQuery.mockResolvedValueOnce(null)
+      }
+      const setSnackbar = vi.fn()
+      let stepUpAction: (() => Promise<void>) | undefined
+      const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+        stepUpAction = action
+      })
+      const { result } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor }))
+
+      act(() => result.current.handleDisableEmailMfa())
+      await act(async () => {
+        await stepUpAction?.()
+      })
+
+      expect(mocks.disableEmailMfa).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:security.snackbar.emailMfaSavedRefreshFailed",
+        severity: "warning",
+      })
+    }
+  )
+
+  it.each(["confirmation", "disable"] as const)(
+    "suppresses a rejected %s refresh after switching accounts",
+    async (action) => {
+      const previousUser = mocks.user
+      const pendingRefresh = deferred<never>()
+      mocks.fetchQuery.mockReturnValueOnce(pendingRefresh.promise)
+      const setSnackbar = vi.fn()
+      let stepUpAction: (() => Promise<void>) | undefined
+      const openStepUpFor = vi.fn((operation: () => Promise<void>) => {
+        stepUpAction = operation
+      })
+      const { result, rerender } = renderHook(() => useEmailMfa({ setSnackbar, openStepUpFor }))
+      let operation!: Promise<void>
+
+      try {
+        if (action === "confirmation") {
+          await act(() => result.current.handleStartEmailMfa())
+          act(() => {
+            operation = result.current.handleConfirmEmailMfa("135790")
+          })
+        } else {
+          act(() => result.current.handleDisableEmailMfa())
+          act(() => {
+            operation = stepUpAction!()
+          })
+        }
+        await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+        mocks.user = { ...previousUser, id: "user-2" }
+        rerender()
+        await act(async () => {
+          pendingRefresh.reject(new Error("old account profile refresh failed"))
+          await operation
+        })
+
+        expect(mocks.setUser).not.toHaveBeenCalled()
+        expect(setSnackbar).not.toHaveBeenCalled()
+        expect(result.current.emailMfaError).toBeNull()
+        expect(result.current.emailMfaBusy).toBe(false)
+      } finally {
+        mocks.user = previousUser
+      }
+    }
+  )
   it("keeps a new operation busy when an older session request settles", async () => {
     const firstRequest = deferred<typeof challenge>()
     const secondRequest = deferred<typeof challenge>()

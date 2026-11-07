@@ -19,7 +19,7 @@
   },
   "overrides": {
     "@actions/http-client": {
-      "undici": "^6.28.0"
+      "undici": "^6.29.1"
     },
     "js-yaml": "^4.3.2",
     "minimatch": "^10.2.4",
@@ -28,6 +28,9 @@
     "tinyglobby": {
       "picomatch": "^4.0.4"
     },
-    "handlebars": "4.7.10"
+    "handlebars": "4.7.10",
+    "@semantic-release/github": {
+      "undici": "^7.30.1"
+    }
   }
 }

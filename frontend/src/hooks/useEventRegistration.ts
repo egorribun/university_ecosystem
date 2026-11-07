@@ -22,12 +22,15 @@ const regKey = (eventId: string, userId: number | string) => `event:reg:${eventI
 const qrKey = (eventId: string, userId: number | string | undefined) =>
   `event:qr:${eventId}:${userId ?? "anon"}`
 
+export type EventQrStorageMode = "persistent" | "memory"
+
 interface UseEventRegistrationOptions {
   eventId: string
   user: User | null
   initialRegistered?: boolean
   initialParticipantCount?: number
   initialQrToken?: string
+  qrStorage?: EventQrStorageMode
   onNotify?: (message: string) => void
 }
 
@@ -43,6 +46,7 @@ export function useEventRegistration({
   initialRegistered = false,
   initialParticipantCount = 0,
   initialQrToken,
+  qrStorage = "persistent",
   onNotify,
 }: UseEventRegistrationOptions) {
   const { t } = useTranslation(["events"])
@@ -160,8 +164,25 @@ export function useEventRegistration({
     }
   }, [isRegistered, eventId, userId, stateScope])
 
-  // Sync QR token with registered state and localStorage
+  // A My-page token is authoritative but stays in memory. Remove only the
+  // visited event's legacy value for the current user; other scopes are untouched.
   useEffect(() => {
+    if (qrStorage !== "memory") return
+    if (userId == null) {
+      setQrToken(undefined)
+      return
+    }
+    setQrToken(initialRegistered ? initialQrToken : undefined)
+    try {
+      localStorage.removeItem(qrKey(eventId, userId))
+    } catch {
+      // Storage can be unavailable; never fall back to it in memory mode.
+    }
+  }, [qrStorage, initialRegistered, initialQrToken, eventId, userId])
+
+  // Sync QR token with registered state and localStorage outside My.
+  useEffect(() => {
+    if (qrStorage === "memory") return
     if (!isRegistered) {
       // Recovery schedules a registered render. Keep its caches intact until
       // that render commits, without carrying the recovery into another scope.
@@ -192,7 +213,7 @@ export function useEventRegistration({
         // ignore
       }
     }
-  }, [isRegistered, initialQrToken, eventId, userId, stateScope])
+  }, [isRegistered, initialQrToken, eventId, userId, stateScope, qrStorage])
 
   const sync = useCallback(async (): Promise<"registered" | "unregistered" | null> => {
     const operationScope = stateScope
@@ -210,11 +231,15 @@ export function useEventRegistration({
         const code = event.my_qr_token
         if (code) {
           setQrToken(code)
-          try {
-            localStorage.setItem(qrKey(eventId, userId), code)
-          } catch {
-            // ignore
+          if (qrStorage !== "memory") {
+            try {
+              localStorage.setItem(qrKey(eventId, userId), code)
+            } catch {
+              // ignore
+            }
           }
+        } else if (qrStorage === "memory") {
+          setQrToken(undefined)
         }
       } else {
         setQrToken(undefined)
@@ -240,7 +265,7 @@ export function useEventRegistration({
     } catch {
       return null
     }
-  }, [eventId, isCurrentScope, stateScope, userId])
+  }, [eventId, isCurrentScope, stateScope, userId, qrStorage])
 
   const register = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -263,7 +288,7 @@ export function useEventRegistration({
           setParticipantCount((c) => c + 1)
           onNotify?.(t("events:card.messages.registerSuccess"))
           if (userId != null) requestPushEducation(String(userId))
-          if (code) {
+          if (code && qrStorage !== "memory") {
             try {
               localStorage.setItem(qrKey(eventId, userId), code)
             } catch {
@@ -362,7 +387,7 @@ export function useEventRegistration({
       optimisticRegistered.scope === stateScope ? optimisticRegistered.value : isRegistered,
     participantCount:
       optimisticCount.scope === stateScope ? optimisticCount.value : participantCount,
-    qrToken,
+    qrToken: qrStorage === "memory" && userId == null ? undefined : qrToken,
     isLoading: (pendingOperations.get(stateScope)?.size ?? 0) > 0,
     register,
     unregister,

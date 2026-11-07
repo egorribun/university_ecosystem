@@ -44,10 +44,17 @@ def _root_compose_files() -> list[Path]:
 _PRODUCTION_SECRET_SOURCE_VARIABLES = (
     "SECRET_KEY_SOURCE_FILE",
     "DATABASE_URL_SOURCE_FILE",
+    "MIGRATION_DATABASE_URL_SOURCE_FILE",
+    "NOTIFICATIONS_DATABASE_URL_SOURCE_FILE",
     "NATS_AUTH_TOKEN_SOURCE_FILE",
     "CACHE_REDIS_URL_SOURCE_FILE",
     "REVOCATION_REDIS_URL_SOURCE_FILE",
     "POSTGRES_PASSWORD_SOURCE_FILE",
+    "UE_APP_DB_PASSWORD_SOURCE_FILE",
+    "UE_WORKER_DB_PASSWORD_SOURCE_FILE",
+    "UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE",
+    "UE_SPICEDB_DB_PASSWORD_SOURCE_FILE",
+    "UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE",
     "MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE",
     "VAPID_PRIVATE_KEY_SOURCE_FILE",
     "SPOTIFY_CLIENT_SECRET_SOURCE_FILE",
@@ -60,6 +67,7 @@ _PRODUCTION_SECRET_SOURCE_VARIABLES = (
     "RATE_LIMIT_STORAGE_URI_SOURCE_FILE",
     "SPICEDB_PRESHARED_KEY_SOURCE_FILE",
     "TOKEN_HMAC_SECRET_SOURCE_FILE",
+    "IDEMPOTENCY_HMAC_SECRET_SOURCE_FILE",
     "WS_HUB_INTERNAL_SECRET_SOURCE_FILE",
 )
 
@@ -74,6 +82,8 @@ def _production_secret_source_overrides(tmp_path: Path) -> dict[str, str]:
         source.write_text("synthetic compose contract fixture\n", encoding="utf-8")
         overrides[variable] = str(source)
     overrides["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"] = "synthetic-active-key-id"
+    # RFC 5737 documentation range: a placeholder edge CIDR for render checks only.
+    overrides["TRUSTED_PROXIES"] = "203.0.113.0/24"
     overrides["ELASTICSEARCH_URL"] = "https://search.synthetic.invalid:9243"
     overrides["SPICEDB_ENDPOINT"] = "grpcs://spicedb.synthetic.invalid:443"
     overrides["EVENT_FILE_SCANNER_HOST"] = "clamd.synthetic.invalid"
@@ -232,6 +242,9 @@ def _compose_config_result(
 
     docker = _docker_compose()
     for path in _root_compose_files():
+        shutil.copyfile(path, tmp_path / path.name)
+    # Runtime env_file allowlists are repository files that Compose resolves beside the project.
+    for path in sorted(ROOT.glob("docker-compose*.allowlist")):
         shutil.copyfile(path, tmp_path / path.name)
     for env_file in (".env.docker", ".env.docker.workers"):
         (tmp_path / env_file).write_text("", encoding="utf-8")

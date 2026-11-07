@@ -93,6 +93,77 @@ describe("api/client — production CSRF bootstrap", () => {
     expect(adapter).not.toHaveBeenCalled()
   })
 
+  it.each(["same-nonce-hash", "absent", "unavailable"] as const)(
+    "cancels a pending private API request when a failed full-generation receipt changes to %s",
+    async (storageState) => {
+      const original = JSON.stringify({ nonce: "prior-generation", hash: null })
+      localStorage.setItem(SESSION_GENERATION_KEY, original)
+      const { default: client } = await import("@/api/client")
+      const { rotateBrowserSession } = await import("@/stores/sessionEpoch")
+      const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new DOMException("blocked", "SecurityError")
+      })
+      let restoreStorageRead: (() => void) | undefined
+      let resolveBootstrap!: (response: Response) => void
+      let bootstrapFinished = false
+      const bootstrap = new Promise<Response>((resolve) => {
+        resolveBootstrap = resolve
+      })
+      const finishBootstrap = () => {
+        if (!bootstrapFinished) {
+          bootstrapFinished = true
+          resolveBootstrap({ ok: true } as Response)
+        }
+      }
+      const fetchSpy = vi.fn(() => bootstrap)
+      vi.stubGlobal("fetch", fetchSpy)
+      const adapter = vi.fn(async (config): Promise<import("axios").AxiosResponse> => ({
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }))
+      client.defaults.adapter = adapter
+      let settledRequest: Promise<unknown> | undefined
+
+      try {
+        rotateBrowserSession()
+        storageWrite.mockRestore()
+
+        const request = client.post("/events", { title: "event" })
+        const settled = request.catch((error: unknown) => error)
+        settledRequest = settled
+        await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+
+        if (storageState === "same-nonce-hash") {
+          localStorage.setItem(
+            SESSION_GENERATION_KEY,
+            JSON.stringify({ nonce: "prior-generation", hash: "different-profile" })
+          )
+        } else if (storageState === "absent") {
+          localStorage.removeItem(SESSION_GENERATION_KEY)
+        } else {
+          const storageRead = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+            throw new DOMException("blocked", "SecurityError")
+          })
+          restoreStorageRead = () => storageRead.mockRestore()
+        }
+
+        finishBootstrap()
+        const result = await settled
+        expect(isCancel(result)).toBe(true)
+        expect(adapter).not.toHaveBeenCalled()
+      } finally {
+        finishBootstrap()
+        await settledRequest
+        storageWrite.mockRestore()
+        restoreStorageRead?.()
+      }
+    }
+  )
+
   it("keeps auth bootstrap requests available after a remote generation update", async () => {
     localStorage.setItem(
       SESSION_GENERATION_KEY,
@@ -518,7 +589,7 @@ describe("api/client — production CSRF bootstrap", () => {
     }
   })
 
-  it("keeps current-session login and logout available after a prior nonce write fails", async () => {
+  it("keeps login recovery available but blocks logout when storage becomes unreadable after a failed rotation", async () => {
     localStorage.setItem(
       SESSION_GENERATION_KEY,
       JSON.stringify({ nonce: "active-generation", hash: "active-profile" })
@@ -552,11 +623,12 @@ describe("api/client — production CSRF bootstrap", () => {
         throw new DOMException("blocked", "SecurityError")
       })
       restoreStorageRead = () => storageRead.mockRestore()
-      expect(hasStaleBrowserSessionBinding()).toBe(false)
+      expect(hasStaleBrowserSessionBinding()).toBe(true)
       await client.post("/auth/login", {}, { skipRateLimitQueue: true } as never)
       rotateBrowserSession()
-      await client.post("/auth/logout", {})
-      expect(requests).toEqual(["post:/auth/login", "post:/auth/logout"])
+      const logout = await client.post("/auth/logout", {}).catch((error: unknown) => error)
+      expect(isCancel(logout)).toBe(true)
+      expect(requests).toEqual(["post:/auth/login"])
     } finally {
       storageWrite.mockRestore()
       restoreStorageRead?.()

@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ForwardRefExoticComponent, ReactNode, RefAttributes } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -307,7 +308,7 @@ describe("ChatArea motion and delegation contract", () => {
     const root = container.firstElementChild!
     expect(attr(root, "data-motion-initial")).toBe("undefined")
     const icon = container.querySelector(".messenger-card-matte")!
-    expect(icon).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(icon, "var(--messenger-card-bg)")
     expect(icon).toHaveClass("relative", "mb-7", "size-40", "items-center", "justify-center")
     expect(screen.getByRole("status", { name: "messenger:selectChat" })).toBeInTheDocument()
     expect(attr(icon, "data-motion-initial")).toBe(
@@ -444,7 +445,9 @@ describe("ChatArea motion and delegation contract", () => {
 
     const { container: closedContainer } = render(<ChatArea {...base} />)
     const closedMenuToggle = closedContainer.querySelector<HTMLButtonElement>("#chat-menu-toggle")!
-    expect(closedMenuToggle).toHaveClass("hover:bg-(--bg-surface-hover)/(--opacity-medium)")
+    expect(closedMenuToggle).toHaveClass(
+      "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
+    )
   })
 
   it("preserves direct-message avatar and name fallbacks for all participant shapes", () => {
@@ -496,8 +499,11 @@ describe("ChatArea motion and delegation contract", () => {
   it("keeps empty-state orb, card, icon and typography styles observable", () => {
     const { container } = render(<ChatArea {...base} selectedChatId={null} activeChat={null} />)
     const orb = container.querySelector('[aria-hidden="true"].pointer-events-none')!
+    expectInlineBackground(
+      orb,
+      "radial-gradient(circle, var(--messenger-orb-1) 0%, transparent 65%)"
+    )
     expect(orb).toHaveStyle({
-      background: "radial-gradient(circle, var(--messenger-orb-1) 0%, transparent 65%)",
       filter: "blur(50px)",
     })
 
@@ -518,7 +524,7 @@ describe("ChatArea motion and delegation contract", () => {
     expect(attr(card, "data-motion-transition")).toBe(
       JSON.stringify({ duration: 0.6, ease: [0.22, 1, 0.36, 1] })
     )
-    expect(card).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(card, "var(--messenger-card-bg)")
     expect(card.querySelector("svg")).toHaveClass("size-20", "text-(--color-violet-500)")
     expect(card.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
 

@@ -28,6 +28,7 @@ from tests.helpers.synthetic_credentials import make_test_totp_secret
 class _Uow:
     def __init__(self, repo):
         self.users = repo
+        self.session = repo.db
         self.commit = AsyncMock()
         self.rollback = AsyncMock()
 

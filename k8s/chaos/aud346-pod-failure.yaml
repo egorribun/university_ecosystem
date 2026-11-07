@@ -1,0 +1,14 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: aud346-live-pod-failure
+  namespace: aud346
+spec:
+  action: pod-failure
+  mode: all
+  selector:
+    namespaces:
+      - aud346
+    labelSelectors:
+      app.kubernetes.io/name: aud346-chaos-target
+  duration: 45s

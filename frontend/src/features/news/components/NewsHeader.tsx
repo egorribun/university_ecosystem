@@ -115,7 +115,7 @@ export const NewsHeader = ({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("news:search.placeholder")}
-              className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
+              className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none transition-shadow"
               aria-label={t("news:search.placeholder")}
             />
             {searchQuery && (

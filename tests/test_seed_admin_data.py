@@ -65,15 +65,11 @@ async def test_admin_seed_fails_closed_before_database_initialization_without_pa
         capsys.readouterr()
 
 
-@pytest.mark.parametrize(
-    ("seed_target", "should_reconcile"),
-    (("ue-live-0123456789abcdef", True), ("ci-admin-smoke", False)),
-)
-async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
+@pytest.mark.parametrize("seed_target", ("ue-live-0123456789abcdef", "ci-admin-smoke"))
+async def test_admin_seed_passes_only_the_transient_password_for_every_target(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     seed_target: str,
-    should_reconcile: bool,
 ) -> None:
     import secrets
 
@@ -87,12 +83,26 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
 
     runtime_password = secrets.token_urlsafe(32)
     monkeypatch.setenv("TEST_PASSWORD", runtime_password)
+    from scripts.seed_identity import owned_seed_tenant_id
+
+    monkeypatch.setattr(
+        seed_admin_data.settings, "mvp_tenant_id", owned_seed_tenant_id(seed_target)
+    )
 
     def no_op_init_database() -> None:
         return None
 
     class FakeSession:
         async def scalar(self, statement):
+            return None
+
+        def add(self, tenant) -> None:
+            from app.core.tenant import get_current_tenant
+
+            assert str(tenant.id) == get_current_tenant()
+            assert tenant.slug == seed_target
+
+        async def flush(self) -> None:
             return None
 
         async def __aenter__(self) -> FakeSession:
@@ -107,12 +117,10 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         async def rollback(self) -> None:
             return None
 
-    observed_passwords: list[tuple[str, bool]] = []
+    observed_passwords: list[str] = []
 
-    async def capture_admin_password(
-        db, *, admin_password: str, reconcile_stand_password: bool
-    ):
-        observed_passwords.append((admin_password, reconcile_stand_password))
+    async def capture_admin_password(db, *, admin_password: str):
+        observed_passwords.append(admin_password)
         return object()
 
     async def no_op_seed(db, *args):
@@ -131,6 +139,11 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         "seed_live_notification_delivery_fixture",
         no_op_notification_fixture,
     )
+    monkeypatch.setattr(
+        seed_admin_data,
+        "seed_live_notification_queue_fixture",
+        no_op_notification_fixture,
+    )
     monkeypatch.setattr(seed_admin_data, "seed_audit_logs", no_op_seed)
     monkeypatch.setattr(seed_admin_data, "seed_dead_letter_jobs", no_op_seed)
 
@@ -140,13 +153,11 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         output = capsys.readouterr()
 
     if len(observed_passwords) != 1 or not secrets.compare_digest(
-        observed_passwords[0][0], runtime_password
+        observed_passwords[0], runtime_password
     ):
         pytest.fail(
             "admin seeder did not pass the transient password to the admin creator"
         )
-    if observed_passwords[0][1] is not should_reconcile:
-        pytest.fail("password reconciliation escaped its owned live stand scope")
 
     if runtime_password in output.out or runtime_password in output.err:
         pytest.fail("admin seeder wrote the transient password to captured output")
@@ -173,9 +184,26 @@ async def test_notification_fixture_runs_for_a_full_owned_stand(
         lambda: seed_target,
     )
     monkeypatch.setenv("TEST_PASSWORD", "Live-Seed-Test-Password9!")
-    prepared: list[bool] = []
+    from scripts.seed_identity import owned_seed_tenant_id
+
+    monkeypatch.setattr(
+        seed_admin_data.settings, "mvp_tenant_id", owned_seed_tenant_id(seed_target)
+    )
+    prepared: list[str] = []
 
     class FakeSession:
+        async def scalar(self, statement):
+            return None
+
+        def add(self, tenant) -> None:
+            from app.core.tenant import get_current_tenant
+
+            assert str(tenant.id) == get_current_tenant()
+            assert tenant.slug == seed_target
+
+        async def flush(self) -> None:
+            return None
+
         async def __aenter__(self) -> FakeSession:
             return self
 
@@ -198,7 +226,10 @@ async def test_notification_fixture_runs_for_a_full_owned_stand(
         return object()
 
     async def record_fixture_call(db):
-        prepared.append(True)
+        prepared.append("delivery")
+
+    async def record_queue_fixture_call(db):
+        prepared.append("queue")
 
     monkeypatch.setattr(seed_admin_data, "init_database", no_op_init_database)
     monkeypatch.setattr(seed_admin_data, "async_session", FakeSession)
@@ -212,13 +243,18 @@ async def test_notification_fixture_runs_for_a_full_owned_stand(
         "seed_live_notification_delivery_fixture",
         record_fixture_call,
     )
+    monkeypatch.setattr(
+        seed_admin_data,
+        "seed_live_notification_queue_fixture",
+        record_queue_fixture_call,
+    )
 
     try:
         await seed_admin_data.main()
     finally:
         output = capsys.readouterr()
 
-    assert bool(prepared) is should_prepare
+    assert prepared == (["delivery", "queue"] if should_prepare else [])
     assert "Live-Seed-Test-Password9!" not in output.out
     assert "Live-Seed-Test-Password9!" not in output.err
 
@@ -339,7 +375,7 @@ async def test_notification_fixture_refuses_a_nonempty_dedicated_group(
     )
 
 
-async def test_reseeding_existing_admin_preserves_the_password_hash(
+async def test_reseeding_existing_admin_rejects_a_different_password_without_rekeying(
     db_session, user_factory, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import secrets
@@ -348,12 +384,43 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
     from scripts import seed_admin_data
 
     previous_password = secrets.token_urlsafe(32) + "!Aa0"
-    current_password = secrets.token_urlsafe(32) + "!Aa0"
+    current_password = secrets.token_urlsafe(32) + "!Bb1"
     previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
     existing = await user_factory(
         email=seed_admin_data.ADMIN_EMAIL,
         role="admin",
         hashed_password=previous_hash,
+    )
+
+    with pytest.raises(RuntimeError, match="recreate the owned stand"):
+        await seed_admin_data.find_or_create_admin(
+            db_session, admin_password=current_password
+        )
+    await db_session.commit()
+    await db_session.refresh(existing)
+    output = capsys.readouterr()
+
+    if existing.hashed_password != previous_hash:
+        pytest.fail("a mismatched seed password must never rewrite the admin hash")
+    if not verify_password_sync(previous_password, existing.hashed_password):
+        pytest.fail("the existing admin password must keep working after the refusal")
+    if current_password in output.out or current_password in output.err:
+        pytest.fail("the refused seed password must not reach captured output")
+
+
+async def test_reseeding_existing_admin_with_the_matching_password_keeps_the_hash(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import secrets
+
+    from scripts import seed_admin_data
+
+    password = secrets.token_urlsafe(32) + "!Aa0"
+    existing_hash = seed_admin_data.get_password_hash_sync(password)
+    existing = await user_factory(
+        email=seed_admin_data.ADMIN_EMAIL,
+        role="admin",
+        hashed_password=existing_hash,
     )
     profile = await db_session.scalar(
         select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
@@ -363,7 +430,7 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
     await db_session.flush()
 
     result = await seed_admin_data.find_or_create_admin(
-        db_session, admin_password=current_password
+        db_session, admin_password=password
     )
     await db_session.commit()
     await db_session.refresh(existing)
@@ -371,56 +438,15 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
 
     if result.id != existing.id:
         pytest.fail("admin reseeding must leave the matching account in place")
-    if existing.hashed_password != previous_hash:
+    if existing.hashed_password != existing_hash:
         pytest.fail("admin reseeding must preserve an existing password hash")
-    if not verify_password_sync(previous_password, existing.hashed_password):
-        pytest.fail("admin reseeding must preserve the existing account password")
-    if verify_password_sync(current_password, existing.hashed_password):
-        pytest.fail(
-            "admin reseeding must not apply a new password to an existing account"
-        )
-
-    if current_password in output.out or current_password in output.err:
-        pytest.fail("admin reseeding must not log the current password")
+    if password in output.out or password in output.err:
+        pytest.fail("admin reseeding must not log the admin password")
     restored_profile = await db_session.scalar(
         select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
     )
     assert restored_profile is not None
     assert restored_profile.full_name == "Платформенный администратор"
-
-
-async def test_live_stand_seed_reconciles_its_persisted_admin_password(
-    db_session, user_factory, capsys: pytest.CaptureFixture[str]
-) -> None:
-    import secrets
-
-    from app.auth.security import verify_password_sync
-    from scripts import seed_admin_data
-
-    previous_password = secrets.token_urlsafe(32) + "!Aa0"
-    stand_password = secrets.token_urlsafe(32) + "!Bb1"
-    previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
-    existing = await user_factory(
-        email=seed_admin_data.ADMIN_EMAIL,
-        role="admin",
-        hashed_password=previous_hash,
-    )
-
-    result = await seed_admin_data.find_or_create_admin(
-        db_session,
-        admin_password=stand_password,
-        reconcile_stand_password=True,
-    )
-    await db_session.commit()
-    await db_session.refresh(existing)
-    output = capsys.readouterr()
-
-    assert result.id == existing.id
-    assert existing.hashed_password != previous_hash
-    assert verify_password_sync(stand_password, existing.hashed_password)
-    assert not verify_password_sync(previous_password, existing.hashed_password)
-    assert stand_password not in output.out
-    assert stand_password not in output.err
 
 
 async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
@@ -593,3 +619,153 @@ async def test_reseeding_does_not_promote_an_existing_non_admin_account(
 
     await db_session.refresh(existing)
     assert str(existing.role.value) == "student"
+
+
+async def test_owned_notification_queue_fixture_is_inert_and_idempotent(
+    db_session,
+) -> None:
+    from app.services.notification_queue import list_dead_lettered_jobs
+    from scripts import seed_admin_data
+
+    record_ids = seed_admin_data.LIVE_NOTIFICATION_QUEUE_RECORD_IDS
+    unrelated = models.NotificationQueueJob(
+        kind="event",
+        record_id=record_ids[0],
+        locale="ru",
+        attempts=0,
+        dead_lettered=False,
+    )
+    db_session.add(unrelated)
+    await db_session.flush()
+    await db_session.refresh(unrelated)
+    unrelated_state = (
+        unrelated.id,
+        unrelated.enqueued_at,
+        unrelated.dead_lettered,
+        unrelated.attempts,
+        unrelated.locale,
+        unrelated.last_error,
+        unrelated.claimed_at,
+        unrelated.next_retry_at,
+    )
+
+    await seed_admin_data.seed_live_notification_queue_fixture(db_session)
+    first_page, total = await list_dead_lettered_jobs(db_session, limit=20, offset=0)
+    second_page, second_total = await list_dead_lettered_jobs(
+        db_session, limit=20, offset=20
+    )
+    assert total == second_total == 21
+    assert len(first_page) == 20
+    assert len(second_page) == 1
+    jobs = first_page + second_page
+    assert tuple(job.record_id for job in jobs) == record_ids
+    assert len({job.id for job in jobs}) == 21
+    assert {job.id for job in first_page}.isdisjoint(job.id for job in second_page)
+    original_state = {}
+    for job in jobs:
+        await db_session.refresh(job)
+        assert job.kind == "news"
+        assert job.locale == "en"
+        assert job.dead_lettered is True
+        assert job.attempts == 5
+        assert job.last_error == seed_admin_data.LIVE_NOTIFICATION_QUEUE_ERROR
+        assert job.claimed_at is None
+        assert job.next_retry_at is None
+        original_state[job.record_id] = (
+            job.id,
+            job.enqueued_at,
+            job.kind,
+            job.locale,
+            job.dead_lettered,
+            job.attempts,
+            job.last_error,
+            job.claimed_at,
+            job.next_retry_at,
+        )
+
+    await seed_admin_data.seed_live_notification_queue_fixture(db_session)
+    repeated, repeated_total = await list_dead_lettered_jobs(
+        db_session, limit=100, offset=0
+    )
+    assert repeated_total == 21
+    assert tuple(job.record_id for job in repeated) == record_ids
+    for job in repeated:
+        await db_session.refresh(job)
+        assert (
+            job.id,
+            job.enqueued_at,
+            job.kind,
+            job.locale,
+            job.dead_lettered,
+            job.attempts,
+            job.last_error,
+            job.claimed_at,
+            job.next_retry_at,
+        ) == original_state[job.record_id]
+    await db_session.refresh(unrelated)
+    assert (
+        unrelated.id,
+        unrelated.enqueued_at,
+        unrelated.dead_lettered,
+        unrelated.attempts,
+        unrelated.locale,
+        unrelated.last_error,
+        unrelated.claimed_at,
+        unrelated.next_retry_at,
+    ) == unrelated_state
+
+
+@pytest.mark.parametrize(
+    "changed_field",
+    (
+        "dead_lettered",
+        "locale",
+        "attempts",
+        "last_error",
+        "claimed_at",
+        pytest.param("next_retry_at", id="scheduled-at"),
+    ),
+)
+async def test_owned_notification_queue_fixture_rejects_collisions_before_inserts(
+    db_session, changed_field: str
+) -> None:
+    from datetime import UTC, datetime
+
+    from scripts import seed_admin_data
+
+    now = datetime.now(UTC)
+    values = {
+        "kind": "news",
+        "record_id": seed_admin_data.LIVE_NOTIFICATION_QUEUE_RECORD_IDS[-1],
+        "locale": "en",
+        "enqueued_at": now,
+        "dead_lettered": True,
+        "attempts": 5,
+        "last_error": seed_admin_data.LIVE_NOTIFICATION_QUEUE_ERROR,
+        "claimed_at": None,
+        "next_retry_at": None,
+    }
+    changed_values = {
+        "dead_lettered": False,
+        "locale": "ru",
+        "attempts": 1,
+        "last_error": "Unrelated existing failure",
+        "claimed_at": now,
+        "next_retry_at": now,
+    }
+    values[changed_field] = changed_values[changed_field]
+    existing = models.NotificationQueueJob(**values)
+    db_session.add(existing)
+    await db_session.flush()
+    await db_session.refresh(existing)
+    before = {name: getattr(existing, name) for name in values}
+    before["id"] = existing.id
+
+    with pytest.raises(RuntimeError, match="identity collision"):
+        await seed_admin_data.seed_live_notification_queue_fixture(db_session)
+
+    assert not db_session.new
+    rows = list((await db_session.scalars(select(models.NotificationQueueJob))).all())
+    assert len(rows) == 1
+    await db_session.refresh(existing)
+    assert {name: getattr(existing, name) for name in before} == before

@@ -5,7 +5,7 @@ import { formatRelativeTime } from "@/utils/date"
 
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
-import { useEventRegistration } from "@/hooks/useEventRegistration"
+import { useEventRegistration, type EventQrStorageMode } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
@@ -24,6 +24,7 @@ interface UseEventCardLogicProps extends Partial<Event> {
   id: string
   // Optional callbacks or initial states if needed
   onChange?: () => void
+  qrStorage?: EventQrStorageMode
 }
 
 export function useEventCardLogic({
@@ -44,6 +45,7 @@ export function useEventCardLogic({
   speaker = "",
   image_url = "",
   onChange,
+  qrStorage,
 }: UseEventCardLogicProps) {
   const { user } = useAuth()
   const campusTimezone = useCampusTimezone()
@@ -114,6 +116,7 @@ export function useEventCardLogic({
     initialRegistered: is_registered ?? false,
     initialParticipantCount: participant_count,
     initialQrToken: my_qr_token ?? undefined,
+    qrStorage,
     onNotify: setSnackbar,
   })
 

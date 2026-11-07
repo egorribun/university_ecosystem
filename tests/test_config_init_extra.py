@@ -256,7 +256,10 @@ def test_force_reload_security_config() -> None:
 
         import app.core.config.security as sec
 
-        importlib.reload(sec)
+        reloaded = importlib.reload(sec)
+        assert reloaded is sec
+        assert reloaded.SecuritySettings is not SecuritySettings
+        assert "internal_hmac_secret" in reloaded.SecuritySettings.model_fields
     finally:
         for mod, original_module in original_modules.items():
             if original_module is None:
@@ -397,5 +400,6 @@ def test_integration_settings_production_validation():
             spotify_client_secret=secrets.token_urlsafe(32),
             spotify_oauth_state_secret="secure-state-secret",  # pragma: allowlist secret
             ws_hub_internal_secret="secure-internal-secret",  # pragma: allowlist secret
+            idempotency_hmac_secret=secrets.token_urlsafe(32),
         )
         assert s.elasticsearch_password == "secure-password"  # pragma: allowlist secret

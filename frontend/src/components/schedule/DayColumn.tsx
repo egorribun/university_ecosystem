@@ -216,7 +216,7 @@ export function DayColumn({
       className={cn(
         "sched-card-matte sched-day-column-container group relative isolate mb-3 glass-noise",
         compact ? "p-4 sm:p-5" : "p-5 sm:p-6",
-        isToday && "sched-today-col ring-2 ring-brand/(--opacity-dim)",
+        isToday && "sched-today-col ring-2 ring-brand/[calc(var(--opacity-dim)*100%)]",
         !isToday && heatClass
       )}
     >
@@ -264,7 +264,7 @@ export function DayColumn({
           <button
             type="button"
             id={`add-lesson-${day}`}
-            className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-fast hover:border-brand hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+            className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-brand/[calc(var(--opacity-dim)*100%)] bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand transition-all duration-fast hover:border-brand hover:bg-brand hover:text-[var(--sched-on-accent)] hover:shadow-sm hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
             onClick={(e) => {
               e.stopPropagation()
               onAdd()

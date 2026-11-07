@@ -124,6 +124,7 @@ _COMPOSE_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -289,6 +290,7 @@ def _runtime_inspect_record(pair, container_id, service, index):
         "migrations",
         "minio-init",
         "postgres-databases-init",
+        "postgres-roles-init",
         "spicedb-migrate",
     }
     return {

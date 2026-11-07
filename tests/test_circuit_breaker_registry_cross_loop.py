@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -10,6 +12,31 @@ import pytest
 import app.core.circuit_breaker as circuit_module
 from app.core.circuit_breaker import CircuitBreakerState
 from tests.helpers.circuit_process import assert_circuit_scenario_completes
+
+_FRESH_IMPORT_CHECK = (
+    "import sys\n"
+    "import app.core.circuit_breaker\n"
+    "assert 'app.core.metrics' in sys.modules, "
+    "'circuit breaker must load metrics at import, not on its first transition'\n"
+)
+
+
+def test_first_state_transition_does_not_import_metrics_under_the_state_lock() -> None:
+    """A first-use import runs on the event loop while the breaker lock is held.
+
+    In a fresh interpreter the first OPEN-to-CLOSED reset used to import
+    app.core.metrics inside the locked transition, which stalled the loop for
+    about half a second and made the cross-loop scenario deadline flaky on
+    loaded runners. The import now happens when the module is loaded.
+    """
+    completed = subprocess.run(  # noqa: S603  # fixed-argv interpreter check, no shell
+        [sys.executable, "-c", _FRESH_IMPORT_CHECK],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_registry_contention_does_not_bind_to_a_closed_event_loop(

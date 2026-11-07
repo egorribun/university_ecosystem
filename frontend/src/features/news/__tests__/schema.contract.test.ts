@@ -60,12 +60,12 @@ describe("news public schemas", () => {
       {
         field: "title_en" as const,
         max: 100,
-        message: "Title (EN) must be less than 100 characters",
+        message: "news:form.validation.titleEnMaxLength",
       },
       {
         field: "content_en" as const,
         max: 3000,
-        message: "Content (EN) must be less than 3000 characters",
+        message: "news:form.validation.contentEnMaxLength",
       },
     ])("preserves the $field length boundary", ({ field, max, message }) => {
       const atLimit = v.parse(newsFormSchema, validForm({ [field]: `${"x".repeat(max)} ` }))
@@ -95,8 +95,8 @@ describe("news public schemas", () => {
 
       expect(result.issues.map((issue) => issue.message)).toEqual(
         expect.arrayContaining([
-          "Title must be less than 100 characters",
-          "Content must be less than 3000 characters",
+          "news:form.validation.titleMaxLength",
+          "news:form.validation.contentMaxLength",
         ])
       )
     })
@@ -135,7 +135,9 @@ describe("news public schemas", () => {
 
       expect(overLimit.success).toBe(false)
       if (overLimit.success) return
-      expect(overLimit.issues.map((issue) => issue.message)).toContain("Max image size is 5MB.")
+      expect(overLimit.issues.map((issue) => issue.message)).toContain(
+        "news:form.validation.imageMaxSize"
+      )
     })
   })
 

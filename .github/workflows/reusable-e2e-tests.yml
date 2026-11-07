@@ -77,8 +77,8 @@ jobs:
     # remains blocking by default for Chromium and opt-in advisory for the
     # stabilization matrix.
     continue-on-error: ${{ inputs.advisory }}
-    # The Chromium suite contains 114 tests, including expensive accessibility
-    # scans. The caller splits the default suite into four Playwright shards.
+    # The Chromium suite includes expensive accessibility scans. The caller
+    # splits the default suite into four Playwright shards.
     # Keep one worker per shard: four concurrent Chromium navigations are the
     # stable ceiling for the SSR preview; higher aggregate concurrency cascades
     # into page.goto net::ERR_ABORTED timeouts.
@@ -142,12 +142,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -324,7 +324,7 @@ jobs:
       # W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: wasm-pack@0.15.0
 
@@ -417,6 +417,10 @@ jobs:
           BROWSER: ${{ inputs.browser }}
           SHARD_INDEX: ${{ inputs.shard-index }}
           SHARD_TOTAL: ${{ inputs.shard-total }}
+          # AUD-429: this job starts the real backend on 127.0.0.1:8000, which the
+          # chat real-time specs need. Without this flag they skip, so the
+          # WebSocket reconnect, typing and sent-status suites never executed in CI.
+          REALTIME_E2E: "true"
         run: |
           BASE_URL="$INPUT_BASE_URL"
           if [[ -z "$BASE_URL" ]]; then
@@ -480,7 +484,7 @@ jobs:
           # invocation. Keep auxiliary suites in separate subdirectories so
           # the coverage merger can still see the regular shard output and
           # every auxiliary suite's report.
-          npx playwright test url-state-persistence.spec.ts \
+          npx playwright test url-state-persistence.spec.ts messenger-heartbeat-blackhole.spec.ts \
             --project=chromium \
             --output=test-results/url-state \
             --reporter=html
@@ -517,6 +521,10 @@ jobs:
           npx playwright test ssr-caching.spec.ts \
             --project=chromium \
             --output=test-results/ssr-caching \
+            --reporter=html
+          npx playwright test --config=playwright.ssr.config.ts \
+            --project=chromium \
+            --output=test-results/ssr-document-render \
             --reporter=html
 
       - name: Run authenticated accessibility E2E tests (cross-env auto-managed)

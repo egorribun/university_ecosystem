@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -185,8 +186,8 @@ describe("DashboardHero closure", () => {
       "md:py-9",
       "greeting-morning"
     )
+    expectInlineBackground(header, "var(--hero-card-bg)")
     expect(header).toHaveStyle({
-      background: "var(--hero-card-bg)",
       boxShadow:
         "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
     })
@@ -200,7 +201,8 @@ describe("DashboardHero closure", () => {
       "z-10",
       "h-px"
     )
-    expect(accent).toHaveStyle({ background: "var(--dash-accent-line)", opacity: "0.5" })
+    expectInlineBackground(accent, "var(--dash-accent-line)")
+    expect(accent).toHaveStyle({ opacity: "0.5" })
 
     const heading = screen.getByRole("heading")
     expect(heading).toHaveClass(

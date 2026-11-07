@@ -23,7 +23,7 @@ export function getNewsHeroFrame(heroRatio: number | null): NewsHeroFrame {
       container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
       image: "object-cover",
       imageStyle: { objectPosition: "50% 40%" },
-      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+      backdrop: "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]",
     }
   }
   const r = Math.min(Math.max(heroRatio, 0.35), 4)
@@ -32,27 +32,27 @@ export function getNewsHeroFrame(heroRatio: number | null): NewsHeroFrame {
       container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
       image: "object-contain object-center",
       imageStyle: { objectPosition: "center" },
-      backdrop: "bg-black/(--opacity-soft)",
+      backdrop: "bg-black/[calc(var(--opacity-soft)*100%)]",
     }
   if (r < 1.18)
     return {
       container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
       image: "object-cover",
       imageStyle: { objectPosition: "50% 38%" },
-      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+      backdrop: "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]",
     }
   if (r > 2.6)
     return {
       container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
       image: "object-cover",
       imageStyle: { objectPosition: "50% 46%" },
-      backdrop: "bg-black/(--opacity-dim)",
+      backdrop: "bg-black/[calc(var(--opacity-dim)*100%)]",
     }
   return {
     container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
     image: "object-cover",
     imageStyle: { objectPosition: "50% 40%" },
-    backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+    backdrop: "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]",
   }
 }
 
@@ -82,7 +82,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
   return (
     <>
       <figure
-        className="relative overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft) shadow-glass"
+        className="relative overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/[calc(var(--opacity-soft)*100%)] shadow-glass"
         style={{ viewTransitionName: "news-hero" }}
       >
         <div
@@ -109,7 +109,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           />
         </div>
         {!displayTitle && (
-          <figcaption className="border-t border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
+          <figcaption className="border-t border-glass-border/[calc(var(--opacity-soft)*100%)] bg-(--bg-surface)/[calc(var(--opacity-subtle)*100%)] px-5 py-3 text-sm font-medium text-(--text-secondary)">
             {t("news:alt.heroFallback")}
           </figcaption>
         )}
@@ -119,7 +119,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           <button
             type="button"
             onClick={() => setLightboxOpen(true)}
-            className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/(--opacity-strong) backdrop-blur-sm text-white/(--opacity-heavy) shadow-sm transition hover:bg-black/(--opacity-heavy) hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
+            className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-sm text-white/[calc(var(--opacity-heavy)*100%)] shadow-sm transition hover:bg-black/[calc(var(--opacity-heavy)*100%)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
             aria-label={t("news:actions.zoomImage")}
           >
             <ZoomIn size={16} />
@@ -144,7 +144,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           <button
             type="button"
             onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-white transition hover:bg-white/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/(--opacity-medium)"
+            className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-white transition hover:bg-white/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
             aria-label={t("common:buttons.close")}
           >
             <CloseIcon size={20} />

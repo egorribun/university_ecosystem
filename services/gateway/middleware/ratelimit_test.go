@@ -418,3 +418,57 @@ func TestRateLimiter_StartFallbackCleanup(t *testing.T) {
 	assert.False(t, expiredExists, "expired entry should be cleaned up")
 	assert.True(t, freshExists, "fresh entry should remain")
 }
+
+func TestIsPublicStaticRead_OnlyAnonymousGetAndHeadUnderStatic(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/static/img/logo.png", true},
+		{http.MethodHead, "/static/img/logo.png", true},
+		{http.MethodPost, "/static/img/logo.png", false},
+		{http.MethodPut, "/static/upload", false},
+		{http.MethodGet, "/static", false},
+		{http.MethodGet, "/staticfile", false},
+		{http.MethodGet, "/.well-known/jwks.json", false},
+		{http.MethodGet, "/api/v1/users/me", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil)
+		assert.Equal(t, tc.want, isPublicStaticRead(req), "%s %s", tc.method, tc.path)
+	}
+}
+
+func TestNewFallbackRateLimiter_ExemptsPublicStaticReadsButNotOtherRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, cancel := context.WithCancel(context.Background())
+	rl := NewFallbackRateLimiter()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, rl.Close())
+	})
+
+	router := gin.New()
+	ok := func(c *gin.Context) { c.Status(http.StatusOK) }
+	router.GET("/static/*path", rl.Middleware(ctx), ok)
+	router.GET("/.well-known/*path", rl.Middleware(ctx), ok)
+
+	// The bounded fallback allows three requests per window; static reads never consume it.
+	for requestNumber := 1; requestNumber <= 10; requestNumber++ {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/static/logo.png", nil)
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusOK, recorder.Code, "static request %d", requestNumber)
+	}
+
+	// JWKS and every other relayed path stay under the pre-auth IP gate.
+	var last int
+	for requestNumber := 1; requestNumber <= 4; requestNumber++ {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/jwks.json", nil)
+		router.ServeHTTP(recorder, request)
+		last = recorder.Code
+	}
+	assert.Equal(t, http.StatusTooManyRequests, last)
+}

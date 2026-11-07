@@ -18,12 +18,18 @@ def _redis_cache() -> MagicMock:
 async def test_increment_swallows_redis_errors():
     manager = CacheVersionManager(prefix="events:list")
 
-    with patch(
-        "app.core.cache_versioning.get_cache_client",
-        new_callable=AsyncMock,
-        side_effect=OSError("connection failed"),
+    with (
+        patch(
+            "app.core.cache_versioning.get_cache_client",
+            new_callable=AsyncMock,
+            side_effect=OSError("connection failed"),
+        ) as get_client,
+        patch("app.core.cache_versioning.logger.warning") as warning,
     ):
-        await manager.increment(_redis_cache())
+        assert (await manager.increment(_redis_cache())) is None
+
+    get_client.assert_awaited_once_with()
+    warning.assert_called_once_with("Failed to increment cache version")
 
 
 @pytest.mark.asyncio
@@ -104,12 +110,18 @@ async def test_increment_uses_incr_and_falls_back_to_get_set():
 async def test_reset_swallows_redis_errors():
     manager = CacheVersionManager(prefix="events:list")
 
-    with patch(
-        "app.core.cache_versioning.get_cache_client",
-        new_callable=AsyncMock,
-        side_effect=OSError("connection failed"),
+    with (
+        patch(
+            "app.core.cache_versioning.get_cache_client",
+            new_callable=AsyncMock,
+            side_effect=OSError("connection failed"),
+        ) as get_client,
+        patch("app.core.cache_versioning.logger.warning") as warning,
     ):
-        await manager.reset(_redis_cache())
+        assert (await manager.reset(_redis_cache())) is None
+
+    get_client.assert_awaited_once_with()
+    warning.assert_called_once_with("Failed to reset cache version")
 
 
 @pytest.mark.asyncio
@@ -152,3 +164,20 @@ async def test_non_redis_and_disabled_fallbacks_and_deterministic_key():
     )
     assert key.startswith("events:list:7:en:")
     assert len(key.rsplit(":", 1)[-1]) == 64
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["disabled", "redis"])
+async def test_prepare_warmup_does_not_touch_disabled_or_redis_caches(kind):
+    manager = CacheVersionManager(prefix="news:list")
+    cache = MagicMock(spec=MemoryCache) if kind == "disabled" else _redis_cache()
+    cache.enabled = kind == "redis"
+
+    with patch(
+        "app.core.cache_versioning.get_cache_client", new_callable=AsyncMock
+    ) as get_client:
+        await manager.prepare_warmup(cache)
+
+    cache.get.assert_not_called()
+    cache.set.assert_not_called()
+    get_client.assert_not_called()

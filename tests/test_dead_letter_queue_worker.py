@@ -7,12 +7,15 @@ cleanup_completed_jobs.
 
 from __future__ import annotations
 
+import json
+import secrets
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.dead_letter import JobStatus
+from app.models.dead_letter import DeadLetterJob, JobStatus
 from app.workers.dead_letter_queue import (
+    DeadLetterPlaintextLinkError,
     DeadLetterQueue,
     compute_job_hash,
 )
@@ -63,11 +66,89 @@ def make_dlq(session: AsyncMock | None = None) -> DeadLetterQueue:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "unsafe_name",
+    [
+        "https://portal.example.test/reset#token=plaintext-value",
+        "https://portal.example.test/reset%3Ftoken%3Dplaintext-value",
+        "https://portal.example.test/reset?x=1&amp;ToKeN&#61;plaintext-value",
+    ],
+)
+@pytest.mark.parametrize("reopen_existing", [False, True])
+async def test_auth_failed_job_rejects_plaintext_links_in_other_fields(
+    monkeypatch: pytest.MonkeyPatch, unsafe_name: str, reopen_existing: bool
+) -> None:
+    from app.services import auth_service
+    from app.tasks.email import _read_auth_email_link
+
+    secret = secrets.token_hex(32)
+    monkeypatch.setattr(auth_service, "_token_hmac_secret", lambda: secret)
+    job_type = "app.tasks.email.send_auth_email"
+    link = "https://portal.example.test/reset#token=sealed-value"
+
+    # A normal auth job is accepted and its link remains decryptable after sealing.
+    control_session = AsyncMock()
+    control_session.execute.return_value = MagicMock(
+        scalar_one_or_none=MagicMock(return_value=None)
+    )
+    control_session.add = MagicMock()
+    control = await make_dlq(control_session).add_failed_job(
+        job_type,
+        {"args": ["student@example.test", link, "Student"], "kwargs": {}},
+        "failed",
+    )
+    assert control is not None
+    protected = json.loads(control.payload)
+    assert link not in control.payload
+    assert protected["kwargs"]["encrypted_link"] is True
+    assert _read_auth_email_link(protected["args"][1], secret)[0] == link
+    assert control.status == JobStatus.PENDING.value
+    control_session.add.assert_called_once_with(control)
+    control_session.flush.assert_awaited_once()
+
+    payload = {"args": ["student@example.test", link, unsafe_name], "kwargs": {}}
+    previous = (
+        DeadLetterJob(
+            job_type=job_type,
+            job_hash=compute_job_hash(job_type, payload),
+            payload='{"previous": "safe"}',
+            status=JobStatus.COMPLETED.value,
+            retry_count=2,
+            max_retries=3,
+            error_message="previous failure",
+        )
+        if reopen_existing
+        else None
+    )
+    session = AsyncMock()
+    session.execute.return_value = MagicMock(
+        scalar_one_or_none=MagicMock(return_value=previous)
+    )
+    session.add = MagicMock()
+
+    with pytest.raises(DeadLetterPlaintextLinkError) as exc_info:
+        await make_dlq(session).add_failed_job(job_type, payload, "failed")
+
+    assert str(exc_info.value) == "Dead-letter payload carries a plaintext token link"
+    assert "plaintext-value" not in str(exc_info.value)
+    session.execute.assert_awaited_once()
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    if previous is not None:
+        assert previous.status == JobStatus.COMPLETED.value
+        assert previous.payload == '{"previous": "safe"}'
+        assert previous.retry_count == 2
+        assert previous.max_retries == 3
+        assert previous.error_message == "previous failure"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("status", [JobStatus.PENDING.value, JobStatus.RETRYING.value])
 async def test_add_failed_job_returns_none_on_active_duplicate(status: str):
     session = AsyncMock()
     existing_result = MagicMock()
-    duplicate = MagicMock(status=status)
+    duplicate = MagicMock(status=status, error_message=None)
     existing_result.scalar_one_or_none.return_value = duplicate
     session.execute.return_value = existing_result
     session.add = MagicMock()

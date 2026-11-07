@@ -1,4 +1,6 @@
 import assert from "node:assert/strict"
+import childProcess from "node:child_process"
+import { EventEmitter } from "node:events"
 import {
   mkdtempSync,
   mkdirSync,
@@ -10,11 +12,16 @@ import {
 } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
+import { syncBuiltinESMExports } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
 import { loadConfigFromFile } from "vite"
-import { advanceArtifactStability, captureViteArtifactSnapshot } from "./build-orchestrated.mjs"
+import {
+  advanceArtifactStability,
+  captureViteArtifactSnapshot,
+  step3_viteBuild,
+} from "./build-orchestrated.mjs"
 import {
   enforcePrecacheBudget,
   enforcePrecacheBudgetForEnv,
@@ -41,12 +48,431 @@ const loadedViteConfig = await loadConfigFromFile(
 const resolveModulePreloadDependencies =
   loadedViteConfig?.config?.build?.modulePreload?.resolveDependencies
 
+function fakeViteBoundary(t, rawMaxWaitMs) {
+  const previousMaxWaitMs = process.env.BUILD_MAX_WAIT_MS
+  const previousTrace = process.env.BUILD_HANG_TRACE
+  if (rawMaxWaitMs === undefined) delete process.env.BUILD_MAX_WAIT_MS
+  else process.env.BUILD_MAX_WAIT_MS = rawMaxWaitMs
+  process.env.BUILD_HANG_TRACE = ""
+
+  const child = new EventEmitter()
+  child.pid = 123456789
+  const spawned = []
+  const spawnOptions = []
+  const killed = []
+  const intervals = new Set()
+  let now = 4_102_444_800_000 // Keep any real build artifacts stale.
+  const startTime = now
+
+  t.mock.method(Date, "now", () => now)
+  t.mock.method(globalThis, "setInterval", (callback, delay) => {
+    const interval = { callback, delay }
+    intervals.add(interval)
+    return interval
+  })
+  t.mock.method(globalThis, "clearInterval", (interval) => intervals.delete(interval))
+  t.mock.method(process, "kill", (pid, signal) => killed.push({ pid, signal }))
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    spawned.push({ command, args })
+    spawnOptions.push({ command, options })
+    return command === "taskkill.exe" ? { unref() {} } : child
+  })
+  t.mock.method(childProcess, "execFile", (...args) => {
+    args.at(-1)(new Error("RSS unavailable in the fake boundary"), "")
+  })
+  syncBuiltinESMExports()
+
+  t.after(() => {
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+    if (previousMaxWaitMs === undefined) delete process.env.BUILD_MAX_WAIT_MS
+    else process.env.BUILD_MAX_WAIT_MS = previousMaxWaitMs
+    if (previousTrace === undefined) delete process.env.BUILD_HANG_TRACE
+    else process.env.BUILD_HANG_TRACE = previousTrace
+  })
+
+  return {
+    child,
+    spawned,
+    spawnOptions,
+    killed,
+    intervals,
+    startTime,
+    setNow(value) {
+      now = value
+    },
+  }
+}
+
+for (const rawMaxWaitMs of [
+  "-1",
+  "0",
+  "NaN",
+  "Infinity",
+  "-Infinity",
+  "1e309",
+  "1.5",
+  "2147483648",
+  " ",
+]) {
+  test(`invalid BUILD_MAX_WAIT_MS=${JSON.stringify(rawMaxWaitMs)} fails before Vite starts`, async (t) => {
+    const boundary = fakeViteBoundary(t, rawMaxWaitMs)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteWasStarted = boundary.spawned.some(({ command }) => command === "node")
+    if (viteWasStarted) boundary.child.emit("close", 1, null)
+    const error = await outcome
+
+    assert.equal(viteWasStarted, false, "invalid configuration must not start Vite")
+    assert.match(error?.message ?? "", /BUILD_MAX_WAIT_MS/)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+for (const [rawMaxWaitMs, expectedWaitMs] of [
+  [undefined, 360_000],
+  ["", 360_000],
+  ["1", 1],
+  ["1250", 1250],
+  ["1e3", 1000],
+  ["2147483647", 2_147_483_647],
+]) {
+  test(`BUILD_MAX_WAIT_MS=${JSON.stringify(rawMaxWaitMs)} bounds Vite and cleans up`, async (t) => {
+    const boundary = fakeViteBoundary(t, rawMaxWaitMs)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    assert.equal(boundary.spawned.filter(({ command }) => command === "node").length, 1)
+    const poll = [...boundary.intervals].find(({ delay }) => delay === 500)
+    assert.ok(poll, "the artifact poll must be scheduled")
+    assert.equal(boundary.intervals.size, 2)
+
+    boundary.setNow(boundary.startTime + expectedWaitMs)
+    poll.callback()
+    assert.equal(boundary.killed.length, 0)
+    assert.equal(boundary.spawned.filter(({ command }) => command === "taskkill.exe").length, 0)
+
+    boundary.setNow(boundary.startTime + expectedWaitMs + 1)
+    poll.callback()
+    const error = await outcome
+    assert.match(error?.message ?? "", /vite build did not produce artifacts within/)
+    assert.equal(boundary.intervals.size, 0)
+    if (process.platform === "win32") {
+      assert.deepEqual(
+        boundary.spawned.filter(({ command }) => command === "taskkill.exe"),
+        [{ command: "taskkill.exe", args: ["/PID", "123456789", "/T", "/F"] }]
+      )
+    } else {
+      assert.deepEqual(boundary.killed, [{ pid: 123456789, signal: "SIGKILL" }])
+    }
+    boundary.child.emit("close", null, "SIGKILL")
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+test("invalid build timeout fails before build preparation", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "ue-invalid-build-timeout-"))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const result = childProcess.spawnSync(process.execPath, [scriptPath], {
+    cwd: root,
+    env: { ...process.env, BUILD_MAX_WAIT_MS: "NaN", SKIP_WASM_BUILD: "1" },
+    encoding: "utf8",
+    timeout: 5000,
+    windowsHide: true,
+  })
+
+  assert.equal(result.error, undefined)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /BUILD_MAX_WAIT_MS/)
+  assert.doesNotMatch(result.stdout, /Step 1: wasm-pack/)
+})
+
 test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_RSS_MB/)
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_OLD_SPACE_MB/)
   assert.match(scriptSource, /--max-old-space-size=\$\{maxOldSpaceMb\}/)
   assert.match(scriptSource, /readProcessRssBytes\(child\.pid\)/)
 })
+
+test("production Vite build keeps Rolldown lazy barrel optimization enabled", () => {
+  assert.equal(loadedViteConfig?.config?.build?.rolldownOptions?.experimental?.lazyBarrel, true)
+})
+
+for (const [label, inheritedThreads, expectedThreads] of [
+  ["unset", undefined, "2"],
+  ["operator value", " 3 ", "3"],
+  ["blank value", "   ", "2"],
+]) {
+  test(`build orchestrator bounds Rayon workers independently of host CPUs: ${label}`, async (t) => {
+    const previousRayonThreads = process.env.RAYON_NUM_THREADS
+    t.after(() => {
+      if (previousRayonThreads === undefined) delete process.env.RAYON_NUM_THREADS
+      else process.env.RAYON_NUM_THREADS = previousRayonThreads
+    })
+    if (inheritedThreads === undefined) delete process.env.RAYON_NUM_THREADS
+    else process.env.RAYON_NUM_THREADS = inheritedThreads
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    await outcome
+
+    assert.equal(viteSpawn.options.env.RAYON_NUM_THREADS, expectedThreads)
+  })
+}
+
+test("build orchestrator bounds the Vite young generation unless NODE_OPTIONS already sets one", async (t) => {
+  const previousNodeOptions = process.env.NODE_OPTIONS
+  t.after(() => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+    else process.env.NODE_OPTIONS = previousNodeOptions
+  })
+  delete process.env.NODE_OPTIONS
+  const boundary = fakeViteBoundary(t)
+  const outcome = step3_viteBuild().then(
+    () => null,
+    (error) => error
+  )
+  const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+  boundary.child.emit("close", 1, null)
+  await outcome
+
+  assert.match(viteSpawn.options.env.NODE_OPTIONS, /(?:^|\s)--max-semi-space-size=1(?=\s|$)/u)
+})
+
+test("build orchestrator keeps an operator-provided young generation limit", async (t) => {
+  const previousNodeOptions = process.env.NODE_OPTIONS
+  t.after(() => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+    else process.env.NODE_OPTIONS = previousNodeOptions
+  })
+  process.env.NODE_OPTIONS = "--max-semi-space-size=8"
+  const boundary = fakeViteBoundary(t)
+  const outcome = step3_viteBuild().then(
+    () => null,
+    (error) => error
+  )
+  const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+  boundary.child.emit("close", 1, null)
+  await outcome
+
+  const nodeOptions = viteSpawn.options.env.NODE_OPTIONS
+  assert.equal(nodeOptions.match(/--max-semi-space-size/gu)?.length, 1)
+  assert.match(nodeOptions, /(?:^|\s)--max-semi-space-size=8(?=\s|$)/u)
+})
+
+for (const [label, inheritedOptions, expectedOptions] of [
+  [
+    "underscore equals",
+    "--max-old-space-size=768 --max_semi_space_size=8",
+    "--max-old-space-size=768 --max_semi_space_size=8",
+  ],
+  [
+    "underscore separated value",
+    "--max-old-space-size=768 --max_semi_space_size 8",
+    "--max-old-space-size=768 --max_semi_space_size 8",
+  ],
+  [
+    "mixed separators",
+    "--max-old-space-size=768 --max-semi_space-size=8",
+    "--max-old-space-size=768 --max-semi_space-size=8",
+  ],
+  [
+    "underscore override last",
+    "--max-old-space-size=768 --max-semi-space-size=4 --max_semi_space_size=8",
+    "--max-old-space-size=768 --max-semi-space-size=4 --max_semi_space_size=8",
+  ],
+  [
+    "hyphen override last",
+    "--max-old-space-size=768 --max_semi_space_size=8 --max-semi-space-size=4",
+    "--max-old-space-size=768 --max_semi_space_size=8 --max-semi-space-size=4",
+  ],
+  [
+    "underscore lookalike inside the title value",
+    "--max-old-space-size=768 --title=--max_semi_space_size=8",
+    "--max-old-space-size=768 --title=--max_semi_space_size=8 --max-semi-space-size=1",
+  ],
+  [
+    "hyphen lookalike inside the title value",
+    "--max-old-space-size=768 --title=--max-semi-space-size=8",
+    "--max-old-space-size=768 --title=--max-semi-space-size=8 --max-semi-space-size=1",
+  ],
+  [
+    "fully quoted young-generation option",
+    '--max-old-space-size=768 "--max-semi-space-size=8"',
+    '--max-old-space-size=768 "--max-semi-space-size=8"',
+  ],
+  [
+    "quoted title value with a spaced option lookalike",
+    '--max-old-space-size=768 --title="worker --max-semi-space-size=8"',
+    '--max-old-space-size=768 --title="worker --max-semi-space-size=8" --max-semi-space-size=1',
+  ],
+]) {
+  test(`build orchestrator respects young-generation option boundaries: ${label}`, async (t) => {
+    const previousNodeOptions = process.env.NODE_OPTIONS
+    t.after(() => {
+      if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousNodeOptions
+    })
+    process.env.NODE_OPTIONS = inheritedOptions
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    await outcome
+
+    assert.equal(viteSpawns.length, 1, "the real orchestrator must spawn exactly one Vite child")
+    assert.equal(viteSpawns[0].options.env.NODE_OPTIONS, expectedOptions)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+for (const [label, inheritedOptions, expectedOptions] of [
+  [
+    "old-generation underscore equals",
+    "--max_old_space_size=768 --max-semi-space-size=8",
+    "--max_old_space_size=768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation underscore separated value",
+    "--max_old_space_size 768 --max-semi-space-size=8",
+    "--max_old_space_size 768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation mixed separators",
+    "--max-old_space-size=768 --max-semi-space-size=8",
+    "--max-old_space-size=768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation fully quoted option",
+    '"--max-old-space-size=768" --max-semi-space-size=8',
+    '"--max-old-space-size=768" --max-semi-space-size=8',
+  ],
+  [
+    "old-generation quoted title lookalike",
+    '--title="worker --max-old-space-size=768" --max-semi-space-size=8',
+    '--title="worker --max-old-space-size=768" --max-semi-space-size=8 --max-old-space-size=1536',
+  ],
+  [
+    "escaped quote keeps a title lookalike inside its value",
+    '--max-old-space-size=768 --title="worker \\"--max-semi-space-size=8"',
+    '--max-old-space-size=768 --title="worker \\"--max-semi-space-size=8" --max-semi-space-size=1',
+  ],
+  [
+    "unquoted tab remains inside a title value",
+    "--max-old-space-size=768 --title=worker\t--max-semi-space-size=8",
+    "--max-old-space-size=768 --title=worker\t--max-semi-space-size=8 --max-semi-space-size=1",
+  ],
+  [
+    "quoted underscore option",
+    '--max-old-space-size=768 "--max_semi_space_size=8"',
+    '--max-old-space-size=768 "--max_semi_space_size=8"',
+  ],
+  [
+    "partially quoted flag name",
+    '--max-old-space-size=768 --max-"semi_space"-size=8',
+    '--max-old-space-size=768 --max-"semi_space"-size=8',
+  ],
+  [
+    "empty quotes retain the following argument boundary",
+    '--max-old-space-size=768 "" --max-semi-space-size=8',
+    '--max-old-space-size=768 "" --max-semi-space-size=8',
+  ],
+  [
+    "leading and trailing spaces are preserved",
+    "  --max_old_space_size=768 --max_semi_space_size=8  ",
+    "  --max_old_space_size=768 --max_semi_space_size=8  ",
+  ],
+  [
+    "underscores in values are not normalized",
+    "--max-old-space-size=768 --title=worker_name",
+    "--max-old-space-size=768 --title=worker_name --max-semi-space-size=1",
+  ],
+]) {
+  test("build orchestrator preserves Node memory-option grammar: " + label, async (t) => {
+    const previousNodeOptions = process.env.NODE_OPTIONS
+    const previousOldSpaceLimit = process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB
+    t.after(() => {
+      if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousNodeOptions
+      if (previousOldSpaceLimit === undefined) delete process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB
+      else process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB = previousOldSpaceLimit
+    })
+    process.env.NODE_OPTIONS = inheritedOptions
+    process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB = "1536"
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    const error = await outcome
+
+    assert.equal(viteSpawns.length, 1)
+    assert.equal(viteSpawns[0].options.env.NODE_OPTIONS, expectedOptions)
+    assert.match(error?.message ?? "", /vite build exited with code=1/u)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+for (const [label, inheritedOptions] of [
+  ["unterminated double quote", '--max-old-space-size=768 --title="worker'],
+  ["trailing escape in a double quote", '--max-old-space-size=768 --title="worker\\'],
+]) {
+  for (const traceEnabled of [false, true]) {
+    test(
+      "build orchestrator leaves invalid NODE_OPTIONS for Node: " +
+        label +
+        ", trace=" +
+        traceEnabled,
+      async (t) => {
+        const previousNodeOptions = process.env.NODE_OPTIONS
+        t.after(() => {
+          if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+          else process.env.NODE_OPTIONS = previousNodeOptions
+        })
+        process.env.NODE_OPTIONS = inheritedOptions
+        const boundary = fakeViteBoundary(t)
+        process.env.BUILD_HANG_TRACE = traceEnabled ? "1" : ""
+        const outcome = step3_viteBuild().then(
+          () => null,
+          (error) => error
+        )
+        const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+        boundary.child.emit("close", 1, null)
+        const error = await outcome
+
+        assert.equal(viteSpawns.length, 1)
+        const forwardedOptions = viteSpawns[0].options.env.NODE_OPTIONS
+        assert.equal(forwardedOptions, inheritedOptions)
+        assert.match(error?.message ?? "", /vite build exited with code=1/u)
+        assert.equal(boundary.intervals.size, 0)
+
+        const nativeResult = childProcess.spawnSync(process.execPath, ["-e", "process.exit(0)"], {
+          env: { ...process.env, NODE_OPTIONS: forwardedOptions },
+          encoding: "utf8",
+          timeout: 5000,
+          windowsHide: true,
+        })
+        assert.equal(nativeResult.error, undefined)
+        assert.equal(nativeResult.signal, null)
+        assert.notEqual(nativeResult.status, 0)
+        assert.equal(nativeResult.stdout, "")
+        assert.match(nativeResult.stderr, /invalid value for NODE_OPTIONS/u)
+      }
+    )
+  }
+}
 
 test("build orchestrator terminates the exact Vite process tree on overflow", () => {
   assert.match(scriptSource, /taskkill\.exe/)

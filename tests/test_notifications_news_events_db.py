@@ -36,6 +36,10 @@ from app.services.notifications import news_events
         "loaded-empty-profile-name",
     ),
 )
+@pytest.mark.parametrize(
+    ("locale", "author_prefix"),
+    [("en", "Comment from"), ("ru", "Комментарий от")],
+)
 @pytest.mark.asyncio
 async def test_comment_notification_uses_real_profile_name_without_email(
     db_session,
@@ -45,6 +49,8 @@ async def test_comment_notification_uses_real_profile_name_without_email(
     profile_missing,
     profile_loaded,
     expected_name,
+    locale,
+    author_prefix,
 ):
     user = await user_factory(full_name=full_name)
     if profile_missing:
@@ -68,10 +74,11 @@ async def test_comment_notification_uses_real_profile_name_without_email(
         assert author.profile is None
 
     captured: dict[str, object] = {}
+    render_template = news_events.render_notification_template
 
     def _capture_template(_name, payload, *, locale=None):
         captured.update(payload)
-        return {"title": "title", "body": "body", "url": "/news", "tag": "news"}
+        return render_template(_name, payload, locale=locale)
 
     monkeypatch.setattr(
         notifications_core,
@@ -84,8 +91,9 @@ async def test_comment_notification_uses_real_profile_name_without_email(
         AsyncMock(side_effect=lambda _db, _key, user_ids: list(user_ids)),
     )
     monkeypatch.setattr(news_events, "render_notification_template", _capture_template)
+    create_notifications = AsyncMock(return_value=1)
     monkeypatch.setattr(
-        news_events, "create_notifications_for_users", AsyncMock(return_value=1)
+        news_events, "create_notifications_for_users", create_notifications
     )
 
     profile_reads = 0
@@ -104,6 +112,7 @@ async def test_comment_notification_uses_real_profile_name_without_email(
             SimpleNamespace(id=uuid.uuid4(), title="News", title_en=None),
             SimpleNamespace(id=uuid.uuid4(), content="Comment"),
             author,
+            locale=locale,
         )
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", _count_profile_reads)
@@ -111,4 +120,9 @@ async def test_comment_notification_uses_real_profile_name_without_email(
     assert result == 1
     assert captured["user_name"] == expected_name
     assert user.email not in str(captured["user_name"])
+    create_notifications.assert_awaited_once()
+    assert create_notifications.await_args is not None
+    body = create_notifications.await_args.kwargs["body"]
+    assert body == f"Comment\n{author_prefix} {expected_name}"
+    assert user.email not in body
     assert profile_reads <= 1

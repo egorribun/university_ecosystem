@@ -477,9 +477,15 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
         'type: {{ if eq $path.pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}'
         in template
     )
+    # AUD-373: the effective service comes from the public-route helper, which
+    # keeps /static and /.well-known on the gateway only when mTLS is enabled.
     assert (
         'name: {{ include "university-ecosystem.componentName" '
-        '(dict "root" $root "component" $path.service) }}' in template
+        '(dict "root" $root "component" $pathService) }}' in template
+    )
+    assert (
+        '$pathService := include "university-ecosystem.publicRouteService" '
+        '(dict "root" $root "service" $path.service "path" $path.path)' in template
     )
     service_port_keys = {
         "backend": "backend",
@@ -489,7 +495,7 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
     }
     for service, values_key in service_port_keys.items():
         expected_mapping = (
-            f'eq $path.service "{service}" '
+            f'eq $pathService "{service}" '
             + "}}{{ "
             + f"$root.Values.{values_key}.service.port"
         )
@@ -592,10 +598,12 @@ def test_gateway_api_network_policy_changes_keep_default_deny_and_narrow_peers()
         network_policy_template, ".Values.gatewayApi.enabled"
     )
     assert len(envoy_ingress_blocks) == 4
-    expected_port_templates = (
+    # The backend port is None here: a template substring cannot prove the
+    # rendered value, so test_gateway_api_backend_port_is_rendered checks it.
+    expected_port_templates: tuple[str | None, ...] = (
         "port: 8080",
         "port: {{ .Values.wsHub.service.port }}",
-        "port: 8000",
+        None,
         "port: {{ .Values.frontend.service.port }}",
     )
     for block, expected_port in zip(
@@ -609,8 +617,46 @@ def test_gateway_api_network_policy_changes_keep_default_deny_and_narrow_peers()
         )
         assert ".Values.gatewayApi.networkPolicy.namespaceSelector" in block
         assert ".Values.gatewayApi.networkPolicy.podSelector" in block
-        assert expected_port in block
+        if expected_port is not None:
+            assert expected_port in block
         assert "to:" not in block
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_backend_port_is_rendered_from_the_configured_service_port() -> (
+    None
+):
+    result = _render_network_policy_template_isolated(
+        "--set",
+        "ingress.enabled=false",
+        "--set",
+        "gatewayApi.enabled=true",
+        "--set",
+        "backend.service.port=8181",
+        "--set-string",
+        r"gatewayApi.networkPolicy.namespaceSelector.kubernetes\.io/metadata\.name=envoy-gateway-system",
+        "--set-string",
+        r"gatewayApi.networkPolicy.podSelector.app\.kubernetes\.io/name=envoyproxy",
+    )
+    assert result.returncode == 0, result.stderr
+    backend_policy = next(
+        resource
+        for resource in yaml.safe_load_all(result.stdout)
+        if isinstance(resource, dict)
+        and resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "gateway-contract-backend-policy"
+    )
+    envoy_rules = [
+        rule
+        for rule in backend_policy["spec"]["ingress"]
+        if any(
+            peer.get("namespaceSelector", {}).get("matchLabels", {})
+            == {"kubernetes.io/metadata.name": "envoy-gateway-system"}
+            for peer in rule.get("from", [])
+        )
+    ]
+    assert len(envoy_rules) == 1
+    assert envoy_rules[0]["ports"] == [{"protocol": "TCP", "port": 8181}]
 
 
 @pytest.mark.skipif(HELM is None, reason="Helm is not installed")

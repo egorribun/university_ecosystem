@@ -1,0 +1,36 @@
+[
+  {
+    "verificationResult": {
+      "signature": {
+        "certificate": {
+          "subjectAlternativeName": "https://github.com/egorribun/university_ecosystem/.github/workflows/ci.yml@refs/heads/main",
+          "issuer": "https://token.actions.githubusercontent.com",
+          "runnerEnvironment": "github-hosted",
+          "sourceRepositoryURI": "https://github.com/egorribun/university_ecosystem",
+          "sourceRepositoryIdentifier": "1062776154",
+          "sourceRepositoryDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceRepositoryRef": "refs/heads/main",
+          "buildTrigger": "push",
+          "runInvocationURI": "https://github.com/egorribun/university_ecosystem/actions/runs/12345678901/attempts/3"
+        }
+      },
+      "verifiedTimestamps": [
+        {
+          "fixture": "synthetic; not a transparency-log proof"
+        }
+      ],
+      "statement": {
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "subject": [
+          {
+            "name": "frontend-dist",
+            "digest": {
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          }
+        ],
+        "predicate": {}
+      }
+    }
+  }
+]

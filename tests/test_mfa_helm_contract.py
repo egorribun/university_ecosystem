@@ -451,6 +451,22 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
     assert "global/environment" in normalized_error
 
 
+_PRODUCTION_INTERNAL_MTLS_ARGS = (
+    "--set",
+    "internalHttpMTLS.enabled=true",
+    "--set-string",
+    "internalHttpMTLS.trustDomain=university.ecosystem",
+    "--set-string",
+    "internalHttpMTLS.backendSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/app",
+    "--set-string",
+    "internalHttpMTLS.gatewaySpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+    "--set-string",
+    "internalHttpMTLS.wsHubSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub",
+    "--set-string",
+    "internalHttpMTLS.fileProcessorSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor",
+)
+
+
 @pytest.mark.parametrize("environment", ["staging", "production"])
 @pytest.mark.parametrize(
     "config_field",
@@ -475,6 +491,8 @@ def test_non_development_render_rejects_inline_mfa_key_material(
             "gateway.config.grpcUseTLS=true",
             "--set-string",
             f"backend.config.{config_field}=active:inline-material",
+            # AUD-373: production requires SPIFFE mTLS; keep the MFA assertion reachable.
+            *(_PRODUCTION_INTERNAL_MTLS_ARGS if environment == "production" else ()),
         ],
         check=False,
         capture_output=True,
@@ -557,6 +575,7 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
         "outbox-worker": {
             connections["databaseURLKey"],
             connections["redisBackendURLKey"],
+            connections["rateLimitStorageURIKey"],
             connections["natsURLKey"],
             connections["natsAuthTokenKey"],
         },
@@ -566,10 +585,13 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
     for component, expected_application_keys in workload_contracts.items():
         pod_spec, container = _deployment_pod_and_container(resources, component)
         if component == "outbox-worker":
-            assert not any(
-                item["name"].startswith("RATE_LIMIT_STORAGE_")
-                for item in container["env"]
+            environment = {item["name"]: item for item in container["env"]}
+            assert environment["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+            assert environment["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+                f"/run/secrets/{connection_secret}/"
+                f"{connections['rateLimitStorageURIKey']}"
             )
+            assert "RATE_LIMIT_STORAGE_URI" not in environment
         assert _secret_volume_names(pod_spec) == {
             "secret-application",
             "secret-connections",
@@ -696,6 +718,7 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
     # Reserved TEST-NET only, provided through the existing values-file input.
     gateway_jwks["egressCIDRs"] = ["192.0.2.0/24"]
     # Reserved TEST-NET/documentation proxy peers are fixture-only.
+    staging_values["backend"]["config"]["trustedProxies"] = ["192.0.2.13/32"]
     staging_values["gateway"]["config"]["trustedProxies"] = [
         "192.0.2.11/32",
         "2001:db8::11",
@@ -728,6 +751,9 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
         "TLS_SECRET_NAME": "university-ecosystem-tls",  # pragma: allowlist secret
         "CERT_MANAGER_ISSUER_NAME": "university-staging-issuer",
         "ELASTICSEARCH_URL": "https://elasticsearch.staging.internal",
+        # Reserved TEST-NET fixtures: external endpoints require declared CIDRs.
+        "MINIO_EGRESS_CIDRS": "192.0.2.0/24",
+        "ELASTICSEARCH_EGRESS_CIDRS": "192.0.2.0/24",
         "FLAGD_HOST": "flagd.staging.internal",
         "OTLP_ENDPOINT": "otel-collector.staging.internal:4317",
         "MINIO_ENDPOINT": "minio.staging.internal:443",

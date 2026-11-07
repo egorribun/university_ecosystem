@@ -26,7 +26,7 @@ async def test_cleanup_stale_notifications_uses_default_batch_size(monkeypatch):
     )
 
     assert result == (0, 0)
-    assert db.scalars.await_count == 2
+    assert db.scalars.await_count == 3
 
 
 async def test_cleanup_stale_notifications_uses_settings_and_owned_session(monkeypatch):
@@ -49,7 +49,7 @@ async def test_cleanup_stale_notifications_uses_settings_and_owned_session(monke
         )
 
     assert result == (0, 0)
-    assert db.commit.await_count == 2
+    assert db.commit.await_count == 3
 
 
 async def test_cleanup_stale_notifications_deletes_delivery_and_notification_batches(
@@ -72,6 +72,7 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
             no_delivery_ids,
             notification_ids,
             no_notification_ids,
+            no_notification_ids,
         ]
     )
     db.execute = AsyncMock(side_effect=[MagicMock(rowcount=2), MagicMock(rowcount=3)])
@@ -92,7 +93,7 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
     )
     assert [delivery_id] in delivery_delete.compile().params.values()
     assert [notification_id] in notification_delete.compile().params.values()
-    assert db.commit.await_count == 4
+    assert db.commit.await_count == 5
 
 
 async def test_cleanup_stale_notifications_skips_non_positive_retention():

@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aud346
+  annotations:
+    chaos-mesh.org/inject: enabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aud346-chaos-target
+  namespace: aud346
+  labels:
+    app.kubernetes.io/name: aud346-chaos-target
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aud346-chaos-target
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aud346-chaos-target
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: http
+          image: python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-B", "-c"]
+          args:
+            - |
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      status = 200 if self.path == "/health" else 404
+                      self.send_response(status)
+                      self.end_headers()
+                  def log_message(self, *_args):
+                      pass
+              HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 1
+            timeoutSeconds: 1
+            failureThreshold: 2
+          # Keep liveness active without restarting the pod during the intentional
+          # 45-second PodChaos fault; readiness still reports the outage promptly.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 7
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aud346-chaos-target
+  namespace: aud346
+spec:
+  selector:
+    app.kubernetes.io/name: aud346-chaos-target
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aud346-chaos-target-isolation
+  namespace: aud346
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: aud346-chaos-target
+  policyTypes: [Ingress, Egress]
+  # The harness uses kubelet port-forward, not pod-to-pod traffic. This fixture
+  # performs no outbound calls; kubelet health probes remain node-local traffic.
+  ingress: []
+  egress: []

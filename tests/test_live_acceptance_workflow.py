@@ -178,7 +178,7 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         steps[up_index]["env"]["STAND_REF"]
         == "${{ steps.verify-event-commit.outputs.checked_out_sha }}"
     )
-    assert npm_install_index < contract_index < browser_setup_index < up_index
+    assert npm_install_index < browser_setup_index < contract_index < up_index
     e2e_index = next(
         index
         for index, step in enumerate(steps)
@@ -462,17 +462,29 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     assert outage_index == core_index + 1
     assert outage_index < stop_index
     assert outage["if"] == (
-        "${{ github.event_name == 'pull_request' && "
+        "${{ !cancelled() && github.event_name == 'pull_request' && "
         "github.event.pull_request.head.repo.full_name == "
         "'egorribun/university_ecosystem' && "
         "github.event.pull_request.head.ref == 'egorribun' && "
-        "steps.core-e2e.outcome == 'success' }}"
+        "steps.start-stand.outcome == 'success' }}"
     )
     assert "python -m scripts.live_stand nats-outage" in outage["run"]
     assert "scripts/live_stand.py nats-outage" not in outage["run"]
     assert "--in-place" in outage["run"]
     assert '--state-dir "$LIVE_STATE_DIR"' in outage["run"]
     assert outage.get("timeout-minutes") == 10
+    assert job["timeout-minutes"] == 120
+    assert not job.get("continue-on-error", False)
+    assert all(not step.get("continue-on-error", False) for step in steps)
+    assert steps[core_index].get("if") is None
+    assert steps[core_index]["run"] == (
+        "uv run --frozen --no-sync python -m scripts.live_stand e2e "
+        '--in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"'
+    )
+    assert outage["run"] == (
+        "uv run --frozen --no-sync python -m scripts.live_stand nats-outage "
+        '--in-place --state-dir "$LIVE_STATE_DIR"'
+    )
 
     stop = steps[stop_index]
     assert "always()" in stop.get("if", "")
@@ -485,6 +497,8 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     )
     assert receipt["if"] == "${{ always() }}"
     assert receipt["env"]["NATS_OUTAGE_OUTCOME"] == "${{ steps.nats-outage.outcome }}"
+    assert receipt["env"]["E2E_OUTCOME"] == "${{ steps.core-e2e.outcome }}"
+    assert '"e2e": os.environ.get("E2E_OUTCOME", "")' in receipt["run"]
     assert '"nats_outage": os.environ.get("NATS_OUTAGE_OUTCOME", "")' in receipt["run"]
     assert '"schema": "ue-live-acceptance-receipt-v1"' in receipt["run"]
     assert '"kind": "owned-core-live-acceptance"' in receipt["run"]
@@ -499,6 +513,182 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     assert "os.environ.copy" not in receipt["run"]
     assert "os.environ.items" not in receipt["run"]
     assert "stdout" not in receipt["run"] and "stderr" not in receipt["run"]
+
+
+@pytest.mark.parametrize("e2e_outcome", ("success", "failure"))
+@pytest.mark.parametrize(
+    ("cancelled", "event", "repository", "branch", "stand_outcome", "expected"),
+    (
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            True,
+        ),
+        (
+            True,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "failure",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "cancelled",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "skipped",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "",
+            False,
+        ),
+        (
+            False,
+            "schedule",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "workflow_dispatch",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "fork/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "other",
+            "success",
+            False,
+        ),
+    ),
+)
+def test_nats_admission_is_independent_but_requires_a_live_owned_stand(
+    e2e_outcome: str,
+    cancelled: bool,
+    event: str,
+    repository: str,
+    branch: str,
+    stand_outcome: str,
+    expected: bool,
+) -> None:
+    """Evaluate the finite source clauses, not a general Actions interpreter.
+
+    GitHub applies implicit success() only when no status function is present:
+    https://docs.github.com/en/actions/reference/workflows-and-actions/expressions
+    """
+    _, workflow = _workflow()
+    steps = workflow["jobs"]["live-acceptance"]["steps"]
+    outage = next(step for step in steps if step.get("id") == "nats-outage")
+    expression = outage["if"]
+    assert expression.startswith("${{ ") and expression.endswith(" }}")
+    clauses = expression[4:-3].split(" && ")
+    values = {
+        "!cancelled()": not cancelled,
+        "github.event_name == 'pull_request'": event == "pull_request",
+        "github.event.pull_request.head.repo.full_name == "
+        "'egorribun/university_ecosystem'": repository
+        == "egorribun/university_ecosystem",
+        "github.event.pull_request.head.ref == 'egorribun'": branch == "egorribun",
+        "steps.start-stand.outcome == 'success'": stand_outcome == "success",
+    }
+    assert clauses == list(values), "admission guards must not be removed or widened"
+    assert all(values[clause] for clause in clauses) is expected
+    assert "steps.core-e2e.outcome" not in expression
+    assert e2e_outcome in {"success", "failure"}
+    # The real job keeps both failures fatal; receipt fields preserve each outcome.
+    assert not next(step for step in steps if step.get("id") == "core-e2e").get(
+        "continue-on-error", False
+    )
+
+
+def test_core_receipt_preserves_failed_e2e_when_independent_nats_passes(
+    monkeypatch, tmp_path
+) -> None:
+    _, workflow = _workflow()
+    job = workflow["jobs"]["live-acceptance"]
+    steps = job["steps"]
+    receipt = next(
+        step
+        for step in steps
+        if step.get("name") == "Write the metadata-only Core receipt"
+    )
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    )
+    # Use an existing public source pin rather than a credential-shaped test literal.
+    source_sha = checkout["uses"].split("@", 1)[1]
+    values = {
+        "VERIFIED_SHA": source_sha,
+        "LIVE_MODE": "smoke",
+        "CHECKOUT_OUTCOME": "success",
+        "STAND_START_OUTCOME": "success",
+        "E2E_OUTCOME": "failure",
+        "NATS_OUTAGE_OUTCOME": "success",
+        "STAND_STOP_OUTCOME": "success",
+        "GITHUB_WORKFLOW_REF": "owned-live-contract",
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_RUN_ID": "1",
+        "GITHUB_RUN_ATTEMPT": "1",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(tmp_path)
+    script = receipt["run"].split("python - <<'PY'\n", 1)[1]
+    assert script.endswith("\nPY\n")
+    script_path = tmp_path / "receipt.py"
+    script_path.write_text(script.removesuffix("PY\n"), encoding="utf-8")
+    runpy.run_path(str(script_path), run_name="__main__")
+    result = json.loads(
+        (tmp_path / "core-live-acceptance-receipt.json").read_text(encoding="utf-8")
+    )
+    assert result["outcomes"] == {
+        "checkout_verification": "success",
+        "stand_start": "success",
+        "e2e": "failure",
+        "nats_outage": "success",
+        "stand_stop": "success",
+    }
+    assert not job.get("continue-on-error", False)
+    assert all(not step.get("continue-on-error", False) for step in steps)
 
 
 def test_live_stand_nats_outage_dispatches_once_and_redacts_failures(
@@ -584,6 +774,30 @@ def test_workflow_actions_are_immutable_and_only_read_repository_contents() -> N
     assert re.search(r"^permissions:\s*\n\s+contents:\s+read\s*$", source, re.M)
 
 
+@pytest.mark.parametrize("job_name", ("live-acceptance", "frozen-rc-full-smoke"))
+def test_live_contracts_run_after_browser_setup_and_before_docker(
+    job_name: str,
+) -> None:
+    _, workflow = _workflow()
+    steps = workflow["jobs"][job_name]["steps"]
+    browser = next(
+        index
+        for index, step in enumerate(steps)
+        if "playwright install --with-deps chromium" in step.get("run", "")
+    )
+    contract = next(
+        index
+        for index, step in enumerate(steps)
+        if "npm run test:e2e:live:contract" in step.get("run", "")
+    )
+    stand = next(
+        index
+        for index, step in enumerate(steps)
+        if "python -m scripts.live_stand up" in step.get("run", "")
+    )
+    assert browser < contract < stand
+
+
 def test_live_contract_command_includes_every_live_contract_file() -> None:
     frontend = ROOT / "frontend"
     package = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
@@ -600,3 +814,73 @@ def test_live_contract_command_includes_every_live_contract_file() -> None:
     assert contracts, "the live acceptance suite must have static contracts"
     missing = sorted(path for path in contracts if path not in command)
     assert not missing, f"live contract command omits: {missing}"
+
+
+def test_live_contract_command_runs_real_playwright_deadline_adapter() -> None:
+    frontend = ROOT / "frontend"
+    package = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    command = package["scripts"]["test:e2e:live:contract"]
+    assert command.endswith(
+        " && cross-env SKIP_WEBSERVER=true playwright test "
+        "tests/e2e/playwright-deadline-adapter.runtime.spec.ts "
+        "--project=chromium --workers=1 --retries=0"
+    )
+    assert (
+        frontend / "tests/e2e/playwright-deadline-adapter.runtime.spec.ts"
+    ).is_file()
+
+
+def test_browser_dependency_smoke_is_pr_only_bounded_and_precedes_docker() -> None:
+    _, workflow = _workflow()
+    steps = workflow["jobs"]["live-acceptance"]["steps"]
+    smoke_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("id") == "browser-dependency-smoke"
+    )
+    browser_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Install locked Chromium and Linux browser dependencies"
+    )
+    state_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Select unique owned Core state directory"
+    )
+    smoke = steps[smoke_index]
+    assert browser_index < smoke_index < state_index
+    assert smoke["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert smoke["working-directory"] == "frontend"
+    assert smoke["timeout-minutes"] == 3
+    assert smoke["run"] == "node scripts/browser-dependency-smoke.mjs"
+    assert smoke["env"] == {
+        "SOURCE_SHA": "${{ github.sha }}",
+        "SMOKE_RUN_ID": "${{ github.run_id }}",
+        "SMOKE_RUN_ATTEMPT": "${{ github.run_attempt }}",
+    }
+    assert not smoke.get("continue-on-error", False)
+    upload = steps[smoke_index + 1]
+    assert upload["if"] == "${{ success() && github.event_name == 'pull_request' }}"
+    assert (
+        upload["uses"]
+        == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    artifact = (
+        "browser-dependency-smoke-${{ github.run_id }}-"
+        "${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    assert upload["with"] == {
+        "name": artifact,
+        "path": "${{ runner.temp }}/" + artifact + ".json",
+        "if-no-files-found": "error",
+        "overwrite": False,
+        "retention-days": 7,
+    }
+    assert not upload.get("continue-on-error", False)
+    for name, job in workflow["jobs"].items():
+        if name != "live-acceptance":
+            assert all(
+                "browser-dependency-smoke" not in step.get("run", "")
+                for step in job.get("steps", [])
+            )

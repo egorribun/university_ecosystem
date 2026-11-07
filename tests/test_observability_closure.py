@@ -216,10 +216,14 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
         patch.object(observability, "settings", settings),
         patch.object(observability, "TracerProvider", return_value=provider),
         patch.object(observability, "MeterProvider", return_value=meter_provider),
-        patch.object(observability, "OTLPSpanExporter"),
-        patch.object(observability, "trace"),
-        patch.object(observability, "metrics"),
-        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "OTLPSpanExporter") as span_exporter,
+        patch.object(observability, "OTLPMetricExporter") as metric_exporter,
+        patch.object(observability, "OTLPLogExporter") as log_exporter,
+        patch.object(observability, "LoggingHandler") as logging_handler,
+        patch.object(observability, "trace") as trace_api,
+        patch.object(observability, "metrics") as metrics_api,
+        patch.object(observability, "set_global_textmap") as set_global_textmap,
+        patch.object(observability, "set_logger_provider") as set_logger_provider,
         patch.object(observability, "SQLAlchemyInstrumentor") as sqlalchemy,
         patch.object(observability, "RedisInstrumentor"),
         patch.object(observability, "HTTPXClientInstrumentor"),
@@ -229,6 +233,14 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
     assert observability._otel_configured is True
     assert observability._sqlalchemy_instrumented is True
     sqlalchemy.return_value.instrument.assert_called_once()
+    span_exporter.assert_called_once_with(timeout=0.75)
+    metric_exporter.assert_not_called()
+    log_exporter.assert_not_called()
+    logging_handler.assert_not_called()
+    trace_api.set_tracer_provider.assert_called_once_with(provider)
+    metrics_api.set_meter_provider.assert_called_once_with(meter_provider)
+    set_global_textmap.assert_called_once()
+    set_logger_provider.assert_not_called()
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = True
     with (
@@ -955,19 +967,31 @@ def test_worker_observability_without_otel_or_name() -> None:
     from app.core import observability
 
     with (
-        patch.object(observability, "_configure_logging"),
+        patch.object(observability, "_configure_logging") as configure_logging,
         patch.object(observability, "settings", MagicMock(enable_otel=False)),
+        patch.object(observability, "_configure_otel") as configure_otel,
+        patch.object(observability, "trace") as trace_api,
+        patch.object(observability, "_logger") as logger,
     ):
         observability.configure_worker_observability()
+    configure_logging.assert_called_once_with()
+    configure_otel.assert_not_called()
+    trace_api.set_tracer_provider.assert_not_called()
+    logger.info.assert_not_called()
 
     settings = MagicMock(enable_otel=True)
     with (
-        patch.object(observability, "_configure_logging"),
+        patch.object(observability, "_configure_logging") as configure_logging,
         patch.object(observability, "settings", settings),
-        patch.object(observability, "_configure_otel", return_value=None),
-        patch.object(observability.logging, "getLogger", return_value=MagicMock()),
+        patch.object(observability, "_configure_otel") as configure_otel,
+        patch.object(observability, "trace") as trace_api,
+        patch.object(observability, "_logger") as logger,
     ):
         observability.configure_worker_observability(worker_name="worker")
+    configure_logging.assert_called_once_with()
+    configure_otel.assert_not_called()
+    trace_api.set_tracer_provider.assert_not_called()
+    logger.info.assert_called_once_with("Worker %s observability configured", "worker")
 
 
 def test_notification_queue_metrics_reset_and_reinitialize(

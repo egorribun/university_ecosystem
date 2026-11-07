@@ -73,6 +73,7 @@ class TestBroadcastTyping:
         assert frame["user_id"] == str(user.id)
         assert frame["user_name"] == "Alice"
         assert kwargs["exclude_user_id"] == user.id
+        assert kwargs["db_session"] is uow.session
 
     @pytest.mark.asyncio
     async def test_user_name_falls_back_to_email_without_profile(self) -> None:

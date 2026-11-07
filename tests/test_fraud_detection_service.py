@@ -6,7 +6,7 @@ Uses AsyncMock to simulate Redis client responses without a real Redis instance.
 from __future__ import annotations
 
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -44,8 +44,17 @@ class TestRecordEvent:
         self, service: FraudDetectionService, mock_redis: AsyncMock
     ) -> None:
         mock_redis.xadd.side_effect = ConnectionError("Redis unavailable")
-        # Must not propagate the exception — security events must not crash the app.
-        await service.record_event({"user_id": "1", "severity": "high"})
+        event_data = {"user_id": "1", "severity": "high"}
+        with patch("app.services.fraud_detection_service.logger.exception") as error:
+            assert (await service.record_event(event_data)) is None
+
+        mock_redis.xadd.assert_awaited_once()
+        assert mock_redis.xadd.call_args.args[0] == _STREAM_KEY
+        assert mock_redis.xadd.call_args.args[1] == event_data
+        mock_redis.pipeline.assert_not_called()
+        error.assert_called_once_with(
+            "FraudDetectionService: failed to record event to Redis"
+        )
 
 
 class TestGetRecentEvents:

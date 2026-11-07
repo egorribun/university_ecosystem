@@ -38,7 +38,7 @@ export const EventCardSkeleton: FC = () => {
             </div>
           </div>
 
-          <div className="my-3 h-px bg-linear-to-r from-transparent via-event-divider/(--opacity-dim) to-transparent" />
+          <div className="my-3 h-px bg-linear-to-r from-transparent via-event-divider/[calc(var(--opacity-dim)*100%)] to-transparent" />
 
           {/* Description */}
           <div className="space-y-2 mb-4">

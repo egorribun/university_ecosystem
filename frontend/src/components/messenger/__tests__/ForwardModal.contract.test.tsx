@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -136,7 +137,7 @@ describe("ForwardModal contracts", () => {
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite")
     expect(screen.getByText("messenger:forwardNoChats")).toBeInTheDocument()
     const icon = screen.getByText("messenger:forwardNoChats").previousElementSibling!
-    expect(icon).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(icon, "var(--messenger-card-bg)")
     expect(icon.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
     expect(icon.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
   })

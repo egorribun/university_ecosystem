@@ -53,9 +53,16 @@ async def test_event_bus_handler_failure_without_dlq_is_contained():
 
     bus = EventBus()
     event = UserCreated(email="events@example.com")
+    failure_attempts = []
 
-    async def failing_handler(_event):
+    async def failing_handler(received_event):
+        failure_attempts.append(received_event)
         raise RuntimeError("handler failure")
 
+    successful_subscriber = AsyncMock()
     bus.subscribe(event.event_type, failing_handler)
+    bus.subscribe(event.event_type, successful_subscriber)
     await bus.publish(event)
+
+    assert failure_attempts == [event]
+    successful_subscriber.assert_awaited_once_with(event)

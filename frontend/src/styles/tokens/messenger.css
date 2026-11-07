@@ -122,8 +122,8 @@
        `--bg-surface-raised` instead: a white veil vanishes on the near-white
        received bubble in light mode (the pre-W202 bug on the shared
        file-icon container, which rendered on received bubbles too). */
-    --messenger-attachment-bg: color-mix(in srgb, white 14%, transparent);
-    --messenger-attachment-bg-hover: color-mix(in srgb, white 22%, transparent);
+    --messenger-attachment-bg: color-mix(in srgb, white 6%, transparent);
+    --messenger-attachment-bg-hover: color-mix(in srgb, white 8%, transparent);
 
     /* ── Typing indicator ─────────────────────────── */
     --messenger-typing-bg: var(--messenger-bubble-received-bg);
@@ -466,7 +466,7 @@
    ═══════════════════════════════════════════════════════ */
 
 .messenger-send-btn {
-  background: var(--messenger-send-bg);
+  background: var(--messenger-bubble-sent-bg);
   box-shadow: var(--messenger-send-shadow);
   border-radius: var(--radius-md, 1rem);
   border: none;

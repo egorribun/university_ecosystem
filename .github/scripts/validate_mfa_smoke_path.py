@@ -24,7 +24,9 @@ def main() -> None:
         fail("GITHUB_WORKSPACE is required to validate the smoke script.")
     try:
         workspace = Path(workspace_raw).resolve(strict=True)
-        allowed_root = (workspace / ".github" / "deployment-smoke").resolve(strict=True)
+        allowed_root = workspace / ".github" / "deployment-smoke"
+        if allowed_root.resolve(strict=True) != allowed_root:
+            fail("The .github/deployment-smoke/ root must not contain symbolic links.")
         raw_path = Path(candidate)
         candidate_path = raw_path if raw_path.is_absolute() else workspace / raw_path
         if candidate_path.is_symlink():

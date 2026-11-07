@@ -21,14 +21,14 @@ export function AdminFeatureFlagsFeature() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background/(--opacity-medium)">
+      <div className="flex min-h-screen items-center justify-center bg-background/[calc(var(--opacity-medium)*100%)]">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
+    <div className="min-h-screen w-full bg-background/[calc(var(--opacity-medium)*100%)] py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
@@ -39,7 +39,7 @@ export function AdminFeatureFlagsFeature() {
 
         <div
           role="note"
-          className="mb-6 flex items-start gap-3 rounded-lg border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) p-4 text-sm text-(--text-primary)"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-brand/[calc(var(--opacity-medium)*100%)] bg-brand/[calc(var(--opacity-subtle)*100%)] p-4 text-sm text-(--text-primary)"
         >
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
           <p>{t("featureFlags.management.notice")}</p>
@@ -53,14 +53,14 @@ export function AdminFeatureFlagsFeature() {
             description={t("featureFlags.empty.description")}
           />
         ) : (
-          <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+          <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass">
             <div className="overflow-x-auto">
               <table
                 className="w-full text-left border-collapse"
                 aria-label={t("featureFlags.table.aria")}
               >
                 <thead>
-                  <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+                  <tr className="border-b border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]">
                     <th
                       scope="col"
                       className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
@@ -87,11 +87,11 @@ export function AdminFeatureFlagsFeature() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
+                <tbody className="divide-y divide-glass-border/[calc(var(--opacity-subtle)*100%)]">
                   {flags.map((flag) => (
                     <tr
                       key={flag.name}
-                      className="transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
+                      className="transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]"
                     >
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-1">

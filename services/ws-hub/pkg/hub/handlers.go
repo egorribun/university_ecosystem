@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,12 +53,15 @@ const (
 	revokedJTIKeyPrefix = "revoked:jti:"
 )
 
+// wsUpgradeBufferSize is the gorilla read/write buffer size for WebSocket upgrades.
+const wsUpgradeBufferSize = 1024
+
 var (
 	allowedOrigins []string
 	originsMu      sync.RWMutex
 	upgrader       = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
+		ReadBufferSize:  wsUpgradeBufferSize,
+		WriteBufferSize: wsUpgradeBufferSize,
 		CheckOrigin:     isUpgradeOriginAllowed,
 	}
 	upgradeWTFunc                     = upgradeWT
@@ -88,6 +92,29 @@ func isUpgradeOriginAllowed(r *http.Request) bool {
 	}
 
 	return false
+}
+
+// errUpgradeOriginRejected reports that upgradeWebSocket refused the request
+// because its Origin is outside the configured allow-list.
+var errUpgradeOriginRejected = errors.New("websocket origin not allowed")
+
+// upgradeWebSocket enforces the Origin allow-list at the upgrade boundary
+// itself: the origin is re-checked immediately before gorilla performs the
+// hijack, so the upgrade can never run on an unchecked request. A rejected
+// origin is answered with 403 and no connection is returned.
+func upgradeWebSocket(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
+	if !isUpgradeOriginAllowed(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return nil, errUpgradeOriginRejected
+	}
+	upgrade := websocket.Upgrader{
+		ReadBufferSize:  wsUpgradeBufferSize,
+		WriteBufferSize: wsUpgradeBufferSize,
+		CheckOrigin: func(req *http.Request) bool {
+			return isUpgradeOriginAllowed(req)
+		},
+	}
+	return upgrade.Upgrade(w, r, nil)
 }
 
 func newConnectionID() string {
@@ -126,6 +153,14 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   remains owned by the client lifecycle.
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
+
+	// AUD-478: refuse admission until the room-revocation replay has drained. This
+	// runs before the upgrade ticket is consumed, so a refused client keeps its ticket.
+	if h.AdmissionClosed() {
+		h.Logger.WarnContext(setupCtx, "WebSocket connection refused: room revocation replay is still draining")
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	// RZ-2: per-IP token-bucket check BEFORE any cryptographic work.
 	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
@@ -193,10 +228,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
-	// CheckOrigin is configured on the package-level upgrader and validates
-	// the request Origin against the configured allow-list before upgrading.
-	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgradeWebSocket(w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebSocket upgrade failed", "err", err)
 		return
@@ -236,6 +268,13 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
+
+	// AUD-478: WebTransport admission follows the same replay barrier as WebSocket.
+	if h.AdmissionClosed() {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection refused: room revocation replay is still draining")
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
 	if !h.UpgradeLimiter.Allow(clientIP) {

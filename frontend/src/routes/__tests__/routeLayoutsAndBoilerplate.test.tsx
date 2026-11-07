@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { Route as IndexRoute } from "../index"
 import { Route as AdminRoute } from "../_admin"
@@ -23,7 +23,16 @@ import { Route as SettingsRoute } from "../_auth/settings"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient } from "@tanstack/react-query"
 
-const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }))
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  pathname: "/login",
+  routeId: "/_public/login",
+}))
+
+beforeEach(() => {
+  routerMocks.pathname = "/login"
+  routerMocks.routeId = "/_public/login"
+})
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
@@ -32,12 +41,18 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     Outlet: () => <div data-testid="outlet" />,
     useNavigate: () => routerMocks.navigate,
     useRouterState: vi.fn().mockImplementation(({ select }) => {
-      // Simulate location select
+      // Layouts consume both the location and the resolved root-to-leaf match chain.
       return select({
         location: {
-          pathname: "/login",
+          pathname: routerMocks.pathname,
+          href: routerMocks.pathname,
           search: { redirect: "/events" },
         },
+        matches: [
+          { routeId: "__root__" },
+          { routeId: routerMocks.routeId.startsWith("/_auth/") ? "/_auth" : "/_public" },
+          { routeId: routerMocks.routeId },
+        ],
       })
     }),
   }
@@ -132,6 +147,8 @@ describe("Routes layouts and boilerplate", () => {
   })
 
   it("AuthLayout rendering", () => {
+    routerMocks.pathname = "/dashboard"
+    routerMocks.routeId = "/_auth/dashboard"
     const AuthComponent = AuthRoute.options.component as any
     expect(AuthComponent).toBeDefined()
     render(<AuthComponent />)

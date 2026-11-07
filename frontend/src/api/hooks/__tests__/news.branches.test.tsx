@@ -8,7 +8,7 @@ import type { UserState } from "@/types/Auth"
  * the UNCOVERED runtime closures + branches:
  *
  *   - newsListQueryKey() factory (95-97)
- *   - ensurePaginatedResponse() null-payload fallback (104-112)
+ *   - malformed 2xx page rejection and 304 fallback
  *   - mergeNewsPages() last-write-wins dedupe across pages (140)
  *   - createNewsListQueryFn cursor-param branch (159-160) + 304 fallback (174-177)
  *   - useNewsListQuery placeholderData offline-success path (255-270)
@@ -38,6 +38,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
 }))
 
 vi.mock("@/api/news", () => ({
+  parseNewsList: (data: unknown) => data as NewsItem[],
   fetchNewsItem: (...args: unknown[]) => fetchNewsItemMock(...args),
 }))
 
@@ -49,7 +50,7 @@ import {
   prefetchNewsListQuery,
   useNewsListQuery,
   newsDetailQueryOptions,
-} from "@/api/hooks/news"
+} from "../news"
 
 const makeNews = (id: string, title = `News ${id}`): NewsItem =>
   ({
@@ -181,9 +182,12 @@ describe("news pagination helpers", () => {
   })
 })
 
-// ── useNewsListQuery queryFn: null fallback (104-112) + cursor (159-160) + 304 ─
+// ── useNewsListQuery queryFn: response validation + cursor + 304 ─
 describe("useNewsListQuery queryFn branches", () => {
-  it("ensurePaginatedResponse fallback when response.data is null (news.ts:104-112)", async () => {
+  it("rejects an empty 2xx response without replacing the persisted snapshot", async () => {
+    const persisted = [makeNews("persisted-before-invalid-response")]
+    const key = "news:list:account:feed-test-user:ru"
+    window.localStorage.setItem(key, JSON.stringify(persisted))
     newsListMock.mockResolvedValue({ status: 200, data: null })
 
     const queryClient = freshClient()
@@ -191,28 +195,18 @@ describe("useNewsListQuery queryFn branches", () => {
       wrapper: makeWrapper(queryClient),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual(persisted)
+    expect(window.localStorage.getItem(key)).toBe(JSON.stringify(persisted))
     expect(newsListMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ throwOnError: true }))
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
   })
 
-  it("preserves valid pagination fields and sends the complete first-page contract", async () => {
+  it("uses the requested limit when mapping backend pagination fields", async () => {
     const item = makeNews("numeric-fields")
     newsListMock.mockResolvedValue({
       status: 200,
       data: {
         items: [item],
-        total: 99,
-        limit: 7,
-        cursor: "server-cursor",
         next_cursor: null,
         has_more: false,
       },
@@ -227,9 +221,9 @@ describe("useNewsListQuery queryFn branches", () => {
 
     expect(result.current.pagination).toMatchObject({
       items: [item],
-      total: 99,
-      limit: 7,
-      cursor: "server-cursor",
+      total: 1,
+      limit: 5,
+      cursor: null,
       next_cursor: null,
       has_more: false,
     })
@@ -374,50 +368,53 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toEqual(persistedItems)
   })
 
-  it("304 response with a malformed or cold cache safely returns an empty page", async () => {
+  it("rejects a bodyless 304 instead of publishing a successful empty news page", async () => {
     newsListMock.mockResolvedValue({ status: 304, data: undefined })
 
     const queryClient = freshClient()
-    // With no cached infinite-query entry the optional pages chain must treat
-    // the 304 as a cache miss, not dereference an undefined cache value.
-    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+    const { result, unmount } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
+    try {
+      await waitFor(() => expect(result.current.isError).toBe(true))
+      expect(result.current.isSuccess).toBe(false)
+      expect(result.current.error).toBeInstanceOf(Error)
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.news).toEqual([])
+      expect(result.current.pagination).toBeNull()
+      expect(window.localStorage.getItem("news:list:account:feed-test-user:ru")).toBeNull()
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
   })
 
-  it("304 response tolerates a cached entry without a pages array", async () => {
+  it("rejects a 304 whose cached entry has no usable pages", async () => {
     newsListMock.mockResolvedValue({ status: 304, data: undefined })
 
     const queryClient = freshClient()
-    vi.spyOn(queryClient, "getQueryData").mockReturnValue({
+    const cacheRead = vi.spyOn(queryClient, "getQueryData").mockReturnValue({
       pages: undefined,
     } as never)
 
-    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+    const { result, unmount } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
+    try {
+      await waitFor(() => expect(result.current.isError).toBe(true))
+      expect(result.current.isSuccess).toBe(false)
+      expect(result.current.error).toBeInstanceOf(Error)
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.news).toEqual([])
+      expect(result.current.pagination).toBeNull()
+      expect(window.localStorage.getItem("news:list:account:feed-test-user:ru")).toBeNull()
+    } finally {
+      unmount()
+      cacheRead.mockRestore()
+      queryClient.clear()
+    }
   })
 
   it("returns null pagination for an empty in-memory infinite-data entry", () => {
@@ -435,7 +432,10 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toEqual([])
   })
 
-  it("normalizes malformed pagination fields to safe defaults", async () => {
+  it("rejects malformed pagination fields and preserves the persisted snapshot", async () => {
+    const persisted = [makeNews("persisted-before-malformed-page")]
+    const key = "news:list:account:feed-test-user:ru"
+    window.localStorage.setItem(key, JSON.stringify(persisted))
     newsListMock.mockResolvedValue({
       status: 200,
       data: { items: "invalid", total: "invalid", limit: "invalid" },
@@ -444,10 +444,9 @@ describe("useNewsListQuery queryFn branches", () => {
     const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
-    expect(result.current.pagination?.total).toBe(0)
-    expect(result.current.pagination?.limit).toBe(12)
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual(persisted)
+    expect(window.localStorage.getItem(key)).toBe(JSON.stringify(persisted))
   })
 })
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -24,6 +25,25 @@ from scripts.quality.validate_ci_check_catalog import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+_UNCACHED_LOAD_WORKFLOW = catalog_validator._load_workflow
+# Parsed YAML is a pure function of the file bytes. Key by content so every test
+# that reads an unchanged workflow reuses one parse; each caller receives a deep
+# copy, so tests that mutate a loaded document stay isolated, and any changed
+# bytes produce a new key and a fresh parse.
+_PARSED_WORKFLOWS: dict[bytes, Any] = {}
+
+
+def _cached_load_workflow(path: Path) -> Any:
+    digest = hashlib.sha256(path.read_bytes()).digest()
+    if digest not in _PARSED_WORKFLOWS:
+        _PARSED_WORKFLOWS[digest] = _UNCACHED_LOAD_WORKFLOW(path)
+    return copy.deepcopy(_PARSED_WORKFLOWS[digest])
+
+
+@pytest.fixture(autouse=True)
+def _content_keyed_workflow_parses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(catalog_validator, "_load_workflow", _cached_load_workflow)
 
 
 def _catalog() -> dict[str, object]:
@@ -68,7 +88,7 @@ def test_catalog_is_a_complete_current_workflow_inventory() -> None:
 def test_every_catalog_job_declares_exact_source_needs() -> None:
     value = _catalog()
     for entry in value["workflows"]:
-        workflow = yaml.safe_load((ROOT / entry["path"]).read_text(encoding="utf-8"))
+        workflow = _cached_load_workflow(ROOT / entry["path"])
         for job_id, job in entry["jobs"].items():
             source_needs = workflow["jobs"][job_id].get("needs", [])
             expected = [source_needs] if isinstance(source_needs, str) else source_needs
@@ -119,7 +139,7 @@ def test_source_job_needs_drift_is_rejected(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["needs"] = ["pre-commit-check", "ci-diagnostic"]
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
 
@@ -141,7 +161,7 @@ def test_invalid_source_needs_edges_fail_closed(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["needs"] = new_needs
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -172,7 +192,7 @@ def test_undeclared_or_dynamic_needs_expression_fails_closed(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     job = source["jobs"]["go-fuzz"]
     job["if"] = f"${{{{ {reference} == 'success' }}}}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
@@ -192,7 +212,7 @@ def test_quoted_expression_delimiter_does_not_hide_needs_reference(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     job = source["jobs"]["go-fuzz"]
     job["if"] = (
         f"${{{{ contains('{literal}', 'x') && needs.no-such-job.result == 'success' }}}}"
@@ -211,7 +231,7 @@ def test_nested_needs_key_expression_is_validated(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["steps"][0]["with"]["needs"] = (
         "${{ needs.no-such-job.result }}"
     )
@@ -225,7 +245,7 @@ def test_unterminated_actions_expression_fails_closed(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["if"] = "${{ github.event_name == 'pull_request'"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -243,7 +263,7 @@ def test_whitespace_around_needs_dot_cannot_bypass_source_validation(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["if"] = "${{ needs . no-such-job.result == 'success' }}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -275,7 +295,7 @@ def test_catalog_declares_matrix_governance_for_every_source_matrix() -> None:
     catalog_by_path = {entry["path"]: entry for entry in workflows}
 
     for workflow_path in (ROOT / ".github" / "workflows").glob("*.y*ml"):
-        source = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        source = _cached_load_workflow(workflow_path)
         relative_path = workflow_path.relative_to(ROOT).as_posix()
         catalog_workflow = catalog_by_path[relative_path]
         catalog_jobs = catalog_workflow["jobs"]
@@ -439,6 +459,24 @@ def test_timeout_duration_and_required_policy_are_source_bound() -> None:
     assert any("required job has no required_events" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "npm install $(printf '%s%s' --fetch-retries=0 1)",
+        "npm install $(\n  printf '%s%s' --fetch-retries=0 1\n)",
+        'const args = ["--fetch-retries=0", "1"].join("");',
+        'const args = [\n  "--fetch-retries=0",\n  "1"\n].join("");',
+        "const args = ['prefix --fetch-retries=0 suffix'];",
+        "const args = [`prefix\n --fetch-retries=0 \nsuffix`];",
+        ('const npm = (args) => args.join("");\nnpm(["--fetch-retries=0", "1"]);'),
+    ],
+)
+def test_apparent_zero_fetch_retries_in_dynamic_arguments_remain_fail_closed(
+    command: str,
+) -> None:
+    assert catalog_validator._is_retry_candidate({"steps": [{"run": command}]})
+
+
 def test_retry_like_source_cannot_be_hidden_as_no_retry() -> None:
     value = _catalog()
     workflows = value["workflows"]
@@ -483,6 +521,39 @@ def test_artifact_and_runbook_metadata_are_mandatory() -> None:
     errors = _errors(value)
     assert any("artifact metadata does not match" in error for error in errors)
     assert any("runbook does not exist" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "lcov.info",
+        "coverage-final.json",
+        "coverage-provenance.json",
+        "coverage-source-snapshot.json",
+    ],
+)
+def test_node_actions_coverage_artifact_omission_fails_closed(filename: str) -> None:
+    value = _catalog()
+    ci = next(
+        entry
+        for entry in value["workflows"]
+        if entry["path"] == ".github/workflows/ci.yml"
+    )
+    artifact = next(
+        entry
+        for entry in ci["jobs"]["coverage-policy-gate"]["artifacts"]
+        if entry["name_pattern"].startswith("quality-evidence-")
+    )
+    path = f"artifacts/coverage/node-actions/{filename}"
+    paths = artifact["path_pattern"].splitlines(keepends=True)
+    assert paths.count(f"{path}\n") == 1
+    artifact["path_pattern"] = "".join(line for line in paths if line != f"{path}\n")
+
+    errors = _errors(value)
+    assert any(
+        "coverage-policy-gate" in error and "artifact metadata does not match" in error
+        for error in errors
+    ), errors
 
 
 def test_schema_rejects_unknown_profile_fields() -> None:
@@ -805,7 +876,7 @@ def test_catalog_parses_each_source_workflow_once_per_call_and_reloads_changes(
     assert_source_workflows_loaded_once()
 
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     # Preserve the GitHub Actions trigger key after PyYAML YAML 1.1 loading.
     if True in source:
         source["on"] = source.pop(True)
@@ -842,3 +913,194 @@ def test_cli_fails_closed_for_unlisted_malformed_workflow(
         == 1
     )
     assert "cannot read workflow" in capsys.readouterr().err
+
+
+_REVIEWED_OUTBOX_NODE = (
+    "tests/test_outbox_worker.py::"
+    "test_durable_outbox_handler_failure_retries_without_pii"
+)
+_STATIC_PYTEST_COMMAND = "uv run --frozen --no-sync pytest"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} -v",
+        (
+            f"{_STATIC_PYTEST_COMMAND} tests/contracts/ \\\n"
+            f"  {_REVIEWED_OUTBOX_NODE} \\\n"
+            "  tests/test_logging_core.py -v"
+        ),
+        (
+            "bash -c '\n"
+            "  set -euo pipefail\n"
+            f"  {_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} -v\n"
+            "'"
+        ),
+    ],
+)
+def test_reviewed_literal_pytest_node_is_not_ci_retry_behavior(command: str) -> None:
+    job = {"steps": [{"run": command}]}
+    original = copy.deepcopy(job)
+
+    assert not catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} --retries 2",
+        f"{_STATIC_PYTEST_COMMAND} --retry {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} --fetch-retries=2",
+        (
+            f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}\n"
+            "for attempt in 1 2; do curl example.invalid; done"
+        ),
+        (
+            f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"
+            " && curl --retry 2 example.invalid"
+        ),
+        f"retry {_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}",
+        f"echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --argument={_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}_extra",
+        f"{_STATIC_PYTEST_COMMAND} tests/test_other.py::test_retry_behavior",
+        (
+            f"{_STATIC_PYTEST_COMMAND} tests/unit/test_outbox_worker.py::"
+            "test_durable_outbox_handler_failure_retries_without_pii"
+        ),
+        f'{_STATIC_PYTEST_COMMAND} "{_REVIEWED_OUTBOX_NODE}"',
+        (f"{_STATIC_PYTEST_COMMAND} $(printf '%s' '{_REVIEWED_OUTBOX_NODE}')"),
+        (f'selector={_REVIEWED_OUTBOX_NODE}\n{_STATIC_PYTEST_COMMAND} "$selector"'),
+        f"{_STATIC_PYTEST_COMMAND} -k {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --override-ini {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --pyargs {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/; echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ && echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ || echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ | echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/\n{_REVIEWED_OUTBOX_NODE}",
+        (f"{_STATIC_PYTEST_COMMAND} tests/ # {_REVIEWED_OUTBOX_NODE}"),
+    ],
+)
+def test_reviewed_pytest_node_does_not_hide_retry_or_dynamic_text(
+    command: str,
+) -> None:
+    job = {"steps": [{"run": command}]}
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"name": "retry install"},
+        {"env": {"MAX_ATTEMPTS": "2"}},
+        {"uses": "nick-fields/retry@fixture"},
+        {"run": "npm install --fetch-retries=2"},
+        {"name": _REVIEWED_OUTBOX_NODE},
+        {"env": {"SELECTOR": _REVIEWED_OUTBOX_NODE}},
+        {"uses": _REVIEWED_OUTBOX_NODE},
+        {"run": f"echo {_REVIEWED_OUTBOX_NODE}"},
+    ],
+)
+def test_reviewed_pytest_node_does_not_hide_other_step_retry_metadata(
+    extra: dict[str, Any],
+) -> None:
+    job = {
+        "steps": [
+            {"run": f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"},
+            extra,
+        ]
+    }
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "retry_command",
+    [
+        "curl --retry 2 example.invalid",
+        "for attempt in 1 2; do curl example.invalid; done",
+    ],
+)
+def test_real_retry_alongside_reviewed_node_still_violates_none_policy(
+    tmp_path: Path, retry_command: str
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = _cached_load_workflow(ci_path)
+    job = source["jobs"]["contract-tests"]
+    job["steps"].append({"name": "Additional operation", "run": retry_command})
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any(
+        "jobs['contract-tests']: retry behavior is present" in error for error in errors
+    ), errors
+
+
+def test_reviewed_pytest_node_does_not_hide_job_retry_metadata() -> None:
+    job = {
+        "name": _REVIEWED_OUTBOX_NODE,
+        "steps": [{"run": f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"}],
+    }
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "retry",
+        [None, 7, {"run": 17}, {"run": None}, "retry"],
+    ],
+)
+def test_retry_scan_preserves_non_script_values_fail_closed(steps: Any) -> None:
+    job = {"steps": steps}
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+def test_caddy_proof_catalog_matches_blocking_source_job() -> None:
+    ci = next(
+        item
+        for item in _catalog()["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    proof = ci["jobs"]["caddy-emitted-log-proof"]
+    assert proof["profile"] == "required-pr-main"
+    assert proof["check_name_template"] == "Caddy emitted-log redaction proof"
+    assert proof["needs"] == ["pre-commit-check"]
+    assert proof["expected_timeout_minutes"] == 20
+    assert proof["guard"] == "workflow trigger"
+    assert "caddy-emitted-log-proof" in ci["jobs"]["ci-success"]["needs"]
+
+
+@pytest.mark.parametrize("remove_job", [True, False])
+def test_caddy_proof_catalog_omissions_fail_closed(remove_job: bool) -> None:
+    value = _catalog()
+    ci = next(
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    if remove_job:
+        del ci["jobs"]["caddy-emitted-log-proof"]
+        expected_error = "job inventory mismatch"
+    else:
+        ci["jobs"]["ci-success"]["needs"].remove("caddy-emitted-log-proof")
+        expected_error = "needs differs from workflow"
+    errors = _errors(value)
+    assert any(expected_error in error for error in errors), errors

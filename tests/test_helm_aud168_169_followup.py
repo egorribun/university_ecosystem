@@ -9,6 +9,7 @@ import pytest
 
 from tests.test_helm_staging_contract import (
     MFA_TOTP_ACTIVE_KEY_ID,
+    _component_resource,
     _render_staging,
     _values,
 )
@@ -109,6 +110,7 @@ def test_migration_settings_use_release_environment_and_required_secrets(
 
     assert environment["ENVIRONMENT"]["value"] == values["global"]["environment"]
     assert environment["APP_PROCESS_ROLE"]["value"] == "api"
+    assert environment["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert environment["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "true"
     assert environment["AUTO_CREATE_SCHEMA"]["value"] == "false"
     assert "CI" not in environment
@@ -125,6 +127,19 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         environment["ELASTICSEARCH_URL"]["value"]
         == values["backend"]["config"]["elasticsearchURL"]
     )
+    # Staging and production settings reject an empty proxy allow-list, so the
+    # migration process must carry the same edge CIDRs as the serving backend.
+    backend_environment = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "backend")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    assert backend_environment["TRUSTED_PROXIES"]
+    assert (
+        environment["TRUSTED_PROXIES"]["value"]
+        == (backend_environment["TRUSTED_PROXIES"])
+    )
 
     assert (
         environment["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"]
@@ -135,6 +150,7 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         ("SECRET_KEY", "jwt-secret"),
         ("AUDIT_LOG_SECRET", "audit-log-secret"),
         ("ELASTICSEARCH_PASSWORD", "elasticsearch-password"),
+        ("IDEMPOTENCY_HMAC_SECRET", "idempotency-hmac-secret"),
         ("INTERNAL_AUTH_TOKEN", "ws-hub-internal-secret"),
         ("INTERNAL_HMAC_SECRET", "internal-hmac-secret"),
         ("MFA_TOTP_ENCRYPTION_KEYS", "mfa-totp-encryption-keys"),
@@ -150,9 +166,12 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         assert "valueFrom" not in file_env
         assert environment_name not in environment
 
+    # The migration Job runs as the schema owner. It must project only the owner
+    # URL, never the runtime database-url key that the backend and outbox worker use.
     connection_secret_keys = {
-        "DATABASE_URL": values["connections"]["databaseURLKey"],
+        "DATABASE_URL": values["connections"]["migrationDatabaseURLKey"],
         "CACHE_REDIS_URL": values["connections"]["redisBackendURLKey"],
+        "RATE_LIMIT_STORAGE_URI": values["connections"]["rateLimitStorageURIKey"],
         "REVOCATION_REDIS_URL": values["connections"]["redisRevocationURLKey"],
         "NATS_AUTH_TOKEN": values["connections"]["natsAuthTokenKey"],
     }
@@ -269,9 +288,10 @@ def test_file_processor_revocation_egress_is_release_scoped(
         ((revocation_selector,), (), (("TCP", 6379),)),
         ((backend_selector,), (), (("TCP", 8000),)),
         (((("app.kubernetes.io/name", "otel-collector"),),), (), (("TCP", 4317),)),
-        # AUD-189: TCP 443 reaches public destinations only (cluster, private and
-        # link-local ranges are excepted), not any address.
-        ((), ("0.0.0.0/0", "::/0"), (("TCP", 443),)),
+        # AUD-189: no public TCP 443 by default; the file-processor reaches
+        # external HTTPS only through owner-declared fileProcessorHTTPSEgress CIDRs.
+        # The staging fixture declares a reserved TEST-NET CIDR for external MinIO.
+        ((), ("192.0.2.0/24",), (("TCP", 443),)),
         (((("k8s-app", "kube-dns"),),), (), (("TCP", 53), ("UDP", 53))),
     }
 
@@ -705,3 +725,62 @@ def test_development_without_ingress_renders_without_proxy_requirements() -> Non
     )
 
     assert not any(resource.get("kind") == "Ingress" for resource in resources)
+
+
+BACKEND_TRUST_REJECTIONS = (
+    pytest.param(
+        (),
+        "backend.config.trustedProxies requires explicit non-loopback ingress proxy CIDRs",
+        id="empty",
+    ),
+    pytest.param(
+        ("127.0.0.1", "::1"),
+        "backend.config.trustedProxies requires explicit non-loopback ingress proxy CIDRs",
+        id="loopback-only",
+    ),
+    pytest.param(
+        ("0.0.0.0/0",),
+        "backend.config.trustedProxies must not trust 0.0.0.0/0 or ::/0",
+        id="universal-ipv4",
+    ),
+)
+
+
+@pytest.mark.parametrize(("proxies", "expected_message"), BACKEND_TRUST_REJECTIONS)
+def test_staging_api_refuses_to_run_without_explicit_gateway_peers(
+    proxies: tuple[str, ...], expected_message: str
+) -> None:
+    # AUD-164: an empty API trust list would key every client on the gateway socket.
+    _assert_staging_proxy_guard_rejects(
+        "backend",
+        expected_message,
+        *_proxy_list_override("backend.config.trustedProxies", proxies),
+    )
+
+
+def test_staging_api_renders_only_the_explicit_gateway_peer_list() -> None:
+    # TEST-NET and IPv6 documentation addresses are fixtures, not deployment values.
+    gateway_peers = ("192.0.2.31/32", "2001:db8::31")
+    resources = _render_staging(
+        *_proxy_list_override("backend.config.trustedProxies", gateway_peers),
+        release_name="aud164-backend-peer-list",
+    )
+
+    backend_environment = _edge_proxy_environment(resources, "backend")
+    assert backend_environment["TRUSTED_PROXIES"] == ",".join(gateway_peers)
+
+
+def test_development_api_keeps_the_no_trust_default_without_peers() -> None:
+    resources = _render_staging(
+        "--set-string",
+        "global.environment=development",
+        "--set",
+        "ingress.enabled=false",
+        *_proxy_list_override("backend.config.trustedProxies", ()),
+        *_proxy_list_override("gateway.config.trustedProxies", ()),
+        *_proxy_list_override("wsHub.config.trustedProxies", ("127.0.0.1", "::1")),
+        release_name="aud164-development-api-no-trust",
+    )
+
+    backend_environment = _edge_proxy_environment(resources, "backend")
+    assert backend_environment["TRUSTED_PROXIES"] == ""

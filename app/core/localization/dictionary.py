@@ -555,6 +555,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Регистрация на событие закрыта",
         "en": "Event registration is closed",
     },
+    "errors.events.my_pagination_required": {
+        "ru": "Слишком много событий для этого запроса; используйте постраничный список.",
+        "en": "Too many events for the legacy endpoint; use the paginated endpoint.",
+    },
     "errors.events.file_not_found": {
         "ru": "Файл не найден",
         "en": "File not found",

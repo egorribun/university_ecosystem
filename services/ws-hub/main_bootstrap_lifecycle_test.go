@@ -238,7 +238,7 @@ func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 
 func TestDefaultSubscribeNATSFuncPropagatesHubConfigurationError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
+	h := mustNewTestHub(t, nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
 	t.Cleanup(h.Stop)
 
 	err := subscribeNATSFunc(h, context.Background())
@@ -249,10 +249,11 @@ func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	resetBootstrapSeams(t)
 	// Exercise the production default wrapper with a disabled SPIFFE client
 	// before replacing it with the deterministic success seam below.
-	configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClientWithToken("http://auth.test", "", nil), nil, "")
+	require.NoError(t, configureAuthSPIFFEFunc(mustNewTestAuthClient(t, "http://auth.test", "", nil), nil, ""))
 	configured := false
-	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) {
+	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) error {
 		configured = true
+		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -261,6 +262,29 @@ func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	require.NotNil(t, h)
 	h.Stop()
 	assert.True(t, configured)
+}
+
+// A refused SPIFFE configuration must reach the startup error path rather than
+// panic: the production seam rejects a plaintext backend URL.
+func TestSetupHub_ReturnsSPIFFEAuthConfigurationRefusal(t *testing.T) {
+	resetBootstrapSeams(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := &config.Config{SpiffeEnabled: true, BackendURL: "http://auth.test", BackendSpiffeID: "spiffe://backend"}
+	h, err := setupHubWithRevocation(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, &spiffe.Client{})
+	require.ErrorContains(t, err, "configure backend auth SPIFFE mTLS")
+	require.ErrorContains(t, err, "must use https when SPIFFE mTLS is configured")
+	assert.Nil(t, h)
+}
+
+func TestSetupHub_PropagatesInjectedSPIFFEConfigurationError(t *testing.T) {
+	resetBootstrapSeams(t)
+	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) error {
+		return errors.New("synthetic SPIFFE configuration failure")
+	}
+	h, err := setupHubWithRevocation(context.Background(), &config.Config{SpiffeEnabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, &spiffe.Client{})
+	require.ErrorContains(t, err, "synthetic SPIFFE configuration failure")
+	assert.Nil(t, h)
 }
 
 func TestRunServer_UsesDefaultWebTransportPortAndReportsHTTPShutdownError(t *testing.T) {
@@ -273,32 +297,48 @@ func TestRunServer_UsesDefaultWebTransportPortAndReportsHTTPShutdownError(t *tes
 	quit := make(chan os.Signal, 1)
 	quit <- os.Interrupt
 	cfg := &config.Config{Port: "0", WebTransportPort: ""}
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
 	assert.NoError(t, runServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), h, http.NewServeMux(), quit))
 }
 
 type errorResponseWriter struct {
 	header http.Header
 	status int
+	writes int
 }
 
 func (w *errorResponseWriter) Header() http.Header { return w.header }
 
 func (w *errorResponseWriter) WriteHeader(status int) { w.status = status }
 
-func (w *errorResponseWriter) Write([]byte) (int, error) {
+func (w *errorResponseWriter) Write(_ []byte) (int, error) {
+	w.writes++
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
 	return 0, errors.New("response write failed")
 }
 
 func TestSetupHandlers_EncoderAndTransportBranches(t *testing.T) {
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 
-	for _, path := range []string{"/health/live", "/health", "/health/ready", "/wt"} {
-		writer := &errorResponseWriter{header: make(http.Header)}
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		mux.ServeHTTP(writer, req)
+	for _, tc := range []struct {
+		path       string
+		wantStatus int
+	}{
+		{path: "/health/live", wantStatus: http.StatusOK},
+		{path: "/health", wantStatus: http.StatusOK},
+		{path: "/health/ready", wantStatus: http.StatusServiceUnavailable},
+		{path: "/wt", wantStatus: http.StatusUnauthorized},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			writer := &errorResponseWriter{header: make(http.Header)}
+			mux.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			assert.Equal(t, tc.wantStatus, writer.status)
+			assert.Equal(t, 1, writer.writes, "handler must attempt exactly one encoded response")
+		})
 	}
 }
 
@@ -310,7 +350,7 @@ func TestSetupHandlers_ReadinessReadyEncodeFailure(t *testing.T) {
 	healthRedisPingFunc = func(context.Context, *redis.Client) error { return nil }
 	healthJWKSReadyFunc = func(*hub.Hub) bool { return true }
 
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 	writer := &errorResponseWriter{header: make(http.Header)}

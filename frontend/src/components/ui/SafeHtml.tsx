@@ -1,6 +1,9 @@
-import { type ReactNode, useMemo } from "react"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
+import type { TrustedHTML } from "trusted-types/lib"
 import { sanitize_rich_text } from "wasm-sanitizer"
 import { htmlToPlainText } from "@/utils/htmlText"
+import { getAppTrustedTypesPolicy } from "@/utils/trustedTypes"
+import { ensureWasmSanitizerInitialized } from "@/utils/wasmSanitizer"
 
 interface SafeHtmlProps {
   html: string
@@ -8,22 +11,31 @@ interface SafeHtmlProps {
   fallback?: ReactNode
 }
 
-/**
- * A "World-Class" component for rendering sanitized HTML with WebAssembly ammonia.
- *
- * TD-W18-03 (audit 2026-03-23 Wave 18): wrapped in useMemo + try/catch to handle
- * the edge case where the WASM module has not yet finished initializing. Previously
- * the synchronous call during render could throw if init was still in progress.
- */
+type TrustedTypesWindow = Window & { trustedTypes?: unknown }
+
+/** Render allowlist-sanitized article HTML after browser WASM initialization. */
 export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
+  const [wasmReady, setWasmReady] = useState(false)
   const sanitized = useMemo(() => {
+    if (!wasmReady) return null
     try {
       return sanitize_rich_text(html)
     } catch {
-      // WASM module not yet initialized — fall through to the fallback below.
+      // Sanitization failed — fall through to the fallback below.
     }
     return null
-  }, [html])
+  }, [html, wasmReady])
+
+  useEffect(() => {
+    if (wasmReady) return
+    let active = true
+    void ensureWasmSanitizerInitialized().then((ready) => {
+      if (active && ready) setWasmReady(true)
+    })
+    return () => {
+      active = false
+    }
+  }, [html, wasmReady])
 
   if (!sanitized) {
     if (fallback != null) return <>{fallback}</>
@@ -40,8 +52,23 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     return <span className={className}>{textOnly}</span>
   }
 
+  let renderable: string | TrustedHTML | null = sanitized
+  if ((window as TrustedTypesWindow).trustedTypes) {
+    try {
+      const policy = getAppTrustedTypesPolicy()
+      renderable = policy ? policy.createHTML(sanitized) : null
+    } catch {
+      renderable = null
+    }
+  }
+
+  if (!renderable) {
+    if (fallback != null) return <>{fallback}</>
+    return <span className={className}>{htmlToPlainText(html)}</span>
+  }
+
   // The HTML is sanitized by wasm-sanitizer/ammonia (Rust, allowlist-based) then
-  // checked for script/event-handler patterns above. This is the correct use of
-  // dangerouslySetInnerHTML: sanitized content from a trusted WASM sanitizer.
-  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} /> // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+  // checked for script/event-handler patterns above. When Trusted Types is
+  // available the existing app policy also sanitizes and brands the output.
+  return <div className={className} dangerouslySetInnerHTML={{ __html: renderable }} />
 }

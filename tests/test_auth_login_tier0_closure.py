@@ -246,7 +246,7 @@ async def test_register_returns_success_and_maps_service_errors():
         MagicMock(),
         db,
     )
-    assert result == {"status": "ok", "id": user.id}
+    assert result == {"status": "ok"}
 
     compliance.register_user = AsyncMock(side_effect=ValueError("duplicate"))
     with pytest.raises(HTTPException) as caught:

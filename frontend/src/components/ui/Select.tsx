@@ -235,10 +235,12 @@ const Select = ({
         className={cn(
           "flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border-2 px-4 py-2 text-left transition-colors duration-base",
           "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
-          "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
-          "focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-subtle)",
-          isOpen && "border-brand ring-4 ring-brand/(--opacity-subtle) shadow-glow-primary",
-          error && "border-error-text bg-error-bg focus:ring-error-text/(--opacity-subtle)",
+          "hover:border-brand/[calc(var(--opacity-medium)*100%)] hover:bg-glass-tint1",
+          "focus:outline-none focus:ring-4 focus:ring-brand/[calc(var(--opacity-subtle)*100%)]",
+          isOpen &&
+            "border-brand ring-4 ring-brand/[calc(var(--opacity-subtle)*100%)] shadow-glow-primary",
+          error &&
+            "border-error-text bg-error-bg focus:ring-error-text/[calc(var(--opacity-subtle)*100%)]",
           disabled && "cursor-not-allowed opacity-medium grayscale",
           !selectedOption && "text-text-tertiary"
         )}
@@ -272,7 +274,7 @@ const Select = ({
               "p-1.5"
             )}
           >
-            <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-brand/(--opacity-dim)">
+            <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-brand/[calc(var(--opacity-dim)*100%)]">
               {options.map((option, index) => {
                 const isSelected = value === option.value
                 const isActive = index === activeIndex
@@ -295,8 +297,8 @@ const Select = ({
                       isSelected
                         ? "bg-brand text-inverse-text shadow-sm"
                         : isActive
-                          ? "bg-brand/(--opacity-subtle) text-brand"
-                          : "text-text-primary hover:bg-brand/(--opacity-subtle) hover:text-brand"
+                          ? "bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand"
+                          : "text-text-primary hover:bg-brand/[calc(var(--opacity-subtle)*100%)] hover:text-brand"
                     )}
                   >
                     {option.label}

@@ -34,13 +34,14 @@ spec:
       http:
         paths:
           {{- range .paths }}
+          {{- $service := include "university-ecosystem.publicRouteService" (dict "root" $ "service" .service "path" .path) }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "university-ecosystem.componentName" (dict "root" $ "component" .service) }}
+                name: {{ include "university-ecosystem.componentName" (dict "root" $ "component" $service) }}
                 port:
-                  number: {{ if eq .service "backend" }}{{ $.Values.backend.service.port }}{{ else if eq .service "gateway" }}{{ $.Values.gateway.service.port }}{{ else if eq .service "frontend" }}{{ $.Values.frontend.service.port }}{{ else if eq .service "ws-hub" }}{{ $.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported ingress service %q" .service) }}{{ end }}
+                  number: {{ if eq $service "backend" }}{{ $.Values.backend.service.port }}{{ else if eq $service "gateway" }}{{ $.Values.gateway.service.port }}{{ else if eq $service "frontend" }}{{ $.Values.frontend.service.port }}{{ else if eq $service "ws-hub" }}{{ $.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported ingress service %q" $service) }}{{ end }}
           {{- end }}
     {{- end }}
 {{- end }}

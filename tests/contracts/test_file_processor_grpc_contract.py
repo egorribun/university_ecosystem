@@ -5,6 +5,7 @@ Provider: File-Processor
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def pact(pact_output_dir: Path) -> Pact:
     p.write_file(pact_output_dir, overwrite=False)
 
 
-def test_process_file_grpc_contract(pact: Pact) -> None:
+def test_process_file_grpc_contract(pact: Pact, tmp_path: Path) -> None:
     """Contract: Backend expects ProcessFile to return ProcessFileResponse."""
     (
         pact.upon_receiving("a gRPC request for ProcessFile", "Sync")
@@ -74,4 +75,58 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
             },
             "application/json",
         )
+    )
+
+    # Inspect the serialized Pact produced by the real Pact API. This is a
+    # consumer contract assertion; it does not claim provider replay occurred.
+    inspection_dir = tmp_path / "pact-inspection"
+    pact.write_file(inspection_dir, overwrite=False)
+    [pact_path] = list(inspection_dir.glob("*.json"))
+    contract = json.loads(pact_path.read_text(encoding="utf-8"))
+
+    assert contract["consumer"]["name"] == CONSUMER_NAME
+    assert contract["provider"]["name"] == PROVIDER_NAME
+    [interaction] = contract["interactions"]
+    assert interaction["description"] == "a gRPC request for ProcessFile"
+    assert interaction["type"] == "Synchronous/Messages"
+
+    request = interaction["request"]
+    assert request["contents"]["content"] == {
+        "id": "uuid",
+        "type": "image_resize",
+        "source_key": "uploads/raw/img.jpg",
+        "dest_key": "uploads/processed/img.jpg",
+        "options": {"width": "800"},
+        "callback_url": "http://backend/callback",
+    }
+    assert request["contents"]["contentType"] == "application/json"
+    request_rules = request["matchingRules"]["body"]
+    assert set(request_rules) == {
+        "$.id",
+        "$.type",
+        "$.source_key",
+        "$.dest_key",
+        "$.callback_url",
+    }
+    assert all(
+        rule["matchers"] == [{"match": "type"}] for rule in request_rules.values()
+    )
+
+    [response] = interaction["response"]
+    assert response["contents"]["content"] == {
+        "job_id": "550e8400-e29b-41d4-a716-446655440002",
+        "success": True,
+        "dest_key": "",
+        "duration_ms": 0,
+    }
+    assert response["contents"]["contentType"] == "application/json"
+    response_rules = response["matchingRules"]["body"]
+    assert set(response_rules) == {
+        "$.job_id",
+        "$.success",
+        "$.dest_key",
+        "$.duration_ms",
+    }
+    assert all(
+        rule["matchers"] == [{"match": "type"}] for rule in response_rules.values()
     )

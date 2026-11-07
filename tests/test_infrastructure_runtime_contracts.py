@@ -125,7 +125,7 @@ async def test_cached_endpoint_omits_missing_optional_user_id_from_key() -> None
 
 
 def test_public_https_literal_is_allowed_when_not_blocked() -> None:
-    validate_public_https_url("https://8.8.8.8/push")
+    assert (validate_public_https_url("https://8.8.8.8/push")) is None
 
 
 @pytest.mark.asyncio

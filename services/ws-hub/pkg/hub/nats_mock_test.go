@@ -21,6 +21,9 @@ type mockNatsServer struct {
 	addr     string
 	mu       sync.Mutex
 	conns    []net.Conn
+	// jetStreamResponder, when set, answers $JS.API requests with the returned
+	// JSON body. Nil keeps the mock limited to core-NATS exact-subject routing.
+	jetStreamResponder func(subject string, payload []byte) []byte
 }
 
 func newMockNatsServer(t *testing.T) *mockNatsServer {
@@ -120,6 +123,9 @@ func (s *mockNatsServer) handlePub(c net.Conn, reader *bufio.Reader, fields []st
 		return false
 	}
 	payload := payloadWithCRLF[:size]
+	if s.jetStreamResponder != nil && len(fields) == 4 && strings.HasPrefix(fields[1], "$JS.API.") {
+		return s.answerJetStreamRequest(c, fields[2], s.jetStreamResponder(fields[1], payload), subscriptions)
+	}
 	for _, sid := range subscriptions[fields[1]] {
 		header := "MSG " + fields[1] + " " + sid + " " + strconv.Itoa(size) + "\r\n"
 		frame := append([]byte(header), payload...)
@@ -127,6 +133,28 @@ func (s *mockNatsServer) handlePub(c net.Conn, reader *bufio.Reader, fields []st
 		if _, writeErr := c.Write(frame); writeErr != nil {
 			return false
 		}
+	}
+	return true
+}
+
+// answerJetStreamRequest delivers a JetStream API reply to the client's wildcard
+// response inbox (for example _INBOX.<id>.*). Only requests that carry a reply
+// subject and name a $JS.API subject reach this path.
+func (s *mockNatsServer) answerJetStreamRequest(c net.Conn, inbox string, response []byte, subscriptions map[string][]string) bool {
+	for pattern, sids := range subscriptions {
+		prefix, wildcard := strings.CutSuffix(pattern, "*")
+		if !wildcard || !strings.HasPrefix(inbox, prefix) {
+			continue
+		}
+		for _, sid := range sids {
+			header := "MSG " + inbox + " " + sid + " " + strconv.Itoa(len(response)) + "\r\n"
+			frame := append([]byte(header), response...)
+			frame = append(frame, '\r', '\n')
+			if _, writeErr := c.Write(frame); writeErr != nil {
+				return false
+			}
+		}
+		return true
 	}
 	return true
 }

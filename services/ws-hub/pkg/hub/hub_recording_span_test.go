@@ -14,7 +14,7 @@ import (
 func TestHub_RecordingSpanAttributes(t *testing.T) {
 	h := setupTestHub()
 	ctx := context.Background()
-	roomClient := &Client{ID: "room-client", Send: make(chan []byte, 1), Hub: h}
+	roomClient := &Client{ID: "room-client", UserID: "audience-user", Send: make(chan []byte, 1), Hub: h}
 	directClient := &Client{ID: "direct-client", Send: make(chan []byte, 1), Hub: h}
 	h.mu.Lock()
 	h.Clients[roomClient.ID] = roomClient
@@ -32,6 +32,22 @@ func TestHub_RecordingSpanAttributes(t *testing.T) {
 	recipients := h.collectRecipients(&Message{Room: "room"}, roomSpan)
 	require.Len(t, recipients, 1)
 	roomSpan.End()
+
+	h.mu.Lock()
+	h.Rooms["audience-room"] = map[*Client]bool{
+		roomClient:   true,
+		directClient: true,
+		nil:          true,
+	}
+	h.mu.Unlock()
+	_, audienceSpan := tracer.Start(ctx, "audience")
+	recipients = h.collectRecipients(&Message{
+		Room: "audience-room", audiencePresent: true,
+		audienceUserIDs: map[string]struct{}{roomClient.UserID: {}},
+	}, audienceSpan)
+	require.Len(t, recipients, 1)
+	require.Same(t, roomClient, recipients[0].client)
+	audienceSpan.End()
 
 	_, directSpan := tracer.Start(ctx, "direct")
 	recipients = h.collectRecipients(&Message{To: directClient.ID}, directSpan)

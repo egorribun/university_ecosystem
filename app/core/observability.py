@@ -27,7 +27,7 @@ from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -83,6 +83,7 @@ except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — sentry_sdk may 
 
 
 from app.core.config import settings
+from app.core.otel_logging import RedactingLoggingHandler as LoggingHandler
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine

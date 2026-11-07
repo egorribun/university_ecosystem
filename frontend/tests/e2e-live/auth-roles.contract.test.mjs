@@ -62,7 +62,7 @@ test("role authentication uses the real login form and does not intercept auth t
   )
   assert.match(
     loginHelpers,
-    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*loginPasswordForRole\(role\),\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
   )
   assert.doesNotMatch(loginHelpers, /page\.route\(|routeWebSocket|\.fulfill\(|useMockApi/u)
 })
@@ -227,7 +227,10 @@ test("expired-profile live reload probes a signed miss without exposing cache da
   assert.match(probe, /X-Profile-Cache-Envelope": raw/u)
   assert.match(probe, /return \{ expiredSignedEnvelope, status: response\.status \}/u)
   assert.doesNotMatch(probe, /catch/u)
-  assert.doesNotMatch(section, /page\.request\.|return\s+raw\b|console\.|process\.(?:stdout|stderr)/u)
+  assert.doesNotMatch(
+    section,
+    /page\.request\.|return\s+raw\b|console\.|process\.(?:stdout|stderr)/u
+  )
   assert.match(section, /expect\(probe\.status[\s\S]*?\.toBe\(200\)/u)
   assert.match(section, /return profile\.email === expectedEmail/u)
   assert.match(

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -135,8 +137,38 @@ func TestHandleFileProcessDeliveryRecordsReplayAdmissionFailure(t *testing.T) {
 func TestCloseRevocationRedisLogsCloseFailure(t *testing.T) {
 	original := closeRevocationRedisClientFunc
 	t.Cleanup(func() { closeRevocationRedisClientFunc = original })
-	closeRevocationRedisClientFunc = func(*redis.Client) error { return errors.New("synthetic close failure") }
-	closeRevocationRedis(context.Background(), discardLogger(), redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	closeErr := errors.New("synthetic close failure")
+	var closedClient *redis.Client
+	closeCalls := 0
+	closeRevocationRedisClientFunc = func(got *redis.Client) error {
+		closedClient = got
+		closeCalls++
+		return closeErr
+	}
+
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	closeRevocationRedis(context.Background(), logger, client)
+	require.Equal(t, 1, closeCalls)
+	require.Same(t, client, closedClient)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
+	require.Equal(t, "WARN", record["level"])
+	require.Equal(t, "Failed to close session revocation Redis", record["msg"])
+	require.Equal(t, closeErr.Error(), record["err"])
+
+	output.Reset()
+	closeRevocationRedisClientFunc = func(got *redis.Client) error {
+		closedClient = got
+		closeCalls++
+		return nil
+	}
+	closeRevocationRedis(context.Background(), logger, client)
+	require.Equal(t, 2, closeCalls)
+	require.Same(t, client, closedClient)
+	require.Empty(t, output.String())
 }
 
 func TestGRPCAuthorizationOptionBranches(t *testing.T) {

@@ -1,13 +1,13 @@
-# Temporal Server v1.30.2 — plain server config for Wave 144 SW2 Path B
+# Temporal Server v1.30.7 — plain server config for Wave 144 SW2 Path B
 #
 # References (per W141 anti-pattern #3 — VERIFIED upstream sources):
 #   - Upstream development-postgres12.yaml:
-#     https://github.com/temporalio/temporal/blob/v1.30.2/config/development-postgres12.yaml
+#     https://github.com/temporalio/temporal/blob/v1.30.7/config/development-postgres12.yaml
 #   - Authorization struct YAML tags:
-#     https://github.com/temporalio/temporal/blob/v1.30.2/common/config/config.go
+#     https://github.com/temporalio/temporal/blob/v1.30.7/common/config/config.go
 #     lines 603-622 (Authorization) + 624-628 (JWTKeyProvider)
 #   - JWT signature verification path:
-#     https://github.com/temporalio/temporal/blob/v1.30.2/common/authorization/default_token_key_provider.go
+#     https://github.com/temporalio/temporal/blob/v1.30.7/common/authorization/default_token_key_provider.go
 #     uses github.com/go-jose/go-jose/v4 (JWKS) + github.com/golang-jwt/jwt/v4 v4.5.2 (verify)
 #
 # CRITICAL schema correction vs W144 Phase 1 Agent 2 (which quoted Context7's
@@ -67,14 +67,11 @@ persistence:
 global:
   membership:
     maxJoinDuration: 30s
-    # W144 SW2 NEW (z) #18: broadcastAddress must match an address that's
-    # reachable from within the membership ring. Upstream dev config uses
-    # "127.0.0.1" (single-node loopback), but our cross-container setup needs
-    # one concrete container address. Client reachability is controlled
-    # independently by BIND_ON_IP=0.0.0.0 because the container is attached to
-    # multiple Compose networks. The custom entrypoint substitutes this value
-    # with `getent hosts $(hostname)` output at start time.
-    broadcastAddress: "${BROADCAST_ADDRESS}"
+    # Every Temporal service runs in this one container. The internal services
+    # (history, matching, worker, internal-frontend) bind only to 127.0.0.1, so
+    # the membership ring must advertise loopback too. External clients reach
+    # the authenticated frontend on 0.0.0.0:7233 and never use membership.
+    broadcastAddress: "127.0.0.1"
   pprof:
     port: 7936
   metrics:
@@ -89,28 +86,49 @@ global:
   # the JWKS so that key rotation is picked up without restart.
   #
   # - `claimMapper: "default"` invokes `defaultJWTClaimMapper`: parses the
-  #   JWT, verifies signature against JWKS, extracts claims (admin role by
-  #   default if no permissions claim present).
-  # - `authorizer: ""` selects `noopAuthorizer`: allow all authenticated
-  #   requests. Suitable for dev (no permission enforcement); for production
-  #   set to `"default"` for `defaultAuthorizer`.
+  #   JWT, verifies signature against JWKS, and extracts roles from the
+  #   permissions claim. Missing permissions grant no roles.
+  # - `authorizer: "default"` selects `defaultAuthorizer`, which enforces the
+  #   roles carried by the verified claims. The empty value selects
+  #   `noopAuthorizer` (every signature-verified caller is allowed) and is
+  #   intentionally not used (AUD-506).
+  # - `keySourceURIs` is rendered from TEMPORAL_JWKS_URL by entrypoint.sh and
+  #   must use https. Plain-HTTP key discovery lets a network attacker replace
+  #   the signing keys that the claim mapper trusts (AUD-506).
   # - `audience: "temporal"` matches the `aud` claim minted by
   #   start-docker.ps1's New-TemporalServiceToken function (default audience
   #   value is "temporal").
   authorization:
     jwtKeyProvider:
       keySourceURIs:
-        - "http://backend:8000/.well-known/jwks.json"
+        - "${TEMPORAL_JWKS_URL}"
       refreshInterval: 1m
     claimMapper: "default"
-    authorizer: ""
+    authorizer: "default"
     audience: "temporal"
 
-# ─── Services (frontend/matching/history/worker) ────────────────────────────
+# ─── Services (frontend/internal-frontend/matching/history/worker) ─────────
 #
-# Each Temporal subsystem listens on its own gRPC port. `bindOnLocalHost:
-# false` so gRPC accepts external connections (clients connect from
-# file-processor container via service-name DNS `temporal:7233`).
+# All services share one container (TEMPORAL_SERVICES in entrypoint.sh). The
+# public frontend gRPC listener (7233), membership listener (6933), and enabled
+# HTTP API (7243) use bindOnIP 0.0.0.0. Public frontend RPC requests and HTTP
+# API calls forwarded to RPC handlers use the configured JWT authorization.
+# Prometheus metrics on 0.0.0.0:8000 are separate and have no Temporal JWT
+# authorization. Pprof port 7936 defaults to localhost when its host is omitted
+# in Temporal Server v1.30.7.
+#
+# The internal-frontend, history, matching, and worker listeners configured
+# below bind to 127.0.0.1 at ports 6934, 6935, 6936, 6939, 7234, 7235, 7236,
+# 7239, and 7246. The existing peer-negative checks cover exactly those nine
+# ports; they do not establish that 7233 is the only bridge-reachable listener.
+# Temporal's system SDK client (used by the worker scanner) talks to
+# `internal-frontend` instead when that service is defined
+# (common/resource/fx.go hasIFE). It runs the NoopClaimMapper, which grants
+# system admin to any caller, so it must stay bound to loopback. Do not expose
+# its ports or move its bind address off 127.0.0.1.
+#
+# `bindOnLocalHost` must stay false when `bindOnIP` is set. Temporal rejects
+# the two options together (common/rpc/rpc.go).
 services:
   frontend:
     rpc:
@@ -119,24 +137,35 @@ services:
       bindOnLocalHost: false
       bindOnIP: "0.0.0.0"
       httpPort: 7243
+  internal-frontend:
+    rpc:
+      grpcPort: 7236
+      membershipPort: 6936
+      bindOnLocalHost: false
+      bindOnIP: "127.0.0.1"
+      # Non-zero because the local frontend HTTP client used by callbacks and
+      # Nexus operations resolves this service when internal-frontend exists
+      # (common/rpc/rpc.go createLocalFrontendHTTPClient). The HTTP listener
+      # inherits the gRPC listener's loopback address.
+      httpPort: 7246
   matching:
     rpc:
       grpcPort: 7235
       membershipPort: 6935
       bindOnLocalHost: false
-      bindOnIP: "0.0.0.0"
+      bindOnIP: "127.0.0.1"
   history:
     rpc:
       grpcPort: 7234
       membershipPort: 6934
       bindOnLocalHost: false
-      bindOnIP: "0.0.0.0"
+      bindOnIP: "127.0.0.1"
   worker:
     rpc:
       grpcPort: 7239
       membershipPort: 6939
       bindOnLocalHost: false
-      bindOnIP: "0.0.0.0"
+      bindOnIP: "127.0.0.1"
 
 # ─── Cluster metadata (single-cluster dev) ──────────────────────────────────
 #

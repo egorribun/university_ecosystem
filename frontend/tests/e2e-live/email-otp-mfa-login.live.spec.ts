@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/test"
+import * as v from "valibot"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import {
   withLiveRegistrationAdmission,
@@ -8,6 +9,7 @@ import {
   liveDeadlineBoundedTimeoutMs,
   liveTestSlotDeadlineAtMs,
   freshPassword,
+  ownedSessionOrigin,
   loginAs,
   loginWith,
   mailFor,
@@ -18,6 +20,13 @@ import {
   test,
   waitForLiveRateLimitRetry,
 } from "./fixtures"
+
+import {
+  createOwnedResetAccount,
+  findOwnedResetUserId,
+  readOwnedResetUserId,
+  type OwnedResetAccount,
+} from "./password-reset-account-identity"
 
 const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(\d{6})/iu
 const OTP_INPUTS = 'input[inputmode="numeric"][maxlength="1"]'
@@ -324,7 +333,11 @@ async function createIsolatedPage(
   }
 }
 
-async function deleteOwnedAccount(browser: Browser, userId: string) {
+async function deleteOwnedAccount(
+  browser: Browser,
+  account: OwnedResetAccount,
+  knownUserId: string | null
+) {
   const context = await browser.newContext({
     baseURL: process.env.LIVE_BASE_URL,
     ignoreHTTPSErrors: true,
@@ -333,6 +346,11 @@ async function deleteOwnedAccount(browser: Browser, userId: string) {
   try {
     const page = await context.newPage()
     await loginAs(page, "admin")
+    // Resolve only this run's exact synthetic identity, including after a failed login.
+    const userId = await findOwnedResetUserId(page.request, ownedSessionOrigin(), account, 5_000)
+    if (knownUserId !== null && userId !== knownUserId) {
+      throw new Error("Owned MFA cleanup identity changed")
+    }
     const status = await page.evaluate(async (createdId) => {
       const csrfCookie = document.cookie
         .split(";")
@@ -362,9 +380,12 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
   page,
 }, testInfo) => {
   test.setTimeout(180_000)
-  const email = `live-email-mfa-${randomUUID()}@university.dev`
+  // Reuse the established owned-account identity and cleanup contract.
+  const account = createOwnedResetAccount(testInfo.project.name, randomUUID())
+  const { email, fullName } = account
   const password = freshPassword()
   let createdUserId: string | null = null
+  let registrationAttempted = false
   let loginContext: BrowserContext | null = null
   let siblingContext: BrowserContext | null = null
   let siblingPageForCleanup: Page | null = null
@@ -375,22 +396,28 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
 
   try {
     await page.goto("/register")
-    await page.locator("#full_name").fill("Live email MFA login acceptance")
+    await page.locator("#full_name").fill(fullName)
     await page.locator("#email").fill(email)
     await page.locator("#password").fill(password)
     await page.locator("#confirmPassword").fill(password)
     const registrationResponse = await withLiveRegistrationAdmission(page, 1, async () => {
       const registrationResponsePromise = page.waitForResponse(isApiResponse("/auth/register"))
-      await page.locator("#register-submit").click()
-      return registrationResponsePromise
+      registrationAttempted = true
+      const [registrationClick, observedRegistration] = await Promise.allSettled([
+        page.locator("#register-submit").click(),
+        registrationResponsePromise,
+      ])
+      if (registrationClick.status === "rejected") throw registrationClick.reason
+      if (observedRegistration.status === "rejected") throw observedRegistration.reason
+      return observedRegistration.value
     })
     reportLiveHttpStatus(testInfo.project.name, "email-mfa-register", registrationResponse.status())
     expect(registrationResponse.ok()).toBe(true)
-    const registrationBody = (await registrationResponse.json()) as { id?: unknown }
-    if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
-      throw new Error("Synthetic account registration returned no account id")
+    const registrationBody: unknown = await registrationResponse.json()
+    const RegistrationReceipt = v.strictObject({ status: v.literal("ok") })
+    if (!v.safeParse(RegistrationReceipt, registrationBody).success) {
+      throw new Error("Synthetic account registration returned an invalid receipt")
     }
-    createdUserId = registrationBody.id
 
     const initiatingLoginResponsePromise = page.waitForResponse(isApiResponse("/auth/login"))
     await submitLogin(page, email, password)
@@ -401,6 +428,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       initiatingLoginResponse.status()
     )
     await expect(page).toHaveURL(/\/dashboard$/u)
+    createdUserId = await readOwnedResetUserId(page.request, ownedSessionOrigin(), account, 5_000)
 
     const initiatingSessionId = uniqueCurrentSessionId(await readActiveSessions(page))
     const sibling = await createIsolatedPage(browser, page, testInfo)
@@ -710,9 +738,9 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       cleanupFailed = true
     }
   }
-  if (createdUserId) {
+  if (registrationAttempted) {
     try {
-      await deleteOwnedAccount(browser, createdUserId)
+      await deleteOwnedAccount(browser, account, createdUserId)
     } catch {
       cleanupFailed = true
     }

@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -30,8 +30,11 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
 }))
 
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
 import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
+import enSettings from "../../../i18n/locales/en/settings.json"
+import ruSettings from "../../../i18n/locales/ru/settings.json"
 
 const user = {
   id: "user-1",
@@ -49,7 +52,10 @@ const imageFile = (name = "photo.png") => new File(["image"], name, { type: "ima
 
 const oversizedImage = () => {
   const file = imageFile("large.png")
-  Object.defineProperty(file, "size", { configurable: true, value: 13 * 1024 * 1024 })
+  Object.defineProperty(file, "size", {
+    configurable: true,
+    value: 13 * 1024 * 1024,
+  })
   return file
 }
 
@@ -68,6 +74,31 @@ beforeEach(() => {
   mocks.api.delete.mockResolvedValue({ data: {} })
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:local-preview")
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+})
+
+describe("post-commit refresh translations", () => {
+  it("provides localized warnings for committed media and email changes", () => {
+    expect(enSettings.media.avatar.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.avatar.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.avatar.savedRefreshFailed).not.toBe(
+      enSettings.media.avatar.savedRefreshFailed
+    )
+    expect(enSettings.media.cover.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.cover.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.cover.savedRefreshFailed).not.toBe(
+      enSettings.media.cover.savedRefreshFailed
+    )
+    expect(enSettings.security.email.confirmationSentRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.email.confirmationSentRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.email.confirmationSentRefreshFailed).not.toBe(
+      enSettings.security.email.confirmationSentRefreshFailed
+    )
+    expect(enSettings.security.snackbar.emailMfaSavedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.snackbar.emailMfaSavedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.snackbar.emailMfaSavedRefreshFailed).not.toBe(
+      enSettings.security.snackbar.emailMfaSavedRefreshFailed
+    )
+  })
 })
 
 describe.each([
@@ -151,7 +182,9 @@ describe.each([
     expect(mocks.api.post).toHaveBeenCalledWith(
       endpoint,
       expect.any(FormData),
-      expect.objectContaining({ headers: { "Content-Type": "multipart/form-data" } })
+      expect.objectContaining({
+        headers: { "Content-Type": "multipart/form-data" },
+      })
     )
     expect(mocks.fetchQuery).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ["users", "me"], staleTime: 0 })
@@ -206,6 +239,7 @@ describe.each([
       text: `${copyPrefix}.uploadFailed`,
       severity: "error",
     })
+    expect(mocks.fetchQuery).not.toHaveBeenCalled()
     expect(result.current.busy).toBe(false)
   })
 
@@ -238,9 +272,14 @@ describe.each([
     const { result } = renderHook(() => useUpload(setSnackbar))
 
     for (const mimeType of ["image/png", "image/jpeg", "image/webp"]) {
-      const file = new File(["image"], `photo.${mimeType.split("/")[1]}`, { type: mimeType })
+      const file = new File(["image"], `photo.${mimeType.split("/")[1]}`, {
+        type: mimeType,
+      })
       if (mimeType === "image/png") {
-        Object.defineProperty(file, "size", { configurable: true, value: 5 * 1024 * 1024 })
+        Object.defineProperty(file, "size", {
+          configurable: true,
+          value: 5 * 1024 * 1024,
+        })
       }
       await act(async () => {
         await result.current.upload(file)
@@ -253,7 +292,9 @@ describe.each([
     for (const mimeType of ["image/gif", "image/avif"]) {
       await act(async () => {
         await result.current.upload(
-          new File(["image"], `photo.${mimeType.split("/")[1]}`, { type: mimeType })
+          new File(["image"], `photo.${mimeType.split("/")[1]}`, {
+            type: mimeType,
+          })
         )
       })
     }
@@ -275,6 +316,312 @@ describe.each([
   })
 
   if (kind === "avatar") {
+    it("reports a committed upload separately when the profile refresh fails", async () => {
+      const setSnackbar = vi.fn()
+      mocks.fetchCurrentUser.mockRejectedValueOnce(new Error("profile refresh failed"))
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      await act(async () => {
+        await result.current.upload(imageFile())
+      })
+
+      expect(mocks.api.post).toHaveBeenCalledTimes(1)
+      expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.savedRefreshFailed",
+        severity: "warning",
+      })
+      expect(setSnackbar).not.toHaveBeenCalledWith({
+        text: "settings:media.avatar.uploadFailed",
+        severity: "error",
+      })
+      expect(result.current.busy).toBe(false)
+    })
+
+    it("reports a committed removal separately when the profile refresh fails", async () => {
+      const setSnackbar = vi.fn()
+      mocks.fetchCurrentUser.mockRejectedValueOnce(new Error("profile refresh failed"))
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      await act(async () => {
+        await result.current.remove()
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledTimes(1)
+      expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.savedRefreshFailed",
+        severity: "warning",
+      })
+      expect(setSnackbar).not.toHaveBeenCalledWith({
+        text: "settings:media.avatar.deleteFailed",
+        severity: "error",
+      })
+      expect(result.current.busy).toBe(false)
+    })
+    it("reports avatar removal mutation failures without refreshing the profile", async () => {
+      const setSnackbar = vi.fn()
+      mocks.api.delete.mockRejectedValueOnce(new Error("avatar delete failed"))
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      await act(async () => {
+        await result.current.remove()
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.deleteFailed",
+        severity: "error",
+      })
+      expect(result.current.busy).toBe(false)
+    })
+    it("does not report avatar-delete errors after session ownership expires", async () => {
+      rotateBrowserSession()
+      let rejectDelete!: (error: Error) => void
+      mocks.api.delete.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectDelete = reject
+          })
+      )
+      const setSnackbar = vi.fn()
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      let removePromise!: Promise<void>
+      act(() => {
+        removePromise = result.current.remove()
+      })
+      await waitFor(() => expect(mocks.api.delete).toHaveBeenCalledOnce())
+      rotateBrowserSession()
+
+      await act(async () => {
+        rejectDelete(new Error("avatar delete failed after session change"))
+        await removePromise
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("warns when an upload commits but refresh returns no profile", async () => {
+      const setSnackbar = vi.fn()
+      mocks.fetchQuery.mockResolvedValueOnce(null)
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      await act(async () => {
+        await result.current.upload(imageFile())
+      })
+
+      expect(mocks.api.post).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.savedRefreshFailed",
+        severity: "warning",
+      })
+    })
+
+    it("warns when a removal commits but refresh returns no profile", async () => {
+      const setSnackbar = vi.fn()
+      mocks.fetchQuery.mockResolvedValueOnce(null)
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      await act(async () => {
+        await result.current.remove()
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.savedRefreshFailed",
+        severity: "warning",
+      })
+    })
+
+    it("does not show an old account's refresh result after the avatar action commits", async () => {
+      let resolveRefresh!: (profile: typeof freshUser) => void
+      const pendingRefresh = new Promise<typeof freshUser>((resolve) => {
+        resolveRefresh = resolve
+      })
+      mocks.fetchQuery.mockReturnValueOnce(pendingRefresh)
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.upload(imageFile())
+      })
+      await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await waitFor(() => expect(result.current.busy).toBe(false))
+
+      await act(async () => {
+        resolveRefresh(freshUser)
+        await operation
+      })
+
+      expect(mocks.api.post).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("does not refresh or report an avatar upload after its account changes in flight", async () => {
+      let resolveUpload!: (value: { data: object }) => void
+      mocks.api.post.mockReturnValueOnce(
+        new Promise<{ data: object }>((resolve) => {
+          resolveUpload = resolve
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.upload(imageFile())
+      })
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await act(async () => {
+        resolveUpload({ data: {} })
+        await operation
+      })
+
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("suppresses a rejected old-account avatar refresh after switching accounts", async () => {
+      let rejectRefresh!: (reason?: unknown) => void
+      mocks.fetchQuery.mockReturnValueOnce(
+        new Promise<never>((_, reject) => {
+          rejectRefresh = reject
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.upload(imageFile())
+      })
+      await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await act(async () => {
+        rejectRefresh(new Error("old account profile refresh failed"))
+        await operation
+      })
+
+      expect(mocks.api.post).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("does not refresh or report an avatar removal after its account changes in flight", async () => {
+      let resolveRemoval!: (value: { data: object }) => void
+      mocks.api.delete.mockReturnValueOnce(
+        new Promise<{ data: object }>((resolve) => {
+          resolveRemoval = resolve
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.remove()
+      })
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await act(async () => {
+        resolveRemoval({ data: {} })
+        await operation
+      })
+
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("suppresses a rejected old-account avatar-removal refresh after switching accounts", async () => {
+      let rejectRefresh!: (reason?: unknown) => void
+      mocks.fetchQuery.mockReturnValueOnce(
+        new Promise<never>((_, reject) => {
+          rejectRefresh = reject
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.remove()
+      })
+      await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await act(async () => {
+        rejectRefresh(new Error("old account profile refresh failed"))
+        await operation
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
+    it("suppresses an old account's avatar-removal refresh result after switching accounts", async () => {
+      let resolveRefresh!: (profile: typeof freshUser) => void
+      mocks.fetchQuery.mockReturnValueOnce(
+        new Promise<typeof freshUser>((resolve) => {
+          resolveRefresh = resolve
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useAvatarUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.remove()
+      })
+      await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+      mocks.useAuth.mockReturnValue({
+        user: { ...user, id: "user-2" },
+        setUser: mocks.setUser,
+      })
+      rerender()
+      await act(async () => {
+        resolveRefresh(freshUser)
+        await operation
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
     it("clears the rejected preview and restores the persisted avatar", async () => {
       const setSnackbar = vi.fn()
       let rejectUpload: ((reason?: unknown) => void) | undefined
@@ -320,5 +667,110 @@ describe.each([
 
       expect(image.src).toContain("gravatar.com/avatar/00000000000000000000000000000000")
     })
+  }
+
+  if (kind === "cover") {
+    it("does not report a cover removal failure after switching accounts", async () => {
+      let rejectDelete!: (error: Error) => void
+      mocks.api.delete.mockReturnValueOnce(
+        new Promise<never>((_, reject) => {
+          rejectDelete = reject
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useCoverUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.remove()
+      })
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      mocks.useAuth.mockReturnValue({ user: { ...user, id: "user-2" }, setUser: mocks.setUser })
+      rerender()
+      await act(async () => {
+        rejectDelete(new Error("old account cover removal failed"))
+        await operation
+      })
+
+      expect(mocks.fetchCurrentUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+      expect(result.current.busy).toBe(false)
+    })
+
+    it.each(["upload", "remove"] as const)(
+      "warns after a committed cover %s when profile refresh rejects",
+      async (action) => {
+        const setSnackbar = vi.fn()
+        mocks.fetchCurrentUser.mockRejectedValueOnce(new Error("profile refresh failed"))
+        const { result } = renderHook(() => useCoverUpload(setSnackbar))
+
+        await act(async () => {
+          if (action === "upload") await result.current.upload(imageFile())
+          else await result.current.remove()
+        })
+
+        expect(action === "upload" ? mocks.api.post : mocks.api.delete).toHaveBeenCalledOnce()
+        expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenLastCalledWith({
+          text: "settings:media.cover.savedRefreshFailed",
+          severity: "warning",
+        })
+        expect(result.current.busy).toBe(false)
+      }
+    )
+
+    it.each(["upload", "remove"] as const)(
+      "warns after a committed cover %s when refresh returns no profile",
+      async (action) => {
+        const setSnackbar = vi.fn()
+        mocks.fetchQuery.mockResolvedValueOnce(null)
+        const { result } = renderHook(() => useCoverUpload(setSnackbar))
+
+        await act(async () => {
+          if (action === "upload") await result.current.upload(imageFile())
+          else await result.current.remove()
+        })
+
+        expect(action === "upload" ? mocks.api.post : mocks.api.delete).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenLastCalledWith({
+          text: "settings:media.cover.savedRefreshFailed",
+          severity: "warning",
+        })
+        expect(result.current.busy).toBe(false)
+      }
+    )
+
+    it.each(["upload", "remove"] as const)(
+      "suppresses a rejected cover %s refresh after switching accounts",
+      async (action) => {
+        let rejectRefresh!: (error: Error) => void
+        mocks.fetchCurrentUser.mockReturnValueOnce(
+          new Promise<never>((_, reject) => {
+            rejectRefresh = reject
+          })
+        )
+        const setSnackbar = vi.fn()
+        const { result, rerender } = renderHook(() => useCoverUpload(setSnackbar))
+        let operation!: Promise<void>
+
+        act(() => {
+          operation =
+            action === "upload" ? result.current.upload(imageFile()) : result.current.remove()
+        })
+        await waitFor(() => expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce())
+        mocks.useAuth.mockReturnValue({ user: { ...user, id: "user-2" }, setUser: mocks.setUser })
+        rerender()
+        await act(async () => {
+          rejectRefresh(new Error("old account profile refresh failed"))
+          await operation
+        })
+
+        expect(mocks.setUser).not.toHaveBeenCalled()
+        expect(setSnackbar).not.toHaveBeenCalled()
+        expect(result.current.busy).toBe(false)
+      }
+    )
   }
 })

@@ -73,13 +73,15 @@ async def test_register_session_bg_swallows_connection_error(monkeypatch):
 
     monkeypatch.setattr(session_service_module, "get_session_backend", _raise_backend)
     # Must not raise.
-    await register_session_bg(
-        uuid.uuid4(),
-        "jti-bg",
-        datetime.now(UTC) + timedelta(hours=1),
-        "127.0.0.1",
-        "pytest",
-    )
+    assert (
+        await register_session_bg(
+            uuid.uuid4(),
+            "jti-bg",
+            datetime.now(UTC) + timedelta(hours=1),
+            "127.0.0.1",
+            "pytest",
+        )
+    ) is None
 
 
 @pytest.mark.asyncio
@@ -146,8 +148,13 @@ async def test_enforce_limit_noop_when_limit_nonpositive(
     svc = _make_session_service(db_session)
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setattr(session_service_module.settings, "max_sessions_per_user", 0)
-    # Should return immediately; no exception even with no sessions.
-    await svc._enforce_concurrent_limit(user.id, "jti-x", datetime.now(UTC))
+    count_active_sessions = AsyncMock()
+    monkeypatch.setattr(svc.repo, "get_active_count_for_user", count_active_sessions)
+
+    result = await svc._enforce_concurrent_limit(user.id, "jti-x", datetime.now(UTC))
+
+    assert result is None
+    count_active_sessions.assert_not_awaited()
 
 
 @pytest.mark.asyncio

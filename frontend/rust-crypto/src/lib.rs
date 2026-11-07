@@ -24,12 +24,19 @@ fn make_err(msg: &str) -> String {
     msg.to_string()
 }
 
-const MIN_PBKDF2_ITERATIONS: u32 = 1;
+// AUD-414: match pbkdf2 0.13's minimum supported compatibility cost.
+// This is not a password-storage recommendation (SHA-256 recommends 600000).
+// RFC one-round vectors exercise the upstream primitive only in test code.
+const MIN_PBKDF2_ITERATIONS: u32 = 1_000;
 const MAX_PBKDF2_ITERATIONS: u32 = 1_000_000;
 const MIN_PBKDF2_KEY_SIZE: usize = 1;
 const MAX_PBKDF2_KEY_SIZE: usize = 1_024;
 const MIN_SCRYPT_OUTPUT_LEN: usize = 10;
 const MAX_SCRYPT_OUTPUT_LEN: usize = 64;
+// AUD-414: the smallest cost used by RFC 7914's test vectors. Costs below it
+// (N=1 in particular) make the memory-hard primitive trivially cheap. Production
+// callers use N=16384, so this floor only rejects degenerate parameters.
+const MIN_SCRYPT_N: u32 = 16;
 
 fn validate_scrypt_output_len(dk_len: usize) -> Result<(), ErrorType> {
     if !(MIN_SCRYPT_OUTPUT_LEN..=MAX_SCRYPT_OUTPUT_LEN).contains(&dk_len) {
@@ -57,7 +64,7 @@ pub fn pbkdf2_derive(
 ) -> Result<String, ErrorType> {
     if !(MIN_PBKDF2_ITERATIONS..=MAX_PBKDF2_ITERATIONS).contains(&iterations) {
         return Err(make_err(
-            "PBKDF2 iterations must be between 1 and 1,000,000",
+            "PBKDF2 iterations must be between 1,000 and 1,000,000",
         ));
     }
     if !(MIN_PBKDF2_KEY_SIZE..=MAX_PBKDF2_KEY_SIZE).contains(&key_size) {
@@ -162,6 +169,9 @@ pub fn scrypt_derive(
         .checked_ilog2()
         .filter(|_| n.is_power_of_two())
         .ok_or_else(|| make_err("Invalid scrypt params: N must be a non-zero power of two"))?;
+    if n < MIN_SCRYPT_N {
+        return Err(make_err("Invalid scrypt params: N must be at least 16"));
+    }
     // Keep the old scrypt::Params::new(..., dk_len) validation order and
     // reject attacker-controlled lengths before any output allocation.
     validate_scrypt_output_len(dk_len)?;

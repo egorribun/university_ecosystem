@@ -213,62 +213,103 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 		// PERF-23-02 (audit 2026-03-25 Wave 23): Exempt health/readiness probes
 		// from rate limiting. During Redis outage the 3 req/60s fallback would
 		// block Kubernetes liveness probes → pod restarts → cascading failure.
+		if isHealthPath(c.Request.URL.Path) || isPublicStaticRead(c.Request) {
+			c.Next()
+			return
+		}
+
+		// The front-door gate is always IP-keyed and runs before route auth.
+		// Keep its existing limit in force while authenticated requests also
+		// consume a separate, verified per-user bucket after JWT validation.
+		rl.allow(c, ctx, rl.getClientIPKey(c))
+	}
+}
+
+// AuthenticatedMiddleware adds a per-user rate limit after Validate or Optional
+// has verified the token and session. Requests without the verified auth context
+// continue under the pre-auth IP gate only.
+func (rl *RateLimiter) AuthenticatedMiddleware(ctx context.Context) gin.HandlerFunc {
+	rl.startFallbackCleanup(ctx)
+	return func(c *gin.Context) {
 		if isHealthPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
 
-		// Get client identifier (IP or User ID)
-		key := rl.getClientKey(c)
-		if rl.limiter == nil {
-			if rl.applyInMemoryFallback(c, key) {
-				c.Next()
-			}
+		userIDRaw, exists := c.Get("user_id")
+		userID, isString := userIDRaw.(string)
+		claimsRaw, hasClaims := c.Get("claims")
+		claims, claimsOK := claimsRaw.(*Claims)
+		if !exists || !isString || userID == "" || !hasClaims || !claimsOK || claims == nil || claims.UserID != userID {
+			c.Next()
 			return
 		}
 
-		// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
-		// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
-		// indefinitely, cascading into a connection exhaustion outage.
-		rCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
-		defer cancel()
-
-		// Apply rate limit
-		res, err := rl.limiter.Allow(rCtx, key, redis_rate.Limit{
-			Rate:   rl.rps,
-			Burst:  rl.burst,
-			Period: time.Second,
-		})
-		if err != nil {
-			// P0-W5-04: Redis failure — apply in-memory fallback instead of fail-open.
-			// Without this, any Redis outage completely disables rate limiting and
-			// enables unlimited brute-force on auth endpoints.
-			if rl.applyInMemoryFallback(c, key) {
-				c.Next()
-			}
-			return
-		}
-
-		// Set standard IETF draft RateLimit headers (MOD-8)
-		c.Header("RateLimit-Limit", strconv.Itoa(rl.rps))
-		c.Header("RateLimit-Remaining", strconv.Itoa(res.Remaining))
-		// ResetAfter is a time.Duration, we need to add it to current time for Reset header
-		resetAt := time.Now().Add(res.ResetAfter)
-		c.Header("RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
-		c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // One-second steady rate; burst capacity is configured separately.
-
-		if res.Allowed == 0 {
-			// RFC 7231 requires Retry-After to be an HTTP-date or an integer number of seconds
-			c.Header("Retry-After", strconv.FormatInt(int64(res.RetryAfter.Seconds()), 10))
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":       "rate limit exceeded",
-				"retry_after": int(res.RetryAfter.Seconds()),
-			})
-			return
-		}
-
-		c.Next()
+		rl.allow(c, ctx, "user:"+userID)
 	}
+}
+
+func (rl *RateLimiter) allow(c *gin.Context, ctx context.Context, key string) {
+	if rl.limiter == nil {
+		if rl.applyInMemoryFallback(c, key) {
+			c.Next()
+		}
+		return
+	}
+
+	// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
+	// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
+	// indefinitely, cascading into a connection exhaustion outage.
+	rCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+
+	// Apply rate limit
+	res, err := rl.limiter.Allow(rCtx, key, redis_rate.Limit{
+		Rate:   rl.rps,
+		Burst:  rl.burst,
+		Period: time.Second,
+	})
+	if err != nil {
+		// P0-W5-04: Redis failure — apply in-memory fallback instead of fail-open.
+		// Without this, any Redis outage completely disables rate limiting and
+		// enables unlimited brute-force on auth endpoints.
+		if rl.applyInMemoryFallback(c, key) {
+			c.Next()
+		}
+		return
+	}
+
+	// Set standard IETF draft RateLimit headers (MOD-8)
+	c.Header("RateLimit-Limit", strconv.Itoa(rl.rps))
+	c.Header("RateLimit-Remaining", strconv.Itoa(res.Remaining))
+	// ResetAfter is a time.Duration, we need to add it to current time for Reset header
+	resetAt := time.Now().Add(res.ResetAfter)
+	c.Header("RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
+	c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // One-second steady rate; burst capacity is configured separately.
+
+	if res.Allowed == 0 {
+		// RFC 7231 requires Retry-After to be an HTTP-date or an integer number of seconds
+		c.Header("Retry-After", strconv.FormatInt(int64(res.RetryAfter.Seconds()), 10))
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+			"error":       "rate limit exceeded",
+			"retry_after": int(res.RetryAfter.Seconds()),
+		})
+		return
+	}
+
+	c.Next()
+}
+
+// isPublicStaticRead reports whether a request is an anonymous GET or HEAD for the
+// backend's public static tree. The backend exempts the same reads from its own
+// limiter (app/core/ratelimit: _is_static_like_path), and the gateway now relays
+// them for AUD-373. Without this exemption a campus NAT sharing one client IP
+// would throttle image loads that the backend itself never limits.
+func isPublicStaticRead(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return strings.HasPrefix(r.URL.Path, "/static/")
 }
 
 // isHealthPath returns true for Kubernetes probe and monitoring paths that must
@@ -297,5 +338,11 @@ func (rl *RateLimiter) getClientKey(c *gin.Context) string {
 	// Fall back to IP address.
 	// We rely on Gin's ClientIP() which is safer and respects TrustedProxies.
 	// Manual parsing of X-Forwarded-For is insecure as it's easily spoofable.
+	return rl.getClientIPKey(c)
+}
+
+func (rl *RateLimiter) getClientIPKey(c *gin.Context) string {
+	// Gin's ClientIP() respects the configured TrustedProxies chain; do not
+	// parse X-Forwarded-For directly because clients can spoof that header.
 	return "ip:" + c.ClientIP()
 }

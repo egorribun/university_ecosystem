@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "identity": {
+        "path": "tests/test_live_stand.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          168,
+          153,
+          163,
+          54,
+          208,
+          140,
+          140,
+          91,
+          29,
+          67,
+          114,
+          254,
+          148,
+          83,
+          90,
+          153,
+          76,
+          25,
+          192,
+          185
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Synthetic invalid private-field test sentinel in tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types; sole exact password-field fixture is serialized into the invalid V2 observation corpus and rejected by the parser; never credentials or request data; not credential material. Observed by detect-secrets in hosted job120916104166.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    }
+  ]
+}

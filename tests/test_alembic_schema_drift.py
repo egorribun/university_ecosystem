@@ -383,15 +383,47 @@ def test_non_column_operations_survive_filtering() -> None:
 
 
 def test_objects_without_the_optional_attributes_are_tolerated() -> None:
-    # A container without ``ops`` and a directive without ``upgrade_ops_list``
-    # are simply skipped; a migration context without a connection is a no-op.
-    alembic_schema_drift._filter_container(SimpleNamespace(), frozenset({("t", "c")}))
-    alembic_schema_drift.filter_check_backed_nullable_diffs(
-        _MigrationContext(_Connection(_valid_checks())), None, [SimpleNamespace()]
+    # A missing connection must leave an otherwise filterable diff untouched.
+    operation = ops.AlterColumnOp(
+        "mfa_challenges",
+        "flow",
+        existing_nullable=True,
+        modify_nullable=False,
     )
-    alembic_schema_drift.filter_check_backed_nullable_diffs(
-        SimpleNamespace(), None, [SimpleNamespace()]
+    table_ops = ops.ModifyTableOps("mfa_challenges", [operation])
+    upgrade_ops = ops.UpgradeOps([table_ops])
+    directive = SimpleNamespace(upgrade_ops_list=[upgrade_ops])
+
+    result = alembic_schema_drift.filter_check_backed_nullable_diffs(
+        SimpleNamespace(), None, [directive]
     )
+
+    assert result is None
+    assert directive.upgrade_ops_list == [upgrade_ops]
+    assert upgrade_ops.ops == [table_ops]
+    assert table_ops.ops == [operation]
+    assert operation.modify_nullable is False
+
+    # Optional structures without their expected attributes remain untouched.
+    container_without_ops = SimpleNamespace()
+    assert (
+        alembic_schema_drift._filter_container(
+            container_without_ops, frozenset({("t", "c")})
+        )
+        is None
+    )
+    assert vars(container_without_ops) == {}
+
+    directive_without_upgrade_ops = SimpleNamespace()
+    assert (
+        alembic_schema_drift.filter_check_backed_nullable_diffs(
+            _MigrationContext(_Connection(_valid_checks())),
+            None,
+            [directive_without_upgrade_ops],
+        )
+        is None
+    )
+    assert vars(directive_without_upgrade_ops) == {}
 
 
 def test_foreign_key_to_schema_qualified_partition_is_excluded() -> None:

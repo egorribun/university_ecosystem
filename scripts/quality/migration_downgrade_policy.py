@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import hashlib
 import re
 from collections import deque
 from collections.abc import Callable, Sequence
@@ -14,16 +13,6 @@ from typing import NamedTuple
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MIGRATIONS_DIR = REPOSITORY_ROOT / "alembic" / "versions"
 _REVISION_ID = re.compile(r"^[A-Za-z0-9_]+$")
-# Guarded preflight is intentionally not a generic control-flow proof. This
-# reviewed BE-02 migration only retains existing defaults after a catalog
-# check. Pin its complete executable AST so helper/alias/exception-flow edits
-# fail closed until a human reviews and updates this fingerprint. Whitespace,
-# comments, and line endings do not change the AST fingerprint.
-_REVIEWED_PREFLIGHT = (
-    "202609250001_phase_semantic_defaults.py",
-    "202609250001",
-    "efee7b75048f744530b1eb34100df053ecd3aa9a3788eb72f7643a7006305796",  # pragma: allowlist secret - public migration AST SHA-256, not a credential
-)
 
 
 class PolicyError(RuntimeError):
@@ -363,18 +352,13 @@ def _parse_migration(path: Path) -> MigrationMetadata:
             raise PolicyError(
                 f"{path.name}: downgrade raises without an irreversible policy"
             )
-        reviewed_name, reviewed_revision, reviewed_digest = _REVIEWED_PREFLIGHT
-        digest = hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()
-        if (path.name, revision, digest) != (
-            reviewed_name,
-            reviewed_revision,
-            reviewed_digest,
-        ):
-            raise PolicyError(
-                f"{path.name}: unreviewed guarded preflight AST; review the full "
-                "migration and update its fingerprint before allowing downgrade"
-            )
-        return MigrationMetadata(revision, parents, path, None)
+        # The MVP baseline squash retired the only reviewed guarded preflight
+        # (BE-02 202609250001). With no reviewed migration left, every guarded
+        # preflight fails closed; declare an irreversible boundary instead.
+        raise PolicyError(
+            f"{path.name}: unreviewed guarded preflight; no guarded preflight "
+            "migration is reviewed in the MVP baseline chain"
+        )
     if policy != "irreversible":
         raise PolicyError(f"{path.name}: unsupported downgrade policy {policy!r}")
     if preflight_reason is not None:

@@ -782,8 +782,13 @@ class TestProcessPushResults:
     @pytest.mark.asyncio
     async def test_empty_results_noop(self):
         """Empty results list does nothing."""
-        # Should not raise
-        await process_push_results([])
+        with patch(
+            "app.services.webpush._ensure_async_sessionmaker",
+            new_callable=AsyncMock,
+        ) as ensure_sessionmaker:
+            assert (await process_push_results([])) is None
+
+        ensure_sessionmaker.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

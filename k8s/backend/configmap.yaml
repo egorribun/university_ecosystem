@@ -4,6 +4,8 @@ metadata:
   name: backend-config
   namespace: university-ecosystem
 data:
+  # Shared with the SSR frontend so both services trust the same issuer.
+  JWT_ISSUER: "university-ecosystem"
   ENVIRONMENT: "production"
   LOG_LEVEL: "info"
   # Public frontend origin: base of emailed links and the API CORS allow-list.

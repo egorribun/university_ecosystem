@@ -38,9 +38,10 @@ async def test_production_rejects_another_operations_allowlisted_hash(
 async def test_production_accepts_matching_hash_with_normalized_query() -> None:
     approved = "query Approved { me { id } }"
     approved_hash = extensions._hash_query(approved)
+    submitted_query = f"  {approved}\n"
     extension = extensions.PersistedQueryExtension()
     extension.execution_context = SimpleNamespace(
-        query=f"  {approved}\n",
+        query=submitted_query,
         extensions={"persistedQuery": {"sha256Hash": approved_hash}},
     )
     with (
@@ -49,5 +50,8 @@ async def test_production_accepts_matching_hash_with_normalized_query() -> None:
             extensions, "_load_manifest", return_value={approved_hash: approved}
         ),
     ):
-        async for _ in extension.on_validate():
-            pass
+        yielded_values = [value async for value in extension.on_validate()]
+
+    assert yielded_values == [None]
+    assert extension.execution_context.query == submitted_query
+    assert extensions._hash_query(extension.execution_context.query) == approved_hash

@@ -16,6 +16,7 @@ import (
 func signedTokenWithoutSubject(t *testing.T) string {
 	t.Helper()
 	claims := jwt.MapClaims{
+		"iss":       DefaultJWTIssuer,
 		"aud":       DefaultJWTAudience,
 		"exp":       time.Now().Add(time.Hour).Unix(),
 		"iat":       time.Now().Add(-time.Minute).Unix(),

@@ -32,6 +32,24 @@ function escapeVCardComponent(value: string): string {
     .replace(/;/g, "\\;")
 }
 
+function sanitizeAchievementUrl(value: string | undefined): string | undefined {
+  if (!value || /\p{Cc}/u.test(value)) return undefined
+
+  try {
+    const parsed = new URL(value, "https://achievement.invalid/")
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return undefined
+    }
+    return value
+  } catch {
+    return undefined
+  }
+}
+
 export function parseAchievements(achievementsStr: string | null | undefined): AchievementItem[] {
   return String(achievementsStr || "")
     .split(/[,;\n]/)
@@ -39,7 +57,13 @@ export function parseAchievements(achievementsStr: string | null | undefined): A
     .filter(Boolean)
     .map((raw, index) => {
       const [name, issuer, date, url] = raw.split("|").map((s) => s.trim())
-      return { key: `${raw}-${index}`, name: name || raw, issuer, date, url }
+      return {
+        key: `${raw}-${index}`,
+        name: name || raw,
+        issuer,
+        date,
+        url: sanitizeAchievementUrl(url),
+      }
     })
 }
 

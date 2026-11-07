@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 import pytest
@@ -289,9 +289,11 @@ async def test_verify_totp_success_without_challenge(
 
 @pytest.mark.asyncio
 async def test_challenge_ensure_not_locked_and_lock():
-    await _ensure_challenge_not_locked(
-        None, None, method="totp", limit=None, locale="en"
-    )
+    assert (
+        await _ensure_challenge_not_locked(
+            None, None, method="totp", limit=None, locale="en"
+        )
+    ) is None
 
 
 @pytest.mark.asyncio
@@ -558,10 +560,17 @@ async def test_consume_challenge_revoked_session(
 
 @pytest.mark.asyncio
 async def test_challenge_rate_limiting_disabled(db_session: AsyncSession):
-    # Verify line 59: return early if limit == 0 or window == 0
-    with patch.object(settings, "mfa_challenge_max_attempts", 0):
-        # Should return None without raising RateLimitExceeded or executing rate limits
-        await _enforce_challenge_rate_limit(user_id=uuid4(), challenge_type="totp")
+    # A zero attempt budget disables the limiter before any rate-limit call.
+    with patch(
+        "app.auth.mfa.challenge.enforce_rate_limit", new_callable=AsyncMock
+    ) as enforce_rate_limit:
+        with patch.object(settings, "mfa_challenge_max_attempts", 0):
+            result = await _enforce_challenge_rate_limit(
+                user_id=uuid4(), challenge_type="totp"
+            )
+
+    assert result is None
+    enforce_rate_limit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -226,14 +226,20 @@ describe("queryClient quota closure paths", () => {
     expect(shouldDehydrateQuery?.(getQuery(["ordinary", "failure"]))).toBe(false)
     expect(shouldDehydrateQuery?.(getQuery(["ordinary", "excluded"]))).toBe(false)
     expect(shouldDehydrateQuery?.(getQuery(["users", "me"]))).toBe(false)
-    expect(shouldDehydrateMutation?.({ state: { isPaused: true, status: "idle" } } as never)).toBe(
-      true
-    )
     expect(
-      shouldDehydrateMutation?.({ state: { isPaused: false, status: "pending" } } as never)
+      shouldDehydrateMutation?.({ options: {}, state: { isPaused: true, status: "idle" } } as never)
     ).toBe(true)
     expect(
-      shouldDehydrateMutation?.({ state: { isPaused: false, status: "success" } } as never)
+      shouldDehydrateMutation?.({
+        options: {},
+        state: { isPaused: false, status: "pending" },
+      } as never)
+    ).toBe(true)
+    expect(
+      shouldDehydrateMutation?.({
+        options: {},
+        state: { isPaused: false, status: "success" },
+      } as never)
     ).toBe(false)
   })
 

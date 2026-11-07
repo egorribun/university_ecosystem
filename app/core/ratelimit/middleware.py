@@ -13,9 +13,10 @@ from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
+from app.core.ratelimit.policy import uses_ip_bucket
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
-from app.core.ratelimit.utils import resolve_client_ip
+from app.core.ratelimit.utils import extract_user_id_for_ratelimit, resolve_client_ip
 from app.core.static import is_private_static_path
 
 if TYPE_CHECKING:
@@ -86,7 +87,7 @@ class RateLimitMiddleware:
             return
 
         path_limit, path_window, path_pattern = self._get_limits_for_path(path)
-        base_identifier = self._build_identifier(request)
+        base_identifier = self._build_identifier(request, path)
         identifier = (
             f"{base_identifier}:{path_pattern}" if path_pattern else base_identifier
         )
@@ -199,8 +200,20 @@ class RateLimitMiddleware:
                 )
         return self._limit, self._window_seconds, "default"
 
-    def _build_identifier(self, request: Request) -> str:
-        """Use client IP because this middleware has not authenticated credentials."""
+    def _build_identifier(self, request: Request, path: str | None = None) -> str:
+        """Key authenticated traffic by verified user, everything else by client IP.
+
+        The token is checked with the same signature and expiry verification as the
+        sensitive-route dependency (``extract_user_id_for_ratelimit``). Forged,
+        expired, malformed, non-access or non-UUID-subject tokens fall back to the
+        IP bucket, and so do login, register and password-recovery routes. Bucketing
+        only: revocation and account state are not consulted here.
+        """
+        request_path = request.url.path if path is None else path
+        if not uses_ip_bucket(request_path):
+            user_id = extract_user_id_for_ratelimit(request)
+            if user_id:
+                return f"user:{user_id}"
         return f"ip:{resolve_client_ip(request)}"
 
     # MED-W19: Paths that are always exempt from rate limiting (health/metrics).

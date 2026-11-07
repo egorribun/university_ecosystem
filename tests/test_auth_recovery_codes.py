@@ -16,7 +16,7 @@ async def unit_user_mfa(db_session: AsyncSession) -> User:
     email = f"user_{secrets.token_hex(4)}@example.com"
     user = User(
         email=email,
-        hashed_password=await get_password_hash("Ab1!Ab1!Ab1!"),
+        hashed_password=await get_password_hash("Qw8!zXc4Vb7@"),
         is_active=True,
     )
     db_session.add(user)

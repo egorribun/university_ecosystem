@@ -70,7 +70,7 @@ if exists {
 - The hub sends a `message_too_large` error frame to the sender client and terminates the frame processing pipeline (RZ-31-02).
 
 ### 3.2.1. Per-Client Inbound Rate Limit
-- Every inbound frame (including malformed or unknown ones) consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`). Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted frame costs a session-revocation check, so this limit also bounds Redis load.
+- Every frame that passes the 60 KB guard consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`) before JSON or message-type dispatch, including malformed or unknown frames. Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted client command (`join`, `leave`, or `heartbeat_ping`) must pass the fail-closed session-revocation check before dispatch; the limiter also bounds Redis load. The oversized-message rejection in §3.2 takes precedence over rate accounting.
 
 ### 3.3. Client Limits & Connection Pre-Check
 - `maxClients` limit must be validated in `HandleWebSocket` **before** executing the HTTP-to-WebSocket connection upgrade (TD-31-05).
@@ -82,7 +82,7 @@ if exists {
 - **Path**: Frontend clients connect to `/ws/chat`; Caddy rewrites the request path to `/ws`.
 - **Ticket Validation**: WebSocket connections require a one-time ticket (`ott:ws:<ticket>`) issued by the backend and validated against Redis using `REDIS_PASSWORD`.
 - **Allowed Origins**: `ALLOWED_ORIGINS` must include `http://localhost` (port 80 Caddy) in development and local compose configurations.
-- **Message Types**: Client-to-hub frames are limited to `join` and `leave` and must be validated against `allowedMessageTypes`. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
+- **Message Types**: Client-to-hub frames are limited to `join`, `leave`, and `heartbeat_ping`, validated against `allowedMessageTypes`. A `heartbeat_ping` must contain a `nonce` of exactly 32 ASCII lowercase hexadecimal characters. After the normal rate-limit and session-revocation checks, the hub may return a bounded `heartbeat_pong` with that nonce through the client's local send queue. Heartbeat is a liveness control only: it must not change room membership, publish to NATS, or enter a `chat.*` stream. `heartbeat_pong` and unknown client-to-hub types remain rejected. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
 
 ---
 
@@ -94,6 +94,8 @@ if exists {
 ### 4.2. Identity Assertion & HMAC Headers
 - The Gateway intercepts and verifies JWTs at the edge on `/api/v1/*`.
 - Once verified, the gateway signs the caller's identity claims into `X-Internal-Signature` via HMAC-SHA256 before proxying upstream to backend microservices.
+
+The global rate limiter checks the trusted-proxy-aware client IP before authentication. Routes using JWT `Validate` or `Optional` then apply a separate user bucket only when the verified claims and `user_id` agree; anonymous requests remain IP-limited. Keep both layers fail-closed. Authenticated requests may make two sequential Redis calls with the existing 50 ms deadline per call; both fallback buckets share the existing bounded in-memory store.
 
 ### 4.3. L1 Cache Stampede Prevention (XFetch)
 - In-memory L1 cache entries utilize XFetch probabilistic early refresh via `shouldRefreshProbabilistic()` (PERF-31-02).

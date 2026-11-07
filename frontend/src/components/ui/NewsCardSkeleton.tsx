@@ -43,7 +43,7 @@ export const NewsCardSkeleton = memo(({ featured }: NewsCardSkeletonProps) => {
           {featured && <Skeleton width="75%" height="0.875rem" aria-hidden />}
         </div>
 
-        <div className="mt-auto flex items-center gap-4 border-t border-glass-border/(--opacity-soft) pt-3">
+        <div className="mt-auto flex items-center gap-4 border-t border-glass-border/[calc(var(--opacity-soft)*100%)] pt-3">
           <Skeleton width="3rem" height="1rem" aria-hidden />
           <Skeleton width="3rem" height="1rem" aria-hidden />
         </div>

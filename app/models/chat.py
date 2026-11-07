@@ -10,16 +10,18 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
-from app.core.database import Base
+from app.core.chat_constants import CHAT_MAX_MESSAGE_LENGTH
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.mixins import UUID7PrimaryKeyMixin
 
@@ -128,6 +130,10 @@ class Chat(Base, UUID7PrimaryKeyMixin):
 
 class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "messages"
+    # AUD-269: per-chat timeline index restored by the MVP baseline.
+    __table_args__ = (
+        Index("idx_messages_chat_created", "chat_id", text("created_at DESC")),
+    )
 
     chat_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False

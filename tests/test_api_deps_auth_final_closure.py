@@ -353,7 +353,7 @@ def test_enforce_fresh_mfa_handles_zero_ttl_and_naive_timestamp():
     with patch(
         "app.api.deps.auth.settings", SimpleNamespace(mfa_step_up_ttl_seconds=0)
     ):
-        _enforce_fresh_mfa(request)
+        assert (_enforce_fresh_mfa(request)) is None
 
     request.state.active_session.mfa_verified_at = datetime.now(UTC).replace(
         tzinfo=None
@@ -361,4 +361,4 @@ def test_enforce_fresh_mfa_handles_zero_ttl_and_naive_timestamp():
     with patch(
         "app.api.deps.auth.settings", SimpleNamespace(mfa_step_up_ttl_seconds=300)
     ):
-        _enforce_fresh_mfa(request)
+        assert (_enforce_fresh_mfa(request)) is None

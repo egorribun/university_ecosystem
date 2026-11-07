@@ -109,6 +109,7 @@ async function verifyAnonymousRetry() {
               title: "Recovered public article",
               content: "Public article body",
               created_at: "2026-10-01T10:00:00Z",
+              image_url_optimized: null,
               likes_count: 0,
               comments_count: 0,
               is_liked: false,

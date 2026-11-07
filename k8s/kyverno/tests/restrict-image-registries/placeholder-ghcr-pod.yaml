@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: placeholder-ghcr-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0

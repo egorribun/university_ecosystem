@@ -127,8 +127,8 @@ export default function SpotifyConnect() {
   if (!user) return null
 
   return (
-    <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl transition-all duration-slow shadow-glass">
-      <div className="px-6 py-4 border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-subtle)">
+    <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-soft)*100%)] backdrop-blur-xl transition-all duration-slow shadow-glass">
+      <div className="px-6 py-4 border-b border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-subtle)*100%)]">
         <h3 className="text-lg font-black tracking-tight text-text-primary flex items-center gap-2">
           <Music className="h-5 w-5 text-(--color-spotify)" />
           {t("settings:integrations.spotify.title")}
@@ -148,7 +148,7 @@ export default function SpotifyConnect() {
             onClick={connect}
             variant="solid"
             disabled={actionLoading}
-            className="w-full h-12 rounded-2xl bg-none bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/(--opacity-dim)"
+            className="w-full h-12 rounded-2xl bg-none bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/[calc(var(--opacity-dim)*100%)]"
             loading={actionLoading}
           >
             {t("settings:integrations.spotify.connect")}
@@ -156,7 +156,7 @@ export default function SpotifyConnect() {
         ) : (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center rounded-full bg-(--color-spotify)/(--opacity-dim) border border-(--color-spotify)/(--opacity-dim) px-4 py-1.5 text-xs font-black text-(--color-spotify) tracking-tight">
+              <div className="inline-flex items-center rounded-full bg-(--color-spotify)/[calc(var(--opacity-dim)*100%)] border border-(--color-spotify)/[calc(var(--opacity-dim)*100%)] px-4 py-1.5 text-xs font-black text-(--color-spotify) tracking-tight">
                 {user.spotify_display_name ||
                   t("settings:integrations.spotify.status.connectedFallback")}
               </div>
@@ -176,7 +176,7 @@ export default function SpotifyConnect() {
                   variant="outline"
                   size="sm"
                   disabled={actionLoading}
-                  className="rounded-xl h-9 px-4 font-black border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle)"
+                  className="rounded-xl h-9 px-4 font-black border-error/[calc(var(--opacity-dim)*100%)] text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)]"
                   startIcon={<LogOut className="h-4 w-4" />}
                 >
                   {t("settings:integrations.spotify.disconnect")}
@@ -185,7 +185,7 @@ export default function SpotifyConnect() {
             </div>
 
             {now && (
-              <div className="rounded-2xl bg-(--bg-surface-raised)/(--opacity-soft) border border-glass-border/(--opacity-subtle) p-4 space-y-1 transition-all hover:bg-(--bg-surface-raised)/(--opacity-medium)">
+              <div className="rounded-2xl bg-(--bg-surface-raised)/[calc(var(--opacity-soft)*100%)] border border-glass-border/[calc(var(--opacity-subtle)*100%)] p-4 space-y-1 transition-all hover:bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)]">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <p className="text-base font-black tracking-tight text-text-primary truncate">
@@ -210,7 +210,7 @@ export default function SpotifyConnect() {
                       href={now.track_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="p-2 rounded-xl bg-(--color-spotify)/(--opacity-dim) text-(--color-spotify) hover:bg-(--color-spotify-hover)/(--opacity-dim) transition-colors"
+                      className="p-2 rounded-xl bg-(--color-spotify)/[calc(var(--opacity-dim)*100%)] text-(--color-spotify) hover:bg-(--color-spotify-hover)/[calc(var(--opacity-dim)*100%)] transition-colors"
                     >
                       <ExternalLink className="h-4 w-4" />
                     </a>

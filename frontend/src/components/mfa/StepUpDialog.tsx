@@ -2,6 +2,7 @@ import { createPortal } from "react-dom"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
+import useFocusTrap from "@/hooks/useFocusTrap"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/types/Auth"
 import { OtpEntry } from "./OtpEntry"
 
@@ -34,6 +35,11 @@ export const StepUpDialog = ({
   const [pending, setPending] = useState<PendingMfaState | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    escapeDeactivates: false,
+    returnFocus: true,
+  })
 
   const challenge: ChallengeMethod = pending
     ? (pending.methods.find((candidate) => candidate.method === pending.default_method) ??
@@ -153,7 +159,7 @@ export const StepUpDialog = ({
     <>
       <button
         type="button"
-        className="mobile-drawer-backdrop fixed inset-0 z-overlay flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
+        className="mobile-drawer-backdrop fixed inset-0 z-overlay flex items-center justify-center p-4 bg-black/[calc(var(--opacity-medium)*100%)] border-none w-full h-full text-left outline-none cursor-default"
         onClick={onClose}
         aria-label={t("common:buttons.close")}
         tabIndex={-1}
@@ -161,9 +167,11 @@ export const StepUpDialog = ({
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
+        aria-describedby="step-up-dialog-description"
         className="fixed inset-0 z-overlay flex items-center justify-center pointer-events-none"
       >
         <div
@@ -179,7 +187,7 @@ export const StepUpDialog = ({
           </h2>
           <div className="px-6 py-4">
             <div className="flex flex-col gap-6 mt-2">
-              <p className="text-sm text-(--text-secondary)">
+              <p id="step-up-dialog-description" className="text-sm text-(--text-secondary)">
                 {description ?? t("mfa.stepUp.description")}
               </p>
               {challenge ? (
@@ -200,7 +208,7 @@ export const StepUpDialog = ({
           <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
             <button
               onClick={onClose}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/(--opacity-subtle)"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/[calc(var(--opacity-subtle)*100%)]"
             >
               {t("common:buttons.cancel")}
             </button>

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { render, screen, fireEvent, act, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -78,7 +79,7 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return { ...actual, default: { get: mocks.apiGet } }
 })
 

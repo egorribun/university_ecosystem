@@ -52,12 +52,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         # Preserve fresh manual evidence; reuse only lock-bound dependency
         # packages across the eight stats workers.
         with:
@@ -144,12 +144,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         # Exact execution proof remains run-scoped; this cache contains only
         # dependencies selected by the committed lockfile.
         with:
@@ -217,11 +217,13 @@ jobs:
       - name: Run manual incremental mutmut (blocking, stats-derived budget)
         id: run_manual_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true'
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: |
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
-            --shard-id "${{ matrix.shard }}" \
+            --shard-id "${SHARD_ID}" \
             --num-shards 128 \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
@@ -230,12 +232,12 @@ jobs:
             --output /tmp/mutmut-shard.txt
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
-            echo "No changed mutants assigned to manual mutation shard ${{ matrix.shard }}/128."
+            echo "No changed mutants assigned to manual mutation shard ${SHARD_ID}/128."
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating manual shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          echo "Mutating manual shard ${SHARD_ID}/128: ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -531,7 +533,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python for artifact provenance selection
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -554,15 +556,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
+            --artifact-suffix '${{ github.sha }}' \
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
@@ -652,7 +654,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python for artifact provenance selection
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -675,15 +677,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
+            --artifact-suffix '${{ github.sha }}' \
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
@@ -764,7 +766,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python for artifact provenance selection
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -787,12 +789,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-validated-" \
             --artifact-suffix "" \

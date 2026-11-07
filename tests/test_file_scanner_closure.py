@@ -77,14 +77,34 @@ def test_check_health_returns_on_pong_and_wraps_client_error():
 async def test_scan_for_malware_upload_zero_size_returns_before_scan():
     upload = UploadFile(file=io.BytesIO(), filename="empty.bin")
 
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch(
+            "app.services.file_scanner._scan_upload_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan,
+    ):
         mock_settings.event_file_scanner_enabled = True
-        await scan_for_malware(upload, size_bytes=0)
+        assert (await scan_for_malware(upload, size_bytes=0)) is None
+    scan.assert_not_awaited()
 
 
 @pytest.mark.anyio
 async def test_scan_for_malware_ignores_unsupported_payload_type():
-    await scan_for_malware(object())  # type: ignore[arg-type]
+    with (
+        patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan_bytes,
+        patch(
+            "app.services.file_scanner._scan_upload_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan_upload,
+    ):
+        assert (await scan_for_malware(object())) is None  # type: ignore[arg-type]
+
+    scan_bytes.assert_not_awaited()
+    scan_upload.assert_not_awaited()
 
 
 @pytest.mark.anyio

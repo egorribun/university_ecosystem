@@ -115,7 +115,7 @@ const EventCardContent = ({
       )}
 
       {/* Footer — participant count + status */}
-      <div className="events-card-footer mt-auto flex items-center gap-3 pt-2 border-t border-glass-border/(--opacity-soft)">
+      <div className="events-card-footer mt-auto flex items-center gap-3 pt-2 border-t border-glass-border/[calc(var(--opacity-soft)*100%)]">
         <span className="flex items-center gap-1 text-xs text-(--text-secondary)">
           <Users size={12} />
           <span className="tabular-nums">{participantCount}</span>

@@ -50,6 +50,10 @@ def test_nightly_shard_keeps_complete_canonical_evidence_separate() -> None:
         "frontend/reports/mutation/shards/**/mutation.json\n"
         "frontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n"
     )
-    assert canonical["if"] == "${{ always() }}"
+    # AUD-455: a restored shard was already published by an earlier attempt of
+    # this run, so the current attempt must not publish it a second time.
+    assert canonical["if"] == (
+        "${{ always() && steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}"
+    )
     assert "progress" not in canonical["with"]["path"].lower()
     assert "heartbeat_watchdog" not in fresh["run"]

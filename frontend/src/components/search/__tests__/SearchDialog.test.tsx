@@ -216,13 +216,13 @@ describe("SearchDialog", () => {
     const items = document.querySelectorAll<HTMLButtonElement>("[data-search-item]")
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(items[0]).toHaveClass("bg-brand/(--opacity-subtle)")
+    expect(items[0]).toHaveClass("bg-brand/[calc(var(--opacity-subtle)*100%)]")
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" })
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(items[1]).toHaveClass("bg-brand/(--opacity-subtle)")
+    expect(items[1]).toHaveClass("bg-brand/[calc(var(--opacity-subtle)*100%)]")
     fireEvent.keyDown(input, { key: "ArrowUp" })
-    expect(items[0]).toHaveClass("bg-brand/(--opacity-subtle)")
+    expect(items[0]).toHaveClass("bg-brand/[calc(var(--opacity-subtle)*100%)]")
     fireEvent.keyDown(input, { key: "Enter" })
 
     expect(navigateMock).toHaveBeenCalledWith({ to: "/news/n1" })

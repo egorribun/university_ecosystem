@@ -429,6 +429,8 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         "!.gitignore",
     )
     required_safety_exclusions = (
+        ".temporal-bootstrap/",
+        "**/.temporal-bootstrap/",
         ".secrets/",
         "**/.secrets/",
         ".codex-uv-cache/",
@@ -668,9 +670,9 @@ def test_test_duration_updater_replace_omits_new_all_skipped_file() -> None:
     assert payload["default_duration_seconds"] == 1.0
 
 
-def test_test_duration_updater_replace_keeps_measured_partial_file_without_history() -> (
-    None
-):
+def test_test_duration_updater_replace_uses_measured_total_for_partial_file() -> None:
+    """A file with an executed case takes its measured total, skip time included."""
+
     from scripts.quality.update_test_durations import build_duration_payload
 
     with TemporaryDirectory() as temporary_directory:
@@ -688,10 +690,10 @@ def test_test_duration_updater_replace_keeps_measured_partial_file_without_histo
 
         payload = build_duration_payload(report_path, existing={}, replace=True)
 
-    assert payload["durations"] == {"tests/test_partial.py": 12.5}
+    assert payload["durations"] == {"tests/test_partial.py": 12.501}
 
 
-def test_test_duration_updater_preserves_estimate_for_partial_skips() -> None:
+def test_test_duration_updater_partial_skip_replaces_stale_estimate() -> None:
     from scripts.quality.update_test_durations import build_duration_payload
 
     with TemporaryDirectory() as temporary_directory:
@@ -714,7 +716,7 @@ def test_test_duration_updater_preserves_estimate_for_partial_skips() -> None:
 
         payload = build_duration_payload(report_path, existing=existing, replace=True)
 
-    assert payload["durations"] == {"tests/test_partial.py": 12.0}
+    assert payload["durations"] == {"tests/test_partial.py": 1.501}
 
 
 def test_test_duration_updater_rejects_negative_or_non_numeric_times() -> None:

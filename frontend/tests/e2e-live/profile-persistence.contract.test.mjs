@@ -12,12 +12,50 @@ const usersApiUrl = new URL("../../../app/api/users.py", import.meta.url)
 const usersSchemaUrl = new URL("../../../app/schemas/users.py", import.meta.url)
 const userMapperUrl = new URL("../../../app/schemas/mappers/user_mapper.py", import.meta.url)
 const usersModelUrl = new URL("../../../app/models/users.py", import.meta.url)
-const profileBoundsMigrationUrl = new URL(
-  "../../../alembic/versions/202602270002_bound_user_profile_string_columns.py",
+const profileBaselineUrl = new URL(
+  "../../../alembic/versions/202611020000_mvp_baseline.py",
   import.meta.url
 )
 const fixtureUrl = new URL("./fixtures.ts", import.meta.url)
 const packageUrl = new URL("../../package.json", import.meta.url)
+
+function assertProfileAboutStorageBound(source) {
+  // The frozen revision emits adjacent Python string literals. Decode only that
+  // literal subset, then inspect the named table rather than a whole-file match.
+  const blocks = source.matchAll(
+    /^ {4}\(\n((?: {8}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\n)+) {4}\),$/gmu
+  )
+  const statements = [...blocks].map((match) =>
+    match[1]
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const literal = line.trim()
+        if (literal.startsWith('"')) return JSON.parse(literal)
+        const value = literal.slice(1, -1)
+        assert.doesNotMatch(value, /\\(?![\\nrt'])/u)
+        return value.replace(/\\([\\nrt'])/gu, (_escape, character) => {
+          return { "\\": "\\", n: "\n", r: "\r", t: "\t", "'": "'" }[character]
+        })
+      })
+      .join("")
+  )
+  const tables = statements.filter((statement) =>
+    statement.startsWith("CREATE TABLE public.user_profiles (\n")
+  )
+  assert.equal(tables.length, 1, "the frozen baseline must emit one user_profiles table")
+  assert.ok(tables[0].endsWith("\n)"))
+  const columns = tables[0]
+    .slice("CREATE TABLE public.user_profiles (\n".length, -2)
+    .split("\n")
+    .map((column) => column.trim().replace(/,$/u, ""))
+  const about = columns.filter((column) => /^about(?:\s|$)/u.test(column))
+  assert.deepEqual(
+    about,
+    ["about character varying(4096)"],
+    "the persisted profile about field must enforce the same 4096-character boundary"
+  )
+}
 
 test("profile mutation tracking includes writes only within the users API domain", () => {
   const writeMethods = ["POST", "PUT", "PATCH", "DELETE"]
@@ -63,7 +101,7 @@ test("live profile persistence covers real self-edit and cleans only its synthet
     usersSchema,
     userMapper,
     usersModel,
-    profileBoundsMigration,
+    profileBaseline,
     fixtures,
     packageJson,
   ] = await Promise.all([
@@ -74,7 +112,7 @@ test("live profile persistence covers real self-edit and cleans only its synthet
     readFile(usersSchemaUrl, "utf8"),
     readFile(userMapperUrl, "utf8"),
     readFile(usersModelUrl, "utf8"),
-    readFile(profileBoundsMigrationUrl, "utf8"),
+    readFile(profileBaselineUrl, "utf8"),
     readFile(fixtureUrl, "utf8"),
     readFile(packageUrl, "utf8"),
   ])
@@ -93,7 +131,7 @@ test("live profile persistence covers real self-edit and cleans only its synthet
     "the owner response serializes the nested field consumed by the profile editor"
   )
   assert.match(usersModel, /about:\s*Mapped\[str \| None\]\s*=\s*mapped_column\(String\(4096\)/u)
-  assert.match(profileBoundsMigration, /\("about",\s*4096\)/u)
+  assertProfileAboutStorageBound(profileBaseline)
   assert.match(profilePage, /api\.put<User>\(["']\/users\/me["']/u)
   assert.match(profilePage, /full_name:\s*fullName/u)
   assert.match(
@@ -205,3 +243,22 @@ test("live profile persistence covers real self-edit and cleans only its synthet
     "the dedicated source contract is part of the live acceptance contract command"
   )
 })
+
+for (const [defect, before, after] of [
+  ["too-short", "    about character varying(4096),", "    about character varying(4095),"],
+  ["unbounded", "    about character varying(4096),", "    about text,"],
+  [
+    "wrong-table",
+    "CREATE TABLE public.user_profiles (",
+    "CREATE TABLE public.unrelated_profiles (",
+  ],
+]) {
+  test("profile storage guard rejects " + defect + " baseline DDL", async () => {
+    const source = await readFile(profileBaselineUrl, "utf8")
+    assertProfileAboutStorageBound(source)
+    assert.equal(source.split(before).length, 2, "the mutation must change exactly one declaration")
+    const mutated = source.replace(before, after)
+    assert.notEqual(mutated, source)
+    assert.throws(() => assertProfileAboutStorageBound(mutated), assert.AssertionError)
+  })
+}

@@ -214,6 +214,10 @@ describe("settings layout primitives", () => {
       view.unmount()
       await new Promise<void>((resolve) => queueMicrotask(resolve))
     })
+
+    expect(tablist.isConnected).toBe(false)
+    expect(document.activeElement).not.toBe(tablist)
+    expect(document.activeElement).toBe(document.body)
   })
 
   it("safely ignores deferred focus when the target tab is absent", async () => {

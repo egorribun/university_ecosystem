@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 import { RotateCcw, Trash2, Loader2 } from "lucide-react"
@@ -18,8 +18,12 @@ import {
 // queryKey to factory. queryKey shape PRESERVED EXACTLY for cache identity.
 // Closes W150 §Honesty #3 deferral for the AdminNotifications page.
 import {
+  ADMIN_DEAD_LETTER_MAX_OFFSET,
+  ADMIN_DEAD_LETTER_PAGE_SIZE,
   adminDeadLetterQueueQueryKey,
   adminDeadLetterQueueQueryOptions,
+  getAdminDeadLetterPageCount,
+  hasNextAdminDeadLetterPage,
 } from "@/api/hooks/adminNotifications"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { ReleaseAnnouncementCard } from "./components/ReleaseAnnouncementCard"
@@ -73,6 +77,7 @@ export function AdminNotificationsFeature() {
   const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deadLetterOffset, setDeadLetterOffset] = useState(0)
   const [purgeConfirmationIds, setPurgeConfirmationIds] = useState<string[] | null>(null)
   const purgeConfirmationLock = useRef(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -102,7 +107,13 @@ export function AdminNotificationsFeature() {
     []
   )
 
-  const listQuery = useQuery(adminDeadLetterQueueQueryOptions())
+  const listQuery = useQuery({
+    ...adminDeadLetterQueueQueryOptions({
+      limit: ADMIN_DEAD_LETTER_PAGE_SIZE,
+      offset: deadLetterOffset,
+    }),
+    placeholderData: keepPreviousData,
+  })
   const jobs = listQuery.data?.items ?? []
   const currentJobIds = new Set(jobs.map((job) => job.id))
   const selectedIds = Array.from(selected).filter((id) => currentJobIds.has(id))
@@ -260,8 +271,25 @@ export function AdminNotificationsFeature() {
   const isLoading = listQuery.isLoading
   const hasError = listQuery.isError
   const total = listQuery.data?.total ?? 0
+  const pageCount = getAdminDeadLetterPageCount(total)
+  const currentPage = Math.floor(deadLetterOffset / ADMIN_DEAD_LETTER_PAGE_SIZE) + 1
+  const maxBrowsableJobs = ADMIN_DEAD_LETTER_MAX_OFFSET + ADMIN_DEAD_LETTER_PAGE_SIZE
+
+  const canClampPage = listQuery.isSuccess && !listQuery.isPlaceholderData
+
+  useEffect(() => {
+    // Only current-page success can prove shrinkage; errors and the previous
+    // page's placeholder do not provide an authoritative total.
+    if (!canClampPage) return
+    const lastOffset = Math.min(
+      ADMIN_DEAD_LETTER_MAX_OFFSET,
+      Math.max(0, (pageCount - 1) * ADMIN_DEAD_LETTER_PAGE_SIZE)
+    )
+    if (deadLetterOffset > lastOffset) setDeadLetterOffset(lastOffset)
+  }, [canClampPage, deadLetterOffset, pageCount])
 
   const disableActions =
+    listQuery.isFetching ||
     selectedIds.length === 0 ||
     retryMutation.isPending ||
     purgeMutation.isPending ||
@@ -295,20 +323,21 @@ export function AdminNotificationsFeature() {
     const allSelected = jobs.every((job) => selected.has(job.id))
 
     return (
-      <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+      <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass">
         <div className="overflow-x-auto">
           <table
             className="w-full text-left border-collapse"
             aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}
           >
             <thead>
-              <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+              <tr className="border-b border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]">
                 <th scope="col" className="px-4 py-3">
                   <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                      className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                       checked={allSelected}
+                      disabled={listQuery.isFetching}
                       onChange={handleSelectAll}
                       aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
                     />
@@ -358,23 +387,24 @@ export function AdminNotificationsFeature() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
+            <tbody className="divide-y divide-glass-border/[calc(var(--opacity-subtle)*100%)]">
               {jobs.map((job) => {
                 const isSelected = selected.has(job.id)
                 return (
                   <tr
                     key={job.id}
                     className={cn(
-                      "transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
-                      isSelected && "bg-brand/(--opacity-subtle)"
+                      "transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
+                      isSelected && "bg-brand/[calc(var(--opacity-subtle)*100%)]"
                     )}
                   >
                     <td className="px-4 py-3">
                       <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                          className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           checked={isSelected}
+                          disabled={listQuery.isFetching}
                           onChange={() => toggleSelect(job.id)}
                           aria-label={
                             t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"
@@ -408,11 +438,12 @@ export function AdminNotificationsFeature() {
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={
+                            listQuery.isFetching ||
                             retryMutation.isPending ||
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
                           }
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/[calc(var(--opacity-subtle)*100%)] rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.retry")}
                           aria-label={t("admin:notifications.actions.retry")}
                         >
@@ -422,11 +453,12 @@ export function AdminNotificationsFeature() {
                           type="button"
                           onClick={() => handlePurgeRow(job.id)}
                           disabled={
+                            listQuery.isFetching ||
                             retryMutation.isPending ||
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
                           }
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)] rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.purge")}
                           aria-label={t("admin:notifications.actions.purge")}
                         >
@@ -445,7 +477,7 @@ export function AdminNotificationsFeature() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background/(--opacity-medium) py-8">
+    <div className="min-h-screen w-full bg-background/[calc(var(--opacity-medium)*100%)] py-8">
       <PageFadeIn>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-2">
@@ -530,7 +562,7 @@ export function AdminNotificationsFeature() {
                       return (
                         <div
                           key={topic}
-                          className="flex items-center gap-3 rounded-sm border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 transition-colors hover:bg-(--bg-surface)/(--opacity-soft)"
+                          className="flex items-center gap-3 rounded-sm border border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] px-4 py-3 transition-colors hover:bg-(--bg-surface)/[calc(var(--opacity-soft)*100%)]"
                         >
                           <input
                             type="checkbox"
@@ -543,7 +575,7 @@ export function AdminNotificationsFeature() {
                               )
                             }
                             disabled={topicsBusy}
-                            className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
+                            className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)]"
                           />
                           <label
                             htmlFor={`topic-${normalized}`}
@@ -597,7 +629,7 @@ export function AdminNotificationsFeature() {
                   onClick={handlePurgeSelected}
                   disabled={disableActions}
                   variant="outline"
-                  className="flex-1 border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle) sm:flex-initial"
+                  className="flex-1 border-error/[calc(var(--opacity-dim)*100%)] text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)] sm:flex-initial"
                 >
                   <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.purgeSelected")}
@@ -611,7 +643,53 @@ export function AdminNotificationsFeature() {
               </Alert>
             )}
 
+            {total > maxBrowsableJobs && (
+              <Alert severity="warning" className="mt-4">
+                {t("admin:notifications.paginationLimitReached", {
+                  available: maxBrowsableJobs,
+                  total,
+                })}
+              </Alert>
+            )}
             {renderContent()}
+            {total > ADMIN_DEAD_LETTER_PAGE_SIZE && (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <span aria-live="polite">
+                  {t("common:pagination.pageOf", { current: currentPage, total: pageCount })}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelected(new Set())
+                      setDeadLetterOffset((offset) =>
+                        Math.max(0, offset - ADMIN_DEAD_LETTER_PAGE_SIZE)
+                      )
+                    }}
+                    disabled={deadLetterOffset === 0 || listQuery.isFetching}
+                  >
+                    {t("common:pagination.prevPage")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelected(new Set())
+                      setDeadLetterOffset((offset) =>
+                        Math.min(ADMIN_DEAD_LETTER_MAX_OFFSET, offset + ADMIN_DEAD_LETTER_PAGE_SIZE)
+                      )
+                    }}
+                    disabled={
+                      !hasNextAdminDeadLetterPage(deadLetterOffset, jobs.length, total) ||
+                      listQuery.isFetching
+                    }
+                  >
+                    {t("common:pagination.nextPage")}
+                  </Button>
+                </div>
+              </div>
+            )}
           </SectionCard>
         </div>
       </PageFadeIn>

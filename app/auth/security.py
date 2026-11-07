@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -160,7 +161,7 @@ def _calculate_lookup_hash(input_data: str) -> str:
     """
     # nosec: B303 - SHA-1 is required by the external API
     return (
-        hashlib.sha1(  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+        hashlib.sha1(
             input_data.encode("utf-8"), usedforsecurity=False
         )  # codeql[py/weak-sensitive-data-hashing]
         .hexdigest()
@@ -256,7 +257,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
             "External breach lookup failed (fail-%s): %s",
             "open" if fail_open else "closed",
             exc,
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        )
         if fail_open:
             return
         raise ValueError(
@@ -266,27 +267,34 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
     if response.status_code != httpx.codes.OK:
         _logger.warning(
             "External breach lookup returned status %s", response.status_code
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        )
         if fail_open:
             return
         raise ValueError(
             translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
         )
 
-    for line in response.text.splitlines():
-        hashed_suffix, _, count = line.partition(":")
-        if hashed_suffix.upper() == suffix:
-            # LOW-W19: guard against malformed HIBP response lines where count
-            # is not a valid integer (e.g. empty string after stripping padding).
-            try:
-                hit_count = int(count.strip() or 0)
-            except ValueError:
-                hit_count = 0
-            if hit_count > 0:
-                raise ValueError(
-                    translate("errors.auth.password_policy_compromised", locale=locale)
-                )
-            break
+    lines = response.text.splitlines()
+    malformed = not lines
+    for line in lines:
+        record = re.fullmatch(r"([0-9A-Fa-f]{35}):([0-9]+)", line)
+        if record is None:
+            malformed = True
+            continue
+        hashed_suffix, count = record.groups()
+        # Zero-count records are padding; a later matching record may still
+        # contain a positive count. Avoid integer conversion limits on counts.
+        if hashed_suffix.upper() == suffix and count.strip("0"):
+            raise ValueError(
+                translate("errors.auth.password_policy_compromised", locale=locale)
+            )
+
+    if malformed:
+        _logger.warning("External breach lookup returned a malformed response")
+        if not fail_open:
+            raise ValueError(
+                translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
+            )
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
@@ -374,7 +382,7 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
 
 def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
     """Synchronous verification (CPU blocking)."""
-    if hashed_password.startswith("$argon2"):
+    if hashed_password.startswith("$argon2id$"):
         try:
             argon2_hasher.verify(hashed_password, plain_password)
             return True
@@ -382,15 +390,16 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
             return False
         except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — unknown argon2 error returns False (reviewed TD-27-04)
             # TD-W8-01: Hash format is invalid or argon2 raised an unexpected error.
-            # Do NOT fall back to bcrypt — a malformed $argon2 hash is not a bcrypt
+            # Do NOT fall back to bcrypt — a malformed $argon2id$ hash is not a
+            # bcrypt
             # hash, and bcrypt silently ignores unrecognised prefixes, meaning a
             # crafted argon2-prefixed string could pass bcrypt verification.
             # Return False: caller gets an authentication failure (safe default).
             _logger.warning(
-                "argon2 verify raised unexpected error for $argon2-prefix hash — "
+                "argon2 verify raised unexpected error for $argon2id$ hash — "
                 "returning False (no bcrypt fallback): %s",
                 type(exc).__name__,
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            )
             return False
     _warn_unsupported_password_hash()
     return False
@@ -436,7 +445,7 @@ def verify_and_update_password_sync(
 ) -> tuple[bool, str | None]:
     """Synchronous verify and update (CPU blocking)."""
     # Check if we should upgrade/verify with native argon2 first
-    if hashed_password.startswith("$argon2"):
+    if hashed_password.startswith("$argon2id$"):
         try:
             argon2_hasher.verify(hashed_password, plain_password)
             # Check if rehash is needed
@@ -449,7 +458,7 @@ def verify_and_update_password_sync(
             _logger.warning(
                 "argon2 verify-and-update failed closed: %s",
                 type(exc).__name__,
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            )
             return False, None
 
     _warn_unsupported_password_hash()
@@ -621,18 +630,14 @@ def decode_token(token: str) -> dict[str, Any] | None:
         kid_secret = registry.get(kid)
         if not kid_secret:
             # kid present but unknown — reject immediately; do not fall back.
-            _logger.warning(
-                "JWT rejected", reason="unknown kid", kid=kid
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            _logger.warning("JWT rejected", reason="unknown kid", kid=kid)
             return None
         candidates = [kid_secret]
     else:
         # RZ-10 (audit 2026-03-04) fix:
         # Tokens without `kid` are immediately rejected.
         # This closes the O(N) timing side-channel attack vector.
-        _logger.warning(
-            "JWT rejected", reason="missing kid header"
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        _logger.warning("JWT rejected", reason="missing kid header")
         return None
 
     for secret in candidates:
@@ -656,7 +661,7 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",
                             exc,
-                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        )
                         continue
                 else:
                     verification_key = secret
@@ -670,11 +675,13 @@ def decode_token(token: str) -> dict[str, Any] | None:
                     # Previously only exp/iat/sub/jti were required; a token without
                     # an aud claim would be accepted even when audience validation is
                     # configured. Now any token missing aud is explicitly rejected.
-                    "require": ["exp", "iat", "sub", "jti", "aud"],
+                    # AUD-354: Require the configured issuer claim as well.
+                    "require": ["exp", "iat", "sub", "jti", "aud", "iss"],
                 },
                 # Direct access to settings field — never use getattr fallback.
                 # (RZ-NEW-003: getattr fallback hides misconfiguration at startup.)
                 audience=settings.jwt_audience,
+                issuer=settings.jwt_issuer,
             )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:

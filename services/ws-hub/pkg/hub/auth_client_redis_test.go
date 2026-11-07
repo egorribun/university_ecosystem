@@ -36,15 +36,17 @@ func newMiniredisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 }
 
 func TestStartEviction_NoOpIsSafe(t *testing.T) {
-	c := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
-	c.StartEviction(context.Background()) // no-op since Wave 7; just exercises it
+	c := mustNewTestAuthClient(t, "http://localhost", "", nil)
+	// StartEviction is a documented no-op because the LRU bounds its own memory.
+	// This control asserts only that the compatibility hook remains safe to call.
+	require.NotPanics(t, func() { c.StartEviction(context.Background()) })
 }
 
 func TestCanJoinRoom_RedisL2Hit(t *testing.T) {
 	mr, rc := newMiniredisClient(t)
 	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))
 
-	c := NewInternalAPIAuthClientWithToken("http://unused.invalid", "", rc)
+	c := mustNewTestAuthClient(t, "http://unused.invalid", "", rc)
 	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom),
 		"L2 hit of \"1\" must allow without an HTTP call")
 
@@ -61,7 +63,7 @@ func TestCanJoinRoom_SlowPathWritesRedisL2(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 
 	// The slow path must write the decision back to L2.
@@ -75,7 +77,7 @@ func TestInvalidate_SingleRoomDeletesRedisL2(t *testing.T) {
 	key := "auth:perms:" + rdUser + ":" + rdRoom
 	require.NoError(t, mr.Set(key, "1"))
 
-	c := NewInternalAPIAuthClientWithToken("http://localhost", "", rc)
+	c := mustNewTestAuthClient(t, "http://localhost", "", rc)
 	c.Invalidate(rdUser, rdRoom)
 	assert.False(t, mr.Exists(key), "single-room invalidation must delete the L2 key")
 }
@@ -87,7 +89,7 @@ func TestInvalidate_WildcardDeletesAllUserRedisL2(t *testing.T) {
 	require.NoError(t, mr.Set(k1, "1"))
 	require.NoError(t, mr.Set(k2, "0"))
 
-	c := NewInternalAPIAuthClientWithToken("http://localhost", "", rc)
+	c := mustNewTestAuthClient(t, "http://localhost", "", rc)
 	c.Invalidate(rdUser, "") // wildcard: SCAN + DEL every auth:perms:<user>:* key
 
 	assert.False(t, mr.Exists(k1))
@@ -105,7 +107,7 @@ func TestRefreshRoomAuthorizationBypassesStaleCaches(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	c.cache.Add(rdUser+":"+rdRoom, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Minute)})
 
 	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
@@ -124,7 +126,7 @@ func TestRefreshRoomAuthorizationRejectsInvalidIdentifiers(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+	client := mustNewTestAuthClient(t, server.URL, "", nil)
 	for _, testCase := range []struct {
 		name   string
 		userID string
@@ -154,7 +156,7 @@ func TestRefreshRoomAuthorizationDoesNotConfirmFailedRedisInvalidation(t *testin
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	mr.Close()
 
 	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
@@ -194,7 +196,7 @@ func TestCanJoinRoom_TransportFailureDoesNotCacheAndRecovers(t *testing.T) {
 		return client.Do(req)
 	}
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 	assertRoomAuthorizationNotCached(t, mr, c, rdUser, rdRoom)
 
@@ -217,7 +219,7 @@ func TestCanJoinRoom_HTTP5xxDoesNotCacheAndRecovers(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 	assertRoomAuthorizationNotCached(t, mr, c, rdUser, rdRoom)
 
@@ -236,7 +238,7 @@ func TestCanJoinRoom_OpenCircuitFailureDoesNotCache(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	for i := 0; i < 11; i++ {
 		allowed, err := c.doRequestWithBreakerResult(context.Background(), rdUser, rdRoom)
 		require.Error(t, err)
@@ -258,7 +260,7 @@ func TestCanJoinRoom_HealthyForbiddenDenialIsCached(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c := mustNewTestAuthClient(t, server.URL, "", rc)
 	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 
 	entry, ok := c.cache.Get(rdUser + ":" + rdRoom)

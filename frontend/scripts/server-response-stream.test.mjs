@@ -134,3 +134,20 @@ test("the production frontend image uses one immutable Node runtime across stage
     ["base", "runtime"]
   )
 })
+
+test("the production frontend runtime removes npm tooling it does not use", async () => {
+  const dockerfile = await readFile(new URL("../../frontend.Dockerfile", import.meta.url), "utf8")
+  const runtimeStageMarker = /^FROM node:24\.21\.0-alpine@sha256:[a-f0-9]{64} AS runtime$/mu
+  const runtimeStageMatch = runtimeStageMarker.exec(dockerfile)
+
+  assert.ok(runtimeStageMatch, "the production runtime must use the pinned Node base image")
+  const runtimeStage = dockerfile.slice(runtimeStageMatch.index + runtimeStageMatch[0].length)
+
+  assert.match(
+    runtimeStage,
+    /^RUN rm -rf \/usr\/local\/lib\/node_modules\/npm \/usr\/local\/bin\/npm \/usr\/local\/bin\/npx$/mu
+  )
+  const startupInstructions = runtimeStage.match(/^(?:CMD|ENTRYPOINT)\s+.*$/gmu) ?? []
+  assert.deepEqual(startupInstructions, ['CMD ["node", "scripts/server-prod.mjs"]'])
+  assert.doesNotMatch(startupInstructions.join("\n"), /\b(?:npm|npx)\b/u)
+})

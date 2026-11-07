@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from starlette.responses import Response
 
 from app.api.ws.serializers import serialize_message
 from app.core import static as static_module
@@ -224,14 +227,65 @@ def test_path_segments_normalize_backslash_separators_before_splitting(
     assert is_private_attachment_path("/static\\chat_uploads\\chat_7\\report.pdf")
 
 
-def test_private_attachment_response_headers_cover_mime_fallback() -> None:
-    pdf = private_attachment_response(b"pdf", "report.pdf")
-    assert pdf.media_type == "application/pdf"
-    assert pdf.headers["cache-control"] == "private, no-store"
-    assert pdf.headers["content-disposition"] == 'inline; filename="report.pdf"'
-    assert pdf.headers["x-content-type-options"] == "nosniff"
-    binary = private_attachment_response(b"bytes", "archive.unknownextension")
-    assert binary.media_type == "application/octet-stream"
+async def _capture_http_response(
+    response: Response,
+) -> tuple[int, dict[str, str], bytes]:
+    messages: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        messages.append(message)
+
+    await response({"type": "http"}, receive, send)
+    start = next(
+        message for message in messages if message["type"] == "http.response.start"
+    )
+    headers = {
+        name.decode("latin-1").lower(): value.decode("latin-1")
+        for name, value in start["headers"]
+    }
+    body = b"".join(
+        message.get("body", b"")
+        for message in messages
+        if message["type"] == "http.response.body"
+    )
+    return start["status"], headers, body
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_content_type", "expected_disposition"),
+    [
+        ("photo.jpg", "image/jpeg", "inline"),
+        ("photo.jpeg", "image/jpeg", "inline"),
+        ("photo.png", "image/png", "inline"),
+        ("photo.webp", "image/webp", "inline"),
+        ("photo.gif", "image/gif", "inline"),
+        ("report.pdf", "application/pdf", "attachment"),
+        ("notes.txt", "text/plain; charset=utf-8", "attachment"),
+        ("page.html", "text/html; charset=utf-8", "attachment"),
+        ("diagram.svg", "image/svg+xml", "attachment"),
+        ("archive.unknownextension", "application/octet-stream", "attachment"),
+    ],
+)
+def test_private_attachment_response_sends_safe_http_headers(
+    filename: str, expected_content_type: str, expected_disposition: str
+) -> None:
+    status, headers, body = asyncio.run(
+        _capture_http_response(
+            private_attachment_response(b"attachment bytes", filename)
+        )
+    )
+
+    assert status == 200
+    assert headers["content-type"] == expected_content_type
+    assert headers["content-disposition"] == (
+        f'{expected_disposition}; filename="{filename}"'
+    )
+    assert headers["cache-control"] == "private, no-store"
+    assert headers["x-content-type-options"] == "nosniff"
+    assert body == b"attachment bytes"
 
 
 def test_static_private_path_selector_and_blocked_response() -> None:

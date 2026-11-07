@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.2",
+  "catalog_version": "1.1.3",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -441,7 +441,7 @@
           "check_name_template": "Auto Merge Dependabot Patches",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "github.actor == 'dependabot[bot]'",
+          "guard": "github.event.pull_request.user.id == 49699333",
           "needs": [],
           "artifacts": [],
           "retry_policy": {
@@ -1134,6 +1134,23 @@
             "review_required": false
           }
         },
+        "frontend-dist-attestation": {
+          "profile": "advisory",
+          "check_name_template": "Frontend Dist Attestation",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ github.event_name == 'push' }}",
+          "needs": [
+            "frontend-tests"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
         "e2e-wasm-build": {
           "profile": "required-pr-main",
           "check_name_template": "E2E WASM Build",
@@ -1193,16 +1210,19 @@
           "check_name_template": "SLSA Provenance Dry-Run",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
-          "guard": "workflow trigger",
+          "guard": "${{ always() && !cancelled() }}",
           "needs": [
-            "pre-commit-check"
+            "pre-commit-check",
+            "frontend-tests",
+            "frontend-dist-attestation"
           ],
           "artifacts": [],
           "retry_policy": {
-            "mode": "none",
+            "mode": "review-required",
             "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "AUD-378: bounded retry of the SLSA attestation verify step, three attempts with 120s timeouts and backoff. It retries any nonzero exit, not only transient Rekor timeouts. Each failed attempt is reported as a warning and the final failure fails the job. Prove transient-only classification before relaxing this entry."
           }
         },
         "alembic-migrations": {
@@ -1273,6 +1293,34 @@
             "classifier": "not_applicable",
             "review_required": false,
             "notes": "No automatic retry: the pinned Trivy action exposes no typed failure reason. Rerun the workflow manually for suspected transient runner or registry failures."
+          }
+        },
+        "docker-security-scan-additional": {
+          "profile": "internal",
+          "check_name_template": "Trivy Image Scan - ${{ matrix.image_name }}",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [
+            {
+              "name_pattern": "trivy-image-${{ matrix.image_name }}-sarif",
+              "path_pattern": "trivy-${{ matrix.image_name }}.sarif",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "Five additional source-built runtime images are scanned on pull requests; CI Success enforces this matrix result without adding a branch-protection context."
+          },
+          "matrix_governance": {
+            "max_parallel": 3
           }
         },
         "helm-validate": {
@@ -1471,7 +1519,7 @@
             },
             {
               "name_pattern": "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}",
-              "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/api-selection.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
+              "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nartifacts/coverage/node-actions/lcov.info\nartifacts/coverage/node-actions/coverage-final.json\nartifacts/coverage/node-actions/coverage-provenance.json\nartifacts/coverage/node-actions/coverage-source-snapshot.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/api-selection.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
               "required": false,
               "provenance": "run_id_attempt"
             }
@@ -1544,7 +1592,7 @@
           "check_name_template": "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "workflow trigger",
+          "guard": "${{ always() }}",
           "needs": [
             "backend-tests"
           ],
@@ -1561,7 +1609,7 @@
           "check_name_template": "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "workflow trigger",
+          "guard": "${{ always() }}",
           "needs": [
             "backend-tests"
           ],
@@ -1593,6 +1641,7 @@
             "openapi-verify",
             "verify-runtime-reqs",
             "docker-security-scan",
+            "docker-security-scan-additional",
             "helm-validate",
             "db-migration-gate",
             "go-fuzz",
@@ -1616,7 +1665,11 @@
             "coverage-policy-gate",
             "codecov-upload",
             "quality-inventory-check",
-            "kyverno-test"
+            "kyverno-test",
+            "caddy-emitted-log-proof",
+            "windows-live-proofs",
+            "semgrep-sast",
+            "live-realtime-visual"
           ],
           "artifacts": [
             {
@@ -1626,6 +1679,72 @@
               "provenance": "run_id_attempt"
             }
           ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "semgrep-sast": {
+          "profile": "required-pr-main",
+          "check_name_template": "Semgrep SAST",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "caddy-emitted-log-proof": {
+          "profile": "required-pr-main",
+          "check_name_template": "Caddy emitted-log redaction proof",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "windows-live-proofs": {
+          "profile": "required-pr-main",
+          "check_name_template": "Windows-only proofs (AUD-332, AUD-436)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "live-realtime-visual": {
+          "profile": "required-pr",
+          "check_name_template": "live-realtime-visual",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}",
+          "needs": [],
+          "artifacts": [],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -1685,11 +1804,11 @@
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/core/nats_broker.py\",\"pyproject.toml\",\"uv.lock\",\"app/api/ws/**\",\"app/api/websocket.py\",\"app/services/chat/command_service.py\",\"app/services/chat/notification_service.py\",\"frontend/src/api/schemas/wsMessage.ts\",\"frontend/src/api/schemas/messageLimits.ts\",\"frontend/package.json\",\"frontend/package-lock.json\",\"frontend/scripts/verify-backend-ws-wire.mjs\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"services/ws-hub/pkg/hub/**\",\"services/ws-hub/pkg/hub/aud320_python_contract_test.go\",\"services/ws-hub/go.mod\",\"services/ws-hub/go.sum\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_ws_message_contract.py\",\"tests/contracts/pacts/ws-hub-university-backend.json\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "pull_request",
-          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/core/nats_broker.py\",\"pyproject.toml\",\"uv.lock\",\"app/api/ws/**\",\"app/api/websocket.py\",\"app/services/chat/command_service.py\",\"app/services/chat/notification_service.py\",\"frontend/src/api/schemas/wsMessage.ts\",\"frontend/src/api/schemas/messageLimits.ts\",\"frontend/package.json\",\"frontend/package-lock.json\",\"frontend/scripts/verify-backend-ws-wire.mjs\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"services/ws-hub/pkg/hub/**\",\"services/ws-hub/pkg/hub/aud320_python_contract_test.go\",\"services/ws-hub/go.mod\",\"services/ws-hub/go.sum\",\"tests/contracts/conftest.py\",\"tests/contracts/test_pact_artifacts.py\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_ws_message_contract.py\",\"tests/contracts/pacts/ws-hub-university-backend.json\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/**\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "workflow_dispatch",
@@ -1894,8 +2013,14 @@
           ],
           "artifacts": [
             {
-              "name_pattern": "nuclei-results-${{ github.run_id }}",
+              "name_pattern": "nuclei-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
               "path_pattern": "nuclei-results.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            },
+            {
+              "name_pattern": "nuclei-sarif-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "nuclei-results.sarif",
               "required": false,
               "provenance": "run_id_attempt"
             }
@@ -1916,7 +2041,14 @@
           "needs": [
             "verify-trusted-ref"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "zap-sarif-provenance.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -2393,7 +2525,7 @@
           "profile": "manual",
           "check_name_template": "Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8",
           "expected_timeout_minutes": 25,
-          "expected_duration_seconds": 1500,
+          "expected_duration_seconds": 1800,
           "guard": "${{ inputs.backend_scope == 'incremental' }}",
           "needs": [],
           "artifacts": [
@@ -2764,6 +2896,12 @@
           ],
           "artifacts": [
             {
+              "name_pattern": "${{ steps.validate_cached_shard.outputs.artifact_name }}",
+              "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "none"
+            },
+            {
               "name_pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
               "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
               "required": false,
@@ -2968,7 +3106,14 @@
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "nightly-s3-chaos-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/chaos-s3.xml",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
@@ -2999,7 +3144,14 @@
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "nightly-chaos-resilience-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/chaos-resilience.xml",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
@@ -3058,6 +3210,7 @@
             "go-integration",
             "container-integration-cells",
             "browser-matrix",
+            "live-realtime-visual",
             "schemathesis-api-tests",
             "chaos-tests",
             "chaos-loadtest-orchestrator",
@@ -3066,6 +3219,21 @@
             "kyverno-test",
             "miri"
           ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "live-realtime-visual": {
+          "profile": "nightly",
+          "check_name_template": "Full-stand realtime and visual E2E",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3541,7 +3709,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"run-e2e\":{\"default\":false,\"description\":\"Run Playwright E2E tests\",\"required\":false,\"type\":\"boolean\"},\"run-lighthouse\":{\"default\":false,\"description\":\"Run Lighthouse audits\",\"required\":false,\"type\":\"boolean\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact archive digest\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Optional same-run server-issued WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact name\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Frontend directory\",\"required\":false,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"run-e2e\":{\"default\":false,\"description\":\"Run Playwright E2E tests\",\"required\":false,\"type\":\"boolean\"},\"run-lighthouse\":{\"default\":false,\"description\":\"Run Lighthouse audits\",\"required\":false,\"type\":\"boolean\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact archive digest\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Optional same-run server-issued WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact name\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Frontend directory\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"bundle-artifact-digest\":{\"description\":\"SHA-256 digest of the production frontend-dist archive\",\"value\":\"${{ jobs.build.outputs.bundle-artifact-digest }}\"},\"bundle-artifact-id\":{\"description\":\"GitHub artifact ID of the production frontend-dist archive\",\"value\":\"${{ jobs.build.outputs.bundle-artifact-id }}\"}}}"
         }
       ],
       "jobs": {
@@ -3675,6 +3843,18 @@
             "wasm-build"
           ],
           "artifacts": [
+            {
+              "name_pattern": "frontend-maplibre-metadata-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
+              "name_pattern": "frontend-final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "frontend-dist",
               "path_pattern": "${{ inputs.working-directory }}/dist",
@@ -3882,13 +4062,55 @@
       }
     },
     {
+      "path": ".github/workflows/reusable-live-realtime-visual.yml",
+      "name": "Full-stand realtime and visual E2E",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "live-realtime-visual": {
+          "profile": "internal",
+          "check_name_template": "Full-stand realtime and visual E2E",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "full-stand-realtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/aud429-realtime-summary.txt",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
+              "name_pattern": "full-stand-visual-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ env.VISUAL_OUT_DIR }}/**/*.png",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Retry marker appears in the no-retries diagnostic; review source behavior before changing this conservative classification."
+          }
+        }
+      }
+    },
+    {
       "path": ".github/workflows/reusable-security-audit.yml",
       "name": "Security Audit",
       "owner": "@egorribun",
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version for npm audit\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for pip-audit\",\"required\":false,\"type\":\"string\"},\"run-npm-audit\":{\"default\":true,\"description\":\"Run npm audit for Node.js dependencies\",\"required\":false,\"type\":\"boolean\"},\"run-pip-audit\":{\"default\":true,\"description\":\"Run pip-audit for Python dependencies\",\"required\":false,\"type\":\"boolean\"}}}"
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24.21.0\",\"description\":\"Node.js version for npm audit\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for pip-audit\",\"required\":false,\"type\":\"string\"},\"run-npm-audit\":{\"default\":true,\"description\":\"Run npm audit for Node.js dependencies\",\"required\":false,\"type\":\"boolean\"},\"run-pip-audit\":{\"default\":true,\"description\":\"Run pip-audit for Python dependencies\",\"required\":false,\"type\":\"boolean\"}}}"
         }
       ],
       "jobs": {
@@ -3928,7 +4150,7 @@
           "profile": "internal",
           "check_name_template": "Node.js Dependency Audit",
           "expected_timeout_minutes": 25,
-          "expected_duration_seconds": 1500,
+          "expected_duration_seconds": 1800,
           "guard": "${{ inputs.run-npm-audit }}",
           "needs": [
             "policy-integrity"
@@ -4248,7 +4470,7 @@
           "check_name_template": "Vulnerability gate (CRITICAL/HIGH, main)",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "guard": "${{ always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
           "needs": [
             "sbom-python",
             "sbom-go",
@@ -4308,6 +4530,49 @@
       }
     },
     {
+      "path": ".github/workflows/internal-mtls-kind.yml",
+      "name": "Internal mTLS kind proof",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"backend.Dockerfile\",\"backend.Dockerfile.dockerignore\",\".dockerignore\",\"app/**\",\"native/**\",\"alembic/**\",\"alembic.ini\",\"pyproject.toml\",\"uv.lock\",\"go.mod\",\"go.sum\",\"gen/go/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"k8s/README.md\",\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"17 3 * * *\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "aud373-kind-proof": {
+          "profile": "advisory",
+          "check_name_template": "AUD-373 kind SPIFFE mTLS proof",
+          "expected_timeout_minutes": 40,
+          "expected_duration_seconds": 2400,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "aud373-internal-mtls-kind-diagnostics",
+              "path_pattern": "${{ runner.temp }}/aud373-diagnostics",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
       "path": ".github/workflows/scorecard.yml",
       "name": "OpenSSF Scorecard",
       "owner": "@egorribun",
@@ -4333,7 +4598,14 @@
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "scorecard-results-${{ github.run_id }}",
+              "path_pattern": "scorecard-results.json\nscorecard-results.sarif\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -4438,7 +4710,14 @@
           "needs": [
             "verify-default-branch-dispatch"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "sqlmap-output/\nsqlmap-openapi-output/\nsqlmap-evidence/receipt.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
@@ -4739,6 +5018,12 @@
           "guard": "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           "needs": [],
           "artifacts": [
+            {
+              "name_pattern": "browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "core-live-receipt-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "core-live-acceptance-receipt.json",

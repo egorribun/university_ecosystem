@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("react")
 import { act, render, screen } from "@testing-library/react"
 import type { HTMLAttributes, ReactNode } from "react"
 import { hydrateRoot } from "react-dom/client"
@@ -9,7 +10,7 @@ const reactSubscriptions = vi.hoisted(() => ({
 }))
 
 vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useSyncExternalStore: <Snapshot,>(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import {
   useInfiniteQuery,
   useMutation,
@@ -8,7 +8,12 @@ import {
 
 import { logWarning } from "@/app/logger"
 import { resolveNotificationAppPath } from "@/notifications/contract"
-import { getCurrentPushUserId } from "@/push/pushMessageBus"
+import {
+  getCurrentPushUserId,
+  getCurrentPushIdentitySnapshot,
+  subscribeToPushIdentity,
+  type PushIdentitySnapshot,
+} from "@/push/pushMessageBus"
 import {
   clearNotifications as clearNotificationsRequest,
   fetchNotificationsList,
@@ -34,6 +39,76 @@ const NOTIFICATIONS_QUERY_KEY = ["notifications", "list"] as const
 
 type NotificationPages = InfiniteData<NormalizedNotificationsResponse, string | undefined>
 
+type MutationBinding = {
+  ownerId: string
+  ownerRevision: number
+  failureKey: string
+  attemptId: number
+  mutationSequence: number
+}
+
+type MarkReadVariables = MutationBinding & {
+  operation: "mark-read"
+  notificationId: string
+}
+
+type MarkAllVariables = MutationBinding & { operation: "mark-all" }
+type ClearVariables = MutationBinding & { operation: "clear" }
+type NotificationMutationVariables = MarkReadVariables | MarkAllVariables | ClearVariables
+
+type MutationWatermarks = {
+  markAllSequence: number
+  clearSequence: number
+}
+
+export type NotificationMutationFailure = NotificationMutationVariables
+
+type MutationTarget =
+  | { operation: "mark-read"; notificationId: string }
+  | { operation: "mark-all" }
+  | { operation: "clear" }
+
+class NotificationAccountChangedError extends Error {
+  constructor() {
+    super("The notification account changed before the action completed")
+    this.name = "NotificationAccountChangedError"
+  }
+}
+
+class NotificationMutationSupersededError extends Error {
+  constructor() {
+    super("The notification action is no longer current")
+    this.name = "NotificationMutationSupersededError"
+  }
+}
+
+const assertMutationOwner = (variables: MutationBinding): void => {
+  const activeIdentity = getCurrentPushIdentitySnapshot()
+  if (
+    variables.ownerId !== activeIdentity.userId ||
+    variables.ownerRevision !== activeIdentity.revision
+  ) {
+    throw new NotificationAccountChangedError()
+  }
+}
+
+const getMutationFailureKey = (
+  ownerId: string,
+  ownerRevision: number,
+  target: MutationTarget
+): string =>
+  JSON.stringify([
+    ownerId,
+    ownerRevision,
+    target.operation,
+    "notificationId" in target ? target.notificationId : null,
+  ])
+
+const SERVER_PUSH_IDENTITY: PushIdentitySnapshot = {
+  userId: null,
+  revision: 0,
+}
+
 // Keeps the first occurrence: a later page can repeat an item after new arrivals shift the pages.
 const uniqueById = (items: NotificationItem[]) => {
   const seen = new Set<string>()
@@ -58,7 +133,153 @@ function flattenNotificationPages(data: NotificationPages): NormalizedNotificati
 
 export function useNotifications() {
   const qc = useQueryClient()
+  const identity = useSyncExternalStore(
+    subscribeToPushIdentity,
+    getCurrentPushIdentitySnapshot,
+    () => SERVER_PUSH_IDENTITY
+  )
+  const ownerId = identity.userId
+  const ownerRevision = identity.revision
+  const [mutationFailuresByKey, setMutationFailuresByKey] = useState(
+    () => new Map<string, NotificationMutationFailure>()
+  )
+  const mutationAttempts = useRef(new Map<string, number>())
+  const mutationSequence = useRef(0)
+  const mutationWatermarks = useRef(new Map<string, MutationWatermarks>())
   const seenLiveNotificationIds = useRef(new Set<string>())
+  const mutationFailures = Array.from(mutationFailuresByKey.values()).filter(
+    (failure) => failure.ownerId === ownerId && failure.ownerRevision === ownerRevision
+  )
+
+  useEffect(() => {
+    mutationAttempts.current.clear()
+    mutationWatermarks.current.clear()
+    seenLiveNotificationIds.current.clear()
+    setMutationFailuresByKey((current) => {
+      const activeFailures = new Map(
+        [...current].filter(
+          ([, failure]) => failure.ownerId === ownerId && failure.ownerRevision === ownerRevision
+        )
+      )
+      return activeFailures.size === current.size ? current : activeFailures
+    })
+  }, [ownerId, ownerRevision])
+
+  const beginMutationAttempt = useCallback(
+    <T extends MutationTarget>(target: T): (T & MutationBinding) | null => {
+      const activeIdentity = getCurrentPushIdentitySnapshot()
+      if (
+        ownerId === null ||
+        activeIdentity.userId !== ownerId ||
+        activeIdentity.revision !== ownerRevision
+      ) {
+        return null
+      }
+      const failureKey = getMutationFailureKey(ownerId, ownerRevision, target)
+      const attemptId = (mutationAttempts.current.get(failureKey) ?? 0) + 1
+      mutationAttempts.current.set(failureKey, attemptId)
+      mutationSequence.current += 1
+      setMutationFailuresByKey((current) => {
+        if (!current.has(failureKey)) return current
+        const next = new Map(current)
+        next.delete(failureKey)
+        return next
+      })
+      return {
+        ...target,
+        ownerId,
+        ownerRevision,
+        failureKey,
+        attemptId,
+        mutationSequence: mutationSequence.current,
+      }
+    },
+    [ownerId, ownerRevision]
+  )
+
+  const isCurrentAttempt = useCallback((variables: NotificationMutationVariables) => {
+    const activeIdentity = getCurrentPushIdentitySnapshot()
+    return (
+      variables.ownerId === activeIdentity.userId &&
+      variables.ownerRevision === activeIdentity.revision &&
+      mutationAttempts.current.get(variables.failureKey) === variables.attemptId
+    )
+  }, [])
+
+  const rememberMutationFailure = useCallback(
+    (_error: unknown, variables: NotificationMutationVariables) => {
+      if (!isCurrentAttempt(variables)) return
+      const scopeKey = JSON.stringify([variables.ownerId, variables.ownerRevision])
+      const watermarks = mutationWatermarks.current.get(scopeKey)
+      if (
+        watermarks &&
+        (variables.mutationSequence < watermarks.clearSequence ||
+          (variables.operation === "mark-read" &&
+            variables.mutationSequence < watermarks.markAllSequence))
+      ) {
+        return
+      }
+      setMutationFailuresByKey((current) => {
+        const next = new Map(current)
+        next.set(variables.failureKey, variables)
+        return next
+      })
+    },
+    [isCurrentAttempt]
+  )
+
+  const finishMutationSuccess = useCallback(
+    (_data: void, variables: NotificationMutationVariables) => {
+      assertMutationOwner(variables)
+      // A successful request must reconcile the shared list even if a newer
+      // same-target attempt now owns the visible failure state. Refetching is
+      // background work; it must not delay navigation after the API succeeds.
+      void qc.invalidateQueries({ queryKey: ["notifications"] }).catch((error: unknown) => {
+        logWarning("Failed to refresh notifications after a mutation", error)
+      })
+
+      if (variables.operation !== "mark-read") {
+        const scopeKey = JSON.stringify([variables.ownerId, variables.ownerRevision])
+        const current = mutationWatermarks.current.get(scopeKey) ?? {
+          markAllSequence: 0,
+          clearSequence: 0,
+        }
+        const next: MutationWatermarks =
+          variables.operation === "mark-all"
+            ? {
+                ...current,
+                markAllSequence: Math.max(current.markAllSequence, variables.mutationSequence),
+              }
+            : {
+                ...current,
+                clearSequence: Math.max(current.clearSequence, variables.mutationSequence),
+              }
+        mutationWatermarks.current.set(scopeKey, next)
+        setMutationFailuresByKey((currentFailures) => {
+          const retainedFailures = new Map(
+            [...currentFailures].filter(([, failure]) => {
+              if (failure.mutationSequence < next.clearSequence) return false
+              if (
+                failure.operation === "mark-read" &&
+                failure.mutationSequence < next.markAllSequence
+              ) {
+                return false
+              }
+              return true
+            })
+          )
+          return retainedFailures.size === currentFailures.size ? currentFailures : retainedFailures
+        })
+      }
+
+      if (!isCurrentAttempt(variables)) {
+        assertMutationOwner(variables)
+        throw new NotificationMutationSupersededError()
+      }
+    },
+    [isCurrentAttempt, qc]
+  )
+
   const normalize = (data: NotificationsResponse): NormalizedNotificationsResponse => ({
     items: data.items.map((item) => ({
       ...item,
@@ -125,24 +346,84 @@ export function useNotifications() {
     return () => navigator.serviceWorker.removeEventListener("message", handlePushMessage)
   }, [qc])
 
-  const markRead = useMutation({
-    mutationFn: async (id: string) => {
-      await markNotificationReadRequest(id)
+  const markReadMutation = useMutation<void, unknown, MarkReadVariables>({
+    mutationFn: async (variables) => {
+      assertMutationOwner(variables)
+      const { notificationId } = variables
+      await markNotificationReadRequest(notificationId)
+      assertMutationOwner(variables)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: rememberMutationFailure,
+    onSuccess: finishMutationSuccess,
   })
-  const markAll = useMutation({
-    mutationFn: async () => {
+  const markAllMutation = useMutation<void, unknown, MarkAllVariables>({
+    mutationFn: async (variables) => {
+      assertMutationOwner(variables)
       await markAllNotificationsReadRequest()
+      assertMutationOwner(variables)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: rememberMutationFailure,
+    onSuccess: finishMutationSuccess,
   })
-  const clearAll = useMutation({
-    mutationFn: async () => {
+  const clearMutation = useMutation<void, unknown, ClearVariables>({
+    mutationFn: async (variables) => {
+      assertMutationOwner(variables)
       await clearNotificationsRequest()
+      assertMutationOwner(variables)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: rememberMutationFailure,
+    onSuccess: finishMutationSuccess,
   })
+  const mutateRead = markReadMutation.mutateAsync
+  const mutateMarkAll = markAllMutation.mutateAsync
+  const mutateClear = clearMutation.mutateAsync
+
+  const markRead = useCallback(
+    (notificationId: string): Promise<void> => {
+      const variables = beginMutationAttempt({
+        operation: "mark-read",
+        notificationId,
+      })
+      return variables
+        ? mutateRead(variables)
+        : Promise.reject(new NotificationAccountChangedError())
+    },
+    [beginMutationAttempt, mutateRead]
+  )
+  const markAll = useCallback((): Promise<void> => {
+    const variables = beginMutationAttempt({ operation: "mark-all" })
+    return variables
+      ? mutateMarkAll(variables)
+      : Promise.reject(new NotificationAccountChangedError())
+  }, [beginMutationAttempt, mutateMarkAll])
+  const clearAll = useCallback((): Promise<void> => {
+    const variables = beginMutationAttempt({ operation: "clear" })
+    return variables
+      ? mutateClear(variables)
+      : Promise.reject(new NotificationAccountChangedError())
+  }, [beginMutationAttempt, mutateClear])
+
+  const retryMutationFailure = useCallback(
+    (failure: NotificationMutationFailure): Promise<void> => {
+      const activeIdentity = getCurrentPushIdentitySnapshot()
+      if (
+        ownerId === null ||
+        failure.ownerId !== ownerId ||
+        failure.ownerRevision !== ownerRevision ||
+        activeIdentity.userId !== ownerId ||
+        activeIdentity.revision !== ownerRevision
+      ) {
+        return Promise.reject(new NotificationAccountChangedError())
+      }
+      if (mutationFailuresByKey.get(failure.failureKey)?.attemptId !== failure.attemptId) {
+        return Promise.reject(new NotificationMutationSupersededError())
+      }
+      if (failure.operation === "mark-read") return markRead(failure.notificationId)
+      if (failure.operation === "mark-all") return markAll()
+      return clearAll()
+    },
+    [ownerId, ownerRevision, mutationFailuresByKey, markRead, markAll, clearAll]
+  )
   const fetchNextPage = list.fetchNextPage
   const fetchMore = useCallback(
     async (cursor?: string | null) => {
@@ -163,11 +444,19 @@ export function useNotifications() {
     error: list.error,
     isRefetching: list.isRefetching,
     refetch: list.refetch,
-    markRead: markRead.mutate,
-    markAll: markAll.mutate,
-    clearAll: clearAll.mutate,
-    isMarkingAll: markAll.isPending,
-    isClearing: clearAll.isPending,
+    markRead,
+    markAll,
+    clearAll,
+    mutationFailures,
+    retryMutationFailure,
+    isMarkingAll:
+      markAllMutation.isPending &&
+      markAllMutation.variables?.ownerId === ownerId &&
+      markAllMutation.variables?.ownerRevision === ownerRevision,
+    isClearing:
+      clearMutation.isPending &&
+      clearMutation.variables?.ownerId === ownerId &&
+      clearMutation.variables?.ownerRevision === ownerRevision,
     fetchMore,
     isFetchingMore: list.isFetchingNextPage,
     isFetchMoreError: list.isFetchNextPageError,

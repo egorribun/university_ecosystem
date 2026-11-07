@@ -108,7 +108,9 @@ class TestMaskEndpoint:
 
 class TestEndpointValidationEdges:
     def test_ip_literal_guard_ignores_an_endpoint_without_hostname(self) -> None:
-        webpush_module._reject_non_global_endpoint_host("/relative/path")
+        assert (
+            webpush_module._reject_non_global_endpoint_host("/relative/path")
+        ) is None
 
     @pytest.mark.parametrize("resolver_answer", [object(), "not-an-ip-address"])
     def test_reject_non_global_addresses_rejects_malformed_answers(

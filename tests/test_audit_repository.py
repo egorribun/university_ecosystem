@@ -73,6 +73,8 @@ async def test_list_logs_filters_pagination_and_limit_cap(audit_repo, user_facto
     # limit > 1000 exercises the `min(limit, 1000)` cap without error.
     capped = await audit_repo.list_logs(limit=5000)
     assert len(capped) == 4
+    # The inherited reader must target audit rows, not another repository model.
+    assert await audit_repo.count() == 4
 
 
 @pytest.mark.asyncio

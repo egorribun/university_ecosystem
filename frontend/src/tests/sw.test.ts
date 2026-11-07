@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import "fake-indexeddb/auto"
 import { IDBFactory } from "fake-indexeddb"
 import { MessageChannel } from "node:worker_threads"
@@ -380,7 +381,7 @@ describe("queue helper module exports", () => {
     expect(current.child).toBe("[truncated]")
   })
 
-  test("report queue waits for connectivity before flushing", async () => {
+  test("report queue retains unbound data after connectivity returns", async () => {
     const { stores, processors } = getQueueModules()
     const scope = self as unknown as TestServiceWorkerScope
     scope.navigator.setOnline(false)
@@ -400,13 +401,18 @@ describe("queue helper module exports", () => {
     scope.navigator.setOnline(true)
     await processors.processPendingReports()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(await stores.readPendingReports()).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await stores.readPendingReports()).toEqual([
+      expect.objectContaining({
+        reportUrl: "https://example.com/api/report",
+        payload: { keep: true },
+      }),
+    ])
   })
 })
 
 describe("background sync integration", () => {
-  test("navigation sync drains queued targets once back online", async () => {
+  test("navigation sync retains unbound targets once back online", async () => {
     const { stores, syncTags } = getQueueModules()
     const scope = self as unknown as TestServiceWorkerScope
     scope.navigator.setOnline(false)
@@ -434,8 +440,10 @@ describe("background sync integration", () => {
       await pending
     }
 
-    expect(await stores.readPendingNavigations()).toHaveLength(0)
-    expect(scope.clients.openWindow).toHaveBeenCalledWith("https://example.com/home")
+    expect(await stores.readPendingNavigations()).toEqual([
+      expect.objectContaining({ url: "https://example.com/home" }),
+    ])
+    expect(scope.clients.openWindow).not.toHaveBeenCalled()
   })
 })
 
@@ -456,7 +464,7 @@ describe("service worker offline queues", () => {
     expect(typeof stored[0]!.id).toBe("number")
   })
 
-  test("processPendingNavigations and processPendingReports clear processed entries", async () => {
+  test("direct processors retain unbound navigation and report entries", async () => {
     const sw = await loadServiceWorker()
     const timestamp = Date.now()
 
@@ -478,13 +486,17 @@ describe("service worker offline queues", () => {
     await sw.processPendingNavigations()
     await sw.processPendingReports()
 
-    expect(await sw.readPendingNavigations()).toHaveLength(0)
-    expect(await sw.readPendingReports()).toHaveLength(0)
-    expect(scope.clients.openWindow).toHaveBeenCalledWith("https://example.com/dashboard")
-    expect(fetchMock).toHaveBeenCalledWith("https://example.com/api/report", expect.any(Object))
+    expect(await sw.readPendingNavigations()).toEqual([
+      expect.objectContaining({ url: "https://example.com/dashboard", timestamp }),
+    ])
+    expect(await sw.readPendingReports()).toEqual([
+      expect.objectContaining({ reportUrl: "https://example.com/api/report", timestamp }),
+    ])
+    expect(scope.clients.openWindow).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test("notificationclick queues offline interactions and clears them via processAllQueues", async () => {
+  test("notificationclick queues offline interactions and the worker retains unbound records", async () => {
     const scope = self as unknown as TestServiceWorkerScope
 
     scope.navigator.setOnline(false)
@@ -530,19 +542,22 @@ describe("service worker offline queues", () => {
 
     await sw.processAllQueues()
 
-    expect(await sw.readPendingNavigations()).toHaveLength(0)
-    expect(await sw.readPendingReports()).toHaveLength(0)
-    expect(scope.clients.openWindow).toHaveBeenCalledWith("https://example.com/courses")
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.com/api/notifications/report",
-      expect.any(Object)
-    )
+    expect(await sw.readPendingNavigations()).toEqual(navigationsBefore)
+    expect(await sw.readPendingReports()).toEqual(reportsBefore)
+    expect(scope.clients.openWindow).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("notificationclick sanitizes report payloads before sending", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     scope.navigator.setOnline(true)
-    scope.clients.matchAll = vi.fn(async () => [])
+    // A controlled window must supply the CSRF token before a report can be sent.
+    const controlledWindow = {
+      postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+        transfer[0]?.postMessage({ csrfToken: "csrf-sanitize", sessionNonce: "session-sanitize" })
+      }),
+    }
+    scope.clients.matchAll = vi.fn(async () => [controlledWindow as unknown as WindowClient])
     scope.clients.openWindow = vi.fn(async () => null)
 
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
@@ -576,6 +591,7 @@ describe("service worker offline queues", () => {
     }
 
     const [, requestInit] = fetchMock.mock.calls[0]!
+    expect(requestInit?.headers).toMatchObject({ "X-CSRF-Token": "csrf-sanitize" })
     const parsed = JSON.parse((requestInit?.body as string) ?? "{}")
     expect(parsed.keep).toBe("yes")
     expect(parsed.nested).toEqual({ ok: true })
@@ -800,7 +816,7 @@ describe("service worker media cache controls", () => {
   test("idempotent report deduplication skips duplicates", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
 
     await offline.storePendingReport({
@@ -826,7 +842,7 @@ describe("service worker media cache controls", () => {
     expect(secondReports).toHaveLength(1)
   })
 
-  test("IndexedDB upgrade from version 3 to 4 creates dedupeKey index", async () => {
+  test("IndexedDB upgrade from version 3 creates dedupeKey index", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
 
@@ -847,21 +863,21 @@ describe("service worker media cache controls", () => {
       return origOpen.call(globalThis.indexedDB, targetName, version)
     })
 
-    // Call initOfflineQueue which upgrades the test database to version 4 and adds the index
+    // Call initOfflineQueue which upgrades the test database to the current version and adds the index
     await offline.initOfflineQueue()
 
     // Reopen database and verify the index exists
-    const db4 = await idb.openDB(testDbName, 4)
+    const db4 = await idb.openDB(testDbName, NOTIFICATION_INTERACTIONS_DB_VERSION)
     const tx = db4.transaction(offline.STORES.REPORT, "readonly")
     const store = tx.objectStore(offline.STORES.REPORT)
     expect(store.indexNames.contains("dedupeKey")).toBe(true)
     db4.close()
   })
 
-  test("processNewsInteractionQueue flushes items correctly on success/client errors", async () => {
+  test("the worker retains unbound news interactions without fetching", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.NEWS_INTERACTION)
 
     await db.add(offline.STORES.NEWS_INTERACTION, {
@@ -874,6 +890,7 @@ describe("service worker media cache controls", () => {
       method: "POST",
       payload: { value: true },
     })
+    const before = await db.getAll(offline.STORES.NEWS_INTERACTION)
 
     server.use(
       http.post("https://example.com/api/news/1/like", () => HttpResponse.json({ ok: true })),
@@ -884,6 +901,7 @@ describe("service worker media cache controls", () => {
 
     const scope = self as unknown as TestServiceWorkerScope
     scope.navigator.setOnline(true)
+    const fetchMock = vi.spyOn(globalThis, "fetch")
 
     // Clear navigation and reports to isolate news interaction queue test
     await db.clear(offline.STORES.NAVIGATION)
@@ -892,7 +910,8 @@ describe("service worker media cache controls", () => {
     await offline.processOfflineQueues()
 
     const remaining = await db.getAll(offline.STORES.NEWS_INTERACTION)
-    expect(remaining).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(remaining).toEqual(before)
   })
 
   test("push click handles fetch failure and offline states by enqueuing reports", async () => {
@@ -925,7 +944,7 @@ describe("service worker media cache controls", () => {
 
     scope.navigator.setOnline(false)
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
 
     const eventB = {
@@ -1010,10 +1029,10 @@ describe("service worker media cache controls", () => {
     await expect(offline.processPendingReports()).resolves.toBeUndefined()
   })
 
-  test("storePendingReport handles default POST method and GET/HEAD requests in news queue", async () => {
+  test("storePendingReport keeps its default method and the worker holds unbound GET news", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
     await db.clear(offline.STORES.NEWS_INTERACTION)
 
@@ -1026,7 +1045,7 @@ describe("service worker media cache controls", () => {
     const reports = await offline.readPendingReports()
     expect(reports[0]!.method).toBe("POST")
 
-    // Test GET / HEAD request processing in processNewsInteractionQueue
+    // A legacy GET is also held because its origin session is unknown.
     await db.add(offline.STORES.NEWS_INTERACTION, {
       url: "https://example.com/api/news/get-test",
       method: "GET",
@@ -1043,10 +1062,10 @@ describe("service worker media cache controls", () => {
 
     await offline.processOfflineQueues()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.com/api/news/get-test",
-      expect.not.objectContaining({ body: expect.any(String) })
-    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await db.getAll(offline.STORES.NEWS_INTERACTION)).toEqual([
+      expect.objectContaining({ method: "GET", payload: { value: true } }),
+    ])
 
     fetchMock.mockRestore()
   })

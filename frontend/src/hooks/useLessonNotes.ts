@@ -14,6 +14,13 @@ export interface LessonNote {
   updatedAt: number
 }
 type ScopedNote = { key: string | null; note: LessonNote | null }
+type PendingNoteWrite = {
+  key: string
+  lessonId: string
+  owner: string
+  snapshot: ScopedNote
+  sessionIsCurrent: () => boolean
+}
 const noteId = (owner: string, lesson: string) => JSON.stringify([owner, lesson])
 const selectOwner = getConfirmedUserId
 
@@ -61,6 +68,12 @@ function persistNote(key: string, lesson: string, note: LessonNote | null, owns:
   })
 }
 
+function persistPendingNote(pending: PendingNoteWrite) {
+  const owns = () =>
+    pending.sessionIsCurrent() && selectOwner(useAuthStore.getState()) === pending.owner
+  if (owns()) persistNote(pending.key, pending.lessonId, pending.snapshot.note, owns)
+}
+
 export function useLessonNotes(lessonId: string | null | undefined) {
   const owner = useAuthStore(selectOwner)
   const key = owner && lessonId ? noteId(owner, lessonId) : null
@@ -68,10 +81,31 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
   const debounced = useDebounced(state, "default")
   const lastSavedRef = useRef<ScopedNote | null>(null)
+  const pendingWriteRef = useRef<PendingNoteWrite | null>(null)
+  const editRevisionRef = useRef(0)
+  const editSessionRef = useRef<(() => boolean) | null>(null)
 
   useEffect(() => {
+    let editRevisionAtStart = editRevisionRef.current
     let active = true
-    const owns = () => active && selectOwner(useAuthStore.getState()) === owner
+    const ownsAccount = () => active && selectOwner(useAuthStore.getState()) === owner
+    const pending = pendingWriteRef.current
+    if (
+      pending &&
+      pending.key === key &&
+      pending.lessonId === lessonId &&
+      pending.owner === owner &&
+      pending.sessionIsCurrent() &&
+      selectOwner(useAuthStore.getState()) === owner
+    ) {
+      // A layout-effect edit precedes this passive load; keep the newer edit.
+      setState(pending.snapshot)
+      lastSavedRef.current = null
+      setLoadingKey(null)
+      return () => {
+        active = false
+      }
+    }
     setState({ key, note: null })
     lastSavedRef.current = null
     setLoadingKey(key)
@@ -80,62 +114,120 @@ export function useLessonNotes(lessonId: string | null | undefined) {
         active = false
       }
     async function load() {
+      const sessionIsCurrent = captureSessionEpoch()
+      const owns = () => ownsAccount() && sessionIsCurrent()
+      const restartIfStale = () => {
+        if (owns()) return false
+        if (ownsAccount()) {
+          if (editSessionRef.current && !editSessionRef.current()) {
+            if (pendingWriteRef.current?.key === key) pendingWriteRef.current = null
+            editRevisionAtStart = editRevisionRef.current
+            setState({ key, note: null })
+          }
+          void load()
+        }
+        return true
+      }
+      while (owns()) {
+        const pendingWrite = writes.get(key!)
+        if (!pendingWrite) break
+        await pendingWrite
+      }
+      if (restartIfStale()) return
       let loaded: LessonNote | null = null
       try {
         const db = await getDatabaseLazily()
-        if (!owns()) return
+        if (restartIfStale()) return
         const row = await db.notes.findOne(key!).exec()
         if (row) loaded = { text: row.text, updatedAt: row.updated_at }
       } catch {
         /* fall back to IndexedDB */
       }
-      if (!owns()) return
+      if (restartIfStale()) return
       if (!loaded) loaded = (await get<LessonNote>(`${KEY_PREFIX}${key}`).catch(() => null)) ?? null
-      if (owns()) {
-        const next = { key, note: loaded }
-        lastSavedRef.current = next
-        setState(next)
+      if (restartIfStale()) return
+      if (editRevisionRef.current !== editRevisionAtStart) {
         setLoadingKey(null)
+        return
       }
+      const next = { key, note: loaded }
+      lastSavedRef.current = next
+      setState(next)
+      setLoadingKey(null)
     }
     void load()
     return () => {
       active = false
     }
-  }, [key, owner])
+  }, [key, lessonId, owner])
 
   useEffect(() => {
+    const effectKey = key
+    const effectLessonId = lessonId
+    const effectOwner = owner
+    return () => {
+      const pending = pendingWriteRef.current
+      if (
+        !pending ||
+        pending.key !== effectKey ||
+        pending.lessonId !== effectLessonId ||
+        pending.owner !== effectOwner
+      )
+        return
+      pendingWriteRef.current = null
+      persistPendingNote(pending)
+    }
+  }, [key, lessonId, owner])
+
+  useEffect(() => {
+    const pending = pendingWriteRef.current
     if (
       !key ||
       !lessonId ||
       loadingKey === key ||
       debounced.key !== key ||
-      debounced === lastSavedRef.current
+      // A slow load can make the empty loading state the debounced value.
+      // Persist only if that value still describes the current state.
+      debounced !== state ||
+      debounced === lastSavedRef.current ||
+      pending?.snapshot !== debounced
     )
       return
     lastSavedRef.current = debounced
-    let active = true
-    persistNote(
-      key,
-      lessonId,
-      debounced.note,
-      () => active && selectOwner(useAuthStore.getState()) === owner
-    )
-    return () => {
-      active = false
-    }
-  }, [debounced, key, lessonId, owner, loadingKey])
+    pendingWriteRef.current = null
+    persistPendingNote(pending)
+  }, [debounced, state, key, lessonId, owner, loadingKey])
 
   const setNote = useCallback(
     (text: string) => {
-      if (key && selectOwner(useAuthStore.getState()) === owner)
-        setState({ key, note: { text, updatedAt: Date.now() } })
+      if (owner && key && lessonId && selectOwner(useAuthStore.getState()) === owner) {
+        const snapshot = { key, note: { text, updatedAt: Date.now() } }
+        const previous = pendingWriteRef.current
+        if (previous && previous.key !== key) {
+          pendingWriteRef.current = null
+          persistPendingNote(previous)
+        }
+        const sessionIsCurrent = captureSessionEpoch()
+        editRevisionRef.current += 1
+        editSessionRef.current = sessionIsCurrent
+        pendingWriteRef.current = {
+          key,
+          lessonId,
+          owner,
+          snapshot,
+          sessionIsCurrent,
+        }
+        setState(snapshot)
+      }
     },
-    [key, owner]
+    [key, lessonId, owner]
   )
 
   const clearNote = useCallback(() => {
     if (!key || !lessonId || selectOwner(useAuthStore.getState()) !== owner) return
+    editRevisionRef.current += 1
+    editSessionRef.current = captureSessionEpoch()
+    if (pendingWriteRef.current?.key === key) pendingWriteRef.current = null
     const next = { key, note: null }
     lastSavedRef.current = next
     setState(next)
@@ -163,13 +255,20 @@ export function useLessonNotesMap(lessonIds: string[]) {
   useEffect(() => {
     if (!owner || lessonIds.length === 0) return
     let active = true
-    const owns = () => active && selectOwner(useAuthStore.getState()) === owner
+    const ownsAccount = () => active && selectOwner(useAuthStore.getState()) === owner
     async function load() {
+      const sessionIsCurrent = captureSessionEpoch()
+      const owns = () => ownsAccount() && sessionIsCurrent()
+      const restartIfStale = () => {
+        if (owns()) return false
+        if (ownsAccount()) void load()
+        return true
+      }
       const map = new Map<string, boolean>()
       const ids = lessonIds.map((id) => noteId(owner!, id))
       try {
         const db = await getDatabaseLazily()
-        if (!owns()) return
+        if (restartIfStale()) return
         const rows = await db.notes.find({ selector: { id: { $in: ids } } }).exec()
         rows.forEach((row) => {
           if (row.text?.trim()) map.set(row.lesson_id, true)
@@ -177,7 +276,7 @@ export function useLessonNotesMap(lessonIds: string[]) {
       } catch {
         /* fall back to IndexedDB */
       }
-      if (!owns()) return
+      if (restartIfStale()) return
       await Promise.all(
         lessonIds.map(async (id) => {
           if (!map.has(id)) {
@@ -188,7 +287,8 @@ export function useLessonNotesMap(lessonIds: string[]) {
           }
         })
       )
-      if (owns()) setState({ scope, map })
+      if (restartIfStale()) return
+      setState({ scope, map })
     }
     void load()
     return () => {

@@ -67,7 +67,33 @@ type MockApiOptions = {
   serviceWorker?: "disabled" | "preserve"
   /** Start without the SSR auth cookie for public login/MFA flows. */
   authenticated?: boolean
+  /** Skip the shared no-op route when a test installs a browser WebSocket route. */
+  mockWebSocket?: boolean
 }
+
+/** Backend resource roots (the OpenAPI path segments after `/api/v1`) for dev-base requests. */
+const DEV_BASE_API_ROOTS = new Set([
+  "admin",
+  "auth",
+  "campus",
+  "chats",
+  "csp-report",
+  "cwv",
+  "events",
+  "grades",
+  "groups",
+  "img",
+  "news",
+  "notifications",
+  "password",
+  "push",
+  "schedule",
+  "search",
+  "spotify",
+  "stats",
+  "stories",
+  "users",
+])
 
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
 export const MOCK_NEWS_ID = "11111111-1111-4111-8111-111111111111"
@@ -453,7 +479,9 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   // fails DNS resolution for the service host and starts a reconnect loop.
   // Playwright's WebSocket routing applies to every document, including the
   // initial about:blank page, so it also covers direct socket smoke tests.
-  await page.routeWebSocket("**/ws/**", () => {})
+  if (options.mockWebSocket ?? true) {
+    await page.routeWebSocket("**/ws/**", () => {})
+  }
 
   page.on("console", (msg) => {
     const location = msg.location()
@@ -576,9 +604,20 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     }
 
     const pathname = url.pathname.replace(/^\/+/u, "")
+    // The Vite dev server uses an empty Axios base (`devBase` in api/client.ts),
+    // so the same JSON calls arrive as bare `/users/me` or `/news`. Without this
+    // normalization they fall through to Vite, which answers 406, and login never
+    // completes. Only script-initiated JSON requests under a known API root qualify.
+    const bareApiRoot = pathname.split("/")[0] ?? ""
+    const isScriptJsonRequest =
+      ["fetch", "xhr"].includes(request.resourceType()) &&
+      (request.headers()["accept"] ?? "").includes("application/json")
+    const devBaseApiPath =
+      isScriptJsonRequest && DEV_BASE_API_ROOTS.has(bareApiRoot) ? `api/${pathname}` : undefined
     // Normalize both the browser-relative `/api/v1/...` form and the CI
     // service-host `http://api/v1/...` form to the same mock path.
-    const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+    const normPath =
+      devBaseApiPath ?? pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
     // Production E2E builds use the explicit `/api/v1` Axios base (and the
     // service-host compatibility form `/v1/...` handled above). Do not
     // reinterpret arbitrary bare fetch/XHR paths as API calls: TanStack
@@ -589,6 +628,15 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
 
     if (method === "OPTIONS" && isBackendRequest) {
       await route.fulfill({ status: 204 })
+      return
+    }
+
+    if (normPath === "api/campus/config" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ campus_timezone: "Europe/Istanbul" }),
+      })
       return
     }
 

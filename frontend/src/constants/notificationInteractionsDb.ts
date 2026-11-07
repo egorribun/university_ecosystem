@@ -5,4 +5,5 @@
  * VersionError and its offline queue stops working.
  */
 export const NOTIFICATION_INTERACTIONS_DB_NAME = "notification-interactions"
-export const NOTIFICATION_INTERACTIONS_DB_VERSION = 4
+/** Version 5 adds the replay-lease store used when Web Locks are unavailable (AUD-375). */
+export const NOTIFICATION_INTERACTIONS_DB_VERSION = 5

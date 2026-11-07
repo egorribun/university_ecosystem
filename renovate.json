@@ -253,18 +253,17 @@
     },
     {
       "customType": "regex",
-      "description": "Update the osv-scanner go install release pin",
+      "description": "Update the osv-scanner release binary version and checksum together",
       "managerFilePatterns": [
         "/^\\.github/workflows/sbom\\.yml$/"
       ],
       "matchStrings": [
-        "(?<prefix>(?:^|\\r?\\n)[ \\t]*(?:run:[ \\t]*)?go install github\\.com/google/osv-scanner/v2/cmd/osv-scanner@)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+        "osv_scanner_version=\"(?<currentValue>v\\d+\\.\\d+\\.\\d+)\" osv_scanner_sha256=\"(?<currentDigest>[0-9a-f]{64})\""
       ],
       "depNameTemplate": "osv-scanner",
       "packageNameTemplate": "google/osv-scanner",
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "semver",
-      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+      "datasourceTemplate": "github-release-attachments",
+      "versioningTemplate": "semver"
     },
     {
       "customType": "regex",

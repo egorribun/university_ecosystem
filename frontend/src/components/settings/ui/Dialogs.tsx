@@ -67,7 +67,7 @@ export function Dialog({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-background/(--opacity-strong) backdrop-blur-xl"
+        className="fixed inset-0 bg-background/[calc(var(--opacity-strong)*100%)] backdrop-blur-xl"
         onClick={onClose}
       />
       <m.div
@@ -105,7 +105,7 @@ export function DialogTitle({
     <h2
       id={id}
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-text-primary border-b border-(--glass-border)/(--opacity-subtle)",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-text-primary border-b border-(--glass-border)/[calc(var(--opacity-subtle)*100%)]",
         className
       )}
     >
@@ -141,7 +141,7 @@ export function DialogActions({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-3 border-t border-(--glass-border)/(--opacity-subtle) px-6 py-4 bg-(--bg-surface-hover)/(--opacity-dim)",
+        "flex items-center justify-end gap-3 border-t border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] px-6 py-4 bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]",
         className
       )}
     >

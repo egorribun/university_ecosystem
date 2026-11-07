@@ -1,9 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { sanitizeArticleHtml } from "../sanitizeArticleHtml"
+import { render } from "@testing-library/react"
+import { createElement, Fragment } from "react"
+import {
+  articleFragmentToReactNodes,
+  decodeArticleAttribute,
+  decodeArticleText,
+  sanitizeArticleFragment,
+  sanitizeArticleHtml,
+  sanitizeArticleUrl,
+} from "../sanitizeArticleHtml"
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+class FakeTrustedHTML {
+  constructor(readonly value: string) {}
+
+  toString(): string {
+    return this.value
+  }
+}
 
 describe("sanitizeArticleHtml", () => {
   // ---------------------------------------------------------------------------
@@ -20,10 +37,179 @@ describe("sanitizeArticleHtml", () => {
     expect(sanitizeArticleHtml("Hello, world!")).toBe("Hello, world!")
   })
 
+  it("decodes complete HTML5 character references as text and as attributes", () => {
+    expect(decodeArticleText("Caf&eacute; &euro; &trade; &#x1F393;")).toBe("Café € ™ 🎓")
+    expect(decodeArticleText("Literal <strong>text</strong>")).toBe("Literal <strong>text</strong>")
+    expect(decodeArticleAttribute('A &eacute; "quoted"')).toBe('A é "quoted"')
+    expect(sanitizeArticleUrl("href", "https://example.edu/?a=1&amp;b=2")).toBe(
+      "https://example.edu/?a=1&b=2"
+    )
+    expect(sanitizeArticleUrl("href", "javascript&colon;alert(1)")).toBeNull()
+  })
+
+  it("keeps decoded less-than characters in flat text nodes", () => {
+    expect(decodeArticleText("&euro; <strong>literal</strong> &lt;img src=x&gt;")).toBe(
+      "€ <strong>literal</strong> <img src=x>"
+    )
+  })
+
+  it("restores only matching safe heading ids after DOM sanitization", () => {
+    const matching = sanitizeArticleFragment("<h2>Campus update</h2>", ["campus-update"])
+    const mismatched = sanitizeArticleFragment("<h2>Campus update</h2>", ["first", "second"])
+    const unsafe = sanitizeArticleFragment("<h2>Campus update</h2>", ["unsafe id"])
+
+    expect(matching?.querySelector("h2")?.getAttribute("id")).toBe("campus-update")
+    expect(mismatched?.querySelector("h2")?.hasAttribute("id")).toBe(false)
+    expect(unsafe?.querySelector("h2")?.hasAttribute("id")).toBe(false)
+  })
+
+  it("does not restore an id from a missing sparse heading-id slot", () => {
+    const headingIds = new Array<string>(1)
+    const fragment = sanitizeArticleFragment("<h2>Campus update</h2>", headingIds)
+    if (!fragment) throw new Error("Expected a browser article fragment")
+
+    expect(fragment.querySelector("h2")?.hasAttribute("id")).toBe(false)
+  })
+
+  it("converts safe fragment attributes into React props and drops invalid numeric values", () => {
+    const fragment = sanitizeArticleFragment(
+      '<pre class="language-ts">const x = 1</pre>' +
+        '<table><tbody><tr><td colspan="2" rowspan="3">Valid span</td>' +
+        '<td colspan="1000" rowspan="0">Invalid span</td></tr></tbody></table>' +
+        '<img src="/campus.png" alt="Campus" width="640" height="10000">' +
+        "<p>Before<!-- editorial comment -->after</p>"
+    )
+    if (!fragment) throw new Error("Expected a browser article fragment")
+
+    const { container } = render(
+      createElement(Fragment, null, articleFragmentToReactNodes(fragment))
+    )
+
+    expect(container.querySelector("pre")).toHaveClass("language-ts")
+    expect(container.querySelector("td[colspan='2'][rowspan='3']")).toHaveTextContent("Valid span")
+    expect(container.querySelectorAll("td")[1]).not.toHaveAttribute("colspan")
+    expect(container.querySelectorAll("td")[1]).not.toHaveAttribute("rowspan")
+    expect(container.querySelector("img")).toHaveAttribute("width", "640")
+    expect(container.querySelector("img")).not.toHaveAttribute("height")
+    expect(container.querySelector("p")).toHaveTextContent("Beforeafter")
+  })
+
+  it("uses an image alt value as text when the URL sanitizer removes its source", () => {
+    const fragment = sanitizeArticleFragment(
+      '<img src="javascript:alert(1)" alt="Campus &amp; library">'
+    )
+    if (!fragment) throw new Error("Expected a browser article fragment")
+
+    expect(articleFragmentToReactNodes(fragment)).toEqual(["Campus & library"])
+  })
+
+  it("omits a sanitized image with no source or alt fallback", () => {
+    const fragment = sanitizeArticleFragment('<img src="javascript:alert(1)">')
+    if (!fragment) throw new Error("Expected a browser article fragment")
+
+    expect(articleFragmentToReactNodes(fragment)).toEqual([null])
+  })
+
+  it("omits disallowed elements from direct fragment conversion", () => {
+    const fragment = document.createDocumentFragment()
+    const script = document.createElement("script")
+    script.textContent = "unsafe script content"
+    fragment.append(script)
+
+    expect(articleFragmentToReactNodes(fragment)).toEqual([null])
+  })
+
   it("uses the plain-text fallback when document is unavailable during SSR", () => {
     vi.stubGlobal("document", undefined)
 
     expect(sanitizeArticleHtml("<p>Hello, <strong>SSR</strong></p>")).toBe("Hello, SSR")
+  })
+
+  it("does not attempt to create an article fragment during SSR", () => {
+    vi.stubGlobal("document", undefined)
+
+    expect(sanitizeArticleFragment("<p>SSR</p>")).toBeNull()
+  })
+
+  it("passes only app-policy TrustedHTML to the template sink when setHTML is unavailable", () => {
+    const innerHTML = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML")
+    if (!innerHTML?.set) throw new Error("Missing innerHTML setter")
+    const originalSet = innerHTML.set
+    const rawWrites: string[] = []
+    const trustedWrites: FakeTrustedHTML[] = []
+    Object.defineProperty(Element.prototype, "innerHTML", {
+      ...innerHTML,
+      set(this: Element, value: unknown) {
+        if (!(value instanceof FakeTrustedHTML)) {
+          rawWrites.push(String(value))
+          throw new TypeError("TrustedHTML required")
+        }
+        trustedWrites.push(value)
+        originalSet.call(this, String(value))
+      },
+    })
+
+    const policyNames: string[] = []
+    const createPolicy = vi.fn(
+      (name: string, rules: { createHTML?: (value: string) => string }) => {
+        policyNames.push(name)
+        return {
+          createHTML: (value: string) => new FakeTrustedHTML(rules.createHTML?.(value) ?? value),
+          createScriptURL: (value: string) => value,
+        }
+      }
+    )
+    Object.defineProperty(window, "trustedTypes", {
+      configurable: true,
+      value: { createPolicy },
+    })
+
+    try {
+      const fragment = sanitizeArticleFragment('<p onclick="bad()">Safe <strong>text</strong></p>')
+
+      expect(policyNames).toEqual(["app"])
+      expect(createPolicy).toHaveBeenCalledWith("app", expect.any(Object))
+      expect(rawWrites).toEqual([])
+      expect(trustedWrites).toHaveLength(1)
+      expect(fragment?.querySelector("p")?.textContent).toBe("Safe text")
+      expect(fragment?.querySelector("p")?.hasAttribute("onclick")).toBe(false)
+    } finally {
+      Object.defineProperty(Element.prototype, "innerHTML", innerHTML)
+      Reflect.deleteProperty(window, "trustedTypes")
+      Reflect.deleteProperty(window, "__ttAppPolicy")
+    }
+  })
+
+  it("uses the plain-text fallback when app Trusted Types policy creation fails", () => {
+    const trustedTypesDescriptor = Object.getOwnPropertyDescriptor(window, "trustedTypes")
+    const appPolicyDescriptor = Object.getOwnPropertyDescriptor(window, "__ttAppPolicy")
+    const createPolicy = vi.fn(() => {
+      throw new TypeError("Trusted Types policy creation rejected")
+    })
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    Object.defineProperty(window, "trustedTypes", {
+      configurable: true,
+      value: { createPolicy },
+    })
+    Reflect.deleteProperty(window, "__ttAppPolicy")
+
+    try {
+      expect(sanitizeArticleHtml("<p>Hello, <strong>Policy</strong></p>")).toBe("Hello, Policy")
+      expect(createPolicy).toHaveBeenCalledWith("app", expect.any(Object))
+      expect(consoleError).toHaveBeenCalled()
+    } finally {
+      if (trustedTypesDescriptor) {
+        Object.defineProperty(window, "trustedTypes", trustedTypesDescriptor)
+      } else {
+        Reflect.deleteProperty(window, "trustedTypes")
+      }
+      if (appPolicyDescriptor) {
+        Object.defineProperty(window, "__ttAppPolicy", appPolicyDescriptor)
+      } else {
+        Reflect.deleteProperty(window, "__ttAppPolicy")
+      }
+      consoleError.mockRestore()
+    }
   })
 
   it("preserves allowed HTML structure (p, h2, ul, li, a, img)", () => {
@@ -130,6 +316,10 @@ describe("sanitizeArticleHtml", () => {
   it("removes URL attributes that contain no usable characters", () => {
     const result = sanitizeArticleHtml('<a href=" \t">blank</a>')
     expect(result).not.toContain("href")
+  })
+
+  it("rejects a URL composed only of control characters", () => {
+    expect(sanitizeArticleUrl("href", "\u0000\u007f")).toBeNull()
   })
 
   // ---------------------------------------------------------------------------

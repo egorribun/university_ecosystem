@@ -91,10 +91,21 @@ repos:
           - "clamd"
           - "python-multipart"
           - "uvicorn"
+          # The SPIFFE server entrypoint is checked in this isolated hook too.
+          # Keep SDK/worker pins aligned with the application dependency lock.
+          - "spiffe==0.3.2,<0.4"
+          - "uvicorn-worker==0.4.0,<0.5"
+          - "types-gunicorn==26.2.0.20261008,<27"
+          # Do not reintroduce the vulnerable ASN.1 transitive dependency here.
+          - "pyasn1==0.6.5,<0.7"
           - "types-psutil"
           - "dishka"
           - "authzed"
           - "grpcio"
+          # The logging export boundary subclasses the typed OTel SDK handler.
+          # Keep its base class available to this isolated strict mypy hook.
+          - "opentelemetry-sdk==1.45.1"
+          - "structlog==26.1.0"
 
   - repo: local
     hooks:
@@ -116,24 +127,23 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Match the blocking CI job: use its pinned rules checkout and exact
+      # reviewed-disposition gate rather than Semgrep's drifting auto config.
+      - id: semgrep-docker
+        name: semgrep-sast
+        entry: uv run --frozen python -I scripts/quality/run_semgrep_gate.py semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b
+        language: system
+        pass_filenames: false
+        always_run: true
+        # This hook snapshots the staged index once, with the same target set
+        # as CI; serial execution avoids concurrent Docker scans.
+        require_serial: true
+
   # Temporary upstream PR #745 pin; return to a supported release once it includes cache-mode.
   - repo: https://github.com/rhysd/actionlint
     rev: 5dc52e8daa4ef51bfd76a648128474bd41d65df0  #  -- immutable upstream source revision
     hooks:
       - id: actionlint
-
-  - repo: https://github.com/semgrep/pre-commit
-    rev: v1.179.0
-    hooks:
-      - id: semgrep-docker
-        name: semgrep-sast
-        entry: -e SEMGREP_LOG_FILE=/tmp/out.log -e SEMGREP_VERSION_CACHE_PATH=/tmp/cache semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b semgrep
-        args: ["--config", "auto", "--error", "--oss-only"]
-        exclude: (^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|^frontend/coverage-[^/]+/
-        # pre-commit may split --all-files into several invocations. Running
-        # those Docker containers concurrently causes intermittent EOF/OOM
-        # failures on developer workstations.
-        require_serial: true
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
     rev: 44.142.1 # 79024b1a7a706341245d73344bf413ee29bf5013

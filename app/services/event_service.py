@@ -35,7 +35,7 @@ from app.utils.pagination import (
 
 logger = get_logger(__name__)
 
-_LEGACY_MY_EVENTS_BATCH_SIZE = 100
+LEGACY_MY_EVENTS_LIMIT = 100
 
 
 class InvalidEventsCursor(ValueError):
@@ -153,6 +153,10 @@ class InvalidMyEventsQuery(ValueError):
     """A My-events date/time query value cannot be represented safely."""
 
 
+class MyEventsPaginationRequired(ValueError):
+    """The legacy array would exceed its bounded response capacity."""
+
+
 def _my_events_cursor_binding(
     *,
     user_id: uuid.UUID | int,
@@ -186,7 +190,7 @@ def _encode_my_events_cursor(
         return aware.astimezone(UTC).isoformat()
 
     key: dict[str, str | int]
-    if sort in {"newest", "upcoming"}:
+    if sort in {"newest", "newest_desc", "upcoming"}:
         key = {"value": timestamp_text(event.starts_at), "id": str(event.id)}
     else:
         key = {"value": participant_count, "id": str(event.id)}
@@ -731,41 +735,29 @@ class EventService:
     async def get_my_events(
         self, user_id: uuid.UUID | int, *, locale: str | None = None
     ) -> list[schemas.EventOut]:
-        """Return the legacy array response while keeping each database read bounded."""
+        """Return the complete legacy array or require the paginated endpoint."""
         normalized_locale = normalize_locale(locale)
-        result: list[schemas.EventOut] = []
-        cursor_key: tuple[datetime | int, uuid.UUID] | None = None
-
-        while True:
-            rows = await self.repo.list_user_attended_events(
-                user_id,
-                limit=_LEGACY_MY_EVENTS_BATCH_SIZE,
-                locale=normalized_locale,
-                sort="newest",
-                cursor_key=cursor_key,
-                include_participant_count=False,
+        rows = await self.repo.list_user_attended_events(
+            user_id,
+            limit=LEGACY_MY_EVENTS_LIMIT + 1,
+            locale=normalized_locale,
+            sort="newest",
+            cursor_key=None,
+            include_participant_count=False,
+        )
+        if len(rows) > LEGACY_MY_EVENTS_LIMIT:
+            raise MyEventsPaginationRequired("My-events pagination is required")
+        return [
+            self.serialize_event(
+                event,
+                normalized_locale,
+                participant_count=0,
+                files=[],
+                is_registered=True,
+                my_qr_token=attendance_tokens.issue_token(user_attendance),
             )
-            for event, user_attendance, _participant_count in rows:
-                qr_token = attendance_tokens.issue_token(user_attendance)
-                result.append(
-                    self.serialize_event(
-                        event,
-                        normalized_locale,
-                        participant_count=0,
-                        files=[],
-                        is_registered=True,
-                        my_qr_token=qr_token,
-                    )
-                )
-
-            if len(rows) < _LEGACY_MY_EVENTS_BATCH_SIZE:
-                return result
-
-            last_event = rows[-1][0]
-            next_cursor_key = (last_event.starts_at, last_event.id)
-            if cursor_key is not None and next_cursor_key <= cursor_key:
-                raise RuntimeError("My-events keyset batch did not advance")
-            cursor_key = next_cursor_key
+            for event, user_attendance, _participant_count in rows
+        ]
 
     async def get_my_events_page(
         self,
@@ -782,7 +774,7 @@ class EventService:
     ) -> schemas.PaginatedEvents:
         """Return one bounded filtered page of the authenticated user's registrations."""
         normalized_locale = normalize_locale(locale)
-        if sort not in {"newest", "popular", "upcoming"}:
+        if sort not in {"newest", "newest_desc", "popular", "upcoming"}:
             raise ValueError("Unsupported event sort")
         if upcoming_after is not None:
             if upcoming_after.tzinfo is None:

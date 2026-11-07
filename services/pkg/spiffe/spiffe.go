@@ -112,26 +112,22 @@ func (c *Client) Source() *workloadapi.X509Source {
 	return c.workloadSource
 }
 
-// ServerTLSConfig creates a *tls.Config for mTLS servers that verifies client SVIDs.
+// ServerTLSConfig creates a *tls.Config that authorizes only the explicitly listed client SVIDs.
 func (c *Client) ServerTLSConfig(allowedClientIDs ...string) (*tls.Config, error) {
 	if c == nil || c.source == nil {
 		return nil, fmt.Errorf("spiffe client is uninitialized")
 	}
 
-	var authorizer tlsconfig.Authorizer
-	if len(allowedClientIDs) == 0 {
-		authorizer = tlsconfig.AuthorizeMemberOf(c.trustDomain)
-	} else {
-		spiffeIDs := make([]spiffeid.ID, 0, len(allowedClientIDs))
-		for _, idStr := range allowedClientIDs {
-			id, err := spiffeid.FromString(idStr)
-			if err != nil {
-				return nil, fmt.Errorf("invalid allowed client SPIFFE ID %q: %w", idStr, err)
-			}
-			spiffeIDs = append(spiffeIDs, id)
+	spiffeIDs := make([]spiffeid.ID, 0, len(allowedClientIDs))
+	for _, idStr := range allowedClientIDs {
+		id, err := spiffeid.FromString(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid allowed client SPIFFE ID %q: %w", idStr, err)
 		}
-		authorizer = tlsconfig.AuthorizeOneOf(spiffeIDs...)
+		spiffeIDs = append(spiffeIDs, id)
 	}
+	// An empty allowlist authorizes no client; never broaden it to the whole trust domain.
+	authorizer := tlsconfig.AuthorizeOneOf(spiffeIDs...)
 
 	return tlsconfig.MTLSServerConfig(c.source, c.source, authorizer), nil
 }

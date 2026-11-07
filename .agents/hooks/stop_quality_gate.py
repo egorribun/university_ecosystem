@@ -1,7 +1,7 @@
 """Stop quality gate interceptor.
 
-Prevents the agent from terminating or self-certifying completion if any linters,
-type checkers, syntax verifiers, or tests report failures.
+Checks recorded edit results, Python Ruff, frontend TypeScript, and Go vet.
+Python type checking and tests are separate checks and are not run here.
 
 Returns:
 - {"decision": "continue", "reason": "<diagnostics>"} if any checks fail.
@@ -26,17 +26,27 @@ try:
     from .common import (
         find_executable,
         find_repo_root,
+        gate_state_lock,
         get_gate_state_path,
         load_gate_state,
         run_process,
+    )
+    from .post_tool_linter import (
+        ensure_gate_state_initialization_marker,
+        has_gate_state_initialization_marker,
     )
 except (ImportError, ValueError):
     from common import (
         find_executable,
         find_repo_root,
+        gate_state_lock,
         get_gate_state_path,
         load_gate_state,
         run_process,
+    )
+    from post_tool_linter import (
+        ensure_gate_state_initialization_marker,
+        has_gate_state_initialization_marker,
     )
 
 
@@ -53,10 +63,12 @@ GO_VET_MIN_START_BUDGET_SECONDS = 1
 
 
 def check_python_subsystem(repo_root: Path) -> tuple[bool, str]:
-    """Run Ruff linter and py_compile check across Python codebase."""
+    """Run Ruff across the Python app codebase."""
     app_dir = repo_root / "app"
-    if not app_dir.exists():
-        return True, ""
+    if not app_dir.is_dir():
+        return False, "Python app directory is missing or is not a directory."
+    if next(app_dir.rglob("*.py"), None) is None:
+        return False, "Python app directory contains no Python source files."
 
     ruff_cmd = ["uv", "run", "ruff"] if find_executable("uv") else ["ruff"]
     code, stdout, stderr = run_process(
@@ -74,8 +86,10 @@ def check_python_subsystem(repo_root: Path) -> tuple[bool, str]:
 def check_frontend_subsystem(repo_root: Path) -> tuple[bool, str]:
     """Run TypeScript compiler check across frontend."""
     frontend_dir = repo_root / "frontend"
-    if not frontend_dir.exists():
-        return True, ""
+    if not frontend_dir.is_dir():
+        return False, "Frontend directory is missing or is not a directory."
+    if not (frontend_dir / "tsconfig.json").is_file():
+        return False, "Frontend TypeScript configuration is missing."
 
     node_tsc = frontend_dir / "node_modules" / "typescript" / "bin" / "tsc"
     if node_tsc.exists() and find_executable("node"):
@@ -134,8 +148,8 @@ def _check_single_go_module(
 def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
     """Run go vet across all Go microservices in services/ concurrently."""
     services_dir = repo_root / "services"
-    if not services_dir.exists():
-        return True, ""
+    if not services_dir.is_dir():
+        return False, "Services directory is missing or is not a directory."
 
     if not find_executable("go"):
         return False, "Go toolchain is required for the services quality gate."
@@ -148,7 +162,7 @@ def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
     )
 
     if not go_mod_dirs:
-        return True, ""
+        return False, "Services directory contains no Go modules for go vet."
 
     errors: list[tuple[str, str]] = []
     deadline = monotonic() + GO_VET_TOTAL_BUDGET_SECONDS
@@ -229,14 +243,31 @@ def check_gate_state_errors() -> tuple[bool, str]:
     """Check recent failures recorded in .gate_state.json."""
     state_path = get_gate_state_path()
     try:
-        state = load_gate_state(state_path, require_existing=True)
-    except FileNotFoundError:
-        return (
-            False,
-            "Automated quality gate state is missing. Run a supported PostToolUse "
-            "quality check on a source file to initialize it; do not create an "
-            "empty state file manually.",
-        )
+        with gate_state_lock(state_path):
+            try:
+                state = load_gate_state(
+                    state_path,
+                    acquire_lock=False,
+                    require_existing=True,
+                )
+            except FileNotFoundError:
+                previously_initialized = has_gate_state_initialization_marker(
+                    state_path
+                )
+                if previously_initialized:
+                    return (
+                        False,
+                        "Automated quality gate state is missing after initialization. "
+                        "Restore the persisted state; PostToolUse cannot recreate it "
+                        "without discarding prior quality results.",
+                    )
+                return (
+                    False,
+                    "Automated quality gate state is missing. Run a supported PostToolUse "
+                    "quality check on a source file to initialize it; do not create an "
+                    "empty state file manually.",
+                )
+            ensure_gate_state_initialization_marker(state_path)
     except (OSError, RuntimeError, UnicodeError, RecursionError):
         return False, "Automated quality gate state is unreadable or malformed."
 

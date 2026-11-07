@@ -50,9 +50,15 @@ def _is_managed_url(backend: StorageBackend, url: str) -> bool:
         return backend._extract_key(url) is not None
     if isinstance(backend, StaticFSStorage):
         relative = backend._extract_relative_path(url)
-        return (
-            relative is not None and url == f"{backend.base_url}/{relative.as_posix()}"
-        )
+        if relative is None:
+            return False
+        public_url = f"{backend.base_url}/{relative.as_posix()}"
+        if url == public_url:
+            return True
+        try:
+            return url == backend.canonical_file_url(relative.as_posix())
+        except ValueError:
+            return False
     return True
 
 
@@ -170,6 +176,7 @@ class ChatAttachmentService:
             max_size_bytes=settings.chat_attachment_max_size_bytes,
             return_meta=True,
             sanitize_image_metadata=True,
+            canonical_static_url=True,
         )
         if not isinstance(meta, dict):
             raise_http_error(500, "errors.chat.attachment_failed", str(locale or "en"))

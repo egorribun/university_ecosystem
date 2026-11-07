@@ -51,14 +51,23 @@ type RoomAuthorizationRefresher interface {
 const authCacheTTL = 1 * time.Minute
 
 type cacheEntry struct {
-	allowed   bool
-	expiresAt time.Time
+	allowed    bool
+	expiresAt  time.Time
+	generation uint64
+}
+
+// RoomAuthCacheResetter is implemented by authorization clients that hold local
+// (L1) and shared (L2) cache state. A reset drops every generation the replica
+// can read, so no pre-reset decision can satisfy a join after the reset (AUD-478).
+type RoomAuthCacheResetter interface {
+	ResetAuthorizationCache(ctx context.Context) error
 }
 
 // call represents an in-flight request to the backend.
 type call struct {
-	wg  sync.WaitGroup
-	res bool
+	done       chan struct{}
+	res        bool
+	generation uint64
 }
 
 // InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
@@ -69,6 +78,12 @@ type InternalAPIAuthClient struct {
 
 	cache *lru.Cache[string, cacheEntry]
 	redis *redis.Client
+
+	// genMu orders cache reads and writes against generation resets. Readers and
+	// writers hold it shared; a reset holds it exclusively while it bumps the
+	// generation and purges L1 and L2. A write whose generation is stale is dropped.
+	genMu      sync.RWMutex
+	generation uint64
 
 	callMu sync.Mutex
 	calls  map[string]*call
@@ -92,19 +107,21 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 	return client.ClientTLSConfig(backendSpiffeID)
 }
 
-var newAuthLRUFunc = lru.New[string, cacheEntry]
+var newAuthLRUFunc = func(size int) (*lru.Cache[string, cacheEntry], error) {
+	return lru.New[string, cacheEntry](size)
+}
 
 // NewInternalAPIAuthClientWithToken creates a client that authenticates the
-// internal participant callback with X-Internal-Token.
-func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
+// internal participant callback with X-Internal-Token. A cache construction
+// failure is returned to the caller (AGENTS.md section 2.1) rather than panicking.
+func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) (*InternalAPIAuthClient, error) {
 	return newInternalAPIAuthClient(baseURL, internalAuthToken, redisClient)
 }
 
-func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
+func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *redis.Client) (*InternalAPIAuthClient, error) {
 	cache, err := newAuthLRUFunc(100000)
 	if err != nil {
-		// FP-P2-03: Panic if LRU fails to initialize (should never happen with valid size)
-		panic(fmt.Sprintf("failed to initialize LRU cache: %v", err))
+		return nil, fmt.Errorf("failed to initialize LRU cache: %w", err)
 	}
 
 	// MOD-03 (audit 2026-03-15 Wave 7): Circuit breaker configuration.
@@ -121,7 +138,7 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 		},
 	})
 
-	return &InternalAPIAuthClient{
+	client := &InternalAPIAuthClient{
 		baseURL:           baseURL,
 		internalAuthToken: internalAuthToken,
 		redis:             redisClient,
@@ -151,20 +168,38 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 		calls: make(map[string]*call),
 		cb:    cb,
 	}
+	return client, nil
 }
 
 // WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.
-func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) *InternalAPIAuthClient {
-	if spiffeClient != nil && backendSpiffeID != "" {
-		tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
-		if err != nil {
-			panic(fmt.Sprintf("failed to create SPIFFE client TLS config for auth client: %v", err))
-		}
-		if tr, ok := c.httpClient.Transport.(*http.Transport); ok {
-			tr.TLSClientConfig = tlsCfg
-		}
+// AUD-373: the backend hop carries the internal token and identity, and an http
+// base URL would silently discard the TLS config, so the base URL must be https.
+// Refusals are returned rather than panicking so that main() can report them
+// through the startup error path (AGENTS.md 2.1). On error the transport is untouched.
+func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) error {
+	if spiffeClient == nil || backendSpiffeID == "" {
+		return nil
 	}
-	return c
+	if !isHTTPSBaseURL(c.baseURL) {
+		return fmt.Errorf("auth client base URL %q must use https when SPIFFE mTLS is configured", c.baseURL)
+	}
+	tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
+	if err != nil {
+		return fmt.Errorf("failed to create SPIFFE client TLS config for auth client: %w", err)
+	}
+	if tr, ok := c.httpClient.Transport.(*http.Transport); ok {
+		tr.TLSClientConfig = tlsCfg
+	}
+	return nil
+}
+
+// isHTTPSBaseURL reports whether raw is an absolute https URL with a host.
+func isHTTPSBaseURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https" && parsed.Host != ""
 }
 
 // StartEviction is no longer needed since lru.Cache manages its own memory bound.
@@ -339,6 +374,49 @@ func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
 	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
+// ResetAuthorizationCache drops every L1 entry, bumps the generation so that
+// in-flight backend answers from earlier generations are discarded, and removes
+// the shared L2 permission entries. Any failure is returned, and the caller keeps
+// admission closed until a reset succeeds (AUD-478).
+func (c *InternalAPIAuthClient) ResetAuthorizationCache(ctx context.Context) error {
+	c.genMu.Lock()
+	defer c.genMu.Unlock()
+	c.generation++
+	c.cache.Purge()
+	if c.redis == nil {
+		return nil
+	}
+	iter := c.redis.Scan(ctx, 0, "auth:perms:*", 500).Iterator()
+	for iter.Next(ctx) {
+		if err := c.redis.Del(ctx, iter.Val()).Err(); err != nil {
+			return fmt.Errorf("delete shared authorization cache entry: %w", err)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("scan shared authorization cache: %w", err)
+	}
+	return nil
+}
+
+// authorizationCacheGeneration snapshots the generation used by a room join.
+func (c *InternalAPIAuthClient) authorizationCacheGeneration() uint64 {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	return c.generation
+}
+
+// withAuthorizationCacheGeneration keeps a reset from interleaving between the
+// final generation check and committing membership based on that generation.
+func (c *InternalAPIAuthClient) withAuthorizationCacheGeneration(generation uint64, commit func()) bool {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	if c.generation != generation {
+		return false
+	}
+	commit()
+	return true
+}
+
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
 // and calls the Python backend on cache miss.
 //
@@ -352,14 +430,23 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	}
 
 	key := userID + ":" + roomID
-
-	// 1. Fast path: check local TTL cache
-	entry, ok := c.cache.Get(key)
-	if ok && time.Now().Before(entry.expiresAt) {
-		return entry.allowed
+	generation, allowed, cached := c.cachedRoomAuthorization(ctx, key)
+	if cached {
+		return allowed
 	}
+	return c.requestRoomAuthorization(ctx, userID, roomID, key, generation)
+}
 
-	// 2. Redis L2 path: check shared cache (PERF-006)
+func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key string) (uint64, bool, bool) {
+	// 1 and 2. Fast path (L1) and shared path (L2, PERF-006) under the shared
+	// generation lock. A reset cannot interleave with these reads.
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	generation := c.generation
+	entry, ok := c.cache.Get(key)
+	if ok && entry.generation == generation && time.Now().Before(entry.expiresAt) {
+		return generation, entry.allowed, true
+	}
 	if c.redis != nil {
 		redisKey := "auth:perms:" + key
 		val, err := c.redis.Get(ctx, redisKey).Result()
@@ -367,35 +454,69 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 			allowed := val == "1"
 			// Populate L1 from L2 — use same TTL constant so L1 never outlives L2.
 			c.cache.Add(key, cacheEntry{
-				allowed:   allowed,
-				expiresAt: time.Now().Add(authCacheTTL),
+				allowed:    allowed,
+				expiresAt:  time.Now().Add(authCacheTTL),
+				generation: generation,
 			})
-			return allowed
+			return generation, allowed, true
 		}
 	}
+	return generation, false, false
+}
 
+func (c *InternalAPIAuthClient) requestRoomAuthorization(
+	ctx context.Context,
+	userID, roomID, key string,
+	generation uint64,
+) bool {
 	// 3. Slow path: single-flight request
-	c.callMu.Lock()
-	if c.calls[key] != nil {
-		activeCall := c.calls[key]
-		c.callMu.Unlock()
-		activeCall.wg.Wait()
-		return activeCall.res
+	// Keep the generation stable through map insertion: an older lookup cannot
+	// replace a flight that was created after a reset.
+	c.genMu.RLock()
+	if c.generation != generation {
+		c.genMu.RUnlock()
+		return false
 	}
-	newCall := new(call)
-	newCall.wg.Add(1)
-	// HIGH-W19: defer wg.Done so waiters are always unblocked even if
-	// doRequestWithBreakerResult panics; explicit call below is removed
-	defer newCall.wg.Done()
+	c.callMu.Lock()
+	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation {
+		c.callMu.Unlock()
+		c.genMu.RUnlock()
+		select {
+		case <-activeCall.done:
+		case <-ctx.Done():
+			return false
+		}
+		c.genMu.RLock()
+		allowed := ctx.Err() == nil && activeCall.generation == c.generation && activeCall.res
+		c.genMu.RUnlock()
+		return allowed
+	}
+	newCall := &call{done: make(chan struct{}), generation: generation}
 	c.calls[key] = newCall
 	c.callMu.Unlock()
+	c.genMu.RUnlock()
+	// Always release waiters, including on panic. A retired flight must not
+	// remove a newer flight for the same key when it eventually finishes.
+	defer func() {
+		c.callMu.Lock()
+		if c.calls[key] == newCall {
+			delete(c.calls, key)
+		}
+		c.callMu.Unlock()
+		close(newCall.done)
+	}()
 
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
-	if authErr == nil {
+	c.genMu.RLock()
+	if c.generation != generation {
+		// A reset retires the answer for this caller as well as its waiters.
+		allowed = false
+	} else if authErr == nil {
 		c.cache.Add(key, cacheEntry{
-			allowed:   allowed,
-			expiresAt: time.Now().Add(authCacheTTL),
+			allowed:    allowed,
+			expiresAt:  time.Now().Add(authCacheTTL),
+			generation: generation,
 		})
 
 		if c.redis != nil {
@@ -407,13 +528,8 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 			c.redis.Set(ctx, redisKey, val, authCacheTTL)
 		}
 	}
-
-	// Resolve in-flight call
 	newCall.res = allowed
-
-	c.callMu.Lock()
-	delete(c.calls, key)
-	c.callMu.Unlock()
+	c.genMu.RUnlock()
 
 	return allowed
 }

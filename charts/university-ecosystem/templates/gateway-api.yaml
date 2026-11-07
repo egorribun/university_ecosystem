@@ -155,6 +155,7 @@ spec:
     - {{ $host.host | quote }}
   rules:
     {{- range $path := $host.paths }}
+    {{- $pathService := include "university-ecosystem.publicRouteService" (dict "root" $root "service" $path.service "path" $path.path) }}
     - matches:
         - path:
             type: {{ if eq $path.pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}
@@ -162,8 +163,8 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ include "university-ecosystem.componentName" (dict "root" $root "component" $path.service) }}
-          port: {{ if eq $path.service "backend" }}{{ $root.Values.backend.service.port }}{{ else if eq $path.service "gateway" }}{{ $root.Values.gateway.service.port }}{{ else if eq $path.service "frontend" }}{{ $root.Values.frontend.service.port }}{{ else if eq $path.service "ws-hub" }}{{ $root.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported Gateway API service %q" $path.service) }}{{ end }}
+          name: {{ include "university-ecosystem.componentName" (dict "root" $root "component" $pathService) }}
+          port: {{ if eq $pathService "backend" }}{{ $root.Values.backend.service.port }}{{ else if eq $pathService "gateway" }}{{ $root.Values.gateway.service.port }}{{ else if eq $pathService "frontend" }}{{ $root.Values.frontend.service.port }}{{ else if eq $pathService "ws-hub" }}{{ $root.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported Gateway API service %q" $pathService) }}{{ end }}
     {{- end }}
 {{- $hasGatewayCatchAll := false }}
 {{- range $path := $host.paths }}

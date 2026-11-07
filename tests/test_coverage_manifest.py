@@ -20,6 +20,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from tests.quality_normalizer_v2_testkit import (
     TOOL_VERSION_ARGUMENTS,
     make_all_strict_synthetic_contract,
+    with_historical_legacy_migration_policy,
     write_all_strict_synthetic_contract,
     write_complete_evidence,
 )
@@ -333,6 +334,11 @@ def _run_normalizer_in_isolated_repo(
         "--python-json": (None, "artifacts/coverage/python/coverage.json"),
         "--frontend-lcov": (None, "frontend/coverage/lcov.info"),
         "--frontend-json": (None, "frontend/coverage/coverage-final.json"),
+        "--node-actions-lcov": (None, "artifacts/coverage/node-actions/lcov.info"),
+        "--node-actions-json": (
+            None,
+            "artifacts/coverage/node-actions/coverage-final.json",
+        ),
     }
     component_report_options = {
         "--go-report": {
@@ -547,10 +553,10 @@ def _aggregate_legacy_migration_fixture(
     legacy_baseline_covered: int = 8,
     changed_covered: int = 10,
     changed_function_metric: dict[str, object] | None = None,
+    changed_path: str = "alembic/versions/new_revision.py",
 ) -> tuple[object, dict[str, object]]:
     normalizer = _normalizer_module()
     legacy_path = "alembic/versions/legacy_revision.py"
-    changed_path = "alembic/versions/new_revision.py"
     metrics_by_path = {
         legacy_path: {
             "lines": normalizer._measured_metric("native", legacy_covered, 10),
@@ -649,6 +655,299 @@ def _aggregate_legacy_migration_fixture(
             baseline,
         )
     return normalizer, result
+
+
+def _normalizer_source_bound_aggregate_case(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    changed_metric: str | None = None,
+    changed_evidence: str | None = None,
+    omit_changed: bool = False,
+    source_binding_error: str | None = None,
+) -> tuple[
+    object,
+    dict[str, object],
+    dict[str, dict[str, object]],
+    str,
+    dict[str, dict[str, dict[str, object]]],
+    list[str],
+    dict[str, object],
+]:
+    normalizer = _normalizer_module()
+    contract = with_historical_legacy_migration_policy(
+        json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
+    declared_records = normalizer._legacy_migration_records(contract)
+    changed_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+    assert len(declared_records) == 131
+    assert changed_path in declared_records
+    effective_records = {
+        path: record
+        for path, record in declared_records.items()
+        if path != changed_path
+    }
+    source_errors = [] if source_binding_error is None else [source_binding_error]
+
+    def source_binding(
+        _contract: dict[str, object], _repository_root: Path
+    ) -> tuple[list[str], dict[str, dict[str, object]]]:
+        return source_errors, {} if source_errors else effective_records
+
+    monkeypatch.setattr(
+        normalizer, "_source_bound_legacy_migration_records", source_binding
+    )
+    bound_errors, active_records = normalizer._effective_legacy_migration_records(
+        contract
+    )
+    assert len(declared_records) == 131
+    assert len(active_records) == (0 if source_errors else 130)
+    assert bound_errors == source_errors
+
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for path, record in declared_records.items():
+        if omit_changed and path == changed_path:
+            continue
+        metrics: dict[str, dict[str, object]] = {}
+        for metric_name in normalizer.METRICS:
+            baseline = record["metrics"][metric_name]
+            status = baseline["status"]
+            derivation = baseline.get("derivation")
+            if path == changed_path and metric_name == changed_metric:
+                if changed_evidence == "unsupported":
+                    metrics[metric_name] = normalizer._unmeasured_metric(
+                        "unsupported", reason_code="fixture_counter_unavailable"
+                    )
+                    continue
+                if changed_evidence == "99_percent":
+                    metrics[metric_name] = normalizer._measured_metric(
+                        status,
+                        99,
+                        100,
+                        derivation=derivation,
+                    )
+                    continue
+            if path == changed_path:
+                metrics[metric_name] = normalizer._measured_metric(
+                    status,
+                    100,
+                    100,
+                    derivation=derivation,
+                )
+            elif baseline["total"] == 0:
+                metrics[metric_name] = normalizer._vacuous_metric(derivation)
+            else:
+                metrics[metric_name] = normalizer._measured_metric(
+                    status,
+                    baseline["covered"],
+                    baseline["total"],
+                    derivation=derivation,
+                )
+        file_metrics[path] = metrics
+
+    report_metrics: dict[str, dict[str, object]] = {}
+    for metric_name in normalizer.METRICS:
+        values = [metrics[metric_name] for metrics in file_metrics.values()]
+        if metric_name == "functions":
+            report_metrics[metric_name] = normalizer._unmeasured_metric(
+                "unsupported", reason_code="fixture_python_xml_has_no_function_counter"
+            )
+            continue
+        if any(value["status"] == "unsupported" for value in values):
+            report_metrics[metric_name] = normalizer._unmeasured_metric(
+                "unsupported", reason_code="fixture_counter_unavailable"
+            )
+            continue
+        covered = sum(int(value["covered"]) for value in values)
+        total = sum(int(value["total"]) for value in values)
+        if total == 0:
+            report_metrics[metric_name] = normalizer._vacuous_metric(
+                normalizer.TIER0_AGGREGATE_DERIVATION
+            )
+        else:
+            report_metrics[metric_name] = normalizer._measured_metric(
+                "derived"
+                if any(value["status"] == "derived" for value in values)
+                else "native",
+                covered,
+                total,
+                derivation=normalizer.TIER0_AGGREGATE_DERIVATION,
+            )
+    report = normalizer._ParsedReport(
+        component="python",
+        report_format="source-bound-fixture",
+        path=Path("coverage.xml"),
+        metrics=report_metrics,
+        file_metrics=file_metrics,
+        sha256="0" * 64,
+    )
+    reports_by_component = defaultdict(list)
+    reports_by_component["python"].append(report)
+    floors = {
+        component: {metric: 100 for metric in normalizer.METRICS}
+        for component in normalizer.COMPONENTS
+    }
+    # Preserve the generic component floor. Tier 0 supplies the migration floor.
+    floors["python"]["functions"] = 0
+    metric_statuses = {
+        component: {
+            metric: frozenset({"native", "derived", "unsupported"})
+            for metric in normalizer.METRICS
+        }
+        for component in normalizer.COMPONENTS
+    }
+    monkeypatch.setattr(normalizer, "_load_tier0_rules", lambda: (["fixture"], None))
+    monkeypatch.setattr(normalizer, "_tier0_rule_matches", lambda _path, _rule: True)
+    monkeypatch.setattr(
+        normalizer,
+        "_tier0_source_requires_coverage",
+        lambda component, _path: component == "python",
+    )
+    source_inventory = {
+        "python": tuple(declared_records),
+    }
+    _, component_errors, _ = normalizer._component_entry(
+        "python",
+        [report],
+        floors["python"],
+        metric_statuses["python"],
+        supplied_count=1,
+        required_count=1,
+        evidence_errors=[],
+        legacy_migration_records=active_records,
+    )
+    tier0 = normalizer._aggregate_tier0(
+        reports_by_component,
+        floors,
+        metric_statuses,
+        source_inventory,
+        active_records,
+        bound_errors,
+    )
+    return (
+        normalizer,
+        declared_records,
+        active_records,
+        changed_path,
+        file_metrics,
+        component_errors,
+        tier0,
+    )
+
+
+def test_normalizer_uses_effective_legacy_subset_for_residuals_and_aggregate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        normalizer,
+        declared,
+        effective,
+        changed_path,
+        file_metrics,
+        component_errors,
+        tier0,
+    ) = _normalizer_source_bound_aggregate_case(monkeypatch)
+
+    assert len(declared) == 131
+    assert len(effective) == 130
+    assert set(declared) - set(effective) == {changed_path}
+    assert component_errors == []
+    assert tier0["status"] == "ready"
+    assert tier0["errors"] == []
+
+    changed_historical_misses = sum(
+        baseline["total"] - baseline["covered"]
+        for baseline in declared[changed_path]["metrics"].values()
+        if baseline["total"] > baseline["covered"]
+    )
+    assert changed_historical_misses > 0
+    for metric_name in normalizer.METRICS:
+        residual = sum(
+            record["metrics"][metric_name]["total"]
+            - record["metrics"][metric_name]["covered"]
+            for record in effective.values()
+        )
+        assert (
+            normalizer._exact_legacy_migration_missing(
+                file_metrics, effective, metric_name
+            )
+            == residual
+        )
+        aggregate_metric = tier0["coverage"][metric_name]
+        assert aggregate_metric["total"] - aggregate_metric["covered"] == residual
+
+
+@pytest.mark.parametrize(
+    "metric_name", ("lines", "statements", "branches", "functions")
+)
+def test_normalizer_changed_listed_migration_rejects_99_percent(
+    monkeypatch: pytest.MonkeyPatch, metric_name: str
+) -> None:
+    *_, changed_path, _file_metrics, component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            changed_metric=metric_name,
+            changed_evidence="99_percent",
+        )
+    )
+
+    if metric_name != "functions":
+        assert component_errors
+    assert tier0["status"] == "failed"
+    assert any(
+        f"{changed_path} (python).{metric_name} is below 100%" in error
+        for error in tier0["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    "metric_name", ("lines", "statements", "branches", "functions")
+)
+def test_normalizer_changed_listed_migration_rejects_unsupported_evidence(
+    monkeypatch: pytest.MonkeyPatch, metric_name: str
+) -> None:
+    *_, changed_path, _file_metrics, _component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            changed_metric=metric_name,
+            changed_evidence="unsupported",
+        )
+    )
+
+    assert tier0["status"] == "failed"
+    assert any(
+        f"{changed_path} (python).{metric_name} is unsupported but its floor is 100"
+        in error
+        for error in tier0["errors"]
+    )
+
+
+def test_normalizer_changed_listed_migration_missing_evidence_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    *_, changed_path, _file_metrics, _component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            omit_changed=True,
+        )
+    )
+
+    assert tier0["status"] == "failed"
+    assert any(
+        f"Tier0 source inventory is missing evidence for {changed_path}" in error
+        for error in tier0["errors"]
+    )
+
+
+def test_normalizer_source_binding_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    *_, tier0 = _normalizer_source_bound_aggregate_case(
+        monkeypatch,
+        source_binding_error="approved source archive unavailable",
+    )
+
+    assert tier0["status"] == "failed"
+    assert "approved source archive unavailable" in tier0["errors"]
 
 
 def _deeply_nested_json_object(depth: int = DEEP_JSON_DEPTH) -> str:
@@ -857,6 +1156,8 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+        "artifacts/coverage/node-actions/lcov.info",
+        "artifacts/coverage/node-actions/coverage-final.json",
     }
     assert expected_reports == {
         report["path"] for report in contract["coverage_reports"]
@@ -890,6 +1191,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         ],
         "go-ws-hub": ["services/ws-hub"],
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
+        "node-actions": [".github/actions/dependency-review-capture"],
         "python": ["app", "alembic/versions"],
         "rust-native": ["native/rust_ext"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
@@ -1023,12 +1325,13 @@ def test_tier0_missing_evidence_is_fail_closed_before_enforcement(
     manifest = json.loads(output.read_text(encoding="utf-8"))
     tier0 = manifest["tier0"]
     assert tier0["status"] == "failed"
-    assert tier0["files"][0]["path"] == "services/pkg/spicedb/client.go"
-    assert tier0["files"][0]["component"] == "go-shared"
-    assert all(
-        metric["status"] == "missing"
-        for metric in tier0["files"][0]["metrics"].values()
+    spicedb = next(
+        record
+        for record in tier0["files"]
+        if record["path"] == "services/pkg/spicedb/client.go"
     )
+    assert spicedb["component"] == "go-shared"
+    assert all(metric["status"] == "missing" for metric in spicedb["metrics"].values())
     assert (
         "Tier0 source inventory is missing evidence for services/pkg/spicedb/client.go"
         in tier0["errors"]
@@ -1079,6 +1382,19 @@ def test_nonbaseline_migration_functions_require_measured_evidence() -> None:
         "new_revision.py (python).functions is unsupported but its floor is 100"
         in error
         for error in rejected["errors"]
+    )
+
+    below_floor = normalizer._measured_metric("derived", 1, 2)
+    _, changed_noop_gap = _aggregate_legacy_migration_fixture(
+        changed_function_metric=below_floor,
+        changed_path=(
+            "alembic/versions/202509010001_merge_push_topics_and_email_heads.py"
+        ),
+    )
+    assert any(
+        "202509010001_merge_push_topics_and_email_heads.py (python).functions "
+        "is below 100%" in error
+        for error in changed_noop_gap["errors"]
     )
 
     derived_zero = normalizer._vacuous_metric(
@@ -1569,6 +1885,348 @@ def test_python_function_derivation_ignores_ellipsis_protocol_stubs(
     assert metric is not None
     assert metric["covered"] == metric["total"] == 1
     assert metric["percent"] == 100.0
+
+
+_COVERAGE_ISOLATION_WORKER = r"""from __future__ import annotations
+
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import runpy
+import subprocess
+import sys
+from types import SimpleNamespace
+
+from coverage import Coverage
+
+
+def _child_environment() -> dict[str, str]:
+    return {key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR") if key in os.environ}
+
+
+def _emit(record: dict[str, object]) -> None:
+    print(json.dumps(record, allow_nan=False, sort_keys=True, separators=(",", ":")))
+
+
+def _exercise_baseline(namespace: dict[str, object]) -> dict[str, object]:
+    if namespace["revision"] != "202611020000" or namespace["down_revision"] is not None:
+        raise RuntimeError("expected the sole MVP baseline")
+    statements: list[str] = []
+    queries: list[str] = []
+
+    def execute(statement: object) -> SimpleNamespace:
+        queries.append(str(statement))
+        return SimpleNamespace(fetchone=lambda: None)
+
+    bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), execute=execute)
+    operations = SimpleNamespace(get_bind=lambda: bind, execute=statements.append)
+    namespace["upgrade"].__globals__["op"] = operations
+    result = namespace["upgrade"]()
+    before_downgrade = list(statements)
+    try:
+        namespace["downgrade"]()
+    except RuntimeError as error:
+        downgrade_error = str(error)
+        if downgrade_error != namespace["downgrade_reason"]:
+            raise
+    else:
+        raise RuntimeError("baseline downgrade unexpectedly succeeded")
+    if statements != before_downgrade:
+        raise RuntimeError("baseline downgrade changed recorded SQL")
+    if not statements or queries != [
+        "SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron'"
+    ]:
+        raise RuntimeError("baseline upgrade did not execute its recorded SQL path")
+    return {"upgrade_result": result, "downgrade_error": downgrade_error}
+
+
+def _measure(
+    source_path: Path, call_functions: bool, *, baseline: bool = False
+) -> dict[str, object]:
+    coverage = Coverage(
+        data_file=None, include=[str(source_path)], config_file=False
+    )
+    coverage.start()
+    function_results: dict[str, object] = {}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            namespace = runpy.run_path(str(source_path))
+            if call_functions and baseline:
+                function_results = _exercise_baseline(namespace)
+            elif call_functions:
+                function_results = {
+                    "upgrade_result": namespace["upgrade"](),
+                    "downgrade_result": namespace["downgrade"](),
+                }
+    finally:
+        coverage.stop()
+    executed = coverage.get_data().lines(str(source_path))
+    if executed is None:
+        raise RuntimeError("coverage produced no executed-line data")
+    return {
+        "schema": "coverage-measurement-v1",
+        "executed_lines": sorted(executed),
+        **function_results,
+    }
+
+
+def _outer_control(
+    branch_path: Path, measurement_path: str, worker_source: str
+) -> dict[str, object]:
+    coverage = Coverage(
+        data_file=None, branch=True, include=[str(branch_path)], config_file=False
+    )
+    coverage.start()
+    measurement = None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            namespace = runpy.run_path(str(branch_path))
+        true_result = namespace["choose"](True)
+        if measurement_path != "-":
+            child = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    "-I",
+                    "-X",
+                    "utf8",
+                    "-c",
+                    worker_source,
+                    "measure",
+                    measurement_path,
+                    "0",
+                    worker_source,
+                ],
+                env=_child_environment(),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="strict",
+                timeout=30,
+                check=True,
+            )
+            if child.stderr:
+                raise RuntimeError("isolated measurement worker wrote to stderr")
+            if len(child.stdout.encode("utf-8")) > 8192:
+                raise RuntimeError("isolated measurement worker output exceeded the bound")
+            measurement = json.loads(child.stdout)
+            measured_lines = measurement.get("executed_lines")
+            if (
+                measurement.get("schema") != "coverage-measurement-v1"
+                or not isinstance(measured_lines, list)
+                or len(measured_lines) > 4096
+                or not all(type(line) is int and line > 0 for line in measured_lines)
+            ):
+                raise RuntimeError("isolated measurement worker output schema mismatch")
+        false_result = namespace["choose"](False)
+    finally:
+        coverage.stop()
+    data = coverage.get_data()
+    executed = data.lines(str(branch_path))
+    arcs = data.arcs(str(branch_path))
+    if executed is None or arcs is None:
+        raise RuntimeError("outer coverage produced incomplete branch data")
+    return {
+        "schema": "outer-trace-control-v1",
+        "true_result": true_result,
+        "false_result": false_result,
+        "lines": sorted(executed),
+        "arcs": [list(arc) for arc in sorted(arcs)],
+        "measurement": measurement,
+    }
+
+
+if sys.argv[1] in {"measure", "measure-baseline"}:
+    _emit(_measure(
+        Path(sys.argv[2]), sys.argv[3] == "1",
+        baseline=sys.argv[1] == "measure-baseline",
+    ))
+else:
+    _emit(_outer_control(Path(sys.argv[2]), sys.argv[3], sys.argv[-1]))
+"""
+
+
+def _coverage_worker_environment() -> dict[str, str]:
+    return {
+        key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR") if key in os.environ
+    }
+
+
+def _run_coverage_worker(
+    tmp_path: Path,
+    expected_schema: str,
+    mode: str,
+    source_path: str,
+    option: str,
+) -> dict[str, object]:
+    completed = subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "-B",
+            "-I",
+            "-X",
+            "utf8",
+            "-c",
+            _COVERAGE_ISOLATION_WORKER,
+            mode,
+            source_path,
+            option,
+            _COVERAGE_ISOLATION_WORKER,
+        ],
+        cwd=tmp_path,
+        env=_coverage_worker_environment(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        timeout=60,
+        check=True,
+    )
+    assert completed.stderr == ""
+    assert len(completed.stdout.encode("utf-8")) <= 8192
+    record = json.loads(completed.stdout)
+    assert isinstance(record, dict)
+    assert record.get("schema") == expected_schema
+    lines_key = (
+        "executed_lines" if expected_schema == "coverage-measurement-v1" else "lines"
+    )
+    lines = record.get(lines_key)
+    assert isinstance(lines, list)
+    assert len(lines) <= 4096
+    assert all(type(line) is int and line > 0 for line in lines)
+    if expected_schema == "outer-trace-control-v1":
+        arcs = record.get("arcs")
+        assert isinstance(arcs, list)
+        assert len(arcs) <= 8192
+        assert all(
+            isinstance(arc, list)
+            and len(arc) == 2
+            and all(type(line) is int for line in arc)
+            for arc in arcs
+        )
+    return record
+
+
+def test_python_function_derivation_keeps_docstring_only_denominator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "docstring_only.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def documented_only() -> None:\n"
+        '    """A function with no executable body."""\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    measurement = _run_coverage_worker(
+        tmp_path,
+        "coverage-measurement-v1",
+        "measure",
+        str(source_path),
+        "0",
+    )
+    executed = measurement["executed_lines"]
+    assert executed == [1]
+
+    metric = normalizer._derive_python_function_metric(
+        "app/docstring_only.py", {line: True for line in executed}
+    )
+
+    assert metric is not None
+    assert (metric["covered"], metric["total"], metric["percent"]) == (
+        0,
+        1,
+        0.0,
+    )
+
+
+def test_current_baseline_functions_are_exercised_by_coverage_suite(
+    tmp_path: Path,
+) -> None:
+    normalizer = _normalizer_module()
+    migration_path = (
+        REPOSITORY_ROOT / "alembic" / "versions" / "202611020000_mvp_baseline.py"
+    )
+
+    def measured_metric(*, call_functions: bool) -> dict[str, object]:
+        measurement = _run_coverage_worker(
+            tmp_path,
+            "coverage-measurement-v1",
+            "measure-baseline",
+            str(migration_path),
+            "1" if call_functions else "0",
+        )
+        if call_functions:
+            assert measurement["upgrade_result"] is None
+            assert measurement["downgrade_error"] == (
+                "The MVP baseline cannot be downgraded: reaching base or any earlier schema "
+                "is not a supported recovery path. Restore a consistent backup set instead."
+            )
+        executed = measurement["executed_lines"]
+        assert executed is not None
+        metric = normalizer._derive_python_function_metric(
+            "alembic/versions/202611020000_mvp_baseline.py",
+            {line: True for line in executed},
+        )
+        assert metric is not None
+        return metric
+
+    uncalled = measured_metric(call_functions=False)
+    called = measured_metric(call_functions=True)
+    assert (uncalled["covered"], uncalled["total"], uncalled["percent"]) == (
+        0,
+        4,
+        0.0,
+    )
+    assert (called["covered"], called["total"], called["percent"]) == (
+        4,
+        4,
+        100.0,
+    )
+
+
+def test_isolated_coverage_measurement_preserves_outer_false_branch(
+    tmp_path: Path,
+) -> None:
+    branch_path = tmp_path / "outer_branch.py"
+    branch_path.write_text(
+        "def choose(flag):\n    if flag:\n        return 'yes'\n    return 'no'\n",
+        encoding="utf-8",
+    )
+    measurement_path = tmp_path / "inner_subject.py"
+    measurement_path.write_text("sentinel = 1\n", encoding="utf-8")
+
+    baseline = _run_coverage_worker(
+        tmp_path,
+        "outer-trace-control-v1",
+        "outer-control",
+        str(branch_path),
+        "-",
+    )
+    assert baseline["measurement"] is None
+    isolated = _run_coverage_worker(
+        tmp_path,
+        "outer-trace-control-v1",
+        "outer-control",
+        str(branch_path),
+        str(measurement_path),
+    )
+
+    assert baseline["true_result"] == isolated["true_result"] == "yes"
+    assert baseline["false_result"] == isolated["false_result"] == "no"
+    assert baseline["lines"] == isolated["lines"]
+    assert baseline["arcs"] == isolated["arcs"]
+    assert 4 in isolated["lines"]
+    assert [2, 4] in isolated["arcs"]
+    assert isolated["measurement"] == {
+        "schema": "coverage-measurement-v1",
+        "executed_lines": [1],
+    }
 
 
 def test_python_branch_derivation_matches_coverage_py_try_semantics(
@@ -2413,6 +3071,14 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
                     "functions": 100,
                 }
             },
+            "node-actions": {
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -3189,6 +3855,14 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
                     "functions": 100,
                 }
             },
+            "node-actions": {
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -3430,3 +4104,171 @@ def test_parser_hardening_rejects_a_mocked_junction_ancestor(
             (FIXTURES / "python-valid.xml").read_bytes(),
             "python",
         )
+
+
+# PRIVATE: append to tests/test_coverage_manifest.py after existing helpers/tests.
+# Requires additive node-actions registration and complete-evidence testkit.
+
+
+def _node_action_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    normalizer = _normalizer_module()
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+    write_complete_evidence(tmp_path)
+    reports = []
+    for report_format, name in (
+        ("lcov", "lcov.info"),
+        ("istanbul-json", "coverage-final.json"),
+    ):
+        report_path = tmp_path / "artifacts/coverage/node-actions" / name
+        raw = report_path.read_bytes()
+        reports.append(
+            normalizer._parse_report(
+                normalizer._RawReport(
+                    component="node-actions",
+                    report_format=report_format,
+                    path=report_path,
+                    raw=raw,
+                    sha256=hashlib.sha256(raw).hexdigest(),
+                )
+            )
+        )
+    return normalizer, reports
+
+
+def test_node_action_reports_measure_both_runtime_files_at_four_strict_floors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    merged, errors = normalizer._merge_frontend_reports(*reports)
+    assert errors == []
+    assert merged.component == "node-actions"
+    assert set(merged.file_metrics) == {
+        ".github/actions/dependency-review-capture/capture.cjs",
+        ".github/actions/dependency-review-capture/index.cjs",
+    }
+    for metrics in [merged.metrics, *merged.file_metrics.values()]:
+        for name in ("lines", "statements", "branches", "functions"):
+            assert metrics[name]["covered"] == metrics[name]["total"]
+            assert metrics[name]["total"] > 0
+            assert metrics[name]["status"] in {"native", "derived"}
+
+
+@pytest.mark.parametrize("counter", ("s", "b", "f"))
+def test_node_action_uncovered_statement_branch_or_function_is_not_hidden(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    counter: str,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    first = next(iter(document.values()))
+    first[counter]["0"] = [1, 0] if counter == "b" else 0
+    raw = json.dumps(document).encode()
+    changed = normalizer._parse_report(
+        normalizer._RawReport(
+            component="node-actions",
+            report_format="istanbul-json",
+            path=path,
+            raw=raw,
+            sha256=hashlib.sha256(raw).hexdigest(),
+        )
+    )
+    merged, errors = normalizer._merge_frontend_reports(reports[0], changed)
+    metric = {"s": "statements", "b": "branches", "f": "functions"}[counter]
+    if counter == "s":
+        assert merged.metrics[metric]["covered"] < merged.metrics[metric]["total"]
+    else:
+        assert errors
+        assert changed.metrics[metric]["covered"] < changed.metrics[metric]["total"]
+
+
+@pytest.mark.parametrize("missing", ("capture.cjs", "index.cjs"))
+def test_node_action_pair_rejects_missing_runtime_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document[f".github/actions/dependency-review-capture/{missing}"]
+    raw = json.dumps(document).encode()
+    changed = normalizer._parse_report(
+        normalizer._RawReport(
+            component="node-actions",
+            report_format="istanbul-json",
+            path=path,
+            raw=raw,
+            sha256=hashlib.sha256(raw).hexdigest(),
+        )
+    )
+    _, errors = normalizer._merge_frontend_reports(reports[0], changed)
+    assert any(missing in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "outside",
+    (
+        "frontend/src/example.ts",
+        ".github/actions/other/index.cjs",
+        "../capture.cjs",
+    ),
+)
+def test_node_action_reports_reject_foreign_or_traversing_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outside: str,
+) -> None:
+    normalizer, _ = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    record = next(iter(document.values()))
+    record["path"] = outside
+    with pytest.raises(normalizer._InputError):
+        normalizer._parse_frontend_istanbul_json(
+            json.dumps({outside: record}).encode(), "node-actions"
+        )
+
+
+def test_node_action_inventory_includes_new_runtime_but_not_test_harness() -> None:
+    normalizer = _normalizer_module()
+    for name in (
+        "capture.cjs",
+        "index.cjs",
+        "new-runtime.js",
+        "new-runtime.mjs",
+        "future.test.cjs",
+    ):
+        assert normalizer._tracked_source_is_coverable(
+            "node-actions", f".github/actions/dependency-review-capture/{name}"
+        )
+    assert not normalizer._tracked_source_is_coverable(
+        "node-actions", ".github/actions/dependency-review-capture/capture.test.cjs"
+    )
+
+
+def test_node_action_toolchain_requires_its_actual_producer_not_vitest() -> None:
+    _normalizer_module()
+    validator = sys.modules["validate_quality_contract"]
+    tools = {
+        "quality-normalizer": "3.0.0",
+        "node-actions-node": "24.11.0",
+        "ast-v8-to-istanbul": "1.0.7",
+        "@babel/parser": "8.0.8",
+        "@bcoe/v8-coverage": "1.0.2",
+        "istanbul-lib-coverage": "3.2.2",
+        "istanbul-lib-report": "3.0.1",
+        "istanbul-reports": "3.2.0",
+    }
+    manifest = {
+        "reports": [{"component": "node-actions", "format": "istanbul-json"}],
+        "tool_versions": tools,
+    }
+    assert validator._validate_tool_versions(manifest) == []
+    del tools["ast-v8-to-istanbul"]
+    tools["vitest"] = "5.0.5"
+    errors = validator._validate_tool_versions(manifest)
+    assert any("ast-v8-to-istanbul" in error for error in errors)
+    assert any("unexpected tools: vitest" in error for error in errors)

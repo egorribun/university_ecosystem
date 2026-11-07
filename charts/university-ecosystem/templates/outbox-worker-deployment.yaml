@@ -1,9 +1,11 @@
 {{- if .Values.outboxWorker.enabled }}
 {{- $connectionSecret := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
+{{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
 {{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
 {{- $connectionSecretKeys := list
   (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey)
   (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+  $rateLimitURIKey
   (required "connections.natsURLKey must be set" .Values.connections.natsURLKey)
   (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
 -}}
@@ -77,11 +79,15 @@ spec:
               drop: ["ALL"]
           env:
             {{- range $key, $value := .Values.outboxWorker.env }}
-            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MFA_TOTP_ENCRYPTION_KEYS" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_TOTP_ENCRYPTION_KEYS_FILE" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL" "EVENT_FILE_SCANNER_ENABLED" "KEDA_POSTGRESQL_CONNECTION" "DATABASE_URL_FILE" "CACHE_REDIS_URL_FILE" "REVOCATION_REDIS_URL_FILE" "NATS_URL_FILE" "NATS_AUTH_TOKEN_FILE" "SECRET_KEY_FILE" "INTERNAL_HMAC_SECRET_FILE" "WS_HUB_INTERNAL_SECRET_FILE" "CSRF_HMAC_SECRET_FILE" "SPOTIFY_TOKEN_SECRET_FILE" "ELASTICSEARCH_PASSWORD_FILE" "SPICEDB_PRESHARED_KEY_FILE" "AUDIT_LOG_SECRET_FILE" "TOKEN_HMAC_SECRET_FILE" "IDEMPOTENCY_HMAC_SECRET_FILE" "MFA_EMAIL_DELIVERY_KEKS_FILE")) }}
+            {{- if and (not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MFA_TOTP_ENCRYPTION_KEYS" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_TOTP_ENCRYPTION_KEYS_FILE" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL" "EVENT_FILE_SCANNER_ENABLED" "KEDA_POSTGRESQL_CONNECTION" "DATABASE_URL_FILE" "CACHE_REDIS_URL_FILE" "REVOCATION_REDIS_URL_FILE" "NATS_URL_FILE" "NATS_AUTH_TOKEN_FILE" "SECRET_KEY_FILE" "INTERNAL_HMAC_SECRET_FILE" "WS_HUB_INTERNAL_SECRET_FILE" "CSRF_HMAC_SECRET_FILE" "SPOTIFY_TOKEN_SECRET_FILE" "ELASTICSEARCH_PASSWORD_FILE" "SPICEDB_PRESHARED_KEY_FILE" "AUDIT_LOG_SECRET_FILE" "TOKEN_HMAC_SECRET_FILE" "IDEMPOTENCY_HMAC_SECRET_FILE" "MFA_EMAIL_DELIVERY_KEKS_FILE"))) (not (has (upper $key) (list "RATE_LIMIT_STORAGE_BACKEND" "RATE_LIMIT_STORAGE_URI" "RATE_LIMIT_STORAGE_URI_FILE"))) }}
             - name: {{ $key }}
               value: {{ tpl $value $ | quote }}
             {{- end }}
             {{- end }}
+            - name: RATE_LIMIT_STORAGE_BACKEND
+              value: "redis"
+            - name: RATE_LIMIT_STORAGE_URI_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret $rateLimitURIKey | quote }}
             - name: DATABASE_URL_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey) | quote }}
             - name: CACHE_REDIS_URL_FILE

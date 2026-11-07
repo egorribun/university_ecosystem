@@ -15,7 +15,10 @@ global:
 # Existing Secret containing complete, URL-encoded connection strings. Keeping
 # credentials out of values.yaml avoids leaking them through Helm release state.
 # Required keys by default:
-#   database-url: postgresql+asyncpg://...
+#   database-url: postgresql+asyncpg://ue_app:... (runtime login: NOSUPERUSER
+#     NOBYPASSRLS, DML only, no ue_rls_bypass membership; backend and outbox worker)
+#   migration-database-url: postgresql+asyncpg://ue_migrator:... (schema owner;
+#     mounted only into the migration Job; must differ from database-url)
 #   redis-backend-url: redis://:PASSWORD@<release>-redis-master:6379/0
 #   redis-gateway-url: redis://:PASSWORD@<release>-redis-master:6379/3
 #   rate-limit-storage-uri: redis://:PASSWORD@<release>-redis-master:6379/1
@@ -28,6 +31,7 @@ global:
 connections:
   existingSecret: "university-connections"
   databaseURLKey: "database-url"
+  migrationDatabaseURLKey: "migration-database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
   # Python rate-limit state uses a distinct Secret key and Redis DB/ACL.
@@ -115,9 +119,31 @@ internalGrpcMTLS:
     privateKeyKey: "tls.key" # pragma: allowlist secret
     clientCAKey: "ca.crt"
 
+# SPIFFE mTLS for token-bearing backend HTTP hops (AUD-373). When enabled, the
+# backend Gunicorn listener uses SDK-issued identities and rotating trust
+# bundles from the SPIRE Workload API and requires a verified client certificate.
+# Every backend client verifies backendSpiffeID; the backend authorizes exact
+# client IDs at the TLS/HTTP boundary. Probes use the backend's issued identity.
+# Off until ADR-052 issuance/rotation proof and complete-chain checks pass.
+# global.environment=production requires enabled=true (AUD-373 owner decision);
+# staging remains opt-in. Public /static and /.well-known route through the gateway.
+internalHttpMTLS:
+  enabled: false
+  trustDomain: ""
+  backendSpiffeID: ""
+  gatewaySpiffeID: ""
+  wsHubSpiffeID: ""
+  fileProcessorSpiffeID: ""
+  workloadAPI:
+    csiDriver: "csi.spiffe.io"
+    mountPath: "/spiffe-workload-api"
+
 # Database backup is opt-in because it requires reachable PostgreSQL and MinIO
 # services plus the Secret keys documented above. The init container produces a
 # consistent custom-format pg_dump; the main container uploads it to MinIO.
+# backup-database-url must be a SELECT-only login with the BYPASSRLS attribute,
+# not a ue_rls_bypass member: pg_dump runs with row_security off, and PostgreSQL
+# rejects any policy-subject role that dumps an RLS table, membership or not.
 backup:
   enabled: false
   schedule: "0 2 * * *"
@@ -178,6 +204,14 @@ backend:
   # from connections.existingSecret and reserved by the Deployment template.
   env: {}
   config:
+    # Gateway peer CIDRs whose X-Forwarded-For the API may trust (AUD-164). The
+    # empty default trusts no peer and is valid only in development; staging and
+    # production validation requires explicit non-loopback CIDRs.
+    trustedProxies: []
+    # Access-token lifetime rendered as ACCESS_TOKEN_EXPIRE_MINUTES. It matches the
+    # application default (60 minutes). ws-hub's revocation replay window must cover
+    # it; validate-config.yaml fails the render when it does not.
+    accessTokenExpireMinutes: 60
     jwtPrivateKeyPEM: ""
     # Development-only inline values used to create <release>-secrets. Prefer
     # applicationSecrets.existingSecret outside disposable local clusters.
@@ -308,6 +342,12 @@ wsHub:
   service:
     type: ClusterIP
     port: 8081
+  # Scrape-only Prometheus listener (AUD-438). It is separate from the public
+  # WebSocket port, so /metrics is never served by the client route table. The
+  # pod listens on this port and the NetworkPolicy admits it only from the
+  # monitoring namespace. Keep it distinct from service.port.
+  metrics:
+    port: 9108
   resources:
     requests:
       cpu: 100m
@@ -335,14 +375,24 @@ wsHub:
     clientMessageRateLimit: 10
     clientMessageBurst: 20
     ticketTTLSeconds: 15
+    # A late-starting replica replays room revocations from this many seconds back.
+    # It must cover backend.config.accessTokenExpireMinutes (3600 s by default), or
+    # a revoked token could stay usable on that replica.
+    revocationReplayWindowSeconds: 3600
+    # Durable contract for both cache-invalidation consumers (AUD-478). ws-hub
+    # validates these values and fails closed on any other setting. The code
+    # defaults in services/ws-hub/pkg/config are the same numbers.
+    natsConsumer:
+      ackPolicy: "explicit"
+      ackWaitSeconds: 60
+      maxDeliver: 20
+      inactiveThresholdSeconds: 300
     otelEndpoint: "otel-collector:4317"
     otelInsecure: true
     jetstream:
       enabled: true
       chatStream: "CHAT_EVENTS"
       notificationsStream: "NOTIFICATIONS_EVENTS"
-      chatDurable: "ws-hub-chat"
-      notificationsDurable: "ws-hub-notifications"
 
 # File Processor (Go)
 fileProcessor:
@@ -517,9 +567,28 @@ networkPolicy:
   # issuer. Populate with owner-verified endpoint CIDRs; there is no open default.
   gatewayJWKS:
     egressCIDRs: []
-  # TCP 443 egress for backup, backend, file-processor and outbox-worker. Public
-  # destinations stay reachable; cluster, private and link-local ranges are
-  # excepted. Owner-verified private HTTPS endpoints go in privateCIDRs.
+  # Required when file-processor reaches an external HTTPS endpoint: an external
+  # fileProcessor.config.minioEndpoint (any host other than the in-cluster MinIO
+  # service, which must use port 9000) or a non-default JWKS issuer. The chart
+  # fails to render when such an endpoint lacks CIDRs. Its other dependencies
+  # (Temporal, NATS, revocation Redis, backend JWKS, OTLP, in-cluster MinIO) are
+  # pod selectors and need no TCP 443 (AUD-189). Owner-verified CIDRs only; each
+  # prefix must be /8 to /32 (IPv4) or /16 to /128 (IPv6).
+  fileProcessorHTTPSEgress:
+    egressCIDRs: []
+  # Required when outbox-worker reaches an external HTTPS endpoint: an external
+  # backend.config.elasticsearchURL (event search indexing), or an embedding API
+  # when outboxWorker.env supplies EMBEDDING_API_KEY (default base is external).
+  # The chart fails to render when either lacks CIDRs; an in-cluster Elasticsearch
+  # or embedding base fails closed because no NetworkPolicy peer exists for it.
+  # Owner-verified CIDRs only, with the same prefix limits as fileProcessorHTTPSEgress.
+  outboxWorkerHTTPSEgress:
+    egressCIDRs: []
+  # TCP 443 egress for backup and backend only: their declared public
+  # dependencies (object storage, HIBP, Spotify OAuth). Public destinations stay
+  # reachable; cluster, private and link-local ranges are excepted. The listed
+  # baseline exclusions must remain when adding cluster CIDRs; owner-verified
+  # private HTTPS endpoints go in privateCIDRs.
   httpsEgress:
     privateCIDRs: []
     exceptIPv4CIDRs:
@@ -863,3 +932,31 @@ hibernation:
       enabled: true
       minReplicasDay: 2
       maxReplicasDay: 10
+
+# Daily partition retention (app/services/partition_manager.py). Creates upcoming
+# audit and notification partitions and prunes expired ones. Only the schema owner
+# login may run this DDL, so the CronJob uses the migration credentials, like the
+# migration hook. The schedule is UTC and concurrencyPolicy forbids overlap.
+partitionMaintenance:
+  enabled: true
+  schedule: "30 3 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "0.5"
+      memory: 512Mi
+  alert:
+    # Fires when a partition-maintenance Job fails. releaseLabel matches the
+    # Prometheus Operator selector used by k8s/monitoring/prometheus-rules.yaml.
+    enabled: true
+    releaseLabel: prometheus

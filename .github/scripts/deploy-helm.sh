@@ -83,6 +83,49 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     --set-string "nats.image.digest=$NATS_IMAGE_DIGEST"
     --set-string "nats.container.image.digest=$NATS_IMAGE_DIGEST"
   )
+  # AUD-373 owner decision: production runs internal backend HTTP over SPIFFE/SPIRE
+  # mTLS. The chart fails the render unless the values file also supplies the trust
+  # domain and the workload SPIFFE IDs, so no production render can omit them silently.
+  if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+    release_args+=(--set "internalHttpMTLS.enabled=true")
+  fi
+  # AUD-189: external MinIO and Elasticsearch endpoints need owner-declared TCP 443
+  # CIDRs. Fail closed here with a clear message; never default to public egress.
+  endpoint_is_external() {
+    local value="$1" host
+    value="${value#*://}"
+    value="${value%%[/?#]*}"
+    value="${value##*@}"
+    host="${value%%:*}"
+    [[ -n "$host" ]] || return 1
+    if [[ "$host" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+      return 1
+    fi
+    if [[ "$host" == *".$K8S_NAMESPACE.svc" || "$host" == *".$K8S_NAMESPACE.svc.cluster.local" ]]; then
+      return 1
+    fi
+    return 0
+  }
+  if endpoint_is_external "$MINIO_ENDPOINT" && [[ -z "${MINIO_EGRESS_CIDRS:-}" ]]; then
+    echo "MINIO_ENDPOINT is external; set MINIO_EGRESS_CIDRS to comma-separated owner-verified CIDRs for TCP 443 (AUD-189)." >&2
+    exit 1
+  fi
+  if endpoint_is_external "$ELASTICSEARCH_URL" && [[ -z "${ELASTICSEARCH_EGRESS_CIDRS:-}" ]]; then
+    echo "ELASTICSEARCH_URL is external; set ELASTICSEARCH_EGRESS_CIDRS to comma-separated owner-verified CIDRs for TCP 443 (AUD-189)." >&2
+    exit 1
+  fi
+  IFS=',' read -r -a minio_egress_cidrs <<< "${MINIO_EGRESS_CIDRS:-}"
+  for index in "${!minio_egress_cidrs[@]}"; do
+    cidr="${minio_egress_cidrs[$index]//[[:space:]]/}"
+    [[ -n "$cidr" ]] || continue
+    release_args+=(--set-string "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs[$index]=$cidr")
+  done
+  IFS=',' read -r -a elasticsearch_egress_cidrs <<< "${ELASTICSEARCH_EGRESS_CIDRS:-}"
+  for index in "${!elasticsearch_egress_cidrs[@]}"; do
+    cidr="${elasticsearch_egress_cidrs[$index]//[[:space:]]/}"
+    [[ -n "$cidr" ]] || continue
+    release_args+=(--set-string "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs[$index]=$cidr")
+  done
 fi
 if [[ "$DEPLOY_ENVIRONMENT" == "staging" ]]; then
   cwv_enabled=true

@@ -20,50 +20,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewInternalAPIAuthClient_FailsFastWhenCacheConstructionFails(t *testing.T) {
+func TestNewInternalAPIAuthClient_ReturnsCacheConstructionFailure(t *testing.T) {
 	old := newAuthLRUFunc
 	t.Cleanup(func() { newAuthLRUFunc = old })
 	newAuthLRUFunc = func(int) (*lru.Cache[string, cacheEntry], error) {
 		return nil, errors.New("synthetic auth cache failure")
 	}
 
-	assert.PanicsWithValue(
-		t,
-		"failed to initialize LRU cache: synthetic auth cache failure",
-		func() { NewInternalAPIAuthClientWithToken("http://auth.test", "", nil) },
-	)
+	client, err := NewInternalAPIAuthClientWithToken("http://auth.test", "", nil)
+	require.Nil(t, client)
+	require.EqualError(t, err, "failed to initialize LRU cache: synthetic auth cache failure")
 }
 
-func TestNewHub_FailsFastWhenDedupCacheConstructionFails(t *testing.T) {
+func TestNewHub_ReturnsDedupCacheConstructionFailure(t *testing.T) {
 	old := newDedupLRUFunc
 	t.Cleanup(func() { newDedupLRUFunc = old })
 	newDedupLRUFunc = func(int) (*lru.Cache[string, time.Time], error) {
 		return nil, errors.New("synthetic dedup cache failure")
 	}
 
-	assert.PanicsWithValue(
-		t,
-		"failed to initialize dedup LRU cache: synthetic dedup cache failure",
-		func() { NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil) },
-	)
+	h, err := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	require.Nil(t, h)
+	require.EqualError(t, err, "failed to initialize dedup LRU cache: synthetic dedup cache failure")
 }
 
 func TestNewHub_RejectsMultipleRevocationRedisClients(t *testing.T) {
-	assert.PanicsWithValue(
-		t,
-		"ws-hub: at most one revocation Redis client may be configured",
-		func() {
-			NewHub(
-				nil,
-				slog.New(slog.NewTextHandler(io.Discard, nil)),
-				nil,
-				nil,
-				nil,
-				nil,
-				nil,
-			)
-		},
+	h, err := NewHub(
+		nil,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
+	require.Nil(t, h)
+	require.EqualError(t, err, "ws-hub: at most one revocation Redis client may be configured")
 }
 
 func TestSetupJWKS_PropagatesCacheConstructionFailure(t *testing.T) {
@@ -102,7 +95,7 @@ func TestSetupJWKS_PropagatesRegistrationFailure(t *testing.T) {
 	registerJWKSFunc = func(context.Context, *jwk.Cache, string, ...jwk.RegisterOption) error {
 		return wantErr
 	}
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 
 	err := h.SetupJWKS(context.Background(), "https://auth.test/.well-known/jwks.json")
@@ -142,7 +135,7 @@ func newTestJWKSCache(t *testing.T, h *Hub, ctx context.Context, configuredURL s
 }
 
 func TestJWKSCacheRejectsUnconfiguredURL(t *testing.T) {
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 	configuredURL := "https://auth.test/.well-known/jwks.json"
 	cache := newTestJWKSCache(t, h, context.Background(), configuredURL)
@@ -170,7 +163,7 @@ func TestCloseJWKSCacheBoundsShutdownAndCancelsParentBeforeError(t *testing.T) {
 		return wantErr
 	}
 
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 	h.jwksCache = &jwk.Cache{}
 	h.jwksCacheCancel = func() { parentCanceled = true }
@@ -195,7 +188,7 @@ func TestRefreshJWKSCallerCancellationStopsFetch(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 	cache := newTestJWKSCache(t, h, context.Background(), server.URL)
 	require.NoError(t, cache.Register(context.Background(), server.URL, jwk.WithWaitReady(false)))
@@ -238,7 +231,7 @@ func TestSetupJWKSHTTPClientTimeoutCancelsFetch(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 	setupDone := make(chan error, 1)
 	go func() { setupDone <- h.SetupJWKS(context.Background(), server.URL) }()
@@ -273,7 +266,7 @@ func TestCloseJWKSCacheCancelsInFlightFetch(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	t.Cleanup(h.Stop)
 	cache := newTestJWKSCache(t, h, context.Background(), server.URL)
 	require.NoError(t, cache.Register(context.Background(), server.URL, jwk.WithWaitReady(false)))

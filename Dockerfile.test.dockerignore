@@ -52,6 +52,8 @@ env/
 **/.root-*/
 
 # Local databases and secrets
+.temporal-bootstrap/
+**/.temporal-bootstrap/
 .secrets/
 **/.secrets/
 *.db

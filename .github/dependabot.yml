@@ -17,6 +17,25 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
+    # OpenTelemetry moves as one generation. The 2.12 SDK peers with
+    # @opentelemetry/api below 1.10.0 and pairs with the 0.223 experimental line,
+    # so major releases and 0.x minor bumps (for example 0.223 -> 0.300, which
+    # needs api 1.10) wait for a reviewed, coordinated lock refresh.
+    ignore:
+      - dependency-name: "@opentelemetry/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@opentelemetry/api"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@opentelemetry/exporter-trace-otlp-http"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@opentelemetry/instrumentation"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@opentelemetry/instrumentation-fetch"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@opentelemetry/instrumentation-user-interaction"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@opentelemetry/instrumentation-xml-http-request"
+        update-types: ["version-update:semver-minor"]
     groups:
       npm-dependencies:
         patterns:

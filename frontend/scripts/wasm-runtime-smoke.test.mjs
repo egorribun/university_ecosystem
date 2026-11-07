@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { createHmac } from "node:crypto"
+import { createHmac, pbkdf2Sync } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
@@ -45,8 +45,10 @@ test("the generated sanitizer removes executable markup", () => {
 })
 
 test("the generated crypto module matches deterministic known-answer vectors", () => {
+  // Retain the public one-round vector as an oracle check, not an exported
+  // production API exception.
   assert.equal(
-    crypto.pbkdf2_derive("password", "salt", 1, 32),
+    pbkdf2Sync("password", "salt", 1, 32, "sha256").toString("hex"),
     "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"
   )
   assert.equal(
@@ -66,4 +68,16 @@ test("the generated crypto module matches deterministic known-answer vectors", (
     ).toString("hex"),
     "fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640"
   )
+})
+
+test("the generated PBKDF2 API enforces its minimum cost and matches Node at the boundary", () => {
+  for (const iterations of [0, 1, 2, 999, 1_000_001]) {
+    assert.throws(() => crypto.pbkdf2_derive("password", "salt", iterations, 32))
+  }
+  for (const iterations of [1_000, 100_000]) {
+    assert.equal(
+      crypto.pbkdf2_derive("password", "salt", iterations, 32),
+      pbkdf2Sync("password", "salt", iterations, 32, "sha256").toString("hex")
+    )
+  }
 })

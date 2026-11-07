@@ -18,7 +18,7 @@ interface EventAboutEditorProps {
 }
 
 const inputClass =
-  "w-full rounded-sm border border-glass-border bg-surface/(--opacity-medium) px-4 py-3 text-input font-medium text-text-primary shadow-sm transition-all duration-fast focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/(--opacity-faint) placeholder:text-text-secondary/(--opacity-medium)"
+  "w-full rounded-sm border border-glass-border bg-surface/[calc(var(--opacity-medium)*100%)] px-4 py-3 text-input font-medium text-text-primary shadow-sm transition-all duration-fast focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/[calc(var(--opacity-faint)*100%)] placeholder:text-text-secondary/[calc(var(--opacity-medium)*100%)]"
 
 export function EventAboutEditor({
   event,

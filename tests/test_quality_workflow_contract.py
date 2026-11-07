@@ -66,6 +66,9 @@ CONTRACT_VALIDATION_WORKFLOW_PATH = (
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
+BACKEND_INTEGRATION_HELPER_PATH = (
+    REPOSITORY_ROOT / "scripts" / "ci" / "backend-run-integration-tests.ps1"
+)
 FRONTEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
@@ -131,10 +134,13 @@ QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 CHECKOUT_ACTION_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON_ACTION_PIN = (
-    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+    "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
 )
 UPLOAD_ARTIFACT_ACTION_PIN = (
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+)
+CODEQL_UPLOAD_SARIF_ACTION_PIN = (
+    "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
 )
 CAPTURE_ALLOWED_CONDITIONAL_ORS = (
     'if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then',
@@ -295,6 +301,22 @@ def test_sbom_cancels_superseded_pr_and_main_push_runs_only() -> None:
         "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
         "cancel-in-progress": "${{ github.event_name == 'pull_request' || github.event_name == 'push' }}",
     }
+
+
+def test_no_pickle_gate_runs_fail_closed_ast_scan_of_backend_source() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        step
+        for step in workflow["jobs"]["compose-validate"]["steps"]
+        if step.get("name") == "Enforce no-pickle gate (RED-01 RZ-W13)"
+    )
+    assert "if" not in step
+    assert not step.get("continue-on-error", False)
+    assert shlex.split(step["run"]) == [
+        "python",
+        "scripts/quality/check_no_pickle.py",
+        "app/",
+    ]
 
 
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
@@ -743,7 +765,7 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         for step in inventory_job.get("steps", [])
         if isinstance(step, dict)
     )
-    assert "SECRET_KEY=$(openssl rand -hex 32)" in inventory_step_text
+    assert 'secret="$(openssl rand -hex 32)"' in inventory_step_text
     assert '>> "$GITHUB_ENV"' in inventory_step_text
 
     inventory_uploads = [
@@ -950,16 +972,21 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     # cross-process artifact job publish an unverified/orphan Pact file.
     assert "test_file_processor_contract.py" not in consumer_text
     assert "test_files_process_contract.py" not in consumer_text
-    consumer_only_ci = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "uv run pytest tests/contracts/" in consumer_only_ci
-    assert '-k "not integration"' in consumer_only_ci
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    consumer_contract_run = next(
+        str(step.get("run", ""))
+        for step in ci["jobs"]["contract-tests"]["steps"]
+        if step.get("name") == "Run contract tests (consumer-side)"
+    )
+    assert "uv run --frozen --no-sync pytest tests/contracts/" in consumer_contract_run
+    assert '-k "not integration"' in consumer_contract_run
     assert (
         "--ignore=tests/contracts/test_file_processor_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert (
         "--ignore=tests/contracts/test_files_process_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert "test_nats_message_contract.py" in consumer_text
     assert "ws-hub-university-backend.json" in artifact_path
@@ -1399,7 +1426,7 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
     trivy_ignore = yaml.safe_load(
         (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
     )
-    assert [entry["id"] for entry in trivy_ignore["misconfigurations"]] == [
+    expected_exception_ids = [
         "KSV-0012",
         "KSV-0104",
         "KSV-0023",
@@ -1407,10 +1434,77 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0118",
         "KSV-0014",
         "KSV-0047",
-        "KSV-0017",
         "KSV-0009",
         "KSV-0010",
+        "KSV-0008",
+        "KSV-0024",
     ]
+    assert [
+        entry["id"] for entry in trivy_ignore["misconfigurations"]
+    ] == expected_exception_ids
+
+    fixture_path = "k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+    scoped_fixture_entries = trivy_ignore["misconfigurations"][-2:]
+    assert [entry["paths"] for entry in scoped_fixture_entries] == [
+        [fixture_path],
+        [fixture_path],
+    ]
+    assert [str(entry["expired_at"]) for entry in scoped_fixture_entries] == [
+        "2027-01-10",
+        "2027-01-10",
+    ]
+    assert all(
+        set(entry) == {"id", "paths", "expired_at", "statement"}
+        for entry in scoped_fixture_entries
+    )
+
+
+def test_trivy_fixture_preflight_is_ordered_pinned_and_nonprinting() -> None:
+    workflow = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["docker-security"]["steps"]
+    preflight = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Verify the pinned Kyverno fixture before the Trivy configuration scan"
+    )
+    config_scan = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+
+    assert steps.index(preflight) < steps.index(config_scan)
+    assert preflight["shell"] == "bash"
+    script = str(preflight["run"])
+    version_command = 'version_output="$(trivy --version)"'
+    version_guard = "grep -Fxq 'Version: 0.75.0'"
+    assert version_command in script
+    assert version_guard in script
+    assert (
+        script.index(version_command)
+        < script.index(version_guard)
+        < script.index("trivy config")
+    )
+    assert "--ignorefile=" in script
+    assert "--format json" in script
+    assert '--output "$report"' in script
+    assert "trivy-host-access-noignore.json" in script
+    assert "python3 scripts/quality/validate_trivy_kyverno_fixture.py" in script
+    path_scope_proof = (
+        "python3 -m unittest tests.test_validate_trivy_kyverno_fixture "
+        "scripts.quality.prove_aud245_trivy_path_scope"
+    )
+    assert script.splitlines().count(path_scope_proof) == 1
+    assert "set -euo pipefail" in script
+    assert script.index("python3 scripts/quality/validate_trivy_kyverno_fixture.py") < (
+        script.index(path_scope_proof)
+    )
+    assert "--format table" not in script
+    assert not any(
+        line.lstrip().startswith(("cat ", "tee ", "jq "))
+        for line in script.splitlines()
+    )
 
 
 def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
@@ -1607,7 +1701,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
     report_job = workflow["jobs"]["sbom-go"]
     report_script = "\n".join(str(step.get("run", "")) for step in report_job["steps"])
-    assert "osv-scanner scan source --recursive --format sarif" in report_script
+    assert '"$OSV_SCANNER_BIN" scan source --recursive --format sarif' in report_script
     assert any(
         str(step.get("uses", "")).startswith("github/codeql-action/upload-sarif@")
         for step in report_job["steps"]
@@ -2076,6 +2170,7 @@ def test_frontend_build_memory_budget_keeps_native_headroom_bounded() -> None:
     # heap, so the process ceiling must retain finite native-memory headroom.
     assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+    assert env["ROLLDOWN_WORKER_THREADS"] == "2"
 
 
 def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:
@@ -2254,10 +2349,8 @@ def test_go_coverage_artifacts_are_staged_for_trusted_codecov_upload() -> None:
     artifact_name = next(
         step for step in steps if step.get("name") == "Generate artifact name"
     )
-    assert (
-        "go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}"
-        in artifact_name["run"]
-    )
+    assert artifact_name["env"]["RUN_ATTEMPT"] == "${{ github.run_attempt }}"
+    assert "go-coverage-$SANITIZED-attempt-${RUN_ATTEMPT}" in artifact_name["run"]
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     go_matrix = ci["jobs"]["go-tests"]["strategy"]["matrix"]["include"]
@@ -2819,6 +2912,8 @@ def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> 
         "revocation-valkey",
         "valkey",
         "postgres",
+        "postgres-roles-init",
+        "postgres-databases-init",
         "minio",
     }
     closure: set[str] = set()
@@ -3002,9 +3097,51 @@ def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:
     assert aggregate["name"] == "Cargo Deny Scan"
     assert aggregate["needs"] == ["cargo-deny-crates"]
     assert aggregate["if"] == "${{ always() }}"
-    aggregate_run = aggregate["steps"][0]["run"]
-    assert "needs.cargo-deny-crates.result" in aggregate_run
+    assert aggregate["runs-on"] == "ubuntu-24.04"
+    assert workflow.get("defaults", {}).get("run", {}).get("shell") is None
+    assert aggregate.get("defaults", {}).get("run", {}).get("shell") is None
+    aggregate_step = aggregate["steps"][0]
+    assert "shell" not in aggregate_step
+    assert aggregate_step["env"] == {
+        "CARGO_DENY_CRATES_RESULT": "${{ needs.cargo-deny-crates.result }}"
+    }
+    aggregate_run = aggregate_step["run"]
+    assert '"$CARGO_DENY_CRATES_RESULT"' in aggregate_run
     assert '!= "success"' in aggregate_run
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        ("success", 0),
+        ("failure", 1),
+        ("cancelled", 1),
+        ("skipped", 1),
+        ("", 1),
+        ("success; exit 0", 1),
+    ],
+)
+def test_cargo_deny_aggregate_requires_success(
+    outcome: str, expected: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "cargo-deny.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    aggregate = workflow["jobs"]["cargo-deny"]
+    assert aggregate["needs"] == ["cargo-deny-crates"]
+    assert aggregate["if"] == "${{ always() }}"
+    step = aggregate["steps"][0]
+    assert step["env"] == {
+        "CARGO_DENY_CRATES_RESULT": "${{ needs.cargo-deny-crates.result }}"
+    }
+    monkeypatch.setenv("CARGO_DENY_CRATES_RESULT", outcome)
+    result = _run_coverage_shape_checks(step["run"], REPOSITORY_ROOT)
+    assert result.returncode == expected
+    if expected == 0:
+        assert result.stdout.strip() == "All three Rust crate dependency scans passed."
+    else:
+        assert result.stdout.strip() == (
+            f"::error::Cargo Deny matrix result was '{outcome}'; refusing aggregate success."
+        )
 
 
 def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
@@ -3019,6 +3156,14 @@ def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
         "frontend/rust-crypto/fuzz",
     }
     assert "crates/" not in workflow_path.read_text(encoding="utf-8")
+
+    for directory in by_directory:
+        workspace = REPOSITORY_ROOT / directory
+        manifest = tomllib.loads((workspace / "Cargo.toml").read_text(encoding="utf-8"))
+        for member in manifest["workspace"]["members"]:
+            assert list(workspace.glob(f"{member}/Cargo.toml")), (
+                f"{directory}: workspace member {member!r} has no Cargo.toml"
+            )
 
 
 def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
@@ -3277,9 +3422,14 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         for step in plan_steps
         if step.get("name") == "Require all full mutmut stats shards"
     )
+    assert require_stats["env"]["ARTIFACT_NAMESPACE"] == (
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
+    )
     assert "expected=8" in require_stats["run"]
     assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
     assert "seq 0 7" in require_stats["run"]
+    assert "${ARTIFACT_NAMESPACE}" in require_stats["run"]
+    assert "${{" not in require_stats["run"]
     plan_upload = next(
         step
         for step in plan_steps
@@ -3348,10 +3498,11 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         in require_shards["run"]
     )
     assert "seq 1 128" in require_shards["run"]
-    assert (
+    assert require_shards["env"]["ARTIFACT_NAMESPACE"] == (
         "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
-        in require_shards["run"]
     )
+    assert "${ARTIFACT_NAMESPACE}" in require_shards["run"]
+    assert "${{" not in require_shards["run"]
     assert "${RUN_ID}-${RUN_ATTEMPT}-${shard}" in require_shards["run"]
     aggregate_upload = next(
         step
@@ -3482,8 +3633,194 @@ def test_lhci_collection_scores_the_real_404_document_without_rewriting_status()
     assert "ignoreStatusCode: true" in lhci_script
 
 
+def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> None:
+    build = workflow["jobs"]["build"]
+    analysis = workflow["jobs"]["bundle-analysis"]
+    assert build["timeout-minutes"] == 45
+    assert analysis["timeout-minutes"] == 15
+    assert analysis["needs"] == "build"
+    assert "permissions" not in build
+    assert "permissions" not in analysis
+    expected_outputs = {
+        "bundle-artifact-id": "steps.upload-production-bundle.outputs.artifact-id",
+        "bundle-artifact-digest": "steps.upload-production-bundle.outputs.artifact-digest",
+        "metadata-artifact-id": "steps.upload-maplibre-metadata.outputs.artifact-id",
+        "html-artifact-id": "steps.upload-final-html-inventory.outputs.artifact-id",
+        "metadata-sha256": "steps.capture-maplibre-metadata.outputs.metadata-sha256",
+        "html-sha256": "steps.capture-final-html-inventory.outputs.html-sha256",
+        "tree-sha": "steps.capture-final-html-inventory.outputs.tree-sha",
+    }
+    assert build["outputs"] == {
+        key: "${{ " + value + " }}" for key, value in expected_outputs.items()
+    }
+    producers = {step.get("id"): step for step in build["steps"] if "id" in step}
+    upload = producers["upload-maplibre-metadata"]
+    assert upload["uses"] == producers["upload-production-bundle"]["uses"]
+    assert upload["with"] == {
+        "name": (
+            "frontend-maplibre-metadata-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}"
+        ),
+        "path": (
+            "${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "if-no-files-found": "error",
+        "retention-days": 1,
+    }
+    metadata = producers["capture-maplibre-metadata"]["run"]
+    html = producers["capture-final-html-inventory"]["run"]
+    assert metadata.index("\n'\n") < metadata.index("metadata_sha=")
+    assert html.index("\n'\n") < html.index("report_sha=")
+    assert "sha256sum --" in metadata and "sha256sum --" in html
+    assert "metadata-sha256=%s" in metadata
+    assert "html-sha256=%s" in html and "tree-sha=%s" in html
+    assert "GIT_NO_REPLACE_OBJECTS=1 git rev-parse 'HEAD^{tree}'" in html
+    steps = analysis["steps"]
+    names = [step.get("name") for step in steps]
+    by_name = {step.get("name"): step for step in steps}
+    guard = by_name["Validate bundle artifact receipts"]
+    assert guard["env"] == {
+        "BUNDLE_ARTIFACT_ID": "${{ needs.build.outputs.bundle-artifact-id }}",
+        "METADATA_ARTIFACT_ID": "${{ needs.build.outputs.metadata-artifact-id }}",
+        "HTML_ARTIFACT_ID": "${{ needs.build.outputs.html-artifact-id }}",
+        "METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "BUILD_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for required in (
+        "/^[1-9][0-9]{0,19}$/u.test(value)",
+        "Number.isSafeInteger(Number(value))",
+        "new Set(ids).size !== 3",
+        "/^[0-9a-f]{64}$/u.test(value)",
+        "/^[0-9a-f]{40}$/u.test(process.env.BUILD_TREE_SHA)",
+        "process.exitCode = 1",
+        "BUNDLE_ARTIFACT_RECEIPTS_REJECTED",
+    ):
+        assert required in guard["run"]
+    download_action = by_name["Download immutable WASM modules"]["uses"]
+    for name, output, destination in (
+        (
+            "Download production bundle",
+            "bundle-artifact-id",
+            "${{ inputs.working-directory }}/dist",
+        ),
+        (
+            "Download MapLibre compiler metadata",
+            "metadata-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-metadata",
+        ),
+        (
+            "Download final HTML budget evidence",
+            "html-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-html",
+        ),
+    ):
+        step = by_name[name]
+        assert step["uses"] == download_action
+        assert step["with"] == {
+            "artifact-ids": "${{ needs.build.outputs." + output + " }}",
+            "path": destination,
+            "merge-multiple": True,
+            "digest-mismatch": "error",
+        }
+        assert names.index(guard["name"]) < names.index(name)
+        assert names.index(name) < names.index("Analyze bundle size")
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    analyze = by_name["Analyze bundle size"]
+    assert analyze["env"] == {
+        "NODE_OPTIONS": "--max-old-space-size=512 --max-semi-space-size=16",
+        "MAPLIBRE_BUDGET_METADATA_PATH": (
+            "${{ runner.temp }}/maplibre-budget-metadata/"
+            "maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "MAPLIBRE_BUDGET_HTML_PATH": (
+            "${{ runner.temp }}/maplibre-budget-html/"
+            "final-html-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "MAPLIBRE_BUDGET_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for step in (guard, analyze, upload):
+        assert "if" not in step
+        assert "continue-on-error" not in step
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "name-fallback",
+        "empty-id",
+        "digest-warning",
+        "foreign-run-token",
+        "missing-content-hash",
+        "wrong-producer",
+        "nonblocking-analyzer",
+        "missing-id-guard",
+        "unsafe-id-guard",
+        "download-before-guard",
+        "missing-bundle-digest",
+        "empty-bundle-digest",
+        "wrong-bundle-digest-producer",
+        "unexpected-build-output",
+    ),
+)
+def test_maplibre_budget_transport_rejects_wiring_near_misses(defect: str) -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
+    changed = deepcopy(workflow)
+    build = changed["jobs"]["build"]
+    steps = changed["jobs"]["bundle-analysis"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
+    download = by_name["Download MapLibre compiler metadata"]
+    analyze = by_name["Analyze bundle size"]
+    guard = by_name["Validate bundle artifact receipts"]
+    if defect == "missing-bundle-digest":
+        build["outputs"].pop("bundle-artifact-digest")
+    elif defect == "empty-bundle-digest":
+        build["outputs"]["bundle-artifact-digest"] = ""
+    elif defect == "wrong-bundle-digest-producer":
+        build["outputs"]["bundle-artifact-digest"] = (
+            "${{ steps.upload-maplibre-metadata.outputs.artifact-digest }}"
+        )
+    elif defect == "unexpected-build-output":
+        build["outputs"]["unreviewed-output"] = "${{ steps.other.outputs.value }}"
+    elif defect == "name-fallback":
+        download["with"].pop("artifact-ids")
+        download["with"]["name"] = "frontend-maplibre-metadata"
+    elif defect == "empty-id":
+        download["with"]["artifact-ids"] = ""
+    elif defect == "digest-warning":
+        download["with"]["digest-mismatch"] = "warn"
+    elif defect == "foreign-run-token":
+        download["with"]["github-token"] = "${{ secrets.GITHUB_TOKEN }}"
+        download["with"]["run-id"] = "1"
+    elif defect == "missing-content-hash":
+        analyze["env"].pop("MAPLIBRE_BUDGET_METADATA_SHA256")
+    elif defect == "wrong-producer":
+        build["outputs"]["metadata-artifact-id"] = build["outputs"]["html-artifact-id"]
+    elif defect == "nonblocking-analyzer":
+        analyze["continue-on-error"] = True
+    elif defect == "missing-id-guard":
+        guard["run"] = guard["run"].replace("/^[1-9][0-9]{0,19}$/u.test(value)", "true")
+    elif defect == "unsafe-id-guard":
+        guard["run"] = guard["run"].replace(
+            "Number.isSafeInteger(Number(value))", "true"
+        )
+    else:
+        steps.remove(download)
+        steps.insert(steps.index(guard), download)
+    with pytest.raises(AssertionError):
+        _assert_maplibre_budget_artifact_transport(changed)
+
+
 def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
     analysis_job = workflow["jobs"]["bundle-analysis"]
     test_step = next(
         step
@@ -3496,7 +3833,10 @@ def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() ->
         if step.get("name") == "Analyze bundle size"
     )
 
-    assert test_step["run"] == "node --test scripts/check-bundle-budget.test.mjs"
+    assert test_step["run"] == (
+        "node --test scripts/check-bundle-budget.test.mjs "
+        "scripts/maplibre-build-metadata.test.mjs"
+    )
     assert analyze_step["run"] == "node scripts/check-bundle-budget.mjs"
     assert not analyze_step.get("continue-on-error", False)
     assert "echo '{}'" not in FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -3757,7 +4097,12 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
     assert workflow["jobs"]["stabilization-window"]["needs"] == "verify-canonical-ref"
 
     checkout = workflow["jobs"]["stabilization-window"]["steps"][0]
-    assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
+    # AUD-244: the read-only checkout must not persist its token for later steps.
+    assert checkout["with"] == {
+        "ref": "main",
+        "fetch-depth": 1,
+        "persist-credentials": False,
+    }
 
 
 def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
@@ -3937,8 +4282,9 @@ def _expected_comparator_critical_execution_segment(
     """Return the narrow trusted comparator tail for one benchmark format."""
 
     assert comparator_format in {"go", "bencher"}
-    base_revision = "${{ steps." + capture_id + ".outputs.base_sha }}"
-    candidate_revision = "${{ steps." + capture_id + ".outputs.candidate_sha }}"
+    assert capture_id in {"capture_ws_hub", "capture_rust_native"}
+    base_revision = "$CAPTURED_BASE_SHA"
+    candidate_revision = "$CAPTURED_CANDIDATE_SHA"
     return _canonical_shell_lines(
         'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"\n'
         'if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then\n'
@@ -4823,21 +5169,45 @@ def _assert_paired_capture_contract(
     assert comparator.get("continue-on-error", False) is False
     comparator_text = str(comparator["run"])
     capture_id = str(capture["id"])
-    assert (
-        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
-    ) in comparator_text
-    assert (
-        'PYTHON_BIN="${{ steps.' + capture_id + '.outputs.python_bin }}"'
-        in comparator_text
+    comparator_env = comparator.get("env", {})
+    assert isinstance(comparator_env, dict)
+    for key, output in (
+        ("ARTIFACT_ROOT", "artifact_root"),
+        ("CAPTURED_BASE_COMPARATOR", "base_comparator"),
+        ("CAPTURED_PYTHON_BIN", "python_bin"),
+        ("CAPTURED_COMPARATOR_SHA256", "base_comparator_sha256"),
+        ("CAPTURED_BASE_SHA", "base_sha"),
+        ("CAPTURED_CANDIDATE_SHA", "candidate_sha"),
+    ):
+        assert (
+            comparator_env.get(key)
+            == "${{ steps." + capture_id + ".outputs." + output + " }}"
+        )
+    export_line = (
+        "export -n CAPTURED_BASE_COMPARATOR CAPTURED_PYTHON_BIN "
+        "CAPTURED_COMPARATOR_SHA256 CAPTURED_BASE_SHA CAPTURED_CANDIDATE_SHA"
     )
     assert (
-        'EXPECTED_COMPARATOR_SHA256="${{ steps.'
-        + capture_id
-        + '.outputs.base_comparator_sha256 }}"'
-    ) in comparator_text
-    assert 'ARTIFACT_ROOT="${{ steps.' + capture_id + '.outputs.artifact_root }}"' in (
-        comparator_text
+        " ".join(
+            _normalize_shell_lexical_continuations(comparator_text)
+            .splitlines()[1]
+            .split()
+        )
+        == export_line
     )
+    for key in (
+        "CAPTURED_BASE_COMPARATOR",
+        "CAPTURED_PYTHON_BIN",
+        "CAPTURED_COMPARATOR_SHA256",
+        "CAPTURED_BASE_SHA",
+        "CAPTURED_CANDIDATE_SHA",
+    ):
+        assert comparator_text.count(key) == 2
+    assert 'BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"' in comparator_text
+    assert 'PYTHON_BIN="$CAPTURED_PYTHON_BIN"' in comparator_text
+    assert 'EXPECTED_COMPARATOR_SHA256="$CAPTURED_COMPARATOR_SHA256"' in comparator_text
+    assert "ARTIFACT_ROOT=" not in comparator_text
+    assert "${{" not in comparator_text
     assert 'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then' in comparator_text
     assert 'if ! test -f "$BASE_COMPARATOR"; then' in comparator_text
     assert (
@@ -4958,9 +5328,10 @@ def _assert_paired_provenance_contract(
     comparator = _step_named(job, "Compare paired benchmark evidence")
     comparator_text = str(comparator["run"])
     normalized_comparator_text = " ".join(comparator_text.replace("\\\n", " ").split())
-    assert (
-        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
-    ) in comparator_text
+    assert comparator["env"]["CAPTURED_BASE_COMPARATOR"] == (
+        "${{ steps." + capture_id + ".outputs.base_comparator }}"
+    )
+    assert 'BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"' in comparator_text
     assert "jq -e" in normalized_comparator_text
     assert '"$ARTIFACT_ROOT/provenance.json" >/dev/null' in normalized_comparator_text
     for required_fragment in (
@@ -5286,11 +5657,11 @@ set -euo pipefail
 mkdir -p artifacts/performance/advisory/go
 (
   cd services/gateway
-  go test -bench=. -run=^$ ./...
+  go test -bench=. -run='^$' ./...
 ) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
 (
   cd services/ws-hub
-  go test -bench=. -run=^$ ./...
+  go test -bench=. -run='^$' ./...
 ) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
 cat \\
   artifacts/performance/advisory/go/gateway-bench.txt \\
@@ -5375,7 +5746,8 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     install = steps["Install SQLMap"]
     capability = steps["Verify SQLMap OpenAPI support"]
     readiness = steps["Start FastAPI Backend in Background"]
-    scan = steps["Run SQLMap Scan on API"]
+    full_scan = steps["Run SQLMap scan for every anonymous OpenAPI operation"]
+    news_scan = steps["Run SQLMap Scan on API"]
 
     assert re.fullmatch(
         r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
@@ -5389,42 +5761,89 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     assert "test -s" in readiness["run"]
     assert "for i in {1..30}; do" in readiness["run"]
     assert "exit 1" in readiness["run"]
+    assert "sqlmap_scan_gate.py scope-openapi" in readiness["run"]
+    assert "sqlmap_scan_gate.py scope-full-openapi" in readiness["run"]
+    assert "sqlmap-output/source-openapi.json" in readiness["run"]
+    assert "sqlmap-output/scoped-openapi.json" in readiness["run"]
+    assert "sqlmap-openapi-output/scoped-openapi.json" in readiness["run"]
+    assert "db-query-evidence.log" in readiness["run"]
+    assert "secrets.token_urlsafe(48)" in readiness["run"]
 
-    scan_script = scan["run"]
-    assert f'--openapi="{SQLMAP_OPENAPI_URL}"' in scan_script
-    assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
-    for option in (
-        "--batch",
-        "--crawl=0",
-        "--technique=BEU",
-        "--risk=1",
-        "--level=1",
-        "--threads=2",
-        "--timeout=5",
-        "--retries=0",
+    for scan, output_dir in (
+        (full_scan, "sqlmap-openapi-output"),
+        (news_scan, "sqlmap-output"),
     ):
-        assert option in scan_script
+        scan_script = scan["run"]
+        assert f'--openapi="{output_dir}/scoped-openapi.json"' in scan_script
+        assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
+        for option in (
+            "--batch",
+            "--crawl=0",
+            "--technique=BEU",
+            "--risk=1",
+            "--level=1",
+            "--threads=2",
+            "--timeout=5",
+            "--retries=0",
+            f"--output-dir={output_dir}",
+            f"--results-file={output_dir}/results.csv",
+        ):
+            assert option in scan_script
+        assert scan_script.count(f"> {output_dir}/scan-console.log 2>&1") == 1
+        assert "Authorization:" not in scan_script
 
-    scan_arguments = shlex.split(scan_script.replace("\\\n", ""), comments=True)
-    assert scan_arguments == [
-        "uv",
-        "run",
-        "sqlmap",
-        f"--openapi={SQLMAP_OPENAPI_URL}",
-        f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
-        "--batch",
-        "--crawl=0",
-        "--technique=BEU",
-        "--risk=1",
-        "--level=1",
-        "--threads=2",
-        "--timeout=5",
-        "--retries=0",
-        "--flush-session",
-    ]
+    proxy_unset = (
+        "unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY"
+    )
+    for scan, output_dir, scope in (
+        (
+            full_scan,
+            "sqlmap-openapi-output",
+            "^http://127[.]0[.]0[.]1:8000/",
+        ),
+        (
+            news_scan,
+            "sqlmap-output",
+            "^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)",
+        ),
+    ):
+        scan_script = scan["run"]
+        assert proxy_unset in scan_script
+        assert scan_script.index(proxy_unset) < scan_script.index("uv run sqlmap")
+        sqlmap_invocation = scan_script[scan_script.index("uv run sqlmap") :]
+        log = f"> {output_dir}/scan-console.log 2>&1"
+        sqlmap_invocation = sqlmap_invocation.split(log, 1)[0]
+        scan_arguments = shlex.split(
+            sqlmap_invocation.replace("\\\n", ""), comments=True
+        )
+        assert scan_arguments == [
+            "uv",
+            "run",
+            "sqlmap",
+            f"--openapi={output_dir}/scoped-openapi.json",
+            f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
+            "--headers=Accept-Encoding: identity\\nX-Request-ID: sqlmap-aud-381",
+            "--ignore-redirects",
+            "--answers=refresh=N",
+            f"--scope={scope}",
+            "--batch",
+            "--crawl=0",
+            "--technique=BEU",
+            "--risk=1",
+            "--level=1",
+            "--threads=2",
+            "--timeout=5",
+            "--retries=0",
+            f"--output-dir={output_dir}",
+            f"--results-file={output_dir}/results.csv",
+            "--flush-session",
+        ]
 
-    for step in (capability, readiness, scan):
+    for step in (capability, readiness):
         assert step.get("continue-on-error", False) is False
+        assert "|| true" not in step["run"]
+    for step in (full_scan, news_scan):
+        assert step["continue-on-error"] is True
         assert "|| true" not in step["run"]
 
 
@@ -5580,6 +5999,15 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
     selector_step = _provenance_step(
         job, "Select retry-safe same-run coverage producer artifacts"
     )
+    node_producer = _provenance_step(
+        job, "Produce Node action coverage in the current run"
+    )
+    assert node_producer["uses"] == "./.github/actions/node-actions-coverage"
+    assert "if" not in node_producer
+    assert "continue-on-error" not in node_producer
+    assert (
+        steps.index(cleanup) < steps.index(node_producer) < steps.index(selector_step)
+    )
     assert selector_step["id"] == "select_coverage_producers"
     assert "scripts.quality.select_coverage_producer_artifacts" in str(
         selector_step["run"]
@@ -5629,8 +6057,9 @@ def test_coverage_api_selection_receipt_is_bound_before_canonical_merge() -> Non
     receipt_run = str(receipt["run"])
     assert "coverage_provenance.py write-api-receipt" in receipt_run
     assert "--output artifacts/coverage/provenance/api-selection.json" in receipt_run
-    assert receipt_run.count("--selection ") == 5
+    assert receipt_run.count("--selection ") == 6
     for expected_selection in (
+        "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_attempt|$node_actions_id|$node_actions_name|$node_actions_digest",
         "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest",
         "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest",
         "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest",
@@ -5654,18 +6083,33 @@ def test_coverage_api_selection_receipt_is_bound_before_canonical_merge() -> Non
 def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     job = workflow["jobs"]["coverage-policy-gate"]
+    selection = _provenance_step(
+        job, "Select retry-safe same-run coverage producer artifacts"
+    )
+    assert selection["env"] == {
+        "COVERAGE_REPOSITORY": "${{ github.repository }}",
+        "COVERAGE_RUN_ID": "${{ github.run_id }}",
+        "COVERAGE_RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "COVERAGE_COMMIT_SHA": "${{ github.sha }}",
+        "COVERAGE_RUN_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "COVERAGE_EVENT": "${{ github.event_name }}",
+        "GH_TOKEN": "${{ github.token }}",
+    }
     normalize = _provenance_step(job, "Normalize coverage evidence")
     normalize_run = str(normalize["run"])
 
-    assert normalize["env"]["SOURCE_HEAD_SHA"] == (
-        "${{ github.event.pull_request.head.sha || github.sha }}"
-    )
-    assert normalize["env"]["BASE_SHA"] == (
-        "${{ github.event.pull_request.base.sha || github.sha }}"
-    )
-    assert normalize["env"]["BASE_REF"] == (
-        "${{ github.event.pull_request.base.ref || github.ref_name }}"
-    )
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+    }.items():
+        assert normalize["env"][name] == value
 
     # The coverage gate installs the locked development environment with uv.
     # Running the normalizer through the runner's system Python bypasses that
@@ -5695,6 +6139,8 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
         "--python-json artifacts/coverage/python/coverage.json",
         "--frontend-lcov frontend/coverage/lcov.info",
         "--frontend-json frontend/coverage/coverage-final.json",
+        "--node-actions-lcov artifacts/coverage/node-actions/lcov.info",
+        "--node-actions-json artifacts/coverage/node-actions/coverage-final.json",
     ):
         assert required in normalize_run
     assert normalize_run.count("--go-report ") == 4
@@ -5732,14 +6178,44 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     merge = _provenance_step(job, "Merge canonical coverage provenance")
     merge_run = str(merge["run"])
     assert "coverage_provenance.py merge" in merge_run
-    assert merge_run.count("--metadata ") == 7
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+        "SELECTIONS_JSON": "${{ steps.select_coverage_producers.outputs.selections }}",
+    }.items():
+        assert merge["env"][name] == value
+    assert merge_run.count("--metadata ") == 8
+    assert (
+        "--metadata artifacts/coverage/node-actions/coverage-provenance.json"
+        in merge_run
+    )
     assert "--contract quality/quality-contract.json" in merge_run
-    assert "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" in merge_run
+    assert (
+        '--artifact "quality-evidence-${EXPECTED_SHA}-attempt-${RUN_ATTEMPT}"'
+        in merge_run
+    )
 
     validator = _provenance_step(
         job, "Validate quality policy, mutation registry, and Tier0 manifest"
     )
     validator_run = str(validator["run"])
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+    }.items():
+        assert validator["env"][name] == value
     assert "uv run python scripts/quality/validate_quality_contract.py" in validator_run
     assert "python scripts/quality/validate_quality_contract.py" not in {
         line.strip() for line in validator_run.splitlines()
@@ -5782,6 +6258,10 @@ def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> No
     assert upload["with"]["if-no-files-found"] == "error"
     upload_paths = str(upload["with"]["path"])
     for required in (
+        "artifacts/coverage/node-actions/lcov.info",
+        "artifacts/coverage/node-actions/coverage-final.json",
+        "artifacts/coverage/node-actions/coverage-provenance.json",
+        "artifacts/coverage/node-actions/coverage-source-snapshot.json",
         "coverage.xml",
         "artifacts/coverage/python/coverage.json",
         "frontend/coverage/lcov.info",
@@ -6686,59 +7166,94 @@ def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
     assert 'node-version: "22"' not in workflow_sources
     assert 'default: "20"' not in workflow_sources
     assert 'default: "22"' not in workflow_sources
-    assert package["engines"] == {"node": ">=24.0.0", "npm": ">=11.0.0"}
+    assert package["engines"] == {
+        "node": "^24.15.0 || >=26.0.0",
+        "npm": ">=11.0.0",
+    }
     assert package["packageManager"] == "npm@11.17.0"
     assert "engine-strict=true" in npmrc.splitlines()
     assert "strict-allow-scripts=true" in npmrc.splitlines()
 
 
-def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+_FOCUSED_BASELINE_SELECTORS = (
+    "tests/test_mvp_baseline_migration.py::test_baseline_revision_is_the_root_of_the_squashed_chain",
+    "tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_omits_the_redundant_attempt_keyed_delivery_constraint",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available",
+    "tests/test_aud274_user_quiet_hours_retained.py",
+    "tests/test_aud278_events_search_index_kept.py",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_is_nullable_unique_and_does_not_adopt_rows",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_downgrade_refuses_before_changing_ownership",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_contract_rejects_ownership_drift",
+)
+
+
+def _assert_focused_baseline_coverage(workflow: dict) -> None:
     job = workflow["jobs"]["db-migration-gate"]
     steps = job["steps"]
     roundtrip = _provenance_step(
         job, "Run supported migration round-trip and verify boundary"
     )
-    focused = _provenance_step(job, "Append focused migration tests to coverage")
+    focused = _provenance_step(job, "Append focused baseline tests to coverage")
     image_build = _provenance_step(job, "Build backend image for password preflight")
     provenance = _provenance_step(job, "Write migration coverage provenance")
     upload = _provenance_step(job, "Upload migration coverage data for aggregation")
-
     assert steps.index(roundtrip) < steps.index(focused) < steps.index(image_build)
-    assert steps.index(focused) < steps.index(provenance) < steps.index(upload)
-    assert roundtrip["env"]["DATABASE_URL"] == (
-        "postgresql+asyncpg://test@localhost:5433/test_migration"
+    assert steps.index(image_build) < steps.index(provenance) < steps.index(upload)
+    for step in (roundtrip, focused, provenance, upload):
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    assert "continue-on-error" not in job
+    assert (
+        roundtrip["env"]["DATABASE_URL"]
+        == "postgresql+asyncpg://test@localhost:5433/test_migration"
     )
-    assert focused["env"]["DATABASE_URL"] == "sqlite+aiosqlite:///:memory:"
-    assert focused["env"]["ENVIRONMENT"] == roundtrip["env"]["ENVIRONMENT"]
-    assert focused["env"]["SECRET_KEY"] == roundtrip["env"]["SECRET_KEY"]
-    assert focused["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert focused["env"] == {
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "ENVIRONMENT": roundtrip["env"]["ENVIRONMENT"],
+        "SECRET_KEY": roundtrip["env"]["SECRET_KEY"],
+    }
     reset_opt_in = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
-    for environment in (
-        workflow.get("env", {}),
-        job.get("env", {}),
-        focused.get("env", {}),
-    ):
+    for environment in (workflow.get("env", {}), job.get("env", {}), focused["env"]):
         assert reset_opt_in not in environment
-
-    run = str(focused["run"])
-    assert "uv run coverage run --append --data-file=.coverage.migration" in run
-    assert "--source=alembic/versions -m pytest" in run
-    assert "rm -f -- .coverage.migration" not in run
-    targets = (
-        "tests/test_touched_tier0_migration_contracts.py",
-        "tests/test_reconcile_schema_drift_migration.py",
-        "tests/test_legacy_migration_guard_contracts.py",
-        "tests/integration/test_aud038_default_partition_redistribution_postgres.py",
-        "tests/integration/test_historical_migration_semantics_postgres.py",
-        "tests/integration/test_aud226_partitioning_generated_ids_postgres.py",
-    )
-    offsets = [run.index(path) for path in targets]
-    assert offsets == sorted(offsets)
-    assert all(run.count(path) == 1 for path in targets)
-
-    assert provenance["env"]["ARTIFACT_NAME"] == (
-        "python-migration-coverage-attempt-${{ github.run_attempt }}"
+    lines = str(focused["run"]).replace("\\\n", " ").splitlines()
+    commands = [shlex.split(line) for line in lines if line.strip()]
+    assert commands == [
+        ["set", "-euo", "pipefail"],
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--no-sync",
+            "coverage",
+            "run",
+            "--append",
+            "--data-file=.coverage.migration",
+            "--source=alembic/versions",
+            "-m",
+            "pytest",
+            "-n",
+            "0",
+            "--no-cov",
+            *_FOCUSED_BASELINE_SELECTORS,
+        ],
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--no-sync",
+            "coverage",
+            "report",
+            "--data-file=.coverage.migration",
+            "--include=alembic/versions/202611020000_mvp_baseline.py",
+            "--fail-under=100",
+        ],
+    ]
+    assert (
+        provenance["env"]["ARTIFACT_NAME"]
+        == "python-migration-coverage-attempt-${{ github.run_attempt }}"
     )
     assert upload["with"]["name"] == provenance["env"]["ARTIFACT_NAME"]
     assert "artifacts/coverage/python/producer/.coverage.migration" in str(
@@ -6748,6 +7263,200 @@ def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
         "artifacts/coverage/python/producer/coverage-provenance-migration.json"
         in str(upload["with"]["path"])
     )
+
+
+def test_focused_baseline_tests_append_to_existing_coverage_producer() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_focused_baseline_coverage(workflow)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing-selector",
+        "changed-selector",
+        "no-append",
+        "wrong-source",
+        "conditional",
+        "nonblocking",
+        "lower-threshold",
+        "reset",
+        "postgres-unit-reset",
+        "reordered",
+        "wrong-artifact",
+    ),
+)
+def test_focused_baseline_coverage_rejects_population_and_producer_drift(
+    mutation: str,
+) -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["db-migration-gate"]
+    step = _provenance_step(job, "Append focused baseline tests to coverage")
+    if mutation == "missing-selector":
+        step["run"] = step["run"].replace(_FOCUSED_BASELINE_SELECTORS[0], "")
+    elif mutation == "changed-selector":
+        step["run"] = step["run"].replace(
+            _FOCUSED_BASELINE_SELECTORS[0], "tests/test_unreviewed.py"
+        )
+    elif mutation == "no-append":
+        step["run"] = step["run"].replace("--append", "")
+    elif mutation == "wrong-source":
+        step["run"] = step["run"].replace("--source=alembic/versions", "--source=app")
+    elif mutation == "conditional":
+        step["if"] = "false"
+    elif mutation == "nonblocking":
+        step["continue-on-error"] = True
+    elif mutation == "lower-threshold":
+        step["run"] = step["run"].replace("--fail-under=100", "--fail-under=99")
+    elif mutation == "reset":
+        step["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] = "1"
+    elif mutation == "postgres-unit-reset":
+        step["env"]["DATABASE_URL"] = (
+            "postgresql+asyncpg://test@localhost:5433/test_migration"
+        )
+    elif mutation == "reordered":
+        job["steps"].remove(step)
+        job["steps"].append(step)
+    else:
+        upload = _provenance_step(job, "Upload migration coverage data for aggregation")
+        upload["with"]["path"] = "unreviewed-coverage"
+    with pytest.raises(AssertionError):
+        _assert_focused_baseline_coverage(workflow)
+
+
+def _backend_integration_helper_source() -> str:
+    return BACKEND_INTEGRATION_HELPER_PATH.read_text(encoding="utf-8")
+
+
+def _assert_backend_integration_helper(
+    step: dict, helper_source: str, workflow: dict
+) -> None:
+    assert step["shell"] == "pwsh"
+    assert step["run"] == ". ./scripts/ci/backend-run-integration-tests.ps1\n"
+    job = workflow["jobs"]["integration-tests"]
+    workflow_run_defaults = (workflow.get("defaults") or {}).get("run") or {}
+    job_run_defaults = (job.get("defaults") or {}).get("run") or {}
+    assert "working-directory" not in workflow_run_defaults
+    assert "working-directory" not in job_run_defaults
+    assert "working-directory" not in step
+    assert step["env"] == {
+        "AUD350_POSTGRES_DATABASE_URL": "${{ env.DATABASE_URL }}",
+        "AUD447_POSTGRES_DATABASE_URL": (
+            "postgresql+psycopg://test:test@127.0.0.1:5432/test"
+        ),
+        "INTEGRATION_SHARD_ID": "${{ inputs.integration-shard-id }}",
+        "INTEGRATION_NUM_SHARDS": "${{ inputs.integration-num-shards }}",
+        "INTEGRATION_TEST_PATTERN": "${{ inputs.integration-test-pattern }}",
+        "AUD428_CACHE_CONTAINER_ID": "${{ job.services.redis.id }}",
+        "AUD428_REVOCATION_CONTAINER_ID": (
+            "${{ job.services['revocation-redis'].id }}"
+        ),
+    }
+    pytest_args_match = re.search(
+        r"\$pytestArgs = @\(\n(?P<args>.*?)\n\)", helper_source, re.DOTALL
+    )
+    assert pytest_args_match is not None
+    pytest_args = pytest_args_match.group("args")
+    assert "$env:INTEGRATION_TEST_PATTERN" in pytest_args
+    assert "tests/test_events_localization.py" in pytest_args
+    assert "tests/test_user_analytics_window_contracts.py" in pytest_args
+    assert "tests/test_migrations_runtime.py" in pytest_args
+    assert "tests/test_query_plans.py" in pytest_args
+    assert (
+        "tests/test_backend_p2_correctness_regressions.py::test_chat_list_cursor_uses_the_same_ordering_key_as_the_page"
+        in pytest_args
+    )
+    assert (
+        "tests/test_backend_p2_correctness_regressions.py::test_chat_and_message_pages_follow_complete_ordering_keys"
+        in pytest_args
+    )
+    assert (
+        "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions"
+        in pytest_args
+    )
+    assert (
+        "tests/test_news_repository_db.py::test_comment_delete_commits_across_sessions_and_preserves_creation_outbox"
+        in pytest_args
+    )
+    assert '"--ignore=tests/performance"' in helper_source
+    assert '"--ignore=tests/test_schemathesis_api.py"' in helper_source
+    assert "--ignore=tests/integration" not in helper_source
+
+    assert "$integrationShardId = [int]$env:INTEGRATION_SHARD_ID" in helper_source
+    assert "$integrationNumShards = [int]$env:INTEGRATION_NUM_SHARDS" in helper_source
+    assert '"--shard-id=$integrationShardId"' in helper_source
+    assert '"--num-shards=$integrationNumShards"' in helper_source
+    assert "Invalid integration shard configuration:" in helper_source
+    pytest_invocation = (
+        "uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs"
+    )
+    failure_gate = "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+    validator_assignment = "$receiptValidator = @'"
+    receipt_validation = (
+        "uv run --frozen --no-sync python -c $receiptValidator $baselineReceipt"
+    )
+    assert helper_source.count(pytest_invocation) == 1
+    assert helper_source.count(failure_gate) == 2
+    pytest_position = helper_source.index(pytest_invocation)
+    gate_positions = [
+        match.start() for match in re.finditer(re.escape(failure_gate), helper_source)
+    ]
+    validator_assignment_position = helper_source.index(validator_assignment)
+    receipt_validation_position = helper_source.index(receipt_validation)
+    assert (
+        pytest_position
+        < gate_positions[0]
+        < validator_assignment_position
+        < receipt_validation_position
+        < gate_positions[1]
+    )
+    assert (
+        re.search(r"(?im)^\s*(?:exit\s+0\b|return\b)", helper_source[:pytest_position])
+        is None
+    )
+
+    receipt_guard = (
+        "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+        '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
+    )
+    assert helper_source.count(receipt_guard) == 1
+    assert "if ($requireBaselineReceipt) {" in helper_source
+    assert "$baselineReceipt = Join-Path $env:RUNNER_TEMP $receiptName" in helper_source
+    assert receipt_validation in helper_source
+
+    validator_match = re.search(
+        r"\$receiptValidator = @'\n(?P<validator>.*?)\n'@",
+        helper_source,
+        re.DOTALL,
+    )
+    assert validator_match is not None
+    validator_source = validator_match.group("validator")
+    validator = ast.parse(validator_source)
+    expected_node = next(
+        node.value
+        for node in ast.walk(validator)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "expected"
+            for target in node.targets
+        )
+    )
+    expected = ast.literal_eval(expected_node)
+    assert {name: len(cases) for name, cases in expected.items()} == {
+        "tests.integration.test_mvp_baseline_schema_equivalence": 10,
+        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 14,
+        "tests.integration.test_aud262_receipt_schema_postgres": 15,
+        "tests.integration.test_dlq_retry_postgres": 2,
+    }
+    assert sum(map(len, expected.values())) == 41
+    assert (
+        "test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller"
+        in expected["tests.integration.test_dlq_retry_postgres"]
+    )
+    assert "case.find(status)" in validator_source
+    assert '("skipped", "failure", "error")' in validator_source
+    assert "set(observed) != set(names)" in validator_source
+    assert "len(cases) != len(names)" in validator_source
 
 
 def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
@@ -6790,10 +7499,10 @@ def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
     assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
         "${{ inputs.integration-test-pattern }}"
     )
-    script = str(step["run"])
-    assert "$env:INTEGRATION_TEST_PATTERN" in script
-    assert f"--ignore={relative}" not in script
-    assert "--ignore=tests/integration" not in script
+    helper_source = _backend_integration_helper_source()
+    _assert_backend_integration_helper(step, helper_source, reusable)
+    assert f"--ignore={relative}" not in helper_source
+    assert "--ignore=tests/integration" not in helper_source
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     caller = ci["jobs"]["backend-tests"]
@@ -6880,3 +7589,653 @@ def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
         ]
     ]
     assert "coverage run" not in script
+
+
+# AUD-481 private candidate: PR scans cover every release image besides the
+# backend image already covered by the stable required Trivy job.
+def _aud481_gh(expression: str) -> str:
+    return "$" + "{{ " + expression + " }}"
+
+
+def _aud481_assert_matrix_contract(
+    ci_workflow: dict[str, object],
+    release_workflow: dict[str, object],
+    catalog: dict[str, object],
+) -> None:
+    jobs = ci_workflow["jobs"]
+    job_id = "docker-security-scan-additional"
+    assert job_id in jobs, "AUD-481 additional image scan matrix is missing"
+    job = jobs[job_id]
+    assert job["name"] == f"Trivy Image Scan - {_aud481_gh('matrix.image_name')}"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["timeout-minutes"] == 15
+    assert job["needs"] == "pre-commit-check"
+    assert job["permissions"] == {"security-events": "write", "contents": "read"}
+    strategy = job["strategy"]
+    assert strategy["fail-fast"] is False
+    assert strategy["max-parallel"] == 3
+    entries = strategy["matrix"]["include"]
+    actual = {
+        entry["image_name"]: (entry["file"], entry["context"]) for entry in entries
+    }
+    assert len(actual) == len(entries) == 5
+
+    release_build = release_workflow["jobs"]["build"]
+    release_entries = release_build["strategy"]["matrix"]["include"]
+    expected = {
+        entry["image_name"]: (entry["file"], entry["context"])
+        for entry in release_entries
+        if entry["image_name"] != "backend"
+    }
+    assert actual == expected
+    assert "backend" not in actual
+    assert {entry["category"] for entry in entries} == {
+        f"trivy-image-{name}" for name in actual
+    }
+
+    steps = job["steps"]
+    buildx_steps = [
+        step for step in steps if step.get("name") == "Set up Docker Buildx"
+    ]
+    assert len(buildx_steps) == 1
+    buildx = buildx_steps[0]
+    assert (
+        buildx["uses"]
+        == "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build local runtime image for scanning"
+    )
+    assert steps.index(buildx) < steps.index(build)
+    assert (
+        build["uses"]
+        == "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    )
+    assert build["with"]["context"] == _aud481_gh("matrix.context")
+    assert build["with"]["file"] == _aud481_gh("matrix.file")
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    image_ref = f"university-ecosystem/{_aud481_gh('matrix.image_name')}:{_aud481_gh('github.sha')}"
+    assert build["with"]["tags"] == image_ref
+    assert build["with"]["labels"] == (
+        f"org.opencontainers.image.source=https://github.com/{_aud481_gh('github.repository')}\n"
+        f"org.opencontainers.image.revision={_aud481_gh('github.sha')}\n"
+    )
+    build_args = build["with"]["build-args"]
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || ''"
+        )
+        in build_args
+    )
+    assert ci_workflow.get("cache-mode") == "none", "AUD-481 shared-cache policy"
+    assert "cache-from" not in build["with"], "AUD-481 shared-cache policy"
+    assert "cache-to" not in build["with"], "AUD-481 shared-cache policy"
+    assert build["with"]["provenance"] is False
+    assert build["with"]["sbom"] is False
+
+    scanners = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert len(scanners) == 1
+    scanner = scanners[0]
+    assert (
+        scanner["uses"]
+        == "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+    )
+    assert scanner["id"] == "trivy_scan"
+    assert "continue-on-error" not in scanner
+    assert scanner["with"]["version"] == "v0.75.0"
+    assert scanner["with"]["image-ref"] == image_ref
+    assert scanner["with"]["format"] == "sarif"
+    sarif = f"trivy-{_aud481_gh('matrix.image_name')}.sarif"
+    assert scanner["with"]["output"] == sarif
+    assert scanner["with"]["severity"] == "CRITICAL,HIGH"
+    assert scanner["with"]["limit-severities-for-sarif"] is True
+    assert scanner["with"]["exit-code"] == "1"
+    assert scanner["with"]["ignore-unfixed"] is True
+    assert scanner["env"]["TRIVY_DB_REPOSITORY"] == "ghcr.io/aquasecurity/trivy-db:2"
+
+    uploads = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    assert len(uploads) == 1
+    upload = uploads[0]
+    assert upload["uses"] == CODEQL_UPLOAD_SARIF_ACTION_PIN
+    assert (
+        upload["if"]
+        == "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert upload["with"]["sarif_file"] == sarif
+    assert upload["with"]["category"] == _aud481_gh("matrix.category")
+    assert upload["continue-on-error"] is True
+
+    backend_job = jobs["docker-security-scan"]
+    assert backend_job["name"] == "Trivy Image Scan"
+    assert "docker-security-scan" in jobs["ci-success"]["needs"]
+    assert job_id in jobs["ci-success"]["needs"]
+    gate = next(
+        step
+        for step in jobs["ci-success"]["steps"]
+        if step.get("name") == "Check all jobs passed"
+    )
+    assert f"'{job_id}|{_aud481_gh(f'needs.{job_id}.result')}'" in gate["run"]
+
+    ci_entry = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    matrix_catalog = ci_entry["jobs"][job_id]
+    assert matrix_catalog["profile"] == "internal"
+    assert matrix_catalog["check_name_template"] == job["name"]
+    assert matrix_catalog["expected_timeout_minutes"] == 15
+    assert matrix_catalog["expected_duration_seconds"] == 900
+    assert matrix_catalog["matrix_governance"] == {"max_parallel": 3}
+    assert matrix_catalog["needs"] == ["pre-commit-check"]
+    assert ci_entry["jobs"]["ci-success"]["needs"] == jobs["ci-success"]["needs"]
+    assert ci_entry["jobs"]["docker-security-scan"]["profile"] == "required-pr-main"
+
+
+def test_aud481_pr_image_scan_coverage_matches_release_image_inventory() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+    _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+
+
+def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+
+    if "docker-security-scan-additional" not in ci_workflow["jobs"]:
+        with pytest.raises(AssertionError):
+            _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+        return
+
+    _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+
+    missing_image = deepcopy(ci_workflow)
+    include = missing_image["jobs"]["docker-security-scan-additional"]["strategy"][
+        "matrix"
+    ]["include"]
+    include[:] = [entry for entry in include if entry["image_name"] != "caddy"]
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(missing_image, release_workflow, catalog)
+
+    nonblocking_scan = deepcopy(ci_workflow)
+    scanner = next(
+        step
+        for step in nonblocking_scan["jobs"]["docker-security-scan-additional"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    scanner["with"]["exit-code"] = "0"
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(nonblocking_scan, release_workflow, catalog)
+
+    for mutation in (
+        "missing-cache-mode",
+        "enabled-cache-mode",
+        "cache-from",
+        "cache-to",
+    ):
+        shared_cache = deepcopy(ci_workflow)
+        if mutation == "missing-cache-mode":
+            shared_cache.pop("cache-mode")
+        elif mutation == "enabled-cache-mode":
+            shared_cache["cache-mode"] = "read-write"
+        else:
+            build = next(
+                step
+                for step in shared_cache["jobs"]["docker-security-scan-additional"][
+                    "steps"
+                ]
+                if step.get("name") == "Build local runtime image for scanning"
+            )
+            build["with"][mutation] = "type=gha"
+        with pytest.raises(AssertionError, match="AUD-481 shared-cache policy"):
+            _aud481_assert_matrix_contract(shared_cache, release_workflow, catalog)
+
+
+def test_retired_aud350_producer_does_not_replace_current_baseline_coverage() -> None:
+    # The timestamp upgrade was removed by the owner-approved fresh-only squash.
+    # Its schema-equivalence proof is separate from this raw coverage producer.
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_focused_baseline_coverage(workflow)
+    job = workflow["jobs"]["db-migration-gate"]
+    names = {step.get("name") for step in job["steps"]}
+    assert "Append focused migration tests to coverage" not in names
+    assert (
+        "Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage"
+        not in names
+    )
+    assert job["timeout-minutes"] == 20
+    assert job["services"]["postgres"]["image"].startswith(
+        "pgvector/pgvector:pg17@sha256:"
+    )
+    for retired in (
+        "tests/test_aud350_reconcile_migration_coverage.py",
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+    ):
+        assert not (REPOSITORY_ROOT / retired).exists()
+        assert retired not in str(job)
+
+
+def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert step["env"]["AUD350_POSTGRES_DATABASE_URL"] == "${{ env.DATABASE_URL }}"
+    assert "DATABASE_URL" not in step["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in workflow.get("env", {})
+    assert "AUD350_POSTGRES_DATABASE_URL" not in job["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in (
+        workflow["jobs"]["unit-tests"].get("env", {})
+    )
+    assert "if" not in step
+    assert "continue-on-error" not in step
+
+
+def _assert_aud447_owned_postgres_allocation(
+    workflow: dict, helper_source: str
+) -> None:
+    job = workflow["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    _assert_backend_integration_helper(step, helper_source, workflow)
+    variable = "AUD447_POSTGRES_DATABASE_URL"
+    assert step["env"][variable] == "postgresql+psycopg://test:test@127.0.0.1:5432/test"
+    assert job["env"]["ENVIRONMENT"] == "testing"
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] == "1"
+    assert job["env"]["DATABASE_URL"] == (
+        "postgresql+asyncpg://test:test@localhost:5432/test"
+    )
+    assert variable not in workflow.get("env", {})
+    assert variable not in job["env"]
+    assert variable not in workflow["jobs"]["unit-tests"].get("env", {})
+    service = job["services"]["postgres"]
+    assert service["image"].startswith("pgvector/pgvector:pg17@sha256:")
+    assert service["env"] == {
+        "POSTGRES_USER": "test",
+        "POSTGRES_PASSWORD": "test",
+        "POSTGRES_DB": "test",
+    }
+    assert service["ports"] == ["5432:5432"]
+    assert "if" not in step
+    assert "continue-on-error" not in step
+    assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
+        "${{ inputs.integration-test-pattern }}"
+    )
+    assert (
+        "--ignore=tests/integration/test_aud447_dlq_auth_scrub_postgres.py"
+        not in helper_source
+    )
+
+
+def test_aud447_postgres_regressions_use_the_explicit_owned_service() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    _assert_aud447_owned_postgres_allocation(
+        workflow, _backend_integration_helper_source()
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing-url",
+        "generic-url",
+        "global-url",
+        "job-url",
+        "unit-url",
+        "integration-disabled",
+        "reset-unacknowledged",
+        "production-environment",
+        "different-service-credentials",
+        "different-service-port",
+        "conditional-step",
+        "nonblocking-step",
+        "step-working-directory",
+        "job-working-directory",
+        "workflow-working-directory",
+        "early-success-exit",
+        "early-return",
+    ],
+)
+def test_aud447_postgres_allocation_rejects_unsafe_workflow_mutations(
+    case: str,
+) -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    helper_source = _backend_integration_helper_source()
+    _assert_aud447_owned_postgres_allocation(workflow, helper_source)
+    candidate = deepcopy(workflow)
+    job = candidate["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    variable = "AUD447_POSTGRES_DATABASE_URL"
+    target = step["env"][variable]
+
+    if case == "missing-url":
+        del step["env"][variable]
+    elif case == "generic-url":
+        step["env"][variable] = "${{ env.DATABASE_URL }}"
+    elif case == "global-url":
+        candidate.setdefault("env", {})[variable] = target
+    elif case == "job-url":
+        job["env"][variable] = target
+    elif case == "unit-url":
+        candidate["jobs"]["unit-tests"].setdefault("env", {})[variable] = target
+    elif case == "integration-disabled":
+        job["env"]["RUN_INTEGRATION_TESTS"] = "0"
+    elif case == "reset-unacknowledged":
+        job["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] = "0"
+    elif case == "production-environment":
+        job["env"]["ENVIRONMENT"] = "production"
+    elif case == "different-service-credentials":
+        job["services"]["postgres"]["env"]["POSTGRES_DB"] = "other"
+    elif case == "different-service-port":
+        job["services"]["postgres"]["ports"] = ["5433:5432"]
+    elif case == "conditional-step":
+        step["if"] = "false"
+    elif case == "nonblocking-step":
+        step["continue-on-error"] = True
+    elif case == "step-working-directory":
+        step["working-directory"] = "frontend"
+    elif case == "job-working-directory":
+        job.setdefault("defaults", {}).setdefault("run", {})["working-directory"] = (
+            "frontend"
+        )
+    elif case == "workflow-working-directory":
+        candidate.setdefault("defaults", {}).setdefault("run", {})[
+            "working-directory"
+        ] = "frontend"
+    elif case == "early-success-exit":
+        helper_source = "exit 0\n" + helper_source
+    else:
+        assert case == "early-return"
+        helper_source = "return\n" + helper_source
+
+    with pytest.raises((AssertionError, KeyError)):
+        _assert_aud447_owned_postgres_allocation(candidate, helper_source)
+
+
+def _assert_pr_postgres_receipt_route(
+    ci: dict, reusable: dict, helper_source: str
+) -> None:
+    caller = ci["jobs"]["backend-tests"]
+    inputs = reusable[True]["workflow_call"]["inputs"]
+    selected = caller["with"]
+    assert selected["integration-test-pattern"] == "tests/integration/"
+    assert selected["run-integration-tests"] == "${{ matrix.run-integration }}"
+    assert any(
+        leg.get("run-integration") is True
+        for leg in caller["strategy"]["matrix"]["include"]
+    )
+    assert (
+        selected.get("integration-shard-id", inputs["integration-shard-id"]["default"])
+        == -1
+    )
+    assert (
+        selected.get(
+            "integration-num-shards", inputs["integration-num-shards"]["default"]
+        )
+        == 1
+    )
+    job = reusable["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    _assert_backend_integration_helper(step, helper_source, reusable)
+    guard = (
+        "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+        '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
+    )
+    assert helper_source.count(guard) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "valid",
+        "changed-pattern",
+        "explicit-shard-count",
+        "explicit-shard-id",
+        "default-shard-count",
+        "default-shard-id",
+        "disabled-integration",
+        "unlinked-integration",
+        "removed-receipt-guard",
+    ],
+)
+def test_pr_postgres_receipt_route_rejects_disabled_proofs(mutation: str) -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    helper_source = _backend_integration_helper_source()
+    caller = ci["jobs"]["backend-tests"]
+    selected = caller["with"]
+    inputs = reusable[True]["workflow_call"]["inputs"]
+    if mutation == "changed-pattern":
+        selected["integration-test-pattern"] = "tests/other/"
+    elif mutation == "explicit-shard-count":
+        selected["integration-num-shards"] = 4
+    elif mutation == "explicit-shard-id":
+        selected["integration-shard-id"] = 0
+    elif mutation == "default-shard-count":
+        inputs["integration-num-shards"]["default"] = 4
+    elif mutation == "default-shard-id":
+        inputs["integration-shard-id"]["default"] = 0
+    elif mutation == "disabled-integration":
+        for leg in caller["strategy"]["matrix"]["include"]:
+            leg["run-integration"] = False
+    elif mutation == "unlinked-integration":
+        selected["run-integration-tests"] = False
+    elif mutation == "removed-receipt-guard":
+        guard = (
+            "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+            '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
+        )
+        assert helper_source.count(guard) == 1
+        helper_source = helper_source.replace(
+            guard, guard.replace("$requireBaselineReceipt", "$disabledReceipt"), 1
+        )
+    else:
+        assert mutation == "valid"
+    if mutation == "valid":
+        _assert_pr_postgres_receipt_route(ci, reusable, helper_source)
+    else:
+        with pytest.raises(AssertionError):
+            _assert_pr_postgres_receipt_route(ci, reusable, helper_source)
+
+
+@pytest.mark.parametrize("service", ["ws-hub", "file-processor", "gateway"])
+@pytest.mark.parametrize("syft_status", [0, 23])
+def test_go_sbom_step_preserves_arguments_and_failure(
+    tmp_path: Path, service: str, syft_status: int
+) -> None:
+    workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["go-sbom"]
+    matrix_expression = "${{ matrix.service }}"
+    assert job["strategy"]["matrix"]["service"] == [
+        "ws-hub",
+        "file-processor",
+        "gateway",
+    ]
+    step = _step_named(job, "Generate SPDX-JSON SBOM for " + matrix_expression)
+    assert step["env"]["SERVICE"] == matrix_expression
+    upload = _step_named(job, "Upload SBOM artifact")
+    assert upload["with"]["path"] == "sbom-" + matrix_expression + ".spdx.json"
+    script = (
+        f"export SERVICE={shlex.quote(service)}\n"
+        f"export SYFT_EXIT={syft_status}\n"
+        'syft() { printf \'%s\\0\' "$@" > trace; return "$SYFT_EXIT"; }\n' + step["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    assert (tmp_path / "trace").read_bytes().split(b"\0") == [
+        f"dir:services/{service}".encode(),
+        b"--output",
+        f"spdx-json=sbom-{service}.spdx.json".encode(),
+        b"--scope",
+        b"all-layers",
+        b"",
+    ]
+    assert result.returncode == syft_status
+    assert result.stdout == (
+        f"Generated SBOM for {service}\n" if syft_status == 0 else ""
+    )
+    assert result.stderr == ""
+
+
+def test_go_sbom_service_is_literal_shell_data(tmp_path: Path) -> None:
+    workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["go-sbom"]
+    expression = "${{ matrix.service }}"
+    step = _step_named(job, "Generate SPDX-JSON SBOM for " + expression)
+    assert step["env"]["SERVICE"] == expression
+    service = "$(touch marker)"
+    script = (
+        f"export SERVICE={shlex.quote(service)}\n"
+        "export SYFT_EXIT=0\n"
+        'syft() { printf \'%s\\0\' "$@" > trace; return "$SYFT_EXIT"; }\n' + step["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    assert result.returncode == 0
+    assert result.stdout == f"Generated SBOM for {service}\n"
+    assert result.stderr == ""
+    assert (tmp_path / "trace").read_bytes().split(b"\0") == [
+        b"dir:services/$(touch marker)",
+        b"--output",
+        b"spdx-json=sbom-$(touch marker).spdx.json",
+        b"--scope",
+        b"all-layers",
+        b"",
+    ]
+    assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "$(touch marker)"])
+def test_unauthenticated_smoke_result_preserves_failure_annotation(
+    tmp_path: Path, theme: str
+) -> None:
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "unauthenticated-routes-smoke.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["unauthed-smoke"]
+    assert job["strategy"]["matrix"]["theme"] == ["light", "dark"]
+    smoke = _step_named(job, "Run unauthenticated routes smoke script")
+    upload = _step_named(job, "Upload smoke reports")
+    gate = _step_named(job, "Re-assert smoke result")
+    matrix_theme = "${{ matrix.theme }}"
+    assert smoke["continue-on-error"] is True
+    assert upload["if"] == "always()"
+    assert upload["with"]["name"] == "unauthenticated-routes-smoke-" + matrix_theme
+    assert upload["with"]["path"] == (
+        "frontend/.screenshots/unauthenticated-routes-smoke-" + matrix_theme
+    )
+    assert gate["if"] == "always() && steps.smoke.outcome == 'failure'"
+    assert gate["env"]["THEME"] == matrix_theme
+
+    script = (
+        f"export THEME={shlex.quote(theme)}\n"
+        "exec > smoke-annotation.txt\n" + gate["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    expected = (
+        f"::error::Unauthenticated routes smoke FAILED (theme={theme}) — see artifact "
+        f"frontend/.screenshots/unauthenticated-routes-smoke-{theme}/ for sidecar JSONs\n"
+    )
+    assert result.returncode == 1
+    assert result.stdout == result.stderr == ""
+    assert (tmp_path / "smoke-annotation.txt").read_bytes() == expected.encode("utf-8")
+    assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize(
+    ("filename", "job_id"),
+    [
+        ("benchmark.yml", "ws-hub-regression"),
+        ("benchmark.yml", "rust-native-regression"),
+        ("manual-performance-evidence.yml", "ws-hub-regression"),
+        ("manual-performance-evidence.yml", "rust-native-regression"),
+    ],
+)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "ARTIFACT_ROOT",
+        "CAPTURED_BASE_COMPARATOR",
+        "CAPTURED_PYTHON_BIN",
+        "CAPTURED_COMPARATOR_SHA256",
+        "CAPTURED_BASE_SHA",
+        "CAPTURED_CANDIDATE_SHA",
+        "export-inputs",
+        "reassign-input",
+        "change-base-revision",
+    ],
+)
+def test_comparator_output_binding_rejects_mutations(
+    filename: str, job_id: str, mutation: str
+) -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / filename
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"][job_id]
+    comparator = _step_named(job, "Compare paired benchmark evidence")
+    if mutation in comparator["env"]:
+        comparator["env"][mutation] = "untrusted"
+    elif mutation == "export-inputs":
+        comparator["run"] = comparator["run"].replace("export -n ", "export ", 1)
+    elif mutation == "reassign-input":
+        comparator["run"] += "\nCAPTURED_BASE_SHA=untrusted\n"
+    else:
+        assert mutation == "change-base-revision"
+        comparator["run"] = comparator["run"].replace(
+            '--base-revision "$CAPTURED_BASE_SHA"', "--base-revision untrusted", 1
+        )
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )

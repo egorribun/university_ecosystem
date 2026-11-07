@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { render, screen, fireEvent, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({ useTranslation: mocks.useTranslationMock }))
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return { ...actual, default: { ...actual.default, post: mocks.post, delete: mocks.del } }
 })
 vi.mock("@/app/logger", () => ({ logError: vi.fn() }))

@@ -132,3 +132,30 @@ def test_spire_bundle_rbac_and_agent_mount_are_least_privilege() -> None:
             for mount in container["volumeMounts"]
         )
     assert "/run/spire/bundle/bundle.crt" in init["command"][-1]
+
+
+def test_spire_agent_cluster_role_grants_no_node_list_watch_or_node_object_read() -> (
+    None
+):
+    # AUD-251: default PID attestation needs kubelet access, not API pod reads.
+    # Node object reads, node list/watch and nodes/proxy list/watch are excluded.
+    role = _documents("k8s/spire/spire-rbac.yaml", "ClusterRole")
+    agent_role = next(
+        item for item in role if item["metadata"]["name"] == "spire-agent-role"
+    )
+    assert agent_role["rules"] == [
+        {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]}
+    ]
+    assert all(rule.get("resourceNames") is None for rule in agent_role["rules"])
+
+
+def test_spire_agent_pod_rbac_matches_default_pid_attestor_configuration() -> None:
+    # Version-pinned PID attestation obtains /pods from the kubelet. Enabling
+    # optional API-object/cache/namespace features requires a new RBAC review.
+    config = _document("k8s/spire/spire-agent.yaml", "ConfigMap")["data"]["agent.conf"]
+    normalized = " ".join(config.split())
+    assert normalized.count('WorkloadAttestor "k8s"') == 1
+    assert 'WorkloadAttestor "k8s" { plugin_data {} }' in normalized
+    daemonset = _document("k8s/spire/spire-agent.yaml", "DaemonSet")
+    agent = daemonset["spec"]["template"]["spec"]["containers"][0]
+    assert f"spire-agent:{SPIRE_VERSION}@sha256:" in agent["image"]

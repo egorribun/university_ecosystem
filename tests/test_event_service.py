@@ -305,29 +305,20 @@ async def test_attendance_registration(event_service, mock_uow, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_register_attendance_race_condition(event_service, mock_repo):
-    import asyncio
-
+async def test_register_attendance_race_condition(event_service, mock_uow, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
-    _, u2, u3 = uuid4(), uuid4(), uuid4()
-
-    # We'll simulate that u1 succeeds, while u2 and u3 hit a race condition
-    # For a real DB, this is handled by unique constraints. For mock,
-    # we just need to ensure the service layer doesn't crash on IntegrityError
-    # when it tries to insert duplicate attendance, but rather returns the existing one.
-
-    mock_attendance = EventAttendanceDTO(
-        id=uuid4(), event_id=data.event_id, user_id=u2, registered_at=None
+    user_id = uuid4()
+    registered_at = datetime.now(UTC)
+    raced_attendance = EventAttendanceDTO(
+        id=uuid4(),
+        event_id=data.event_id,
+        user_id=user_id,
+        registered_at=registered_at,
     )
 
-    # First call: IntegrityError. Second call (retry): returns mock_attendance
-    mock_repo.get_attendance.side_effect = [
-        None,
-        mock_attendance,
-        None,
-        mock_attendance,
-    ]
-    mock_repo.commit.side_effect = IntegrityError(
+    mock_repo.get_for_registration.return_value = create_mock_event(data.event_id)
+    mock_repo.get_attendance.side_effect = [None, raced_attendance]
+    mock_repo.create_attendance.side_effect = IntegrityError(
         "duplicate key value violates unique constraint", {}, Exception()
     )
 
@@ -344,16 +335,21 @@ async def test_register_attendance_race_condition(event_service, mock_repo):
             "app.services.event_service.attendance_tokens.compute_secret_hmac",
             return_value="hmac",
         ),
-        patch(
-            "app.services.event_service.attendance_tokens.ensure_secret_material",
-            return_value=False,
-        ),
     ):
-        await asyncio.gather(
-            event_service.register_attendance(data, u2),
-            event_service.register_attendance(data, u3),
-            return_exceptions=True,
-        )
+        record = await event_service.register_attendance(data, user_id)
+
+    assert record.id == raced_attendance.id
+    assert record.event_id == data.event_id
+    assert record.user_id == user_id
+    assert record.registered_at == registered_at
+    assert record.qr_token == "mock_token"
+    mock_repo.create_attendance.assert_awaited_once()
+    assert mock_repo.get_attendance.await_count == 2
+    assert all(
+        awaited_call.args == (data.event_id, user_id)
+        for awaited_call in mock_repo.get_attendance.await_args_list
+    )
+    mock_uow.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,7 @@ def _storage_backend_signature() -> tuple[object, ...]:
         settings.storage_backend,
         getattr(settings, "static_dir_path", None),
         getattr(settings, "storage_static_base_url", None),
+        settings.storage.storage_static_origin,
         getattr(settings, "storage_s3_bucket", None),
         getattr(settings, "storage_s3_region", None),
         getattr(settings, "storage_s3_access_key_id", None),
@@ -406,6 +407,7 @@ async def save_attachment(
     max_size_bytes: int | None = None,
     return_meta: bool = False,
     sanitize_image_metadata: bool = False,
+    canonical_static_url: bool = False,
 ) -> str | dict[str, object]:
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
@@ -572,15 +574,32 @@ async def save_attachment(
 
     sanitized_subdir = subdir.strip("/ ")
     backend = _get_storage_backend()
-    await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    cache_control = _cache_control_for_subdir(sanitized_subdir)
-    url = await backend.save_file(
-        relative_path,
-        data,
-        content_type=declared_type or detected_type,
-        cache_control=cache_control,
+    canonical_url = (
+        backend.canonical_file_url(relative_path)
+        if canonical_static_url and isinstance(backend, StaticFSStorage)
+        else None
     )
+    await _prepare_local_storage(backend, sanitized_subdir)
+    cache_control = _cache_control_for_subdir(sanitized_subdir)
+    if canonical_url is not None and isinstance(backend, StaticFSStorage):
+        # ChatAttachmentService opts into canonical StaticFS URLs. Keep its
+        # cancellation ownership scoped to this existing chat-only call path.
+        url = await backend.save_file_cancellable(
+            relative_path,
+            data,
+            content_type=declared_type or detected_type,
+            cache_control=cache_control,
+        )
+    else:
+        url = await backend.save_file(
+            relative_path,
+            data,
+            content_type=declared_type or detected_type,
+            cache_control=cache_control,
+        )
+    if canonical_url is not None:
+        url = canonical_url
     if return_meta:
         return {
             "url": url,

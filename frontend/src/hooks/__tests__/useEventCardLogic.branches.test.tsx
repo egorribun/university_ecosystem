@@ -1,8 +1,9 @@
+type _MockedModuleType1 = typeof import("@/utils/eventDateTime")
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("@/utils/eventDateTime", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/utils/eventDateTime")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     resolveCampusEventDateRange: vi.fn(actual.resolveCampusEventDateRange),

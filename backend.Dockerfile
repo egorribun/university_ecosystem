@@ -64,9 +64,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 2: Runtime
 FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS runtime
 
+# Dump a Python traceback on SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL — aids debugging.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # Dump a Python traceback on SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL — aids debugging.
     PYTHONFAULTHANDLER=1 \
     PATH="/opt/venv/bin:$PATH"
 
@@ -108,12 +108,12 @@ USER 10001:10001
 
 EXPOSE 8000
 
-# Use Python stdlib urllib — no external binaries required.
+# Use the same strict HTTP/SPIFFE probe as the Kubernetes listener.
 # Keep the image-level probe aligned with the Kubernetes readiness contract.
 # `/health/ready` checks database connectivity and honors graceful shutdown;
 # the more expensive `/healthz` endpoint is reserved for diagnostics.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+    CMD ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
@@ -123,7 +123,7 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 # Access logging is intentionally disabled: UvicornWorker writes the full ASGI
 # request target, including its query string, through uvicorn.access.
 CMD ["gunicorn", "app.main:app", \
-    "--worker-class", "uvicorn.workers.UvicornWorker", \
+    "--worker-class", "app.server.spiffe_worker.BackendWorker", \
     "--workers", "2", \
     "--bind", "0.0.0.0:8000", \
     "--graceful-timeout", "30", \

@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import { HttpResponse, http } from "msw"
@@ -177,6 +177,81 @@ describe("AdminNotifications page", () => {
     expect(screen.getByText("nope")).toBeInTheDocument()
 
     queryClient.clear()
+  })
+
+  it("keeps a later-page failure visible without returning to page one", async () => {
+    const firstPage = {
+      items: Array.from({ length: 20 }, (_, index) => ({
+        id: "dlq-page-error-job-" + index,
+        kind: "news",
+        record_id: "dlq-page-error-record-" + index,
+        locale: "en",
+        enqueued_at: "2026-10-30T00:00:00Z",
+        attempts: 1,
+        last_error: null,
+      })),
+      total: 21,
+    }
+    const requests: Array<{ limit: string | null; offset: string | null }> = []
+    let releaseFailure!: () => void
+    const failureReady = new Promise<void>((resolve) => {
+      releaseFailure = resolve
+    })
+    server.use(
+      http.get("*/notifications/admin/dead-letter", async ({ request }) => {
+        const params = new URL(request.url).searchParams
+        const offset = params.get("offset")
+        requests.push({ limit: params.get("limit"), offset })
+        if (offset === "20") {
+          await failureReady
+          return HttpResponse.json({ detail: "Page two is unavailable" }, { status: 500 })
+        }
+        return HttpResponse.json(firstPage)
+      })
+    )
+
+    const { queryClient } = await renderPage()
+    const pageTwoKey = [...adminDeadLetterQueueQueryKey, { limit: 20, offset: 20 }] as const
+    try {
+      const table = screen.getByRole("table", { name: "Dead-letter queue" })
+      expect(within(table).getAllByRole("row")).toHaveLength(21)
+      expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
+      expect(requests).toEqual([{ limit: "20", offset: "0" }])
+
+      await userEvent.click(screen.getByRole("button", { name: "Go to next page" }))
+      await waitFor(() =>
+        expect(queryClient.getQueryState(pageTwoKey)?.fetchStatus).toBe("fetching")
+      )
+      expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Go to previous page" })).toBeDisabled()
+      expect(screen.getByText("dlq-page-error-record-19")).toBeInTheDocument()
+
+      await act(async () => releaseFailure())
+      await settleQueue(queryClient)
+      expect(queryClient.getQueryState(pageTwoKey)).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+        data: undefined,
+      })
+      // The first page is fresh in cache, so an automatic reset need not make HTTP.
+      // Assert the active query as well as the durable, user-visible error.
+      const activePage = queryClient.getQueryCache().find({ queryKey: pageTwoKey, exact: true })
+      expect(activePage?.getObserversCount()).toBe(1)
+      expect(screen.getByRole("alert")).toHaveTextContent("Page two is unavailable")
+      expect(screen.queryByText("Page 1 of 2")).not.toBeInTheDocument()
+      expect(requests).toEqual([
+        { limit: "20", offset: "0" },
+        { limit: "20", offset: "20" },
+      ])
+    } finally {
+      try {
+        cleanup()
+        await queryClient.cancelQueries()
+      } finally {
+        queryClient.clear()
+        releaseFailure()
+      }
+    }
   })
 
   // ── Testing session 9 — coverage extension ──────────────────────────────

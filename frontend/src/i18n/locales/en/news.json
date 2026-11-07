@@ -5,6 +5,9 @@
     "empty": "No news yet",
     "loadError": "Failed to load the news.",
     "noComments": "No comments yet. Be the first!",
+    "loadingComments": "Loading comments…",
+    "commentsLoadError": "Could not load comments. Try again.",
+    "commentsPageLoadError": "Could not load more comments. Try again.",
     "checkLater": "Check back later for updates"
   },
   "sections": {
@@ -52,6 +55,16 @@
     "editCommentAriaLabel": "Edit comment",
     "errors": {
       "uploadFailed": "The image could not be uploaded. Your changes are still here; try again."
+    },
+    "validation": {
+      "titleRequired": "Title is required",
+      "titleMaxLength": "Title must be less than 100 characters",
+      "contentRequired": "Content is required",
+      "contentMaxLength": "Content must be less than 3000 characters",
+      "titleEnMaxLength": "Title (EN) must be less than 100 characters",
+      "contentEnMaxLength": "Content (EN) must be less than 3000 characters",
+      "imageMaxSize": "Max image size is 5MB.",
+      "imageFormats": "Only .jpg, .jpeg, .png and .webp formats are supported."
     }
   },
   "dialogs": {
@@ -90,6 +103,7 @@
     "readingTime_other": "{{count}} min read"
   },
   "notifications": {
+    "interactionError": "The action could not be confirmed. Reconnect and check its result before trying again.",
     "updated": "News updated",
     "savedError": "Failed to save the news",
     "deleted": "News deleted",

@@ -39,6 +39,13 @@ class NewsInteractionsOut(BaseModel):
     is_liked: bool
     comments: list[NewsCommentOut]
     comments_count: int
+    next_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Present only for cursor paging. A full final page may require one "
+            "additional empty request before this becomes null."
+        ),
+    )
 
 
 class NewsCreate(BaseModel):

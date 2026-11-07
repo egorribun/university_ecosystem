@@ -75,7 +75,7 @@ const { scheduleDataMock } = vi.hoisted(() => {
     groups: [{ id: "group-1", name: "CS-101" }],
     selectedGroup: "group-1",
     setSelectedGroup: () => {},
-    currentParity: "odd",
+    currentParity: "odd" as "odd" | "even" | null,
     setCurrentParity: () => {},
     schedule: [lesson],
     rawSchedule: [lesson],
@@ -211,6 +211,20 @@ describe("Schedule translations", () => {
       expect(await screen.findByText("My schedule")).toBeInTheDocument()
       expect(await screen.findByRole("columnheader", { name: "Monday" })).toBeInTheDocument()
       expect(await screen.findByText("Lecture")).toBeInTheDocument()
+    } finally {
+      client.clear()
+    }
+  })
+
+  it("announces all parity weeks while campus timezone is unavailable", async () => {
+    scheduleDataMock.currentParity = null
+    const { client, container } = await renderSchedule()
+
+    try {
+      const announcement = container.querySelector('[role="status"][aria-live="polite"]')
+      expect(announcement).toHaveTextContent(
+        "Campus timezone unavailable; showing all parity weeks"
+      )
     } finally {
       client.clear()
     }

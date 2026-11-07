@@ -18,6 +18,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const replayAudienceUserID = "00000000-0000-4000-8000-000000000001"
+
+func authorizedReplayMessage(t *testing.T, sequence uint64, room string) *nats.Msg {
+	t.Helper()
+	message := replayMessage(sequence)
+	data, err := json.Marshal(map[string]any{
+		"type":     "new_message",
+		"room":     room,
+		"audience": []string{replayAudienceUserID},
+		"payload":  map[string]any{"chat_id": room, "n": sequence},
+	})
+	require.NoError(t, err)
+	message.Data = data
+	return message
+}
+
 func signedTokenPart(secret, payload string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(payload))
@@ -236,7 +252,7 @@ func TestReplayDeliveryFailsClosedAcrossPoisonAndMarshalFailures(t *testing.T) {
 	t.Run("valid replay marshal failure is terminal", func(t *testing.T) {
 		h := setupTestHub()
 		enableSecureReplayForTest(h)
-		client := &Client{UserID: "user", Hub: h, Send: make(chan []byte, 1), ctx: context.Background()}
+		client := &Client{UserID: replayAudienceUserID, Hub: h, Send: make(chan []byte, 1), ctx: context.Background()}
 		terms := 0
 		termOfflineMessageFunc = func(*nats.Msg) error { terms++; return nil }
 		hubJSONMarshalFunc = func(value any) ([]byte, error) {
@@ -246,7 +262,7 @@ func TestReplayDeliveryFailsClosedAcrossPoisonAndMarshalFailures(t *testing.T) {
 			return nil, errors.New("frame marshal failed")
 		}
 		found, maxSequence := true, uint64(13)
-		assert.True(t, client.deliverOfflineMessageBatch(context.Background(), "room", []*nats.Msg{replayMessage(14)}, "", &found, &maxSequence))
+		assert.True(t, client.deliverOfflineMessageBatch(context.Background(), "room", []*nats.Msg{authorizedReplayMessage(t, 14, "room")}, "", &found, &maxSequence))
 		assert.Equal(t, 1, terms)
 	})
 
@@ -276,7 +292,7 @@ func TestReplayDeliveryFailsClosedAcrossPoisonAndMarshalFailures(t *testing.T) {
 	t.Run("frame marshal and term failures preserve redelivery", func(t *testing.T) {
 		h := setupTestHub()
 		enableSecureReplayForTest(h)
-		client := &Client{UserID: "user", Hub: h, Send: make(chan []byte, 1), ctx: context.Background()}
+		client := &Client{UserID: replayAudienceUserID, Hub: h, Send: make(chan []byte, 1), ctx: context.Background()}
 		termOfflineMessageFunc = func(*nats.Msg) error { return errors.New("term failed") }
 		naks := 0
 		nakOfflineMessageFunc = func(*nats.Msg, time.Duration) error { naks++; return nil }
@@ -287,7 +303,7 @@ func TestReplayDeliveryFailsClosedAcrossPoisonAndMarshalFailures(t *testing.T) {
 			return nil, errors.New("frame marshal failed")
 		}
 		found, maxSequence := true, uint64(16)
-		assert.False(t, client.deliverOfflineMessageBatch(context.Background(), "room", []*nats.Msg{replayMessage(17)}, "", &found, &maxSequence))
+		assert.False(t, client.deliverOfflineMessageBatch(context.Background(), "room", []*nats.Msg{authorizedReplayMessage(t, 17, "room")}, "", &found, &maxSequence))
 		assert.Equal(t, 1, naks)
 	})
 }
@@ -617,6 +633,6 @@ func TestSubscribeToNATSTransactionalJetStreamBranches(t *testing.T) {
 		require.NoError(t, h.SubscribeToNATS(context.Background()))
 		assert.True(t, h.chatReplayAvailable.Load())
 		assert.Equal(t, created.Format(time.RFC3339Nano), h.chatStreamIncarnation)
-		assert.Len(t, h.subs, 5)
+		assert.Len(t, h.subs, 6, "chat, notifications, pure cache, room revocation, control, and JWKS")
 	})
 }

@@ -261,7 +261,14 @@ async def test_start_notifications_scheduler_creates_and_stops_task():
             max_backoff_seconds=10,
         )
         assert callable(stop_fn)
+        task = workers_mod._scheduler_task
+        assert task is not None
+        await asyncio.sleep(0)
+        assert not task.done()
         await stop_fn()
+        assert task.done()
+        assert task.cancelled()
+        assert workers_mod._scheduler_task is None
 
 
 @pytest.mark.asyncio
@@ -296,7 +303,7 @@ async def test_start_notifications_scheduler_reuses_existing_task():
 
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler_stops_done_task():
-    """If the existing task is already done, calling stop is a no-op."""
+    """A completed scheduler task is replaced by a fresh task that can stop."""
 
     async def quick_task():
         return
@@ -306,12 +313,39 @@ async def test_start_notifications_scheduler_stops_done_task():
     await asyncio.sleep(0)  # Let it complete
     workers_mod._scheduler_task = done_task
 
+    async def replacement_run_forever() -> None:
+        await asyncio.Event().wait()
+
+    replacement_task: asyncio.Task[None] | None = None
     try:
-        stop_fn = await start_notifications_scheduler(
-            poll_seconds=1, window_minutes=5, max_backoff_seconds=10
-        )
-        await stop_fn()
+        with patch.object(
+            NotificationsScheduler,
+            "run_forever",
+            side_effect=replacement_run_forever,
+        ) as run_forever:
+            stop_fn = await start_notifications_scheduler(
+                poll_seconds=1, window_minutes=5, max_backoff_seconds=10
+            )
+            replacement_task = workers_mod._scheduler_task
+            assert replacement_task is not None
+            assert replacement_task is not done_task
+
+            await asyncio.sleep(0)
+            run_forever.assert_awaited_once()
+            assert not replacement_task.done()
+
+            await stop_fn()
+            assert replacement_task.done()
+            assert replacement_task.cancelled()
+            assert workers_mod._scheduler_task is None
+
+        assert done_task.done()
+        assert not done_task.cancelled()
+        assert done_task.result() is None
     finally:
+        if replacement_task is not None and not replacement_task.done():
+            replacement_task.cancel()
+            await asyncio.gather(replacement_task, return_exceptions=True)
         workers_mod._scheduler_task = None
 
 
@@ -326,10 +360,13 @@ async def test_start_notifications_scheduler_uses_settings_defaults():
         except asyncio.CancelledError:
             raise
 
+    fake_scheduler = MagicMock()
+    fake_scheduler.run_forever = fake_run_forever
     with (
-        patch.object(
-            NotificationsScheduler, "run_forever", side_effect=fake_run_forever
-        ),
+        patch(
+            "app.workers.notifications.NotificationsScheduler",
+            return_value=fake_scheduler,
+        ) as scheduler_factory,
         patch("app.workers.notifications.settings") as mock_settings,
     ):
         mock_settings.notifications_scheduler_poll_seconds = 30
@@ -337,7 +374,19 @@ async def test_start_notifications_scheduler_uses_settings_defaults():
         mock_settings.notifications_scheduler_max_backoff_seconds = 120
 
         stop_fn = await start_notifications_scheduler()
+        task = workers_mod._scheduler_task
+        assert task is not None
+        await asyncio.sleep(0)
+        scheduler_factory.assert_called_once_with(
+            poll_seconds=30,
+            window_minutes=10,
+            max_backoff_seconds=120,
+            metrics=None,
+        )
         await stop_fn()
+        assert task.done()
+        assert task.cancelled()
+        assert workers_mod._scheduler_task is None
 
 
 @pytest.mark.asyncio

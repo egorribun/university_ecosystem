@@ -15,7 +15,7 @@ from sqlalchemy import delete, or_, select
 from app.core.config import settings
 from app.core.database import async_session as _async_session
 from app.core.logging import get_logger
-from app.models import Notification, NotificationDelivery
+from app.models import Notification, NotificationDelivery, NotificationDeliveryOnce
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
@@ -31,8 +31,9 @@ async def cleanup_stale_notifications(
 ) -> tuple[int, int]:
     """Remove notifications and deliveries older than the retention window.
 
-    Unread notifications are preserved regardless of age. Returns a tuple with
-    counts of deleted notifications and deliveries respectively.
+    Unread notifications are preserved regardless of age. Claims are retained
+    while their notification remains replayable; only old orphan claims expire.
+    Returns counts of deleted notifications and delivery attempts respectively.
     """
 
     if retention_days is None:
@@ -108,6 +109,36 @@ async def cleanup_stale_notifications(
         await db.commit()
 
     # Commit to close the transaction created by the final select above.
+    await db.commit()
+
+    # A successful claim is still needed when an unread notification survives
+    # retention. Remove only old claims whose notification no longer exists.
+    live_notification = (
+        select(Notification.id)
+        .where(Notification.id == NotificationDeliveryOnce.notification_id)
+        .exists()
+    )
+    while True:
+        claim_ids_stmt = (
+            select(NotificationDeliveryOnce.id)
+            .where(
+                NotificationDeliveryOnce.created_at < cutoff,
+                ~live_notification,
+            )
+            .order_by(NotificationDeliveryOnce.id)
+            .limit(batch_size)
+        )
+        claim_ids = list((await db.scalars(claim_ids_stmt)).all())
+        if not claim_ids:
+            break
+        await db.execute(
+            delete(NotificationDeliveryOnce).where(
+                NotificationDeliveryOnce.id.in_(claim_ids),
+                NotificationDeliveryOnce.created_at < cutoff,
+                ~live_notification,
+            )
+        )
+        await db.commit()
     await db.commit()
 
     if notifications_deleted or deliveries_deleted:

@@ -9,7 +9,13 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 vi.mock("@hookform/resolvers/valibot", () => ({
   valibotResolver: () => async () => ({
     values: {},
-    errors: { email: { type: "manual" } },
+    errors: {
+      email: { type: "manual" },
+      full_name: { type: "manual" },
+      invite_code: { type: "manual" },
+      password: { type: "manual" },
+      confirmPassword: { type: "manual" },
+    },
   }),
 }))
 
@@ -27,5 +33,23 @@ describe("Register defensive rendering", () => {
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
     expect(await screen.findByText(tAuth("messages.invalidFormat"))).toBeInTheDocument()
+  })
+
+  it("renders translated fallbacks for registration field errors without messages", async () => {
+    const user = userEvent.setup()
+    await renderWithRouter({
+      ui: Register,
+      path: "/register",
+      initialPath: "/register",
+    })
+
+    await user.click(screen.getByRole("combobox"))
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.teacher") }))
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+
+    expect(await screen.findByText(tAuth("validation.nameMinLength"))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("validation.inviteCodeRequired"))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("validation.passwordMinLength"))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("validation.confirmPasswordRequired"))).toBeInTheDocument()
   })
 })

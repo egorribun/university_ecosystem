@@ -163,25 +163,21 @@ func RealIP(r *http.Request, trustedProxies map[string]struct{}, cidrs []*net.IP
 		return remoteIP
 	}
 
-	xff := r.Header.Get("X-Forwarded-For")
+	// Multiple header fields form one ordered chain; inspecting only the first
+	// would let a client-supplied field hide a later proxy-appended address.
+	xff := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
 	if xff == "" {
 		return remoteIP
 	}
 
 	// Split all IPs in the chain (oldest→newest left→right).
 	parts := strings.Split(xff, ",")
-	ips := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if trimmed := strings.TrimSpace(p); trimmed != "" {
-			ips = append(ips, trimmed)
-		}
-	}
 
 	// Walk right-to-left: skip trusted proxies; return first untrusted entry.
-	for i := len(ips) - 1; i >= 0; i-- {
-		ip := net.ParseIP(ips[i])
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(parts[i]))
 		if ip == nil {
-			// Malformed entry — stop here to avoid spoofing via injection.
+			// Malformed or empty hop — stop here to avoid spoofing via injection.
 			break
 		}
 		if !isTrustedProxy(ip, trustedProxies, cidrs) {

@@ -4,11 +4,13 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 import typer
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.core.database import async_session
-from app.models import InviteCode, User
+from app.models import ActiveSession, InviteCode, User
+from app.services.session_cleanup import revoke_sessions_matching
 
 app = typer.Typer(help="Database management commands.")
 
@@ -33,7 +35,9 @@ def create_admin(
 
     async def _run() -> None:
         async with async_session() as db:
-            result = await db.execute(select(User).where(User.email == email))
+            result = await db.execute(
+                select(User).where(User.email == email).with_for_update()
+            )
             existing = result.scalar_one_or_none()
 
             if existing:
@@ -43,9 +47,19 @@ def create_admin(
                     )
                     raise typer.Exit(1)
                 existing.hashed_password = await get_password_hash(password)
+                existing.mfa_epoch = int(existing.mfa_epoch or 0) + 1
+                revoked_sessions = await revoke_sessions_matching(
+                    db=db,
+                    whereclause=and_(
+                        ActiveSession.user_id == existing.id,
+                        ActiveSession.revoked_at.is_(None),
+                    ),
+                    lock_rows=True,
+                )
                 await db.commit()
                 typer.echo(
-                    f"Admin user already exists with ID: {existing.id}. Password reset."
+                    f"Admin user already exists with ID: {existing.id}. Password reset. "
+                    f"Revoked {revoked_sessions} active session(s)."
                 )
                 return
 
@@ -56,8 +70,11 @@ def create_admin(
                     "Error: Password required for new account.", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
+            # AUD-360: an operator-created account belongs to the configured MVP
+            # tenant; an unowned row would be invisible to every tenant session.
             admin = User(
                 email=email,
+                tenant_id=settings.mvp_tenant_id,
                 hashed_password=await get_password_hash(password),
                 profile=UserProfile(full_name=full_name, status="active"),
                 role="admin",

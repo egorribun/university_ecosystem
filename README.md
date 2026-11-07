@@ -22,7 +22,7 @@
 
 ---
 
-> Coverage badges show policy targets from [`quality/quality-contract.json`](quality/quality-contract.json), not a live certification result. Current evidence is published in the [quality dashboard](docs/testing/dashboard.md); only a fresh exact-SHA CI/release artifact can certify a build.
+> Coverage badges show policy targets from [`quality/quality-contract.json`](quality/quality-contract.json), not a live certification result. See [current status](docs/superpowers/plans/STATUS.md) for checkpoint evidence and the [quality dashboard](docs/testing/dashboard.md) for its publication state; only a fresh exact-SHA CI/release artifact can certify a build.
 
 **University Ecosystem** is a high-performance, polyglot microservices platform engineered to centralize and revolutionize student interactions. From real-time scheduling and interactive campus navigation to enterprise-grade security and automated workflows, we provide the digital foundation for the next generation of academic excellence.
 
@@ -33,28 +33,28 @@
 ## 🌟 Visionary Features
 
 > [!IMPORTANT]
-> This platform is not just an app; it's a living ecosystem designed for extreme scalability, zero-trust security, and high-concurrency fault tolerance.
+> This platform brings together academic services, security controls, and operational tooling in one ecosystem.
 
-- 📅 **Dynamic Academic Engine** – Real-time scheduling powered by a **Rust (PyO3)** native extension using Rayon parallel threads for instant timetable conflict resolution.
-- 💬 **High-Concurrency Real-Time Hub** – High-throughput WebSockets via **Go + NATS**, featuring JWKS hot-reloading, 60 KB frame caps, and max-client pre-checks.
+- 📅 **Dynamic Academic Engine** – Real-time scheduling powered by a **Rust (PyO3)** native extension using Rayon parallel threads for timetable conflict resolution.
+- 💬 **Real-Time Hub** – WebSockets via **Go + NATS**, featuring JWKS hot-reloading, a 60 KB frame cap, and a max-client pre-check.
 - 🔒 **Relationship-Based Auth (ReBAC)** – Granular, Zanzibar-inspired permission management powered by **SpiceDB** alongside **OpenFeature** + **flagd** feature flags.
 - 🖼️ **Media Intelligence & Workflows** – Asynchronous background processing and image optimization via **Go file-processor**, **Temporal.io**, and S3-compatible **SeaweedFS** storage; the backend can enforce malware scanning through a configured `clamd` service.
-- ⚡ **XFetch L1/L2 Probabilistic Caching** – Rate-limiting circuit breakers and probabilistic cache refresh preventing cache stampedes across Redis/Valkey (`volatile-lru`).
+- ⚡ **Gateway Session-Revocation Cache** – The local L1 cache stores positive revocation tombstones and uses XFetch probabilistic early refresh to spread Redis rechecks; this reduces synchronized-refresh risk but does not guarantee zero cache stampedes.
 - 🗺️ **Vectorized Search & Navigation** – Context-aware semantic search and campus routing leveraging **pgvector** and OpenAI/custom embedding providers.
 - 📊 **Full-Spectrum Observability** – End-to-end distributed tracing (**OTEL + Tempo**), metrics (**Prometheus**), profiling (**Pyroscope**), and centralized logs (**Grafana Loki + Fluent Bit**).
 
 ## ⚡ Performance & Benchmarks
 
-> The figures below are historical reference values and engineering targets, not current release evidence. Any release claim must attach a dated benchmark artifact with the exact tested SHA and CI run; see the [performance baseline](docs/testing/performance-regression-baseline.md) and [benchmark workflow](.github/workflows/benchmark.yml).
+> The entries below describe source-bound benchmark inputs, load-test thresholds and transfer budgets, not measured release results. Any release performance result needs a dated artifact bound to the exact tested SHA and CI run; see the [performance baseline](docs/testing/performance-regression-baseline.md) and [benchmark workflow](.github/workflows/benchmark.yml).
 
-Our polyglot architecture maximizes throughput while maintaining low resource usage:
+The checked-in sources define these profiles and limits:
 
-| Subsystem / Metric | Pure Python / Standard | Polyglot Core (Rust / Go) | Performance Gain |
-| :--- | :---: | :---: | :---: |
-| **Schedule Conflict Solver** (10,000 items) | ~45.2 ms (Single-thread) | **<0.98 ms** (Rust PyO3 + Rayon) | **~46x Faster** 🚀 |
-| **WebSocket Throughput (`ws-hub`)** | ~2,500 req/sec (Single Node) | **10,000+ req/sec** (<5ms latency) | **4x Concurrency** ⚡ |
-| **L1 Cache Refresh (`gateway`)** | Traditional TTL (Stampede Risk) | **XFetch Probabilistic Refresh** | **0 Stampedes** 🛡️ |
-| **Frontend Bundle Budget** | ~1.4 MB (Standard Rollup) | **<485 KB** (Vite 8 / Rolldown + Oxc) | **65% Smaller** 📦 |
+| Subsystem / source profile | Current source contract | What it establishes |
+| :--- | :--- | :--- |
+| **Schedule conflict solver** | Native batch input is capped at 2,500 items. Criterion fixtures cover 10, 50, 100 and 500 items; the benchmark fixture rejects values above 576. | Input and benchmark-profile limits, not comparative latency. |
+| **WebSocket stress profile (ws-hub)** | 10,000 virtual users. With a relaxed upgrade limiter, thresholds are auth errors <1%, p95 connection setup under 2 seconds, more than 50,000 received messages and at least 100 successful upgrades. A default single-IP run expects 429 responses. | Stress-profile checks, not requests-per-second throughput. |
+| **Gateway L1 revocation cache** | Positive revocation tombstones only; probabilistic XFetch early refresh requests a live Redis recheck before TTL expiry. | Reduces synchronized recheck risk; it does not guarantee zero cache stampedes. |
+| **Frontend transfer budgets** | Main JS raw ≤500 KiB; initial JS gzip ≤420 KiB; initial CSS gzip ≤40 KiB; general lazy JS gzip ≤280 KiB. | Password dictionaries ≤1,250 KiB raw / ≤600 KiB gzip; MapLibre lazy JS gzip ≤286 KiB. These are configured ceilings, not measured bundle sizes. |
 
 ## 📂 Project Structure
 
@@ -63,8 +63,8 @@ university_ecosystem/
 ├── app/               # 🐍 Core API (Python 3.14 / FastAPI) - Business Logic & REST API
 ├── frontend/          # ⚛️ Modern Web UI (React 19 + Vite 8/Rolldown + Valibot)
 ├── services/
-│   ├── gateway/       # 🚀 API Gateway (Go) - Auth, L1 XFetch Cache & Rate Limits
-│   ├── ws-hub/        # 📡 WebSocket Hub (Go/NATS) - High-Concurrency Real-time Messaging
+│   ├── gateway/       # 🚀 API Gateway (Go) - Auth, Rate Limits & L1 Session-Revocation Cache
+│   ├── ws-hub/        # 📡 WebSocket Hub (Go/NATS) - Real-time Messaging
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Secure Uploads & Processing
 │   └── caddy/         # 🔒 Edge Reverse Proxy & TLS Termination
 ├── native/            # 🦀 Rust Extensions (PyO3/Rayon) - High-Performance Hot Path
@@ -78,10 +78,10 @@ university_ecosystem/
 
 Why the polyglot approach?
 - **Python (FastAPI & Python 3.14)**: Selected for development velocity, Dishka dependency injection, rich ecosystem, and async processing for complex business logic.
-- **Go (Golang)**: Powers I/O-bound microservices (`gateway`, `ws-hub`, `file-processor`) to handle thousands of concurrent WebSocket connections and gRPC streams with minimal footprint.
-- **Rust (PyO3 & Rayon)**: Integrated directly into Python for CPU-heavy hot paths (e.g., timetable conflict resolution and partition management) where microsecond performance is critical.
+- **Go (Golang)**: Powers I/O-bound microservices (`gateway`, `ws-hub`, `file-processor`) that provide WebSocket and gRPC services.
+- **Rust (PyO3 & Rayon)**: Integrated directly into Python for CPU-heavy hot paths such as timetable conflict resolution and partition management.
 - **SpiceDB (ReBAC)**: Implements Zanzibar-inspired relationship-based access control (e.g., *"Student X can view Course Y because they belong to Group Z"*).
-- **Vite 8 & Rolldown**: Delivers ultra-fast frontend builds, React Compiler optimizations, and lightweight bundles (<500 KB JS budget).
+- **Vite 8 & Rolldown**: Builds the frontend and applies source-controlled transfer budgets for initial and lazy assets; see the table above.
 
 ## 🏗️ Architecture & Core Sequence Flows
 
@@ -90,7 +90,7 @@ Why the polyglot approach?
 ```mermaid
 graph TD
     Client["📱 Modern Frontend (React 19 + Vite 8)"]
-    Gateway["🚀 Go API Gateway (RateLimiter & XFetch L1 Cache)"]
+    Gateway["🚀 Go API Gateway (RateLimiter & L1 Revocation Cache)"]
 
     subgraph "Core Microservices Ecosystem"
         Backend["🐍 Core API (FastAPI / Python 3.14)"]
@@ -170,7 +170,7 @@ sequenceDiagram
     Note over Backend,SpiceDB: Later protected requests check ReBAC permissions in SpiceDB
 ```
 
-### 📡 High-Concurrency Real-Time Chat Sequence
+### 📡 Real-Time Chat Sequence
 
 ```mermaid
 sequenceDiagram
@@ -199,11 +199,11 @@ sequenceDiagram
 | :--- | :--- | :--- | :---: |
 | **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | Policy target: 100%; fresh-SHA evidence required |
 | **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0 | Core business logic and REST APIs | Policy target: 100%; fresh-SHA evidence required |
-| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | Policy target: 100%; fresh-SHA evidence required |
-| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
+| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | WebSocket messaging & media orchestration | Policy target: 100%; fresh-SHA evidence required |
+| **Native Performance**| Rust, PyO3, Rayon, Maturin | Schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
 | **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |
-| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Implemented; fresh-SHA evidence required |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Distributed tracing, metrics, profiling & log aggregation | Implemented; fresh-SHA evidence required |
+| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data and isolated durable auth revocation; Gateway L1 caches positive revocation tombstones | Implemented; fresh-SHA evidence required |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 2.3.1, Loki + Alloy/Fluent Bit | Distributed tracing, metrics, profiling & log aggregation | Implemented; fresh-SHA evidence required |
 
 ## 🚀 Rapid Onboarding
 
@@ -224,10 +224,12 @@ for every runtime and Prometheus target:
 
 ### 🌐 Access Points
 - **Digital Hub (Caddy edge, including Frontend SSR)**: [http://localhost](http://localhost)
-- **Core API documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Core API documentation (development only)**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **Go Gateway Entry**: [http://localhost:8080](http://localhost:8080)
 - **Real-Time Signal**: `ws://localhost:8083/ws`
 - **Observability Hub**: [Grafana](http://localhost:3000) · [Prometheus](http://localhost:9090) · [Pyroscope](http://localhost:4040)
+
+These HTTP and WebSocket addresses describe the local full-Compose stack; production browser access must use HTTPS/WSS.
 
 ## 🛡️ Security & Quality Pillars
 
@@ -274,8 +276,8 @@ make test-integration # Run ADR-022 Testcontainers suite
 
 The platform includes an integrated observability stack:
 - **OpenTelemetry & Tempo**: End-to-end distributed tracing across Go microservices and FastAPI.
-- **Prometheus**: Real-time metrics including L1 cache hit/miss rates (`cache_l1_hits_total`).
-- **Pyroscope**: Continuous CPU/Memory profiling (`grafana/pyroscope:1.19.1`).
+- **Prometheus**: Gateway L1 revocation-cache counters include `gateway_l1_cache_hits_total` and `gateway_l1_cache_misses_total`.
+- **Pyroscope**: Continuous CPU/Memory profiling (`grafana/pyroscope:2.3.1`).
 - **Grafana Loki + Fluent Bit**: Structured centralized log aggregation (ADR-012).
 
 ---

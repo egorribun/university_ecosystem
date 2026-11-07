@@ -133,6 +133,7 @@ def test_image_id_requires_full_sha256_and_command_uses_that_id() -> None:
     [
         (0, "No active legacy bcrypt accounts found."),
         (1, "Legacy bcrypt accounts remain: 1"),
+        (2, "Legacy inventory authority could not be verified."),
     ],
 )
 def test_cli_result_accepts_only_the_expected_clean_or_remaining_state(
@@ -141,7 +142,7 @@ def test_cli_result_accepts_only_the_expected_clean_or_remaining_state(
     result = subprocess.CompletedProcess(
         args=["docker"], returncode=exit_code, stdout=f"{stdout}\n", stderr=""
     )
-    _assert_cli_result(result, exit_code=exit_code, stdout=stdout)
+    assert _assert_cli_result(result, exit_code=exit_code, stdout=stdout) is None
 
 
 def test_cli_result_allows_safe_startup_output_before_final_status() -> None:
@@ -151,8 +152,11 @@ def test_cli_result_allows_safe_startup_output_before_final_status() -> None:
         stdout="masked startup message\nNo active legacy bcrypt accounts found.\n",
         stderr="",
     )
-    _assert_cli_result(
-        result, exit_code=0, stdout="No active legacy bcrypt accounts found."
+    assert (
+        _assert_cli_result(
+            result, exit_code=0, stdout="No active legacy bcrypt accounts found."
+        )
+        is None
     )
 
 
@@ -173,4 +177,26 @@ def test_cli_result_fails_closed_on_status_or_connection_diagnostics(
     with pytest.raises(GateFailure, match="did not match the expected state"):
         _assert_cli_result(
             result, exit_code=1, stdout="Legacy bcrypt accounts remain: 1"
+        )
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "stderr"),
+    [
+        (0, "Legacy inventory authority could not be verified.", ""),
+        (2, "No active legacy bcrypt accounts found.", ""),
+        (2, "Legacy inventory authority could not be verified.", "driver detail"),
+    ],
+)
+def test_denied_reader_result_rejects_false_clean_or_driver_diagnostics(
+    returncode: int, stdout: str, stderr: str
+) -> None:
+    result = subprocess.CompletedProcess(
+        args=["docker"], returncode=returncode, stdout=stdout, stderr=stderr
+    )
+    with pytest.raises(GateFailure, match="did not match the expected state"):
+        _assert_cli_result(
+            result,
+            exit_code=2,
+            stdout="Legacy inventory authority could not be verified.",
         )

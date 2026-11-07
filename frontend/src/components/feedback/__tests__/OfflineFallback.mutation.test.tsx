@@ -124,7 +124,7 @@ describe("OfflineFallback mutation contracts", () => {
       "items-center",
       "justify-center",
       "rounded-full",
-      "bg-warning-bg/(--opacity-dim)",
+      "bg-warning-bg/[calc(var(--opacity-dim)*100%)]",
       "text-warning-text"
     )
     expect(screen.getByTestId("offline-fallback-wifi")).toHaveAttribute("data-size", "48")
@@ -154,9 +154,9 @@ describe("OfflineFallback mutation contracts", () => {
     expect(retry).toHaveClass(
       "bg-(image:--gradient-brand)",
       "shadow-surface",
-      "ring-brand/(--opacity-dim)"
+      "ring-brand/[calc(var(--opacity-dim)*100%)]"
     )
-    expect(backHome).toHaveClass("border", "border-white/(--opacity-subtle)")
+    expect(backHome).toHaveClass("border", "border-white/[calc(var(--opacity-subtle)*100%)]")
     expect(screen.getByTestId("offline-fallback-refresh")).toHaveAttribute("data-size", "18")
     expect(screen.getByTestId("offline-fallback-home")).toHaveAttribute("data-size", "18")
 

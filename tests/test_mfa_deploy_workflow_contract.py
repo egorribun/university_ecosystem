@@ -280,7 +280,11 @@ def test_secret_preflight_covers_connections_redis_and_nats_config() -> None:
     assert "revocation-redis-url-key" in run
     assert "revocation-redis-service-host" in run
     assert "base64 --decode" in run
-    assert "from urllib.parse import urlsplit" in run
+    assert "python3 -I .github/scripts/verify_revocation_redis_target.py" in run
+    revocation_target_validator = (
+        ROOT / ".github" / "scripts" / "verify_revocation_redis_target.py"
+    ).read_text(encoding="utf-8")
+    assert "parsed = urlsplit(raw_url)" in revocation_target_validator
     assert (
         "The revocation Redis URL must target the rendered dedicated master service"
         in run

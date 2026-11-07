@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("react-i18next")
+type _MockedModuleType2 = typeof import("@tanstack/react-router")
 import { act, type ReactNode } from "react"
 import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query"
 import { PersistQueryClientProvider, type Persister } from "@tanstack/react-query-persist-client"
@@ -12,7 +14,7 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock("react-i18next", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-i18next")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useTranslation: () => ({
@@ -22,7 +24,7 @@ vi.mock("react-i18next", async (importOriginal) => {
   }
 })
 vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tanstack/react-router")>()
+  const actual = await importOriginal<_MockedModuleType2>()
   return {
     ...actual,
     Link: ({

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -42,7 +43,6 @@ def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     (state_root / live_stand.IN_PLACE_OVERLAY).write_text(
         "services: {}\n", encoding="utf-8"
     )
-    (state_root / ".secrets").mkdir()
 
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
     monkeypatch.setattr(live_stand, "WORKTREE", state_root)
@@ -60,14 +60,15 @@ def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     monkeypatch.setattr(
         live_stand, "docker_daemon_fingerprint", fake_daemon_fingerprint
     )
-    monkeypatch.setattr(
-        live_stand,
-        "_ensure_private_state_directory",
-        lambda path, **_kwargs: Path(path).mkdir(parents=True, exist_ok=True),
-    )
-    monkeypatch.setattr(
-        live_stand, "_assert_private_state_directory", lambda _path: None
-    )
+    if os.name != "nt":
+        monkeypatch.setattr(
+            live_stand,
+            "_ensure_private_state_directory",
+            lambda path, **_kwargs: Path(path).mkdir(parents=True, exist_ok=True),
+        )
+        monkeypatch.setattr(
+            live_stand, "_assert_private_state_directory", lambda _path: None
+        )
 
     def fake_git(*args: str) -> str:
         if args == ("rev-parse", "HEAD"):

@@ -423,6 +423,15 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         result = await self.db.execute(stmt)
         return bool(result.scalar())
 
+    async def registration_group_exists(self, group_id: uuid.UUID) -> bool:
+        """Keep a selected group present until registration commits or rolls back."""
+        stmt = (
+            select(models.Group.id)
+            .where(models.Group.id == group_id)
+            .with_for_update(read=True, key_share=True)
+        )
+        return await self.db.scalar(stmt) is not None
+
     async def get_invite_code(
         self, code: str, *, with_for_update: bool = True
     ) -> models.InviteCode | None:
@@ -441,9 +450,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         """
         stmt = select(models.InviteCode).where(models.InviteCode.code == code)
         if with_for_update:
-            stmt = stmt.with_for_update(
-                skip_locked=False, nowait=True
-            )  # no skip_locked — serialize, not skip
+            stmt = stmt.with_for_update()  # Wait for the current invite owner.
         result = await self.db.execute(stmt)
         return result.scalars().first()
 

@@ -60,7 +60,13 @@ async def test_cleanup_stale_notifications_with_null_and_future_timestamps() -> 
     # 1. Test null and future IDs returned
     mock_scalars_result = MagicMock()
     # Mock returning None values/valid integers on first loop call, then empty to terminate while True
-    mock_scalars_result.all.side_effect = [[None, 123, None], [], [None, 456, None], []]
+    mock_scalars_result.all.side_effect = [
+        [None, 123, None],
+        [],
+        [None, 456, None],
+        [],
+        [],
+    ]
     mock_db.scalars.return_value = mock_scalars_result
 
     mock_execute_result = MagicMock()

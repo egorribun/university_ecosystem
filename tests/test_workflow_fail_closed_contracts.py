@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
+import sys
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
@@ -93,8 +95,21 @@ _POWERSHELL_FOREACH = re.compile(
 _POWERSHELL_DOCKER_PULL = re.compile(
     r"(?im)^[ \t]*docker[ \t]+pull[ \t]+\$(?P<item>[A-Za-z_][A-Za-z0-9_]*)"
 )
+_WORKFLOW_SCRIPT_SOURCE = re.compile(
+    r"(?m)(?:^|;|&&|\|\||\|&|\||\{|\b(?:then|do|else)\b)[ \t]*"
+    r"(?:source[ \t]+|\.[ \t]+)"
+    r"(?P<path>\.?/?scripts/[A-Za-z0-9._/-]+\.(?:ps1|sh))"
+    r"(?=[ \t;&|]|$)"
+)
+_WORKFLOW_SCRIPT_SOURCE_CALL = re.compile(
+    r"(?m)(?:^|;|&&|\|\||\|&|\||\{|\b(?:then|do|else)\b)[ \t]*"
+    r"(?:source[ \t]+|\.[ \t]+)"
+    r"(?P<path>[^ \t;|&\r\n]+)"
+)
 _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--add-host",
+    "--cap-add",
+    "--cap-drop",
     "--cidfile",
     "--cpus",
     "--entrypoint",
@@ -109,6 +124,7 @@ _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--pids-limit",
     "--platform",
     "--publish",
+    "--security-opt",
     "--tmpfs",
     "--user",
     "--volume",
@@ -153,6 +169,133 @@ def _image_values(value: Any) -> Iterator[str]:
     elif isinstance(value, list):
         for nested in value:
             yield from _image_values(nested)
+
+
+def _effective_run_working_directory(
+    workflow: dict[str, Any], job: dict[str, Any], step: dict[str, Any]
+) -> str:
+    step_value = step.get("working-directory")
+    if step_value is not None:
+        return str(step_value)
+    for scope in (job, workflow):
+        defaults = scope.get("defaults")
+        if defaults is None:
+            continue
+        assert isinstance(defaults, dict), "workflow defaults must be a mapping"
+        run_defaults = defaults.get("run")
+        if run_defaults is None:
+            continue
+        assert isinstance(run_defaults, dict), "workflow run defaults must be a mapping"
+        value = run_defaults.get("working-directory")
+        if value is not None:
+            return str(value)
+    return "."
+
+
+def _sourced_scripts(
+    script: str, *, working_directory: str = "."
+) -> Iterator[tuple[str, str]]:
+    """Read statically sourced repository shell helpers under scripts/.
+
+    Workflow image checks must follow the exact helper calls used by each job;
+    otherwise moving a docker pull loop out of YAML would silently remove it
+    from the pin contract. Unknown or out-of-tree CI helper paths fail closed.
+    """
+    matches = list(_WORKFLOW_SCRIPT_SOURCE.finditer(script))
+    source_calls = [
+        match
+        for match in _WORKFLOW_SCRIPT_SOURCE_CALL.finditer(script)
+        if match.group("path") != "="
+    ]
+    assert len(matches) == len(source_calls), (
+        "workflow helper sources must use literal scripts paths"
+    )
+    if source_calls:
+        assert working_directory in {".", "./", "${{ github.workspace }}"}, (
+            "workflow sourced helper must run from the repository root"
+        )
+
+    root = ROOT.resolve()
+    pending = [match.group("path") for match in matches]
+    seen: set[str] = set()
+    while pending:
+        source_path = pending.pop(0)
+        relative_path = source_path.removeprefix("./")
+        candidate = ROOT / Path(relative_path)
+        resolved = candidate.resolve(strict=True)
+        assert resolved.is_relative_to(root), "workflow CI helper escaped repository"
+        assert not candidate.is_symlink(), "workflow CI helper must not be a symlink"
+        assert resolved.is_file(), "workflow CI helper must be a regular file"
+        normalized = resolved.relative_to(root).as_posix()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        helper = resolved.read_text(encoding="utf-8")
+        yield normalized, helper
+        nested_matches = list(_WORKFLOW_SCRIPT_SOURCE.finditer(helper))
+        nested_source_calls = [
+            match
+            for match in _WORKFLOW_SCRIPT_SOURCE_CALL.finditer(helper)
+            if match.group("path") != "="
+        ]
+        assert len(nested_matches) == len(nested_source_calls), (
+            "nested workflow helper sources must use literal scripts paths"
+        )
+        pending.extend(match.group("path") for match in nested_matches)
+
+
+def _workflow_script_scalars(value: Any) -> Iterator[str]:
+    """Yield workflow scalars and contents of its literal CI helper sources."""
+    yield from _scalars(value)
+    if not isinstance(value, dict):
+        return
+    jobs = value.get("jobs")
+    if not isinstance(jobs, dict):
+        return
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                continue
+            working_directory = _effective_run_working_directory(value, job, step)
+            for _path, helper in _sourced_scripts(
+                step["run"], working_directory=working_directory
+            ):
+                yield helper
+
+
+def _job_scalars_with_sourced_scripts(
+    workflow: dict[str, Any], job: dict[str, Any]
+) -> Iterator[str]:
+    yield from _scalars(job)
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            continue
+        working_directory = _effective_run_working_directory(workflow, job, step)
+        for _path, helper in _sourced_scripts(
+            step["run"], working_directory=working_directory
+        ):
+            yield helper
+
+
+def _job_sourced_scripts(
+    workflow: dict[str, Any], job: dict[str, Any]
+) -> Iterator[tuple[str, str]]:
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            continue
+        working_directory = _effective_run_working_directory(workflow, job, step)
+        yield from _sourced_scripts(step["run"], working_directory=working_directory)
 
 
 def _docker_cli_images(script: str) -> Iterator[str]:
@@ -335,6 +478,15 @@ def _assert_pinned(ref: str, *, source: str) -> None:
     if "$" in ref:
         return
     assert _DIGEST.search(ref), f"unpinned static image {ref!r} in {source}"
+
+
+def _assert_expected_image_identities(references: list[str]) -> None:
+    for tag, expected in EXPECTED_EXTERNAL_IMAGES.items():
+        found = [ref for ref in references if ref.split("@sha256:", 1)[0] == tag]
+        assert found, f"expected workflow image {expected}"
+        assert set(found) == {expected}, (
+            f"unexpected digest for {tag}: {sorted(set(found))}"
+        )
 
 
 def _configured_precommit_hook_ids() -> Counter[str]:
@@ -530,7 +682,7 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
     assert "pre-commit-security-and-types" in ci_success["needs"]
     result_gate = _step(ci_success, "Check all jobs passed")["run"]
     assert (
-        '"pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"'
+        "'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'"
         in result_gate
     )
 
@@ -547,7 +699,7 @@ def test_semgrep_security_audit_starts_independently() -> None:
     assert job["uses"] == "./.github/workflows/reusable-security-audit.yml"
     assert "security-audit" in jobs["ci-success"]["needs"]
     gate = jobs["ci-success"]["steps"][0]["run"]
-    assert '"security-audit|${{ needs.security-audit.result }}"' in gate
+    assert "'security-audit|${{ needs.security-audit.result }}'" in gate
 
 
 def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
@@ -643,6 +795,7 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert check_step["env"] == {
         "EVENT_NAME": "${{ github.event_name }}",
         "EVENT_REF": "${{ github.ref }}",
+        "BASE_REF": "${{ github.base_ref }}",
         "PRE_COMMIT_RESULT": "${{ needs.pre-commit-check.result }}",
         "PRE_COMMIT_SECURITY_RESULT": "${{ needs.pre-commit-security-and-types.result }}",
         "FRONTEND_TESTS_RESULT": "${{ needs.frontend-tests.result }}",
@@ -658,9 +811,18 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert 'expected_result="$coverage_expected_result"' in gate
     assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
     assert 'assert_event_result "codecov-upload"' in gate
-    assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
-    assert '"db-migration-integrity|${{ needs.db-migration-integrity.result }}"' in gate
-    assert '"security-audit|${{ needs.security-audit.result }}"' in gate
+    assert 'if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]' in gate
+    assert (
+        'assert_event_result "live-realtime-visual" '
+        "'${{ needs.live-realtime-visual.result }}' \"success\""
+    ) in gate
+    assert (
+        'assert_event_result "live-realtime-visual" '
+        "'${{ needs.live-realtime-visual.result }}' \"skipped\""
+    ) in gate
+    assert "'sbom-generate|${{ needs.sbom-generate.result }}'" in gate
+    assert "'db-migration-integrity|${{ needs.db-migration-integrity.result }}'" in gate
+    assert "'security-audit|${{ needs.security-audit.result }}'" in gate
     assert not any(
         token in gate.lower()
         for token in ("mutation", "stryker", "schemathesis", "chaos", "cross-browser")
@@ -855,6 +1017,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "docker-security-scan",
             "Upload Trivy results to GitHub Security tab",
         ),
+        (
+            "ci.yml",
+            "docker-security-scan-additional",
+            "Upload Trivy results to GitHub Security tab",
+        ),
         ("contract-validation.yml", "spectral-lint", "Run Spectral lint"),
         (
             "contract-validation.yml",
@@ -880,6 +1047,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "reusable-security-audit.yml",
             "docker-security",
             "Run Trivy vulnerability scanner (filesystem)",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
+            "Report bounded Trivy filesystem vulnerability metadata",
         ),
         (
             "reusable-security-audit.yml",
@@ -968,6 +1140,12 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "unauthed-smoke",
             "Run unauthenticated routes smoke script",
         ),
+        (
+            "sqlmap.yml",
+            "sqlmap",
+            "Run SQLMap scan for every anonymous OpenAPI operation",
+        ),
+        ("sqlmap.yml", "sqlmap", "Run SQLMap Scan on API"),
     }
     observed_steps: set[tuple[str, str, str]] = set()
     observed_jobs: set[tuple[str, str, str]] = set()
@@ -1150,15 +1328,23 @@ foreach ($image in $images) {
         _assert_pinned(images[0], source="powershell-array-append-control")
 
 
+def _pull_loop_images(workflow: dict[str, Any], job: dict[str, Any]) -> Counter[str]:
+    return Counter(
+        image
+        for scalar in _job_scalars_with_sourced_scripts(workflow, job)
+        for image in _powershell_cli_images(scalar)
+    )
+
+
 def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
     workflow = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
-    images = [
-        image
-        for scalar in _scalars(workflow)
-        for image in _powershell_cli_images(scalar)
-    ]
-
-    assert Counter(images) == Counter(
+    jobs = workflow["jobs"]
+    # Each job pre-pulls only the images it starts; the shared PostgreSQL pin is
+    # reused by both loops, never re-pinned to a new digest.
+    assert _pull_loop_images(workflow, jobs["unit-tests"]) == Counter(
+        {EXPECTED_EXTERNAL_IMAGES["pgvector/pgvector:pg17"]: 1}
+    )
+    assert _pull_loop_images(workflow, jobs["integration-tests"]) == Counter(
         EXPECTED_EXTERNAL_IMAGES[image]
         for image in (
             "nats:2.15.0-alpine",
@@ -1169,6 +1355,153 @@ def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
     )
 
 
+def test_reusable_backend_image_contract_follows_exact_ci_helper_sources() -> None:
+    workflow = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
+    jobs = workflow["jobs"]
+    unit_helpers = dict(_job_sourced_scripts(workflow, jobs["unit-tests"]))
+    integration_helpers = dict(
+        _job_sourced_scripts(workflow, jobs["integration-tests"])
+    )
+
+    unit_prepull = _step(
+        jobs["unit-tests"], "Pre-pull owned PostgreSQL image with bounded retries"
+    )
+    integration_prepull = _step(
+        jobs["integration-tests"],
+        "Pre-pull testcontainer images with bounded retries",
+    )
+    assert (
+        _effective_run_working_directory(workflow, jobs["unit-tests"], unit_prepull)
+        == "."
+    )
+    assert (
+        _effective_run_working_directory(
+            workflow, jobs["integration-tests"], integration_prepull
+        )
+        == "."
+    )
+
+    assert set(unit_helpers) == {
+        "scripts/ci/backend-prepull-owned-postgres.ps1",
+        "scripts/ci/backend-run-pytest.ps1",
+    }
+    assert "scripts/ci/backend-prepull-testcontainers.ps1" in integration_helpers
+    assert list(
+        _powershell_cli_images(
+            unit_helpers["scripts/ci/backend-prepull-owned-postgres.ps1"]
+        )
+    ) == [EXPECTED_EXTERNAL_IMAGES["pgvector/pgvector:pg17"]]
+    assert list(
+        _powershell_cli_images(
+            integration_helpers["scripts/ci/backend-prepull-testcontainers.ps1"]
+        )
+    ) == [
+        EXPECTED_EXTERNAL_IMAGES["nats:2.15.0-alpine"],
+        EXPECTED_EXTERNAL_IMAGES["postgres:15-alpine"],
+        EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"],
+        EXPECTED_EXTERNAL_IMAGES["pgvector/pgvector:pg17"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source_line", "suffix", "helper"),
+    [
+        (
+            "echo ok; source scripts/ci/unpinned-image.sh",
+            "unpinned-image.sh",
+            "docker pull postgres:15-alpine\n",
+        ),
+        (
+            "Write-Output ok; . ./scripts/ci/unpinned-image.ps1",
+            "unpinned-image.ps1",
+            "$images = @(\n"
+            '  "postgres:15-alpine"\n'
+            ")\n"
+            "foreach ($image in $images) {\n"
+            "  docker pull $image\n"
+            "}\n",
+        ),
+    ],
+)
+def test_same_line_sourced_unpinned_helper_is_found_by_image_scanner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    source_line: str,
+    suffix: str,
+    helper: str,
+) -> None:
+    helper_path = tmp_path / "scripts" / "ci" / suffix
+    helper_path.parent.mkdir(parents=True)
+    helper_path.write_text(helper, encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    sourced = list(_sourced_scripts(source_line))
+    assert [path for path, _text in sourced] == [f"scripts/ci/{suffix}"]
+    helper_text = sourced[0][1]
+    images = (
+        list(_docker_cli_images(helper_text))
+        if suffix.endswith(".sh")
+        else list(_powershell_cli_images(helper_text))
+    )
+    assert images == ["postgres:15-alpine"]
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        _assert_pinned(images[0], source=suffix)
+
+
+@pytest.mark.parametrize(
+    "source_line",
+    [
+        "echo ok; source $HELPER_PATH",
+        "Write-Output ok; . C:/temp/unpinned-image.ps1",
+        "echo ok; source ../outside/unpinned-image.sh",
+    ],
+)
+def test_dynamic_or_out_of_tree_helper_sources_fail_closed(source_line: str) -> None:
+    with pytest.raises(AssertionError, match="literal scripts paths"):
+        list(_sourced_scripts(source_line))
+
+
+def test_sourced_helper_with_non_root_working_directory_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper_path = tmp_path / "scripts" / "ci" / "pinned-image.ps1"
+    helper_path.parent.mkdir(parents=True)
+    helper_path.write_text('$images = @("postgres:15-alpine")\n', encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    with pytest.raises(AssertionError, match="must run from the repository root"):
+        list(
+            _sourced_scripts(
+                ". ./scripts/ci/pinned-image.ps1",
+                working_directory="frontend",
+            )
+        )
+
+
+@pytest.mark.parametrize("command", ["run", "create"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        "--cap-add NET_BIND_SERVICE",
+        "--cap-add=NET_BIND_SERVICE",
+        "--cap-drop ALL",
+        "--cap-drop=ALL",
+        "--security-opt no-new-privileges",
+        "--security-opt=no-new-privileges",
+        "--cap-drop ALL --security-opt no-new-privileges --read-only",
+    ],
+)
+def test_docker_security_option_values_do_not_hide_the_real_image(
+    command: str, options: str
+) -> None:
+    pinned = EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"]
+    assert list(_docker_cli_images(f"docker {command} {options} {pinned}")) == [pinned]
+    images = list(_docker_cli_images(f"docker {command} {options} redis:7-alpine"))
+    assert images == ["redis:7-alpine"]
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        _assert_pinned(images[0], source="security-option-regression")
+
+
 def test_all_static_external_workflow_images_are_digest_pinned() -> None:
     for path in sorted(WORKFLOWS.glob("*.yml")):
         workflow = _workflow(path)
@@ -1177,7 +1510,7 @@ def test_all_static_external_workflow_images_are_digest_pinned() -> None:
         for image in _image_values(workflow):
             _assert_pinned(image, source=source)
 
-        for scalar in _scalars(workflow):
+        for scalar in _workflow_script_scalars(workflow):
             for image in _docker_cli_images(scalar):
                 _assert_pinned(image, source=source)
             for image in _powershell_cli_images(scalar):
@@ -1185,16 +1518,25 @@ def test_all_static_external_workflow_images_are_digest_pinned() -> None:
 
 
 def test_external_workflow_images_use_the_audited_digests() -> None:
-    scalars = [
-        scalar
-        for path in sorted(WORKFLOWS.glob("*.yml"))
-        for scalar in _scalars(_workflow(path))
-    ]
-    combined = "\n".join(scalars)
+    references: list[str] = []
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        workflow = _workflow(path)
+        references.extend(_image_values(workflow))
+        for scalar in _workflow_script_scalars(workflow):
+            references.extend(_docker_cli_images(scalar))
+            references.extend(_powershell_cli_images(scalar))
+    _assert_expected_image_identities(references)
 
-    for tag, pinned in EXPECTED_EXTERNAL_IMAGES.items():
-        assert pinned in combined, f"expected pinned workflow image {pinned}"
-        assert not re.search(rf"{re.escape(tag)}(?!@sha256:)", combined)
+
+def test_external_workflow_image_identity_rejects_wrong_digest() -> None:
+    expected = EXPECTED_EXTERNAL_IMAGES["postgres:15-alpine"]
+    wrong = expected[:-1] + ("0" if expected[-1] != "0" else "1")
+    references = [*EXPECTED_EXTERNAL_IMAGES.values(), wrong]
+
+    with pytest.raises(
+        AssertionError, match="unexpected digest for postgres:15-alpine"
+    ):
+        _assert_expected_image_identities(references)
 
 
 def test_precommit_semgrep_image_remains_immutable() -> None:
@@ -1218,11 +1560,21 @@ def test_precommit_semgrep_image_remains_immutable() -> None:
         token for token in entry_tokens if token.startswith("semgrep/semgrep:")
     ]
     assert local_images == [PRECOMMIT_SEMGREP_IMAGE]
-    assert hook["args"] == ["--config", "auto", "--error", "--oss-only"]
-    assert hook["exclude"] == (
-        r"(^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|"
-        r"^frontend/coverage-[^/]+/"
-    )
+    assert entry_tokens == [
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-I",
+        "scripts/quality/run_semgrep_gate.py",
+        PRECOMMIT_SEMGREP_IMAGE,
+    ]
+    assert hook["name"] == "semgrep-sast"
+    assert hook.get("args", []) == []
+    assert hook["language"] == "system"
+    assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "exclude" not in hook
     assert hook["require_serial"] is True
 
 
@@ -1585,9 +1937,51 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
         "REVOCATION_OUTCOME": "${{ steps.trivy_revocation.outcome }}",
         "UNIVERSITY_OUTCOME": "${{ steps.trivy_university.outcome }}",
         "REDIS_COMPAT_OUTCOME": "${{ steps.trivy_redis_compat.outcome }}",
+        "METADATA_OUTCOME": "${{ steps.trivy_fs_metadata.outcome }}",
     }
     assert 'exit "$failed"' in reassert["run"]
     assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
+
+
+def test_matrix_trivy_images_upload_bounded_sarif_without_weakening_gate() -> None:
+    workflow = _workflow(CI)
+    job_id = "docker-security-scan-additional"
+    job = workflow["jobs"][job_id]
+    matrix_images = [
+        entry["image_name"] for entry in job["strategy"]["matrix"]["include"]
+    ]
+    assert matrix_images == ["frontend", "gateway", "ws-hub", "file-processor", "caddy"]
+    assert len(matrix_images) == len(set(matrix_images))
+
+    scan = _step(job, "Run Trivy vulnerability scanner")
+    sarif_path = "trivy-${{ matrix.image_name }}.sarif"
+    assert scan["with"]["output"] == sarif_path
+    assert scan["with"]["severity"] == "CRITICAL,HIGH"
+    assert scan["with"]["limit-severities-for-sarif"] is True
+    assert scan["with"]["exit-code"] == "1"
+    assert "continue-on-error" not in scan
+    assert "continue-on-error" not in job
+
+    artifact = _step(job, "Upload Trivy SARIF diagnostic artifact")
+    assert artifact["uses"] == (
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert artifact["if"] == (
+        "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert "continue-on-error" not in artifact
+    assert artifact["with"] == {
+        "name": "trivy-image-${{ matrix.image_name }}-sarif",
+        "path": sarif_path,
+        "retention-days": 14,
+        "if-no-files-found": "error",
+    }
+    assert job["steps"].index(scan) < job["steps"].index(artifact)
+
+    ci_success = workflow["jobs"]["ci-success"]
+    assert job_id in ci_success["needs"]
+    gate_run = _step(ci_success, "Check all jobs passed")["run"]
+    assert f"'{job_id}|${{{{ needs.{job_id}.result }}}}'" in gate_run
 
 
 def test_trivy_oci_export_precedes_helm_dependency_mutation_and_preflight(
@@ -1883,3 +2277,110 @@ def test_q4_heavy_scans_are_scheduled_manual_and_default_branch_guarded() -> Non
         names = {check["name"] for check in event["required_checks"]}
         assert "SQLMap Scan" not in names
         assert "TruffleHog Scan" not in names
+
+
+def test_trivy_diagnostic_is_failure_only_and_preserves_scan_permissions() -> None:
+    job = _workflow(CI)["jobs"]["docker-security-scan-additional"]
+    step = _step(job, "Summarize Trivy vulnerability metadata")
+    scan = _step(job, "Run Trivy vulnerability scanner")
+    assert step["if"] == (
+        "always() && steps.trivy_scan.outcome == 'failure' && "
+        "hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert step["env"] == {"SARIF_PATH": "trivy-${{ matrix.image_name }}.sarif"}
+    assert "continue-on-error" not in step
+    assert job["steps"].index(scan) < job["steps"].index(step)
+    assert job["permissions"] == {"security-events": "write", "contents": "read"}
+    assert step["run"] == (
+        'python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"'
+    )
+
+
+_TRIVY_REQUIRED_OUTCOMES = (
+    "FILESYSTEM_OUTCOME",
+    "CONFIGURATION_OUTCOME",
+    "REVOCATION_OUTCOME",
+    "UNIVERSITY_OUTCOME",
+    "REDIS_COMPAT_OUTCOME",
+    "METADATA_OUTCOME",
+)
+
+
+def test_trivy_metadata_failure_is_deferred_but_remains_blocking() -> None:
+    job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
+        "docker-security"
+    ]
+    steps = job["steps"]
+    export = _step(job, "Export backend OCI and prepare isolated Helm profiles")
+    scan = _step(job, "Run Trivy vulnerability scanner (filesystem)")
+    metadata = _step(job, "Report bounded Trivy filesystem vulnerability metadata")
+    dependencies = _step(job, "Build Helm dependencies for Trivy")
+    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
+
+    assert steps.index(export) < steps.index(scan) < steps.index(metadata)
+    assert steps.index(metadata) < steps.index(dependencies)
+    assert metadata["id"] == "trivy_fs_metadata"
+    assert metadata["continue-on-error"] is True
+    assert metadata["if"] == (
+        "${{ always() && !cancelled() && "
+        "(steps.trivy_fs.outcome == 'success' || "
+        "steps.trivy_fs.outcome == 'failure') }}"
+    )
+    assert metadata["timeout-minutes"] == 1
+    assert metadata["env"] == {
+        "EXPECTED_SOURCE_SHA": (
+            "${{ github.event.pull_request.head.sha || github.sha }}"
+        ),
+        "TRIVY_FS_OUTCOME": "${{ steps.trivy_fs.outcome }}",
+    }
+    assert reassert["env"]["METADATA_OUTCOME"] == (
+        "${{ steps.trivy_fs_metadata.outcome }}"
+    )
+    assert reassert["if"] == "always()"
+    assert "continue-on-error" not in reassert
+    assert steps.index(dependencies) < steps.index(reassert)
+
+
+@pytest.mark.parametrize(
+    ("failed_variable", "outcome"),
+    [(None, "success")]
+    + [
+        (variable, outcome)
+        for variable in _TRIVY_REQUIRED_OUTCOMES
+        for outcome in ("failure", "cancelled", "skipped", "", "unknown")
+    ],
+)
+def test_trivy_reassert_executes_and_rejects_each_non_success_outcome(
+    tmp_path: Path, failed_variable: str | None, outcome: str
+) -> None:
+    job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
+        "docker-security"
+    ]
+    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
+    bash = which("bash")
+    if os.name == "nt":
+        git_bash = (
+            Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+            / "Git"
+            / "bin"
+            / "bash.exe"
+        )
+        if git_bash.is_file():
+            bash = str(git_bash)
+    assert bash is not None, "Bash is required for the real Trivy gate test"
+    outcomes = dict.fromkeys(_TRIVY_REQUIRED_OUTCOMES, "success")
+    if failed_variable is not None:
+        outcomes[failed_variable] = outcome
+    result = subprocess.run(  # noqa: S603 - fixed gate and finite outcome fixtures
+        [bash, "--noprofile", "--norc", "-euo", "pipefail", "-c", reassert["run"]],
+        cwd=tmp_path,
+        env={**os.environ, **outcomes},
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == (0 if failed_variable is None else 1), (
+        result.stdout,
+        result.stderr,
+    )

@@ -42,6 +42,20 @@ export function requestFailureRecord(request) {
   }
 }
 
+export function classifySmokeRouteOutcome({
+  navigationError,
+  httpStatus,
+  strict,
+  hydrationErrorCount,
+}) {
+  const httpFailure = httpStatus !== null && (httpStatus < 200 || httpStatus >= 400)
+  const success = !navigationError && !httpFailure
+  return {
+    success,
+    failed: !success || (strict && hydrationErrorCount > 0),
+  }
+}
+
 export function classifyAuthenticatedAuditSummaries(summaries) {
   return {
     failedRoutes: summaries.filter(({ httpStatus, redirectedToLogin }) =>

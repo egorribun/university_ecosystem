@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import asyncio
+import functools
+import importlib
 import os
 import sys
 from logging.config import fileConfig
@@ -18,21 +22,32 @@ from app.core.db.schema_drift import (
     build_partition_aware_include_object,
     filter_check_backed_nullable_diffs,
 )
-from app.core.config import Settings
-from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
+from app.core.migration_settings import (
+    MigrationSettings,
+    load_migration_settings,
+    resolve_migration_url,
+)
 import app.models as models
 from app.core.db.retained_table_metadata import build_migration_metadata
 
-_settings = Settings(_allow_missing=True)
+
+@functools.cache
+def _migration_settings() -> MigrationSettings:
+    """Resolve the DB-only view once for this Alembic environment run."""
+    return load_migration_settings()
+
+
 config: Config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = build_migration_metadata(models.Base.metadata)
-
 
 class _OfflineInspector:
     """Fallback inspector for Alembic --sql (offline) mode when MockConnection cannot be inspected."""
+
+    def clear_cache(self) -> None:
+        """Match SQLAlchemy Inspector; this fallback stores no cache."""
+        return None
 
     def get_table_names(self, schema: str | None = None) -> list[str]:
         return []
@@ -134,23 +149,9 @@ def _offline_get_bind(*args: Any, **kwargs: Any) -> Any:
 
 
 def get_url() -> str:
-    env_url = os.getenv("DATABASE_URL", "")
-    if env_url:
-        return env_url
-    if _settings.database_url:
-        return _settings.database_url
-    url = config.get_main_option("sqlalchemy.url")
-    if url:
-        return url
-    raise RuntimeError("Database URL is not configured for Alembic")
-
-
-def _development_fallback_skip_allowed() -> bool:
-    """Allow a skip only for the documented local SQLite default in development."""
-    environment_name = (os.getenv("ENVIRONMENT") or "").strip().lower()
-    return (
-        "database_url" in _settings.development_fallback_fields
-        and environment_name in _DEVELOPMENT_ENVIRONMENTS
+    # The DB-only view enforces FILE precedence before any ini/default fallback.
+    return resolve_migration_url(
+        _migration_settings(), ini_url=config.get_main_option("sqlalchemy.url")
     )
 
 
@@ -158,7 +159,9 @@ def run_migrations_offline() -> None:
     url: str = get_url()
     context.configure(
         url=url,
-        target_metadata=target_metadata,
+        target_metadata=build_migration_metadata(
+            models.Base.metadata, dialect_name=make_url(url).get_backend_name()
+        ),
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
@@ -182,12 +185,31 @@ def run_migrations_offline() -> None:
         _alembic_op.get_bind = previous_get_bind
 
 
+_JSON_SERVER_DEFAULT_PLUGIN = "university_ecosystem.alembic_json_server_defaults"
+
+
+def _register_json_server_default_plugin() -> None:
+    """Register the PostgreSQL JSON comparator plugin once per process."""
+    plugin_module = importlib.import_module("app.core.db.alembic_json_server_defaults")
+    plugin_module.register()
+
+
 def _configure_context(connection: SyncConnection) -> None:
+    _register_json_server_default_plugin()
     context.configure(
         connection=connection,
-        target_metadata=target_metadata,
+        target_metadata=build_migration_metadata(
+            models.Base.metadata, dialect_name=connection.dialect.name
+        ),
         include_object=build_partition_aware_include_object(connection),
         compare_type=True,
+        # Keep Alembic's native default and Computed comparators enabled. The
+        # registered plugin handles only PostgreSQL JSON's non-equality case.
+        compare_server_default=True,
+        autogenerate_plugins=(
+            "alembic.autogenerate.*",
+            _JSON_SERVER_DEFAULT_PLUGIN,
+        ),
         render_as_batch=True,
         transactional_ddl=True,
         transaction_per_migration=True,
@@ -196,44 +218,23 @@ def _configure_context(connection: SyncConnection) -> None:
 
 
 def run_migrations_online() -> None:
-    url: str = get_url()
-    config_options: dict[str, Any] = {"sqlalchemy.url": url}
-    url_obj = make_url(url)
-
-    # RZ-W18-06 (audit 2026-03-23 Wave 18): emit a proper Python warning instead
-    # of a bare print(). Previously the silent skip was easily missed in logs,
-    # leading developers to unknowingly accumulate schema drift.
-    # AUD-168 (audit 2026-10): only the documented local SQLite default may skip,
-    # and only in a development environment. Every other development fallback
-    # fails closed, because exit 0 without migrating looks like a successful deploy.
-    if _settings.has_development_fallbacks:
-        if not _development_fallback_skip_allowed():
-            fallback_fields = ", ".join(_settings.development_fallback_fields)
-            raise RuntimeError(
-                "Refusing to skip Alembic migrations: development fallbacks are "
-                f"active for {fallback_fields}. Set DATABASE_URL and every "
-                "required secret explicitly."
-            )
-        import warnings
-
-        warnings.warn(
-            "Skipping Alembic migrations: has_development_fallbacks is True. "
-            "Schema drift may cause runtime errors. "
-            "Set DATABASE_URL and SECRET_KEY explicitly to run migrations.",
-            stacklevel=2,
-        )
-        return
-
     def run_sync_migrations(connection: SyncConnection) -> None:
         _configure_context(connection)
         with context.begin_transaction():
             context.run_migrations()
 
     connection: Any = config.attributes.get("connection")
-    if connection:
+    if connection is not None:
+        # Validate any configured FILE/plain source without requiring an unrelated
+        # URL or runtime secret for an explicitly injected connection.
+        _migration_settings()
         # Connection injected externally (e.g., from a test fixture).
         run_sync_migrations(connection)
         return
+
+    url = get_url()
+    config_options: dict[str, Any] = {"sqlalchemy.url": url}
+    url_obj = make_url(url)
 
     connectable: Engine | AsyncEngine
     if url_obj.get_dialect().is_async:

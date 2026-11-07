@@ -130,7 +130,12 @@ def test_primary_ci_openapi_gate_checks_every_generated_directory() -> None:
         for step in steps
         if step.get("name") == "Verify generated API types are up to date"
     )
-    script = drift_step["run"]
+    workflow_command = drift_step["run"]
+    verifier_path = ".github/scripts/ci/verify_generated_api_types.ps1"
+    assert _shell_command_segments(workflow_command) == [
+        ["pwsh", "-NoProfile", "-File", verifier_path]
+    ]
+    script = (REPOSITORY_ROOT / verifier_path).read_text(encoding="utf-8")
 
     assert "schema.ts" not in script
     for generated_path in (

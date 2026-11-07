@@ -20,9 +20,12 @@ from sqlalchemy import (
 )
 
 # Removed postgresql UUID import
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.elements import ColumnElement
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 
 
@@ -60,6 +63,14 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
         Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
         Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
         Index("ix_notifications_user_id_read", "user_id", "read"),
+        # AUD-269: unread cursor index restored by the MVP baseline. The partitioned
+        # parent index propagates to every monthly partition.
+        Index(
+            "idx_notifications_user_unread_created",
+            "user_id",
+            text("created_at DESC"),
+            postgresql_where=text("read = false"),
+        ),
         {"postgresql_partition_by": "RANGE (created_at)"},
     )
 
@@ -200,22 +211,15 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
             ondelete="CASCADE",
         ),
         Index("ix_notification_deliveries_notif_channel", "notification_id", "channel"),
-        # DEBT-03: Dedup index for fast duplicate detection.
-        # On PostgreSQL (partitioned table) this is non-unique; deduplication
-        # is enforced at the application layer via INSERT ... ON CONFLICT DO NOTHING.
-        # On SQLite (CI) the UniqueConstraint below enforces the invariant in tests.
+        # DEBT-03: Dedup index for fast duplicate detection. It is non-unique on
+        # every dialect. Delivery-once is enforced by NotificationDeliveryOnce
+        # (AUD-272), keyed on (notification_id, subscription_id, channel), not by
+        # a constraint that includes attempted_at.
         Index(
             "ix_notification_deliveries_dedup",
             "notification_id",
             "channel",
             "subscription_id",
-        ),
-        UniqueConstraint(
-            "notification_id",
-            "channel",
-            "subscription_id",
-            "attempted_at",
-            name="uq_notification_delivery_once",
         ),
         {"postgresql_partition_by": "RANGE (attempted_at)"},
     )
@@ -229,6 +233,68 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)
         super().__init__(**kwargs)
+
+
+class NotificationDeliveryOnce(Base, UUID7PrimaryKeyMixin):
+    """Claim ledger that admits one Web Push send per notification and subscription.
+
+    AUD-272: ``notification_deliveries`` uniqueness includes ``attempted_at``, so repeated
+    attempts for the same pair were admitted. This ledger has no timestamp in its key.
+    Delivery inserts a claim with ``ON CONFLICT DO NOTHING`` before sending, skips pairs
+    that are already claimed, and releases a claim whose send did not succeed.
+    ``NULLS NOT DISTINCT`` makes a NULL subscription equal to another NULL.
+    """
+
+    __tablename__ = "notification_delivery_once"
+
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    channel: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "notification_id",
+            "subscription_id",
+            "channel",
+            name="uq_notification_delivery_once_claim",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+
+class _EmptyJsonArrayDefault(ColumnElement[Any]):
+    """Server default for an empty JSON array, spelled for each dialect.
+
+    PostgreSQL reports the migrated default as ``'[]'::json``, which alembic's
+    server-default comparison must reproduce exactly. The SQLite unit-test schema
+    rejects the ``::`` cast and takes the plain literal.
+    """
+
+    inherit_cache = True
+
+
+@compiles(_EmptyJsonArrayDefault)
+def _compile_empty_json_array_default(
+    element: _EmptyJsonArrayDefault, compiler: SQLCompiler, **kw: Any
+) -> str:
+    return "'[]'"
+
+
+@compiles(_EmptyJsonArrayDefault, "postgresql")
+def _compile_empty_json_array_default_postgresql(
+    element: _EmptyJsonArrayDefault, compiler: SQLCompiler, **kw: Any
+) -> str:
+    return "'[]'::json"
 
 
 class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
@@ -248,7 +314,13 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    topics: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    topics: Mapped[list[Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        # Matches the catalog default installed by revision f9d2b1f5e2d0.
+        server_default=_EmptyJsonArrayDefault(),
+    )
 
     user = relationship("User", back_populates="push_subscriptions", lazy="noload")
 

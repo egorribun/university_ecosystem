@@ -26,11 +26,15 @@ function reportInChild(calls) {
 }
 
 test("HTTP diagnostics emit only fixed project/check labels and integer status boundaries", () => {
-  for (const status of [100, 599]) {
+  for (const status of [100, 200, 401, 403, 429, 500, 599]) {
     const calls = []
     const expected = []
     for (const project of ["desktop", "mobile"]) {
       for (const check of [
+        "student-users-denied",
+        "teacher-users-denied",
+        "student-feature-flags-denied",
+        "teacher-feature-flags-denied",
         "admin-users",
         "admin-feature-flags",
         "admin-feature-flags-ui",
@@ -85,7 +89,20 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
   )
 })
 
-test("HTTP diagnostics deduplicate records and stop at 104 records per worker process", () => {
+test("HTTP diagnostics deduplicate records and stop at the derived bound per worker process", async () => {
+  // The bound is projects x checks x attempts, derived from the closed check set in source.
+  const source = await readFile(helperUrl, "utf8")
+  const checkSet = source.match(
+    /const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set\(\[([\s\S]*?)\]\)/u
+  )
+  assert.ok(checkSet, "the closed check set must be declared in the helper")
+  const checkCount = [...checkSet[1].matchAll(/"[a-z0-9-]+"/gu)].length
+  assert.ok(checkCount > 0)
+  assert.match(
+    source,
+    /MAX_RECORDS =\s*LIVE_HTTP_STATUS_PROJECTS \* LIVE_HTTP_STATUS_CHECKS\.size \* LIVE_HTTP_STATUS_ATTEMPTS/u
+  )
+  const bound = 2 * checkCount * 2
   const output = reportInChild(`
     for (let status = 100; status < 600; status += 1) {
       for (let duplicate = 0; duplicate < 10; duplicate += 1) {
@@ -96,7 +113,7 @@ test("HTTP diagnostics deduplicate records and stop at 104 records per worker pr
   assert.equal(
     output,
     Array.from(
-      { length: 104 },
+      { length: bound },
       (_, index) =>
         `UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=${100 + index}\n`
     ).join("")
@@ -505,4 +522,19 @@ test("login failure diagnostics cannot replace the original failure if stdout th
     `),
     ""
   )
+})
+
+test("role-denial probes report status before preserving the strict forbidden assertions", async () => {
+  const source = await readFile(new URL("./auth-roles.live.spec.ts", import.meta.url), "utf8")
+  const denial = source.slice(source.indexOf('for (const role of ["student", "teacher"] as const)'))
+  for (const [variable, check] of [
+    ["users", "users"],
+    ["featureFlags", "feature-flags"],
+  ]) {
+    const diagnostic = denial.indexOf("`${role}-" + check + "-denied`")
+    const assertion = denial.indexOf("expect(" + variable + ".status(),")
+    assert.ok(diagnostic >= 0 && diagnostic < assertion)
+    assert.match(denial.slice(assertion).split("\n")[0], /\.toBe\(403\)/u)
+  }
+  assert.doesNotMatch(denial, /Retry|retry|waitForTimeout|expect\.poll/u)
 })

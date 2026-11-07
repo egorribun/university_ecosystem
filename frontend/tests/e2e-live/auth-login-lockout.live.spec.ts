@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto"
 import { expect, freshPassword, loginAs, loginWith, submitLogin, test } from "./fixtures"
 import type { Page } from "@playwright/test"
+import {
+  expectedFailedAttemptStatus,
+  firstLockoutRule,
+  isAccountLockedStatus,
+  lockoutRetryAfterWithinRule,
+} from "./auth-login-lockout.decisions.mjs"
 
-const LOCKOUT_ATTEMPTS = 5
+// The earliest backend lockout rule (default AUTH_LOCKOUT_THRESHOLDS "5:30,...").
+const LOCKOUT_RULE = firstLockoutRule()
 
 async function deleteOwnedAccount(adminPage: Page, userId: string): Promise<void> {
   const cleanup = await adminPage.evaluate(async (accountId) => {
@@ -116,21 +123,20 @@ test("synthetic account reaches account lockout after the configured failed-logi
       return cookie ? decodeURIComponent(cookie.slice("csrf_token=".length)) : ""
     })
     expect(csrfToken, "the authenticated synthetic session has CSRF proof").not.toBe("")
-    for (let attempt = 1; attempt <= LOCKOUT_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= LOCKOUT_RULE.attempts; attempt += 1) {
       const response = await page.request.post("/api/v1/auth/login", {
         form: { username: email, password: wrongPassword },
         headers: { "X-CSRF-Token": csrfToken },
       })
-      if (attempt < LOCKOUT_ATTEMPTS) {
-        expect(response.status(), `failed credential attempt ${attempt}`).toBe(401)
-        continue
-      }
-
-      expect(response.status(), "the configured threshold locks only this synthetic account").toBe(
-        423
+      expect(response.status(), `attempt ${attempt} of the configured lockout rule`).toBe(
+        expectedFailedAttemptStatus(attempt, LOCKOUT_RULE)
       )
-      const retryAfter = Number(response.headers()["retry-after"])
-      expect(Number.isInteger(retryAfter) && retryAfter > 0 && retryAfter <= 30).toBe(true)
+      if (!isAccountLockedStatus(response.status())) continue
+
+      expect(
+        lockoutRetryAfterWithinRule(response.headers()["retry-after"], LOCKOUT_RULE),
+        "the lockout cooldown is a positive integer within the first configured rule"
+      ).toBe(true)
     }
   } finally {
     try {

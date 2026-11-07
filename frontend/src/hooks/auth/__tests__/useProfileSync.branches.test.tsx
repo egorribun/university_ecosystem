@@ -1,5 +1,6 @@
+import { MessageChannel } from "node:worker_threads"
 import type { MutableRefObject, PropsWithChildren } from "react"
-import { useRef } from "react"
+import { Suspense, startTransition, useRef } from "react"
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac.js"
@@ -11,6 +12,7 @@ import api from "@/api/client"
 import * as logger from "@/app/logger"
 import { createQueryClient, getQueryCacheIdentity, setQueryCacheIdentity } from "@/app/queryClient"
 import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID } from "@/stores/authIdentity"
+import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { testUser } from "@/tests/mocks/handlers"
 import {
@@ -50,6 +52,7 @@ const mockSigningKey = Array.from({ length: 32 }, (_, i) => ((i * 13 + 7) % 16).
   ""
 )
 const PROFILE_CACHE_VERSION_KEY = "ecosystem.profile.cache.version"
+const SESSION_GENERATION_STORAGE_KEY = "ecosystem.session.generation.v1"
 
 const markCurrentCacheVersion = () => {
   localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
@@ -2442,6 +2445,330 @@ describe("useProfileSync — cross-tab sync effect", () => {
     })
   })
 
+  it.each([
+    "profile action sequence",
+    "session key",
+    "session epoch",
+    "stored generation",
+  ] as const)(
+    "does not clear a current profile when a storage read loses its %s while storage is unavailable",
+    async (transition) => {
+      acceptBrowserSessionGeneration()
+      if (transition === "stored generation") {
+        localStorage.setItem(
+          SESSION_GENERATION_STORAGE_KEY,
+          JSON.stringify({ nonce: "generation-before-cache-event", hash: null })
+        )
+        acceptBrowserSessionGeneration()
+      }
+      vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+      const view = renderProfileSync()
+      const currentUser = { ...testUser, id: "current-profile-before-cache-event" }
+      await act(async () => {
+        view.result.current.setUser(currentUser)
+      })
+      await waitFor(() => expect(view.result.current.user).toEqual(currentUser))
+      await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull())
+
+      const encrypted = await encryptData(
+        {
+          id: "stale-peer-cache-profile",
+          full_name: "Stale peer cache",
+          group_id: null,
+          avatar_url: null,
+          cover_url: null,
+          is_active: true,
+          spotify_connected: false,
+        },
+        mockSigningKey
+      )
+      if (encrypted === null) throw new Error("Could not create the cache event fixture")
+      const payload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 300_000,
+        data: encrypted,
+      }
+      const signature = await signPayload(payload, mockSigningKey)
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+      markCurrentCacheVersion()
+
+      const subtle = window.crypto.subtle
+      const verify = subtle.verify.bind(subtle)
+      let finishVerification: (() => void) | undefined
+      let signalVerificationStarted!: () => void
+      const verificationStarted = new Promise<void>((resolve) => {
+        signalVerificationStarted = resolve
+      })
+      vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+        const valid = await verify(...args)
+        signalVerificationStarted()
+        await new Promise<void>((resolve) => {
+          finishVerification = resolve
+        })
+        return valid
+      })
+
+      const originalStorage = globalThis.localStorage
+      try {
+        act(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: PROFILE_CACHE_STORAGE_KEY,
+              newValue: null,
+              storageArea: localStorage,
+            })
+          )
+        })
+        await verificationStarted
+
+        let expectedUser = currentUser
+        if (transition === "profile action sequence") {
+          expectedUser = {
+            ...currentUser,
+            id: "replacement-profile-after-cache-event",
+            full_name: "Replacement profile",
+          }
+          await act(async () => {
+            view.result.current.setUser(expectedUser)
+          })
+          await waitFor(() => expect(view.result.current.user).toEqual(expectedUser))
+        } else if (transition === "session key") {
+          act(() => view.updateSessionSigningKey("replacement-session-key"))
+        } else if (transition === "session epoch") {
+          invalidateSessionEpoch()
+        } else if (transition === "stored generation") {
+          localStorage.setItem(
+            SESSION_GENERATION_STORAGE_KEY,
+            JSON.stringify({ nonce: "generation-after-cache-event", hash: null })
+          )
+        }
+
+        vi.stubGlobal("localStorage", undefined)
+        await act(async () => {
+          finishVerification?.()
+          await Promise.resolve()
+          await Promise.resolve()
+        })
+        await waitFor(() => expect(view.result.current.user).toEqual(expectedUser))
+      } finally {
+        await act(async () => {
+          finishVerification?.()
+          await Promise.resolve()
+          await Promise.resolve()
+        })
+        vi.stubGlobal("localStorage", originalStorage)
+        view.unmount()
+        if (transition === "stored generation") {
+          localStorage.removeItem(SESSION_GENERATION_STORAGE_KEY)
+        }
+        acceptBrowserSessionGeneration()
+      }
+    }
+  )
+  it.each([
+    "queued action sequence",
+    "committed revision",
+    "read failure during queued action",
+  ] as const)("preserves the live profile when a cache sync races a %s", async (race) => {
+    acceptBrowserSessionGeneration()
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const queryClient = createQueryClient()
+    const signingKeyRef = { current: mockSigningKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const currentUser = { ...testUser, id: "suspended-current-profile" }
+    const nextProfile = { ...currentUser, full_name: "Pending same-owner update" }
+    let blockPendingProfile = false
+    let suspendedRenderAttempts = 0
+    let resumeTransition!: () => void
+    const suspendedTransition = new Promise<void>((resolve) => {
+      resumeTransition = resolve
+    })
+    const updateSessionSigningKey = (key: string | null) => {
+      signingKeyRef.current = key
+    }
+    const ensureSessionSigningKey = async () => signingKeyRef.current
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for same-owner profile update</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      () => {
+        const profile = useProfileSync(
+          updateSessionSigningKey,
+          signingKeyRef,
+          promiseRef,
+          ensureSessionSigningKey
+        )
+        if (blockPendingProfile && profile.user?.full_name === nextProfile.full_name) {
+          suspendedRenderAttempts += 1
+          throw suspendedTransition
+        }
+        return profile
+      },
+      { wrapper }
+    )
+    const originalStorage = globalThis.localStorage
+    let finishVerification: (() => void) | undefined
+
+    try {
+      await act(async () => view.result.current.setUser(currentUser))
+      await waitFor(() => expect(view.result.current.user).toEqual(currentUser))
+      await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull())
+
+      if (race === "read failure during queued action") {
+        const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+        const originalGetItem = Storage.prototype.getItem.bind(localStorage)
+        const storageRead = vi.spyOn(Storage.prototype, "getItem").mockImplementation((key) => {
+          if (key === PROFILE_CACHE_STORAGE_KEY) {
+            throw new DOMException("Storage is unavailable", "SecurityError")
+          }
+          return originalGetItem(key)
+        })
+        act(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: PROFILE_CACHE_STORAGE_KEY,
+              newValue: null,
+              storageArea: localStorage,
+            })
+          )
+          blockPendingProfile = true
+          startTransition(() => view.result.current.setUser(nextProfile))
+        })
+        expect(suspendedRenderAttempts).toBeGreaterThan(0)
+        await act(async () => {
+          await Promise.resolve()
+          await Promise.resolve()
+        })
+        expect(storageRead).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+        expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
+        expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", expect.anything())
+        expect(view.result.current.user).toEqual(currentUser)
+        return
+      }
+
+      const encrypted = await encryptData(
+        {
+          id: "stale-peer-cache-profile",
+          full_name: "Stale peer cache",
+          group_id: null,
+          avatar_url: null,
+          cover_url: null,
+          is_active: true,
+          spotify_connected: false,
+        },
+        mockSigningKey
+      )
+      if (encrypted === null) throw new Error("Could not create the cache event fixture")
+      const payload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 300_000,
+        data: encrypted,
+      }
+      const signature = await signPayload(payload, mockSigningKey)
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+      markCurrentCacheVersion()
+
+      const subtle = window.crypto.subtle
+      const verify = subtle.verify.bind(subtle)
+      let signalVerificationStarted!: () => void
+      const verificationStarted = new Promise<void>((resolve) => {
+        signalVerificationStarted = resolve
+      })
+      vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+        const valid = await verify(...args)
+        signalVerificationStarted()
+        await new Promise<void>((resolve) => {
+          finishVerification = resolve
+        })
+        return valid
+      })
+      let signalDecryptionCompleted!: () => void
+      const decryptionCompleted = new Promise<void>((resolve) => {
+        signalDecryptionCompleted = resolve
+      })
+      const decrypt = subtle.decrypt.bind(subtle)
+      vi.spyOn(subtle, "decrypt").mockImplementationOnce(async (...args) => {
+        const plaintext = await decrypt(...args)
+        signalDecryptionCompleted()
+        return plaintext
+      })
+
+      const dispatchCacheDeletion = () => {
+        act(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: PROFILE_CACHE_STORAGE_KEY,
+              newValue: null,
+              storageArea: localStorage,
+            })
+          )
+        })
+      }
+      if (race === "committed revision") {
+        blockPendingProfile = true
+        act(() => startTransition(() => view.result.current.setUser(nextProfile)))
+        expect(suspendedRenderAttempts).toBeGreaterThan(0)
+        expect(view.result.current.user).toEqual(currentUser)
+        dispatchCacheDeletion()
+        await verificationStarted
+        await act(async () => {
+          blockPendingProfile = false
+          resumeTransition()
+          await suspendedTransition
+        })
+        await waitFor(() => expect(view.result.current.user).toEqual(nextProfile))
+      } else {
+        dispatchCacheDeletion()
+        await verificationStarted
+        blockPendingProfile = true
+        act(() => startTransition(() => view.result.current.setUser(nextProfile)))
+        expect(suspendedRenderAttempts).toBeGreaterThan(0)
+        expect(view.result.current.user).toEqual(currentUser)
+      }
+
+      if (race !== "queued action sequence") {
+        vi.stubGlobal("localStorage", undefined)
+      }
+      await act(async () => {
+        finishVerification?.()
+        if (race === "queued action sequence") {
+          await decryptionCompleted
+          await new Promise<void>((resolve) => {
+            const channel = new MessageChannel()
+            channel.port1.onmessage = () => {
+              channel.port1.close()
+              channel.port2.close()
+              resolve()
+            }
+            channel.port2.postMessage("cache-read-continuations-settled")
+          })
+        } else {
+          await Promise.resolve()
+          await Promise.resolve()
+        }
+      })
+      const expectedUser = race === "committed revision" ? nextProfile : currentUser
+      await waitFor(() => expect(view.result.current.user).toEqual(expectedUser))
+    } finally {
+      await act(async () => {
+        finishVerification?.()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      vi.stubGlobal("localStorage", originalStorage)
+      await act(async () => {
+        blockPendingProfile = false
+        view.unmount()
+        resumeTransition()
+        await suspendedTransition
+      })
+      queryClient.clear()
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("short-circuits cache deletion when localStorage is unavailable", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
     const { result } = renderProfileSync({
@@ -3011,3 +3338,160 @@ describe("useProfileSync crypto failure paths", () => {
     await expect(signPayload(payload, mockSigningKey)).resolves.toBe("")
   })
 })
+
+it.each([PROFILE_CACHE_STORAGE_KEY, PROFILE_CACHE_VERSION_KEY])(
+  "retains a newer %s storage snapshot when unchanged bootstrap verification finishes first",
+  async (eventKey) => {
+    acceptBrowserSessionGeneration()
+    const firstPayload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: {
+        id: "noop-bootstrap-first",
+        full_name: "Unchanged bootstrap snapshot",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        is_active: true,
+        spotify_connected: false,
+      } as CachedUserSnapshot,
+    }
+    const secondPayload: CacheSignaturePayload = {
+      ...firstPayload,
+      data: {
+        ...(firstPayload.data as CachedUserSnapshot),
+        id: "noop-bootstrap-second",
+        full_name: "Newer cross-tab snapshot",
+      },
+    }
+    const serialize = (payload: CacheSignaturePayload) =>
+      JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    const firstEnvelope = serialize(firstPayload)
+    const secondEnvelope = serialize(secondPayload)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, firstEnvelope)
+    markCurrentCacheVersion()
+
+    const subtle = window.crypto.subtle
+    const verify = subtle.verify.bind(subtle)
+    const createVerificationGate = () => {
+      let signalStarted!: () => void
+      let release!: () => void
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve
+      })
+      const released = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let completion: Promise<boolean> | undefined
+      return {
+        started,
+        implementation: (...args: Parameters<typeof verify>) => {
+          completion = (async () => {
+            const valid = await verify(...args)
+            signalStarted()
+            await released
+            return valid
+          })()
+          return completion
+        },
+        finish: async () => {
+          release()
+          await completion
+        },
+      }
+    }
+    const initial = createVerificationGate()
+    const peer = createVerificationGate()
+    const unchanged = createVerificationGate()
+    const verification = vi
+      .spyOn(subtle, "verify")
+      .mockImplementationOnce(initial.implementation)
+      .mockImplementationOnce(peer.implementation)
+      .mockImplementationOnce(unchanged.implementation)
+    const drainContinuations = () =>
+      new Promise<void>((resolve) => {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+          channel.port1.close()
+          channel.port2.close()
+          resolve()
+        }
+        channel.port2.postMessage("profile-cache-read-continuations-settled")
+      })
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    try {
+      await act(async () => {
+        await initial.started
+      })
+      expect(view.result.current.user?.id).toBe("noop-bootstrap-first")
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, secondEnvelope)
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: eventKey,
+            newValue:
+              eventKey === PROFILE_CACHE_STORAGE_KEY
+                ? secondEnvelope
+                : String(PROFILE_CACHE_SCHEMA_VERSION),
+            storageArea: localStorage,
+          })
+        )
+        await peer.started
+      })
+      expect(verification).toHaveBeenCalledTimes(2)
+      await act(async () => {
+        await initial.finish()
+        await drainContinuations()
+      })
+      expect(view.result.current.user?.id).toBe("noop-bootstrap-first")
+      await act(async () => {
+        await peer.finish()
+        await drainContinuations()
+      })
+      expect(view.result.current.user).toMatchObject({
+        id: "noop-bootstrap-second",
+        full_name: "Newer cross-tab snapshot",
+      })
+      expect(useAuthStore.getState().user).toEqual(view.result.current.user)
+      expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(secondEnvelope)
+
+      // An already-applied peer snapshot is a true reducer no-op: it must
+      // neither replace the profile nor publish a new current-user revision.
+      const committedUser = view.result.current.user
+      const storedUser = useAuthStore.getState().user
+      const cachedUser = queryClient.getQueryData(currentUserQueryKey)
+      const publishProfile = vi.spyOn(queryClient, "setQueryData")
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: eventKey,
+            newValue:
+              eventKey === PROFILE_CACHE_STORAGE_KEY
+                ? secondEnvelope
+                : String(PROFILE_CACHE_SCHEMA_VERSION),
+            storageArea: localStorage,
+          })
+        )
+        await unchanged.started
+        await unchanged.finish()
+        await drainContinuations()
+      })
+      expect(verification).toHaveBeenCalledTimes(3)
+      expect(view.result.current.user).toBe(committedUser)
+      expect(useAuthStore.getState().user).toBe(storedUser)
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBe(cachedUser)
+      expect(publishProfile).not.toHaveBeenCalled()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(secondEnvelope)
+    } finally {
+      view.unmount()
+      await act(async () => {
+        await Promise.all([initial.finish(), peer.finish(), unchanged.finish()])
+        await drainContinuations()
+      })
+      queryClient.clear()
+    }
+  }
+)

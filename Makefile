@@ -183,18 +183,15 @@ sbom-local:  ## Generate SBOM locally and check for HIGH/CRITICAL CVEs (requires
 	grype sbom:sbom.spdx.json --fail-on high
 	@echo "SBOM scan passed — no HIGH/CRITICAL CVEs."
 
-db-validate:  ## Validate alembic migrations (up → down -1 → up) against test DB
-	@echo "Running migration round-trip on test database..."
+db-validate:  ## Validate the MVP baseline (upgrade head, then schema drift check) against test DB
+	@echo "Running migration validation on test database..."
 	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
 		ENVIRONMENT=test SECRET_KEY=ci-local-key \
 		uv run alembic upgrade head
 	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
 		ENVIRONMENT=test SECRET_KEY=ci-local-key \
-		uv run alembic downgrade -1
-	DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_migration \
-		ENVIRONMENT=test SECRET_KEY=ci-local-key \
-		uv run alembic upgrade head
-	@echo "Migration round-trip complete."
+		uv run alembic check
+	@echo "Migration validation complete. The MVP baseline is irreversible; no downgrade step."
 
 pre-commit-all:  ## Run pre-commit on all files (slow but thorough)
 	pre-commit run --all-files

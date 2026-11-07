@@ -15,9 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
 STAGING_VALUES = CHART / "values-staging.yaml"
 
+# Public TCP/443 is granted only where a public dependency is declared (AUD-189).
 HTTPS_EGRESS_POLICIES = (
     "-backup-policy",
     "-backend-policy",
+)
+# No public 443 by default; owner-declared external endpoints only.
+NO_DEFAULT_HTTPS_EGRESS_POLICIES = (
     "-file-processor-policy",
     "-outbox-worker-policy",
 )
@@ -124,6 +128,86 @@ def test_default_route_private_https_destination_is_rejected() -> None:
         _render_https_egress(
             "--set-json",
             'networkPolicy.httpsEgress.privateCIDRs=["0.0.0.0/0"]',
+        )
+
+    assert "must not be a /0 range" in error.value.stderr
+
+
+def _render_without_declared_external_endpoints(*extra: str) -> list[dict[str, Any]]:
+    # Default-equivalent: no owner-declared CIDRs, in-cluster MinIO, and no
+    # Elasticsearch integration (the chart default is an empty URL).
+    return _render_https_egress(
+        "--set-json",
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=[]",
+        "--set-json",
+        "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs=[]",
+        "--set-string",
+        "fileProcessor.config.minioEndpoint=minio:9000",
+        "--set-string",
+        "backend.config.elasticsearchURL=",
+        *extra,
+    )
+
+
+@pytest.mark.parametrize("suffix", NO_DEFAULT_HTTPS_EGRESS_POLICIES)
+def test_policy_without_declared_external_endpoints_has_no_tcp_443(suffix: str) -> None:
+    policy = _policy(_render_without_declared_external_endpoints(), suffix)
+
+    assert [rule for rule in policy["spec"]["egress"] if _allows_port_443(rule)] == []
+
+
+def test_file_processor_tcp_443_is_limited_to_declared_external_cidrs() -> None:
+    resources = _render_https_egress(
+        "--set-json",
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs="
+        f"{json.dumps([TEST_NET_PRIVATE_CIDR])}",
+    )
+
+    rules = [
+        rule
+        for rule in _policy(resources, "-file-processor-policy")["spec"]["egress"]
+        if _allows_port_443(rule)
+    ]
+
+    assert len(rules) == 1
+    assert [block["cidr"] for block in _ip_blocks(rules[0])] == [TEST_NET_PRIVATE_CIDR]
+    assert all("except" not in block for block in _ip_blocks(rules[0]))
+    assert "0.0.0.0/0" not in json.dumps(rules)
+
+
+def test_outbox_worker_tcp_443_stays_closed_even_with_declared_file_processor_cidrs() -> (
+    None
+):
+    resources = _render_without_declared_external_endpoints(
+        "--set-json",
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs="
+        f"{json.dumps([TEST_NET_PRIVATE_CIDR])}",
+    )
+
+    assert not any(
+        _allows_port_443(rule)
+        for rule in _policy(resources, "-outbox-worker-policy")["spec"]["egress"]
+    )
+
+
+def test_default_route_file_processor_external_cidr_is_rejected() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_https_egress(
+            "--set-json",
+            'networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=["0.0.0.0/0"]',
+        )
+
+    assert "fileProcessorHTTPSEgress" in error.value.stderr
+
+
+def test_template_guard_rejects_file_processor_default_route_without_schema() -> None:
+    # The schema pattern is the first gate; the template guard must also fail
+    # closed when schema validation is skipped.
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_https_egress(
+            "--skip-schema-validation",
+            "--set-json",
+            'networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=["0.0.0.0/0"]',
         )
 
     assert "must not be a /0 range" in error.value.stderr

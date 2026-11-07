@@ -260,15 +260,17 @@ describe("OtpEntry", () => {
     const { rerender } = render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
 
-    expect(inputs[1]).toHaveClass("border-(--glass-border)/(--opacity-dim)")
+    expect(inputs[1]).toHaveClass("border-(--glass-border)/[calc(var(--opacity-dim)*100%)]")
     fireEvent.focus(inputs[0]!)
     expect(inputs[0]).toHaveClass("scale-105")
     fireEvent.change(inputs[0]!, { target: { value: "4" } })
     fireEvent.blur(inputs[0]!)
-    expect(inputs[0]).toHaveClass("border-brand-main/(--opacity-medium)")
+    expect(inputs[0]).toHaveClass("border-brand-main/[calc(var(--opacity-medium)*100%)]")
 
     rerender(<OtpEntry onSubmit={vi.fn()} error="Invalid code" />)
-    await waitFor(() => expect(inputs[0]).toHaveClass("border-(--error-border)/(--opacity-medium)"))
+    await waitFor(() =>
+      expect(inputs[0]).toHaveClass("border-(--error-border)/[calc(var(--opacity-medium)*100%)]")
+    )
     expect(inputs[0]).toHaveAttribute("aria-invalid", "true")
   })
 

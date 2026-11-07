@@ -13,9 +13,13 @@ services:
       dockerfile: backend.Dockerfile
       target: runtime
     env_file:
-      - .env.docker
+      # Names only, resolved from --env-file .env.docker (see the allowlist).
+      - docker-compose.runtime-app.allowlist
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Runtime role ue_app: NOSUPERUSER NOBYPASSRLS, DML only, no bypass membership.
+      # Schema changes run only as ue_migrator; see
+      # infrastructure/postgres-roles/bootstrap-app-roles.sql.
+      DATABASE_URL: "postgresql+asyncpg://ue_app:${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
       # Wave 137 SW4: TrustedHostMiddleware allowlist. Default in dev is
@@ -75,7 +79,12 @@ services:
       # Wave 137 SW1: RS256 private key mount (read-only).
       # start-docker.ps1's New-JwtRs256Key generates ./.secrets/jwt_rs256.pem on host.
       # Backend reads it at startup via jwt_settings.py:202-205 when ALGORITHM=RS256.
-      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
+      - type: bind
+        source: ./.secrets/jwt_rs256.pem
+        target: /app/.secrets/jwt_rs256.pem
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -268,6 +277,7 @@ services:
     environment:
       # Runtime override makes the immutable SSR image portable across networks.
       BACKEND_ORIGIN: "http://backend:8000"
+      JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
     ports:
       - "127.0.0.1:8081:3000"
     networks:
@@ -306,7 +316,9 @@ services:
       # revocation-state URL and password. Workers do not own auth state.
       - .env.docker.workers
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # ue_worker is the only runtime role that is a ue_rls_bypass member: the
+      # schedule-reminder scan reads every tenant's schedule and notifications.
+      DATABASE_URL: "postgresql+asyncpg://ue_worker:${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       APP_PROCESS_ROLE: notifications-worker
@@ -357,7 +369,9 @@ services:
       # leak a revocation credential merely through a broad env_file.
       - .env.docker.workers
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Per-event tenant scope only (app/workers/outbox.py clears bypass), so the
+      # outbox worker runs as ue_app without bypass membership.
+      DATABASE_URL: "postgresql+asyncpg://ue_app:${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       APP_PROCESS_ROLE: outbox-worker
@@ -470,6 +484,50 @@ services:
     # Replace the base stack's one-item sequence instead of appending the
     # same option during an overlay merge (Compose rejects duplicate entries).
     security_opt: !override
+      - no-new-privileges:true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+
+  # Reconcile the login roles that split the runtime from migrations and RLS
+  # bypass. Runs before every migration so fresh and pre-existing volumes
+  # converge. ue_migrator owns the schema; ue_app and ue_worker receive DML only.
+  # See infrastructure/postgres-roles/bootstrap-app-roles.sql.
+  postgres-roles-init:
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      POSTGRES_DB: "${POSTGRES_DB:-university}"
+      UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - run start-docker.ps1}"
+      # SpiceDB and Temporal log in as their own roles (bootstrap-service-roles.sql).
+      UE_SPICEDB_DB_PASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_TEMPORAL_DB_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
+    entrypoint: [ "/bin/sh", "/bootstrap/run-bootstrap.sh" ]
+    volumes:
+      - ./infrastructure/postgres-roles:/bootstrap:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # The service roles take ownership of databases this one-shot creates.
+      postgres-databases-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+      # pgvector declares this image VOLUME even though this one-shot client
+      # only runs psql. Keep the implicit mount disposable and Compose-owned.
+      - /var/lib/postgresql/data
+    security_opt:
       - no-new-privileges:true
     restart: "no"
     deploy:
@@ -656,14 +714,18 @@ services:
       context: .
       dockerfile: backend.Dockerfile
       target: runtime
-    command: alembic upgrade head
+    # Schema changes, then partition maintenance, both as ue_migrator. The runtime
+    # never runs partition DDL; see app/services/partition_manager.py.
+    command: ["sh", "-c", "alembic upgrade head && python -m app.services.partition_manager"]
     # One-shot Alembic has no HTTP server; completion is checked by exit status.
     healthcheck:
       disable: true
     env_file:
-      - .env.docker
+      - docker-compose.runtime-app.allowlist
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Owner role for Alembic only. It is the sole superuser login in the stack
+      # because the baseline creates the non-trusted pgvector extension.
+      DATABASE_URL: "postgresql+asyncpg://ue_migrator:${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       # The irreversible WebAuthn retirement migration tombstones active JTIs
       # before it changes database state; it must use durable security Valkey.
       REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
@@ -672,6 +734,8 @@ services:
         condition: service_healthy
       revocation-redis:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
     networks:
       - internal
       - revocation_net
@@ -681,6 +745,61 @@ services:
           cpus: '0.50'
           memory: 512M
     restart: on-failure
+
+  # Daily partition retention. Runs partition maintenance as ue_migrator, the only
+  # login that may create or drop partitions (app/services/partition_manager.py),
+  # once per day after the schema is ready. One sequential shell loop cannot
+  # overlap itself. A failed run is retried after 15 minutes and logs only the
+  # exit status: the partition manager never prints SQL or connection text.
+  partition-maintenance:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command:
+      - sh
+      - -c
+      - |
+        while :; do
+          if python -m app.services.partition_manager; then
+            echo "[partition-maintenance] Daily run completed."
+            sleep 86400
+          else
+            echo "[partition-maintenance] Run failed; retrying in 900 seconds." >&2
+            sleep 900
+          fi
+        done
+    healthcheck:
+      disable: true
+    env_file:
+      - docker-compose.runtime-app.allowlist
+    environment:
+      # Owner role for partition DDL only; no runtime service receives this login.
+      DATABASE_URL: "postgresql+asyncpg://ue_migrator:${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - revocation_net
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    restart: unless-stopped
 
   nats:
     image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
@@ -791,6 +910,7 @@ services:
       # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
       JWT_AUDIENCE: university-ecosystem-api
+      JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
       # Wave 137 SW1: enable RS256 verification via JWKS hot-reload (MOD-W17-03).
       # Gateway polls backend's /.well-known/jwks.json every JWKS_REFRESH_INTERVAL
       # seconds; atomic public-key swap on rotation. ws-hub already uses JWKS_URL
@@ -944,13 +1064,20 @@ services:
       FP_TEMPORAL_TLS_DISABLED: "true"
       FP_ENVIRONMENT: "${ENVIRONMENT:-development}"
     volumes:
-      # Wave 141 SW4 scaffolding preserved: read-only mount of .secrets/
-      # for the Temporal service token (and any future file-based credentials).
-      # Mirrors the backend credential-file mount. The service token
-      # at .secrets/temporal_api_key is generated by start-docker.ps1's
-      # New-TemporalServiceToken function (W141 SW4 scaffolding); W142+ will
-      # activate the read via setting FP_TEMPORAL_API_KEY_FILE above.
-      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
+      # Mount only the two credential files this service reads. In particular,
+      # the Temporal write token is not exposed to the backend or other peers.
+      - type: bind
+        source: ./.secrets/jwt_rs256.pub.pem
+        target: /app/.secrets/jwt_rs256.pub.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.secrets/temporal_api_key
+        target: /app/.secrets/temporal_api_key
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       nats:
         condition: service_healthy
@@ -1083,11 +1210,14 @@ services:
       - --datastore-engine
       - postgres
       - --datastore-conn-uri
-      - "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      - "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
     environment:
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # ue_spicedb owns the spicedb database only; the superuser is never used.
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1115,7 +1245,7 @@ services:
     command: >-
       serve
       --datastore-engine postgres
-      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      --datastore-conn-uri "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
       --telemetry-endpoint=
       --skip-release-check=true
     # Internal only - accessed by backend services; no host port exposure
@@ -1129,12 +1259,14 @@ services:
       SPICEDB_GRPC_NO_TLS: "true"
       # pgx consumes PGPASSWORD without echoing it in SpiceDB's startup config
       # log or exposing it in the container command line.
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
     networks:
       - internal
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
       postgres-databases-init:
         condition: service_completed_successfully
       spicedb-migrate:
@@ -1173,8 +1305,9 @@ services:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
       SQL_PORT: "5432"
-      SQL_USER: "${POSTGRES_USER:-postgres}"
-      SQL_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # ue_temporal owns the temporal and temporal_visibility databases only.
+      SQL_USER: "ue_temporal"
+      SQL_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
@@ -1189,6 +1322,8 @@ services:
         echo "[temporal-admin-tools] Schema bootstrap complete."
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1256,30 +1391,43 @@ services:
       # envsubst). Custom entrypoint at services/temporal/entrypoint.sh does
       # sed-based substitution of ${POSTGRES_USER} + ${POSTGRES_PWD} before
       # exec'ing temporal-server. POSTGRES_USER + POSTGRES_PWD are passed
-      # through here as the entrypoint's required inputs.
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
-      # The server spans published_ports + internal networks. A hostname lookup returns
-      # only one of those addresses, so binding gRPC to it strands clients on
-      # the other network. Membership still advertises one concrete address.
+      # through here as the entrypoint's required inputs and carry the ue_temporal
+      # login, never the bootstrap superuser.
+      POSTGRES_USER: "ue_temporal"
+      POSTGRES_PWD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
+      # Frontend gRPC 7233, membership 6933, HTTP API 7243, and Prometheus
+      # metrics 8000 bind on attached networks. Frontend RPC and forwarded HTTP
+      # API calls use JWT authorization; metrics has no Temporal JWT auth.
+      # The nine internal listener ports listed in config.yaml stay loopback-only.
       BIND_ON_IP: "0.0.0.0"
+      # Run every Temporal service in this container. internal-frontend (loopback
+      # only, unauthenticated) serves the worker scanner's system client; the
+      # entrypoint rejects any other list.
+      TEMPORAL_SERVICES: "frontend,history,matching,worker,internal-frontend"
+      # AUD-506: JWT signing keys are fetched over TLS from Caddy's internal JWKS
+      # listener; the certificate chains to the root copied by temporal-jwks-ca.
+      TEMPORAL_JWKS_URL: "https://caddy:8443/.well-known/jwks.json"
     entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
       - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
-      # Defensive .secrets/ mount for any future file-based key import. The
-      # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
-      # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
-      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
+      # Public root of Caddy's internal CA for the JWKS listener (AUD-506).
+      - temporal-jwks-ca:/etc/temporal/jwks-ca:ro
     depends_on:
       # The JWT key provider fetches JWKS during Temporal startup. Starting
       # before backend is ready leaves an empty key cache and rejects the first
       # authenticated SDK connections until its background refresh runs.
       backend:
         condition: service_healthy
+      caddy:
+        condition: service_started
       postgres:
         condition: service_healthy
       temporal-admin-tools:
+        condition: service_completed_successfully
+      postgres-roles-init:
+        condition: service_completed_successfully
+      temporal-jwks-ca:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1287,14 +1435,14 @@ services:
       # intentionally suppresses published ports on internal-only networks.
       - published_ports
     healthcheck:
-      # W144 SW2 NEW (z) #19: `temporalio/server:1.30.2` image ships only
+      # W144 SW2 NEW (z) #19: `temporalio/server:1.30.7` image ships only
       # `temporal-server` binary (no `temporal` CLI, no `grpc_health_probe`),
       # and busybox sh lacks /dev/tcp + busybox `nc -z` returns spurious
       # non-zero exit codes even when the port is listening (W142 (z) #9
       # repeat). gRPC port 7233 is bound to the container IP (not 127.0.0.1)
-      # so wget against localhost fails too. Workaround: probe Prometheus
-      # metrics endpoint which IS bound on 0.0.0.0:8000 and responds with
-      # metrics text when the server is healthy.
+      # so wget against localhost fails too. Probe Prometheus metrics on
+      # 0.0.0.0:8000; it has no Temporal JWT auth and is bridge-reachable. Use
+      # 127.0.0.1 here to keep the health check container-local.
       test: [ "CMD-SHELL", "wget -q --spider --timeout=3 http://127.0.0.1:8000/metrics || exit 1" ]
       interval: 10s
       timeout: 5s
@@ -1307,66 +1455,89 @@ services:
           memory: 1G
     restart: unless-stopped
 
-  # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
+  # ─── Temporal JWKS trust anchor (AUD-506) ─────────────────────────────────
   #
-  # One-shot sidecar that registers the `default` namespace via the
-  # `temporal operator namespace create` CLI. Required because plain
-  # `temporalio/server:1.30.2` does NOT auto-create namespaces (unlike
-  # `temporalio/auto-setup` which does so via env vars).
-  #
-  # `default` namespace is what the file-processor Go client connects to
-  # (default value in Temporal SDK is "default" if not specified).
-  #
-  # `restart: "no"` — one-shot. Once namespace exists, exit 0.
-  # `--retention 1` — 1-day workflow history retention (dev-sized).
-  temporal-namespace-init:
+  # Copies only the public root certificate of Caddy's internal CA into a volume
+  # that Temporal mounts read-only. Temporal never mounts caddy-data, which also
+  # stores the CA private key. The copy runs once Caddy has issued its root.
+  temporal-jwks-ca:
     image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
-    environment:
-      # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
-      # the v2 `temporal` CLI uses `TEMPORAL_ADDRESS` (no _CLI infix). Set
-      # both for cross-version compatibility + pass --address explicitly to
-      # eliminate any env-var-precedence ambiguity.
-      TEMPORAL_CLI_ADDRESS: "temporal:7233"
-      TEMPORAL_ADDRESS: "temporal:7233"
-    entrypoint: [ "/bin/sh", "-c" ]
+    network_mode: none
+    # Caddy stores the public root under owner-only PKI directories. This
+    # isolated one-shot needs read/search permission, not write access there.
+    user: "0:0"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["DAC_READ_SEARCH"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         set -eu
-        echo "[temporal-namespace-init] Waiting for the frontend RPC..."
-        ready=false
-        for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-          if temporal operator cluster health --address temporal:7233 --command-timeout 5s >/dev/null 2>&1; then
-            ready=true
-            break
+        src=/caddy-data/caddy/pki/authorities/local/root.crt
+        tries=0
+        until [ -s "$$src" ]; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -gt 120 ]; then
+            echo "[temporal-jwks-ca] Caddy did not issue its local root certificate" >&2
+            exit 1
           fi
-          echo "[temporal-namespace-init] health attempt $$i: waiting 3s..."
-          sleep 3
+          sleep 1
         done
-        if [ "$$ready" != "true" ]; then
-          echo "[temporal-namespace-init] FAILED: frontend RPC did not become healthy."
-          exit 1
-        fi
+        cp "$$src" /out/root.crt
+        chmod 0644 /out/root.crt
+        echo "[temporal-jwks-ca] JWKS trust anchor copied."
+    depends_on:
+      caddy:
+        condition: service_started
+    volumes:
+      - caddy-data:/caddy-data:ro
+      - temporal-jwks-ca:/out
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
 
-        # Give the namespace registry a short stabilization window to load
-        # records from persistent PostgreSQL before interpreting NotFound as a
-        # genuinely new installation. This prevents duplicate-key DB errors.
-        echo "[temporal-namespace-init] RPC healthy; namespace registry stabilization..."
-        sleep 5
-        for i in 1 2 3; do
-          if temporal operator namespace describe --address temporal:7233 --namespace default >/dev/null 2>&1; then
-            echo "[temporal-namespace-init] Default namespace already exists."
-            exit 0
-          fi
-          sleep 2
-        done
-        echo "[temporal-namespace-init] Registering 'default' namespace..."
-        temporal operator namespace create --address temporal:7233 --namespace default --retention 24h
-        echo "[temporal-namespace-init] Default namespace registered."
+  # ─── Authenticated Temporal namespace init ────────────────────────────────
+  # The owned launcher leases a short-lived admin profile and runs this pinned
+  # initializer only after inspecting its exact read-only mounts and image.
+  # Direct Compose startup without those private files fails closed.
+  temporal-namespace-init:
+    image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
+    user: "1000:1000"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    network_mode: service:temporal
+    entrypoint: ["/bin/sh", "/etc/temporal/namespace-init.sh"]
+    command: []
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev
+      - /run/temporal-bootstrap-runtime:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev
+    volumes:
+      - type: bind
+        source: ./scripts/temporal/namespace-init.sh
+        target: /etc/temporal/namespace-init.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.temporal-bootstrap/profile.toml
+        target: /run/temporal-bootstrap/profile.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.secrets/temporal_api_key
+        target: /run/temporal-worker/token
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       temporal:
         condition: service_healthy
-    networks:
-      - internal
     restart: "no"
     deploy:
       resources:
@@ -1703,6 +1874,8 @@ services:
       - "443:443"
     volumes:
       - ./infrastructure/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy's local CA. temporal-jwks-ca copies only its public root (AUD-506).
+      - caddy-data:/data
     depends_on:
       backend:
         condition: service_healthy
@@ -1717,6 +1890,8 @@ services:
     networks:
       - public
       - frontend_net
+      # Temporal reaches the internal JWKS listener (caddy:8443) on this network.
+      - internal
     deploy:
       resources:
         limits:
@@ -1741,6 +1916,10 @@ volumes:
   static-data:
   seaweedfs_data:
   nats-data:
+  # Caddy's local CA state. Only the one-shot temporal-jwks-ca reads it (AUD-506).
+  caddy-data:
+  # Public root certificate of Caddy's internal CA, read-only for Temporal.
+  temporal-jwks-ca:
   elasticsearch-data:
   tempo-data:
   loki-data:

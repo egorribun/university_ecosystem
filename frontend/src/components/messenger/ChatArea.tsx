@@ -258,7 +258,7 @@ export const ChatArea = memo(function ChatArea({
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                       onClick={handleBackToChats}
                       aria-label={t("messenger:backToChats")}
-                      className="-ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                      className="-ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
                     </m.button>
@@ -346,7 +346,7 @@ export const ChatArea = memo(function ChatArea({
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                    className="min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </m.button>
@@ -361,7 +361,7 @@ export const ChatArea = memo(function ChatArea({
                         "min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)",
                         showChatMenu
                           ? "bg-(--bg-surface-hover)"
-                          : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                          : "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                       )}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
@@ -386,7 +386,7 @@ export const ChatArea = memo(function ChatArea({
                               key={item.id}
                               type="button"
                               onClick={item.action}
-                              className="flex min-h-[44px] min-w-[44px] w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
+                              className="flex min-h-[44px] min-w-[44px] w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                             >
                               <item.icon className={`h-5 w-5 ${item.color}`} aria-hidden="true" />
                               <span className="text-sm font-medium">{item.label}</span>
@@ -404,7 +404,7 @@ export const ChatArea = memo(function ChatArea({
                 initial={prefersReducedMotion ? false : { y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { y: -20, opacity: 0 }}
-                className="sticky top-0 z-deep flex h-(--navbar-h-base) shrink-0 items-center bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
+                className="sticky top-0 z-deep flex h-(--navbar-h-base) shrink-0 items-center bg-surface/[calc(var(--opacity-medium)*100%)] px-(--spacing-4) backdrop-blur-xl"
               >
                 <m.button
                   type="button"
@@ -413,7 +413,7 @@ export const ChatArea = memo(function ChatArea({
                     setShowSearchInChat(false)
                     setSearchQuery("")
                   }}
-                  className="mr-3 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                  className="mr-3 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   aria-label={t("common:buttons.close")}
                 >
                   <X className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
@@ -429,7 +429,7 @@ export const ChatArea = memo(function ChatArea({
                   spellCheck="false"
                   placeholder={t("messenger:searchMessages")}
                   aria-label={t("messenger:searchMessages")}
-                  className="matte-input text-md flex-1 rounded-md border-none px-4 py-2.5 outline-none transition-all focus-visible:ring-2 focus-visible:ring-(--color-violet-500)/(--opacity-medium)"
+                  className="matte-input text-md flex-1 rounded-md border-none px-4 py-2.5 outline-none transition-all focus-visible:ring-2 focus-visible:ring-(--color-violet-500)/[calc(var(--opacity-medium)*100%)]"
                 />
               </m.div>
             )}

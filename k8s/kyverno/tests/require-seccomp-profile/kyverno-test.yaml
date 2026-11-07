@@ -16,3 +16,7 @@ results:
     resources: [university-ecosystem/seccomp-pod]
     kind: Pod
     result: fail
+  - policy: require-seccomp-profile
+    resources: [university-ecosystem/unconfined-pod]
+    kind: Pod
+    result: fail

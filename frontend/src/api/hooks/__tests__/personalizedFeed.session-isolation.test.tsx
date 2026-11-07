@@ -25,7 +25,10 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   allEventsApiV1EventsGet: requests.events,
   myEventsApiV1EventsMyGet: vi.fn(),
 }))
-vi.mock("@/api/news", () => ({ fetchNewsItem: vi.fn() }))
+vi.mock("@/api/news", () => ({
+  fetchNewsItem: vi.fn(),
+  parseNewsList: (data: unknown) => data as NewsItem[],
+}))
 vi.mock("@/hooks/auth/useProfileSync", () => ({ fetchCurrentUser: vi.fn() }))
 vi.mock("@/push/subscribe", () => ({
   hasPushConsent: () => false,
@@ -273,9 +276,13 @@ describe("personalized list cache isolation", () => {
     window.localStorage.setItem("news:list:en", JSON.stringify([newsItem(true)]))
     requests.news.mockResolvedValueOnce({ status: 304, data: undefined })
     const { result } = renderHook(() => useNewsListQuery({ language: "en" }), createWrapper())
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.isSuccess).toBe(false)
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.pagination).toBeNull()
     expect(result.current.news).toEqual([])
-    expect(window.localStorage.getItem("news:list:account:account-a:en")).toBe("[]")
+    expect(window.localStorage.getItem("news:list:account:account-a:en")).toBeNull()
+    expect(window.localStorage.getItem("news:list:en")).toBe(JSON.stringify([newsItem(true)]))
   })
 
   it.each([null, "ssr-stub", "-1", "lhci-preview", "account-a"])(

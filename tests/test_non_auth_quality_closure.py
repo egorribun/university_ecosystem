@@ -598,6 +598,8 @@ def _settings_values() -> dict[str, object]:
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
         "revocation_redis_url": "redis://revocation.internal:6380/0",
+        "rate_limit_storage_backend": "redis",
+        "rate_limit_storage_uri": "redis://localhost",
         # Keep unrelated production guards valid so these cases reach the CWV
         # validation paths under test. All credentials are ephemeral test keys.
         "smtp_host": "relay.aud471.invalid",
@@ -608,6 +610,9 @@ def _settings_values() -> dict[str, object]:
         "elasticsearch_password": secrets.token_urlsafe(32),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        # AUD-164 explicit API peers and AUD-490 idempotency HMAC key.
+        "trusted_proxies": "10.0.0.0/8",
+        "idempotency_hmac_secret": secrets.token_urlsafe(32),
         "spotify_token_secret": spotify_key,
         "mfa_totp_encryption_keys": f"cwv-test:{totp_key}",
         "mfa_totp_active_encryption_key_id": "cwv-test",
@@ -679,6 +684,7 @@ def test_settings_reject_every_partial_cwv_trust_binding(
 
 def test_cwv_validator_rejects_non_staging_environment_after_other_guards() -> None:
     configured = Settings(**_settings_values())
+    assert configured.rate_limit_storage_backend == "redis"
     configured.environment = "production"
     with pytest.raises(ValueError, match="staging environment"):
         configured._validate_cwv_rum_settings()
@@ -799,6 +805,25 @@ def _scalar_rows(rows: list[object]) -> MagicMock:
     return result
 
 
+def _claimed(*pairs: tuple[object, object]) -> MagicMock:
+    """Result of the AUD-272 claim insert: the (notification, subscription) pairs it won."""
+    result = MagicMock()
+    result.all.return_value = list(pairs)
+    return result
+
+
+def _session(side_effect: object) -> MagicMock:
+    """Session double on PostgreSQL, so the AUD-272 claim takes its production branch."""
+    bind = MagicMock()
+    bind.dialect.name = "postgresql"
+    return MagicMock(
+        execute=AsyncMock(side_effect=side_effect),
+        flush=AsyncMock(),
+        commit=AsyncMock(),
+        get_bind=MagicMock(return_value=bind),
+    )
+
+
 def _notification(user_id: UUID) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
@@ -826,6 +851,7 @@ async def test_notification_redelivery_handles_users_without_subscriptions(
             side_effect=[_scalar_rows([_notification(user_id)]), _scalar_rows([])]
         ),
         flush=AsyncMock(),
+        commit=AsyncMock(),
     )
     assert (
         await delivery.redeliver_notifications(db, notification_ids=[uuid4()])
@@ -852,6 +878,7 @@ async def test_notification_redelivery_skips_null_journal_and_unsupported_topic(
             ]
         ),
         flush=AsyncMock(),
+        commit=AsyncMock(),
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: False)
@@ -877,16 +904,14 @@ async def test_notification_redelivery_applies_user_quiet_hours_to_payload(
     subscription.user = SimpleNamespace(
         preferences=SimpleNamespace(dnd_enabled=True, dnd_start=None, dnd_end=None)
     )
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _scalar_rows([notification]),
-                _scalar_rows([subscription]),
-                _scalar_rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _scalar_rows([notification]),
+            _scalar_rows([subscription]),
+            _scalar_rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+        ]
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
@@ -936,16 +961,15 @@ async def test_notification_redelivery_records_provider_exceptions(
         detail="old",
     )
     journal = [prior] if with_prior else []
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _scalar_rows([notification]),
-                _scalar_rows([subscription]),
-                _scalar_rows(journal),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _scalar_rows([notification]),
+            _scalar_rows([subscription]),
+            _scalar_rows(journal),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)

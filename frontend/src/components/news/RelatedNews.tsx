@@ -49,7 +49,7 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
       params={{ id: item.id }}
       className={cn(
         "group flex flex-col rounded-xl overflow-hidden card-matte glass-noise",
-        "border border-glass-border/(--opacity-soft)",
+        "border border-glass-border/[calc(var(--opacity-soft)*100%)]",
         "transition-all duration-base hover:shadow-premium-lift hover:-translate-y-1"
       )}
     >
@@ -63,8 +63,8 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
             className="h-full w-full object-cover transition-transform duration-slower group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-brand/(--opacity-subtle) to-transparent">
-            <ArrowUpRight size={24} className="text-brand/(--opacity-medium)" />
+          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-brand/[calc(var(--opacity-subtle)*100%)] to-transparent">
+            <ArrowUpRight size={24} className="text-brand/[calc(var(--opacity-medium)*100%)]" />
           </div>
         )}
         {/* Category badge */}

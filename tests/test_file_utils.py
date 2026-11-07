@@ -349,18 +349,23 @@ async def test_save_attachment_invalid_size_limit():
 
     from fastapi import UploadFile
 
-    from app.utils.files import save_attachment
+    from app.utils.files import save_attachment, settings
 
+    payload = b"%PDF-1.4"
     upload = UploadFile(
         filename="test.pdf",
-        file=io.BytesIO(b"%PDF-1.4"),
+        file=io.BytesIO(payload),
         headers={"content-type": "application/pdf"},
     )
     mock_backend = AsyncMock()
-    mock_backend.save_file.return_value = "http://test/file.pdf"
+    expected_url = "http://test/file.pdf"
+    mock_backend.save_file.return_value = expected_url
 
-    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
-        await save_attachment(
+    with (
+        patch("app.utils.files._get_storage_backend", return_value=mock_backend),
+        patch.object(settings, "event_file_max_size_bytes", len(payload)),
+    ):
+        result = await save_attachment(
             upload,
             "dir",
             "prefix",
@@ -368,6 +373,13 @@ async def test_save_attachment_invalid_size_limit():
             allowed_mime_types={"application/pdf"},
             allowed_extensions={"pdf"},
         )
+    assert result == expected_url
+    mock_backend.save_file.assert_awaited_once()
+    saved_path, saved_data = mock_backend.save_file.await_args.args
+    assert saved_path.startswith("dir/prefix_")
+    assert saved_path.endswith(".pdf")
+    assert saved_data == payload
+    assert mock_backend.save_file.await_args.kwargs["content_type"] == "application/pdf"
 
 
 @pytest.mark.asyncio

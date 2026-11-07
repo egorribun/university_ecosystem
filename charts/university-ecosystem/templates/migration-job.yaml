@@ -1,10 +1,12 @@
 {{- if .Values.migrations.enabled }}
 {{- $connectionSecret := required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret -}}
+{{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
 {{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
 {{- $connectionSecretKeys := list
-  (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey)
+  (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey)
   (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
   (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+  $rateLimitURIKey
   (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
 -}}
 {{- $applicationSecretKeys := list
@@ -16,6 +18,7 @@
   "spicedb-preshared-key"
   "spotify-token-secret"
   "token-hmac-secret"
+  "idempotency-hmac-secret"
   (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys)
 -}}
 apiVersion: batch/v1
@@ -61,10 +64,16 @@ spec:
         - name: migrate
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
+          # Schema changes, then partition maintenance, both as the schema owner.
+          command: ["sh", "-c", "alembic upgrade head && python -m app.services.partition_manager"]
           env:
+            - name: RATE_LIMIT_STORAGE_BACKEND
+              value: "redis"
+            - name: RATE_LIMIT_STORAGE_URI_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret $rateLimitURIKey | quote }}
+            # Schema owner login. The runtime database-url key is never projected here.
             - name: DATABASE_URL_FILE
-              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey) | quote }}
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey) | quote }}
             # Contract retirement may revoke already-issued bearer JTIs before
             # altering their database rows. This must target the dedicated,
             # persistent noeviction datastore, never the cache Redis instance.
@@ -81,6 +90,10 @@ spec:
               value: "true"
             - name: ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
+            # Shared Settings validation requires the same gateway and edge peers as
+            # the serving backend in staging and production.
+            - name: TRUSTED_PROXIES
+              value: {{ join "," .Values.backend.config.trustedProxies | quote }}
             - name: MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID
               value: {{ .Values.backend.config.mfaTotpActiveEncryptionKeyId | quote }}
             - name: EVENT_FILE_SCANNER_ENABLED
@@ -94,8 +107,9 @@ spec:
             - name: SECRET_KEY_FILE
               value: {{ printf "/run/secrets/%s/%s" $applicationSecret "jwt-secret" | quote }}
             # The shared settings validators require these secret values in
-            # staging/production before Alembic can initialize.
-            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
+            # staging/production before Alembic can initialize. Idempotency
+            # keys use the same production validator as the serving processes.
+            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
             - name: {{ printf "%s_FILE" $variable }}
               value: {{ printf "/run/secrets/%s/%s" $applicationSecret $key | quote }}
             {{- end }}

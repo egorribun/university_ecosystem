@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pyotp
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -16,10 +17,16 @@ import app.services.auth_service as auth_service_module
 import app.services.session_cleanup as cleanup_module
 from app.auth.constants import CHALLENGE_TYPE_TOTP_VERIFY, MFA_METHOD_TOTP
 from app.auth.mfa.challenge import consume_challenge, issue_challenge
+from app.auth.mfa.totp import (
+    complete_totp_enrollment,
+    create_totp_secret,
+    start_totp_enrollment,
+)
 from app.models import (
     ActiveSession,
     ChallengeState,
     MfaChallenge,
+    MfaTotpEnrollment,
     PasswordResetToken,
     TrustedDevice,
 )
@@ -90,9 +97,36 @@ async def test_password_reset_rotates_epoch_and_revokes_db_redis_mfa_state(
         expires_at=now + timedelta(days=7),
         mfa_epoch=4,
     )
-    db_session.add_all([reset, first_session, second_session, challenge, trusted])
+    pending_secret = create_totp_secret()
+    pending_enrollment = MfaTotpEnrollment(
+        user_id=user_id,
+        secret=pending_secret,
+        label="pending reset proof",
+        is_active=False,
+    )
+    confirmed_at = now - timedelta(days=1)
+    confirmed_enrollment = MfaTotpEnrollment(
+        user_id=user_id,
+        secret=create_totp_secret(),
+        label="confirmed reset proof",
+        is_active=True,
+        confirmed_at=confirmed_at,
+    )
+    db_session.add_all(
+        [
+            reset,
+            first_session,
+            second_session,
+            challenge,
+            trusted,
+            pending_enrollment,
+            confirmed_enrollment,
+        ]
+    )
     await db_session.flush()
     reset_id = reset.id
+    pending_enrollment_id = pending_enrollment.id
+    confirmed_enrollment_id = confirmed_enrollment.id
     await db_session.commit()
 
     revoked_jtis: list[str] = []
@@ -162,6 +196,56 @@ async def test_password_reset_rotates_epoch_and_revokes_db_redis_mfa_state(
     persisted_reset = await db_session.get(PasswordResetToken, reset_id)
     assert persisted_reset is not None and persisted_reset.used is True
 
+    # Reset removes the attacker-seedable pending setup while preserving the
+    # user's already confirmed second factor. A stale id cannot be confirmed,
+    # and a new setup receives a new row and seed.
+    stale_pending = MfaTotpEnrollment(
+        id=pending_enrollment_id,
+        user_id=user_id,
+        secret=pending_secret,
+        label="stale pending proof",
+        is_active=False,
+    )
+    persisted_confirmed = await db_session.get(
+        MfaTotpEnrollment, confirmed_enrollment_id
+    )
+    assert persisted_confirmed is not None
+    assert persisted_confirmed.is_active is True
+    assert persisted_confirmed.confirmed_at is not None
+    assert persisted_confirmed.confirmed_at.replace(tzinfo=UTC) == confirmed_at
+    assert persisted_confirmed.revoked_at is None
+
+    with pytest.raises(HTTPException) as stale_confirmation:
+        await complete_totp_enrollment(
+            db_session,
+            enrollment=stale_pending,
+            code=pyotp.TOTP(pending_secret).now(),
+        )
+    assert stale_confirmation.value.status_code == 400
+    assert stale_confirmation.value.detail == "No multi-factor enrollment found"
+    assert await db_session.get(MfaTotpEnrollment, pending_enrollment_id) is None
+
+    # Stale-ID rejection happens before the active-factor cap. Revoke the
+    # already-asserted confirmed factor only in this fixture to free the cap
+    # for the fresh enrollment below.
+    persisted_confirmed.is_active = False
+    persisted_confirmed.revoked_at = now
+    await db_session.flush()
+
+    fresh_pending, fresh_secret, _ = await start_totp_enrollment(
+        db_session, user=refreshed_user, reuse_existing=True
+    )
+    assert fresh_pending.id != pending_enrollment_id
+    assert fresh_secret != pending_secret
+    completed_fresh = await complete_totp_enrollment(
+        db_session,
+        enrollment=fresh_pending,
+        code=pyotp.TOTP(fresh_secret).now(),
+    )
+    assert completed_fresh.id == fresh_pending.id
+    assert completed_fresh.is_active is True
+    assert completed_fresh.confirmed_at is not None
+
 
 @pytest.mark.asyncio
 async def test_password_reset_redis_failure_rolls_back_password_epoch_and_sessions(
@@ -177,10 +261,17 @@ async def test_password_reset_redis_failure_rolls_back_password_epoch_and_sessio
         used=False,
     )
     session = _session(user_id, "rollback-session")
-    db_session.add_all([reset, session])
+    pending = MfaTotpEnrollment(
+        user_id=user_id,
+        secret=create_totp_secret(),
+        label="rollback pending proof",
+        is_active=False,
+    )
+    db_session.add_all([reset, session, pending])
     await db_session.flush()
     reset_id = reset.id
     session_id = session.id
+    pending_id = pending.id
     await db_session.commit()
 
     class FailingBackend:
@@ -221,6 +312,10 @@ async def test_password_reset_redis_failure_rolls_back_password_epoch_and_sessio
     assert persisted_user.mfa_epoch == 2
     assert persisted_session is not None and persisted_session.revoked_at is None
     assert persisted_reset is not None and persisted_reset.used is False
+    persisted_pending = await db_session.get(MfaTotpEnrollment, pending_id)
+    assert persisted_pending is not None
+    assert persisted_pending.confirmed_at is None
+    assert persisted_pending.revoked_at is None
 
 
 @pytest.mark.asyncio

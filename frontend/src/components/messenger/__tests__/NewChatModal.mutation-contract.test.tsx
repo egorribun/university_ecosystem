@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("@/api/client")
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -94,7 +96,7 @@ vi.mock("@/hooks/useDebounced", () => ({
   },
 }))
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     default: { ...actual.default, get: state.get },
@@ -158,7 +160,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(overlay).toHaveClass("fixed", "inset-0", "z-modal", "p-4")
     await waitFor(() => expect(document.body).not.toHaveClass("blurred"))
     expect(container.querySelector(".absolute.inset-0")).toHaveClass(
-      "bg-black/(--opacity-strong)",
+      "bg-black/[calc(var(--opacity-strong)*100%)]",
       "backdrop-blur-md",
       "cursor-default"
     )
@@ -532,9 +534,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
     expect(alert.querySelector("h4")).toHaveTextContent("messenger:error.failedToLoadUsers")
     expect(alert).toHaveTextContent("messenger:error.failedToLoadUsersHint")
-    expect(alert.querySelector(".messenger-card-matte")).toHaveStyle({
-      background: "var(--messenger-card-bg)",
-    })
+    expectInlineBackground(alert.querySelector(".messenger-card-matte"), "var(--messenger-card-bg)")
     expect(alert.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
     const retry = screen.getByRole("button", { name: "messenger:error.retry" })
     expect(attr(retry, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.04 }))

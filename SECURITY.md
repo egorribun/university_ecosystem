@@ -11,7 +11,7 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 ## 🔒 Password Hashing & Authentication Architecture
 
 - **Algorithm**: Password hashing relies **exclusively on Argon2id** (`argon2-cffi` `PasswordHasher`: time cost 3, memory 32 MiB, parallelism 4; `app/auth/security.py`).
-- **Legacy Verification Removed**: Bcrypt verification has been completely removed (TD-21-04). All accounts use Argon2id.
+- **Legacy Verification Removed**: Bcrypt verification has been removed (TD-21-04). The current password verifier accepts Argon2id hashes only; this describes verifier behavior and does not assert that every deployed account record has been inventoried or migrated.
 - **Argon2 Concurrency Cap**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads), and a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process, so peak hashing memory stays bounded at 32 MiB per admitted hash (PERF-02, PERF-24-04).
 - **MFA Factors**: Interactive MFA uses **TOTP** or a six-digit **email OTP**; single-use **recovery codes** remain available only as an emergency recovery factor.
 - **Factor Migration Safety**: Legacy hardware-key-only accounts are never migrated silently. A migration preflight selects an existing TOTP factor or a verified-email OTP path and blocks accounts without either path until controlled remediation is complete.
@@ -34,7 +34,7 @@ If you discover a vulnerability, do not publish technical details in an issue, p
   - Go `ws-hub` subscribes to `keys.rotated` NATS subject for instant JWKS pre-warming (RZ-21-05).
 - **Rate Limiting & Circuit Breakers**:
   - `RedisCircuitBreaker` in `app/core/ratelimit/circuit_breaker.py` operates a 3-state machine with exponential backoff (PERF-30-01).
-  - Go Gateway provides 2-tier rate limiting fallback (3 req/60s per instance on double Redis+memory failure, failing closed with 503).
+  - When rate-limit Redis is unavailable, the Go Gateway falls back to an in-memory limit of 3 requests per client key per 60-second window per process instance; excess requests receive HTTP 429. On non-exempt requests, the Gateway applies a client-IP front-door bucket; after JWT validation, authenticated requests also consume a separate verified user-ID bucket. This is a bounded local fallback, not a shared limit.
 - **Cross-Service Session Revocation**:
   - Backend revocation producers, Go Gateway, and `ws-hub` share the durable `revoked:jti:{jti}` namespace through `REVOCATION_REDIS_URL`. It is a dedicated AOF-backed, persistent, `noeviction` Redis/Valkey process; cache and rate-limit stores are never reused for authentication decisions.
   - Tombstones are written before cached session deletion; write failures propagate, and credential consumers fail closed when the revocation store is unavailable.
@@ -58,8 +58,8 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 - **SSRF Protection**: `validate_url_not_internal()` blocks internal IP ranges and unauthorized internal domain callbacks (`app/core/ssrf.py`).
 - **HTTP Security Headers**:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
-  - `Content-Security-Policy`: strict per-response nonces (`nonce-...`), framing disabled (`frame-ancestors 'none'`).
-  - `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
+  - The built-in production `Content-Security-Policy` uses per-response nonces and `frame-ancestors 'self'`; `X-Frame-Options` defaults to `DENY`.
+  - `Cross-Origin-Opener-Policy` defaults to `same-origin`. `Cross-Origin-Embedder-Policy` is disabled by default and uses `require-corp` when enabled.
 - **Valkey / Redis Eviction Policy**: Application cache uses `volatile-lru` (RZ-21-02). Revocation security state is deliberately isolated in a durable `noeviction` process, so cache pressure cannot resurrect a revoked JWT.
 
 ---

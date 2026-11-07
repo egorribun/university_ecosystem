@@ -34,9 +34,7 @@ async def test_broadcast_to_chat_mirrors_frame_to_nats() -> None:
     }
 
     with (
-        patch.object(
-            cm, "_get_chat_participants_cached", new=AsyncMock(return_value=[])
-        ),
+        patch.object(cm, "_get_chat_participants", new=AsyncMock(return_value=[])),
         patch("app.core.nats_broker.broker.publish_core", new=AsyncMock()) as mock_pub,
     ):
         sent = await cm.broadcast_to_chat(chat_id, frame)
@@ -64,9 +62,7 @@ async def test_broadcast_to_chat_mirror_failure_does_not_break_return() -> None:
     }
 
     with (
-        patch.object(
-            cm, "_get_chat_participants_cached", new=AsyncMock(return_value=[])
-        ),
+        patch.object(cm, "_get_chat_participants", new=AsyncMock(return_value=[])),
         patch(
             "app.core.nats_broker.broker.publish_core",
             new=AsyncMock(side_effect=ConnectionError("nats down")),

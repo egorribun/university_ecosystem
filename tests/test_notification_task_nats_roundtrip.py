@@ -10,9 +10,11 @@ import pytest
 from sqlalchemy import select
 
 from app.core.nats_broker import NatsTaskBroker, _NatsTaskPayload, broker
-from app.models import Event, News, NewsComment, Notification, User
+from app.models import Event, News, NewsComment, Notification, Tenant, User
 from app.services.notifications import delivery as notification_delivery
 from app.tasks import notifications as notification_tasks
+
+_TASK_TENANT_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
 TASK_CASES = [
     (
@@ -53,14 +55,14 @@ async def test_uuid_notification_ids_round_trip_through_nats_task_payload(
     broker._js = jetstream
     task_name = f"{task.__module__}.{task.__name__}"
 
-    await broker.enqueue(task_name, *task_ids, locale="en")
+    await broker.enqueue(task_name, *task_ids, locale="en", tenant_id=_TASK_TENANT_ID)
 
     published_subject, published_body = jetstream.publish.await_args.args[:2]
     payload = _NatsTaskPayload.model_validate(json.loads(published_body))
     assert published_subject == f"tasks.{task_name}"
     assert payload.name == task_name
     assert payload.args == [str(task_id) for task_id in task_ids]
-    assert payload.kwargs == {"locale": "en"}
+    assert payload.kwargs == {"locale": "en", "tenant_id": str(_TASK_TENANT_ID)}
 
     loaded_rows = [MagicMock() for _ in model_types]
     db = AsyncMock()
@@ -110,7 +112,7 @@ async def test_notification_task_preserves_legacy_integer_ids(
     notify = AsyncMock()
     monkeypatch.setattr(notification_tasks, notify_name, notify)
 
-    await task(*legacy_ids, locale="en")
+    await task(*legacy_ids, locale="en", tenant_id=_TASK_TENANT_ID)
 
     assert db.get.await_args_list == [
         call(model_type, uuid.UUID(int=legacy_id))
@@ -150,7 +152,12 @@ async def test_nats_task_enqueue_still_rejects_unsupported_payload_objects() -> 
 async def test_event_notification_round_trip_persists_in_database(
     db_session, user_factory, monkeypatch
 ) -> None:
-    author = await user_factory()
+    tenant = Tenant(name="Queue round-trip tenant", slug=f"queue-{uuid.uuid4().hex}")
+    db_session.add(tenant)
+    await db_session.commit()
+
+    author = await user_factory(tenant_id=tenant.id)
+    assert author.tenant_id == tenant.id
     now = datetime.now(UTC)
     event = Event(
         title="Queue round-trip",
@@ -170,13 +177,16 @@ async def test_event_notification_round_trip_persists_in_database(
     )
     monkeypatch.setattr(notification_delivery, "_is_push_configured", lambda: False)
 
-    await notification_tasks.enqueue_event_notification_task.kick(event.id, locale="en")
+    await notification_tasks.enqueue_event_notification_task.kick(
+        event.id, locale="en", tenant_id=tenant.id
+    )
 
     published_subject, published_body = jetstream.publish.await_args.args[:2]
     payload = _NatsTaskPayload.model_validate(json.loads(published_body))
     assert published_subject == f"tasks.{payload.name}"
     assert payload.name == ("app.tasks.notifications.enqueue_event_notification_task")
     assert payload.args == [str(event.id)]
+    assert payload.kwargs == {"locale": "en", "tenant_id": str(tenant.id)}
 
     await notification_tasks.enqueue_event_notification_task(
         *payload.args, **payload.kwargs

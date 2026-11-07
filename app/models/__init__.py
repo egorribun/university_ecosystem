@@ -1,4 +1,4 @@
-from app.core.database import Base as Base
+from app.core.db.base import Base as Base
 from app.models.auth import (
     ActiveSession as ActiveSession,
 )
@@ -47,6 +47,7 @@ from app.models.chat import (
 from app.models.chat import (
     MessageReaction as MessageReaction,
 )
+from app.models.chat_send_receipt import ChatSendReceipt as ChatSendReceipt
 from app.models.cwv import CwvObservation as CwvObservation
 from app.models.dead_letter import (
     DeadLetterJob as DeadLetterJob,
@@ -85,6 +86,9 @@ from app.models.notifications import (
 )
 from app.models.notifications import (
     NotificationDelivery as NotificationDelivery,
+)
+from app.models.notifications import (
+    NotificationDeliveryOnce as NotificationDeliveryOnce,
 )
 from app.models.notifications import (
     NotificationQueueJob as NotificationQueueJob,

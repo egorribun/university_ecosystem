@@ -72,7 +72,8 @@
     "topics": {
       "legend": "Notification topics",
       "hint": "Choose what push notifications are about. Your choice applies to all your devices.",
-      "disabledHint": "Your topic choice applies once you turn notifications on."
+      "disabledHint": "Your topic choice applies once you turn notifications on.",
+      "loadError": "Couldn't load notification topics. Try again."
     }
   },
   "dnd": {
@@ -101,7 +102,8 @@
       "updated": "Avatar updated",
       "deleted": "Avatar removed",
       "uploadFailed": "Couldn't upload avatar",
-      "deleteFailed": "Couldn't delete avatar"
+      "deleteFailed": "Couldn't delete avatar",
+      "savedRefreshFailed": "Your avatar change was saved, but your profile could not refresh. Reload the page to see the current state of your avatar."
     },
     "cover": {
       "title": "Profile cover",
@@ -111,7 +113,8 @@
       "uploadFailed": "Couldn't upload cover",
       "remove": "Remove cover",
       "deleted": "Cover removed",
-      "deleteFailed": "Couldn't remove cover"
+      "deleteFailed": "Couldn't remove cover",
+      "savedRefreshFailed": "Your cover change was saved, but your profile could not refresh. Reload the page to see the current state of your cover."
     }
   },
   "account": {
@@ -179,6 +182,7 @@
       "helper": "We'll email you a confirmation link to finish the update.",
       "updated": "Email updated",
       "confirmationSent": "We sent a confirmation link to {{email}}. Follow it to finish updating your email.",
+      "confirmationSentRefreshFailed": "We sent a confirmation link to {{email}}, but could not refresh your profile. Check your inbox to finish updating your email.",
       "pendingNotice": "Confirmation pending for {{email}}. Check your inbox to finalize the change.",
       "pendingSame": "We're already waiting for confirmation at {{email}}",
       "failed": "Couldn't update email",
@@ -257,7 +261,8 @@
       "emailMfaResent": "A new verification code was sent",
       "emailMfaResendFailed": "Couldn't send a new verification code",
       "emailMfaDisabled": "Email verification codes disabled",
-      "emailMfaDisableFailed": "Couldn't disable email verification codes"
+      "emailMfaDisableFailed": "Couldn't disable email verification codes",
+      "emailMfaSavedRefreshFailed": "Your email security change was saved, but your profile could not refresh. Reload the page to see the current settings."
     },
     "stepUp": {
       "description": "Complete multi-factor authentication to continue."

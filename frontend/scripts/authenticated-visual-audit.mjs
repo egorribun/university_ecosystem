@@ -32,10 +32,10 @@
  *   # Subset of routes:
  *   ROUTES=/dashboard,/events node ./scripts/authenticated-visual-audit.mjs
  *
- *   # Override origin / credentials:
+ *   # Override origin / provide credentials:
  *   ORIGIN=http://localhost \
  *     TEST_EMAIL=test@university.dev \
- *     TEST_PASSWORD=TestPass@2024x \
+ *     TEST_PASSWORD="${TEST_PASSWORD:?Set TEST_PASSWORD before running}" \
  *     node ./scripts/authenticated-visual-audit.mjs
  *
  * ## Exit codes
@@ -85,12 +85,73 @@ const { chromium } = requireFromProject("playwright")
 const AXE_SOURCE_PATH = path.join(PROJECT_ROOT, "node_modules", "axe-core", "axe.min.js")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
-const TEST_EMAIL = process.env.TEST_EMAIL ?? "test@university.dev"
-const TEST_PASSWORD = process.env.TEST_PASSWORD ?? "TestPass@2024x"
 const OUT_DIR = path.resolve(
   PROJECT_ROOT,
   process.env.OUT_DIR ?? ".screenshots/authenticated-visual-audit"
 )
+const AUDIT_ENVIRONMENT_KEYS = [
+  "CI",
+  "GITHUB_SHA",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "ORIGIN",
+  "OUT_DIR",
+  "PATH",
+  "REPO_ROOT",
+  "ROUTES",
+  "SOURCE_SHA",
+  "SystemRoot",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "VISUAL_CAPTURE_MATRIX",
+  "VISUAL_HEIGHT",
+  "VISUAL_LOCALES",
+  "VISUAL_REMOTE_CHROMIUM_REQUIRED",
+  "VISUAL_REMOTE_CHROMIUM_WS_ENDPOINT",
+  "VISUAL_SELECTED_ROUTE",
+  "VISUAL_THEMES",
+  "VISUAL_WIDTHS",
+  "WINDIR",
+]
+
+export function parseAuthenticatedVisualCredentials(environment = process.env) {
+  const email = environment.TEST_EMAIL
+  const password = environment.TEST_PASSWORD
+  if (typeof email !== "string" || !email.trim()) {
+    throw new Error("Authenticated visual audit requires an explicit TEST_EMAIL")
+  }
+  if (typeof password !== "string" || !password.trim()) {
+    throw new Error("Authenticated visual audit requires an explicit TEST_PASSWORD")
+  }
+  return { email, password }
+}
+
+export function createAuthenticatedVisualAuditEnvironment(environment, credentials) {
+  const { email, password } = parseAuthenticatedVisualCredentials({
+    TEST_EMAIL: credentials?.email,
+    TEST_PASSWORD: credentials?.password,
+  })
+  const childEnvironment = Object.fromEntries(
+    AUDIT_ENVIRONMENT_KEYS.filter((key) => typeof environment?.[key] === "string").map((key) => [
+      key,
+      environment[key],
+    ])
+  )
+  childEnvironment.TEST_EMAIL = email
+  childEnvironment.TEST_PASSWORD = password
+  return childEnvironment
+}
+
+function createAuthenticatedVisualBrowserEnvironment(environment = process.env) {
+  return Object.fromEntries(
+    AUDIT_ENVIRONMENT_KEYS.filter((key) => typeof environment?.[key] === "string").map((key) => [
+      key,
+      environment[key],
+    ])
+  )
+}
 
 // The default messenger audit covers the real empty/list state. A detail route
 // must be supplied with ROUTES only when a valid seeded chat ID is available;
@@ -470,7 +531,7 @@ async function setStudentCapturePreferences(context, captureConfig) {
   )
 }
 
-async function verifySyntheticStudent(context) {
+async function verifySyntheticStudent(context, testEmail) {
   const response = await context.request.get(new URL("/api/v1/users/me", ORIGIN).toString())
   if (response.status() !== 200) {
     throw new Error(`Matrix account profile check failed: HTTP ${response.status()}`)
@@ -479,7 +540,7 @@ async function verifySyntheticStudent(context) {
   if (
     profile.role !== "student" ||
     typeof profile.email !== "string" ||
-    profile.email.toLowerCase() !== TEST_EMAIL.toLowerCase()
+    profile.email.toLowerCase() !== testEmail.toLowerCase()
   ) {
     throw new Error("Matrix account must resolve to the explicitly configured student profile")
   }
@@ -551,13 +612,13 @@ async function checkJwksEndpoint() {
   return jwks
 }
 
-async function performLogin(context, ownSession) {
+async function performLogin(context, ownSession, credentials) {
   console.log("→ API login: POST /api/v1/auth/login/json")
   const { cookies, cookieJar, ownedSession } = await loginBrowserContext({
     context,
     origin: ORIGIN,
-    email: TEST_EMAIL,
-    password: TEST_PASSWORD,
+    email: credentials.email,
+    password: credentials.password,
   })
   ownSession(ownedSession)
   const accessTokenValue = cookieJar.get("access_token_v2")
@@ -1920,6 +1981,7 @@ async function connectAuthenticatedRemoteChromium(connection) {
 }
 
 async function main() {
+  const credentials = parseAuthenticatedVisualCredentials(process.env)
   const routes = parseAuthenticatedVisualRoutes(process.env)
   // Validate the complete optional matrix before creating output, making a
   // network request, or launching Chromium. The legacy run remains unchanged.
@@ -1989,7 +2051,10 @@ async function main() {
   // structure, not browser-specific quirks).
   const browser = remoteBrowserConnection
     ? await connectAuthenticatedRemoteChromium(remoteBrowserConnection)
-    : await chromium.launch({ headless: true })
+    : await chromium.launch({
+        headless: true,
+        env: createAuthenticatedVisualBrowserEnvironment(process.env),
+      })
 
   await withOwnedSessionCleanup({
     browser,
@@ -2009,8 +2074,8 @@ async function main() {
 
       let loginResult
       try {
-        loginResult = await performLogin(context, ownSession)
-        if (captureMatrix) await verifySyntheticStudent(context)
+        loginResult = await performLogin(context, ownSession, credentials)
+        if (captureMatrix) await verifySyntheticStudent(context, credentials.email)
       } catch (err) {
         if (err instanceof RS256Error) throw setVisualExitCode(err, 3)
         throw setVisualExitCode(err, 1)

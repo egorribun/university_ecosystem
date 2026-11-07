@@ -69,7 +69,13 @@ export function useCoverUpload(setSnackbar: SetSnackbar) {
         await api.post("/users/me/cover", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
-        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+        if (!isCurrent()) return
+        const refreshedUser = await refreshUser(isCurrent).catch(() => null)
+        if (!isCurrent()) return
+        if (!refreshedUser) {
+          setSnackbar({ text: t("settings:media.cover.savedRefreshFailed"), severity: "warning" })
+          return
+        }
         // Keep cache-busting monotonic even when an upload and the initial
         // render happen within the same clock tick.  A repeated timestamp
         // would leave the browser serving the stale cover URL.
@@ -100,7 +106,13 @@ export function useCoverUpload(setSnackbar: SetSnackbar) {
     setBusy(true)
     try {
       await api.delete("/users/me/cover")
-      if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+      if (!isCurrent()) return
+      const refreshedUser = await refreshUser(isCurrent).catch(() => null)
+      if (!isCurrent()) return
+      if (!refreshedUser) {
+        setSnackbar({ text: t("settings:media.cover.savedRefreshFailed"), severity: "warning" })
+        return
+      }
       setVersion((current) => Math.max(Date.now(), current + 1))
       setSnackbar({
         text: t("settings:media.cover.deleted"),

@@ -199,15 +199,34 @@ class TestGetSharedClient:
 class TestSetRateLimitClientFactory:
     """Tests for set_rate_limit_client_factory."""
 
-    def test_overrides_factory(self):
-        """Custom factory replaces the default."""
+    @pytest.mark.asyncio
+    async def test_overrides_factory(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A lookup uses the injected factory and returns its client."""
+        redis_url = "redis://injected-factory:6379/0"
+        stale_client = MagicMock()
+        injected_client = MagicMock()
+        calls: list[str] = []
 
-        def custom_factory(url):
-            return MagicMock()
+        def custom_factory(url: str) -> MagicMock:
+            calls.append(url)
+            return injected_client
 
-        set_rate_limit_client_factory(custom_factory)
-        # Verify it was set (we reset in teardown)
-        set_rate_limit_client_factory(None)
+        with monkeypatch.context() as isolated:
+            # Isolate module globals so the setter's cache clear and factory
+            # replacement cannot leak into another test's Redis configuration.
+            isolated.setattr(
+                rate_limit_base, "_shared_clients", {redis_url: stale_client}
+            )
+            isolated.setattr(
+                rate_limit_base, "_redis_factory", rate_limit_base._redis_factory
+            )
+
+            set_rate_limit_client_factory(custom_factory)
+            client = await get_shared_client(redis_url)
+
+            assert client is injected_client
+            assert calls == [redis_url]
+            assert rate_limit_base._shared_clients == {redis_url: injected_client}
 
     @pytest.mark.asyncio
     async def test_none_resets_to_default(
@@ -608,11 +627,13 @@ class TestLoadScriptSha:
 
 @pytest.mark.asyncio
 async def test_rate_limit_strategy_protocol_pass() -> None:
-    """Call super().check to execute the protocol ellipsis under coverage."""
+    """Check runtime structural conformance and the protocol stub outcome."""
     from app.core.ratelimit.contract import RateLimitStrategy
 
     class DummyStrategy(RateLimitStrategy):
         async def check(self, key: str, limit: int, window_seconds: int):
             return await super().check(key, limit, window_seconds)
 
-    await DummyStrategy().check("key", 10, 60)
+    strategy = DummyStrategy()
+    assert isinstance(strategy, RateLimitStrategy)
+    assert await strategy.check("key", 10, 60) is None

@@ -61,7 +61,7 @@ export function EventQuickView({
             position === "top" ? "bottom-full mb-2" : "top-full mt-2"
           }`}
         >
-          <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
+          <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/[calc(var(--opacity-soft)*100%)] max-w-[24rem] mx-auto">
             {/* Category + date */}
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <EventCategoryBadge category={category} size="sm" />

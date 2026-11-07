@@ -100,43 +100,72 @@ def test_cost_visitor_mixed_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_cost_extension_under_limit_no_error() -> None:
-    """Queries under the cost limit should pass through without errors."""
+    """A low-cost visit completes and leaves prior execution errors empty."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from graphql.language import parse
+
     from app.graphql.extensions import QueryCostExtension
 
     ext = QueryCostExtension.__new__(QueryCostExtension)
-    mock_ctx = MagicMock()
-    mock_ctx.errors = None
-    mock_ctx.graphql_document = None
-    mock_ctx.context = MagicMock()
-    mock_ctx.context.current_user = None
+    errors: list[object] = []
+    document = parse("{ me { id email } }")
+    mock_ctx = SimpleNamespace(
+        pre_execution_errors=errors,
+        graphql_document=document,
+        context=SimpleNamespace(current_user=None, request=None),
+    )
     ext.execution_context = mock_ctx
 
-    gen = ext.on_validate()
-    await gen.__anext__()  # first yield
-    # Should not raise when document is None
-    try:
-        await gen.__anext__()
-    except StopAsyncIteration:
-        pass
+    consume = AsyncMock(return_value=(True, 10))
+    with patch("app.graphql.extensions._consume_token_bucket", new=consume):
+        gen = ext.on_validate()
+        await gen.__anext__()  # first yield
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+    consume.assert_awaited_once()
+    assert consume.await_args.kwargs["cost"] == 3
+    assert errors == []
 
 
 @pytest.mark.asyncio
 async def test_cost_extension_skips_when_prior_errors() -> None:
-    """If prior validators already set errors, cost analysis is skipped."""
+    """Earlier validation errors stay intact and skip cost analysis."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from graphql import GraphQLError
+    from graphql.language import parse
+
     from app.graphql.extensions import QueryCostExtension
 
     ext = QueryCostExtension.__new__(QueryCostExtension)
-    mock_ctx = MagicMock()
-    mock_ctx.errors = ["existing error"]  # prior errors exist
-    mock_ctx.graphql_document = None
+    prior_error = GraphQLError("existing validation error")
+    errors = [prior_error]
+    mock_ctx = SimpleNamespace(
+        pre_execution_errors=errors,
+        graphql_document=parse("{ me { id } }"),
+        context=SimpleNamespace(current_user=None, request=None),
+    )
     ext.execution_context = mock_ctx
 
-    gen = ext.on_validate()
-    await gen.__anext__()
-    try:
+    consume = AsyncMock()
+    with (
+        patch("app.graphql.extensions.visit") as visit,
+        patch("app.graphql.extensions._consume_token_bucket", new=consume),
+    ):
+        gen = ext.on_validate()
         await gen.__anext__()
-    except StopAsyncIteration:
-        pass  # Should complete without raising GraphQLError
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+    visit.assert_not_called()
+    consume.assert_not_awaited()
+    assert mock_ctx.pre_execution_errors is errors
+    assert errors == [prior_error]
+    assert errors[0] is prior_error
 
 
 @pytest.mark.asyncio

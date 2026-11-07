@@ -14,6 +14,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SqlEnum,
@@ -21,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.enums import UserRole
 from app.models.mixins import UUID7PrimaryKeyMixin
@@ -30,6 +31,13 @@ from app.models.spotify import SpotifyIntegration
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
+    # Existing baseline column: operator assignment is not public profile input.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     # DEBT-01 (RZ-W13): RFC 5321 §4.5.3.1.1 limits local-part to 64 chars and
     # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
     # Prevents storage-amplification via unbounded email payloads.
@@ -51,7 +59,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     __table_args__ = (
-        Index("ix_users_email_lower", func.lower(email), unique=True),
+        # AUD-269: restored by the MVP baseline and the only unique lower(email)
+        # index. compliance_service maps this name to a duplicate-email conflict.
+        Index("ux_users_lower_email", func.lower(email), unique=True),
         UniqueConstraint("demo_seed_key", name="uq_users_demo_seed_key"),
     )
 
@@ -365,6 +375,23 @@ class UserProfile(Base):
     achievements: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     position: Mapped[str | None] = mapped_column(String(256), nullable=True)
     department: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    # AUD-269: hot-path name search indexes restored by the MVP baseline.
+    __table_args__ = (
+        Index(
+            "ix_user_profiles_full_name_lower",
+            func.lower(full_name).label("full_name_lower"),
+            postgresql_ops={"full_name_lower": "text_pattern_ops"},
+            postgresql_where=text("full_name IS NOT NULL"),
+        ),
+        Index(
+            "ix_user_profiles_full_name_trgm",
+            "full_name",
+            postgresql_using="gin",
+            postgresql_ops={"full_name": "gin_trgm_ops"},
+            postgresql_where=text("full_name IS NOT NULL"),
+        ),
+    )
 
     user = relationship("User", back_populates="profile", lazy="noload")  # RZ-33-06
 

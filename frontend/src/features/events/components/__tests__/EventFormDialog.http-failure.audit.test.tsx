@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/app/logger")
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
@@ -13,7 +14,7 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 vi.mock("@/app/logger", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/app/logger")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   logError: vi.fn(),
 }))
 

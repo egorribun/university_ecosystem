@@ -1,5 +1,6 @@
 import base64
 import datetime
+import secrets
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,7 +50,7 @@ async def test_service_missing_branches():
 
     user_in = schemas.UserCreate(
         email="test@e.com",
-        password="Password123!",
+        password=f"Aa9!{secrets.token_urlsafe(24)}",
         full_name="Test",
         role="admin",
         invite_code="secret",

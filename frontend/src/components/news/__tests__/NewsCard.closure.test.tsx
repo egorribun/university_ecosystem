@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 
 type InteractionState = {
   likes_count: number
@@ -61,7 +62,7 @@ vi.mock("@/contexts/LanguageContext", () => ({
 vi.mock("@/hooks/useNewsInteraction", () => ({
   useNewsInteraction: (...args: unknown[]) => {
     mocks.interactionArgs.push(args)
-    return { interactions: mocks.interactions, toggleLike: mocks.toggleLike }
+    return { interactions: mocks.interactions, toggleLikeAsync: mocks.toggleLike }
   },
 }))
 
@@ -257,6 +258,27 @@ afterEach(() => {
 })
 
 describe("NewsCard — state orchestration", () => {
+  it("does not show a late like failure after the session changes", async () => {
+    let reject!: (error: Error) => void
+    mocks.toggleLike.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail
+      })
+    )
+    render(<NewsCard {...baseProps} />)
+    fireEvent.click(await screen.findByRole("button", { name: "toggle like" }))
+    invalidateSessionEpoch()
+    await act(async () => reject(new Error("Network Error")))
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+  it("reports a like request whose outcome could not be confirmed", async () => {
+    mocks.toggleLike.mockRejectedValueOnce(new Error("Network Error"))
+    render(<NewsCard {...baseProps} />)
+    fireEvent.click(await screen.findByRole("button", { name: "toggle like" }))
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "news:notifications.interactionError"
+    )
+  })
   it("localizes and sanitizes content, forwards interactions, and falls back to initial stats", async () => {
     mocks.interactions = undefined
     const { rerender } = render(<NewsCard {...baseProps} onChange={mocks.onChange} />)

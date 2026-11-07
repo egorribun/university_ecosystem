@@ -970,20 +970,25 @@ async def test_delete_cover_ignores_invalid_path(
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_sends_email_via_thread(
+async def test_forgot_password_queues_only_encrypted_reset_link(
     async_client, user_factory, monkeypatch
 ):
+    from app.tasks.email import _open_auth_email_link
+
     user = await user_factory(email="forgot-password@example.com")
+    token_secret = secrets.token_urlsafe(32)
+    monkeypatch.setattr(settings, "token_hmac_secret", token_secret)
 
     event = asyncio.Event()
     captured: dict[str, object] = {}
 
     class FakeTask:
-        async def kiq(self, to_email, link, full_name, locale):
+        async def kiq(self, to_email, link, full_name, locale, *, encrypted_link=False):
             captured["to_email"] = to_email
             captured["link"] = link
             captured["full_name"] = full_name
             captured["locale"] = locale
+            captured["encrypted_link"] = encrypted_link
             event.set()
 
         async def kick(self, *args, **kwargs):
@@ -998,7 +1003,14 @@ async def test_forgot_password_sends_email_via_thread(
 
     await asyncio.wait_for(event.wait(), timeout=1)
     assert captured["to_email"] == user.email
-    assert "reset-password" in captured["link"]
+    assert captured["encrypted_link"] is True
+    sealed_link = captured["link"]
+    assert isinstance(sealed_link, str)
+    assert "reset-password" not in sealed_link
+    reset_link = _open_auth_email_link(sealed_link, token_secret)
+    prefix = f"{settings.app_base_url_clean}/reset-password#token="
+    assert reset_link.startswith(prefix)
+    assert reset_link.removeprefix(prefix)
 
 
 _PROFILE_AND_EDUCATION_COLUMN_LIMITS = (

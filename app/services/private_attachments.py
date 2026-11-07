@@ -29,6 +29,12 @@ _CACHE_CONTROL_HEADER: Final = "Cache-Control"
 _CONTENT_DISPOSITION_HEADER: Final = "Content-Disposition"
 _CONTENT_TYPE_OPTIONS_HEADER: Final = "X-Content-Type-Options"
 
+# The messenger renders these validated raster formats in an <img> element.
+# Configurable upload MIME types do not expand what may render inline.
+_INLINE_MEDIA_TYPES: Final = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif"}
+)
+
 
 def _safe_filename(filename: str) -> str | None:
     if not filename or not _FILENAME_RE.fullmatch(filename):
@@ -155,15 +161,19 @@ def private_attachment_storage_key(
 
 
 def private_attachment_response(data: bytes, filename: str) -> Response:
-    """Return attachment bytes with non-shareable, content-sniff-safe headers."""
+    """Return private bytes with inline rendering limited to supported images."""
 
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    if media_type in _INLINE_MEDIA_TYPES:
+        disposition = "inline"
+    else:
+        disposition = "attachment"
     return Response(
         content=data,
         media_type=media_type,
         headers={
             _CACHE_CONTROL_HEADER: "private, no-store",
-            _CONTENT_DISPOSITION_HEADER: f'inline; filename="{filename}"',
+            _CONTENT_DISPOSITION_HEADER: f'{disposition}; filename="{filename}"',
             _CONTENT_TYPE_OPTIONS_HEADER: "nosniff",
         },
     )

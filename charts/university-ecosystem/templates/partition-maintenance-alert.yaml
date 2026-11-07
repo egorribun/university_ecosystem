@@ -1,0 +1,25 @@
+{{- if and .Values.partitionMaintenance.enabled .Values.partitionMaintenance.alert.enabled }}
+{{- /* Job names are "<cronjob>-<scheduled epoch minutes>", so the digit suffix keeps the match to this CronJob only. */ -}}
+{{- $cronJobName := printf "%s-partition-maintenance" (include "university-ecosystem.fullname" .) -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $cronJobName }}-alerts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: partition-maintenance
+    release: {{ .Values.partitionMaintenance.alert.releaseLabel | quote }}
+spec:
+  groups:
+    - name: partition-maintenance
+      rules:
+        - alert: PartitionMaintenanceJobFailed
+          expr: sum(kube_job_status_failed{namespace={{ .Release.Namespace | quote }}, job_name=~{{ printf "%s-[0-9]+" $cronJobName | quote }}}) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Daily partition retention job failed"
+            description: "The partition-maintenance CronJob in {{ .Release.Namespace }} has a failed Job. Audit and notification partitions may not be created or pruned until it succeeds."
+{{- end }}

@@ -11,10 +11,11 @@ import sys
 import tempfile
 import time
 import types
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Any, cast
 
 # Add project root to sys.path
@@ -358,6 +359,7 @@ Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_
 
 # Load modular fixtures
 pytest_plugins = [
+    "scripts.quality.pytest_failure_locations",
     "tests.fixtures.database.database",
     "tests.fixtures.infrastructure.infrastructure",
     "tests.fixtures.auth.auth_fixtures",
@@ -551,6 +553,24 @@ def preserve_logging_configuration() -> Iterator[None]:
         if not structlog_configured:
             structlog.reset_defaults()
         logging_mod._configured = app_configured
+
+
+@pytest.fixture(autouse=True)
+def _uninstrument_sqlalchemy_otel_after_test() -> Iterator[None]:
+    """Remove process-global SQLAlchemy OpenTelemetry wrappers after each test.
+
+    ``SQLAlchemyInstrumentor.instrument()`` wraps ``sqlalchemy.create_engine``,
+    ``create_async_engine`` and ``Engine.connect`` globally even when one engine
+    is passed. A test that runs the real ``_configure_otel()`` would otherwise
+    leak SQLCommenter suffixes into engines created by later tests in the same
+    xdist worker.
+    """
+    yield
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    instrumentor = SQLAlchemyInstrumentor()
+    if instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.uninstrument()
 
 
 @pytest.fixture(autouse=True)
@@ -928,12 +948,20 @@ def assert_max_queries(db_session):
 from sqlalchemy import Engine, event
 
 _logged_queries: set[str] = set()
+_query_log_lock = Lock()
+_require_query_capture = False
+_required_query_log_failed = False
+_worker_capture_failed = False
+_worker_captured_query = False
+_QUERY_CAPTURE_SIGNAL = "university_ecosystem_db_perf_capture"
 
 
 @event.listens_for(Engine, "before_cursor_execute")
 def _log_query_before_execute(
     conn, cursor, statement, parameters, context, executing_many
 ):
+    global _required_query_log_failed
+
     stmt_upper = statement.strip().upper()
     if not any(
         stmt_upper.startswith(kw)
@@ -942,19 +970,77 @@ def _log_query_before_execute(
         return
 
     normalized_stmt = " ".join(statement.split())
-    if normalized_stmt in _logged_queries:
+    with _query_log_lock:
+        if normalized_stmt in _logged_queries:
+            return
+
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+        log_suffix = f"_{worker_id}" if worker_id else ""
+        log_path = Path(PROJECT_ROOT) / f"tests/queries{log_suffix}.log"
+        line = normalized_stmt + "\n"
+        try:
+            with open(log_path, "a", encoding="utf-8") as log_file:
+                if log_file.write(line) != len(line):
+                    raise OSError("Incomplete query-log write")
+        except Exception:
+            if _require_query_capture:
+                _required_query_log_failed = True
+                raise OSError("DB performance query capture failed") from None
+            return
+
+        # Closing the file is part of success. A failed append stays retryable.
+        _logged_queries.add(normalized_stmt)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: Any, error: object | None) -> None:
+    global _worker_capture_failed, _worker_captured_query
+
+    if not _require_query_capture:
         return
-    _logged_queries.add(normalized_stmt)
+    output = getattr(node, "workeroutput", None)
+    signal = output.get(_QUERY_CAPTURE_SIGNAL) if isinstance(output, dict) else None
+    if (
+        error is not None
+        or not isinstance(signal, dict)
+        or set(signal) != {"failed", "captured"}
+        or type(signal["failed"]) is not bool
+        or type(signal["captured"]) is not bool
+    ):
+        _worker_capture_failed = True
+        return
+    _worker_capture_failed |= signal["failed"]
+    _worker_captured_query |= signal["captured"]
 
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
-    log_suffix = f"_{worker_id}" if worker_id else ""
-    log_path = Path(PROJECT_ROOT) / f"tests/queries{log_suffix}.log"
 
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(normalized_stmt + "\n")
-    except Exception:  # noqa: S110
-        pass
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if not _require_query_capture:
+        return
+    worker_output = getattr(session.config, "workeroutput", None)
+    if isinstance(worker_output, dict):
+        worker_output[_QUERY_CAPTURE_SIGNAL] = {
+            "failed": _required_query_log_failed,
+            "captured": bool(_logged_queries),
+        }
+        # An idle worker is valid; the controller requires a complete union.
+        return
+
+    distributed = bool(
+        getattr(getattr(session.config, "option", None), "numprocesses", 0)
+    )
+    captured = _worker_captured_query or (not distributed and bool(_logged_queries))
+    if _required_query_log_failed or _worker_capture_failed or not captured:
+        if session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        plugin_manager = getattr(session.config, "pluginmanager", None)
+        reporter = (
+            plugin_manager.getplugin("terminalreporter")
+            if plugin_manager is not None
+            else None
+        )
+        if reporter is not None:
+            reporter.write_sep("=", "DB performance query capture incomplete")
 
 
 @pytest.fixture(autouse=True)
@@ -1002,10 +1088,51 @@ async def cleanup_asyncio_tasks(
             pass
 
     # Reclaim memory to prevent OOM-killer termination in CI. Only the exact
-    # allowlisted parser matrices avoid a full GC per parameter; task scanning
-    # and cancellation above remain unconditional.
+    # allowlisted parser matrices skip the full GC; task scanning and
+    # cancellation above remain unconditional. Other tests amortize full
+    # collections: one runs after _FULL_GC_TEST_INTERVAL tests or once the RSS
+    # has grown by _FULL_GC_RSS_GROWTH_BYTES since the previous collection.
     if not _is_pure_parser_profile_case(request.node):
-        gc.collect()
+        if _record_test_for_full_gc(_FULL_GC_STATE, _resident_set_bytes()):
+            gc.collect()
+            _mark_full_gc(_FULL_GC_STATE, _resident_set_bytes())
+
+
+# Full-collection amortization rule for cleanup_asyncio_tasks (owner decision
+# 2026-11-04): a full gc.collect() runs when either bound is reached first.
+_FULL_GC_TEST_INTERVAL = 50
+_FULL_GC_RSS_GROWTH_BYTES = 256 * 1024 * 1024
+
+
+@dataclass
+class _FullGcState:
+    tests_since_collect: int = 0
+    rss_at_collect: int | None = None
+
+
+_FULL_GC_STATE = _FullGcState()
+
+
+def _resident_set_bytes() -> int:
+    import psutil
+
+    return int(psutil.Process().memory_info().rss)
+
+
+def _record_test_for_full_gc(state: _FullGcState, rss_bytes: int) -> bool:
+    """Count one eligible test and return whether a full collection is due."""
+    if state.rss_at_collect is None:
+        state.rss_at_collect = rss_bytes
+    state.tests_since_collect += 1
+    return (
+        state.tests_since_collect >= _FULL_GC_TEST_INTERVAL
+        or rss_bytes - state.rss_at_collect >= _FULL_GC_RSS_GROWTH_BYTES
+    )
+
+
+def _mark_full_gc(state: _FullGcState, rss_bytes: int) -> None:
+    state.tests_since_collect = 0
+    state.rss_at_collect = rss_bytes
 
 
 def _is_async_test_framework_task(task: Any) -> bool:
@@ -1073,7 +1200,42 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _logical_cpu_budget() -> int:
+    """Return the logical CPUs this process may schedule on (at least one)."""
+
+    # os.process_cpu_count() is affinity-aware on Python 3.13+; the fallbacks
+    # cover older interpreters and platforms without it.
+    count = None
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if process_cpu_count is not None:
+        count = process_cpu_count()
+    if not count and hasattr(os, "sched_getaffinity"):
+        count = len(os.sched_getaffinity(0))
+    if not count:
+        count = os.cpu_count()
+    return max(1, count or 1)
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    # pytest-xdist sizes ``-n auto`` from psutil's physical-core count, which
+    # halves the worker count on SMT hosts such as the 4-vCPU hosted runner.
+    # Size it from logical CPUs instead so the runner's real parallelism is used.
+    return _logical_cpu_budget()
+
+
 def pytest_configure(config: pytest.Config) -> None:
+    global _require_query_capture, _required_query_log_failed
+    global _worker_capture_failed, _worker_captured_query
+
+    with _query_log_lock:
+        _logged_queries.clear()
+        _require_query_capture = (
+            os.environ.get("UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED") == "1"
+        )
+        _required_query_log_failed = False
+        _worker_capture_failed = False
+        _worker_captured_query = False
+
     invocation_args = tuple(str(arg) for arg in config.invocation_params.args)
     explicit_basetemp = any(
         arg == "--basetemp" or arg.startswith("--basetemp=") for arg in invocation_args
@@ -1148,6 +1310,31 @@ def _load_historical_test_durations(path: Path) -> tuple[dict[str, float], float
     return durations, float(raw_default)
 
 
+def _planned_file_durations(
+    file_to_items: Mapping[str, Sequence[object]], durations: Mapping[str, float]
+) -> list[tuple[str, float]]:
+    """Estimate each collected file's cost for greedy shard planning.
+
+    The history stores measured seconds per file, not per-item counts, so the
+    per-item cost comes from the files that have both a measurement and a
+    collection in this run.  An unknown file is then priced at its own item
+    count times that per-item cost.  The historical ``default_duration_seconds``
+    is a per-file median and must not be multiplied by item counts.
+    """
+
+    known = [path for path in file_to_items if path in durations]
+    known_items = sum(len(file_to_items[path]) for path in known)
+    known_seconds = sum(durations[path] for path in known)
+    per_item = known_seconds / known_items if known_items else 1.0
+    return [
+        (
+            path,
+            durations[path] if path in durations else len(file_items) * per_item,
+        )
+        for path, file_items in file_to_items.items()
+    ]
+
+
 def pytest_collection_modifyitems(config, items):
     shard_id = config.getoption("--shard-id")
     num_shards = config.getoption("--num-shards")
@@ -1179,17 +1366,13 @@ def pytest_collection_modifyitems(config, items):
         # 2. Load durations
         durations_path = PROJECT_ROOT / "quality" / "test-durations.json"
         durations = {}
-        default_dur = 1.0
         if durations_path.exists():
-            durations, default_dur = _load_historical_test_durations(durations_path)
+            durations, _default_per_file = _load_historical_test_durations(
+                durations_path
+            )
 
         # 3. Estimate duration of each file
-        file_durations = []
-        for file_path, file_items in file_to_items.items():
-            file_dur = durations.get(file_path, None)
-            if file_dur is None:
-                file_dur = len(file_items) * default_dur
-            file_durations.append((file_path, file_dur))
+        file_durations = _planned_file_durations(file_to_items, durations)
 
         # Sort files descending by duration for greedy sharding
         file_durations.sort(key=lambda x: x[1], reverse=True)

@@ -1,4 +1,4 @@
-import { expect, test } from "./test"
+import { expect, test, type Page } from "./test"
 import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
@@ -14,59 +14,73 @@ import { gotoWithTransientRetry } from "./utils/navigation"
  *     connection is closed and delivers subsequent messages.
  *   - Typing indicator: verifies the indicator UI appears when a typing
  *     event arrives over the WebSocket channel.
- *   - Message delivery confirmation: verifies the sent-message receipt
- *     UI changes from "pending" to "delivered" after the backend ACK.
+ *   - Message sent confirmation: verifies the server accepted the exact
+ *     message and the matching bubble shows its accessible sent/read status.
  */
 
 const REALTIME_ENABLED = process.env.REALTIME_E2E === "true"
+
+/** Chat sockets are the only connections opened with the `?ticket=` query (useChatWebSocket). */
+const CHAT_SOCKET_MARKER = "ticket="
+/** WebSocket.OPEN, written out because the constant is read inside the page context. */
+const SOCKET_OPEN = 1
+
+type RecordingWindow = Window & { __e2eSockets?: WebSocket[] }
+
+/**
+ * Test-owned recorder: keeps a handle on every WebSocket the page opens, so the
+ * lifecycle is driven through the browser's own socket objects, not app internals.
+ */
+async function recordWebSockets(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const NativeWebSocket = window.WebSocket
+    const sockets: WebSocket[] = []
+    Object.defineProperty(window, "__e2eSockets", { value: sockets })
+    window.WebSocket = class RecordingWebSocket extends NativeWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols)
+        sockets.push(this)
+      }
+    }
+  })
+}
+
+/** Ready states of the chat sockets in open order; the length is the number of chat connections. */
+const chatSocketStates = (page: Page) =>
+  page.evaluate(
+    (marker) =>
+      ((window as RecordingWindow).__e2eSockets ?? [])
+        .filter((socket) => socket.url.includes(marker))
+        .map((socket) => socket.readyState),
+    CHAT_SOCKET_MARKER
+  )
 
 test.describe("Chat real-time behaviour", () => {
   test.skip(!REALTIME_ENABLED, "needs running backend with WebSocket support (REALTIME_E2E=true)")
 
   // ── 1. WebSocket reconnect after disconnect ────────────────────────────
   //
-  // Opens the messenger, forcefully closes the WS connection via
-  // page.evaluate, then verifies the client reconnects and can still
-  // receive messages (indicated by a new message appearing in the UI).
-  test("reconnects WebSocket and receives messages after disconnect", async ({ page }) => {
+  // Opens the messenger, closes the chat socket with a retryable client-owned
+  // code (4000), then requires a second chat socket that reaches OPEN. There is
+  // no fallback path: a page that never reconnects fails this test.
+  test("reconnects the chat WebSocket after a forced disconnect", async ({ page }) => {
+    await recordWebSockets(page)
     await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
-
-    // Grab a chat room — assumes at least one is listed.
     await page.getByRole("listitem").first().click()
-    await page.waitForTimeout(500)
 
-    // Identify the open WebSocket and close it from the JS side.
-    const wsConnected = await page.evaluate(() => {
-      // The app typically attaches its WS to a known global or module
-      // reference. We close ANY open WebSocket we can find on the page.
-      const sockets = (window as unknown as { __playwright_ws?: WebSocket[] }).__playwright_ws
-      if (sockets && sockets.length > 0) {
-        sockets[0]!.close(1006, "playwright-forced-close")
-        return true
-      }
-      // Fallback: dispatch a synthetic close event and let the app reconnect.
-      window.dispatchEvent(new Event("offline"))
-      window.dispatchEvent(new Event("online"))
-      return false
-    })
+    await expect.poll(() => chatSocketStates(page), { timeout: 15_000 }).toEqual([SOCKET_OPEN])
+    await page.evaluate((marker) => {
+      const socket = (window as RecordingWindow).__e2eSockets?.find((candidate) =>
+        candidate.url.includes(marker)
+      )
+      socket?.close(4000, "playwright-forced-close")
+    }, CHAT_SOCKET_MARKER)
 
-    // Give the app time to detect the disconnect and attempt reconnect.
-    await page.waitForTimeout(3000)
-
-    // After reconnect, the connection-status indicator (if present) should
-    // not show a persistent error state.
+    await expect
+      .poll(() => chatSocketStates(page), { timeout: 20_000 })
+      .toEqual([expect.any(Number), SOCKET_OPEN])
     const errorBanner = page.locator('[role="alert"]').filter({ hasText: /connection|соединение/i })
     await expect(errorBanner).not.toBeVisible({ timeout: 5000 })
-
-    // Mark the test as conditional — if the app doesn't expose __playwright_ws
-    // the socket forceful-close path didn't run but the test still validated
-    // the fallback reconnect flow.
-    if (!wsConnected) {
-      test.info().annotations.push({
-        type: "info",
-        description: "__playwright_ws not exposed — tested via offline/online event fallback",
-      })
-    }
   })
 
   // ── 2. Typing indicator ────────────────────────────────────────────────
@@ -104,28 +118,41 @@ test.describe("Chat real-time behaviour", () => {
     await expect(typingIndicator).toBeVisible({ timeout: 5000 })
   })
 
-  // ── 3. Message delivery confirmation ──────────────────────────────────
+  // ── 3. Message sent confirmation ──────────────────────────────────────
   //
-  // Sends a message and verifies the UI progresses from a pending/sending
-  // state to a delivered/sent confirmation (tick, check-mark, or similar).
-  test("shows delivery confirmation after message is sent", async ({ page }) => {
+  // Sends a message, checks the server response, and scopes the status to that
+  // message rather than looking for a nonexistent global delivery marker.
+  test("shows sent confirmation after the server accepts the message", async ({ page }) => {
     await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
     await page.getByRole("listitem").first().click()
     await page.waitForTimeout(500)
 
     const messageText = `e2e-delivery-${Date.now()}`
     const input = page.getByRole("textbox", { name: /message|сообщение/i })
+    const sendResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/chats\/[^/]+\/messages\/?$/u.test(new URL(response.url()).pathname)
+    )
     await input.fill(messageText)
     await input.press("Enter")
 
-    // The sent message should appear in the chat.
-    const sentMessage = page.getByText(messageText)
-    await expect(sentMessage).toBeVisible({ timeout: 5000 })
+    const response = await sendResponse
+    expect(response.ok()).toBe(true)
+    const acceptedMessage = (await response.json()) as { id?: string; content?: string }
+    expect(acceptedMessage.id).toBeTruthy()
+    expect(acceptedMessage.content).toBe(messageText)
 
-    // After the backend ACK, a "delivered" indicator should appear near the
-    // message (double-tick icon, aria-label, or data-testid).
-    const deliveredIndicator = page.locator('[data-testid="message-status-delivered"]')
-    await expect(deliveredIndicator.last()).toBeVisible({ timeout: 10_000 })
+    const sentMessage = page.getByText(messageText, { exact: true })
+    await expect(sentMessage).toBeVisible({ timeout: 5000 })
+    const sentRow = sentMessage.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+    )
+    await expect(
+      sentRow.getByRole("img", {
+        name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/i,
+      })
+    ).toBeVisible({ timeout: 10_000 })
   })
 
   // ── 4. Message read confirmation & Seen-by-N ──────────────────────────

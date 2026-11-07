@@ -10,6 +10,7 @@ import {
 } from "@/push/notification-helpers"
 import { resolveNotificationDeepLink, resolveOptionalSameOriginUrl } from "@/notifications/contract"
 import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "./offline"
+import { requestReplayCredentials } from "./replayCredentials"
 
 const USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RECIPIENT_CHECK_TIMEOUT_MS = 2_000
@@ -69,6 +70,28 @@ function buildGenericNotification() {
       badge: DEFAULT_ICON,
       data: { url: "/" },
     },
+  }
+}
+
+/**
+ * Posts a click report with the window-issued CSRF token. Only a 2xx response counts as
+ * delivered; anything else is queued for replay under the same session rules.
+ */
+async function postReport(
+  reportUrl: string,
+  payload: unknown,
+  csrfToken: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(reportUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    })
+    return response.ok
+  } catch (_err) {
+    return false
   }
 }
 
@@ -140,6 +163,8 @@ export function initPushHandlers() {
     const absoluteUrl = resolveNotificationDeepLink(clickData?.url, self.location.origin)
 
     const handleNavigationAndReporting = async () => {
+      // Requested before navigation so a window that is focused below can also answer.
+      const replayCredentials = clickData ? requestReplayCredentials() : Promise.resolve(null)
       let navigated = false
       try {
         const clientList = await self.clients.matchAll({
@@ -163,6 +188,10 @@ export function initPushHandlers() {
         // Navigation failed
       }
 
+      // Records created here are bound to the session that answered, or left unbound.
+      const credentials = await replayCredentials
+      const sessionNonce = credentials?.sessionNonce ?? null
+
       if (clickData?.reportUrl) {
         const absoluteReportUrl = resolveOptionalSameOriginUrl(
           clickData.reportUrl,
@@ -170,7 +199,7 @@ export function initPushHandlers() {
         )
         if (!absoluteReportUrl) {
           if (!navigated) {
-            await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+            await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now(), sessionNonce })
           }
           return
         }
@@ -184,39 +213,42 @@ export function initPushHandlers() {
         const isOnline = self.navigator.onLine !== false
 
         if (isOnline) {
-          try {
-            await fetch(absoluteReportUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-              keepalive: true,
-            })
-          } catch (_err) {
+          // Without a window-issued token the POST would be refused, so it is queued instead.
+          const delivered = credentials
+            ? await postReport(absoluteReportUrl, payload, credentials.csrfToken)
+            : false
+          if (!delivered) {
             if (!navigated) {
-              await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+              await storePendingNavigation({
+                url: absoluteUrl,
+                timestamp: Date.now(),
+                sessionNonce,
+              })
             }
             await storePendingReport({
               url: absoluteUrl,
               reportUrl: absoluteReportUrl,
               timestamp: Date.now(),
               payload,
+              sessionNonce,
             })
             return
           }
           if (!navigated) {
-            await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+            await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now(), sessionNonce })
           }
         } else {
-          await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+          await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now(), sessionNonce })
           await storePendingReport({
             url: absoluteUrl,
             reportUrl: absoluteReportUrl,
             timestamp: Date.now(),
             payload,
+            sessionNonce,
           })
         }
       } else if (!navigated) {
-        await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+        await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now(), sessionNonce })
       }
     }
 

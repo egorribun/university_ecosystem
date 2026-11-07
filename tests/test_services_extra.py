@@ -194,6 +194,9 @@ async def test_partition_management_logic():
         conn = AsyncMock()
         conn.dialect.name = "postgresql"
         conn.commit = AsyncMock()
+        conn.begin_nested = MagicMock()
+        conn.begin_nested.return_value.__aenter__ = AsyncMock()
+        conn.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
         preparer = MagicMock()
         preparer.quote = MagicMock(side_effect=lambda x: f'"{x}"')
         conn.dialect.identifier_preparer = preparer

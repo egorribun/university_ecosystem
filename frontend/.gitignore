@@ -33,3 +33,6 @@ clean_log.txt
 bootstrap_log*.txt
 mfa_*.txt
 news_share_log.txt
+
+# Isolated temporary WASM artifact test fixtures.
+/.wasm-fuzzer-artifacts-*/

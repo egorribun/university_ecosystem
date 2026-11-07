@@ -5,9 +5,11 @@ import { URL } from "node:url"
 
 const specUrl = new URL("./zzz-aud174-prehydration-caddy-log.live.spec.ts", import.meta.url)
 const runnerUrl = new URL("../../../scripts/live_stand.py", import.meta.url)
+const evidenceUrl = new URL("../../../scripts/live_stand_playwright_evidence.py", import.meta.url)
 const packageUrl = new URL("../../package.json", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const authContractUrl = new URL("./auth-roles.contract.test.mjs", import.meta.url)
+const aud178SpecUrl = new URL("./aud178-reset-referer-csp.live.spec.ts", import.meta.url)
 
 test("pre-hydration login and project-correlated synthetic query use the real Core endpoint", async () => {
   const [spec, runner, packageSource, config, authContract] = await Promise.all([
@@ -51,7 +53,11 @@ test("pre-hydration login and project-correlated synthetic query use the real Co
 })
 
 test("runner verifies exact per-project rows in complete, bounded windows from the owned Caddy container", async () => {
-  const [runner, spec] = await Promise.all([readFile(runnerUrl, "utf8"), readFile(specUrl, "utf8")])
+  const [runner, spec, evidence] = await Promise.all([
+    readFile(runnerUrl, "utf8"),
+    readFile(specUrl, "utf8"),
+    readFile(evidenceUrl, "utf8"),
+  ])
   const runnerHas = (pattern) => assert.ok(pattern.test(runner))
   runnerHas(/def _verified_live_core_caddy_container\(/u)
   runnerHas(/def _verify_live_caddy_probe_log\(/u)
@@ -69,7 +75,12 @@ test("runner verifies exact per-project rows in complete, bounded windows from t
   runnerHas(/nonce_bytes in output or nonce_bytes in stderr/u)
   runnerHas(/REDACTED/u)
   runnerHas(/set\(observed\) != set\(LIVE_CADDY_PROBE_PROJECTS\)/u)
-  runnerHas(/_PLAYWRIGHT_SKIP_IDENTITY_LIMIT\s*=\s*216/u)
+  runnerHas(
+    /^from scripts\.live_stand_playwright_evidence import \(\s+_live_playwright_skipped_identities as _live_playwright_skipped_identities,\s*\)$/mu
+  )
+  runnerHas(/_live_playwright_skipped_identities\(stdout, cwd=cwd\)/u)
+  assert.match(evidence, /^_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 220$/mu)
+  assert.match(evidence, /index > _PLAYWRIGHT_SKIP_IDENTITY_LIMIT/u)
   assert.match(spec, /test\.describe\.configure\(\{\s*retries:\s*0\s*\}\)/u)
 })
 
@@ -84,4 +95,50 @@ test("existing Core smoke selection supplies and verifies the Caddy probe", asyn
   assert.match(runner, /playwright_environment\["LIVE_CADDY_LOG_PROBE"\] = probe_nonce/u)
   assert.match(runner, /playwright_environment\["LIVE_CADDY_PROBE_IDS"\] = json\.dumps/u)
   assert.match(runner, /_verify_live_caddy_probe_log\(/u)
+})
+
+test("AUD178 binds both initial reset targets to bounded Caddy rows", async () => {
+  const [resetSpec, runner] = await Promise.all([
+    readFile(aud178SpecUrl, "utf8"),
+    readFile(runnerUrl, "utf8"),
+  ])
+
+  assert.match(resetSpec, /LIVE_AUD178_PROBE_MARKERS/u)
+  assert.match(resetSpec, /legacyTarget\.searchParams\.set\(["']token["'],\s*legacyMarker\)/u)
+  assert.match(
+    resetSpec,
+    /legacyTarget\.pathname \+= `\/\$\{encodeURIComponent\(legacyMarker\)\}`/u
+  )
+  assert.match(
+    resetSpec,
+    /const isLegacyDocumentRequest =\s*route\.request\(\)\.isNavigationRequest\(\) &&\s*requestUrl\.pathname === legacyTarget\.pathname &&\s*requestUrl\.search === legacyTarget\.search/u
+  )
+  assert.match(
+    resetSpec,
+    /if \(isLegacyDocumentRequest\) \{\s*const requestHeaders = await route\.request\(\)\.allHeaders\(\)\s*requestHeaders\["x-aud178-correlation"\] = resetBinding\.correlationId/u
+  )
+  assert.match(resetSpec, /x-aud178-correlation/u)
+  assert.match(resetSpec, /Reflect\.set\(requestHeaders, "x-aud178-correlation", undefined\)/u)
+  assert.match(resetSpec, /aud178-reset-caddy-probe-\$\{project\}\.json/u)
+  assert.match(resetSpec, /query_completed_at_ms/u)
+  assert.match(resetSpec, /path_completed_at_ms/u)
+
+  // Keep the browser wire assertions in the same spec that creates each log marker.
+  assert.match(resetSpec, /expect\(earlyHealthHeaders\.referer === undefined\)\.toBe\(true\)/u)
+  assert.match(resetSpec, /expect\(earlyReportHeaders\.referer === undefined\)\.toBe\(true\)/u)
+  assert.match(resetSpec, /reportNamesResetDocument\(earlyReportBody, legacyTarget\.origin\)/u)
+  assert.match(resetSpec, /earlyReportLeaks\)\.toEqual\(\[false, false\]\)/u)
+
+  assert.match(runner, /LIVE_AUD178_RESET_PROBE_SPEC/u)
+  assert.match(runner, /_new_live_aud178_reset_probe_values/u)
+  assert.match(runner, /LIVE_AUD178_PROBE_MARKERS/u)
+  assert.match(runner, /probe_kind="aud178"/u)
+  assert.match(runner, /_assert_live_aud178_reset_probe_redaction\(/u)
+  assert.match(runner, /marker_bytes in output or marker_bytes in stderr/u)
+  assert.match(runner, /name\.casefold\(\) == "x-aud178-correlation"/u)
+  assert.match(runner, /request\.get\("uri"\) != "\[REDACTED\]"/u)
+  assert.match(runner, /payload\.get\("status"\) != 302/u)
+  assert.match(runner, /since_ms \* 1_000_000 <= row_timestamp_ns <= until_ms \* 1_000_000/u)
+  assert.match(runner, /reset_cases=4/u)
+  assert.match(runner, /LIVE_CADDY_PROBE_SPEC not in selected_files/u)
 })

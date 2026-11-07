@@ -13,9 +13,11 @@ const listQuery = vi.hoisted(() => ({
   fetchNextPage: vi.fn(),
 }))
 const myQuery = vi.hoisted(() => ({
-  data: undefined as unknown[] | undefined,
-  isLoading: false,
+  data: undefined,
+  isPending: false,
   isFetching: false,
+  isError: false,
+  refetch: vi.fn(),
 }))
 const nav = vi.hoisted(() => ({ navigate: vi.fn() }))
 
@@ -42,7 +44,7 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/api/hooks/events", () => ({
   EVENTS_PAGE_SIZE: 12,
   useEventsListQuery: () => listQuery,
-  useMyEventsQuery: () => myQuery,
+  useMyEventsPageQuery: () => myQuery,
 }))
 vi.mock("@/api/client", () => ({ resetEtagCache: vi.fn() }))
 vi.mock("@/hooks/ui/useStableListHeight", () => ({ useStableListHeight: () => undefined }))
@@ -87,8 +89,10 @@ describe("AUD-214 events list query state", () => {
     listQuery.isError = false
     listQuery.fetchNextPage = vi.fn()
     myQuery.data = undefined
-    myQuery.isLoading = false
+    myQuery.isPending = false
     myQuery.isFetching = false
+    myQuery.isError = false
+    myQuery.refetch = vi.fn()
     nav.navigate = vi.fn()
   })
 

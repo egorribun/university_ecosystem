@@ -42,6 +42,7 @@ def _configure_security_core(app: FastAPI, settings: Settings) -> None:
     app.add_middleware(
         TenantContextMiddleware,
         internal_hmac_secret=settings.internal_hmac_secret,
+        mvp_tenant_id=getattr(settings, "mvp_tenant_id", None),
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 

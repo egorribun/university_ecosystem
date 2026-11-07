@@ -3,25 +3,58 @@
 from __future__ import annotations
 
 import uuid as _uuid_module
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import Any
+from string import ascii_letters, digits
+from types import TracebackType
+from typing import Any, Literal
 
 from fastapi import Request
 
-try:
-    from structlog.contextvars import clear_contextvars
-except ImportError:
-    clear_contextvars = None  # type: ignore[assignment]
-
 from app.core.logging import bind_context
+from app.core.request_failure_diagnostic import log_request_failure
+
+clear_contextvars: Callable[[], None] | None
+try:
+    from structlog.contextvars import clear_contextvars as _clear_contextvars
+except ImportError:
+    clear_contextvars = None
+else:
+    clear_contextvars = _clear_contextvars
 
 # D-04 (audit 2026-03-08): Correlation ID available to any logger in this process
 # via request_id_ctx.get().  Set by RequestIDMiddleware on every HTTP request.
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 
-_REQUEST_ID_SAFE_CHARS: frozenset[str] = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"  # pragma: allowlist secret
-)
+_REQUEST_ID_SAFE_CHARS: frozenset[str] = frozenset(ascii_letters + digits + "-_")
+
+
+class _FailureRecorder:
+    """Record an Exception propagating out of the request without catching it.
+
+    ``__exit__`` only observes the in-flight exception and returns ``False``, so
+    the same exception object keeps propagating unchanged. Every propagated
+    ``Exception`` is recorded; ``BaseException`` subclasses such as cancellation
+    are not.
+    """
+
+    __slots__ = ("_request_id",)
+
+    def __init__(self, request_id: str) -> None:
+        self._request_id = request_id
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        error: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
+        if isinstance(error, Exception):
+            log_request_failure(error, self._request_id)
+        return False
 
 
 class RequestIDMiddleware:
@@ -74,7 +107,8 @@ class RequestIDMiddleware:
             await send(message)
 
         try:
-            await self._app(scope, receive, _send_with_id)
+            with _FailureRecorder(request_id):
+                await self._app(scope, receive, _send_with_id)
         finally:
             request_id_ctx.reset(ctx_token)
             # LOW-W19: Clear structlog contextvars so that request-scoped

@@ -16,7 +16,7 @@ interface ErrorBoundaryState {
 }
 
 export const ERROR_BOUNDARY_RADIAL_BACKGROUND =
-  "radial-gradient(circle at 50% 50%, color-mix(in_srgb, var(--primary-main) var(--opacity-subtle), transparent) 0%, transparent 70%)"
+  "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--primary-main) calc(var(--opacity-subtle) * 100%), transparent) 0%, transparent 70%)"
 export const ERROR_BOUNDARY_DETAIL_BACKGROUND = "rgb(0 0 0 / var(--opacity-faint))"
 
 export const createErrorBoundaryInitialState = () => ({

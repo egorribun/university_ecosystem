@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import sys
 import threading
+import types
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -209,7 +212,7 @@ def _point_stop_gate_at_state(tmp_path: Path, monkeypatch: Any, state: Any) -> P
     return state_path
 
 
-def test_gate_reader_blocks_failure_evicted_from_bounded_history_without_writing(
+def test_gate_reader_blocks_evicted_failure_without_rewriting_state(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     stale_failure = _gate_entry(
@@ -419,7 +422,46 @@ def test_gate_reader_denies_stop_after_failed_state_is_deleted(
 
     assert result["decision"] == "continue"
     assert "Automated quality gate state is missing" in result["reason"]
-    assert "supported PostToolUse quality check" in result["reason"]
+    assert "missing after initialization" in result["reason"]
+    assert (
+        "cannot recreate it without discarding prior quality results"
+        in result["reason"]
+    )
+
+
+def test_gate_reader_migrates_legacy_failed_state_before_it_can_be_deleted(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    failure = _gate_entry(
+        tmp_path / "legacy-broken.py", passed=False, output="ruff failure"
+    )
+    state_path = _point_stop_gate_at_state(
+        tmp_path,
+        monkeypatch,
+        {
+            "history": [failure],
+            "latest_by_file": {failure["file"]: failure},
+            "last_status": failure,
+        },
+    )
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    assert not marker_path.exists()
+    before = state_path.read_bytes()
+
+    passed, diagnostics = stop_quality_gate.check_gate_state_errors()
+
+    assert not passed
+    assert "ruff failure" in diagnostics
+    assert state_path.read_bytes() == before
+    assert marker_path.is_file()
+
+    state_path.unlink()
+    with pytest.raises(RuntimeError, match="missing"):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+    assert not state_path.exists()
 
 
 def test_first_post_tool_success_initializes_state_for_stop_reader(
@@ -429,12 +471,17 @@ def test_first_post_tool_success_initializes_state_for_stop_reader(
     monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
     monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
     assert not state_path.exists()
+    missing_state_result = stop_quality_gate.check_gate_state_errors()
+    assert not missing_state_result[0]
 
     checked_file = str((tmp_path / "clean.py").resolve())
     post_tool_linter.update_gate_state(checked_file, "ruff/py_compile", True, "")
 
     state = common.load_gate_state(state_path, require_existing=True)
     assert state["latest_by_file"][checked_file]["passed"]
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    assert marker_path.is_file()
+    assert marker_path.name.endswith(".initialized")
     assert stop_quality_gate.check_gate_state_errors() == (True, "")
 
 
@@ -452,6 +499,7 @@ def test_gate_reader_fails_closed_when_shared_state_lock_is_unavailable(
         raise RuntimeError("bounded lock acquisition failed")
 
     monkeypatch.setattr(common, "gate_state_lock", fail_to_lock)
+    monkeypatch.setattr(stop_quality_gate, "gate_state_lock", fail_to_lock)
     for check_name in (
         "check_python_subsystem",
         "check_frontend_subsystem",
@@ -492,3 +540,289 @@ def test_gate_reader_rejects_duplicate_json_status_keys(
     assert not passed
     assert "unreadable or malformed" in diagnostics
     assert state_path.read_bytes() == before
+
+
+def test_post_tool_writer_does_not_reinitialize_deleted_gate_state(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+    failure_path = str((tmp_path / "failed.py").resolve())
+    post_tool_linter.update_gate_state(failure_path, "ruff", False, "original failure")
+    assert stop_quality_gate.check_gate_state_errors()[0] is False
+
+    state_path.unlink()
+    missing_state, missing_diagnostic = stop_quality_gate.check_gate_state_errors()
+    assert not missing_state
+    assert "missing after initialization" in missing_diagnostic
+
+    with pytest.raises(RuntimeError, match="missing"):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+
+    assert not state_path.exists()
+    passed, diagnostics = stop_quality_gate.check_gate_state_errors()
+    assert not passed
+    assert "state is missing" in diagnostics
+
+
+def test_stop_checks_missing_state_and_witness_under_one_lock(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+
+    marker_check_entered = threading.Event()
+    allow_marker_check = threading.Event()
+    writer_lock_requested = threading.Event()
+    writer_lock_acquired = threading.Event()
+    writer_finished = threading.Event()
+    stop_results: list[tuple[bool, str]] = []
+    thread_errors: list[BaseException] = []
+
+    real_marker_reader = stop_quality_gate.has_gate_state_initialization_marker
+
+    def pause_before_marker_read(path: Path) -> bool:
+        marker_check_entered.set()
+        if not allow_marker_check.wait(timeout=2):
+            raise AssertionError("test did not release the marker check")
+        return real_marker_reader(path)
+
+    monkeypatch.setattr(
+        stop_quality_gate,
+        "has_gate_state_initialization_marker",
+        pause_before_marker_read,
+    )
+
+    real_lock = common.gate_state_lock
+
+    @contextmanager
+    def observe_writer_lock(path: Path) -> Any:
+        writer_lock_requested.set()
+        with real_lock(path):
+            writer_lock_acquired.set()
+            yield
+
+    monkeypatch.setattr(post_tool_linter, "gate_state_lock", observe_writer_lock)
+
+    def check_stop() -> None:
+        try:
+            stop_results.append(stop_quality_gate.check_gate_state_errors())
+        except BaseException as exc:
+            thread_errors.append(exc)
+
+    def initialize_state() -> None:
+        try:
+            post_tool_linter.update_gate_state(
+                str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+            )
+        except BaseException as exc:
+            thread_errors.append(exc)
+        finally:
+            writer_finished.set()
+
+    stop_thread = threading.Thread(target=check_stop, name="quality-stop-reader")
+    writer_thread = threading.Thread(
+        target=initialize_state, name="quality-state-initializer"
+    )
+    stop_thread.start()
+    try:
+        assert marker_check_entered.wait(timeout=2)
+        writer_thread.start()
+        assert writer_lock_requested.wait(timeout=2)
+        assert not writer_lock_acquired.wait(timeout=0.2), (
+            "writer crossed the Stop reader's state/witness check"
+        )
+    finally:
+        allow_marker_check.set()
+        stop_thread.join(timeout=2)
+        if writer_thread.ident is not None:
+            writer_thread.join(timeout=2)
+
+    assert not stop_thread.is_alive()
+    assert not writer_thread.is_alive()
+    assert writer_finished.is_set()
+    assert not thread_errors
+    assert stop_results == [
+        (
+            False,
+            "Automated quality gate state is missing. Run a supported PostToolUse "
+            "quality check on a source file to initialize it; do not create an "
+            "empty state file manually.",
+        )
+    ]
+    assert common.load_gate_state(state_path, require_existing=True)["latest_by_file"]
+
+
+def test_gate_state_initialization_witness_write_failure_blocks_bootstrap(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    real_replace = post_tool_linter.os.replace
+
+    def fail_marker_replace(source: Any, destination: Any) -> None:
+        if Path(destination) == marker_path:
+            raise OSError("simulated atomic witness persistence failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(post_tool_linter.os, "replace", fail_marker_replace)
+
+    with pytest.raises(RuntimeError, match="initialization witness"):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+
+    assert not state_path.exists()
+    assert not marker_path.exists()
+    passed, diagnostics = stop_quality_gate.check_gate_state_errors()
+    assert not passed
+    assert "state is missing" in diagnostics
+
+
+def test_stop_gate_fails_closed_when_initialization_witness_is_malformed(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    marker_path.write_bytes(b"corrupted witness\n")
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+
+    assert stop_quality_gate.check_gate_state_errors() == (
+        False,
+        "Automated quality gate state is unreadable or malformed.",
+    )
+    with pytest.raises(
+        RuntimeError, match="Malformed hook gate state initialization witness"
+    ):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+    assert not state_path.exists()
+
+
+def test_stop_gate_fails_closed_when_initialization_witness_cannot_be_read(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    monkeypatch.setattr(stop_quality_gate, "get_gate_state_path", lambda: state_path)
+    real_read_bytes = Path.read_bytes
+
+    def deny_witness_read(path: Path) -> bytes:
+        if path == marker_path:
+            raise PermissionError("simulated witness read denial")
+        return real_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", deny_witness_read)
+
+    assert stop_quality_gate.check_gate_state_errors() == (
+        False,
+        "Automated quality gate state is unreadable or malformed.",
+    )
+    assert not state_path.exists()
+
+
+def test_post_tool_update_fails_closed_when_state_stat_is_denied(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    real_stat = Path.stat
+
+    def deny_state_stat(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == state_path:
+            raise PermissionError("simulated state metadata denial")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", deny_state_stat)
+    with pytest.raises(RuntimeError, match="Could not inspect hook gate state"):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+    monkeypatch.setattr(Path, "stat", real_stat)
+    assert not state_path.exists()
+
+
+def test_post_tool_update_preserves_existing_initialization_witness(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    file_one = str((tmp_path / "one.py").resolve())
+    file_two = str((tmp_path / "two.py").resolve())
+
+    post_tool_linter.update_gate_state(file_one, "ruff", True, "first")
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    marker_before = marker_path.read_bytes()
+    post_tool_linter.update_gate_state(file_two, "ruff", True, "second")
+
+    state = common.load_gate_state(state_path, require_existing=True)
+    assert marker_path.read_bytes() == marker_before
+    assert [entry["output"] for entry in state["history"]] == ["first", "second"]
+    assert set(state["latest_by_file"]) == {file_one, file_two}
+
+
+def test_post_tool_witness_cleanup_error_does_not_mask_write_failure(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    state_path = tmp_path / ".gate_state.json"
+    marker_path = post_tool_linter._gate_state_initialization_marker_path(state_path)
+    real_replace = post_tool_linter.os.replace
+    real_unlink = Path.unlink
+
+    def fail_marker_replace(source: Any, destination: Any) -> None:
+        if Path(destination) == marker_path:
+            raise OSError("simulated witness replace failure")
+        real_replace(source, destination)
+
+    def deny_marker_temp_cleanup(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name.startswith(f".{state_path.name}.initialized."):
+            raise PermissionError("simulated temporary witness cleanup failure")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(post_tool_linter, "get_gate_state_path", lambda: state_path)
+    monkeypatch.setattr(post_tool_linter.os, "replace", fail_marker_replace)
+    monkeypatch.setattr(Path, "unlink", deny_marker_temp_cleanup)
+
+    with pytest.raises(
+        RuntimeError, match="Could not persist hook gate state initialization witness"
+    ):
+        post_tool_linter.update_gate_state(
+            str((tmp_path / "clean.py").resolve()), "ruff", True, ""
+        )
+    temporary_witnesses = list(tmp_path.glob(f".{state_path.name}.initialized.*.tmp"))
+    assert len(temporary_witnesses) == 1
+    real_unlink(temporary_witnesses[0])
+    assert not state_path.exists()
+
+
+def test_stop_gate_supports_package_relative_imports() -> None:
+    package_name = "_aud223_candidate_hooks"
+    qualified_name = f"{package_name}.stop_quality_gate"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(HOOKS_DIR)]  # type: ignore[attr-defined]
+    sys.modules[package_name] = package
+    try:
+        spec = importlib.util.spec_from_file_location(
+            qualified_name, HOOKS_DIR / "stop_quality_gate.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[qualified_name] = module
+        spec.loader.exec_module(module)
+        assert module.gate_state_lock.__module__ == f"{package_name}.common"
+        assert (
+            module.has_gate_state_initialization_marker.__module__
+            == f"{package_name}.post_tool_linter"
+        )
+    finally:
+        for name in tuple(sys.modules):
+            if name == package_name or name.startswith(f"{package_name}."):
+                del sys.modules[name]

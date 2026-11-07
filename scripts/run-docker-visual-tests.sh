@@ -24,11 +24,11 @@ if ! command -v docker &> /dev/null; then
 fi
 
 echo "Warning: the selected snapshot suite currently skips Linux; this command does not complete visual acceptance." >&2
-echo "Starting Playwright container (v1.63.0-noble) to run visual E2E tests..."
+echo "Starting Playwright container (v1.64.1-noble) to run visual E2E tests..."
 docker run --rm -it \
   -v "$ROOT:/work" \
   -w /work/frontend \
-  mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 \
+  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf \
   npx playwright test tests/e2e/visual.spec.ts --project=chromium $UPDATE_FLAG
 
 echo "Visual command finished. Review the report for executed and skipped tests."

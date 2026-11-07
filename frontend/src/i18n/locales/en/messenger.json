@@ -70,6 +70,11 @@
     "messages": "Loading messages…",
     "users": "Loading users…"
   },
+  "pagination": {
+    "loadMoreChats": "Load more conversations",
+    "loadingMoreChats": "Loading more conversations…",
+    "loadMoreError": "Couldn't load more conversations. Try again."
+  },
   "history": {
     "loadOlder": "Load older messages",
     "loadingOlder": "Loading older messages…",
@@ -91,6 +96,7 @@
     "tally": "Toggle {{emoji}} reaction, {{count}}",
     "whoReacted": "Reacted with {{emoji}}",
     "reactorsLoading": "Loading…",
+    "reactorsError": "Couldn't load the reaction list.",
     "reactorsEmpty": "No one yet"
   },
   "reply": "Reply",

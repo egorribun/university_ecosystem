@@ -412,6 +412,7 @@ def run_check(
     repo_root: Path,
     timeout_seconds: float,
     include_output: bool,
+    env: Mapping[str, str] | None = None,
 ) -> CheckResult:
     """Run one check, converting launch/failure/timeout into a result."""
 
@@ -425,7 +426,7 @@ def run_check(
     stdout_buffer: bytearray | None = None
     stderr_buffer: bytearray | None = None
     try:
-        process = _start_process(check, repo_root=repo_root)
+        process = _start_process(check, repo_root=repo_root, env=env)
         if os.name == "nt":
             stdout_buffer = bytearray()
             stderr_buffer = bytearray()

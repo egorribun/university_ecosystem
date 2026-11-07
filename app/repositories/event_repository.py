@@ -389,7 +389,6 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                 ),
             )
             .where(Event.id == event_id)
-            .options(selectinload(Event.files))
         )
 
         result = await self.db.execute(stmt)
@@ -495,7 +494,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         ):
             raise ValueError("My-events query limit must be between 1 and 101")
         user_id = self._cast_id(user_id)
-        if sort not in {"newest", "popular", "upcoming"}:
+        if sort not in {"newest", "newest_desc", "popular", "upcoming"}:
             raise ValueError("Unsupported event sort")
         if category is not None and category not in {
             *self._EVENT_CATEGORY_PATTERNS,
@@ -555,17 +554,29 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
         if cursor_key is not None:
             cursor_value, cursor_event_id = cursor_key
-            if sort in {"newest", "upcoming"}:
+            if sort in {"newest", "newest_desc", "upcoming"}:
                 if not isinstance(cursor_value, datetime):
                     raise ValueError("Invalid date-ordered cursor key")
-                stmt = stmt.where(
-                    or_(
-                        Event.starts_at > cursor_value,
-                        and_(
-                            Event.starts_at == cursor_value, Event.id > cursor_event_id
-                        ),
+                if sort == "newest_desc":
+                    stmt = stmt.where(
+                        or_(
+                            Event.starts_at < cursor_value,
+                            and_(
+                                Event.starts_at == cursor_value,
+                                Event.id < cursor_event_id,
+                            ),
+                        )
                     )
-                )
+                else:
+                    stmt = stmt.where(
+                        or_(
+                            Event.starts_at > cursor_value,
+                            and_(
+                                Event.starts_at == cursor_value,
+                                Event.id > cursor_event_id,
+                            ),
+                        )
+                    )
             else:
                 if isinstance(cursor_value, bool) or not isinstance(cursor_value, int):
                     raise ValueError("Invalid popular cursor key")
@@ -579,7 +590,9 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                     )
                 )
 
-        if sort in {"newest", "upcoming"}:
+        if sort == "newest_desc":
+            stmt = stmt.order_by(Event.starts_at.desc(), Event.id.desc())
+        elif sort in {"newest", "upcoming"}:
             stmt = stmt.order_by(Event.starts_at.asc(), Event.id.asc())
         else:
             stmt = stmt.order_by(participant_count.desc(), Event.id.desc())

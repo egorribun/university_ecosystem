@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     DateTime,
+    Index,
     Integer,
     String,
     func,
@@ -14,7 +15,7 @@ from sqlalchemy import (
 from sqlalchemy import UUID as SAUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.models.mixins import UUID7PrimaryKeyMixin
 
 
@@ -82,10 +83,13 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
             "status IN ('pending','processed','failed')",
             name="ck_stored_events_status_valid",
         ),
+        # AUD-269: outbox poll index restored by the MVP baseline.
+        Index("ix_stored_events_pending", "status", "created_at"),
     )
 
-    # PERF-03: Partial covering indexes (cannot be expressed in SQLAlchemy
-    # mapped_column / Index DSL; created via raw SQL in migration 202603140002):
+    # PERF-03: Partial indexes are migration-owned rather than runtime-model
+    # indexes. Alembic's cloned metadata represents their dialect-specific DDL
+    # in app/core/db/retained_table_metadata.py (migration 202603140002):
     #   ix_stored_events_pending_created          (created_at, id) WHERE processed_at IS NULL
     #   ix_stored_events_pending_aggregate_created (aggregate_id, created_at, id) WHERE processed_at IS NULL
     #

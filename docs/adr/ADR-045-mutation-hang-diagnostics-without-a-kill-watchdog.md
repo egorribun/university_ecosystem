@@ -13,12 +13,11 @@ Accepted
 Organizational task O9 asked for protection against silent stalls in long CI
 stages, chiefly the 64 frontend mutation shards. Two mechanisms existed:
 
-- **Progress diagnostic.** Every Stryker shard exports a bounded, schema-checked
-  progress record (`frontend/scripts/stryker-progress-*.mjs`), and the
-  `stryker-shards` job uploads it for the current attempt (steps *Prepare
-  progress diagnostic export* and *Upload current-attempt progress
-  diagnostic*). It is informational, marked `releaseEligible: false`, and its
-  failure never masks a mutation result.
+- **Progress diagnostic.** The Stryker runner can produce a bounded,
+  schema-checked progress record (`frontend/scripts/stryker-progress-*.mjs`).
+  The current nightly and manual mutation shard workflows upload `mutation.json`
+  and `SHARD_EVIDENCE.json`; they do not upload the progress record. The
+  diagnostic is informational and does not change a mutation result.
 - **`scripts/quality/heartbeat_watchdog.py`.** A generic wrapper that SIGTERMs
   and then SIGKILLs a command whose output, heartbeat file and CPU time have not
   advanced for a configured window. It was tested (650 lines of tests) but
@@ -33,9 +32,10 @@ timeouts are never inflated and a timed-out mutant is not relabelled.
 
 ## Decision
 
-1. The progress diagnostic plus the existing job ceilings are the accepted
-   O9 mechanism. It tells a maintainer where a shard was when it stopped,
-   without changing any verdict.
+1. The in-process progress diagnostic plus the existing job ceilings are the
+   accepted O9 mechanism. The diagnostic records shard progress without
+   changing any verdict; publishing it as a workflow artifact remains
+   unimplemented.
 2. `scripts/quality/heartbeat_watchdog.py` and `tests/test_heartbeat_watchdog.py`
    are deleted. Wiring a kill switch into mutation jobs would turn a
    diagnostic into a new source of failures: a shard that is slow but healthy
@@ -48,7 +48,9 @@ timeouts are never inflated and a timed-out mutant is not relabelled.
 ## Consequences
 
 - One fewer unused script and 1,000+ lines of tests to maintain.
-- A hung shard is still stopped by GitHub at the job ceiling; the diagnostic
-  artifact shows its last phase and completed-mutant count.
-- O9 is closed by this decision; the CI catalog entries for the progress
-  diagnostic remain the evidence.
+- A hung shard is still stopped by GitHub at the job ceiling. Current mutation
+  shard artifacts contain mutation results and shard evidence, not the progress
+  diagnostic, so its last phase and completed-mutant count are not retained as
+  a workflow artifact.
+- The no-killer decision is accepted; CI artifact availability for the progress
+  diagnostic has not been implemented.

@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react"
+import { useState, type ComponentProps } from "react"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -101,6 +101,45 @@ const makePending = (
 
 const renderDialog = (props: Partial<ComponentProps<typeof StepUpDialog>> = {}) =>
   render(<StepUpDialog open onClose={vi.fn()} {...props} />)
+
+const StepUpDialogHarness = () => {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        open step-up
+      </button>
+      {open ? <StepUpDialog open onClose={() => setOpen(false)} /> : null}
+    </>
+  )
+}
+
+const StepUpDialogSuccessHarness = () => {
+  const [open, setOpen] = useState(false)
+  const [completed, setCompleted] = useState(false)
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        open step-up
+      </button>
+      {completed ? <span role="status">verified</span> : null}
+      {open ? (
+        <StepUpDialog open onClose={() => setOpen(false)} onCompleted={() => setCompleted(true)} />
+      ) : null}
+    </>
+  )
+}
+
+const openStepUpDialogFromTrigger = async () => {
+  const user = userEvent.setup()
+  render(<StepUpDialogHarness />)
+  const opener = screen.getByRole("button", { name: "open step-up" })
+  await user.click(opener)
+  const dialog = await screen.findByRole("dialog")
+  await screen.findByTestId("otp-entry")
+  return { user, opener, dialog }
+}
 
 beforeEach(() => {
   auth.value.requireMfa = vi.fn()
@@ -680,5 +719,48 @@ describe("StepUpDialog closure", () => {
     rerender(<StepUpDialog open onClose={vi.fn()} />)
 
     expect(await screen.findByText("осталось попыток: 3")).toBeInTheDocument()
+  })
+
+  it("associates the dialog with its visible description", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    const { dialog } = await openStepUpDialogFromTrigger()
+
+    expect(dialog).toHaveAttribute("aria-describedby", "step-up-dialog-description")
+    expect(screen.getByText("mfa.stepUp.description")).toHaveAttribute(
+      "id",
+      "step-up-dialog-description"
+    )
+  })
+
+  it("keeps focus inside the dialog when tabbing from its last control", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    const { user, dialog } = await openStepUpDialogFromTrigger()
+    const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button:not([disabled])"))
+    const lastButton = buttons.at(-1)!
+    lastButton.focus()
+    await user.tab()
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  })
+
+  it("restores focus to the trigger after the dialog closes", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    const { user, opener } = await openStepUpDialogFromTrigger()
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
+
+  it("restores focus to the trigger after successful verification closes the dialog", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<StepUpDialogSuccessHarness />)
+
+    const opener = screen.getByRole("button", { name: "open step-up" })
+    await user.click(opener)
+    await screen.findByTestId("otp-entry")
+    await user.click(screen.getByRole("button", { name: "otp-submit" }))
+
+    expect(await screen.findByRole("status")).toHaveTextContent("verified")
+    await waitFor(() => expect(opener).toHaveFocus())
   })
 })

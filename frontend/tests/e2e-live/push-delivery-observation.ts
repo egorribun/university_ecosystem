@@ -18,17 +18,26 @@ const BROWSER_OBSERVATION_BUDGET_MS = 1_200
 const HOST_CAPTURE_DEADLINE_MS = 1_600
 const MAX_RECORDS = 4
 const emittedRecords = new Set<string>()
-const FALLBACK: Observation = {
-  permission: "unsupported",
-  ready: "timeout",
-  state: "error",
-  controller: false,
-  subscription: false,
-  matches: 0,
+
+function fallbackObservation(permission: Permission): Observation {
+  return {
+    permission,
+    ready: "timeout",
+    state: "error",
+    controller: false,
+    subscription: false,
+    matches: 0,
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function normalizePermission(value: unknown): Permission | null {
+  return value === "default" || value === "granted" || value === "denied" || value === "unsupported"
+    ? value
+    : null
 }
 
 function normalizeObservation(value: unknown): Observation | null {
@@ -65,17 +74,38 @@ function normalizeObservation(value: unknown): Observation | null {
   }
 }
 
-async function observe(page: Page, expectedNotificationId: string): Promise<Observation> {
+async function observe(page: Page, expectedNotificationId: string): Promise<Observation | null> {
   let timer: ReturnType<typeof setTimeout> | undefined
+  let permission: Permission | null = null
   const evaluation = Promise.resolve()
-    .then(() =>
-      page.evaluate(
+    .then(async () => {
+      const capturedPermission = normalizePermission(
+        await page.evaluate(() => {
+          try {
+            if (typeof Notification === "undefined") return "unsupported"
+            const currentPermission = Notification.permission
+            return currentPermission === "default" ||
+              currentPermission === "granted" ||
+              currentPermission === "denied"
+              ? currentPermission
+              : null
+          } catch {
+            return null
+          }
+        })
+      )
+      // API absence alone means unsupported; an unreadable permission is inconclusive.
+      if (capturedPermission === null) return null
+      permission = capturedPermission
+      return page.evaluate(
         async ({
           expectedTag,
           budgetMs,
+          permission,
         }: {
           expectedTag: string
           budgetMs: number
+          permission: Permission
         }): Promise<Observation> => {
           type Wait<T> = { kind: "resolved"; value: T } | { kind: "timeout" } | { kind: "error" }
           const deadline = Date.now() + budgetMs
@@ -95,21 +125,6 @@ async function observe(page: Page, expectedNotificationId: string): Promise<Obse
                 }
               )
             })
-          }
-
-          let permission: Permission = "unsupported"
-          try {
-            if (typeof Notification !== "undefined") {
-              switch (Notification.permission) {
-                case "default":
-                case "granted":
-                case "denied":
-                  permission = Notification.permission
-                  break
-              }
-            }
-          } catch {
-            permission = "unsupported"
           }
 
           if (!("serviceWorker" in navigator)) {
@@ -198,12 +213,19 @@ async function observe(page: Page, expectedNotificationId: string): Promise<Obse
 
           return { permission, ready, state, controller, subscription, matches }
         },
-        { expectedTag: expectedNotificationId, budgetMs: BROWSER_OBSERVATION_BUDGET_MS }
+        {
+          expectedTag: expectedNotificationId,
+          budgetMs: BROWSER_OBSERVATION_BUDGET_MS,
+          permission: capturedPermission,
+        }
       )
+    })
+    .catch(() => (permission === null ? null : fallbackObservation(permission)))
+  const deadline = new Promise<Observation | null>((resolve) => {
+    timer = setTimeout(
+      () => resolve(permission === null ? null : fallbackObservation(permission)),
+      HOST_CAPTURE_DEADLINE_MS
     )
-    .catch(() => FALLBACK)
-  const deadline = new Promise<Observation>((resolve) => {
-    timer = setTimeout(() => resolve(FALLBACK), HOST_CAPTURE_DEADLINE_MS)
   })
   try {
     return await Promise.race([evaluation, deadline])

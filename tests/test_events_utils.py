@@ -51,8 +51,13 @@ async def test_increment_events_list_version_no_cache():
     mock_cache = MagicMock()
     mock_cache.enabled = False
 
-    # Simpler approach: call it and ensure no error
-    await events_cache_version.increment(mock_cache)
+    with patch(
+        "app.core.cache_versioning.get_cache_client", new_callable=AsyncMock
+    ) as get_client:
+        assert (await events_cache_version.increment(mock_cache)) is None
+
+    mock_cache.set.assert_not_called()
+    get_client.assert_not_awaited()
 
 
 @pytest.mark.asyncio

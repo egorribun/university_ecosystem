@@ -71,7 +71,7 @@ async def test_cancelled_task_is_removed_without_error_logging():
 
 @pytest.mark.asyncio
 async def test_shutdown_returns_immediately_for_empty_registry():
-    await TaskRegistry().shutdown()
+    assert (await TaskRegistry().shutdown()) is None
 
 
 @pytest.mark.asyncio

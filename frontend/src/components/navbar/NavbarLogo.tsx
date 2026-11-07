@@ -45,7 +45,7 @@ export const NavbarLogo = ({
         "transition-[transform,opacity]",
         dur,
         ease,
-        "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+        "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)]",
         isCompact
           ? "gap-0 px-1 py-1"
           : isPhone

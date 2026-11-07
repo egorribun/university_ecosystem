@@ -18,6 +18,7 @@ from app.core.config.base import (
     _load_file_secret,
 )
 from app.core.config.database import DatabaseSettings
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED, FILE_SYMLINKS_SUPPORTED
 
 
 def _write_secret(tmp_path: Path, name: str, content: str) -> Path:
@@ -461,6 +462,10 @@ def test_unconfigured_file_returns_plain_value(monkeypatch: pytest.MonkeyPatch) 
     assert _load_file_secret("TEST_SECRET_FILE", "plain-value") == "plain-value"
 
 
+@pytest.mark.skipif(
+    not (DIRECTORY_SYMLINKS_SUPPORTED and FILE_SYMLINKS_SUPPORTED),
+    reason="native directory and file symlink privileges are unavailable (AUD-332 probe)",
+)
 def test_file_loader_follows_projected_secret_symlink_when_supported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

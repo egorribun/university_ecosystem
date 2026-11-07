@@ -10,14 +10,18 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import ssl
 import uuid
 from datetime import UTC, datetime
 from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
     TYPE_CHECKING,
     Any,
+    Never,
     Protocol,
     cast,
 )
+
+import redis.exceptions as redis_errors
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -26,6 +30,7 @@ if TYPE_CHECKING:
 
     from app.models import User
     from app.models.chat import Attachment
+    from app.repositories.chat_repository import LockedChatMembership, SendReceiptState
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.chat import (
         AttachmentResponse,
@@ -37,9 +42,25 @@ if TYPE_CHECKING:
     from .notification_service import ChatNotificationService
 
 from fastapi import HTTPException, status
-from redis.exceptions import WatchError
+from nats.errors import (
+    ConnectionClosedError,
+    ConnectionDrainingError,
+    ConnectionReconnectingError,
+    NoRespondersError,
+    NoServersError,
+    StaleConnectionError,
+)
+from redis.exceptions import (
+    ConnectionError as RedisConnectionError,
+)
+from redis.exceptions import (
+    TimeoutError as RedisTimeoutError,
+)
+from redis.exceptions import (
+    WatchError,
+)
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.api.validation import (
     ensure_exists,
@@ -50,11 +71,13 @@ from app.api.validation import (
 from app.api.ws.connection_manager import manager as ws_manager
 from app.api.ws.presence import (
     invalidate_chat_participants_cache,
+    invalidate_participant_caches_strict,
     invalidate_presence_audience_cache,
 )
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
 from app.core.logging import get_logger
+from app.deps.cache import StrictCacheInvalidationError, current_cache_key_version
 from app.models import Message
 from app.models.chat import Attachment
 from app.models.enums import UserRole
@@ -66,6 +89,50 @@ from app.schemas.chat import (
 )
 
 logger = get_logger(__name__)
+
+_MEMBERSHIP_CACHE_BATCH_SIZE = 128
+_MEMBERSHIP_FAST_PATH_SECONDS = 2.0
+# Cooperative budget for cancelled uploads, matching the upload deadline.
+# Running filesystem threads cannot be forcibly stopped; expired cleanup keeps
+# its lease until the existing TTL rather than admitting an immediate retry.
+_CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS = 30.0
+# redis-py 7.4.0 (the pyproject lower bound) defines this class; installed type stubs omit it.
+_REDIS_AUTH_ERRORS = (
+    redis_errors.AuthenticationError,
+    redis_errors.AuthorizationError,
+    cast(Any, redis_errors).ExternalAuthProviderError,
+)
+# Failover replies (demoted replica, Sentinel/cluster master down) are ResponseError
+# subclasses. Only these named classes degrade to the receipt constraint; other
+# ResponseError replies (WRONGTYPE, syntax, NOAUTH) keep propagating.
+_REDIS_FAILOVER_ERRORS = (
+    redis_errors.ReadOnlyError,
+    redis_errors.ClusterDownError,
+    redis_errors.MasterDownError,
+)
+_REDIS_DEGRADABLE_ERRORS = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    OSError,
+    *_REDIS_FAILOVER_ERRORS,
+)
+
+
+def _redis_security_error(error: BaseException) -> bool:
+    """Recognize TLS and auth errors even when redis-py wraps their cause."""
+    pending: list[BaseException] = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, (*_REDIS_AUTH_ERRORS, ssl.SSLError)):
+            return True
+        for related in (current.__cause__, current.__context__):
+            if related is not None:
+                pending.append(related)
+    return False
 
 
 def _make_idempotency_key(
@@ -90,6 +157,47 @@ def _make_idempotency_key(
     else:
         digest = hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
     return f"idm:msg:{digest}"
+
+
+def _make_send_receipt_digest(
+    chat_id: uuid.UUID, user_id: uuid.UUID, client_key: str
+) -> str:
+    """Stable private identity; Redis HMAC rotation must not reset DB ownership."""
+    domain = b"university-ecosystem:chat-send-receipt:v1\0"
+    return hashlib.sha256(
+        domain + chat_id.bytes + user_id.bytes + client_key.encode("utf-8")
+    ).hexdigest()
+
+
+def _is_send_receipt_conflict(
+    error: IntegrityError, *, expected_schema: str | None = None
+) -> bool:
+    """Recover only our named unique constraint, never unrelated integrity errors."""
+    current: BaseException | None = error.orig
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        diagnostic = getattr(current, "diag", current)
+        sqlstate = getattr(current, "sqlstate", None) or getattr(
+            current, "pgcode", None
+        )
+        if (
+            sqlstate == "23505"
+            and getattr(diagnostic, "constraint_name", None)
+            == "uq_chat_send_receipts_chat_user_key"
+        ):
+            table = getattr(diagnostic, "table_name", None)
+            schema = getattr(diagnostic, "schema_name", None)
+            return bool(
+                (table is None or table == "chat_send_receipts")
+                and (
+                    expected_schema is None
+                    or schema is None
+                    or schema == expected_schema
+                )
+            )
+        current = current.__cause__
+    return False
 
 
 async def _change_idempotency_slot(
@@ -120,7 +228,7 @@ async def _change_idempotency_slot(
                 continue
 
 
-def _idempotency_in_progress() -> None:
+def _idempotency_in_progress() -> Never:
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={
@@ -190,6 +298,30 @@ class ChatMessageDispatcher:
         if unreferenced:
             await self.attachment_service.cleanup_files(unreferenced)
 
+    async def _send_receipt_response(
+        self,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        receipt: SendReceiptState,
+    ) -> MessageResponse:
+        """Hydrate only the authorized chat; deletion never permits resurrection."""
+        if receipt.message_id is None:
+            _idempotency_in_progress()
+        message = await self.repository.get_message_by_id(
+            receipt.message_id, user_id=user_id, chat_id=chat_id
+        )
+        if message is None:
+            _idempotency_in_progress()
+        if message.deleted_at is not None:
+            message = message.model_copy(update={"attachments": []})
+        return MessageResponse(
+            **message.model_dump(exclude={"replied_to"}),
+            reply_to=ReplyPreview.from_message(message.replied_to),
+            sender_presence=PresenceStatus(
+                active=ws_manager.is_online(message.sender_id)
+            ),
+        )
+
     async def send_message(
         self,
         chat_id: uuid.UUID,
@@ -202,17 +334,23 @@ class ChatMessageDispatcher:
     ) -> MessageResponse:
         """Send a new message to a chat.
 
-        D-02 (audit 2026-03-08): Supports idempotent sends via the
-        ``Idempotency-Key`` header.  If a key is provided and a cached response
-        exists in Redis (TTL 24 h), it is returned immediately — no duplicate
-        message is created.  The key is namespaced by ``(chat_id, user_id)`` to
-        prevent cross-user and cross-chat replay attacks. An occupied pending
-        slot returns HTTP 409 with Retry-After; retry with the same key to obtain
-        the committed message. This is a bounded Redis lease, not a durable DB
-        uniqueness guarantee after Redis state loss or lease expiry.
+        The Idempotency-Key is scoped to (chat_id, user_id). A completed primary
+        DB receipt replays the original message within a fixed 24-hour window.
+        Current membership is required before any replay. A live uncommitted
+        Redis lease returns HTTP 409 with Retry-After; retry the same key later.
+        Redis admission is only an optimization: a transport outage leaves
+        concurrent sends to the receipt's database uniqueness constraint.
+        Historical cache-only sends and mixed old/new writers are outside the
+        durable replay guarantee.
         """
         _idempotency_cache_key: str | None = None
         _pending_value: str | None = None
+        _possible_lease_key: str | None = None
+        _possible_lease_value: str | None = None
+        _receipt_digest: str | None = None
+        _receipt_expires_at: datetime | None = None
+        # Rollback expires ORM attributes even when expire_on_commit is disabled.
+        user_id = user.id
 
         # Check existence first (for correct 404 reporting)
         chat = await self.repository.get_by_id(chat_id)
@@ -220,43 +358,78 @@ class ChatMessageDispatcher:
         assert chat is not None  # noqa: S101
 
         # Check participation (TD-4 security audit)
-        is_participant = await self.repository.check_participant(chat_id, user.id)
+        is_participant = await self.repository.check_participant(chat_id, user_id)
         if not is_participant:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        # Check idempotency only after current membership authorization. A cached
-        # message ID is not an authorization grant; users removed from a chat must
-        # not retrieve an old response through the retry path.
+        # Current membership is required even for a completed retry. Consult
+        # primary ownership before Redis so a committed response survives cache
+        # outage, lost completion, eviction, or rotation of the cache HMAC key.
         if idempotency_key:
-            import json as _json
-
             from app.deps.cache import get_cache_client
 
-            _cache = await get_cache_client()
-            _idempotency_cache_key = _make_idempotency_key(
-                chat_id, user.id, idempotency_key
+            _receipt_digest = _make_send_receipt_digest(
+                chat_id, user_id, idempotency_key
             )
-            _cached = await _cache.get(_idempotency_cache_key)
+            receipt = await self.repository.get_send_receipt(
+                chat_id, user_id, _receipt_digest
+            )
+            if receipt is not None and receipt.expires_at > receipt.observed_at:
+                return await self._send_receipt_response(chat_id, user_id, receipt)
+
+            cache_key = _make_idempotency_key(chat_id, user_id, idempotency_key)
+            try:
+                _cache = await get_cache_client()
+                _cached = await _cache.get(cache_key)
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
+                logger.warning("chat_message_idempotency_cache_unavailable")
+                _cached = None
+            else:
+                _idempotency_cache_key = cache_key
             if _cached:
                 try:
-                    _hit = _json.loads(_cached)
+                    _hit = json.loads(_cached)
                     _msg_id = uuid.UUID(_hit["message_id"])
                 except (ValueError, KeyError, TypeError):  # RZ-28-01
-                    # Pending or malformed entries must still acquire the slot
-                    # below; never treat a cache parse failure as ownership.
+                    # Pending or malformed values are not ownership grants.
                     pass
                 else:
-                    _full = await self.repository.get_message_by_id(
-                        _msg_id, user_id=user.id, chat_id=chat_id
-                    )
-                    if _full is not None:
-                        return MessageResponse(
-                            **_full.model_dump(exclude={"replied_to"}),
-                            reply_to=ReplyPreview.from_message(_full.replied_to),
-                            sender_presence=PresenceStatus(
-                                active=ws_manager.is_online(_full.sender_id)
-                            ),
+                    if receipt is not None or "receipt_version" in _hit:
+                        # An expired DB receipt overrides even a legacy cache
+                        # value. New-format values without a live DB receipt
+                        # cannot resurrect a completed window after cleanup.
+                        cached_text = (
+                            _cached.decode("utf-8")
+                            if isinstance(_cached, bytes)
+                            else _cached
                         )
+                        try:
+                            await _change_idempotency_slot(cache_key, cached_text)
+                        except _REDIS_AUTH_ERRORS:
+                            raise
+                        except _REDIS_DEGRADABLE_ERRORS as cache_error:
+                            if _redis_security_error(cache_error):
+                                raise
+                            logger.warning("chat_message_idempotency_cache_unavailable")
+                            _idempotency_cache_key = None
+                    else:
+                        # Bounded compatibility for pre-receipt deployments.
+                        # There is no historical key mapping to backfill safely.
+                        _full = await self.repository.get_message_by_id(
+                            _msg_id, user_id=user_id, chat_id=chat_id
+                        )
+                        if _full is not None:
+                            return MessageResponse(
+                                **_full.model_dump(exclude={"replied_to"}),
+                                reply_to=ReplyPreview.from_message(_full.replied_to),
+                                sender_presence=PresenceStatus(
+                                    active=ws_manager.is_online(_full.sender_id)
+                                ),
+                            )
 
         # Wave 207 — if this is a reply, the target must exist AND be in THIS chat.
         # message_exists_in_chat checks both (id == … AND chat_id == …) via EXISTS,
@@ -265,7 +438,7 @@ class ChatMessageDispatcher:
         # the SET NULL self-FK.
         if reply_to_message_id is not None:
             target_in_chat = await self.repository.message_exists_in_chat(
-                reply_to_message_id, chat_id, user_id=user.id
+                reply_to_message_id, chat_id, user_id=user_id
             )
             if not target_in_chat:
                 raise_not_found("message", locale)
@@ -298,17 +471,84 @@ class ChatMessageDispatcher:
         # surface genuine infrastructure failures quickly.
         _UPLOAD_TIMEOUT_SECONDS = 30.0
 
-        # Reserve before uploads. A losing request returns a retryable conflict;
-        # only the owner may write or release/promote the scoped client key.
+        # Reserve before uploads when Redis is reachable. Its lease reduces
+        # duplicate uploads; database receipt ownership remains authoritative.
         if _idempotency_cache_key:
             _pending_value = json.dumps(
                 {"status": "pending", "owner": uuid.uuid4().hex}
             )
-            acquired = await _cache.set(
-                _idempotency_cache_key, _pending_value, nx=True, ex=300
+            # SET may take effect even if its acknowledgement is lost. Retain
+            # the candidate only for compare-and-mutate cleanup, never as proof
+            # that admission was acquired.
+            _possible_lease_key = _idempotency_cache_key
+            _possible_lease_value = _pending_value
+            reservation_task = asyncio.ensure_future(
+                _cache.set(_idempotency_cache_key, _pending_value, nx=True, ex=300)
             )
-            if not acquired:
-                _idempotency_in_progress()
+
+            def _consume_reservation_result(
+                task: asyncio.Future[bool | None],
+            ) -> None:
+                if not task.cancelled():
+                    task.exception()
+
+            reservation_task.add_done_callback(_consume_reservation_result)
+            try:
+                acquired = await asyncio.shield(reservation_task)
+            except asyncio.CancelledError:
+
+                async def _cleanup_cancelled_reservation() -> None:
+                    loop = asyncio.get_running_loop()
+                    deadline = loop.time() + _CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            try:
+                                await asyncio.shield(reservation_task)
+                            except asyncio.CancelledError:
+                                if reservation_task.cancelled():
+                                    return
+                                raise
+                            except (
+                                Exception
+                            ):  # RZ-22-01-JUSTIFIED: preserve cancellation
+                                # Compensate a possibly committed SET before re-raising.
+                                logger.warning(
+                                    "chat_message_idempotency_reservation_ack_failed"
+                                )
+                    except TimeoutError:
+                        # Do not CAS before a possible late SET; TTL bounds the lease.
+                        reservation_task.cancel()
+                        logger.warning("chat_message_idempotency_cleanup_failed")
+                        return
+
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            await _change_idempotency_slot(
+                                _possible_lease_key, _possible_lease_value
+                            )
+                    except Exception:
+                        logger.warning("chat_message_idempotency_cleanup_failed")
+
+                cleanup_task = asyncio.create_task(_cleanup_cancelled_reservation())
+                while True:
+                    try:
+                        await asyncio.shield(cleanup_task)
+                        break
+                    except asyncio.CancelledError:
+                        if cleanup_task.done():
+                            break
+                raise
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
+                logger.warning("chat_message_idempotency_cache_unavailable")
+                _idempotency_cache_key = None
+                _pending_value = None
+            else:
+                if not acquired:
+                    _idempotency_in_progress()
 
         # ── Phase 1 + Phase 2 wrapped together ───────────────────────────────
         # Both phases share the same exception handler so that a Phase-2 failure
@@ -368,12 +608,56 @@ class ChatMessageDispatcher:
                         raise cast(HTTPException, leaves[0]) from None
                     raise
 
+        except asyncio.CancelledError:
+
+            async def _cleanup_cancelled_uploads() -> None:
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + _CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        if saved_urls:
+                            await self.attachment_service.cleanup_files(saved_urls)
+                except Exception:  # RZ-22-01-JUSTIFIED: preserve cancellation and still attempt bounded lease release
+                    logger.warning("chat_message_attachment_cleanup_failed")
+                finally:
+                    if _possible_lease_key and _possible_lease_value:
+                        if loop.time() >= deadline:
+                            # No new work after the budget expires; the owned lease
+                            # remains bounded by its existing Redis TTL.
+                            logger.warning("chat_message_idempotency_cleanup_failed")
+                        else:
+                            try:
+                                async with asyncio.timeout_at(deadline):
+                                    await _change_idempotency_slot(
+                                        _possible_lease_key, _possible_lease_value
+                                    )
+                            except Exception:  # RZ-22-01-JUSTIFIED: cleanup must preserve the original cancellation
+                                logger.warning(
+                                    "chat_message_idempotency_cleanup_failed"
+                                )
+
+            cleanup_task = asyncio.create_task(_cleanup_cancelled_uploads())
+            # Repeated cancellation cannot detach this asyncio task. The deadline
+            # cancels and drains async deletions; storage threads may still finish.
+            while True:
+                try:
+                    await asyncio.shield(cleanup_task)
+                    break
+                except asyncio.CancelledError:
+                    if cleanup_task.done():
+                        break
+            raise
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up partial uploads then re-raises (reviewed TD-27-04)
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key and _pending_value:
-                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
+            if _possible_lease_key and _possible_lease_value:
+                try:
+                    await _change_idempotency_slot(
+                        _possible_lease_key, _possible_lease_value
+                    )
+                except _REDIS_DEGRADABLE_ERRORS:
+                    logger.warning("chat_message_idempotency_cleanup_failed")
             raise
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
@@ -382,17 +666,29 @@ class ChatMessageDispatcher:
         # unknown, keep the bounded pending lease so an immediate retry cannot
         # create a duplicate message.
         commit_attempted = False
+        message_event_emitter: EventEmitterMixin | None = None
         try:
             if _idempotency_cache_key and _pending_value:
-                # Uploads may outlive the lease. Verify and renew ownership before
-                # entering the DB mutation, so an old uploader cannot insert.
-                if not await _change_idempotency_slot(
-                    _idempotency_cache_key, _pending_value, _pending_value
-                ):
-                    _idempotency_in_progress()
+                # Uploads may outlive the lease. Reject an observed replacement;
+                # if Redis is unreachable, the receipt constraint decides instead.
+                try:
+                    renewed = await _change_idempotency_slot(
+                        _idempotency_cache_key, _pending_value, _pending_value
+                    )
+                except _REDIS_AUTH_ERRORS:
+                    raise
+                except _REDIS_DEGRADABLE_ERRORS as cache_error:
+                    if _redis_security_error(cache_error):
+                        raise
+                    logger.warning("chat_message_idempotency_cache_unavailable")
+                    _idempotency_cache_key = None
+                    _pending_value = None
+                else:
+                    if not renewed:
+                        _idempotency_in_progress()
             message = Message(
                 chat_id=chat_id,
-                sender_id=user.id,
+                sender_id=user_id,
                 content=content,
                 reply_to_message_id=reply_to_message_id,  # Wave 207
             )
@@ -421,7 +717,8 @@ class ChatMessageDispatcher:
             #
             # Cast: Message inherits EventEmitterMixin (models/chat.py), but mypy
             # cannot resolve SQLAlchemy's multi-inheritance graph statically.
-            cast(EventEmitterMixin, message).record_event(
+            message_event_emitter = cast(EventEmitterMixin, message)
+            message_event_emitter.record_event(
                 MessageSent(
                     message_id=message.id,
                     chat_id=message.chat_id,
@@ -440,6 +737,17 @@ class ChatMessageDispatcher:
                 )
                 self.repository.add(attachment)
 
+            if _receipt_digest is not None:
+                # Adjudicate receipt ownership before the Chat timestamp UPDATE.
+                # The exact unique conflict rolls back Message, attachments and
+                # MessageSent together; no losing write is committed.
+                # Claim the exact key before opportunistic cleanup, otherwise
+                # different-key retries can wait on each other's pruned rows.
+                _receipt_expires_at = await self.repository.create_send_receipt(
+                    chat_id, user_id, _receipt_digest, message.id
+                )
+                await self.repository.prune_expired_send_receipts(chat_id, user_id)
+
             # The UPDATE below triggers an SQLAlchemy autoflush — at that point
             # `message` (and its _pending_domain_events) are still in session.new,
             # so capture_domain_events() correctly creates the StoredEvent row and
@@ -453,7 +761,10 @@ class ChatMessageDispatcher:
             commit_attempted = True
             await self.uow.commit()
 
-        except Exception:  # RZ-22-01-JUSTIFIED: rollback and cleanup before re-raising (reviewed TD-27-04)
+        except (
+            Exception,
+            asyncio.CancelledError,
+        ) as error:  # RZ-22-01-JUSTIFIED: rollback and cleanup before propagating failure or cancellation
             # RACE-BE-01: Phase 2 failed — rollback first, then preserve any file
             # that a possibly committed Attachment row still references.
             rollback_succeeded = True
@@ -464,41 +775,102 @@ class ChatMessageDispatcher:
             ):  # RZ-22-01-JUSTIFIED: preserve failure; retain files on rollback error
                 rollback_succeeded = False
                 logger.warning("chat_message_rollback_failed")
+            if rollback_succeeded and message_event_emitter is not None:
+                # A failed receipt INSERT may precede event capture. Do not let
+                # this rolled-back send emit MessageSent on a reused session.
+                message_event_emitter.clear_events()
+            receipt_conflict = False
+            if (
+                rollback_succeeded
+                and _receipt_digest is not None
+                and isinstance(error, IntegrityError)
+            ):
+                schema = getattr(
+                    self.session.get_bind().dialect, "default_schema_name", None
+                )
+                receipt_conflict = _is_send_receipt_conflict(
+                    error, expected_schema=schema if isinstance(schema, str) else None
+                )
+                if receipt_conflict:
+                    # Rollback clears transaction-local identity. Tenant scope is
+                    # restored by the existing after_begin session listener.
+                    await self.repository.set_message_rls_user(user_id)
             if saved_urls and rollback_succeeded:
                 try:
                     await self._cleanup_unreferenced_uploaded_files(saved_urls)
                 except Exception:  # RZ-22-01-JUSTIFIED: best-effort cleanup must preserve the transaction failure
                     logger.warning("chat_message_attachment_cleanup_failed")
-            if _idempotency_cache_key and _pending_value:
+            if _possible_lease_key and _possible_lease_value:
                 try:
                     if commit_attempted:
                         # Compare-and-renew only our still-live lease. If commit
                         # acknowledgement was lost, this blocks immediate retries
                         # for one bounded TTL without claiming durable idempotency.
                         await _change_idempotency_slot(
-                            _idempotency_cache_key, _pending_value, _pending_value
+                            _possible_lease_key,
+                            _possible_lease_value,
+                            _possible_lease_value,
                         )
                     else:
                         await _change_idempotency_slot(
-                            _idempotency_cache_key, _pending_value
+                            _possible_lease_key, _possible_lease_value
                         )
                 except Exception:  # RZ-22-01-JUSTIFIED: cache cleanup must preserve the transaction failure
                     logger.warning("chat_message_idempotency_cleanup_failed")
+            if receipt_conflict and _receipt_digest is not None:
+                # Do not access the potentially expired User ORM object.
+                current_chat = await self.repository.get_by_id(chat_id)
+                ensure_exists(current_chat, "chat", locale)
+                if not await self.repository.check_participant(chat_id, user_id):
+                    raise_forbidden(locale, "errors.chat.not_participant")
+                winner = await self.repository.get_send_receipt(
+                    chat_id, user_id, _receipt_digest
+                )
+                if winner is not None and winner.expires_at > winner.observed_at:
+                    return await self._send_receipt_response(chat_id, user_id, winner)
+                _idempotency_in_progress()
             raise
 
-        # Record the committed ID before response hydration, which may itself
-        # fail. A retry can then reload that same message rather than insert again.
-        if _idempotency_cache_key and _pending_value:
-            await _change_idempotency_slot(
-                _idempotency_cache_key,
-                _pending_value,
-                json.dumps({"status": "completed", "message_id": str(message.id)}),
-                ttl=86400,
+        # Cache is only a hint. Its TTL must not extend the fixed DB window,
+        # including the time already spent waiting for COMMIT acknowledgement.
+        if (
+            _idempotency_cache_key
+            and _pending_value
+            and _receipt_expires_at is not None
+        ):
+            remaining = await self.repository.send_receipt_remaining_seconds(
+                _receipt_expires_at
             )
+            try:
+                if remaining:
+                    await _change_idempotency_slot(
+                        _idempotency_cache_key,
+                        _pending_value,
+                        json.dumps(
+                            {
+                                "status": "completed",
+                                "receipt_version": 1,
+                                "message_id": str(message.id),
+                                "expires_at": _receipt_expires_at.isoformat(),
+                            }
+                        ),
+                        ttl=min(remaining, 86400),
+                    )
+                else:
+                    await _change_idempotency_slot(
+                        _idempotency_cache_key, _pending_value
+                    )
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
+                # A committed receipt replays even if completion remains pending.
+                logger.warning("chat_message_idempotency_completion_failed")
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages(
-            [message.id], user_id=user.id
+            [message.id], user_id=user_id
         )
         full_message = reloaded.get(message.id)
 
@@ -1056,6 +1428,7 @@ class ChatMaintenanceService:
                 else str(user.email),
             },
             exclude_user_id=user.id,
+            db_session=self.uow.session,
         )
 
     def _require_group_participant(
@@ -1074,6 +1447,19 @@ class ChatMaintenanceService:
             raise_validation_error("errors.chat.not_a_group", locale)
         return participant_ids
 
+    async def _lock_group_membership(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, locale: str
+    ) -> LockedChatMembership:
+        """Authorize against the roster protected by the chat-first lock."""
+        snapshot = await self.repository.lock_membership_snapshot(chat_id)
+        ensure_exists(snapshot, "chat", locale)
+        assert snapshot is not None  # noqa: S101
+        if user_id not in snapshot.participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        if snapshot.chat_type != "group":
+            raise_validation_error("errors.chat.not_a_group", locale)
+        return snapshot
+
     async def add_participant(
         self,
         chat_id: uuid.UUID,
@@ -1091,18 +1477,22 @@ class ChatMaintenanceService:
         member-change frames). add_participant is idempotent (added == False ⇒ no
         membership change ⇒ skip the invalidation).
         """
-        chat = await self.repository.get_by_id(chat_id)
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
-
-        participant_ids = self._require_group_participant(chat, user, locale)
-
-        target = await self.repository.get_user(new_user_id)
-        ensure_exists(target, "users", locale)
-
-        added = await self.repository.add_participant(chat_id, new_user_id)
-        async with self.uow:
+        user_id = user.id
+        try:
+            snapshot = await self._lock_group_membership(chat_id, user_id, locale)
+            participant_ids = set(snapshot.participant_ids)
+            target = await self.repository.get_user(new_user_id)
+            ensure_exists(target, "users", locale)
+            added = await self.repository.add_participant(chat_id, new_user_id)
             await self.uow.commit()
+        except (
+            BaseException
+        ):  # RZ-22-01-JUSTIFIED: rollback before re-raising transaction failure
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_add_participant_rollback_failed")
+            raise
 
         if added:
             await invalidate_chat_participants_cache(chat_id)
@@ -1119,74 +1509,122 @@ class ChatMaintenanceService:
 
         The owner (created_by) may remove anyone; any member may remove themselves
         (leave); anyone else → 403 remove_forbidden. After commit, invalidate the
-        same caches as add (security invariant). Removing a non-member is a benign
-        no-op (affected == 0 ⇒ skip the invalidation).
+        same caches as add (security invariant). A permitted no-op retries the
+        fast cache cleanup without creating additional outbox events.
         """
-        chat = await self.repository.get_by_id(chat_id)
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
+        from app.core.events import ChatParticipantCacheInvalidation
+        from app.core.events import ChatParticipantRemoved as _ChatParticipantRemoved
+        from app.models.domain_events import StoredEvent as _StoredEvent
+        from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
 
-        participant_ids = self._require_group_participant(chat, user, locale)
-
-        is_self_leave = target_user_id == user.id
-        is_owner = chat.created_by == user.id
-        if not (is_self_leave or is_owner):
-            raise_forbidden(locale, "errors.chat.remove_forbidden")
-
-        affected = await self.repository.remove_participant(chat_id, target_user_id)
+        user_id = user.id
         removal_event_id: uuid.UUID | None = None
-        if affected:
-            from app.core.events import (
-                ChatParticipantRemoved as _ChatParticipantRemoved,
-            )
-            from app.models.domain_events import StoredEvent as _StoredEvent
-            from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
+        try:
+            snapshot = await self._lock_group_membership(chat_id, user_id, locale)
+            if target_user_id != user_id and snapshot.created_by != user_id:
+                raise_forbidden(locale, "errors.chat.remove_forbidden")
 
-            removal_event_id = _generate_uuid7()
-            self.repository.add(
-                _StoredEvent(
-                    id=removal_event_id,
-                    event_type=_ChatParticipantRemoved.EVENT_TYPE,
-                    aggregate_type="Chat",
-                    aggregate_id=str(chat_id),
-                    payload={
-                        "chat_id": str(chat_id),
-                        "user_id": str(target_user_id),
-                    },
+            participant_ids = sorted(set(snapshot.participant_ids) | {target_user_id})
+            cache_version = current_cache_key_version()
+            affected = await self.repository.remove_participant(chat_id, target_user_id)
+            if affected:
+                removal_event_id = _generate_uuid7()
+                self.repository.add(
+                    _StoredEvent(
+                        id=removal_event_id,
+                        event_type=_ChatParticipantRemoved.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "user_id": str(target_user_id),
+                        },
+                    )
                 )
-            )
-        async with self.uow:
+                for start in range(
+                    0, len(participant_ids), _MEMBERSHIP_CACHE_BATCH_SIZE
+                ):
+                    cache_event_id = _generate_uuid7()
+                    batch = participant_ids[
+                        start : start + _MEMBERSHIP_CACHE_BATCH_SIZE
+                    ]
+                    self.repository.add(
+                        _StoredEvent(
+                            id=cache_event_id,
+                            event_type=ChatParticipantCacheInvalidation.EVENT_TYPE,
+                            aggregate_type="ChatMembershipCache",
+                            aggregate_id=str(cache_event_id),
+                            payload={
+                                "chat_id": str(chat_id),
+                                "cache_key_version": cache_version,
+                                "participant_ids": [
+                                    str(participant) for participant in batch
+                                ],
+                            },
+                        )
+                    )
             await self.uow.commit()
+        except (
+            BaseException
+        ):  # RZ-22-01-JUSTIFIED: rollback before re-raising transaction failure
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_remove_participant_rollback_failed")
+            raise
 
-        if affected:
-            cache_results = await asyncio.gather(
-                invalidate_chat_participants_cache(chat_id),
-                invalidate_presence_audience_cache(target_user_id, *participant_ids),
-                return_exceptions=True,
-            )
+        async def invalidate_caches() -> None:
+            try:
+                async with asyncio.timeout(_MEMBERSHIP_FAST_PATH_SECONDS):
+                    for start in range(
+                        0, len(participant_ids), _MEMBERSHIP_CACHE_BATCH_SIZE
+                    ):
+                        await invalidate_participant_caches_strict(
+                            chat_id,
+                            participant_ids[
+                                start : start + _MEMBERSHIP_CACHE_BATCH_SIZE
+                            ],
+                            cache_version,
+                        )
+            except (StrictCacheInvalidationError, OSError):
+                logger.warning("chat_membership_cache_invalidation_deferred")
 
-            # The transactionally stored event remains the durable retry path.
-            # Publish the same event identity now for low-latency room eviction;
-            # JetStream deduplicates the outbox retry, and the hub also treats a
-            # repeated eviction as idempotent after refreshing membership.
+        async def evict_room() -> None:
             from app.services.ws_hub_client import invalidate_ws_hub_cache
 
-            await asyncio.gather(
-                invalidate_ws_hub_cache(
-                    str(target_user_id),
-                    str(chat_id),
-                    evict_room=True,
-                    event_id=str(removal_event_id),
-                ),
-                return_exceptions=True,
-            )
-            # A cache failure must not prevent the independent room-revocation
-            # fast path. Preserve the existing error contract after all
-            # post-commit effects have had a chance to run; the stored event
-            # remains available for durable WS-hub retry.
-            for cache_result in cache_results:
-                if isinstance(cache_result, BaseException):
-                    raise cache_result
+            try:
+                async with asyncio.timeout(_MEMBERSHIP_FAST_PATH_SECONDS):
+                    await invalidate_ws_hub_cache(
+                        str(target_user_id),
+                        str(chat_id),
+                        evict_room=True,
+                        event_id=str(removal_event_id),
+                    )
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                ConnectionClosedError,
+                ConnectionDrainingError,
+                ConnectionReconnectingError,
+                NoRespondersError,
+                NoServersError,
+                StaleConnectionError,
+            ):
+                logger.warning("chat_membership_hub_eviction_deferred")
+            except RuntimeError as error:
+                # The broker uses this exact error when JetStream is unavailable.
+                if str(error) != "NATS JetStream not available":
+                    raise
+                logger.warning("chat_membership_hub_eviction_deferred")
+
+        effects = [invalidate_caches()]
+        if affected:
+            effects.append(evict_room())
+        outcomes = await asyncio.gather(*effects, return_exceptions=True)
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                raise outcome
 
     async def rename_chat(
         self, chat_id: uuid.UUID, user: User, name: str, locale: str

@@ -15,7 +15,14 @@ on:
 
 # Least-privilege defaults — individual jobs extend as needed.
 # Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
-permissions: read-all
+permissions:
+  contents: read
+
+# zizmor cache-poisoning (ADR-047 supply-chain gate): this workflow runs for
+# delivery-branch pushes (main, develop, release/*), so its inline jobs must
+# neither restore nor save shared caches. Reusable workflows keep their own
+# cache policy. Setting cache-mode is the documented zizmor remedy.
+cache-mode: none
 
 concurrency:
   # Required PR runs share an admission group per PR so a newer commit cancels
@@ -80,12 +87,58 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python for lock check
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
+      - name: Enforce Scorecard floor ratchet
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Scorecard ratchet needs immutable PR base and tested commit SHAs."
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$PR_BASE_SHA"
+          policy=quality/scorecard-floors.json
+          gate=scripts/quality/scorecard_floors_gate.py
+          base_policy="$(git ls-tree -r --name-only "$PR_BASE_SHA" -- "$policy")"
+          base_gate="$(git ls-tree -r --name-only "$PR_BASE_SHA" -- "$gate")"
+          current_policy="$(git ls-tree -r --name-only "$TESTED_SHA" -- "$policy")"
+          current_gate="$(git ls-tree -r --name-only "$TESTED_SHA" -- "$gate")"
+          if [[ -z "$base_policy" && -z "$base_gate" && -z "$current_policy" && -z "$current_gate" ]]; then
+            echo "Scorecard floor policy has not been introduced on this branch."
+            exit 0
+          fi
+          if [[ -z "$current_policy" || -z "$current_gate" ]]; then
+            echo "::error::The Scorecard policy and gate must both be present."
+            exit 1
+          fi
+          git show "$TESTED_SHA:$policy" > "$RUNNER_TEMP/scorecard-current-policy.json"
+          if [[ -z "$base_policy" && -z "$base_gate" ]]; then
+            # First introduction: validate the initial approved six floors.
+            git show "$TESTED_SHA:$gate" > "$RUNNER_TEMP/scorecard-current-gate.py"
+            python3 "$RUNNER_TEMP/scorecard-current-gate.py" "$RUNNER_TEMP/scorecard-current-policy.json" \
+              --previous-floors "$RUNNER_TEMP/scorecard-current-policy.json"
+          elif [[ -n "$base_policy" && -n "$base_gate" ]]; then
+            # The checker and baseline both come from the exact trusted base commit.
+            git show "$PR_BASE_SHA:$policy" > "$RUNNER_TEMP/scorecard-previous-policy.json"
+            git show "$PR_BASE_SHA:$gate" > "$RUNNER_TEMP/scorecard-trusted-gate.py"
+            python3 "$RUNNER_TEMP/scorecard-trusted-gate.py" "$RUNNER_TEMP/scorecard-current-policy.json" \
+              --previous-floors "$RUNNER_TEMP/scorecard-previous-policy.json"
+          else
+            echo "::error::Trusted base contains an incomplete Scorecard floor policy."
+            exit 1
+          fi
+
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Verify uv.lock is up to date (MOD-W5-03)
         # MOD-03 (audit Wave 12): explicit error annotation in GitHub Actions UI panel.
@@ -169,12 +222,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python for pre-commit security hooks
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Restore security/type pre-commit environments
         # Separate from the fast group so concurrent jobs cannot race to write
@@ -233,11 +286,17 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Generate CI secret key if not configured (RZ-14-06)
         # RZ-14-06: the workflow-wide key is intentionally empty for every
         # event; generate an ephemeral 32-byte value only in this job.
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Enforce Rate Limit Shim Deadline (TD-003)
         run: |
           count=$(git grep "from app.core import rate_limit" app/ | wc -l || echo "0")
@@ -264,15 +323,7 @@ jobs:
         # is the safe replacement.  This gate prevents future re-introduction.
         shell: bash
         run: |
-          # TD-W18-04 (audit 2026-03-23 Wave 18): exclude comments to prevent false
-          # positives (e.g. "# Do NOT import pickle" triggered the old gate).
-          result=$(grep -rn "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" | grep -v '^\s*#' | grep -v '# nosec' || true)
-          if [ -n "$result" ]; then
-            echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
-            echo "$result"
-            exit 1
-          fi
-          echo "OK: no pickle usage found in app/"
+          python scripts/quality/check_no_pickle.py app/
 
       - name: "Enforce Python 3 except tuple syntax (RZ-25-01 / MOD-27-01)"
         # MOD-27-01: Fixed regex — previous `grep -v 'except ('` accidentally
@@ -291,56 +342,166 @@ jobs:
 
       - name: "MOD-30-01: Enforce lazy=noload on SQLAlchemy relationships"
         run: |
-          # All relationships in app/models/ must have explicit lazy= parameter
-          # to prevent N+1 queries.  See CLAUDE.md: "ALL relationships must have
-          # explicit lazy=\"noload\"".  Use '# noload-exempt: <reason>' for
-          # justified exceptions (e.g., lazy="joined" for 1:1).
-          #
-          # Multi-line aware: reads full relationship(...) calls across lines.
-          python3 -c "
-          import re, sys, pathlib
+          python3 - <<'PY'
+          import ast
+          import io
+          import pathlib
+          import re
+          import sys
+          import tokenize
+
+          def dotted_name(node):
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = dotted_name(node.value)
+                  return f'{parent}.{node.attr}' if parent else None
+              return None
+
+          def is_relationship_function(expression, names, modules):
+              if isinstance(expression, ast.Name) and expression.id in names:
+                  return True
+              name = dotted_name(expression)
+              return name is not None and any(
+                  name == f'{module}.relationship' for module in modules
+              )
+
+          def is_relationship_module(expression, modules):
+              return dotted_name(expression) in modules
+
+          def references_relationship(expression, names, modules):
+              for child in ast.walk(expression):
+                  if is_relationship_function(child, names, modules):
+                      return True
+              return False
+
+          def assignment_targets(target):
+              if isinstance(target, ast.Name):
+                  return (target.id,)
+              return ()
+
+          def add_static_aliases(tree, names, modules):
+              assignments = []
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.Assign):
+                      assignments.extend(
+                          (name, item.value)
+                          for target in item.targets
+                          for name in assignment_targets(target)
+                      )
+                  elif isinstance(item, ast.AnnAssign) and item.value is not None:
+                      assignments.extend(
+                          (name, item.value) for name in assignment_targets(item.target)
+                      )
+              changed = True
+              while changed:
+                  changed = False
+                  for name, value in assignments:
+                      if is_relationship_module(value, modules) and name not in modules:
+                          modules.add(name)
+                          changed = True
+                      elif (
+                          references_relationship(value, names, modules)
+                          and name not in names
+                      ):
+                          names.add(name)
+                          changed = True
+
+          def has_exemption(call, lazy_keyword, comments, relationship_calls):
+              allowed_lines = {call.end_lineno, lazy_keyword.end_lineno}
+              for token in comments:
+                  line = token.start[0]
+                  if line not in allowed_lines or not re.match(
+                      r'#\s*noload-exempt:\s*\S', token.string
+                  ):
+                      continue
+                  calls_on_line = [
+                      candidate
+                      for candidate in relationship_calls
+                      if candidate.lineno <= line <= candidate.end_lineno
+                  ]
+                  if len(calls_on_line) == 1 and calls_on_line[0] is call:
+                      return True
+              return False
 
           models = pathlib.Path('app/models')
-          # Match relationship( ... ) spanning multiple lines
-          pat = re.compile(r'relationship\s*\(', re.MULTILINE)
+          if not models.is_dir():
+              print('::error::app/models directory is missing (MOD-30-01)')
+              sys.exit(2)
           violations = []
-          for f in sorted(models.rglob('*.py')):
-              if '__pycache__' in str(f):
-                  continue
-              text = f.read_text(encoding='utf-8')
-              lines = text.splitlines(keepends=True)
-              # Build line offset map
-              offsets = []
-              pos = 0
-              for line in lines:
-                  offsets.append(pos)
-                  pos += len(line)
-              for m in pat.finditer(text):
-                  start = m.start()
-                  # Find matching closing paren (handle nesting)
-                  depth, i = 1, m.end()
-                  while i < len(text) and depth > 0:
-                      if text[i] == '(':
-                          depth += 1
-                      elif text[i] == ')':
-                          depth -= 1
-                      i += 1
-                  block = text[start:i]
-                  # Line number (1-based)
-                  lineno = next(j + 1 for j in range(len(offsets) - 1, -1, -1) if offsets[j] <= start)
-                  if 'lazy=' in block or '# noload-exempt' in block:
+          for path in sorted(models.rglob('*.py')):
+              source = path.read_text(encoding='utf-8')
+              tree = ast.parse(source, filename=str(path))
+              relationship_names = {'relationship'}
+              relationship_modules = set()
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.ImportFrom):
+                      if item.module == 'sqlalchemy.orm':
+                          relationship_names.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'relationship'
+                          )
+                      elif item.module == 'sqlalchemy':
+                          relationship_modules.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'orm'
+                          )
+                  elif isinstance(item, ast.Import):
+                      for alias in item.names:
+                          if alias.name == 'sqlalchemy.orm':
+                              relationship_modules.add(alias.asname or alias.name)
+                          elif alias.name == 'sqlalchemy':
+                              relationship_modules.add(
+                                  f'{alias.asname or alias.name}.orm'
+                              )
+              add_static_aliases(tree, relationship_names, relationship_modules)
+              comments = [
+                  token
+                  for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                  if token.type == tokenize.COMMENT
+              ]
+              relationship_calls = [
+                  item
+                  for item in ast.walk(tree)
+                  if isinstance(item, ast.Call)
+                  and is_relationship_function(
+                      item.func, relationship_names, relationship_modules
+                  )
+              ]
+              for item in relationship_calls:
+                  lazy_keyword = next(
+                      (keyword for keyword in item.keywords if keyword.arg == 'lazy'),
+                      None,
+                  )
+                  lazy = lazy_keyword.value if lazy_keyword is not None else None
+                  if isinstance(lazy, ast.Constant) and lazy.value == 'noload':
                       continue
-                  violations.append(f'{f}:{lineno}:    {lines[lineno-1].rstrip()}')
-          if violations:
-              print('::error::Relationships without explicit lazy= found (MOD-30-01):')
-              print('\n'.join(violations))
-              print()
-              print('All relationships MUST have lazy=\"noload\" (see CLAUDE.md).')
-              print(\"Add '# noload-exempt: <reason>' for justified exceptions.\")
-              sys.exit(1)
-          print('OK: all relationships have explicit lazy= parameter')
-          "
+                  if lazy_keyword is not None and has_exemption(
+                      item, lazy_keyword, comments, relationship_calls
+                  ):
+                      continue
+                  if lazy_keyword is None:
+                      reason = 'missing an explicit lazy= argument'
+                  else:
+                      reason = (
+                          'lazy= must be literal "noload" or use a unique inline '#
+                          'noload-exempt reason'
+                      )
+                  violations.append(f'{path}:{item.lineno}: {reason}')
 
+          if violations:
+              print('::error::Invalid SQLAlchemy relationship lazy policy (MOD-30-01):')
+              print('\n'.join(violations))
+              print('All relationships MUST use lazy="noload".')
+              print('Exceptions require explicit lazy= and a unique inline exemption reason.')
+              sys.exit(1)
+          print(
+              'OK: all SQLAlchemy relationships use lazy="noload" or a documented '
+              'exemption'
+          )
+          PY
       - name: Validate docker compose configuration
         shell: pwsh
         run: |
@@ -406,6 +567,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run Hadolint
         run: |
           set -euo pipefail
@@ -428,6 +591,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install shellcheck
         run: |
           set -euo pipefail
@@ -456,13 +621,15 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -499,8 +666,10 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
         with:
           globs: |
             **/*.md
@@ -508,7 +677,7 @@ jobs:
             !.venv/**
       - name: Run cspell
         id: cspell
-        uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
+        uses: streetsidesoftware/cspell-action@ce1816e4ce36532956ac6e983737392774b6e169 # v9.2.0
         with:
           config: "cspell.json"
           use_cspell_files: true
@@ -529,8 +698,10 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
       - name: Set up Rust (canonical 1.99.0)
@@ -644,18 +815,24 @@ jobs:
       # to supply chain attacks via tag mutation (OWASP CI/CD C-PPE-1).
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -809,6 +986,42 @@ jobs:
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
+  # Attest the exact immutable frontend-dist upload from the existing reusable
+  # build. This job runs only for repository pushes and contains no checkout or
+  # repository-controlled scripts. Its token permissions are job-scoped.
+  frontend-dist-attestation:
+    name: Frontend Dist Attestation
+    needs: frontend-tests
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Validate uploaded frontend-dist receipt
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ needs.frontend-tests.outputs.bundle-artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]]; then
+            echo "::error::Frontend artifact ID is missing or invalid." >&2
+            exit 1
+          fi
+          if [[ ! "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Frontend artifact SHA-256 output is missing or invalid." >&2
+            exit 1
+          fi
+
+      - name: Attest exact frontend-dist archive digest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: frontend-dist
+          subject-digest: sha256:${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+
   # Build the generated WASM packages once for all frontend and Playwright
   # jobs. Consumers bind the server-issued artifact outputs to this run.
   e2e-wasm-build:
@@ -828,7 +1041,97 @@ jobs:
     uses: ./.github/workflows/reusable-security-audit.yml
     with:
       python-version: "3.14"
-      node-version: "24"
+      node-version: "24.21.0"
+
+  # AUD-380 (owner decision 2026-11-04): blocking Semgrep SAST. Rules come from a
+  # pinned semgrep/semgrep-rules commit (2026-10-21 develop HEAD), not the
+  # registry, so the findings are deterministic. The scan image is read from the
+  # pinned pre-commit semgrep-sast hook and its exact, index-validated
+  # .semgrepignore policy. Every finding must match an exact,
+  # unexpired reviewed disposition in quality/semgrep-dispositions.json, enforced
+  # by scripts/quality/semgrep_dispositions_gate.py, which fails closed.
+  semgrep-sast:
+    name: Semgrep SAST
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned Semgrep rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: semgrep/semgrep-rules
+          # Full commit SHA of semgrep-rules develop HEAD recorded on 2026-11-04
+          # (committed 2026-10-21T21:01:43Z). Change only through review.
+          ref: 16b9e6d45f10649f6a531ec4838ed9924372c3bc
+          path: .semgrep-rules
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv for the Semgrep gate
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Resolve the pinned Semgrep image
+        run: |
+          set -euo pipefail
+          image="$(awk '
+            /^[[:space:]]*-[[:space:]]*id:[[:space:]]*semgrep-docker[[:space:]]*$/ {
+              if (in_hook) exit 1
+              in_hook = 1
+              hooks++
+              next
+            }
+            in_hook && /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ { in_hook = 0 }
+            in_hook && /^[[:space:]]*entry:/ {
+              entries++
+              if (entries > 1) exit 1
+              for (i = 1; i <= NF; i++) {
+                if ($i ~ /^semgrep\/semgrep:/) {
+                  images++
+                  image = $i
+                }
+              }
+            }
+            END {
+              if (hooks != 1 || entries != 1 || images != 1) exit 1
+              print image
+            }
+          ' .pre-commit-config.yaml)"
+          if [[ ! "$image" =~ ^semgrep/semgrep:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo '::error::Expected one versioned, digest-pinned Semgrep hook image' >&2
+            exit 1
+          fi
+          echo "SEMGREP_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Run Semgrep with the pinned rule set
+        run: |
+          set -euo pipefail
+          uv run --frozen python -I scripts/quality/run_semgrep_gate.py \
+            "$SEMGREP_IMAGE" \
+            --output-directory "$RUNNER_TEMP/semgrep"
+
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: ${{ runner.temp }}/semgrep/semgrep.sarif
+          category: semgrep-sast
+
+  live-realtime-visual:
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-live-realtime-visual.yml
 
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
   # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
@@ -842,6 +1145,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Generate SBOM with Syft
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -857,19 +1162,27 @@ jobs:
           path: sbom.spdx.json
           retention-days: 90
 
-  # MOD-22-04 (audit 2026-03-25 Wave 22): SLSA provenance dry-run.
-  # Validates that SLSA provenance tooling (slsa-verifier) is available
-  # and the configuration is valid.  Does NOT publish attestations —
-  # that is handled by the release workflow.
+  # MOD-22-04 (audit 2026-03-25 Wave 22): verify pinned-tool provenance and
+  # the application artifact attestation. The isolated frontend-dist-attestation
+  # job publishes only the frontend archive claim; release image attestations
+  # remain owned by the release workflow.
   provenance-check:
     name: SLSA Provenance Dry-Run
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - frontend-tests
+      - frontend-dist-attestation
+    if: ${{ always() && !cancelled() }}
     permissions:
       contents: read
+      actions: read
+      attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install slsa-verifier
         run: |
@@ -888,14 +1201,205 @@ jobs:
           /tmp/slsa-verifier version
           echo "SLSA verifier is available and functional."
 
-      - name: Validate provenance config exists
+      - name: Verify SLSA provenance attestation of slsa-verifier
+        # AUD-378: verify the Sigstore-backed SLSA provenance published with the
+        # exact pinned slsa-verifier release (digest b567f5ed... pins the file).
         run: |
-          # Check that the repo has the expected CI structure for provenance.
-          if [ ! -f ".github/workflows/ci.yml" ]; then
-            echo "::error::CI workflow not found — provenance generation requires ci.yml"
+          set -euo pipefail
+          provenance="$RUNNER_TEMP/slsa-verifier-linux-amd64.intoto.jsonl"
+          provenance_sha256="b567f5ed9a08d0cbddffc169c4ad2d4101abc6b29f9a4c81893a801e432df1f4"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$provenance" \
+            "https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64.intoto.jsonl"
+          echo "$provenance_sha256  $provenance" | sha256sum --check --strict
+          # Transparency-log (Rekor) lookups can time out transiently. Retry the
+          # same verification a bounded number of times; never skip it. Each
+          # attempt is time-limited, and exhausting every attempt fails the job.
+          verified=0
+          for attempt in 1 2 3; do
+            status=0
+            timeout --kill-after=15s 120s /tmp/slsa-verifier verify-artifact /tmp/slsa-verifier \
+              --provenance-path "$provenance" \
+              --source-uri github.com/slsa-framework/slsa-verifier \
+              --source-tag v2.7.1 || status=$?
+            if [[ "$status" -eq 0 ]]; then
+              verified=1
+              break
+            fi
+            echo "::warning::SLSA attestation verification attempt ${attempt}/3 exited ${status}." >&2
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep $((attempt * 20))
+            fi
+          done
+          if [[ "$verified" -ne 1 ]]; then
+            echo "::error::SLSA provenance attestation did not verify in 3 bounded attempts." >&2
             exit 1
           fi
-          echo "Provenance configuration validated."
+          echo "SLSA provenance attestation verified for the pinned slsa-verifier."
+
+      - name: Verify frontend-dist application artifact attestation
+        if: ${{ github.event_name == 'push' }}
+        env:
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          FRONTEND_DIST_ARTIFACT_ID: ${{ needs.frontend-tests.outputs.bundle-artifact-id }}
+          FRONTEND_DIST_ARTIFACT_DIGEST: ${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+          FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
+          FRONTEND_ATTESTATION_RESULT: ${{ needs.frontend-dist-attestation.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/quality/verify_frontend_dist_provenance.py
+
+      - name: Record pull-request artifact provenance boundary
+        if: ${{ github.event_name == 'pull_request' }}
+        run: echo "Application artifact attestations are limited to push runs; fork pull-request tokens remain read-only."
+
+  # AUD-449: the emitted-log redaction proof runs against the real Caddy edge
+  # image built from this commit. It is local-only in the ordinary suite and is
+  # wired here so the CI Success aggregate executes it on every pull request.
+  caddy-emitted-log-proof:
+    name: Caddy emitted-log redaction proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build Caddy edge image for the proof
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/caddy
+          file: services/caddy/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/caddy:${{ github.sha }}"
+          provenance: false
+          sbom: false
+
+      - name: Run Caddy emitted-log redaction proof
+        env:
+          RUN_DOCKER_PROOFS: "1"
+          CADDY_PROOF_IMAGE: "university-ecosystem/caddy:${{ github.sha }}"
+        run: >-
+          uv run --frozen --no-sync pytest
+          tests/test_caddy_emitted_log_redaction_docker.py
+          -v --tb=short -p no:cacheprovider -rs
+
+      # The POSIX Gunicorn worker proof shares the existing required Caddy job.
+      # The unsafe positive control contains synthetic credential-shaped values;
+      # neither pytest diagnostics nor the JUnit receipt is published.
+      - name: Run Gunicorn emitted-log redaction proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          proof_root="$(mktemp -d -- "${RUNNER_TEMP:?}/aud178-449.XXXXXXXX")"
+          trap 'rm -rf -- "$proof_root"' EXIT
+          if ! uv run --frozen --no-sync pytest --noconftest \
+            tests/aud178_449_gunicorn_proof.py::test_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets \
+            -n 0 -q --tb=no --show-capture=no -p no:cacheprovider \
+            --basetemp="$proof_root/pytest" --junitxml="$proof_root/receipt.xml" \
+            >/dev/null 2>&1; then
+            echo "::error::Gunicorn emitted-log proof failed" >&2
+            exit 1
+          fi
+          if ! uv run --frozen --no-sync python -I .github/scripts/ci/verify_aud178_449_gunicorn_receipt.py "$proof_root/receipt.xml" >/dev/null 2>&1; then
+            echo "::error::Gunicorn emitted-log proof receipt rejected" >&2
+            exit 1
+          fi
+          echo "Gunicorn emitted-log proof passed with no skips."
+
+  # AUD-332, AUD-436 and the L4 Windows-native proofs. These run on a native Windows
+  # runner so the symlink-privilege and System32 ACL-tool paths execute for
+  # real rather than being skipped on the Linux lanes. Every collected test must
+  # execute: a skipped or empty selection fails the job.
+  windows-live-proofs:
+    name: Windows-only proofs (AUD-332, AUD-436)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        shell: bash
+        run: uv sync --frozen --group dev
+
+      - name: Run Windows-only proofs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # POSIX-only tests inside these files are deselected by node id; they
+          # run in the Linux backend suite (tests/ pattern). Every other collected
+          # test must execute on this runner: any skip fails the job below.
+          uv run --frozen --no-sync pytest \
+            tests/test_start_docker_live_owner_key_paths.py \
+            tests/test_start_docker_live_stand_state_root.py \
+            tests/test_symlink_privilege_probe_contract.py \
+            tests/test_live_stand_subprocess_timeouts.py \
+            tests/test_windows_live_native_subprocess.py \
+            tests/test_windows_named_proofs_gate.py \
+            tests/test_windows_named_proof_workflow_contract.py \
+            tests/test_seed_owned_stand_record.py \
+            --deselect "tests/test_start_docker_live_stand_state_root.py::test_launcher_rejects_permissive_owned_state_root_before_secret_reads" \
+            --deselect "tests/test_live_stand_subprocess_timeouts.py::test_posix_lifecycle_lock_wait_is_bounded" \
+            -v --tb=short -p no:cacheprovider -rs --junitxml=windows-proofs.xml
+
+      - name: Require every Windows-only proof to execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync python -c "
+          import sys
+          import xml.etree.ElementTree as ET
+          root = ET.parse('windows-proofs.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root)
+          total = sum(int(suite.get('tests', '0')) for suite in suites)
+          unexecuted = sum(
+              int(suite.get(key, '0')) for suite in suites for key in ('skipped', 'failures', 'errors')
+          )
+          if total == 0 or unexecuted:
+              print(f'Windows-only proofs: tests={total} not-executed-or-failed={unexecuted}')
+              sys.exit(1)
+          print(f'Windows-only proofs executed {total} test(s) with no skips.')
+          "
+          uv run --frozen --no-sync python scripts/quality/windows_named_proofs_gate.py windows-proofs.xml
 
   alembic-migrations:
     name: Alembic Migrations
@@ -927,28 +1431,71 @@ jobs:
       # MOD-NEW-008 (audit 2026-03-19): Integrate Squawk to automatically lint
       # Alembic migrations. Blocks destructive statements (DROP COLUMN, ALTER TYPE)
       # ensuring Zero-Downtime Deployment (ZDD) compatibility.
-      - name: Install Squawk Linter
-        uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
-        with:
-          repo: sbdchd/squawk
-          tag: v2.67.0
-          asset-name: squawk-linux-x64 # Specify explicit binary name
-          cache: enable
-          extension-matching: disable
-          rename-to: squawk
-          chmod: 0755
+      - name: Download and verify Squawk Linter
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]]; then
+            echo "::error::Squawk v2.67.0 asset is supported only on Linux x64" >&2
+            exit 1
+          fi
+          if [[ "$(/usr/bin/uname -s)" != "Linux" || "$(/usr/bin/uname -m)" != "x86_64" ]]; then
+            echo "::error::Runner platform does not match the Squawk v2.67.0 Linux x64 asset" >&2
+            exit 1
+          fi
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" != /* ]]; then
+            echo "::error::RUNNER_TEMP must be an absolute path" >&2
+            exit 1
+          fi
+
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          asset_url="https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
+          if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Pinned Squawk SHA-256 is malformed" >&2
+            exit 1
+          fi
+
+          download_dir="$RUNNER_TEMP/university-ecosystem-tools/squawk/v2.67.0/linux-x64"
+          binary_path="$download_dir/squawk-linux-x64"
+          partial_path="$binary_path.partial"
+          if [[ -e "$download_dir" || -L "$download_dir" ]]; then
+            echo "::error::Refusing to reuse an existing Squawk download directory" >&2
+            exit 1
+          fi
+          /usr/bin/mkdir --parents -- "$download_dir"
+          /usr/bin/curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --max-redirs 5 --output "$partial_path" "$asset_url"
+          if [[ ! -f "$partial_path" || -L "$partial_path" || ! -s "$partial_path" ]]; then
+            echo "::error::Squawk release asset is missing or is not a regular nonempty file" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$partial_path" |
+            /usr/bin/sha256sum --check --strict
+          /usr/bin/chmod 0755 -- "$partial_path"
+          /usr/bin/mv -- "$partial_path" "$binary_path"
+          if [[ ! -f "$binary_path" || -L "$binary_path" || ! -x "$binary_path" ]]; then
+            echo "::error::Downloaded Squawk asset is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$binary_path" |
+            /usr/bin/sha256sum --check --strict
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -959,72 +1506,132 @@ jobs:
           uv sync --frozen
 
       - name: Lint Postgres Migrations (Squawk)
+        id: migration-squawk
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
         run: |
           set -euo pipefail
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
           echo "Linting changed Alembic migrations for ZDD safety..."
-          base_sha="${{ github.event.pull_request.base.sha }}"
+          base_sha="${PR_BASE_SHA}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
-          changed_files="$(git diff --name-only "$base_sha"...HEAD -- 'alembic/versions/*.py')"
+          versions_mode="$(git ls-tree --format='%(objectmode)' HEAD -- alembic/versions)"
+          if [[ "$versions_mode" != "040000" || ! -d alembic/versions || -L alembic || -L alembic/versions ]]; then
+            echo "::error::Alembic versions must be a checked-out Git tree" >&2
+            exit 1
+          fi
+          type_changes="$(git diff --name-only --diff-filter=T "$base_sha"...HEAD -- 'alembic/versions/*.py')"
+          if [[ -n "$type_changes" ]]; then
+            echo "::error::Alembic migration type changes are not supported" >&2
+            exit 1
+          fi
+          version_modes="$(git ls-tree -r --format='%(objectmode)' HEAD -- alembic/versions)"
+          if [[ -z "$version_modes" ]]; then
+            echo "::error::Alembic versions tree is empty" >&2
+            exit 1
+          fi
+          while IFS= read -r version_mode; do
+            if [[ "$version_mode" != "100644" ]]; then
+              echo "::error::Alembic versions contain a non-regular Git object" >&2
+              exit 1
+            fi
+          done <<< "$version_modes"
+          changed_files="$(git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD -- 'alembic/versions/*.py')"
           if [ -z "$changed_files" ]; then
-            echo "No changed migrations; baseline migrations are covered by the immutable history gate."
+            echo "No changed migrations; nothing to lint."
             exit 0
           fi
           # AUD-208: lint the DDL each changed revision executes against a live
           # PostgreSQL scratch database. Offline --sql has no inspector, so drop
-          # guards render nothing; index, foreign-key and timeout rules stay enabled.
+          # guards render nothing. Only the exact empty-schema baseline receives
+          # its five owner-approved rules; timeout rules remain enabled.
           sql_dir="$(mktemp -d)"
-          squawk_args=(
-            --exclude prefer-robust-stmts --exclude prefer-text-field
-            --exclude prefer-bigint-over-int --exclude prefer-identity
-            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
-            --exclude require-enum-value-ordering
-          )
           while IFS= read -r migration; do
             [ -z "$migration" ] && continue
-            read -r revision down_revision < <(
-              uv run python scripts/quality/read_alembic_revision.py "$migration"
-            )
+            squawk_args=()
+            if [[ "$migration" == "alembic/versions/202611020000_mvp_baseline.py" ]]; then
+              squawk_args=(
+                --exclude require-concurrent-index-creation
+                --exclude constraint-missing-not-valid
+                --exclude adding-foreign-key-constraint
+                --exclude prefer-text-field
+                --exclude prefer-bigint-over-int
+              )
+            fi
+            migration_mode="$(git ls-tree --format='%(objectmode)' HEAD -- "$migration")"
+            if [[ "$migration_mode" != "100644" || ! -f "$migration" || -L "$migration" ]]; then
+              echo "::error::Alembic migration must be a checked-out regular Git blob" >&2
+              exit 1
+            fi
+            revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
+            read -r revision down_revision <<< "$revision_metadata"
             echo "Checking $migration ($down_revision -> $revision)"
             sql_file="$sql_dir/$revision.sql"
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
-            squawk "${squawk_args[@]}" "$sql_file"
+            printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+              /usr/bin/sha256sum --check --strict
+            "$squawk_binary_path" "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
+
+      - name: Verify owned PostgreSQL tenant-context acceptance
+        id: tenant-context-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          uv run pytest -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_content_outbox_restores_tenant_scope \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_legacy_null_tenant_content_ignores_worker_ambient_scope \
+            tests/test_outbox_tenant_context.py \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_unscoped_missing_content_retains_retry_and_dlq_evidence \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_skips_deleted_source_record \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_fails_closed_when_news_or_author_disappears \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_skips_deleted_comment_before_loading_sources \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_retries_unscoped_missing_source \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_retries_unscoped_missing_protected_parent \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_committed_assignment_delivery_replay_sends_once \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_rollback_then_fresh_retry_sends_only_after_commit \
+            --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
+          echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Owned tenant-context diagnostic output exceeded 131072 bytes"
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "OWNED_TENANT_CONTEXT_TESTS_END"
+          exit "$pytest_status"
 
       - name: Wait for PostgreSQL
         shell: pwsh
         run: |
-          $timeout = 30
-          $elapsed = 0
-          do {
-            if (pg_isready -h localhost -p 5432 -U test) {
-              return
-            }
-            Start-Sleep -Seconds 1
-            $elapsed++
-          } while ($elapsed -lt $timeout)
-          throw "PostgreSQL was not ready in $timeout seconds"
-
-      - name: Create database tables
-        env:
-          SECRET_KEY: ${{ env.SECRET_KEY }}
-          ENVIRONMENT: testing
-        shell: bash
-        run: |
-          uv run python3 <<'PY'
-          import asyncio
-          from app.core.database import Base, engine
-
-          async def create_tables():
-              async with engine.begin() as conn:
-                  from sqlalchemy import text
-                  await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                  await conn.run_sync(Base.metadata.create_all)
-
-          asyncio.run(create_tables())
-          PY
+          pwsh -NoProfile -File .github/scripts/ci/wait_for_postgres.ps1
+      # The database stays empty until `alembic upgrade head`. The MVP baseline
+      # (AUD-208) rejects any populated public schema, so no ORM create_all and no
+      # pre-created pgvector extension may run first; the baseline creates vector
+      # itself. Metadata-vs-migration drift is checked by `alembic check` below.
 
       - name: Resolve fail-closed migration downgrade policy
         id: migration-policy
@@ -1078,6 +1685,65 @@ jobs:
             exit 1
           }
 
+      - name: Verify Alembic renderer lifecycle contracts
+        id: renderer-lifecycle-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 150s \
+            uv run --frozen --no-sync pytest \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_transaction_events_and_removes_listeners_on_success \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_rollback_and_removes_listeners_on_failure \
+            tests/test_alembic_live_sql_render.py::test_ddl_recorder_preserves_do_and_select_guard_sql_without_bound_values \
+            tests/test_alembic_live_sql_render.py::test_ddl_recorder_fails_closed_on_an_unsupported_migration_operation \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_fails_closed_when_only_transaction_events_were_captured \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_fails_closed_when_only_guard_sql_was_captured \
+            tests/test_alembic_live_sql_render.py::test_main_reports_renderer_fail_closed_diagnostics_without_writing_output \
+            tests/test_alembic_live_sql_render.py::test_scratch_requires_template0_and_empty_catalog_before_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_create_failure_never_drops_or_changes_execution_state \
+            tests/test_alembic_live_sql_render.py::test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_cleanup_requires_confirmed_created_database_identity \
+            tests/test_alembic_live_sql_render.py::test_renderer_failure_diagnostics_are_opaque \
+            tests/test_alembic_live_sql_render.py::test_renderer_api_rejects_dbname_query_override_before_scratch_work \
+            tests/test_alembic_live_sql_render.py::test_renderer_cli_rejects_dbname_query_override_before_scratch_work \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_invalid_url_and_engine_setup_opaquely \
+            tests/test_alembic_live_sql_render.py::test_renderer_connection_failure_disposes_opaquely \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_malformed_server_identity \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_malformed_catalog_values \
+            tests/test_alembic_live_sql_render.py::test_renderer_cleanup_preserves_failure_and_disposes \
+            tests/test_alembic_live_sql_render.py::test_renderer_restores_unset_environment_after_owned_scratch \
+            --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END"
+          receipt_status=0
+          uv run --frozen --no-sync python -I .github/scripts/ci/verify_alembic_renderer_lifecycle_receipt.py "$probe_root/junit.xml" || receipt_status=$?
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"
+            receipt_status=1
+          fi
+          if [ "$pytest_status" -ne 0 ]; then
+            exit "$pytest_status"
+          fi
+          exit "$receipt_status"
+
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-24.04
@@ -1085,6 +1751,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -1094,16 +1762,20 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1164,15 +1836,7 @@ jobs:
       - name: Verify generated API types are up to date
         shell: pwsh
         run: |
-          git diff --exit-code -- `
-            frontend/openapi.json `
-            frontend/src/api/generated/ `
-            frontend/src/tests/mocks/generated/
-          if ($LASTEXITCODE -ne 0) {
-            echo "::error::Generated OpenAPI, TypeScript SDK, or MSW mocks are not up to date. Run 'npm run generate:api'."
-            exit 1
-          }
-
+          pwsh -NoProfile -File .github/scripts/ci/verify_generated_api_types.ps1
   verify-runtime-reqs:
     name: Verify Runtime Requirements
     runs-on: ubuntu-24.04
@@ -1180,18 +1844,24 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1247,6 +1917,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build backend image for scanning
         # LOW-W19: root Dockerfile does not exist; backend image uses backend.Dockerfile
@@ -1273,7 +1945,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         if: always() && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
         with:
@@ -1281,6 +1953,122 @@ jobs:
           # Match the pre-category configuration key used by main. The
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
+
+  docker-security-scan-additional:
+    name: "Trivy Image Scan - ${{ matrix.image_name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - image_name: frontend
+            file: frontend.Dockerfile
+            context: .
+            category: trivy-image-frontend
+          - image_name: gateway
+            file: services/gateway/Dockerfile
+            context: .
+            category: trivy-image-gateway
+          - image_name: ws-hub
+            file: services/ws-hub/Dockerfile
+            context: .
+            category: trivy-image-ws-hub
+          - image_name: file-processor
+            file: services/file-processor/Dockerfile
+            context: .
+            category: trivy-image-file-processor
+          - image_name: caddy
+            file: services/caddy/Dockerfile
+            context: services/caddy
+            category: trivy-image-caddy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build local runtime image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            ${{ matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
+          provenance: false
+          sbom: false
+
+      - name: Verify fixed Caddy Brotli package offline
+        if: matrix.image_name == 'caddy'
+        timeout-minutes: 1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="caddy-package-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'timeout --kill-after=2s 5s docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+          timeout --kill-after=5s 30s docker run --rm --interactive --pull=never \
+            --name "$container_name" --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu < .github/scripts/ci/verify_caddy_brotli_package.sh
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          version: v0.75.0
+          image-ref: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          format: sarif
+          output: "trivy-${{ matrix.image_name }}.sarif"
+          severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: "trivy-${{ matrix.image_name }}.sarif"
+          category: ${{ matrix.category }}
+
+      - name: Summarize Trivy vulnerability metadata
+        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        env:
+          SARIF_PATH: "trivy-${{ matrix.image_name }}.sarif"
+        shell: bash
+        run: python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"
+
+      - name: Upload Trivy SARIF diagnostic artifact
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image_name }}-sarif
+          path: trivy-${{ matrix.image_name }}.sarif
+          retention-days: 14
+          if-no-files-found: error
+
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
@@ -1291,6 +2079,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -1406,11 +2196,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Install dependencies
         run: uv sync --group dev
@@ -1444,22 +2234,29 @@ jobs:
 
           echo "=== Migration round-trip complete ==="
 
-      - name: Append focused migration tests to coverage
+      - name: Append focused baseline tests to coverage
         env:
+          # These mocked-op unit tests must not reset the migrated PostgreSQL service.
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-migration-gate-only
-          RUN_INTEGRATION_TESTS: "1"
         run: |
-          uv run coverage run --append --data-file=.coverage.migration \
-            --source=alembic/versions -m pytest \
-            tests/test_touched_tier0_migration_contracts.py \
-            tests/test_reconcile_schema_drift_migration.py \
-            tests/test_legacy_migration_guard_contracts.py \
-            tests/integration/test_aud038_default_partition_redistribution_postgres.py \
-            tests/integration/test_historical_migration_semantics_postgres.py \
-            tests/integration/test_aud226_partitioning_generated_ids_postgres.py \
-            --tb=short
+          set -euo pipefail
+          uv run --frozen --no-sync coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest -n 0 --no-cov \
+            tests/test_mvp_baseline_migration.py::test_baseline_revision_is_the_root_of_the_squashed_chain \
+            tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema \
+            tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere \
+            tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects \
+            tests/test_mvp_baseline_migration.py::test_upgrade_omits_the_redundant_attempt_keyed_delivery_constraint \
+            tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available \
+            tests/test_aud274_user_quiet_hours_retained.py \
+            tests/test_aud278_events_search_index_kept.py \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_is_nullable_unique_and_does_not_adopt_rows \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_downgrade_refuses_before_changing_ownership \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_contract_rejects_ownership_drift
+          uv run --frozen --no-sync coverage report --data-file=.coverage.migration \
+            --include=alembic/versions/202611020000_mvp_baseline.py --fail-under=100
 
       - name: Build backend image for password preflight
         shell: bash
@@ -1536,6 +2333,44 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+      - name: Verify owned PostgreSQL renderer catalog admission
+        id: renderer-postgres-evidence
+        timeout-minutes: 3
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENVIRONMENT: test
+          RUN_INTEGRATION_TESTS: "1"
+          ALEMBIC_RENDERER_POSTGRES_DATABASE_URL: postgresql+psycopg://test@127.0.0.1:5433/test_migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 150s \
+            uv run --frozen --no-sync pytest \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/test_alembic_live_sql_render.py::test_owned_renderer_catalog_rejects_user_objects \
+            tests/test_alembic_live_sql_render.py::test_owned_live_renderer_root_lifecycle_cleans_up \
+            tests/test_alembic_live_sql_render.py::test_owned_live_renderer_create_collision_preserves_existing_database \
+            --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
+          echo "OWNED_RENDERER_POSTGRES_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          echo "OWNED_RENDERER_POSTGRES_TESTS_END"
+          receipt_status=0
+          uv run --frozen --no-sync python -I .github/scripts/ci/verify_owned_renderer_postgres_receipt.py "$probe_root/junit.xml" || receipt_status=$?
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Owned renderer PostgreSQL output exceeded 131072 bytes"
+            receipt_status=1
+          fi
+          if [ "$pytest_status" -ne 0 ]; then
+            exit "$pytest_status"
+          fi
+          exit "$receipt_status"
+
   # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
   # Runs lightweight Python consumer contract tests (no Go/FFI needed).
   # The full Go provider verification continues in contract-tests.yml.
@@ -1547,14 +2382,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1566,10 +2404,87 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
+          set -euo pipefail
+          cohort_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          consumer_root="$cohort_root/consumer"
+          policy_root="$cohort_root/security-disposition"
+          mkdir -p "$consumer_root/tmp" "$policy_root/tmp"
+
+          consumer_pid=""
+          policy_pid=""
+          terminate_contract_process_groups() {
+            local process_pid
+            local grace_tick
+            local any_alive
+            local cleanup_status=0
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -TERM -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+
+            # Allow both owned process groups one shared 2s grace period, then
+            # escalate only groups started by this step.
+            for ((grace_tick = 0; grace_tick < 20; grace_tick++)); do
+              any_alive=0
+              for process_pid in "$@"; do
+                if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                  any_alive=1
+                fi
+              done
+              if (( any_alive == 0 )); then
+                break
+              fi
+              sleep 0.1
+            done
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -KILL -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]]; then
+                wait "$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                echo "::error::Contract test process group $process_pid survived SIGKILL."
+                cleanup_status=1
+              fi
+            done
+            return "$cleanup_status"
+          }
+          cleanup_contract_processes() {
+            terminate_contract_process_groups "$consumer_pid" "$policy_pid" || true
+          }
+          trap cleanup_contract_processes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          trap 'exit 129' HUP
+
+          # Keep the full consumer and exact-disposition populations in this
+          # required job, but overlap their independent pytest processes. Each
+          # process gets its own basetemp, temp/database root, log, and JUnit file.
+          # Bound the consumer to three file-grouped xdist workers: conftest owns
+          # each worker database, query log, and temporary Pact directory. Keep
+          # module-scoped Pact fixtures together without changing any selectors.
+          # The positional expansions in each single-quoted -c script belong to
+          # the child Bash, so suppress shellcheck's literal-single-quote warning.
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$consumer_root/tmp" TMP="$consumer_root/tmp" TEMP="$consumer_root/tmp" \
+            PACT_DO_NOT_TRACK=true \
+            bash -c '
+              set -euo pipefail
+              uv run --frozen --no-sync pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
+            tests/test_owned_nats_outage_cli.py::test_main_renders_broker_receipt_checkpoint_without_private_evidence \
             tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_outage_coordinator.py::test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection \
+            tests/test_owned_nats_outage_coordinator.py::test_invalid_broker_probe_has_distinct_finite_checkpoint \
             tests/test_owned_nats_outage_coordinator.py::test_broker_receipt_cannot_hide_final_owner_or_inventory_drift \
             tests/test_owned_nats_outage_coordinator.py::test_coordinator_requires_exact_raw_broker_receipt \
             tests/test_owned_nats_outage_coordinator.py::test_valid_path_binds_exact_event_and_restores_before_drain \
@@ -1583,9 +2498,12 @@ jobs:
             tests/test_audit_timetravel.py tests/test_audit_service_closure.py \
             tests/test_audit_service.py tests/test_admin_audit_closure.py \
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \
+            tests/test_docker_startup_contracts.py::test_ci_caddy_smokes_use_the_pinned_project_runtime \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
+            tests/test_security_hardening_workflow_contract.py::test_generated_signing_keys_are_masked_before_environment_export \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock \
+            tests/test_dnspython_security.py \
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_periodic_task_metrics.py \
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
@@ -1619,9 +2537,24 @@ jobs:
             tests/test_chat_repository_coverage.py::test_find_existing_dm_none_when_no_shared_chat \
             tests/test_chat_repository_coverage.py::test_find_existing_dm_ignores_two_member_group \
             tests/test_news_repository_db.py::test_anonymous_interactions_never_use_email_as_comment_name \
+            tests/test_notifications_news_events_db.py::test_comment_notification_uses_real_profile_name_without_email \
+            tests/test_localization_core_closure.py::test_missing_resource_not_found_keys_return_localized_404_details \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_accepts_qualified_unicode_emoji_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_rejects_text_multiple_or_invalid_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_creation_is_strict_but_legacy_lookup_and_delete_remain \
+            tests/test_health_api_closure.py::test_healthz_tiered_cache_reports_unavailable_shared_layer \
+            tests/test_health_api_closure.py::test_storage_probe_uses_short_outcome_ttls_and_recovers \
             tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
             tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
             tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \
+            tests/test_quality_inventory.py::test_typescript_import_after_jsx_keeps_exact_source_relationship \
+            tests/test_quality_inventory.py::test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership \
+            tests/test_quality_inventory.py::test_typescript_dotted_module_stem_resolves_exact_config_file \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_links_only_files_it_recursively_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_rejects_unproven_traversal_or_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_does_not_follow_external_file_symlinks \
+            tests/test_quality_inventory.py::test_python_contract_accepts_verified_test_root_alias \
+            tests/test_quality_inventory.py::test_python_contract_rejects_rebound_test_root_alias \
             tests/test_quality_inventory.py::test_go_duplicate_checker_ignores_comments_and_literals \
             tests/test_quality_inventory.py::test_go_duplicate_checker_still_rejects_real_duplicate_declarations \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \
@@ -1638,9 +2571,14 @@ jobs:
             tests/test_management_scripts.py::test_mfa_reset_parser_keeps_email_and_mutual_exclusion \
             tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
+            tests/test_full_backend_reusable_contract.py \
+            tests/test_kyverno_registry_source_binding.py \
+            tests/test_kyverno_registry_owner_review_b.py \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
+            tests/test_health_endpoint.py::test_healthcheck_tiered_cache_reports_shared_layer_failure \
+            tests/test_health_endpoint.py::test_healthcheck_storage_probe_recovers_errors_and_caps_success_cache \
             tests/test_geolocation.py::test_geolocation_service_init_success \
             tests/test_aud469_partition_scheduler_resilience.py \
             tests/test_chat_query_projection_regressions.py::test_message_history_projects_page_senders_in_one_public_profile_query \
@@ -1670,18 +2608,521 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_disjoint_second_read_failure_preserves_cleanup \
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
-            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
-            --tb=short --durations=20 \
+            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline \
+            tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
+            tests/test_logging_pii_redaction_contract.py \
+            tests/test_cwv_rum_security.py \
+            tests/test_gitleaks_hygiene_contract.py \
+            tests/test_websocket_closure.py \
+            tests/test_logging_object_redaction_contract.py \
+            tests/test_logging_contract_closure.py \
+            tests/test_logging_core.py \
+            tests/test_logging_test_isolation.py \
+            tests/test_email_utils.py \
+            tests/test_email_utils_full.py \
+            tests/test_utils_email.py \
+            tests/test_quality_inventory.py::test_aud508_dynamic_skip_syntax_is_detected \
+            tests/test_quality_inventory.py::test_aud508_skip_exemptions_require_real_comment_evidence \
+            tests/test_quality_inventory.py::test_aud509_source_matching_requires_exact_module_relationships \
+            tests/test_quality_inventory.py::test_aud509_go_test_matches_its_same_package_without_a_sibling_name \
+            tests/test_quality_inventory.py::test_aud509_go_external_test_requires_exact_package_ownership \
+            tests/test_quality_inventory.py::test_aud509_imports_match_only_the_exact_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_typescript_import_must_resolve_to_an_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_relative_python_import_resolves_inside_its_package \
+            tests/test_quality_inventory.py::test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
+            tests/test_quality_inventory.py \
+            tests/test_dead_letter_queue.py::test_mark_job_completed \
+            tests/test_owned_client_ip_acceptance.py \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_only_finite_failure_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_classified_error_presence \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_classification_without_form_error \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_inconsistent_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing \
+            tests/test_live_stand.py::test_live_reset_registration_v2_deduplicates_and_caps_output \
+            tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only \
+            tests/test_config_base_closure.py \
+            tests/test_frontend_knip_asset_contract.py \
+            tests/test_outbox_tenant_context.py \
+            tests/test_migration_downgrade_policy.py \
+            tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence \
+            tests/test_event_handlers_behavior_closure.py \
+            tests/test_csp_report_closure.py::test_receive_csp_report_logs_only_sanitized_document_uri \
+            tests/test_csp_report_closure.py::test_receive_csp_report_sanitizes_uri_edge_cases \
+            tests/test_caddy_routing.py::test_reset_password_uri_filter_covers_encoded_route_characters_and_separators \
+            tests/test_caddy_routing.py::test_query_uri_filter_redacts_each_encoded_credential_key_character \
+            tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics \
+            tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers \
+            tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered \
+            tests/test_event_handlers.py \
+            tests/test_event_handlers_closure.py \
+            tests/test_content_consistency_regressions.py \
+            tests/test_search_indexer.py \
+            tests/test_outbox_worker.py::test_outbox_worker_error_handling \
+            tests/test_outbox_worker.py::test_outbox_worker_dlq_transition \
+            tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii \
+            tests/test_grades_api.py \
+            tests/test_trivy_identity_before_diagnostic.py \
+            tests/test_workflow_fail_closed_contracts.py::test_trivy_metadata_failure_is_deferred_but_remains_blocking \
+            tests/test_workflow_fail_closed_contracts.py::test_trivy_reassert_executes_and_rejects_each_non_success_outcome \
+            tests/test_static_canonical_attachment_urls.py \
+            tests/test_chat_uploads.py::test_real_static_chat_upload_persists_and_remains_readable \
+            tests/test_chat_attachment_copy_contracts.py::test_durable_cleanup_accepts_both_exact_static_aliases_and_replays \
+            tests/test_chat_attachment_copy_contracts.py::test_forward_copy_of_canonical_static_identity_owns_independent_bytes \
+            tests/test_security_hardening_workflow_contract.py::test_squawk_integrity_contract_rejects_weakening_controls \
+            tests/test_aud345_444_registration.py \
+            tests/test_owned_client_ip_probe_layer_contract.py \
+            tests/test_notifications_delivery_coverage.py \
+            tests/test_owned_client_ip_probe.py \
+            tests/test_owned_client_ip_probe_transport.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_plaintext_entrypoints_protect_links_without_changing_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_parking_keeps_logical_dedup_and_protects_reopened_rows \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_protected_replay_reopens_original_legacy_job_without_hash_drift \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free \
+            tests/test_aud445_chat_remove_cache_failure.py \
+            tests/test_aud445_cache_outbox.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sentry_events_do_not_capture_plaintext_frames \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_copies_only_target_stack_paths \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_tolerates_optional_sdk_fields \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_missing_sentry_sdk_keeps_failure_reporting_secret_free \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics \
+            tests/test_aud454_websocket_membership_race.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_worker_payload_keeps_telemetry_secret_free \
+            tests/test_alembic_graph_metadata.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_active_historical_duplicates_protect_payload_without_reset \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_historical_auto_replay_protects_the_retained_row \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_retained_row_compatibility_and_caller_owned_uow \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publish \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_corrupt_retained_job_type_fails_closed_in_auth_dedup -v \
+            --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
-            -k "not integration"
-        env:
-          PACT_DO_NOT_TRACK: "true"
+            -k "not integration" \
+            --basetemp="$1" \
+            --junitxml="$2" 2>&1 | tee "$3"
+            ' _ "$consumer_root/basetemp" "$consumer_root/junit.xml" "$consumer_root/pytest.log" &
+          consumer_pid=$!
+
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$policy_root/tmp" TMP="$policy_root/tmp" TEMP="$policy_root/tmp" \
+            bash -c '
+              set -euo pipefail
+              exec uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
+                --tb=short --durations=20 -p no:cacheprovider \
+                --basetemp="$1" --junitxml="$2"
+            ' _ "$policy_root/basetemp" "$policy_root/junit.xml" \
+            > "$policy_root/pytest.log" 2>&1 &
+          policy_pid=$!
+
+          consumer_status=0
+          if wait "$consumer_pid"; then
+            consumer_status=0
+          else
+            consumer_status=$?
+          fi
+          lingering_process_groups=()
+          if [[ -n "$consumer_pid" ]] && kill -0 -- "-$consumer_pid" 2>/dev/null; then
+            echo "::error::Consumer pytest left a child process after its leader exited."
+            consumer_status=1
+            lingering_process_groups+=("$consumer_pid")
+          fi
+
+          policy_status=0
+          if wait "$policy_pid"; then
+            policy_status=0
+          else
+            policy_status=$?
+          fi
+          if [[ -n "$policy_pid" ]] && kill -0 -- "-$policy_pid" 2>/dev/null; then
+            echo "::error::Exact-disposition pytest left a child process after its leader exited."
+            policy_status=1
+            lingering_process_groups+=("$policy_pid")
+          fi
+          if (( ${#lingering_process_groups[@]} > 0 )); then
+            terminate_contract_process_groups "${lingering_process_groups[@]}" || true
+          fi
+          consumer_pid=""
+          policy_pid=""
+
+          printf '%s\n' "$policy_status" > "$policy_root/status"
+          printf 'Consumer pytest exit status: %s\n' "$consumer_status"
+          printf 'Exact disposition pytest exit status: %s\n' "$policy_status"
+          if (( consumer_status != 0 || policy_status != 0 )); then
+            exit 1
+          fi
 
       - name: Verify exact security disposition contracts
         if: ${{ !cancelled() }}
         run: |
-          uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-            --tb=short --durations=20 -p no:cacheprovider
+          policy_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/security-disposition"
+          if [[ ! -f "$policy_root/status" || ! -f "$policy_root/pytest.log" ]]; then
+            echo "::error::The parallel exact-disposition pytest result is missing."
+            exit 1
+          fi
+          cat "$policy_root/pytest.log"
+          policy_status="$(cat "$policy_root/status")"
+          if [[ "$policy_status" != "0" ]]; then
+            echo "::error::Exact-disposition pytest exited with status $policy_status."
+            exit 1
+          fi
+
+      - name: Verify scoped audit named regressions
+        if: ${{ !cancelled() }}
+        shell: bash
+        timeout-minutes: 2
+        env:
+          EXPECTED_TESTED_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d "$RUNNER_TEMP/audit-cohort.XXXXXXXX")"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          mkdir -p "$probe_root/tmp"
+          export TMPDIR="$probe_root/tmp" TMP="$probe_root/tmp" TEMP="$probe_root/tmp"
+          cat > "$probe_root/verify.py" <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          PATHS = (
+              "app/api/news.py",
+              "app/api/events.py",
+              "app/api/users.py",
+              "tests/test_aud339_semantic_search_etag.py",
+              "tests/test_users_me_replica_routing.py",
+              "app/core/ssrf.py",
+              "app/auth/security.py",
+              "app/core/config/mixins/jwt_settings.py",
+              "app/core/config/mixins/csp_settings.py",
+              "app/core/policies/csp.py",
+              "app/core/security_headers.py",
+              "SECURITY.md",
+              "quality/frontend-csp-defaults.json",
+              "tests/test_aud362_ssrf_ipv6_unspecified.py",
+              "tests/test_aud354_jwt_issuer.py",
+              "tests/test_security_headers.py",
+              "tests/test_csp_settings_closure.py",
+              "app/services/session_service.py",
+              "app/models/auth.py",
+              "tests/test_session_service_user_agent_aud356.py",
+              "app/api/ws/dispatcher.py",
+              "app/api/websocket.py",
+              "app/auth/rbac.py",
+              "app/core/di/spicedb.py",
+              "tests/test_ws_dispatcher_full.py",
+              "scripts/seed_admin_data.py",
+              "tests/test_seed_admin_data.py",
+              "app/services/notification_queue.py",
+              "app/models/notifications.py",
+              "tests/conftest.py",
+              "tests/fixtures/services/websocket_fixtures.py",
+              "tests/fixtures/database/database.py",
+              "pyproject.toml",
+              "uv.lock",
+          )
+          EXPECTED = {
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]",
+              ),
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]",
+              ),
+              (
+                  "tests.test_users_me_replica_routing",
+                  "test_users_me_audit_write_uses_primary_with_distinct_read_component",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_public_https_validator_rejects_unspecified_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_resolver_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_and_resolver_reject_unspecified_ipv6_dns_answers",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_dns_answer",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_global_ipv6_remains_allowed",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_allows_global_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_requires_issuer_claim",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_foreign_issuer",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_missing_issuer_for_previous_key",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_accepts_expected_issuer_for_active_and_previous_keys",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_minted_token_uses_configured_issuer_and_active_key",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_production_mode",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_development_report_only",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_credentialless_coep",
+              ),
+              (
+                  "tests.test_csp_settings_closure",
+                  "test_production_csp_defaults_match_shared_frontend_contract",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[none]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[empty]",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_admin_gets_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_non_admin_denied",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_stale_admin_role_is_denied_by_spicedb",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_spicedb_unavailable_fails_closed_without_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_missing_app_container_fails_closed",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_ping_and_read_do_not_resolve_permission_checker",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full",
+                  "test_websocket_route_uses_app_container_per_get_online_frame",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_is_inert_and_idempotent",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]",
+              ),
+          }
+
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+
+          def identity():
+              tested = os.environ["EXPECTED_TESTED_SHA"]
+              source = os.environ["SOURCE_HEAD_SHA"]
+              if any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in (tested, source)):
+                  raise SystemExit("Invalid immutable source identity")
+              if git("rev-parse", "HEAD") != tested:
+                  raise SystemExit("Checkout differs from expected tested commit")
+              if os.environ["WORKFLOW_EVENT"] == "pull_request":
+                  parents = [
+                      line.split()[1]
+                      for line in git("cat-file", "-p", "HEAD").split("\n\n", 1)[0].splitlines()
+                      if line.startswith("parent ")
+                  ]
+                  if len(parents) != 2 or parents[1] != source:
+                      raise SystemExit("Tested merge does not have the expected source parent")
+              elif source != tested:
+                  raise SystemExit("Push source differs from tested commit")
+              if subprocess.call(["git", "diff", "--quiet", "--no-ext-diff", "HEAD", "--"]):
+                  raise SystemExit("Tracked checkout changed during evidence collection")
+              blobs = {}
+              for path in PATHS:
+                  blob = git("rev-parse", f"HEAD:{path}")
+                  if git("hash-object", "--", path) != blob:
+                      raise SystemExit("Evidence source file differs from its Git blob")
+                  blobs[path] = blob
+              return {
+                  "source_head_sha": source,
+                  "tested_commit_sha": tested,
+                  "tested_tree_sha": git("rev-parse", "HEAD^{tree}"),
+                  "workflow_sha": os.environ["WORKFLOW_SHA"],
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+                  "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "blobs": blobs,
+              }
+
+
+          root = Path(sys.argv[1])
+          current = identity()
+          if sys.argv[2] == "before":
+              (root / "source.json").write_text(json.dumps(current, sort_keys=True))
+              print("Scoped audit source identity: " + json.dumps(current, sort_keys=True))
+          else:
+              if current != json.loads((root / "source.json").read_text()):
+                  raise SystemExit("Source identity changed during the cohort")
+              report = root / "junit.xml"
+              if not report.is_file() or not 0 < report.stat().st_size <= 1_048_576:
+                  raise SystemExit("Missing or oversized Scoped audit JUnit report")
+              document = ElementTree.parse(report)
+              suites = list(document.getroot().iter("testsuite"))
+              totals = {"tests": "41", "failures": "0", "errors": "0", "skipped": "0"}
+              if len(suites) != 1 or any(suites[0].get(key) != value for key, value in totals.items()):
+                  raise SystemExit("Scoped audit JUnit totals are not exactly forty-one passes")
+              cases = list(document.getroot().iter("testcase"))
+              observed = [(case.get("classname"), case.get("name")) for case in cases]
+              if len(observed) != 41 or set(observed) != EXPECTED:
+                  raise SystemExit("Scoped audit JUnit identities are missing, extra or duplicated")
+              if any(list(document.getroot().iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise SystemExit("Scoped audit cohort contains failure, error or skip")
+              print("Scoped audit verified named PASS: " + json.dumps(sorted(observed)))
+              print("Scoped audit postflight source identity unchanged")
+          PY
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" before
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 90s \
+            uv run --frozen --no-sync pytest \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]' \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]' \
+            tests/test_users_me_replica_routing.py::test_users_me_audit_write_uses_primary_with_distinct_read_component \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_public_https_validator_rejects_unspecified_ipv6_literal \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_resolver_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_and_resolver_reject_unspecified_ipv6_dns_answers \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_dns_answer \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_global_ipv6_remains_allowed \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_allows_global_ipv6_literal \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_requires_issuer_claim \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_foreign_issuer \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_missing_issuer_for_previous_key \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_accepts_expected_issuer_for_active_and_previous_keys \
+            tests/test_aud354_jwt_issuer.py::test_minted_token_uses_configured_issuer_and_active_key \
+            tests/test_security_headers.py::test_security_headers_production_mode \
+            tests/test_security_headers.py::test_security_headers_development_report_only \
+            tests/test_security_headers.py::test_security_headers_credentialless_coep \
+            tests/test_csp_settings_closure.py::test_production_csp_defaults_match_shared_frontend_contract \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[none]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[empty]' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_admin_gets_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_non_admin_denied' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_stale_admin_role_is_denied_by_spicedb' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_spicedb_unavailable_fails_closed_without_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_missing_app_container_fails_closed' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_ping_and_read_do_not_resolve_permission_checker' \
+            'tests/test_ws_dispatcher_full.py::test_websocket_route_uses_app_container_per_get_online_frame' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_is_inert_and_idempotent' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]' \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            -p no:cacheprovider --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" \
+            > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
+          tail -n 120 "$probe_root/pytest.log"
+          verification_status=0
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" after \
+            || verification_status=$?
+          if (( pytest_status != 0 || verification_status != 0 )); then
+            exit 1
+          fi
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.
@@ -1697,6 +3138,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -1706,16 +3149,20 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1795,14 +3242,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Install Python dependencies (with maturin)
         run: uv sync --group dev
@@ -1825,7 +3274,11 @@ jobs:
 
       - name: Generate ephemeral ASan signing key
         shell: bash
-        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Run FFI tests under ASan / LSan
         env:
           ENVIRONMENT: testing
@@ -1856,14 +3309,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Install Python dependencies (with maturin)
         run: uv sync --group dev
@@ -1886,7 +3341,11 @@ jobs:
 
       - name: Generate ephemeral TSan signing key
         shell: bash
-        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Run FFI tests under TSan
         env:
           ENVIRONMENT: testing
@@ -1914,11 +3373,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         # rust_ext is a PyO3 crate: even with --no-default-features (extension-module
         # dropped) the build links libpython, so a Python install must be present.
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -1949,7 +3410,7 @@ jobs:
             ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           # 0.9.1 understands Cargo's build-dir v2 layout used by current
           # nightly Rust, while remaining immutable and reproducible here.
@@ -2102,7 +3563,7 @@ jobs:
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: wasm-pack@0.15.0
 
@@ -2144,10 +3605,10 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version-file: "pyproject.toml"
       - name: Install dependencies
@@ -2185,6 +3646,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install k6
         run: |
           set -euo pipefail
@@ -2206,6 +3669,9 @@ jobs:
     name: Coverage & Quality Policy Gate
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     needs:
       - backend-tests
       - db-migration-gate
@@ -2249,24 +3715,33 @@ jobs:
           rm -f -- artifacts/coverage/quality-manifest.json.sha256
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
+
+      - name: Produce Node action coverage in the current run
+        uses: ./.github/actions/node-actions-coverage
 
       - name: Select retry-safe same-run coverage producer artifacts
         id: select_coverage_producers
         shell: bash
         env:
+          COVERAGE_REPOSITORY: ${{ github.repository }}
+          COVERAGE_RUN_ID: ${{ github.run_id }}
+          COVERAGE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COVERAGE_COMMIT_SHA: ${{ github.sha }}
+          COVERAGE_RUN_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COVERAGE_EVENT: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 -m scripts.quality.select_coverage_producer_artifacts \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository "${COVERAGE_REPOSITORY}" \
+            --run-id "${COVERAGE_RUN_ID}" \
+            --consumer-run-attempt "${COVERAGE_RUN_ATTEMPT}" \
+            --commit-sha "${COVERAGE_COMMIT_SHA}" \
+            --run-head-sha "${COVERAGE_RUN_HEAD_SHA}" \
+            --event "${COVERAGE_EVENT}" \
             --workflow-path ".github/workflows/ci.yml"
 
       - name: Download Python shard coverage data
@@ -2320,10 +3795,20 @@ jobs:
           merge-multiple: false
 
       - name: Set up uv for coverage aggregation
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+
+      - name: Download Node action coverage artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).node_actions.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/node-actions
+          merge-multiple: false
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -2570,6 +4055,7 @@ jobs:
               --metadata "$metadata"
           }
           verify_producer frontend/coverage/coverage-provenance.json unit-tests frontend
+          verify_producer artifacts/coverage/node-actions/coverage-provenance.json coverage-policy-gate node_actions
           verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test go_gateway
           verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go_ws_hub
           verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go_file_processor
@@ -2724,6 +4210,10 @@ jobs:
           rust_id="$(selection_value rust_coverage artifact_id)"
           rust_name="$(selection_value rust_coverage artifact_name)"
           rust_digest="$(selection_value rust_coverage artifact_digest)"
+          node_actions_id="$(selection_value node_actions artifact_id)"
+          node_actions_name="$(selection_value node_actions artifact_name)"
+          node_actions_attempt="$(selection_value node_actions producer_attempt)"
+          node_actions_digest="$(selection_value node_actions artifact_digest)"
           python3 scripts/quality/coverage_provenance.py write-api-receipt \
             --repository-root "$GITHUB_WORKSPACE" \
             --output artifacts/coverage/provenance/api-selection.json \
@@ -2736,6 +4226,7 @@ jobs:
             --event "$WORKFLOW_EVENT" \
             --job coverage-policy-gate \
             --selection "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest" \
+            --selection "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_attempt|$node_actions_id|$node_actions_name|$node_actions_digest" \
             --selection "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest" \
             --selection "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest" \
             --selection "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_attempt|$file_processor_id|$file_processor_name|$file_processor_digest" \
@@ -2768,6 +4259,7 @@ jobs:
           PY
           }
           frontend_artifact="$(selection_value frontend artifact_name)"
+          node_actions_artifact="$(selection_value node_actions artifact_name)"
           gateway_artifact="$(selection_value go_gateway artifact_name)"
           ws_hub_artifact="$(selection_value go_ws_hub artifact_name)"
           file_processor_artifact="$(selection_value go_file_processor artifact_name)"
@@ -2785,12 +4277,13 @@ jobs:
             --run-attempt "$RUN_ATTEMPT" \
             --event "$WORKFLOW_EVENT" \
             --job coverage-policy-gate \
-            --artifact "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" \
+            --artifact "quality-evidence-${EXPECTED_SHA}-attempt-${RUN_ATTEMPT}" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version quality-provenance=2.0.0 \
             --retry-selection-receipt artifacts/coverage/provenance/api-selection.json \
             --producer-expectation "artifacts/coverage/provenance/python.json|coverage-policy-gate|python-coverage-aggregate" \
             --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_artifact" \
+            --producer-expectation "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_artifact" \
             --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_artifact" \
             --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_artifact" \
             --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_artifact" \
@@ -2798,6 +4291,7 @@ jobs:
             --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_artifact" \
             --metadata artifacts/coverage/provenance/python.json \
             --metadata frontend/coverage/coverage-provenance.json \
+            --metadata artifacts/coverage/node-actions/coverage-provenance.json \
             --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
             --metadata artifacts/coverage/go/ws-hub/coverage-provenance.json \
             --metadata artifacts/coverage/go/file-processor/coverage-provenance.json \
@@ -2853,6 +4347,13 @@ jobs:
             --tool-version "python=$python_version" \
             --tool-version "node=$node_version" \
             --tool-version "vitest=$vitest_version" \
+            --tool-version "node-actions-node=$(read_tool node-actions-node)" \
+            --tool-version "ast-v8-to-istanbul=$(read_tool ast-v8-to-istanbul)" \
+            --tool-version "@babel/parser=$(read_tool @babel/parser)" \
+            --tool-version "@bcoe/v8-coverage=$(read_tool @bcoe/v8-coverage)" \
+            --tool-version "istanbul-lib-coverage=$(read_tool istanbul-lib-coverage)" \
+            --tool-version "istanbul-lib-report=$(read_tool istanbul-lib-report)" \
+            --tool-version "istanbul-reports=$(read_tool istanbul-reports)" \
             --tool-version "go=$go_version" \
             --tool-version "rustc=$rustc_version" \
             --tool-version "rustc-nightly=$rustc_nightly_version" \
@@ -2861,6 +4362,8 @@ jobs:
             --python-json artifacts/coverage/python/coverage.json \
             --frontend-lcov frontend/coverage/lcov.info \
             --frontend-json frontend/coverage/coverage-final.json \
+            --node-actions-lcov artifacts/coverage/node-actions/lcov.info \
+            --node-actions-json artifacts/coverage/node-actions/coverage-final.json \
             --go-report go-gateway=artifacts/coverage/go/gateway/coverage.out \
             --go-report go-ws-hub=artifacts/coverage/go/ws-hub/coverage.out \
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
@@ -2938,6 +4441,10 @@ jobs:
           path: |
             coverage.xml
             artifacts/coverage/python/coverage.json
+            artifacts/coverage/node-actions/lcov.info
+            artifacts/coverage/node-actions/coverage-final.json
+            artifacts/coverage/node-actions/coverage-provenance.json
+            artifacts/coverage/node-actions/coverage-source-snapshot.json
             frontend/coverage/lcov.info
             frontend/coverage/coverage-final.json
             artifacts/coverage/go/gateway/coverage.out
@@ -3087,9 +4594,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -3101,7 +4610,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install harness toolchains
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Generate ephemeral audit settings
         # The model-default inventory imports SQLAlchemy metadata, which loads
@@ -3109,7 +4618,11 @@ jobs:
         # mint a runner-local value only for this unprivileged metadata check;
         # no repository or long-lived CI secret is exposed to PR code.
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install harness dependencies
         run: |
@@ -3155,6 +4668,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kyverno CLI v1.19.1
         shell: bash
@@ -3184,17 +4699,37 @@ jobs:
     name: "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Unit Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   backend-tests-integration-dummy:
     name: "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Integration Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   ci-success:
     name: CI Success
@@ -3221,6 +4756,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - docker-security-scan
+      - docker-security-scan-additional
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -3245,6 +4781,10 @@ jobs:
       - codecov-upload
       - quality-inventory-check
       - kyverno-test
+      - caddy-emitted-log-proof
+      - windows-live-proofs
+      - semgrep-sast
+      - live-realtime-visual
 
     steps:
       - name: Check all jobs passed
@@ -3252,6 +4792,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
           PRE_COMMIT_RESULT: ${{ needs.pre-commit-check.result }}
           PRE_COMMIT_SECURITY_RESULT: ${{ needs.pre-commit-security-and-types.result }}
           FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
@@ -3263,46 +4804,50 @@ jobs:
         run: |
           set -euo pipefail
           required_results=(
-            "pre-commit-check|${{ needs.pre-commit-check.result }}"
-            "pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"
-            "compose-validate|${{ needs.compose-validate.result }}"
-            "backend-tests|${{ needs.backend-tests.result }}"
-            "backend-type-check|${{ needs.backend-type-check.result }}"
-            "go-tests|${{ needs.go-tests.result }}"
-            "go-integration-ws-hub|${{ needs.go-integration-ws-hub.result }}"
-            "go-integration-file-processor|${{ needs.go-integration-file-processor.result }}"
-            "go-integration-gateway|${{ needs.go-integration-gateway.result }}"
-            "frontend-tests|${{ needs.frontend-tests.result }}"
-            "security-audit|${{ needs.security-audit.result }}"
-            "sbom-generate|${{ needs.sbom-generate.result }}"
-            "alembic-migrations|${{ needs.alembic-migrations.result }}"
-            "openapi-verify|${{ needs.openapi-verify.result }}"
-            "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
-            "docker-security-scan|${{ needs.docker-security-scan.result }}"
-            "helm-validate|${{ needs.helm-validate.result }}"
-            "db-migration-gate|${{ needs.db-migration-gate.result }}"
-            "go-fuzz|${{ needs.go-fuzz.result }}"
-            "contract-tests|${{ needs.contract-tests.result }}"
-            "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
-            "provenance-check|${{ needs.provenance-check.result }}"
-            "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
-            "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
-            "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
-            "rust-tests|${{ needs.rust-tests.result }}"
-            "db-migration-integrity|${{ needs.db-migration-integrity.result }}"
-            "actionlint|${{ needs.actionlint.result }}"
-            "dockerfile-lint|${{ needs.dockerfile-lint.result }}"
-            "shellcheck|${{ needs.shellcheck.result }}"
-            "graphql-drift-check|${{ needs.graphql-drift-check.result }}"
-            "quality|${{ needs.quality.result }}"
-            "rust-lint|${{ needs.rust-lint.result }}"
+            'pre-commit-check|${{ needs.pre-commit-check.result }}'
+            'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'
+            'compose-validate|${{ needs.compose-validate.result }}'
+            'backend-tests|${{ needs.backend-tests.result }}'
+            'backend-type-check|${{ needs.backend-type-check.result }}'
+            'go-tests|${{ needs.go-tests.result }}'
+            'go-integration-ws-hub|${{ needs.go-integration-ws-hub.result }}'
+            'go-integration-file-processor|${{ needs.go-integration-file-processor.result }}'
+            'go-integration-gateway|${{ needs.go-integration-gateway.result }}'
+            'frontend-tests|${{ needs.frontend-tests.result }}'
+            'security-audit|${{ needs.security-audit.result }}'
+            'sbom-generate|${{ needs.sbom-generate.result }}'
+            'alembic-migrations|${{ needs.alembic-migrations.result }}'
+            'openapi-verify|${{ needs.openapi-verify.result }}'
+            'verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}'
+            'docker-security-scan|${{ needs.docker-security-scan.result }}'
+            'docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}'
+            'helm-validate|${{ needs.helm-validate.result }}'
+            'db-migration-gate|${{ needs.db-migration-gate.result }}'
+            'go-fuzz|${{ needs.go-fuzz.result }}'
+            'contract-tests|${{ needs.contract-tests.result }}'
+            'msw-mock-drift|${{ needs.msw-mock-drift.result }}'
+            'provenance-check|${{ needs.provenance-check.result }}'
+            'e2e-wasm-build|${{ needs.e2e-wasm-build.result }}'
+            'rust-ffi-asan|${{ needs.rust-ffi-asan.result }}'
+            'rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}'
+            'rust-tests|${{ needs.rust-tests.result }}'
+            'db-migration-integrity|${{ needs.db-migration-integrity.result }}'
+            'actionlint|${{ needs.actionlint.result }}'
+            'dockerfile-lint|${{ needs.dockerfile-lint.result }}'
+            'shellcheck|${{ needs.shellcheck.result }}'
+            'graphql-drift-check|${{ needs.graphql-drift-check.result }}'
+            'quality|${{ needs.quality.result }}'
+            'rust-lint|${{ needs.rust-lint.result }}'
             # The aggregate gate is skipped when one of its four producers is
             # unsuccessful. Use the same value exported above for the actual
             # result so an expression/context mismatch cannot manufacture a
             # second, misleading failure in this finalizer.
             "coverage-policy-gate|$COVERAGE_RESULT"
-            "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
-            "kyverno-test|${{ needs.kyverno-test.result }}"
+            'quality-inventory-check|${{ needs.quality-inventory-check.result }}'
+            'kyverno-test|${{ needs.kyverno-test.result }}'
+            'caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}'
+            'windows-live-proofs|${{ needs.windows-live-proofs.result }}'
+            'semgrep-sast|${{ needs.semgrep-sast.result }}'
           )
 
           # Coverage is allowed to be skipped only when a direct producer
@@ -3345,9 +4890,15 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" ]]; then
-            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "success"
+            assert_event_result "codecov-upload" '${{ needs.codecov-upload.result }}' "success"
           else
-            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "skipped"
+            assert_event_result "codecov-upload" '${{ needs.codecov-upload.result }}' "skipped"
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]; then
+            assert_event_result "live-realtime-visual" '${{ needs.live-realtime-visual.result }}' "success"
+          else
+            assert_event_result "live-realtime-visual" '${{ needs.live-realtime-visual.result }}' "skipped"
           fi
 
           if (( failed != 0 )); then
@@ -3358,11 +4909,16 @@ jobs:
 
       - name: Report integration and migration quality results
         shell: bash
+        env:
+          WS_RESULT: ${{ needs.go-integration-ws-hub.result }}
+          FILE_PROCESSOR_RESULT: ${{ needs.go-integration-file-processor.result }}
+          GATEWAY_RESULT: ${{ needs.go-integration-gateway.result }}
+          DB_MIGRATION_RESULT: ${{ needs.db-migration-integrity.result }}
         run: |
-          ws=${{ needs.go-integration-ws-hub.result }}
-          fp=${{ needs.go-integration-file-processor.result }}
-          gw=${{ needs.go-integration-gateway.result }}
-          dbmig=${{ needs.db-migration-integrity.result }}
+          ws="$WS_RESULT"
+          fp="$FILE_PROCESSOR_RESULT"
+          gw="$GATEWAY_RESULT"
+          dbmig="$DB_MIGRATION_RESULT"
           {
             echo "## Go integration tests (required)";
             echo "";
@@ -3391,7 +4947,7 @@ jobs:
 
       - name: Set up Python for CI health report
         if: ${{ always() }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -3429,3 +4985,4 @@ jobs:
           path: artifacts/quality/ci-health-report.*
           if-no-files-found: error
           retention-days: 14
+

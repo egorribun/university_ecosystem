@@ -172,8 +172,32 @@ jobs:
               .github/scripts/deploy-helm.sh|.github/scripts/deploy-revocation-store.sh|\
               .github/scripts/validate_mfa_smoke_path.py|\
               .github/scripts/verify_mfa_key_rotation.py|\
+              .github/scripts/*|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
+              scripts/quality/dast_privacy.py|\
+              scripts/quality/nuclei_findings_gate.py|\
+              scripts/quality/sqlmap_scan_gate.py|\
+              scripts/quality/scorecard_floors_gate.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
+              frontend/scripts/generate-zod-root-lock-candidate.mjs|\
+              frontend/scripts/generate-zod-root-lock-candidate.test.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.test.mjs|\
+              frontend/scripts/browser-dependency-smoke.mjs|\
+              frontend/scripts/browser-dependency-smoke.test.mjs|\
+              frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs|\
+              frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs|\
+              frontend/scripts/generate-react-compiler-final-lock-candidate.mjs|\
+              frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs|\
+              frontend/scripts/pack-react-compiler-zod-compat.mjs|\
+              frontend/scripts/pack-react-compiler-zod-compat.test.mjs|\
+              frontend/vendor/react-compiler-zod-compat-1.0.0.tgz|\
+              frontend/scripts/react-compiler-zod-compat/index.cjs|\
+              frontend/scripts/react-compiler-zod-compat/package.json|\
+              frontend/scripts/react-compiler-zod-compat/legacy-baseline.json|\
+              frontend/scripts/react-compiler-zod-compat.test.mjs|\
+              scripts/ci/probe_react_compiler_artifacts.py|\
+              tests/test_probe_react_compiler_artifacts.py|\
               scripts/quality/filter_checkov_sarif.py|\
               scripts/verify_secrets_baseline.py|\
               scripts/quality/coverage_provenance.py|\
@@ -186,6 +210,11 @@ jobs:
               scripts/run_detect_secrets.py|scripts/secrets_baseline.py|\
               tests/test_immutable_policy_integrity_workflow.py|\
               tests/test_security_policy_integrity_snapshot_contract.py|\
+              scripts/quality/select_semgrep_rules.py|\
+              scripts/quality/semgrep_dispositions_gate.py|\
+              scripts/quality/run_semgrep_gate.py|\
+              scripts/quality/helm_rendered_target_overlay.py|\
+              scripts/quality/helm_semgrep_profile_registry.json|\
               scripts/quality/validate_semgrep_sarif.py)
                 protected_paths+=("$path")
                 ;;

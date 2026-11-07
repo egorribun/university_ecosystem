@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
@@ -27,6 +29,8 @@ func getEnvFloat64(key string, defaultValue float64) float64 {
 	return val
 }
 
+const defaultJWTIssuer = "university-ecosystem"
+
 // Config holds the gateway configuration.
 type Config struct {
 	Port       string
@@ -43,6 +47,10 @@ type Config struct {
 	// JWTAudience binds access tokens to this relying party. It must match the
 	// Python issuer's JWT_AUDIENCE setting.
 	JWTAudience string
+	// JWTIssuer binds verified tokens to the backend configured JWT_ISSUER.
+	JWTIssuer string
+	// jwtIssuerExplicit distinguishes an omitted dev value from an explicitly blank issuer.
+	jwtIssuerExplicit bool
 	// JWKSPublicKeyPEM is the PEM-encoded RSA/EC public key used to verify RS256 tokens.
 	// Optional. When empty, only HS256 tokens are accepted. Set JWKS_PUBLIC_KEY_PEM to
 	// enable RS256 support without a round-trip to the Python JWKS endpoint at startup.
@@ -88,6 +96,10 @@ type Config struct {
 	SpiffeMyID            string
 	FileProcessorSpiffeID string
 	BackendSpiffeID       string
+	// InternalHTTPMTLSEnabled (INTERNAL_HTTP_MTLS_ENABLED) turns on SPIFFE mTLS for
+	// the token-bearing backend HTTP hops (AUD-373). It is deliberately separate
+	// from SPIFFE_ENABLED, which also switches the file-processor gRPC transport.
+	InternalHTTPMTLSEnabled bool
 	// HTTP/3 QUIC & WebTransport Ingress Configuration
 	H3Enabled      bool   // GATEWAY_H3_ENABLED (default: true)
 	H3Port         string // GATEWAY_H3_PORT (default: "8443")
@@ -140,6 +152,24 @@ func loadFromEnvironmentChecked() (*Config, error) {
 	if value, explicitlySet := os.LookupEnv("JWT_AUDIENCE"); explicitlySet {
 		jwtAudience = strings.TrimSpace(value)
 	}
+	environment := getEnv("VITE_ENVIRONMENT", "development")
+	jwtIssuer, issuerSet := os.LookupEnv("JWT_ISSUER")
+	if issuerSet {
+		jwtIssuer = trimJWTIssuerWhitespace(jwtIssuer)
+	} else {
+		switch strings.ToLower(strings.TrimSpace(environment)) {
+		case "staging", "production":
+			// Release environments must receive the same explicit issuer as the backend.
+			jwtIssuer = ""
+		default:
+			jwtIssuer = defaultJWTIssuer
+		}
+	}
+	internalHTTPMTLSEnabled, err := parseInternalHTTPMTLSEnabled(os.Getenv("INTERNAL_HTTP_MTLS_ENABLED"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
@@ -148,13 +178,15 @@ func loadFromEnvironmentChecked() (*Config, error) {
 		RevocationRedisURL: revocationRedisURL,
 		JWTSecret:          jwtSecret, // No default — fail secure
 		JWTAudience:        jwtAudience,
+		JWTIssuer:          jwtIssuer,
+		jwtIssuerExplicit:  issuerSet,
 		JWKSPublicKeyPEM:   os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
 		FileProcessorAddr:  getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
 		RateLimitRPS:       getEnvInt("RATE_LIMIT_RPS", 100),
 		RateLimitBurst:     getEnvInt("RATE_LIMIT_BURST", 200),
 		AllowedOrigins:     getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		SentryDSN:          getEnv("SENTRY_DSN", ""),
-		Environment:        getEnv("VITE_ENVIRONMENT", "development"),
+		Environment:        environment,
 		OtelEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "tempo:4317"),
 		AppVersion:         getEnv("APP_VERSION", "unknown"),
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
@@ -173,29 +205,36 @@ func loadFromEnvironmentChecked() (*Config, error) {
 		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
 		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
 		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
-		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
-		SpiffeEnabled:          os.Getenv("SPIFFE_ENABLED") == "true",
-		SpiffeEndpointSocket:   getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
-		SpiffeTrustDomain:      getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
-		SpiffeMyID:             getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
-		FileProcessorSpiffeID:  getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
-		BackendSpiffeID:        getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
-		H3Enabled:              getEnvBool("GATEWAY_H3_ENABLED", true),
-		H3Port:                 getEnv("GATEWAY_H3_PORT", "8443"),
-		H3AltSvcMaxAge:         getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
-		TLSCertFile:            os.Getenv("TLS_CERT_FILE"),
-		TLSKeyFile:             os.Getenv("TLS_KEY_FILE"),
-		WsHubURL:               getEnv("WSHUB_URL", "http://ws-hub:8081"),
+		SentryTracesSampleRate:  getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
+		SpiffeEnabled:           os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:    getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:       getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:              getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
+		FileProcessorSpiffeID:   getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
+		BackendSpiffeID:         getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		InternalHTTPMTLSEnabled: internalHTTPMTLSEnabled,
+		H3Enabled:               getEnvBool("GATEWAY_H3_ENABLED", true),
+		H3Port:                  getEnv("GATEWAY_H3_PORT", "8443"),
+		H3AltSvcMaxAge:          getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
+		TLSCertFile:             os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:              os.Getenv("TLS_KEY_FILE"),
+		WsHubURL:                getEnv("WSHUB_URL", "http://ws-hub:8081"),
 	}, nil
 }
 
 func validateConfig(cfg *Config) error {
+	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	isRelease := environment == "staging" || environment == "production"
+	if !isRelease && !cfg.jwtIssuerExplicit && cfg.JWTIssuer == "" {
+		// Directly constructed development configs keep the backend-matched default.
+		cfg.JWTIssuer = defaultJWTIssuer
+	}
 	if err := validateRequestSettings(cfg); err != nil {
 		return err
 	}
-
-	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
-	isRelease := environment == "staging" || environment == "production"
+	if err := validateBackendTransport(cfg); err != nil {
+		return err
+	}
 	if isRelease {
 		cfg.InternalHMACSecret = strings.TrimSpace(cfg.InternalHMACSecret)
 		if err := validateInternalHMACSecret(cfg.InternalHMACSecret); err != nil {
@@ -205,13 +244,13 @@ func validateConfig(cfg *Config) error {
 		if err := validateFileProcessingCapabilitySecret(cfg.FileProcessingCapabilitySecret); err != nil {
 			return err
 		}
-	}
-	if isRelease && !cfg.GrpcUseTLS {
-		return fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
-	}
-	if isRelease && !cfg.SpiffeEnabled {
-		if err := validateConventionalGRPCConfig(cfg, environment); err != nil {
-			return err
+		if !cfg.GrpcUseTLS {
+			return fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
+		}
+		if !cfg.SpiffeEnabled {
+			if err := validateConventionalGRPCConfig(cfg, environment); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -235,11 +274,39 @@ func validateRequestSettings(cfg *Config) error {
 	if cfg.JWTAudience == "" {
 		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
 	}
+	if err := validateJWTIssuer(cfg.JWTIssuer); err != nil {
+		return err
+	}
 	if cfg.RateLimitRPS <= 0 {
 		return fmt.Errorf("RATE_LIMIT_RPS must be greater than zero")
 	}
 	if cfg.RateLimitBurst <= 0 {
 		return fmt.Errorf("RATE_LIMIT_BURST must be greater than zero")
+	}
+	return nil
+}
+
+// isJWTIssuerStripWhitespace matches the fixed whitespace set used by Python str.strip.
+func isJWTIssuerStripWhitespace(r rune) bool {
+	return r >= '\u0009' && r <= '\u000d' ||
+		r >= '\u001c' && r <= '\u0020' ||
+		r == '\u0085' || r == '\u00a0' || r == '\u1680' ||
+		r >= '\u2000' && r <= '\u200a' ||
+		r == '\u2028' || r == '\u2029' || r == '\u202f' ||
+		r == '\u205f' || r == '\u3000'
+}
+
+func trimJWTIssuerWhitespace(issuer string) string {
+	return strings.TrimFunc(issuer, isJWTIssuerStripWhitespace)
+}
+
+func validateJWTIssuer(issuer string) error {
+	normalized := trimJWTIssuerWhitespace(issuer)
+	if normalized == "" {
+		return fmt.Errorf("JWT_ISSUER must not be empty")
+	}
+	if utf8.RuneCountInString(normalized) > 512 || strings.IndexFunc(normalized, func(r rune) bool { return r < 0x20 }) >= 0 {
+		return fmt.Errorf("JWT_ISSUER contains invalid characters")
 	}
 	return nil
 }
@@ -353,6 +420,44 @@ func ValidateGRPCClientIdentityURI(value string) error {
 	identity, err := spiffeid.FromString(value)
 	if err != nil || identity.String() != value {
 		return fmt.Errorf("GRPC_CLIENT_IDENTITY_URI must be one canonical SPIFFE URI")
+	}
+	return nil
+}
+
+// parseInternalHTTPMTLSEnabled accepts the standard boolean spellings and rejects
+// anything else, so a typo can never silently leave backend traffic in plaintext.
+func parseInternalHTTPMTLSEnabled(raw string) (bool, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return false, nil
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("INTERNAL_HTTP_MTLS_ENABLED must be a boolean, got %q", value)
+	}
+	return enabled, nil
+}
+
+// BackendMTLSEnabled reports whether token-bearing backend HTTP hops must use
+// SPIFFE mTLS. The gateway proxy and the JWKS fetch depend on it.
+func (c *Config) BackendMTLSEnabled() bool {
+	return c.SpiffeEnabled || c.InternalHTTPMTLSEnabled
+}
+
+// validateBackendTransport fails closed when backend mTLS is requested but the
+// backend URL would carry token-bearing requests in plaintext (AUD-373). Both
+// SPIFFE_ENABLED and INTERNAL_HTTP_MTLS_ENABLED install the backend TLS config,
+// which a plaintext transport silently ignores, so both require https.
+func validateBackendTransport(cfg *Config) error {
+	if !cfg.BackendMTLSEnabled() {
+		return nil
+	}
+	backend, err := url.Parse(cfg.BackendURL)
+	if err != nil || backend.Scheme != "https" || backend.Host == "" {
+		return fmt.Errorf("BACKEND_URL must be an https URL when backend mTLS is enabled (SPIFFE_ENABLED or INTERNAL_HTTP_MTLS_ENABLED=true)")
+	}
+	if _, err := spiffeid.FromString(cfg.BackendSpiffeID); err != nil {
+		return fmt.Errorf("BACKEND_SPIFFE_ID must be a canonical SPIFFE ID when backend mTLS is enabled: %w", err)
 	}
 	return nil
 }

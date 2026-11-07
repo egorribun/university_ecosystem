@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 
@@ -59,15 +59,15 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     search_vector: Mapped[Any] = mapped_column(
         Text().with_variant(TSVECTOR(), "postgresql"),
         Computed(
-            "to_tsvector('simple', "
-            "coalesce(title, '') || ' ' || "
-            "coalesce(description, '') || ' ' || "
-            "coalesce(location, '') || ' ' || "
-            "coalesce(title_en, '') || ' ' || "
-            "coalesce(description_en, '') || ' ' || "
-            "coalesce(location_en, '') || ' ' || "
-            "coalesce(about, '') || ' ' || "
-            "coalesce(about_en, '') "
+            "to_tsvector('simple'::regconfig, "
+            "coalesce(title, ''::character varying)::text || ' '::text || "
+            "coalesce(description, ''::text) || ' '::text || "
+            "coalesce(location, ''::character varying)::text || ' '::text || "
+            "coalesce(title_en, ''::character varying)::text || ' '::text || "
+            "coalesce(description_en, ''::text) || ' '::text || "
+            "coalesce(location_en, ''::character varying)::text || ' '::text || "
+            "coalesce(about, ''::text) || ' '::text || "
+            "coalesce(about_en, ''::text) "
             ")",
             persisted=True,
         ),
@@ -101,6 +101,13 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_events_starts_at_is_active", "starts_at", "is_active"),
+        # AUD-278: full-text GIN index behind Event.search_vector search, restored
+        # by revision 202603280001 on every upgrade path.
+        Index(
+            "ix_events_search_vector",
+            "search_vector",
+            postgresql_using="gin",
+        ),
     )
     # RZ-23-01 (audit 2026-03-25 Wave 23): Changed lazy="selectin" → lazy="noload".
     # lazy="selectin" fires unconditional secondary SELECTs on every Event load,

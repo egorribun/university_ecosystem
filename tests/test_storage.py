@@ -56,8 +56,8 @@ async def test_static_fs_delete_file(static_storage, tmp_path):
 @pytest.mark.asyncio
 async def test_static_fs_delete_non_existent(static_storage):
     """Test deleting non-existent file doesn't crash."""
-    await static_storage.delete_file("/static/missing.jpg")
-    # No exception
+    assert (await static_storage.delete_file("/static/missing.jpg")) is None
+    assert not (static_storage.base_dir / "missing.jpg").exists()
 
 
 def test_static_fs_extract_path(static_storage):
@@ -65,9 +65,7 @@ def test_static_fs_extract_path(static_storage):
     # Prefix match
     assert static_storage._extract_relative_path("/static/a/b.txt") == Path("a/b.txt")
 
-    # Implementation doesn't handle schema-based URL extraction for
-    # StaticFS (simple string slicing)
-    # So we test what it DOES support
+    # Public relative aliases remain supported alongside canonical identities.
     assert static_storage._extract_relative_path("/static/a.jpg") == Path("a.jpg")
 
     # If prefix doesn't match, it still returns the Path as long as
@@ -348,6 +346,7 @@ def test_get_storage_backend_static(tmp_path):
     mock_settings.storage_backend = "static"
     mock_settings.static_dir_path = tmp_path
     mock_settings.storage_static_base_url = "/static"
+    mock_settings.storage_static_origin = "http://localhost:8000"
 
     backend = get_storage_backend(mock_settings)
     assert isinstance(backend, StaticFSStorage)

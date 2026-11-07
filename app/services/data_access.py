@@ -37,8 +37,8 @@ def _audit_client_ip(request: Request) -> str:
 async def log_data_access(
     db: AsyncDatabaseSession,
     *,
-    actor_user_id: uuid.UUID | int | None,
-    subject_user_id: uuid.UUID | int | None,
+    actor_user_id: uuid.UUID | None,
+    subject_user_id: uuid.UUID | None,
     resource_type: str,
     action: str,
     request: Request,
@@ -132,8 +132,8 @@ async def export_access_logs_stream(
     *,
     start_at: datetime | None = None,
     end_at: datetime | None = None,
-    actor_user_id: int | None = None,
-    subject_user_id: int | None = None,
+    actor_user_id: uuid.UUID | None = None,
+    subject_user_id: uuid.UUID | None = None,
 ) -> AsyncIterable[str]:
     start = _normalize_time(start_at)
     end = _normalize_time(end_at)

@@ -5,16 +5,16 @@ from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
 
-from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_list
+from app.core.chat_constants import CHAT_MAX_MESSAGE_LENGTH as CHAT_MAX_MESSAGE_LENGTH
+from app.core.chat_constants import (
+    CHAT_MAX_WEBSOCKET_FRAME_BYTES as CHAT_MAX_WEBSOCKET_FRAME_BYTES,
+)
+from app.core.storage_urls import (
+    DEFAULT_STATIC_STORAGE_ORIGIN,
+    validate_static_storage_origin,
+)
 
-# Canonical message content limit shared by persistence, HTTP schemas and the
-# generated API contract.  Keep this in the backend-owned config module so a
-# boundary change has one source of truth instead of drifting per layer.
-CHAT_MAX_MESSAGE_LENGTH = 32_768
-# Transport guard shared by the Python fallback endpoint and ws-hub.  This is
-# intentionally independent from the content limit: JSON framing and UTF-8
-# encoding can make a valid message body larger on the wire.
-CHAT_MAX_WEBSOCKET_FRAME_BYTES = 60 * 1024
+from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_list
 
 
 class StorageSettings(BaseAppSettings):
@@ -29,6 +29,8 @@ class StorageSettings(BaseAppSettings):
     minio_bucket: str = "uploads"
 
     storage_static_base_url: str = "/static"
+    # Private attachment identity only; public media URLs remain relative.
+    storage_static_origin: str = DEFAULT_STATIC_STORAGE_ORIGIN
     storage_s3_bucket: str = ""
     storage_s3_region: str = ""
     storage_s3_access_key_id: str = ""
@@ -144,6 +146,11 @@ class StorageSettings(BaseAppSettings):
             for e in _coerce_str_list(self.event_file_allowed_extensions)
             if e.strip()
         }
+
+    @field_validator("storage_static_origin")
+    @classmethod
+    def _validate_storage_static_origin(cls, value: str) -> str:
+        return validate_static_storage_origin(value)
 
     @field_validator("storage_backend")
     @classmethod

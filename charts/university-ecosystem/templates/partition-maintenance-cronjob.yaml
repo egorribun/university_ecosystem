@@ -1,0 +1,131 @@
+{{- if .Values.partitionMaintenance.enabled }}
+{{- $connectionSecret := required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret -}}
+{{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
+{{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
+{{- /* Same credential and secret projection as the migration Job: the schema owner login only. */ -}}
+{{- $connectionSecretKeys := list
+  (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey)
+  (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
+  (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+  $rateLimitURIKey
+  (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
+-}}
+{{- $applicationSecretKeys := list
+  "jwt-secret"
+  "audit-log-secret"
+  "elasticsearch-password"
+  "ws-hub-internal-secret"
+  "internal-hmac-secret"
+  "spicedb-preshared-key"
+  "spotify-token-secret"
+  "token-hmac-secret"
+  "idempotency-hmac-secret"
+  (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys)
+-}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-partition-maintenance
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: partition-maintenance
+spec:
+  schedule: {{ .Values.partitionMaintenance.schedule | quote }}
+  timeZone: {{ .Values.partitionMaintenance.timeZone | quote }}
+  concurrencyPolicy: {{ .Values.partitionMaintenance.concurrencyPolicy | quote }}
+  startingDeadlineSeconds: {{ .Values.partitionMaintenance.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.partitionMaintenance.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.partitionMaintenance.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.partitionMaintenance.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.partitionMaintenance.backoffLimit }}
+      ttlSecondsAfterFinished: {{ .Values.partitionMaintenance.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            {{- include "university-ecosystem.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: partition-maintenance
+            # This exact client label is required by the dedicated noeviction
+            # revocation Redis NetworkPolicy, as for the migration Job.
+            {{ printf "%s-revocation-redis-client" .Release.Name }}: "true"
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: partition-maintenance
+              image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
+              imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+              command: ["python", "-m", "app.services.partition_manager"]
+              env:
+                - name: RATE_LIMIT_STORAGE_BACKEND
+                  value: "redis"
+                - name: RATE_LIMIT_STORAGE_URI_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $connectionSecret $rateLimitURIKey | quote }}
+                # Schema owner login, as in the migration Job. Never the runtime URL.
+                - name: DATABASE_URL_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey) | quote }}
+                - name: REVOCATION_REDIS_URL_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
+                - name: CACHE_REDIS_URL_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey) | quote }}
+                # Shared Settings validation needs the same process role and
+                # environment as the serving backend in staging and production.
+                - name: APP_PROCESS_ROLE
+                  value: "api"
+                - name: REVOCATION_REDIS_ACCESS_ENABLED
+                  value: "true"
+                - name: ENVIRONMENT
+                  value: {{ .Values.global.environment | quote }}
+                - name: TRUSTED_PROXIES
+                  value: {{ join "," .Values.backend.config.trustedProxies | quote }}
+                - name: MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID
+                  value: {{ .Values.backend.config.mfaTotpActiveEncryptionKeyId | quote }}
+                - name: EVENT_FILE_SCANNER_ENABLED
+                  value: {{ .Values.backend.config.eventFileScannerEnabled | quote }}
+                - name: MINIO_SECURE
+                  value: {{ .Values.backend.config.minioSecure | quote }}
+                - name: ELASTICSEARCH_URL
+                  value: {{ .Values.backend.config.elasticsearchURL | quote }}
+                - name: SECRET_KEY_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $applicationSecret "jwt-secret" | quote }}
+                {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
+                - name: {{ printf "%s_FILE" $variable }}
+                  value: {{ printf "/run/secrets/%s/%s" $applicationSecret $key | quote }}
+                {{- end }}
+                - name: NATS_AUTH_TOKEN_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey) | quote }}
+                - name: MFA_TOTP_ENCRYPTION_KEYS_FILE
+                  value: {{ printf "/run/secrets/%s/%s" $applicationSecret (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys) | quote }}
+                - name: AUTO_CREATE_SCHEMA
+                  value: "false"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.partitionMaintenance.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi
+            {{- include "university-ecosystem.secretVolumes" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 12 }}
+{{- end }}

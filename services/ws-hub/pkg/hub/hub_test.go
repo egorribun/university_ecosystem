@@ -42,7 +42,7 @@ func setupTestHub() *Hub {
 	// We pass nil for nats.Conn and redis.Client to avoid external dependencies.
 	// Action tests still need a deterministic active-session verdict, so only
 	// this fixture replaces the production durable Redis checker.
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewFixtureHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
 	h.subscribeCacheInvalidations = func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
 		return nil, nil

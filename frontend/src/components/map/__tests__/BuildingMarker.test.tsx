@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -244,9 +245,10 @@ describe("BuildingMarker", () => {
     )
 
     const placeholder = document.querySelector(".map-photo-placeholder")
-    expect(placeholder).toHaveStyle({
-      background: `linear-gradient(135deg, ${BUILDING.colorHex}, color-mix(in srgb, ${BUILDING.colorHex} 60%, black))`,
-    })
+    expectInlineBackground(
+      placeholder,
+      `linear-gradient(135deg, ${BUILDING.colorHex}, color-mix(in srgb, ${BUILDING.colorHex} 60%, black))`
+    )
     expect(screen.getByText("Open building")).toHaveClass("map-popup-desc")
     expect(document.querySelector(".map-popup-badge")).toHaveStyle({
       backgroundColor: BUILDING.colorHex,
@@ -255,8 +257,12 @@ describe("BuildingMarker", () => {
     expect(screen.getByText("sidebar.roomCount")).toBeInTheDocument()
 
     const status = screen.getByText("hours.openNow")
+    expectInlineBackground(
+      status,
+      "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)",
+      "background-color"
+    )
     expect(status).toHaveStyle({
-      backgroundColor: "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)",
       color: "var(--color-emerald-500)",
     })
     expect(document.querySelectorAll(".map-popup-chip")).toHaveLength(4)
@@ -287,8 +293,12 @@ describe("BuildingMarker", () => {
     expect(document.querySelector(".map-popup-desc")).toBeNull()
     expect(document.querySelector(".map-popup-amenities")).toBeNull()
     const status = screen.getByText("hours.closedNow")
+    expectInlineBackground(
+      status,
+      "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+      "background-color"
+    )
     expect(status).toHaveStyle({
-      backgroundColor: "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
       color: "var(--color-rose-500)",
     })
     screen.getByRole("button", { name: "close-popup" }).click()

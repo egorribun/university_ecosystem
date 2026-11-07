@@ -61,6 +61,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 $LiveStateMode = -not [string]::IsNullOrWhiteSpace($LiveStandStateRoot)
 $StateRoot = $ProjectRoot
+$script:TemporalBootstrapRequested = $false
 $script:LiveStandOwner = $null
 $script:LiveAcceptanceRoots = @()
 $script:LiveAcceptanceServices = @()
@@ -89,6 +90,7 @@ $script:LiveAcceptanceCoreClosure = [string[]]@(
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -97,6 +99,158 @@ $script:LiveAcceptanceCoreClosure = [string[]]@(
     "tempo-healthprobe",
     "ws-hub"
 )
+
+# Docker output is never returned except for the strictly validated state tuple.
+function Get-TemporalDiagnosticSummary {
+    param(
+        [AllowEmptyString()][string]$StateLine = "",
+        [string[]]$LogLines = @(),
+        [bool]$LogsAvailable = $false
+    )
+    $statePattern = '^(created|running|paused|restarting|removing|exited|dead)\|(true|false)\|[0-9]{1,5}\|(true|false)\|[0-9]{1,10}\|(none|starting|healthy|unhealthy)\|[0-9]{1,10}$'
+    if ($StateLine -cmatch $statePattern) {
+        # status|running|exit-code|oom-killed|restarts|health|failing-streak
+        "temporal_state=$StateLine"
+    } else {
+        "temporal_state=unavailable"
+    }
+
+    if (-not $LogsAvailable) {
+        "temporal_logs=unavailable"
+        return
+    }
+    if ($LogLines.Count -eq 0) {
+        "temporal_logs=empty"
+        return
+    }
+
+    # Emit category names only. Never interpolate a matching line or regex capture.
+    $patterns = [ordered]@{
+        missing_input = 'POSTGRES_(USER|PWD) env var required|TEMPORAL_JWKS_URL must be an https JWKS endpoint'
+        invalid_jwks_url = 'TEMPORAL_JWKS_URL must use the https scheme|TEMPORAL_JWKS_URL contains characters the config renderer does not accept'
+        missing_trust_anchor = 'JWKS trust anchor .* was not provided'
+        tls_trust = 'x509: certificate signed by unknown authority|certificate verify failed'
+        missing_utility = '(getent|hostname|awk|sed|grep|temporal-server): (not found|command not found)'
+        render_or_config = 'sed:.*(unterminated|invalid|bad option)|yaml: unmarshal|yaml: line [0-9]+'
+        database_auth = 'password authentication failed|SQLSTATE[ =:]?28P01'
+        network = 'connection refused|no such host|connection timed out'
+        fatal_or_panic = 'panic:|fatal error:|"level":"fatal"'
+    }
+    $found = $false
+    foreach ($name in $patterns.Keys) {
+        foreach ($line in $LogLines) {
+            if ($line -match $patterns[$name]) {
+                "temporal_signature=$name"
+                $found = $true
+                break
+            }
+        }
+    }
+    # Match only Temporal's structured scanner record, never its stacktrace.
+    foreach ($line in $LogLines) {
+        $start = $line.IndexOf('{')
+        if ($start -lt 0) { continue }
+        try { $record = $line.Substring($start) | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+        if ($record -is [pscustomobject] -and
+            $record.'logging-call-at' -is [string] -and
+            $record.'logging-call-at' -cmatch '(^|/)service/worker/scanner/scanner\.go:270$' -and
+            $record.error -is [string] -and $record.error -ceq 'Request unauthorized.') {
+            "temporal_worker_scanner_auth=denied"
+            $found = $true
+            break
+        }
+    }
+    # A scanner workflow denial alone does not identify the fatal caller.
+    # Match one finite fatal tuple from Temporal 1.30.7; emit no source values.
+    foreach ($line in ($LogLines | Select-Object -First 50)) {
+        if ($line.Length -gt 16384) { continue }
+        $start = $line.IndexOf('{')
+        if ($start -lt 0) { continue }
+        $document = $null
+        try {
+            $document = [System.Text.Json.JsonDocument]::Parse($line.Substring($start))
+            if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) { continue }
+            $fields = @{}
+            $ambiguous = $false
+            foreach ($property in $document.RootElement.EnumerateObject()) {
+                if ($fields.ContainsKey($property.Name)) { $ambiguous = $true; break }
+                $fields[$property.Name] = $property.Value
+            }
+            if ($ambiguous) { continue }
+            $expected = @{
+                level = 'fatal'
+                msg = 'error starting scanner'
+                error = 'Request unauthorized.'
+            }
+            $matched = $true
+            foreach ($key in $expected.Keys) {
+                if ($fields.Keys -cnotcontains $key -or
+                    $fields[$key].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                    $fields[$key].GetString() -cne $expected[$key]) {
+                    $matched = $false
+                    break
+                }
+            }
+            # Observed official release builds preserve runtime.Caller's absolute path.
+            # Keep the caller vocabulary finite; do not accept arbitrary suffixes.
+            $callers = @(
+                'service/worker/service.go:314',
+                '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+            )
+            if ($fields.Keys -cnotcontains 'logging-call-at' -or
+                $fields['logging-call-at'].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                $callers -cnotcontains $fields['logging-call-at'].GetString()) {
+                $matched = $false
+            }
+            if ($matched) {
+                "temporal_fatal=scanner_start_auth_denied"
+                $found = $true
+                break
+            }
+        } catch [System.Text.Json.JsonException] {
+            # Malformed records remain unclassified.
+            continue
+        } finally {
+            if ($null -ne $document) { $document.Dispose() }
+        }
+    }
+    if (-not $found) { "temporal_logs=unrecognized" }
+}
+
+function Write-TemporalStartupDiagnostic {
+    param([string[]]$ComposeArgs, [string]$EnvFile)
+
+    try {
+        $ids = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker compose @ComposeArgs --env-file $EnvFile ps --all -q temporal 2>&1
+        } )
+        if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1 -or [string]$ids[0] -cnotmatch '^[0-9a-f]{12,64}$') {
+            "temporal_diagnostic=container_unavailable"
+            return
+        }
+        $containerId = [string]$ids[0]
+        # Do not inspect Config, Env, Health.Log.Output, State.Error, or mounts.
+        $format = '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.RestartCount}}|{{if .State.Health}}{{.State.Health.Status}}|{{.State.Health.FailingStreak}}{{else}}none|0{{end}}'
+        $state = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker inspect --format $format -- $containerId 2>&1
+        } )
+        $stateLine = if ($LASTEXITCODE -eq 0 -and $state.Count -eq 1) { [string]$state[0] } else { "" }
+        $logs = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker compose @ComposeArgs --env-file $EnvFile logs --no-color --tail=50 temporal 2>&1
+        } )
+        $logsAvailable = $LASTEXITCODE -eq 0
+        Get-TemporalDiagnosticSummary -StateLine $stateLine -LogLines $logs -LogsAvailable $logsAvailable
+    } catch {
+        # Do not emit exception text: Docker diagnostics can include environment data.
+        "temporal_diagnostic=unavailable"
+    }
+}
 
 function Assert-LiveStandPrivatePath {
     param([Parameter(Mandatory=$true)][string]$Path)
@@ -193,6 +347,142 @@ function Set-LiveStandPrivateFileMode {
     $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
         [System.IO.UnixFileMode]::UserWrite
     [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+}
+
+function Set-EnvironmentFilePrivateMode {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ($LiveStateMode) {
+        Set-LiveStandPrivateFileMode -Path $Path
+        return
+    }
+    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) {
+        return
+    }
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite
+    [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+}
+
+function Assert-EnvironmentFileLeafPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $fileInfo = [System.IO.FileInfo]::new($absolutePath)
+    if ($null -ne $fileInfo.LinkTarget) {
+        throw "Environment file path refuses reparse points."
+    }
+    $directoryInfo = [System.IO.DirectoryInfo]::new($absolutePath)
+    if ($null -ne $directoryInfo.LinkTarget) {
+        throw "Environment file path refuses reparse points."
+    }
+    try {
+        $attributes = [System.IO.File]::GetAttributes($absolutePath)
+    } catch [System.IO.FileNotFoundException] {
+        return
+    } catch [System.IO.DirectoryNotFoundException] {
+        return
+    }
+    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Environment file path refuses reparse points."
+    }
+    if (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+        throw "Environment file path must be a regular file."
+    }
+}
+function New-EnvironmentFileStream {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][System.IO.FileStreamOptions]$Options
+    )
+    return [System.IO.FileStream]::new($Path, $Options)
+}
+
+function Open-EnvironmentFileForWrite {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ($LiveStateMode -or [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) {
+        throw "Private POSIX file streams are available only for non-live POSIX state."
+    }
+
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    Assert-EnvironmentFileLeafPath -Path $absolutePath
+    $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite
+    $options = [System.IO.FileStreamOptions]::new()
+    $options.Access = [System.IO.FileAccess]::Write
+    $options.Share = [System.IO.FileShare]::None
+    if (Test-Path -LiteralPath $absolutePath) {
+        $item = Get-Item -LiteralPath $absolutePath -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Environment file refuses reparse points."
+        }
+        if ($item.PSIsContainer) {
+            throw "Environment file path must be a regular file."
+        }
+        [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+        $options.Mode = [System.IO.FileMode]::Open
+    } else {
+        $options.Mode = [System.IO.FileMode]::CreateNew
+        $options.UnixCreateMode = $ownerReadWrite
+    }
+
+    $stream = New-EnvironmentFileStream -Path $absolutePath -Options $options
+    try {
+        $stream.SetLength(0)
+    } catch {
+        $setLengthError = $_.Exception
+        try {
+            $stream.Dispose()
+        } catch {
+            $disposeError = $_.Exception
+            throw [System.AggregateException]::new(
+                "Environment file initialization and stream cleanup both failed.",
+                [System.Exception[]]@($setLengthError, $disposeError)
+            )
+        }
+        throw
+    }
+    return $stream
+}
+
+function Copy-EnvironmentFile {
+    param(
+        [Parameter(Mandatory=$true)][string]$SourcePath,
+        [Parameter(Mandatory=$true)][string]$DestinationPath
+    )
+    $absoluteSource = Resolve-StatePath -Path $SourcePath
+    $absoluteDestination = Resolve-StatePath -Path $DestinationPath
+    Assert-EnvironmentFileLeafPath -Path $absoluteSource
+    Assert-EnvironmentFileLeafPath -Path $absoluteDestination
+    $runningOnWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )
+    if ($LiveStateMode -or $runningOnWindows) {
+        Copy-Item -LiteralPath $absoluteSource -Destination $absoluteDestination -Force
+        Set-EnvironmentFilePrivateMode -Path $absoluteDestination
+        return
+    }
+
+    $sourceStream = [System.IO.FileStream]::new(
+        $absoluteSource,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read
+    )
+    try {
+        $destinationStream = Open-EnvironmentFileForWrite -Path $absoluteDestination
+        try {
+            $sourceStream.CopyTo($destinationStream)
+        } finally {
+            $destinationStream.Dispose()
+        }
+    } finally {
+        $sourceStream.Dispose()
+    }
 }
 
 function Set-LiveStandRuntimeSecretFileMode {
@@ -496,8 +786,146 @@ function Resolve-StatePath {
     return [System.IO.Path]::GetFullPath((Join-Path $StateRoot $Path))
 }
 
+function Assert-InPlaceTemporalBootstrapSource {
+    param([Parameter(Mandatory=$true)][string]$SourceSha, [Parameter(Mandatory=$true)][string]$Repository)
+    if ($SourceSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Temporal bootstrap source identity is invalid.' }
+    $paths = @(
+        'start-docker.ps1', 'docker-compose.full.yml', 'docker-compose.live.yml',
+        'infrastructure/Caddyfile', 'services/temporal/config.yaml', 'services/temporal/entrypoint.sh',
+        'scripts/temporal/bootstrap-functions.ps1', 'scripts/temporal/namespace-init.sh'
+    )
+    $git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $nullDevice = if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows)) { 'NUL' } else { '/dev/null' }
+    function Invoke-TemporalSourceGit {
+        param([Parameter(Mandatory=$true)][string[]]$Arguments, [Parameter(Mandatory=$true)][long]$MaximumBytes)
+        if ($MaximumBytes -lt 0 -or $MaximumBytes -ge [int]::MaxValue) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        $info = [System.Diagnostics.ProcessStartInfo]::new()
+        $info.FileName = $git
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
+        foreach ($name in @($info.Environment.Keys)) {
+            if ($name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)) {
+                [void]$info.Environment.Remove($name)
+            }
+        }
+        $info.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+        $info.Environment['GIT_CONFIG_GLOBAL'] = $nullDevice
+        $info.Environment['GIT_TERMINAL_PROMPT'] = '0'
+        $info.Environment['GIT_NO_LAZY_FETCH'] = '1'
+        foreach ($arg in (@('--no-replace-objects', '--no-optional-locks', '-C', $Repository) + $Arguments)) {
+            $info.ArgumentList.Add($arg)
+        }
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $info
+        $output = [System.IO.MemoryStream]::new()
+        $started = $false
+        try {
+            if (-not $process.Start()) { throw 'Git could not start.' }
+            $started = $true
+            $timer = [System.Diagnostics.Stopwatch]::StartNew()
+            $errorTask = $process.StandardError.BaseStream.CopyToAsync([System.IO.Stream]::Null)
+            $buffer = [byte[]]::new(8192)
+            while ($true) {
+                $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+                if ($remaining -eq 0) { throw 'Git source inspection timed out.' }
+                $capacity = [int][Math]::Min($buffer.Length, $MaximumBytes + 1 - $output.Length)
+                $readTask = $process.StandardOutput.BaseStream.ReadAsync($buffer, 0, $capacity)
+                if (-not $readTask.Wait($remaining)) { throw 'Git source inspection timed out.' }
+                $count = $readTask.GetAwaiter().GetResult()
+                if ($count -eq 0) { break }
+                $output.Write($buffer, 0, $count)
+                if ($output.Length -gt $MaximumBytes) { throw 'Git source output exceeded its bound.' }
+            }
+            $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+            if ($remaining -eq 0 -or -not $process.WaitForExit($remaining)) { throw 'Git source inspection timed out.' }
+            $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+            if ($remaining -eq 0 -or -not $errorTask.Wait($remaining)) { throw 'Git source inspection timed out.' }
+            $null = $errorTask.GetAwaiter().GetResult()
+            return [PSCustomObject]@{ ExitCode=$process.ExitCode; Bytes=$output.ToArray() }
+        } catch { throw 'Temporal bootstrap source is missing from the signed commit.' }
+        finally {
+            if ($started -and -not $process.HasExited) { try { $process.Kill($true) } catch { } }
+            $process.Dispose()
+            $output.Dispose()
+        }
+    }
+    foreach ($path in $paths) {
+        # Resolve from the signed tree without mutable index, replacements, filters or attributes.
+        $tree = Invoke-TemporalSourceGit -MaximumBytes 1024 -Arguments @(
+            'ls-tree', '-z', '--long', '--full-tree', $SourceSha, '--', $path)
+        if ($tree.ExitCode -ne 0 -or $tree.Bytes.Length -eq 0) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        $entryPattern = '^(100644|100755) blob ([0-9a-f]{40}) +([0-9]+)\t' + [regex]::Escape($path) + '\x00$'
+        $entry = [regex]::Match([System.Text.Encoding]::ASCII.GetString($tree.Bytes), $entryPattern)
+        if (-not $entry.Success) { throw 'Temporal bootstrap source differs from the signed commit.' }
+        $expectedId = $entry.Groups[2].Value
+        try {
+            $expectedSize = [long]::Parse($entry.Groups[3].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        } catch { throw 'Temporal bootstrap source differs from the signed commit.' }
+        $blob = Invoke-TemporalSourceGit -MaximumBytes $expectedSize -Arguments @('cat-file', 'blob', $expectedId)
+        if ($blob.ExitCode -ne 0 -or $blob.Bytes.LongLength -ne $expectedSize) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        try {
+            $file = [System.IO.FileInfo]::new([System.IO.Path]::GetFullPath((Join-Path $Repository $path)))
+            if (-not $file.Exists -or $null -ne $file.LinkTarget -or
+                ($file.Attributes -band ([System.IO.FileAttributes]::Directory -bor
+                    [System.IO.FileAttributes]::ReparsePoint -bor [System.IO.FileAttributes]::Device)) -ne 0 -or
+                $expectedSize -gt ([long]::MaxValue / 2) -or $file.Length -gt (2 * $expectedSize)) {
+                throw 'Source file is not a bounded regular file.'
+            }
+            if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+                [System.Runtime.InteropServices.OSPlatform]::Linux)) {
+                # FileAttributes.Device is not supported on Linux. Inspect the
+                # file type before opening so a FIFO cannot block this check.
+                $stat = (Get-Command stat -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+                $mode = @(& $stat '-c' '%f' '--' $file.FullName 2>$null)
+                if ($LASTEXITCODE -ne 0 -or $mode.Count -ne 1 -or
+                    $mode[0] -cnotmatch '^[0-9a-fA-F]{1,8}$' -or
+                    (([Convert]::ToInt32($mode[0], 16) -band 0xF000) -ne 0x8000)) {
+                    throw 'Source file is not regular.'
+                }
+            }
+            $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+            $actualBytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            # The signed paths are text with LF attributes. Preserve Git's ordinary
+            # CRLF checkout compatibility without consulting the index or filters.
+            $crlf = [string]([char]13) + [char]10
+            $normalized = $utf8.GetBytes($utf8.GetString($actualBytes).Replace($crlf, [string]([char]10)))
+            if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals($normalized, $blob.Bytes)) {
+                throw 'Source file content changed.'
+            }
+        } catch { throw 'Temporal bootstrap source differs from the signed commit.' }
+    }
+}
+
 if ($LiveStateMode) {
     $StateRoot = Resolve-OwnedLiveStandStateRoot -Path $LiveStandStateRoot
+    $inPlaceBootstrapOwner = $script:LiveStandOwner.version -eq 7 -or
+        [string]$script:LiveStandOwner.stack -ceq 'full'
+    if ($inPlaceBootstrapOwner -and -not $Down -and -not $Logs -and -not $Core -and -not $RefreshTrustedProxyPeers) {
+        $script:TemporalBootstrapRequested = $true
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        . (Join-Path $ProjectRoot 'scripts/temporal/bootstrap-functions.ps1')
+    }
+} elseif (-not $Down -and -not $Logs -and -not $Core -and -not $RefreshTrustedProxyPeers) {
+    $prepareManagedFull = $false
+    if ($PrepareOnly -and @($ExtraCompose).Count -eq 1 -and
+        $ExtraCompose[0] -ceq 'docker-compose.live.yml' -and
+        (Test-Path -LiteralPath (Join-Path $ProjectRoot '.secrets/live-stand.json') -PathType Leaf)) {
+        $prepareOwner = Get-VerifiedLiveAcceptanceOwner
+        $prepareManagedFull = $prepareOwner.version -eq 7 -or [string]$prepareOwner.stack -ceq 'full'
+    }
+    if (-not $PrepareOnly -or $prepareManagedFull) {
+        $script:TemporalBootstrapRequested = $true
+        . (Join-Path $ProjectRoot 'scripts/temporal/bootstrap-functions.ps1')
+    }
 }
 Set-Location $StateRoot
 
@@ -825,12 +1253,34 @@ function New-FernetKey {
 function Write-Utf8NoBom {
     param([string]$Path, [string]$Content)
     $absolutePath = Resolve-StatePath -Path $Path
+    Assert-EnvironmentFileLeafPath -Path $absolutePath
+    $runningOnWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )
+    if (-not $LiveStateMode -and -not $runningOnWindows) {
+        $stream = Open-EnvironmentFileForWrite -Path $absolutePath
+        $writer = $null
+        try {
+            $writer = [System.IO.StreamWriter]::new(
+                $stream,
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            $writer.Write($Content)
+        } finally {
+            if ($null -ne $writer) {
+                $writer.Dispose()
+            } else {
+                $stream.Dispose()
+            }
+        }
+        return
+    }
     [System.IO.File]::WriteAllText(
         $absolutePath,
         $Content,
         [System.Text.UTF8Encoding]::new($false)
     )
-    Set-LiveStandPrivateFileMode -Path $absolutePath
+    Set-EnvironmentFilePrivateMode -Path $absolutePath
 }
 
 function Get-EnvEntry {
@@ -1170,6 +1620,81 @@ function Ensure-ApplicationSecrets {
     }
 }
 
+function Get-OwnedSeedTenantId {
+    param([Parameter(Mandatory=$true)][string]$Project)
+    if ($Project -cnotmatch '^ue-live-[0-9a-f]{16}$') {
+        throw "Owned live tenant identity requires an exact project name."
+    }
+    # UUIDv5 URL namespace bytes in network order, not Guid.ToByteArray order.
+    # SHA-1 here implements the UUID identity standard, not a security digest.
+    [byte[]]$namespace = @(0x6b,0xa7,0xb8,0x11,0x9d,0xad,0x11,0xd1,0x80,0xb4,0x00,0xc0,0x4f,0xd4,0x30,0xc8)
+    [byte[]]$name = [Text.Encoding]::UTF8.GetBytes("urn:university-ecosystem:owned-seed:$Project")
+    $sha1 = [Security.Cryptography.SHA1]::Create()
+    try {
+        [byte[]]$digest = $sha1.ComputeHash([byte[]]($namespace + $name))
+    } finally {
+        $sha1.Dispose()
+    }
+    $digest[6] = ($digest[6] -band 0x0f) -bor 0x50
+    $digest[8] = ($digest[8] -band 0x3f) -bor 0x80
+    $hex = -join ($digest[0..15] | ForEach-Object { $_.ToString('x2') })
+    return "{0}-{1}-{2}-{3}-{4}" -f $hex.Substring(0,8), $hex.Substring(8,4), $hex.Substring(12,4), $hex.Substring(16,4), $hex.Substring(20,12)
+}
+
+function Ensure-OwnedLiveTenantEnvironment {
+    # Only the owner-checked live overlay opts into this disposable MVP tenant.
+    # Unconfigured ordinary/production deployments are never auto-activated.
+    if (@($ExtraCompose).Count -ne 1 -or $ExtraCompose[0] -cne "docker-compose.live.yml") {
+        return
+    }
+    $project = [string]$env:COMPOSE_PROJECT_NAME
+    if ($null -eq $script:LiveStandOwner -or
+        [string]$script:LiveStandOwner.project_name -cne $project) {
+        throw "Owned live MVP_TENANT_ID requires verified project ownership."
+    }
+    $expected = Get-OwnedSeedTenantId -Project $project
+    if ([string]$env:MVP_TENANT_ID -cne $expected) {
+        throw "Owned live MVP_TENANT_ID does not match the launcher project."
+    }
+    # Validate both persisted views before changing either; never adopt drift.
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        $entries = @(Get-Content -LiteralPath (Resolve-StatePath -Path $path) -ErrorAction Stop |
+            Where-Object { $_ -match '^\s*(?:export\s+)?MVP_TENANT_ID\s*=' })
+        if ($entries.Count -gt 1 -or
+            ($entries.Count -eq 1 -and $entries[0] -cne "MVP_TENANT_ID=$expected")) {
+            throw "Owned live MVP_TENANT_ID has conflicting or noncanonical saved entries."
+        }
+        $stored = Get-EnvEntry -Path $path -Key "MVP_TENANT_ID"
+        if ($null -ne $stored -and $stored -cne $expected) {
+            throw "Owned live MVP_TENANT_ID differs from the saved environment."
+        }
+    }
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        Set-EnvEntry -Path $path -Key "MVP_TENANT_ID" -Value $expected
+    }
+}
+
+function Ensure-DatabaseRolePasswords {
+    # Login passwords for the roles created by
+    # infrastructure/postgres-roles/bootstrap-app-roles.sql. Each value is embedded
+    # in DATABASE_URL, so an existing value must be URL-safe; placeholders and any
+    # other shape are regenerated. Every value is mirrored into .env for Compose
+    # interpolation and into .env.docker, the launcher's canonical interpolation file.
+    # Runtime containers receive only the names in docker-compose.runtime-app.allowlist.
+    foreach ($key in @("UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD", "UE_SPICEDB_DB_PASSWORD", "UE_TEMPORAL_DB_PASSWORD")) {
+        $value = Get-EnvEntry -Path $EnvFile -Key $key
+        if (-not $value -or $value -match "CHANGE_ME" -or $value -notmatch '^[A-Za-z0-9]{32,}$') {
+            $value = New-Secret -Length 48
+            Write-Ok "Generated $key"
+        }
+        foreach ($path in @($EnvFile, $EnvCompose)) {
+            if ((Get-EnvEntry -Path $path -Key $key) -ne $value) {
+                Set-EnvEntry -Path $path -Key $key -Value $value
+            }
+        }
+    }
+}
+
 function New-MfaEmailKeyRingEntry {
     param(
         [Parameter(Mandatory=$true)][string]$KeyId,
@@ -1364,6 +1889,10 @@ function Write-WorkerEnvironmentFile {
     # Workers need the delivery KEK to decrypt queued email payloads, but not
     # OTP digest keys, active-key selectors, or revocation credentials. Keep a
     # dedicated env_file so API-only key material is not exposed to workers.
+    # Workers also never receive the bootstrap superuser password, a database
+    # login password or a URL that embeds one: Compose interpolates their DATABASE_URL
+    # from the role-specific secret, so the container
+    # does not need the separate variables.
     $sourcePath = Resolve-StatePath -Path $EnvFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
         throw "Cannot create ${WorkerEnvFile}: ${EnvFile} is missing."
@@ -1372,7 +1901,10 @@ function Write-WorkerEnvironmentFile {
     $redactedPattern = (
         '^\s*(?:REVOCATION_REDIS_(?:URL|PASSWORD)|' +
         'MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)|' +
-        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID)='
+        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID|' +
+        'POSTGRES_(?:USER|PASSWORD)|' +
+        'UE_(?:MIGRATOR|APP|WORKER|SPICEDB|TEMPORAL)_DB_PASSWORD|' +
+        'DATABASE_URL|DATABASE_URL_SYNC|NOTIFICATIONS_DATABASE_URL|MIGRATION_DATABASE_URL)='
     )
     $workerLines = @(
         Get-Content -LiteralPath $sourcePath | Where-Object {
@@ -1648,6 +2180,9 @@ function Test-TemporalServiceToken {
 
         if ($header.alg -ne 'RS256' -or $header.kid -ne 'primary') { return $false }
         if ($payload.sub -ne $Subject -or $payload.aud -ne $Audience) { return $false }
+        if ($payload.permissions -isnot [array]) { return $false }
+        $permissions = @($payload.permissions)
+        if ($permissions.Count -ne 1 -or $permissions[0] -cne 'default:write') { return $false }
         if (-not $payload.jti -or $null -eq $payload.iat -or $null -eq $payload.exp) { return $false }
         if ([long]$payload.iat -gt ($now + 60)) { return $false }
         if ([long]$payload.exp -le ($now + $MinimumValiditySeconds)) { return $false }
@@ -1733,6 +2268,10 @@ function New-TemporalServiceToken {
         iat = $now
         exp = $exp
         jti = $jti
+        # The file processor starts workflows and polls tasks in the default
+        # namespace. Temporal's default authorizer also permits this role to
+        # read that namespace; GetSystemInfo is a public health check (AUD-506).
+        permissions = @('default:write')
     }
 
     $headerJson  = $headerObj  | ConvertTo-Json -Compress
@@ -2062,6 +2601,11 @@ function Assert-ComposeConfiguration {
     # Compose config can contain credentials in its rendered JSON. Capture it
     # only to validate the exact startup model, and never print or persist it.
     Write-Status "Validating Docker Compose configuration..."
+    if ($script:TemporalBootstrapRequested) {
+        # Bind omission is interpreted using the Compose binary queried in this
+        # process, before its normalized config is checked or applied.
+        $null = Get-TemporalBootstrapComposeVersion
+    }
     $configOutput = @(docker compose @ComposeArgs --env-file $EnvFile config --format json 2>$null)
     $composeExitCode = $LASTEXITCODE
     if ($composeExitCode -ne 0) {
@@ -2432,6 +2976,10 @@ function Assert-LiveComposeVersion {
         $versionText -notmatch '^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)') {
         throw "Cannot determine Docker Compose version required by the live override."
     }
+    if ($script:TemporalBootstrapRequested) {
+        $script:TemporalBootstrapComposeVersionText = $versionText
+        $script:TemporalBootstrapComposeVersionCaptured = $true
+    }
     $major = [int]$Matches.major
     $minor = [int]$Matches.minor
     $patch = [int]$Matches.patch
@@ -2637,11 +3185,26 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $spotifyTokenSecret = New-FernetKey
     $spotifyOauthStateSecret = New-Secret -Length 48
 
-    # -- .env.docker (container env_file) ---------------------------------
+    # Login passwords for the database roles created by
+    # infrastructure/postgres-roles/bootstrap-app-roles.sql and bootstrap-service-roles.sql
+    # (SpiceDB and Temporal). New-Secret emits only
+    # ASCII letters and digits, so each value is safe inside DATABASE_URL.
+    $ueMigratorDbPassword = New-Secret -Length 48
+    $ueAppDbPassword      = New-Secret -Length 48
+    $ueWorkerDbPassword   = New-Secret -Length 48
+    $ueSpicedbDbPassword  = New-Secret -Length 48
+    $ueTemporalDbPassword = New-Secret -Length 48
+
+    # -- .env.docker (launcher interpolation file; see docker-compose.runtime-app.allowlist) --
     $dockerEnv = @"
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
+UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
+UE_APP_DB_PASSWORD=$ueAppDbPassword
+UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
+UE_SPICEDB_DB_PASSWORD=$ueSpicedbDbPassword
+UE_TEMPORAL_DB_PASSWORD=$ueTemporalDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -2687,6 +3250,11 @@ SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
+UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
+UE_APP_DB_PASSWORD=$ueAppDbPassword
+UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
+UE_SPICEDB_DB_PASSWORD=$ueSpicedbDbPassword
+UE_TEMPORAL_DB_PASSWORD=$ueTemporalDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -2729,15 +3297,13 @@ SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 } elseif ($needsEnvDocker -and -not $needsEnvCompose) {
     # .env exists but .env.docker missing - copy .env as base for .env.docker
     Write-Warn ".env.docker missing - deriving from .env..."
-    Copy-Item $EnvCompose $EnvFile
-    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvFile)
+    Copy-EnvironmentFile -SourcePath $EnvCompose -DestinationPath $EnvFile
     Write-Ok "Created $EnvFile from $EnvCompose"
     $generated = $true
 } elseif (-not $needsEnvDocker -and $needsEnvCompose) {
     # .env.docker exists but .env missing - derive .env from .env.docker
     Write-Warn ".env missing - deriving from .env.docker..."
-    Copy-Item $EnvFile $EnvCompose
-    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvCompose)
+    Copy-EnvironmentFile -SourcePath $EnvFile -DestinationPath $EnvCompose
     Write-Ok "Created $EnvCompose from $EnvFile"
     $generated = $true
 }
@@ -2750,6 +3316,8 @@ Ensure-MetricsEnvironment
 
 # Give each application security domain an independent launcher-managed key.
 Ensure-ApplicationSecrets
+Ensure-DatabaseRolePasswords
+Ensure-OwnedLiveTenantEnvironment
 Ensure-MfaEmailKeyRings
 
 # Fail closed if an existing local configuration reuses the cache password for
@@ -2769,7 +3337,7 @@ Ensure-DockerConfigRevision
 Write-WorkerEnvironmentFile
 
 # -- Sync check: keep Compose interpolation in lockstep with .env.docker ------
-# Compose reads these values from .env while containers read .env.docker. A
+# Compose reads these values from .env while the launcher's commands read .env.docker. A
 # partially populated or stale .env therefore fails before the backend starts
 # (or, worse, starts services with credentials that do not match). Treat the
 # docker env file as the canonical source for every required interpolation key,
@@ -2791,7 +3359,12 @@ if (-not $generated) {
         "INTERNAL_HMAC_SECRET",
         "METRICS_BASIC_AUTH_PASSWORD",
         "IMGPROXY_KEY",
-        "IMGPROXY_SALT"
+        "IMGPROXY_SALT",
+        "UE_MIGRATOR_DB_PASSWORD",
+        "UE_APP_DB_PASSWORD",
+        "UE_WORKER_DB_PASSWORD",
+        "UE_SPICEDB_DB_PASSWORD",
+        "UE_TEMPORAL_DB_PASSWORD"
     )
     $missingDockerKeys = @()
     $synchronizedKeys = @()
@@ -2842,7 +3415,7 @@ Set-LiveStandRuntimeSecretFileMode -Path (Resolve-StatePath ".secrets/temporal_a
 
 # -- Wave 137 SW2: SECRET_KEY drift detection .env <-> .env.docker ---------------
 # Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via
-# compose's ${SECRET_KEY} substitution, while backend's env_file reads .env.docker.
+# compose's ${SECRET_KEY} substitution, while backend's allowlisted env reads .env.docker.
 # If .env's SECRET_KEY drifts (e.g. stale Pydantic placeholder), gateway HS256
 # fallback path validates against the wrong secret -> 401 on every request.
 # Less critical post-W137 SW1 RS256 (gateway uses JWKS path) but kept for
@@ -2868,6 +3441,12 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
 }
 
 if ($PrepareOnly) {
+    if ($script:TemporalBootstrapRequested) {
+        # Bind an empty, identity-recorded file before the live owner signs the
+        # resolved model. The later launch reopens and verifies this same file.
+        $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
+        try { } finally { Exit-TemporalBootstrapLease -Lease $bootstrapLease }
+    }
     if ($InitializeTrustedProxyBootstrap) {
         $bootstrap = ConvertFrom-TrustedProxyPeers `
             -Json '{"GATEWAY_TRUSTED_PROXIES":[],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":[]}' `
@@ -2883,6 +3462,11 @@ $resolvedComposeModel = Assert-ComposeConfiguration
 $hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
 $script:LiveAcceptanceCore = $hasLiveAcceptanceSelection -and
     $LiveAcceptanceStack -ceq "core"
+$fullTemporalBootstrap = $script:TemporalBootstrapRequested -and
+    -not $script:LiveAcceptanceCore -and -not $Core
+if ($fullTemporalBootstrap) {
+    Assert-InPlaceTemporalBootstrapModel -ComposeModel $resolvedComposeModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+}
 if ($script:LiveAcceptanceCore -and $Core) {
     throw "Live acceptance Core and legacy Core selections cannot be combined."
 }
@@ -2917,6 +3501,7 @@ function Get-LiveAcceptanceCoreReadinessInventory {
         outbox = @{ type = "docker"; service = "outbox-worker"; ready = $false }
         postgres = @{ type = "docker"; service = "postgres"; ready = $false }
         postgresInit = @{ type = "job"; service = "postgres-databases-init"; ready = $false }
+        postgresRolesInit = @{ type = "job"; service = "postgres-roles-init"; ready = $false }
         redis = @{ type = "docker"; service = "redis"; ready = $false }
         revocationRedis = @{ type = "docker"; service = "revocation-redis"; ready = $false }
         spicedb = @{ type = "docker"; service = "spicedb"; ready = $false }
@@ -3021,6 +3606,71 @@ if ($Rebuild) {
 
 # -- Start services -----------------------------------------------------------
 
+if ($fullTemporalBootstrap) {
+    # Pull/start Temporal's dependency closure before issuing the five-minute
+    # admin credential. This also pulls the initializer's pinned image.
+    if ($LiveStateMode) {
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+    }
+    # A previously created full-stack file processor may still be running with
+    # the legacy broad .secrets bind. Stop this owned Compose service before
+    # starting the authenticated bootstrap or inspecting running peers.
+    Write-Status 'Stopping the existing file processor before Temporal bootstrap...'
+    docker compose @ComposeArgs --env-file $EnvFile stop file-processor
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Existing file processor could not be stopped; namespace bootstrap was not issued.'
+    }
+    Write-Status 'Starting the Temporal dependency closure...'
+    docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 300 temporal
+    if ($LASTEXITCODE -ne 0) {
+        Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile
+        throw 'Temporal dependency startup failed; namespace bootstrap was not issued.'
+    }
+
+    $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
+    $initializerStarted = $false
+    $initializerExited = $false
+    $initializerId = ''
+    try {
+        # Create the pinned initializer while its leased profile is empty. This
+        # lets us inspect the actual container before it can read the bearer.
+        $bootstrapModel = Assert-ComposeConfiguration
+        $null = Assert-LiveAcceptanceSelection -ComposeModel $bootstrapModel
+        Assert-InPlaceTemporalBootstrapModel -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        docker compose @ComposeArgs --env-file $EnvFile up --no-start --no-deps --no-build --pull never --force-recreate temporal-namespace-init
+        if ($LASTEXITCODE -ne 0) { throw 'Temporal initializer preparation failed; namespace bootstrap was not issued.' }
+
+        # Recheck source, model, actual local image/container IDs and physical
+        # volume backing immediately before mint; do not print inspect output.
+        if ($LiveStateMode) {
+            Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        }
+        $bootstrapModel = Assert-ComposeConfiguration
+        $null = Assert-LiveAcceptanceSelection -ComposeModel $bootstrapModel
+        Assert-InPlaceTemporalBootstrapModel -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        Assert-InPlaceTemporalBootstrapVolumeSafety -ComposeModel $bootstrapModel
+        Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
+        if ($LiveStateMode) {
+            Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        }
+        Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
+        $initializerId = Assert-InPlaceTemporalBootstrapRuntime -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        New-TemporalBootstrapProfile -PrivateKeyPath (Resolve-StatePath '.secrets/jwt_rs256.pem') -Lease $bootstrapLease
+        # Start and wait by the inspected ID. Never attach to container output.
+        $initializerStarted = $true
+        $startedId = Invoke-TemporalBootstrapDockerBounded -Arguments @('start', $initializerId) -TimeoutSeconds 15
+        if ($startedId -cne $initializerId) { throw 'Temporal initializer start returned an unexpected identity.' }
+        $exitCode = Invoke-TemporalBootstrapDockerBounded -Arguments @('wait', $initializerId) -TimeoutSeconds 240
+        $initializerExited = $true
+        if ($exitCode -cne '0') { throw 'Temporal namespace bootstrap did not complete successfully.' }
+    } finally {
+        if ($initializerStarted -and -not $initializerExited) {
+            try { $null = Invoke-TemporalBootstrapDockerBounded -Arguments @('kill', $initializerId) -TimeoutSeconds 10 } catch { }
+        }
+        Exit-TemporalBootstrapLease -Lease $bootstrapLease
+    }
+}
+
 if ($script:LiveAcceptanceCore) {
     Write-Status "Starting the signed live Core roots with normal Compose dependencies..."
     docker compose @ComposeArgs --env-file $EnvFile up -d @liveAcceptanceRootArgs
@@ -3088,6 +3738,7 @@ if ($script:LiveAcceptanceCore) {
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start containers."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
+        Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile
         docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
         exit 1
     }

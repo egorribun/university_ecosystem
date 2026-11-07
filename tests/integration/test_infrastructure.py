@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.events import NotificationsRequested
 from app.core.nats_broker import NatsTaskBroker, broker
-from app.models import Event, Notification
+from app.models import Event, Notification, Tenant
 from app.models.domain_events import StoredEvent
 from app.services.notifications import delivery as notification_delivery
 from app.tasks.notifications import enqueue_event_notification_task
@@ -230,7 +230,11 @@ async def test_real_jetstream_task_dispatch_persists_uuid_notification(
     monkeypatch.setattr(nats_broker_module, "_app", None)
     monkeypatch.setattr(notification_delivery, "_is_push_configured", lambda: False)
 
-    author = await user_factory()
+    tenant = Tenant(name="NATS infrastructure tenant", slug=f"nats-{uuid.uuid4().hex}")
+    db_session.add(tenant)
+    await db_session.commit()
+    author = await user_factory(tenant_id=tenant.id)
+    assert author.tenant_id == tenant.id
     now = datetime.now(UTC)
     event = Event(
         title="Real NATS UUID delivery",
@@ -250,7 +254,9 @@ async def test_real_jetstream_task_dispatch_persists_uuid_notification(
         before = await js.stream_info("TASK_QUEUE")
         assert before.state.messages == 0
 
-        await enqueue_event_notification_task.kick(event_id, locale="en")
+        await enqueue_event_notification_task.kick(
+            event_id, locale="en", tenant_id=tenant.id
+        )
 
         after = await js.stream_info("TASK_QUEUE")
         published_seq = after.state.last_seq
@@ -265,7 +271,10 @@ async def test_real_jetstream_task_dispatch_persists_uuid_notification(
         assert stored.subject == f"tasks.{task_name}"
         assert payload["name"] == task_name
         assert payload["args"] == [str(event_id)]
-        assert payload["kwargs"] == {"locale": "en"}
+        assert payload["kwargs"] == {
+            "locale": "en",
+            "tenant_id": str(tenant.id),
+        }
         assert str(uuid.UUID(payload["id"])) == payload["id"]
 
         # Publication alone must not count as consumer/database delivery.

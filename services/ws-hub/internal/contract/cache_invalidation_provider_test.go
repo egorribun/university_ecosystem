@@ -1,99 +1,27 @@
 //go:build contract
 
-// Package contract_test contains Pact V4 provider verification for the
-// university-backend → ws-hub NATS message contract.
+// Package contract_test contains Pact V4 schema checks for the remaining
+// university-backend NATS message interactions.
 //
 // MOD-07 (audit 2026-03-16 Wave 10): Consumer-Driven Contract Tests.
 //
-// The Python consumer test (tests/contracts/test_ws_hub_contract.py) defines
-// what the ws-hub expects to receive on the "cache.invalidate" NATS subject
-// and writes a Pact V4 JSON file.  This test reads that pact file and verifies
-// that "university-backend" (the Python producer) can produce messages whose
-// structure matches the contract.
+// The cache-invalidation contract is tested separately against the production
+// Python publisher and the real hub handler, using a generated wire artifact.
+// The remaining Pact handlers below check only their declared message shapes.
 //
-// The message handler below reproduces the exact signing logic from
-// app/services/ws_hub_client.py so that any drift (field rename, type change,
-// serialisation order mismatch) causes a verification failure rather than a
-// silent HMAC drop in production.
-//
-// Run locally:
-//
-//	PACT_DIR=../../../../tests/contracts/pacts \
-//	WS_HUB_INTERNAL_SECRET=<secret> \
-//	go test ./internal/contract/... -v
-//
-// CGO requirement: pact-go/v2 wraps the Pact Rust FFI library.
-// Install it once before running:
-//
-//	go run github.com/pact-foundation/pact-go/v2/install -libDir /usr/local/lib
+// Requires pact-go/v2 and the Pact Rust FFI library.
 package contract_test
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	pactLog "github.com/pact-foundation/pact-go/v2/log"
 	pactMessage "github.com/pact-foundation/pact-go/v2/message"
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
 )
-
-// ---------------------------------------------------------------------------
-// Types — must exactly mirror hub.go's inline struct for HMAC correctness.
-// Field tags are alphabetical to match Python's json.dumps(sort_keys=True).
-// ---------------------------------------------------------------------------
-
-// cacheInvalidationData mirrors the anonymous "Data" struct in hub.go.
-// Field declaration order controls json.Marshal output order; the tags must
-// be alphabetical (room_id < timestamp < user_id) to produce the same
-// canonical JSON that Python signs.
-type cacheInvalidationData struct {
-	RoomID    string `json:"room_id"`
-	Timestamp uint64 `json:"timestamp"`
-	UserID    string `json:"user_id"`
-}
-
-// cacheInvalidationPayload is the full wire format published by WsHubClient.
-type cacheInvalidationPayload struct {
-	Data      cacheInvalidationData `json:"data"`
-	Signature string                `json:"signature"`
-}
-
-// broadcastData mirrors the NATS broadcast.all payload data.
-// Field declaration order must stay alphabetical by JSON tag to match
-// Python's json.dumps(sort_keys=True, separators=(",", ":")) signing.
-type broadcastData struct {
-	Payload   string `json:"payload"`
-	SenderID  string `json:"sender_id"`
-	Timestamp uint64 `json:"timestamp"`
-}
-
-// broadcastPayload is the full wire format published for broadcast events.
-type broadcastPayload struct {
-	Data      broadcastData `json:"data"`
-	Signature string        `json:"signature"`
-}
-
-// heartbeatTimeoutData mirrors the NATS client.timeout payload data.
-// Field declaration order must stay alphabetical by JSON tag.
-type heartbeatTimeoutData struct {
-	Reason    string `json:"reason"`
-	Timestamp uint64 `json:"timestamp"`
-	UserID    string `json:"user_id"`
-}
-
-// heartbeatTimeoutPayload is the full wire format published for timeout events.
-type heartbeatTimeoutPayload struct {
-	Data      heartbeatTimeoutData `json:"data"`
-	Signature string               `json:"signature"`
-}
 
 type directChatMessage struct {
 	ChatID    string `json:"chat_id"`
@@ -134,96 +62,17 @@ type taskEnvelope struct {
 }
 
 // ---------------------------------------------------------------------------
-// Helper — reproduces app/services/ws_hub_client.py signing logic exactly.
-// ---------------------------------------------------------------------------
-
-func signData(data any, secret string) (string, error) {
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("json.Marshal data: %w", err)
-	}
-
-	hFunc := hmac.New(sha256.New, []byte(secret))
-	hFunc.Write(dataBytes)
-
-	return hex.EncodeToString(hFunc.Sum(nil)), nil
-}
-
-// buildInvalidationPayload signs a cache invalidation payload the same way the
-// Python WsHubClient does:
-//
-//  1. Serialise the data object with json.Marshal (alphabetical fields).
-//  2. Compute HMAC-SHA256 over the serialised bytes.
-//  3. Hex-encode the digest.
-//
-// This must stay in sync with ws_hub_client.py.  The contract test will fail
-// if they diverge — that's the point.
-func buildInvalidationPayload(userID, roomID, secret string) (cacheInvalidationPayload, error) {
-	data := cacheInvalidationData{
-		RoomID:    roomID,
-		Timestamp: uint64(time.Now().UnixMicro()), //nolint:gosec // monotonic timestamp, not a secret
-		UserID:    userID,
-	}
-
-	signature, err := signData(data, secret)
-	if err != nil {
-		return cacheInvalidationPayload{}, err
-	}
-
-	return cacheInvalidationPayload{
-		Data:      data,
-		Signature: signature,
-	}, nil
-}
-
-func buildBroadcastPayload(senderID, message, secret string) (broadcastPayload, error) {
-	data := broadcastData{
-		Payload:   message,
-		SenderID:  senderID,
-		Timestamp: uint64(time.Now().UnixMicro()), //nolint:gosec // monotonic timestamp, not a secret
-	}
-
-	signature, err := signData(data, secret)
-	if err != nil {
-		return broadcastPayload{}, err
-	}
-
-	return broadcastPayload{
-		Data:      data,
-		Signature: signature,
-	}, nil
-}
-
-func buildHeartbeatTimeoutPayload(userID, reason, secret string) (heartbeatTimeoutPayload, error) {
-	data := heartbeatTimeoutData{
-		Reason:    reason,
-		Timestamp: uint64(time.Now().UnixMicro()), //nolint:gosec // monotonic timestamp, not a secret
-		UserID:    userID,
-	}
-
-	signature, err := signData(data, secret)
-	if err != nil {
-		return heartbeatTimeoutPayload{}, err
-	}
-
-	return heartbeatTimeoutPayload{
-		Data:      data,
-		Signature: signature,
-	}, nil
-}
-
-// ---------------------------------------------------------------------------
 // Provider verification test
 // ---------------------------------------------------------------------------
 
-// TestCacheInvalidationMessageProvider verifies that the "university-backend"
-// producer satisfies the ws-hub consumer contract for cache invalidation events.
+// TestRemainingNatsPactMessageShapes verifies the remaining Pact message shapes.
+// It does not exercise a production publisher or the hub's cache handler.
 //
 // The verifier reads the pact file written by the Python consumer test and
 // runs the registered message handler for each interaction, checking that:
 //   - The handler produces a body matching the pact interaction body matchers.
 //   - The handler produces metadata with the expected nats_subject.
-func TestCacheInvalidationMessageProvider(t *testing.T) {
+func TestRemainingNatsPactMessageShapes(t *testing.T) {
 	if err := pactLog.SetLogLevel("INFO"); err != nil {
 		t.Logf("Failed to set pact log level: %v", err)
 	}
@@ -235,134 +84,70 @@ func TestCacheInvalidationMessageProvider(t *testing.T) {
 		pactDir = filepath.Join("..", "..", "..", "..", "tests", "contracts", "pacts")
 	}
 
-	// Use a deterministic placeholder secret for structural verification.
-	// The contract test validates shape (UUID regex, HMAC hex length), not
-	// the specific secret value — that's an operational concern.
-	secret := os.Getenv("WS_HUB_INTERNAL_SECRET")
-	if secret == "" {
-		secret = "contract-test-placeholder-secret-not-for-production" // pragma: allowlist secret
-	}
-
 	// Map Pact interaction descriptions to handler functions.
 	// The key must exactly match the string passed to .upon_receiving() in the
 	// Python consumer test.
 	handlers := pactMessage.Handlers{
-		"a cache invalidation event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
-			payload, err := buildInvalidationPayload(
-				"550e8400-e29b-41d4-a716-446655440000",
-				"550e8400-e29b-41d4-a716-446655440001",
-				secret,
-			)
-			if err != nil {
-				return nil, nil, err
-			}
-			return payload, pactMessage.Metadata{
-				"contentType":  "application/json",
-				"nats_subject": "cache.invalidate",
-			}, nil
-		},
-		"a user-wide cache invalidation event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
-			payload, err := buildInvalidationPayload(
-				"550e8400-e29b-41d4-a716-446655440000",
-				"",
-				secret,
-			)
-			if err != nil {
-				return nil, nil, err
-			}
-			return payload, pactMessage.Metadata{
-				"contentType":  "application/json",
-				"nats_subject": "cache.invalidate",
-			}, nil
-		},
 		"a direct chat message event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return directChatMessage{
-					ChatID:    "chat-uuid-123",
-					MessageID: "msg-uuid-456",
-					Content:   "Hello there!",
-					SenderID:  "user-uuid-789",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.direct",
-				}, nil
+				ChatID:    "chat-uuid-123",
+				MessageID: "msg-uuid-456",
+				Content:   "Hello there!",
+				SenderID:  "user-uuid-789",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.direct",
+			}, nil
 		},
 		"a chat message_sent domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return chatMessageSent{
-					ChatID:         "chat-uuid-001",
-					MessageID:      "msg-uuid-001",
-					SenderID:       "user-uuid-001",
-					ContentPreview: "Hello world",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.message_sent",
-				}, nil
+				ChatID:         "chat-uuid-001",
+				MessageID:      "msg-uuid-001",
+				SenderID:       "user-uuid-001",
+				ContentPreview: "Hello world",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.message_sent",
+			}, nil
 		},
 		"a chat deleted event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return chatDeleted{
-					ChatID:        "chat-uuid-del",
-					ParticipantID: "user-uuid-del",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.deleted",
-				}, nil
+				ChatID:        "chat-uuid-del",
+				ParticipantID: "user-uuid-del",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.deleted",
+			}, nil
 		},
 		"a user.created domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return userCreated{
-					UserID: "user-uuid-new",
-					Email:  "newuser@university.test",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "user.created",
-				}, nil
+				UserID: "user-uuid-new",
+				Email:  "newuser@university.test",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "user.created",
+			}, nil
 		},
 		"a notification.sent event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return notificationSent{
-					NotificationID:   "notif-uuid-001",
-					UserID:           "user-uuid-001",
-					NotificationType: "push",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "notification.sent",
-				}, nil
+				NotificationID:   "notif-uuid-001",
+				UserID:           "user-uuid-001",
+				NotificationType: "push",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "notification.sent",
+			}, nil
 		},
 		"a generic NATS task envelope": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return taskEnvelope{
-					ID:           "task-uuid-999",
-					Name:         "email.send_welcome",
-					Args:         []string{"user@university.test"},
-					Kwargs:       map[string]any{},
-					TraceContext: map[string]any{},
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "tasks.email.send_welcome",
-				}, nil
-		},
-		"a broadcast event to all clients": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
-			payload, err := buildBroadcastPayload(
-				"550e8400-e29b-41d4-a716-446655440000",
-				"Attention: System maintenance scheduled tonight.",
-				secret,
-			)
-			if err != nil {
-				return nil, nil, err
-			}
-			return payload, pactMessage.Metadata{
+				ID:           "task-uuid-999",
+				Name:         "email.send_welcome",
+				Args:         []string{"user@university.test"},
+				Kwargs:       map[string]any{},
+				TraceContext: map[string]any{},
+			}, pactMessage.Metadata{
 				"contentType":  "application/json",
-				"nats_subject": "broadcast.all",
-			}, nil
-		},
-		"a client heartbeat timeout event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
-			payload, err := buildHeartbeatTimeoutPayload(
-				"550e8400-e29b-41d4-a716-446655440000",
-				"ping timeout after 30 seconds",
-				secret,
-			)
-			if err != nil {
-				return nil, nil, err
-			}
-			return payload, pactMessage.Metadata{
-				"contentType":  "application/json",
-				"nats_subject": "client.timeout",
+				"nats_subject": "tasks.email.send_welcome",
 			}, nil
 		},
 	}

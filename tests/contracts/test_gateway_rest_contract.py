@@ -8,6 +8,7 @@ rate-limit windows, or a database fixture.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def pact(pact_output_dir: Path) -> Pact:
     p.write_file(pact_output_dir, overwrite=False)
 
 
-def test_gateway_backend_liveness_contract(pact: Pact) -> None:
+def test_gateway_backend_liveness_contract(pact: Pact, tmp_path: Path) -> None:
     """The gateway requires a stable liveness response from the backend."""
     (
         pact.upon_receiving("a backend liveness request")
@@ -63,3 +64,34 @@ def test_gateway_backend_liveness_contract(pact: Pact) -> None:
         )
         .with_body({"status": match.like("alive")})
     )
+
+    # Read the contract emitted by Pact's supported writer and verify the
+    # actual HTTP interaction, rather than merely constructing its DSL chain.
+    inspection_dir = tmp_path / "pact-inspection"
+    pact.write_file(inspection_dir, overwrite=False)
+    [pact_path] = list(inspection_dir.glob("*.json"))
+    contract = json.loads(pact_path.read_text(encoding="utf-8"))
+
+    assert contract["consumer"]["name"] == CONSUMER_NAME
+    assert contract["provider"]["name"] == PROVIDER_NAME
+    [interaction] = contract["interactions"]
+    assert interaction["description"] == "a backend liveness request"
+    assert interaction["type"] == "Synchronous/HTTP"
+    assert interaction["providerStates"] == [{"name": "Backend process is alive"}]
+    assert interaction["request"]["method"] == "GET"
+    assert interaction["request"]["path"] == "/health/live"
+
+    response = interaction["response"]
+    assert response["status"] == 200
+    assert response["body"]["content"] == {"status": "alive"}
+    assert response["body"]["contentType"] == "application/json"
+    assert any(
+        name.casefold() == "content-type" and values == ["application/json"]
+        for name, values in response["headers"].items()
+    )
+    assert response["matchingRules"]["body"]["$.status"]["matchers"] == [
+        {"match": "type"}
+    ]
+    assert response["matchingRules"]["header"]["content-type"]["matchers"] == [
+        {"match": "regex", "regex": r"^application/json(?:;.*)?$"}
+    ]

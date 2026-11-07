@@ -2,8 +2,9 @@ import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import { logWarning } from "@/app/logger"
 
-// ETag strings are persisted to localStorage for cross-reload cache hits.
-// Response payloads stay in memory only (RZ-NEW-04: no sensitive data in localStorage).
+// ETag strings may survive reloads, but automatic conditional requests require
+// a live response body and signing key. Response payloads stay in memory only
+// (RZ-NEW-04: no sensitive data in localStorage).
 //
 // DEBT-02 (audit Wave 11): versioned key so stale localStorage entries from
 // previous schema versions are ignored automatically after deployment.
@@ -286,14 +287,21 @@ export const applyEtagHeader = (config: InternalAxiosRequestConfig, etagKey: str
   const headers = AxiosHeaders.from(config.headers ?? {})
   if (!headers.has("if-none-match")) {
     const cachedTag = etagCache.get(etagKey)
-    if (cachedTag) {
+    if (cachedTag && responseCache.get(etagKey) && getSigningKey()) {
       headers.set("If-None-Match", cachedTag)
     }
   }
   config.headers = headers
 }
 
-export const handleEtagResponse = async (response: AxiosResponse, etagKey: string) => {
+export const handleEtagResponse = async (
+  response: AxiosResponse,
+  etagKey: string,
+  assertCurrentRequest?: () => void
+) => {
+  // The cache epoch cannot identify a response that arrived after a new login.
+  // The caller owns the request-time session fence; check it before any mutation.
+  assertCurrentRequest?.()
   const responseHeaders = AxiosHeaders.from(
     (response.headers ?? undefined) as AxiosHeaders | string | undefined
   )
@@ -301,8 +309,47 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
   // the contract deterministic for both `etag` and `ETag` response spellings.
   const tag = responseHeaders.get("etag")
 
+  if (response.status === 304) {
+    const tagEntry = getEtagMap().get(etagKey)
+    // A delayed 304 must not replace a newer validator or reuse its body.
+    if (typeof tag === "string" && tag.trim() && tagEntry?.tag !== tag) return
+
+    const signingKey = getSigningKey()
+    const entry = responseCache.get(etagKey)
+    const epochSnapshot = _sessionEpoch
+    if (typeof tag === "string" && tag.trim() && entry && signingKey) {
+      const expected = await computeHmac(JSON.stringify(entry.data), signingKey)
+      assertCurrentRequest?.()
+      // Verification yields to logout, cache invalidation and concurrent 200s.
+      // Never serve the captured entry or evict a replacement after losing it.
+      if (
+        _sessionEpoch !== epochSnapshot ||
+        getSigningKey() !== signingKey ||
+        getEtagMap().get(etagKey) !== tagEntry ||
+        responseCache.get(etagKey) !== entry
+      ) {
+        return
+      }
+      if (timingSafeEqual(entry.hmac, expected)) {
+        response.data = entry.data
+        response.status = 200
+      } else {
+        logWarning("[etagCache] HMAC mismatch for key:", etagKey)
+        etagCache.delete(etagKey)
+        responseCache.delete(etagKey)
+      }
+    } else {
+      etagCache.delete(etagKey)
+      responseCache.delete(etagKey)
+    }
+    return
+  }
+
   if (typeof tag === "string" && tag.trim()) {
     etagCache.set(etagKey, tag)
+    // Do not expose the previous body with this validator while HMAC is pending.
+    responseCache.delete(etagKey)
+    const tagEntry = getEtagMap().get(etagKey)
     // Only cache JSON responses — caching HTML error pages or other content types
     // can corrupt the response cache and break the app on 304 cache hit.
     const contentType = responseHeaders.get("content-type")
@@ -318,8 +365,13 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
         const epochSnapshot = _sessionEpoch
         const payload = JSON.stringify(response.data)
         const hmac = await computeHmac(payload, signingKey)
-        if (_sessionEpoch !== epochSnapshot) {
-          // Session changed during async computation — discard stale result
+        assertCurrentRequest?.()
+        if (
+          _sessionEpoch !== epochSnapshot ||
+          getSigningKey() !== signingKey ||
+          getEtagMap().get(etagKey) !== tagEntry
+        ) {
+          // A newer response, invalidation or session change owns the cache now.
           return
         }
         responseCache.set(etagKey, { data: response.data, hmac, ts: Date.now() })
@@ -331,29 +383,5 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
   } else {
     etagCache.delete(etagKey)
     responseCache.delete(etagKey)
-  }
-
-  if (response.status === 304) {
-    const signingKey = getSigningKey()
-    const entry = responseCache.get(etagKey)
-
-    if (entry && signingKey) {
-      // Verify HMAC before serving cached data
-      const expected = await computeHmac(JSON.stringify(entry.data), signingKey)
-      if (timingSafeEqual(entry.hmac, expected)) {
-        response.data = entry.data
-        response.status = 200
-      } else {
-        // HMAC mismatch: in-memory entry was corrupted — evict and force fresh request
-        logWarning("[etagCache] HMAC mismatch for key:", etagKey)
-        etagCache.delete(etagKey)
-        responseCache.delete(etagKey)
-        // response.status stays 304; axios will re-issue the request on next call
-      }
-    } else {
-      // No signing key or no cache entry — fall through (axios will handle 304 gracefully)
-      etagCache.delete(etagKey)
-      responseCache.delete(etagKey)
-    }
   }
 }

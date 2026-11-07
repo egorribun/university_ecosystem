@@ -111,7 +111,7 @@ export function DashboardHero({
               >
                 <Badge
                   size="sm"
-                  className="shrink-0 border-(--dash-border) bg-white/(--opacity-faint) font-mono text-text-primary"
+                  className="shrink-0 border-(--dash-border) bg-white/[calc(var(--opacity-faint)*100%)] font-mono text-text-primary"
                   aria-label={
                     isClockReady ? t("common:ariaCurrentTime") : t("common:aria.loadingTime")
                   }

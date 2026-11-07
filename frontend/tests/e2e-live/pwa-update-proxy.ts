@@ -197,7 +197,7 @@ export async function startPwaUpdateProxy(
 
     // Keep the socket destination literal and loopback-only. The inbound URL
     // contributes a parsed request path, never a destination authority.
-    requestHeaders.host = upstreamOrigin.host
+    requestHeaders.host = proxyOrigin.host
     const upstreamRequest = httpRequest(
       "http://127.0.0.1",
       {

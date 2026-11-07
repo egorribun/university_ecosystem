@@ -1,0 +1,16 @@
+{
+  "name": "@university-ecosystem/react-compiler-zod-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The legacy schema API used only by the pinned React Compiler ESLint gate",
+  "main": "index.cjs",
+  "files": [
+    "index.cjs",
+    "LICENSE",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "patched-zod": "npm:zod@4.6.7"
+  }
+}

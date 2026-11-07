@@ -35,6 +35,43 @@ describe("profileUtils closure paths", () => {
     ])
   })
 
+  it.each([
+    "https://example.test/award",
+    "http://example.test/award",
+    "/awards/2026",
+    "awards/2026",
+    "../awards/2026",
+    "?award=2026",
+    "#award",
+  ])("preserves safe achievement URL spelling: %s", (url) => {
+    const [achievement] = parseAchievements(`Award | Faculty | 2026 | ${url}`)
+    expect(achievement).toMatchObject({ name: "Award", issuer: "Faculty", date: "2026", url })
+  })
+
+  it.each([
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "data:text/html",
+    "vbscript:msgbox(1)",
+    "file:///etc/passwd",
+    "https://user:pass@example.test/award",
+    "https://user@example.test/award",
+    "//user:pass@example.test/award",
+    "https://example.test/a\tb",
+    "https://example.test/a\u0000b",
+    "https://example.test/a\u007fb",
+    "https://example.test/a\u0085b",
+    "https://[::1",
+  ])("omits an unsafe achievement URL without dropping its record: %s", (url) => {
+    const [achievement] = parseAchievements(`Award | Faculty | 2026 | ${url}`)
+    expect(achievement).toMatchObject({
+      name: "Award",
+      issuer: "Faculty",
+      date: "2026",
+      url: undefined,
+    })
+  })
+
   it("builds vCards with optional contact fields", () => {
     const full = buildVCardString({
       full_name: "Ada Lovelace",

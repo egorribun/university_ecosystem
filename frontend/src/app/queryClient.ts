@@ -318,6 +318,67 @@ const withoutSensitiveQueries = (client: PersistedClient): PersistedClient => ({
   },
 })
 
+const withoutNonPersistentMutations = (client: PersistedClient): PersistedClient => ({
+  ...client,
+  clientState: {
+    ...client.clientState,
+    mutations: client.clientState.mutations.filter((mutation) => mutation.meta?.persist !== false),
+  },
+})
+
+const isExactNewsListQueryKey = (queryKey: readonly unknown[]): boolean => {
+  if (queryKey.length !== 3) return false
+  if (queryKey[0] !== "news") return false
+  if (queryKey[1] !== "list" && queryKey[1] !== "anonymous-list") return false
+
+  const filters = queryKey[2]
+  if (!isObjectRecord(filters)) return false
+  return (
+    typeof filters.language === "string" &&
+    typeof filters.limit === "number" &&
+    Number.isInteger(filters.limit) &&
+    filters.limit >= 1
+  )
+}
+
+const isOptionalString = (value: unknown): boolean =>
+  value === undefined || value === null || typeof value === "string"
+
+const hasSafeNewsListInfiniteData = (value: unknown): boolean => {
+  if (!isObjectRecord(value)) return false
+  const { pages, pageParams } = value
+  if (!Array.isArray(pages) || !Array.isArray(pageParams) || pages.length !== pageParams.length)
+    return false
+  if (
+    !Array.from(pageParams).every(
+      (pageParam) => pageParam === null || typeof pageParam === "string"
+    )
+  )
+    return false
+
+  return Array.from(pages).every(
+    (page) =>
+      isObjectRecord(page) &&
+      Array.isArray(page.items) &&
+      isOptionalString(page.cursor) &&
+      isOptionalString(page.next_cursor) &&
+      (page.has_more === undefined || typeof page.has_more === "boolean")
+  )
+}
+
+const withoutMalformedNewsListQueries = (client: PersistedClient): PersistedClient => ({
+  ...client,
+  clientState: {
+    ...client.clientState,
+    queries: client.clientState.queries.filter(
+      (query) =>
+        !isExactNewsListQueryKey(query.queryKey) || hasSafeNewsListInfiniteData(query.state.data)
+    ),
+  },
+})
+
+const sanitizePersistedClient = (client: PersistedClient): PersistedClient =>
+  withoutMalformedNewsListQueries(withoutSensitiveQueries(client))
 const ownerFromStorageKey = (key: string): string | undefined => {
   const prefix = "reactQuery:v2:"
   // sanitizeStoredSnapshots filters to this prefix before calling the helper.
@@ -347,7 +408,7 @@ async function sanitizeStoredSnapshots(owns: () => boolean): Promise<void> {
         await del(key)
         continue
       }
-      const sanitized = withoutSensitiveQueries(saved)
+      const sanitized = sanitizePersistedClient(saved)
       if (sanitized.clientState.queries.length !== saved.clientState.queries.length) {
         await set(key, sanitized)
       }
@@ -367,7 +428,7 @@ export const idbPersister: Persister = {
     // Check an available profile witness before filtering it out. The current
     // cache identity and per-owner namespace bind new profile-free snapshots.
     if (!belongsToOwner(client, owner)) return
-    const persistableClient = withoutSensitiveQueries(client)
+    const persistableClient = withoutNonPersistentMutations(withoutSensitiveQueries(client))
     const key = scopedKey(owner)
     const owns = () => session() && cacheIdentity === owner && cacheEpoch === epoch
     const write = persistenceQueue.then(async () => {
@@ -392,7 +453,7 @@ export const idbPersister: Persister = {
     const saved = await get<PersistedClient>(scopedKey(owner))
     if (!owns() || !saved || !hasPersistedClientShape(saved) || !belongsToOwner(saved, owner))
       return undefined
-    const sanitized = withoutSensitiveQueries(saved)
+    const sanitized = sanitizePersistedClient(saved)
     if (sanitized.clientState.queries.length !== saved.clientState.queries.length) {
       const write = persistenceQueue.then(async () => {
         if (owns()) await set(scopedKey(owner), sanitized)
@@ -401,8 +462,10 @@ export const idbPersister: Persister = {
       await write
       if (!owns()) return undefined
     }
-    restoredClient = sanitized
-    return sanitized
+    // Keep the stored legacy snapshot intact; only the hydration view excludes
+    // mutations that explicitly opted out of persistence.
+    restoredClient = withoutNonPersistentMutations(sanitized)
+    return restoredClient
   },
   async removeClient() {
     const owner = cacheIdentity
@@ -416,7 +479,8 @@ export const idbPersister: Persister = {
 }
 
 const PERSIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-const APP_VERSION_BUSTER = (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"
+const APP_VERSION_BUSTER =
+  import.meta.env.VITE_APP_RELEASE || (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"
 
 export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   persister: idbPersister,
@@ -428,6 +492,7 @@ export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
       query.meta?.persist !== false &&
       !isCurrentUserProfileKey(query.queryKey),
     shouldDehydrateMutation: (mutation) =>
-      mutation.state.isPaused || mutation.state.status === "pending",
+      mutation.options.meta?.persist !== false &&
+      (mutation.state.isPaused || mutation.state.status === "pending"),
   },
 }

@@ -91,7 +91,7 @@ def classify_file(relative_path: str, generated_patterns: list[str]) -> str:
         return "generated"
 
     # Test classifications
-    if posix_path.endswith((".test.ts", ".test.tsx", "_test.go")):
+    if posix_path.endswith((".test.ts", ".test.tsx", ".test.mjs", "_test.go")):
         return "test"
     if (
         posix_path.startswith("tests/")

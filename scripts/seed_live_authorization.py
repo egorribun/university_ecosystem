@@ -36,13 +36,15 @@ from app.models.enums import UserRole
 from app.models.users import User
 from scripts.seed_admin_data import ADMIN_EMAIL
 from scripts.seed_target import ADMIN_SMOKE_PROJECT, require_owned_live_stand_target
+from scripts.seed_tenant import seed_tenant_context, validate_seed_tenant_configuration
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.zed"
 RPC_TIMEOUT_SECONDS = 30
 
 
-def _require_authorization_target() -> None:
-    if require_owned_live_stand_target() == ADMIN_SMOKE_PROJECT:
+def _require_authorization_target() -> str:
+    project = require_owned_live_stand_target()
+    if project == ADMIN_SMOKE_PROJECT:
         raise RuntimeError("authorization seed requires an owned live stand")
     # The SQL seed guard alone cannot attest the authorization service target.
     # Only the existing plaintext Compose service is supported by this command.
@@ -55,6 +57,8 @@ def _require_authorization_target() -> None:
         )
     if not settings.spicedb_preshared_key.strip():
         raise RuntimeError("authorization seed requires the configured SpiceDB key")
+
+    return project
 
 
 def _write_authorization(admin_id: str, schema: str) -> None:
@@ -103,16 +107,20 @@ def _write_authorization(admin_id: str, schema: str) -> None:
 
 
 async def main() -> None:
-    _require_authorization_target()
+    project = _require_authorization_target()
+    validate_seed_tenant_configuration(project)
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
     if not schema.strip():
         raise RuntimeError("the canonical authorization schema is empty")
     init_database()
-    async with async_session() as db:
-        admin = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
-        if admin is None or admin.role != UserRole.ADMIN or not admin.is_active:
-            raise RuntimeError("an active seeded admin must exist before authorization")
-        admin_id = str(admin.id)
+    with seed_tenant_context(project):
+        async with async_session() as db:
+            admin = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
+            if admin is None or admin.role != UserRole.ADMIN or not admin.is_active:
+                raise RuntimeError(
+                    "an active seeded admin must exist before authorization"
+                )
+            admin_id = str(admin.id)
 
     # The management SDK is synchronous; keep its channel lifetime off the loop.
     await asyncio.to_thread(_write_authorization, admin_id, schema)

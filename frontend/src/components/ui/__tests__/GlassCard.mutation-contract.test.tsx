@@ -31,7 +31,7 @@ describe("GlassCard mutation contracts", () => {
       "absolute",
       "inset-0",
       "bg-linear-to-br",
-      "from-white/(--opacity-subtle)",
+      "from-white/[calc(var(--opacity-subtle)*100%)]",
       "via-transparent",
       "to-transparent",
       "opacity-medium"

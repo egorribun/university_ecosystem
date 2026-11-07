@@ -1,3 +1,8 @@
+import {
+  cleanupMessengerReconnect,
+  deleteOwnedMessengerMessage,
+  withMessengerReconnectCleanup,
+} from "./messenger-reconnect-cleanup.mjs"
 import { devices, type BrowserContext, type Locator, type Page } from "@playwright/test"
 import {
   expect,
@@ -63,7 +68,10 @@ function findRoomJoins(value: unknown): RoomJoin[] {
 
   const joins: RoomJoin[] = []
   if (value.type === "join" && typeof value.room === "string") {
-    joins.push({ room: value.room, hasResumeToken: typeof value.resume_token === "string" })
+    joins.push({
+      room: value.room,
+      hasResumeToken: typeof value.resume_token === "string",
+    })
   }
   return [...joins, ...Object.values(value).flatMap(findRoomJoins)]
 }
@@ -98,7 +106,11 @@ function findNewMessages(value: unknown): ReceivedMessage[] {
 function observeSocket(page: Page): SocketObservation {
   const observation: SocketObservation = { sessions: [] }
   page.on("websocket", (socket) => {
-    const session: SocketSession = { roomJoins: [], messages: [], closed: false }
+    const session: SocketSession = {
+      roomJoins: [],
+      messages: [],
+      closed: false,
+    }
     observation.sessions.push(session)
     socket.on("framesent", (frame) => {
       session.roomJoins.push(...findRoomJoins(parseFrame(frame)))
@@ -214,19 +226,24 @@ async function sendMessage(page: Page, chatId: string, content: string): Promise
   return (await response.json()) as { id: string }
 }
 
-async function deleteOwnMessage(page: Page, log: Locator, content: string): Promise<void> {
-  const message = log.getByText(content, { exact: true })
-  if ((await message.count()) === 0) return
-  const row = message.locator(
-    "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
-  )
-  const deleteButton = row.getByRole("button", { name: "Удалить сообщение", exact: true })
-  if ((await deleteButton.count()) === 0) return
-  await deleteButton.click()
-  const dialog = page.getByRole("alertdialog", { name: "Удалить сообщение" })
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole("button", { name: "Удалить", exact: true }).click()
-  await expect(message).toHaveCount(0)
+async function deleteOwnMessage(
+  page: Page,
+  log: Locator,
+  content: string,
+  timeoutMs: number
+): Promise<void> {
+  return deleteOwnedMessengerMessage({
+    page,
+    log,
+    content,
+    timeoutMs,
+    expectVisible: async (locator, timeout) => {
+      await expect(locator).toBeVisible({ timeout })
+    },
+    expectCount: async (locator, count, timeout) => {
+      await expect(locator).toHaveCount(count, { timeout })
+    },
+  })
 }
 
 function eventsForRoom(
@@ -256,7 +273,7 @@ test.describe("live messenger reconnect", () => {
     let ownerLog: Locator | undefined
     const createdMessages: string[] = []
 
-    try {
+    const runScenario = async (): Promise<void> => {
       const receiverContext = await browser.newContext(contextOptions)
       contexts.push(receiverContext)
       const secondMemberContext = await browser.newContext(contextOptions)
@@ -290,8 +307,12 @@ test.describe("live messenger reconnect", () => {
       await receiverPage.goto(`/messenger/${chatId}`)
       await secondMemberPage.goto(`/messenger/${chatId}`)
       const senderLog = page.getByRole("log", { name: /Сообщения чата/i })
-      const receiverLog = receiverPage.getByRole("log", { name: /Сообщения чата/i })
-      const secondMemberLog = secondMemberPage.getByRole("log", { name: /Сообщения чата/i })
+      const receiverLog = receiverPage.getByRole("log", {
+        name: /Сообщения чата/i,
+      })
+      const secondMemberLog = secondMemberPage.getByRole("log", {
+        name: /Сообщения чата/i,
+      })
       ownerLog = senderLog
       await expect(senderLog).toBeVisible()
       await expect(receiverLog).toBeVisible()
@@ -393,17 +414,21 @@ test.describe("live messenger reconnect", () => {
       )[0]!
       expect(afterReconnectDelivery.sequence ?? 0).toBeGreaterThan(missedDelivery.sequence ?? 0)
       await expect(receiverLog.getByText(afterReconnectContent, { exact: true })).toHaveCount(1)
-    } finally {
-      if (ownerLog) {
-        for (const content of createdMessages) {
-          try {
-            await deleteOwnMessage(page, ownerLog, content)
-          } catch {
-            // Best-effort cleanup uses only the seeded sender's own messages.
-          }
-        }
-      }
-      await Promise.all(contexts.map((context) => context.close()))
     }
+
+    await withMessengerReconnectCleanup({
+      run: runScenario,
+      cleanup: () =>
+        cleanupMessengerReconnect({
+          hasOwnerLog: ownerLog !== undefined,
+          createdMessages,
+          deleteMessage: (content, timeoutMs) =>
+            deleteOwnMessage(page, ownerLog!, content, timeoutMs),
+          contexts,
+        }),
+      onCleanupFailure: (description) => {
+        testInfo.annotations.push({ type: "cleanup-failed", description })
+      },
+    })
   })
 })

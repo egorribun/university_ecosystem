@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
@@ -9,22 +10,23 @@ import sqlalchemy as sa
 import scripts.be02_catalog_preflight as preflight
 
 
-@pytest.mark.parametrize(
-    ("phase", "revision", "spec_count"),
-    [
-        (1, "202609150001", 10),
-        (3, "202609220001", 29),
-        (4, "202609250001", 12),
-    ],
-)
-def test_loads_reviewed_migration_specs_for_each_ddl_phase(
-    phase: int, revision: str, spec_count: int
+@pytest.mark.parametrize("phase", [1, 3, 4])
+def test_retired_phases_refuse_before_import_or_database_access(
+    monkeypatch: pytest.MonkeyPatch, phase: int
 ) -> None:
-    migration = preflight.load_migration(phase)
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("retired phase attempted import or database access")
 
-    assert migration.BE02_PHASE == phase
-    assert migration.revision == revision
-    assert len(migration.DEFAULT_SPECS) == spec_count
+    monkeypatch.setattr("importlib.util.spec_from_file_location", forbidden)
+    monkeypatch.setattr(sa, "create_engine", forbidden)
+    with pytest.raises(RuntimeError) as failure:
+        preflight.load_migration(phase)
+    message = str(failure.value)
+    assert "retired by ADR-051" in message
+    assert "baseline 202611020000 has no pre-squash upgrade path" in message
+    assert "scripts/quality/audit_model_defaults.py" in message
+    assert "not deployed-catalog proof" in message
+    assert "BE-02 remains open" in message
 
 
 def test_phase_two_is_not_a_selectable_preflight_phase(
@@ -43,15 +45,37 @@ def test_phase_two_is_not_a_selectable_preflight_phase(
     assert "invalid choice" in capsys.readouterr().err
 
 
-def test_help_explains_phase_two_has_no_catalog_ddl(
+def test_help_explains_retirement_without_database_configuration_or_access(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    with pytest.raises(SystemExit) as error:
-        preflight.main(["--help"])
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("retired help attempted migration loading or database access")
 
-    output = " ".join(capsys.readouterr().out.split())
+    environment_get = type(os.environ).__getitem__
+
+    def guarded_environment_get(environment: object, key: str) -> str:
+        if key in {"DATABASE_URL", "BE02_TARGET_URL"}:
+            pytest.fail("retired help read database configuration")
+        return environment_get(environment, key)
+
+    monkeypatch.setattr(type(os.environ), "__getitem__", guarded_environment_get)
+    monkeypatch.setattr(preflight, "load_migration", forbidden)
+    monkeypatch.setattr(preflight, "run", forbidden)
+    monkeypatch.setattr(sa, "create_engine", forbidden)
+    with pytest.raises(SystemExit) as error:
+        preflight.main(["--database-url-env", "BE02_TARGET_URL", "--help"])
+
+    captured = capsys.readouterr()
+    output = " ".join(captured.out.split())
     assert error.value.code == 0
+    assert captured.err == ""
     assert "--phase {1,3,4}" in output
+    assert "--database-url-env" in output
+    assert "retired historical phase option retained for compatibility only" in output
+    assert "no phase is executed" in output
+    assert "variable is not read and no database URL is used" in output
+    assert "default: 4" in output
     assert "phase 2 is Python-only and has no catalog DDL" in output
 
 
@@ -221,27 +245,27 @@ def test_blocks_non_table_targets_before_inspecting_columns(
     assert catalog_calls == []
 
 
-def test_cli_selects_the_requested_migration_phase(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    "arguments", [[], ["--phase", "1"], ["--phase", "3"], ["--phase", "4"]]
+)
+def test_cli_refuses_retired_phases_before_loading_or_connecting(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
 ) -> None:
-    selected_phases: list[int] = []
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("retired CLI attempted migration loading or database access")
+
+    monkeypatch.setattr(preflight, "load_migration", forbidden)
+    monkeypatch.setattr(preflight, "run", forbidden)
+    monkeypatch.setattr(sa, "create_engine", forbidden)
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://localhost/synthetic")
 
-    def fake_load_migration(phase: int = 4) -> object:
-        selected_phases.append(phase)
-        return object()
-
-    monkeypatch.setattr(preflight, "load_migration", fake_load_migration)
-    monkeypatch.setattr(preflight, "run", lambda _url, _migration: [])
-
-    try:
-        exit_code = preflight.main(["--phase", "3"])
-    except SystemExit as error:
-        exit_code = cast(int, error.code)
-    capsys.readouterr()
-
-    assert exit_code == 0
-    assert selected_phases == [3]
+    assert preflight.main(arguments) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "retired by ADR-051" in output.err
+    assert "not deployed-catalog proof" in output.err
 
 
 class _CurrentSchemaResult:

@@ -2,15 +2,27 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import stat
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.engine import make_url
 
 ADMIN_SMOKE_WORKFLOW = "Admin Smoke Monitoring (Linux Periodic)"
 ADMIN_SMOKE_TARGET = "admin-smoke"
 ADMIN_SMOKE_PROJECT = "ci-admin-smoke"
+
+# AUD-313: the owned-stand identity must not come from environment variables alone.
+# live_stand writes an owner-issued record for the exact project and mounts it
+# read-only at this fixed container path; environment flags are only cross-checked.
+OWNED_STAND_RECORD_PATH = Path("/run/live-stand/owned-stand.json")
+OWNED_STAND_RECORD_SCHEMA_VERSION = 1
+OWNED_STAND_RECORD_MAX_BYTES = 4096
+OWNED_STAND_RECORD_KEYS = frozenset({"schema_version", "project_name", "database_host"})
+OWNED_STAND_DATABASE_HOST = "postgres"
 
 
 def _configured_database_url() -> str:
@@ -70,6 +82,27 @@ def _require_admin_smoke_target() -> str:
     return ADMIN_SMOKE_PROJECT
 
 
+def _load_owned_stand_record(path: Path) -> dict[str, Any]:
+    """Read the owner-issued record; only a bounded regular file is accepted."""
+    message = "seed requires the owner-issued live stand record"
+    try:
+        status = os.lstat(path)
+        if not stat.S_ISREG(status.st_mode) or status.st_size > (
+            OWNED_STAND_RECORD_MAX_BYTES
+        ):
+            raise RuntimeError(message)
+        with path.open("rb") as handle:
+            raw = handle.read(OWNED_STAND_RECORD_MAX_BYTES + 1)
+        if len(raw) > OWNED_STAND_RECORD_MAX_BYTES:
+            raise RuntimeError(message)
+        data = json.loads(raw.decode("utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        raise RuntimeError(message) from None
+    if not isinstance(data, dict) or set(data) != OWNED_STAND_RECORD_KEYS:
+        raise RuntimeError(message)
+    return data
+
+
 def require_owned_live_stand_target() -> str:
     """Require a verified live stand or the bounded admin-smoke test target."""
     explicit_target = os.environ.get("UE_SEED_TARGET")
@@ -79,11 +112,12 @@ def require_owned_live_stand_target() -> str:
         return _require_admin_smoke_target()
 
     project = os.environ.get("LIVE_STAND_SEED_PROJECT", "")
+    # live_stand creates owned projects as ue-live-<token_hex(8)> only (AUD-313).
     if (
         not project
         or os.environ.get("LIVE_STAND_OWNER_VERIFIED") != "1"
         or os.environ.get("COMPOSE_PROJECT_NAME") != project
-        or re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project) is None
+        or re.fullmatch(r"ue-live-[0-9a-f]{16}", project) is None
     ):
         raise RuntimeError(
             "seed requires an explicitly verified owned live stand project"
@@ -96,9 +130,21 @@ def require_owned_live_stand_target() -> str:
             "cannot verify the live stand seed database target"
         ) from None
 
-    if target.get_backend_name() != "postgresql" or target.host != "postgres":
+    if (
+        target.get_backend_name() != "postgresql"
+        or target.host != OWNED_STAND_DATABASE_HOST
+    ):
         raise RuntimeError(
             "seed database must be the postgres service in the owned live stand project"
         )
+
+    record = _load_owned_stand_record(OWNED_STAND_RECORD_PATH)
+    if (
+        type(record["schema_version"]) is not int
+        or record["schema_version"] != OWNED_STAND_RECORD_SCHEMA_VERSION
+        or record["project_name"] != project
+        or record["database_host"] != target.host
+    ):
+        raise RuntimeError("live stand seed record does not match the owned stand")
 
     return project

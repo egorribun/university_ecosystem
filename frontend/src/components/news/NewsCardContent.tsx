@@ -77,7 +77,7 @@ const NewsCardContent = ({
           to="/news/$id"
           params={{ id }}
           className={cn(
-            "before:absolute before:inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium) focus-visible:ring-offset-2",
+            "before:absolute before:inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)] focus-visible:ring-offset-2",
             hoveringDisabled && "pointer-events-none"
           )}
         >
@@ -89,7 +89,7 @@ const NewsCardContent = ({
       <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">{preview}</p>
 
       {/* Footer — likes, comments, CTA */}
-      <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/(--opacity-soft)">
+      <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/[calc(var(--opacity-soft)*100%)]">
         <div className="relative z-deep flex items-center gap-4">
           {/* Like */}
           <button
@@ -99,7 +99,7 @@ const NewsCardContent = ({
               "flex items-center gap-1.5 transition-[color,transform] duration-fast active:scale-90",
               isLiked
                 ? "text-error-text"
-                : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
+                : "text-(--text-secondary) hover:text-error-text/[calc(var(--opacity-hover)*100%)]"
             )}
             aria-label={isLiked ? t("common:aria.unlike") : t("common:aria.like")}
           >
@@ -137,7 +137,7 @@ const NewsCardContent = ({
                 "flex items-center transition-[color,transform] duration-fast active:scale-90",
                 isBookmarked
                   ? "text-brand"
-                  : "text-(--text-secondary) hover:text-brand/(--opacity-hover)"
+                  : "text-(--text-secondary) hover:text-brand/[calc(var(--opacity-hover)*100%)]"
               )}
               aria-label={
                 isBookmarked ? t("common:aria.removeBookmark") : t("common:aria.addBookmark")

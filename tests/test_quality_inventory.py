@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -506,14 +507,12 @@ def test_matches_source_accepts_production_variant_suites() -> None:
 
 
 def test_matches_source_accepts_tests_for_utility_scripts() -> None:
-    assert (
-        matches_source(
-            "tests/test_aggregate_go_benchmarks.py",
-            set(),
-            [],
-            {"scripts"},
-        )
-        is True
+    assert matches_source(
+        "tests/test_aggregate_go_benchmarks.py",
+        set(),
+        [],
+        {"scripts", "scripts.quality", "scripts.quality.aggregate_go_benchmarks"},
+        reference_paths={"scripts/quality/aggregate_go_benchmarks.py"},
     )
 
 
@@ -1320,3 +1319,2123 @@ def test_checker_preserves_violations_and_explicit_allowlists(
     mapping_path.write_text(json.dumps(mapping), encoding="utf-8")
     assert checker.main(arguments) == 0
     assert capsys.readouterr().err == ""
+
+
+def test_mjs_is_test_but_spec_classification_remains_out_of_this_tranche() -> None:
+    assert (
+        inventory.classify_file("tools/npm-cli-shim/test/npm-cli.test.mjs", [])
+        == "test"
+    )
+    assert (
+        inventory.classify_file("frontend/tests/e2e/example.spec.ts", []) == "utility"
+    )
+    assert (
+        inventory.resolve_owner(
+            "tools/npm-cli-shim/test/npm-cli.test.mjs",
+            {"tools/npm-cli-shim/test/": "@egorribun"},
+        )
+        == "@egorribun"
+    )
+
+
+def test_javascript_reference_scanner_accepts_literal_repository_files_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "tests" / "contract.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    (repository / "app").mkdir()
+    (repository / "frontend" / "src").mkdir(parents=True)
+    (repository / "frontend" / "tests" / "e2e").mkdir()
+    (repository / "outside.js").write_text("outside\n", encoding="utf-8")
+    (repository / "app" / "source.js").write_text("export {}\n", encoding="utf-8")
+    (repository / "frontend" / "src" / "view.tsx").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    (repository / "frontend" / "src" / "real.js").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    (repository / "frontend" / "src" / "regex-spoof.js").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    (repository / "frontend" / "tests" / "regex-after-control.js").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    (repository / "frontend" / "tests" / "e2e" / "live.spec.ts").write_text(
+        "test()\n", encoding="utf-8"
+    )
+    test_file.write_text(
+        'import { value } from "../../app/source.js";\n'
+        'const live = await readFile(new URL("./e2e/live.spec.ts", import.meta.url), "utf8");\n'
+        'const view = await readFile(new URL("../src/view.tsx", import.meta.url), "utf8");\n'
+        'const dynamic = await readFile(new URL(target, import.meta.url), "utf8");\n'
+        'const outside = await readFile(new URL("../../../../outside.js", import.meta.url), "utf8");\n'
+        "const documentation = \"import '../src/real.js'\";\n"
+        r"const pattern = /import '\.\.\/src\/regex-spoof\.js'/;" + "\n"
+        'if (false) /import "regex-after-control.js"/.test("");\n'
+        '// import "../../app/comment-only.js";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    references = checker.find_javascript_repository_references(test_file)
+    assert references == {
+        "app/source.js",
+        "frontend/src/view.tsx",
+        "frontend/tests/e2e/live.spec.ts",
+    }
+    assert not checker.matches_source(
+        "frontend/scripts/unrelated.test.mjs",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/tests/regex-after-control.js"},
+    )
+
+
+def test_javascript_read_helper_tracks_import_meta_and_static_root_urls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "tests" / "e2e-live" / "contract.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    for relative in (
+        "frontend/tests/e2e-live/fixtures.ts",
+        "frontend/src/pages/Schedule.tsx",
+        "app/services/auth_service.py",
+    ):
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("source\n", encoding="utf-8")
+    test_file.write_text(
+        'const rootUrl = new URL("../../../", import.meta.url);\n'
+        'const read = (path) => readFile(new URL(path, import.meta.url), "utf8");\n'
+        'const readFromRoot = (path) => readFile(new URL(path, rootUrl), "utf8");\n'
+        'const fixtures = await read("./fixtures.ts");\n'
+        'const page = await read("../../src/pages/Schedule.tsx");\n'
+        'const service = await readFromRoot("app/services/auth_service.py");\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        "frontend/tests/e2e-live/fixtures.ts",
+        "frontend/src/pages/Schedule.tsx",
+        "app/services/auth_service.py",
+    }
+
+
+def test_release_contract_tracks_literal_files_under_statically_derived_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "scripts" / "tests" / "release-config.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    for relative in (
+        ".releaserc.json",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/release.yml",
+    ):
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("{}\n", encoding="utf-8")
+    test_file.write_text(
+        'const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..",);\n'
+        'function readJson(relativePath) { return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), "utf8")); }\n'
+        'const releaseConfig = readJson(".releaserc.json");\n'
+        'const packageDocument = readJson("package.json");\n'
+        'const lockDocument = readJson("package-lock.json");\n'
+        'const workflow = readFileSync(path.join(repositoryRoot, ".github", "workflows", "release.yml"), "utf8");\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        ".releaserc.json",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/release.yml",
+    }
+
+
+def test_shallow_authored_source_scan_does_not_match_nested_descendants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "ui-barrel-boundary.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "components" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    e2e_test = repository / "frontend" / "tests" / "e2e" / "button.spec.ts"
+    e2e_test.parent.mkdir(parents=True)
+    e2e_test.write_text("test()\n", encoding="utf-8")
+    test_file.write_text(
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["src", "tests"];\n'
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        "const ignoredDirectories = new Set([]);\n"
+        "function collectAuthoredFiles(root) { return fs.readdirSync(root).flatMap((entry) => [entry]); }\n"
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        '  for (const filePath of collectAuthoredFiles(absoluteRoot)) { const source = fs.readFileSync(filePath, "utf8"); }\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    references = checker.find_javascript_repository_references(test_file)
+    assert references == set()
+    assert not checker._references_inventory_target(
+        references, {"frontend/src/components/Button.tsx"}
+    )
+    assert not checker.matches_source(
+        "frontend/scripts/ui-barrel-boundary.test.mjs",
+        {"frontend/src/components/Button.tsx"},
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/components/Button.tsx"},
+    )
+
+
+def test_actual_recursive_authored_source_scan_matches_exact_nested_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "ui-barrel-boundary.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "components" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    test_file.write_text(
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["src"];\n'
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        'const ignoredDirectories = new Set(["vendor"]);\n'
+        "function collectAuthoredFiles(root) {\n"
+        "  const files = [];\n"
+        "  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {\n"
+        "    if (entry.isDirectory()) {\n"
+        "      if (!ignoredDirectories.has(entry.name)) {\n"
+        "        files.push(...collectAuthoredFiles(path.join(root, entry.name)));\n"
+        "      }\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (authoredExtensions.has(path.extname(entry.name))) {\n"
+        "      files.push(path.join(root, entry.name));\n"
+        "    }\n"
+        "  }\n"
+        "  return files;\n"
+        "}\n"
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        '  for (const filePath of collectAuthoredFiles(absoluteRoot)) { const source = fs.readFileSync(filePath, "utf8"); }\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    references = checker.find_javascript_repository_references(test_file)
+    assert references == {"frontend/src/components/Button.tsx"}
+    assert checker.matches_source(
+        "frontend/scripts/ui-barrel-boundary.test.mjs",
+        {"frontend/src/components/Button.tsx"},
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/components/Button.tsx"},
+    )
+
+
+def test_recursive_authored_source_scan_rejects_external_file_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "ui-barrel-boundary.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "components" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    internal_link = source.parent / "ButtonAlias.tsx"
+    os.symlink(source, internal_link)
+
+    external_target = tmp_path / "external" / "PrivateComponent.tsx"
+    external_target.parent.mkdir()
+    external_target.write_text("export const PrivateComponent = 1\n", encoding="utf-8")
+    external_link = source.parent / "ExternalComponent.tsx"
+    os.symlink(external_target, external_link)
+
+    test_file.write_text(
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["src"];\n'
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        "const ignoredDirectories = new Set([]);\n"
+        "function collectAuthoredFiles(root) {\n"
+        "  const files = [];\n"
+        "  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {\n"
+        "    if (entry.isDirectory()) {\n"
+        "      if (!ignoredDirectories.has(entry.name)) {\n"
+        "        files.push(...collectAuthoredFiles(path.join(root, entry.name)));\n"
+        "      }\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (authoredExtensions.has(path.extname(entry.name))) {\n"
+        "      files.push(path.join(root, entry.name));\n"
+        "    }\n"
+        "  }\n"
+        "  return files;\n"
+        "}\n"
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        '  for (const filePath of collectAuthoredFiles(absoluteRoot)) { const source = fs.readFileSync(filePath, "utf8"); }\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", repository)
+
+    references = checker.find_javascript_repository_references(test_file)
+    assert references == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/components/ButtonAlias.tsx",
+    }
+
+    records = inventory.scan_repository({"teams": {"frontend/": "@frontend"}})
+    external_record = next(
+        item
+        for item in records
+        if item["path"] == "frontend/src/components/ExternalComponent.tsx"
+    )
+    assert external_record["classification"] == "source"
+    assert not checker.matches_source(
+        "frontend/scripts/unrelated.test.mjs",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={external_record["path"]},
+    )
+
+
+def test_direct_javascript_url_uses_its_statically_resolved_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "tests" / "e2e" / "direct-url.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    target = repository / "app" / "services" / "auth_service.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("source\n", encoding="utf-8")
+    decoy = (
+        repository
+        / "frontend"
+        / "tests"
+        / "e2e"
+        / "app"
+        / "services"
+        / "auth_service.py"
+    )
+    decoy.parent.mkdir(parents=True)
+    decoy.write_text("unrelated decoy\n", encoding="utf-8")
+    test_file.write_text(
+        'const rootUrl = new URL("../../../", import.meta.url);\n'
+        'const service = await readFile(new URL("app/services/auth_service.py", rootUrl), "utf8");\n'
+        'const filesystemRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../");\n'
+        'const decoyRead = await readFile(new URL("frontend/tests/e2e/app/services/auth_service.py", filesystemRoot), "utf8");\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    references = checker.find_javascript_repository_references(test_file)
+    assert references == {"app/services/auth_service.py"}
+    assert not checker.matches_source(
+        "frontend/scripts/unrelated.test.mjs",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/tests/e2e/app/services/auth_service.py"},
+    )
+
+
+def test_static_file_url_and_path_join_dependencies_are_resolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = (
+        repository / "frontend" / "scripts" / "validate-css-token-closure.test.mjs"
+    )
+    test_file.parent.mkdir(parents=True)
+    (repository / "frontend" / "src").mkdir(parents=True)
+    (repository / "frontend" / "src" / "app.tsx").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    (test_file.parent / "validate-css-token-closure.mjs").write_text(
+        "export {}\n", encoding="utf-8"
+    )
+    test_file.write_text(
+        "const __dirname = path.dirname(fileURLToPath(import.meta.url));\n"
+        'const validatorPath = path.join(__dirname, "validate-css-token-closure.mjs");\n'
+        'function runValidator(root) { return spawnSync(process.execPath, [validatorPath, "--root", root]); }\n'
+        'test("source graph is closed", () => runValidator(path.join(__dirname, "../src")));\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        "frontend/scripts/validate-css-token-closure.mjs",
+        "frontend/src",
+    }
+
+
+def test_contract_test_requires_exact_playwright_spec_and_cleanup_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = (
+        repository
+        / "frontend"
+        / "scripts"
+        / "messenger-reconnect-live-contract.test.mjs"
+    )
+    target = (
+        repository
+        / "frontend"
+        / "tests"
+        / "e2e-live"
+        / "messenger-reconnect.live.spec.ts"
+    )
+    cleanup_helper = (
+        repository
+        / "frontend"
+        / "tests"
+        / "e2e-live"
+        / "messenger-reconnect-cleanup.mjs"
+    )
+    target.parent.mkdir(parents=True)
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("test()\n", encoding="utf-8")
+    cleanup_helper.write_text(
+        "export async function cleanupMessengerReconnect() {}\n", encoding="utf-8"
+    )
+    test_file.write_text(
+        'import "../tests/e2e-live/messenger-reconnect-cleanup.mjs";\n'
+        "const spec = await readFile(\n"
+        '  new URL("../tests/e2e-live/messenger-reconnect.live.spec.ts", import.meta.url),\n'
+        '  "utf8"\n'
+        ")\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    references = checker.find_javascript_repository_references(test_file)
+    exact_spec = "frontend/tests/e2e-live/messenger-reconnect.live.spec.ts"
+    exact_cleanup_helper = "frontend/tests/e2e-live/messenger-reconnect-cleanup.mjs"
+
+    assert references == {exact_spec, exact_cleanup_helper}
+    assert checker.matches_source(
+        test_file.relative_to(repository).as_posix(),
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={exact_spec, exact_cleanup_helper},
+        contract_test_paths={exact_spec, exact_cleanup_helper},
+    )
+    assert not checker.matches_source(
+        "frontend/scripts/unrelated.test.mjs",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={exact_spec, exact_cleanup_helper},
+        contract_test_paths={exact_spec, exact_cleanup_helper},
+    )
+    assert not checker.matches_source(
+        test_file.relative_to(repository).as_posix(),
+        set(),
+        [],
+        repository_references=references,
+        reference_paths=set(),
+        contract_test_paths={"frontend/tests/e2e-live/other.live.spec.ts"},
+    )
+
+
+def test_checker_requires_owned_mjs_tests_and_keeps_orphan_and_skip_gates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repository = tmp_path / "repo"
+    shim = repository / "tools" / "npm-cli-shim"
+    test_file = shim / "test" / "npm-cli.test.mjs"
+    source_file = shim / "bin" / "npm-cli.js"
+    source_file.parent.mkdir(parents=True)
+    test_file.parent.mkdir(parents=True)
+    source_file.write_text("export const shim = true;\n", encoding="utf-8")
+    test_file.write_text(
+        'import assert from "node:assert/strict";\n'
+        'import test from "node:test";\n'
+        'import "../bin/npm-cli.js";\n'
+        'test("shim exists", () => assert.ok(true));\n',
+        encoding="utf-8",
+    )
+    mapping = {
+        "teams": {"tools/npm-cli-shim/test/": "@egorribun"},
+        "tier0_rules": [],
+        "generated_patterns": [],
+        "allowed_sleeps": [],
+        "allowed_dynamic_skips": [],
+        "allowed_orphans": [],
+    }
+    mapping_file = tmp_path / "ownership-mapping.json"
+    mapping_file.write_text(json.dumps(mapping), encoding="utf-8")
+    inventory_file = tmp_path / "inventory.json"
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", repository)
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    def write_inventory() -> list[dict[str, object]]:
+        records = inventory.scan_repository(mapping)
+        inventory_file.write_text(
+            json.dumps({"version": 1, "files": records}), encoding="utf-8"
+        )
+        return records
+
+    records = write_inventory()
+    record = next(
+        item
+        for item in records
+        if item["path"] == "tools/npm-cli-shim/test/npm-cli.test.mjs"
+    )
+    assert record["classification"] == "test"
+    assert record["owner"] == "@egorribun"
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_file), "--mapping", str(mapping_file)]
+        )
+        == 0
+    )
+    assert capsys.readouterr().err == ""
+
+    test_file.write_text(
+        'import test from "node:test"; test("orphan", () => {});\n', encoding="utf-8"
+    )
+    write_inventory()
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_file), "--mapping", str(mapping_file)]
+        )
+        == 1
+    )
+    assert (
+        "tools/npm-cli-shim/test/npm-cli.test.mjs: orphaned test file"
+        in capsys.readouterr().err
+    )
+
+    test_file.write_text(
+        'import "../bin/npm-cli.js";\n'
+        'import test from "node:test"; test.'
+        'skip("skipped", () => {});\n',
+        encoding="utf-8",
+    )
+    write_inventory()
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_file), "--mapping", str(mapping_file)]
+        )
+        == 1
+    )
+    assert "JS/TS dynamic skip (test.skip) found" in capsys.readouterr().err
+
+
+def _write_javascript_fixture(
+    tmp_path: Path, source: str, targets: tuple[str, ...] = ()
+) -> tuple[Path, Path]:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "tests" / "e2e" / "scanner.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    for relative in targets:
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("source\n", encoding="utf-8")
+    test_file.write_text(source, encoding="utf-8")
+    return repository, test_file
+
+
+def test_javascript_masker_only_exposes_real_code_and_fails_closed_on_malformed_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, test_file = _write_javascript_fixture(
+        tmp_path,
+        'import "./real.js";\n'
+        "const message = \"import './string.js'\";\n"
+        "const escaped = 'quote\\' and import \"./escaped.js\"';\n"
+        'const template = `import "./template.js"`;\n'
+        r'const pattern = /import "\.\/regex.js"/giu;' + "\n"
+        'if (false) /import "regex-after-control.js"/.test("");\n'
+        "call() / 2;\n"
+        ') /import "regex-after-unmatched-close.js"/;\n'
+        '// import "./line-comment.js"',
+        (
+            "frontend/tests/e2e/real.js",
+            "frontend/tests/e2e/string.js",
+            "frontend/tests/e2e/escaped.js",
+            "frontend/tests/e2e/template.js",
+            "frontend/tests/e2e/regex.js",
+            "frontend/tests/e2e/regex-at-start.js",
+            "frontend/tests/e2e/regex-after-control.js",
+            "frontend/tests/e2e/regex-after-unmatched-close.js",
+            "frontend/tests/e2e/line-comment.js",
+        ),
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    assert checker.find_javascript_repository_references(test_file) == {
+        "frontend/tests/e2e/real.js"
+    }
+
+    test_file.write_text('/import "regex-at-start.js"/;\n', encoding="utf-8")
+    assert checker.find_javascript_repository_references(test_file) == set()
+
+    malformed_files = (
+        'const broken = "unterminated\nimport "./after-string.js";\n',
+        'const broken = \'unterminated\nimport "./after-string.js";\n',
+        'const broken = "',
+        'const pattern = /import "after-regex.js"\nimport "./after-regex-too.js";\n',
+        "const pattern = /",
+        '/* import "./after-comment.js";\n',
+        'import "./nul.js";\0',
+    )
+    for source in malformed_files:
+        test_file.write_text(source, encoding="utf-8")
+        assert checker.find_javascript_repository_references(test_file) == set()
+    assert (
+        checker.find_javascript_repository_references(repository / "missing.mjs")
+        == set()
+    )
+
+
+def test_javascript_module_paths_resolve_files_and_reject_unsupported_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, test_file = _write_javascript_fixture(
+        tmp_path,
+        'import "./real.js";\n'
+        'import "./without-extension";\n'
+        'import "./with-index";\n'
+        'require("./required.js");\n'
+        'import("./dynamic.js");\n'
+        'module.import("./member-import.js");\n'
+        'module.require("./member-require.js");\n'
+        'module . import("./spaced-member-import.js");\n'
+        'module\n.\nrequire("./newline-member-require.js");\n'
+        "const ignored = import(target);\n"
+        'import ""; import "/rooted.js"; import "\\\\rooted.js";\n'
+        'import "../../../../../outside.js"; import "./missing.js";\n'
+        'import "./real.js?raw"; import "./real.js#fragment";\n'
+        'import "https://example.invalid/module.js";\n'
+        "const docs = \"import './string-only.js'\";\n",
+        (
+            "frontend/tests/e2e/real.js",
+            "frontend/tests/e2e/without-extension.ts",
+            "frontend/tests/e2e/with-index/index.js",
+            "frontend/tests/e2e/required.js",
+            "frontend/tests/e2e/dynamic.js",
+            "frontend/tests/e2e/member-import.js",
+            "frontend/tests/e2e/member-require.js",
+            "frontend/tests/e2e/spaced-member-import.js",
+            "frontend/tests/e2e/newline-member-require.js",
+            "frontend/tests/e2e/string-only.js",
+        ),
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        "frontend/tests/e2e/real.js",
+        "frontend/tests/e2e/without-extension.ts",
+        "frontend/tests/e2e/with-index/index.js",
+        "frontend/tests/e2e/required.js",
+        "frontend/tests/e2e/dynamic.js",
+    }
+
+    outside_target = tmp_path / "outside.js"
+    outside_target.write_text("outside\n", encoding="utf-8")
+    external_link = repository / "frontend" / "tests" / "e2e" / "external.js"
+    os.symlink(outside_target, external_link)
+    # Extension expansion must resolve the symlink target before accepting it.
+    test_file.write_text('import "./external";\n', encoding="utf-8")
+    assert checker.find_javascript_repository_references(test_file) == set()
+
+
+def test_javascript_url_readers_require_static_contained_bases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, test_file = _write_javascript_fixture(
+        tmp_path,
+        'const rootUrl = new URL("../../../", import.meta.url);\n'
+        'const fileUrl = new URL("./base.js", import.meta.url);\n'
+        "const templateBase = new URL(`../../../`, import.meta.url);\n"
+        'const invalidBase = new URL("/rooted/", import.meta.url);\n'
+        'const unknownUrl = new URL("../../../", computedBase);\n'
+        'const outsideUrl = new URL("../../../../", import.meta.url);\n'
+        'const outsideFrontendRoot = path.resolve(import.meta.dirname, "../../../../");\n'
+        "const dynamicFrontendRoot = path.resolve(import.meta.dirname, `../../../`);\n"
+        'const read = (path) => readFile(new URL(path, rootUrl), "utf8");\n'
+        'const readUnknown = (path) => readFile(new URL(path, computedBase), "utf8");\n'
+        'const valid = await read("app/service.py");\n'
+        'const outsideRead = await read("../../../../outside.js");\n'
+        'const invalidHelperRead = await readUnknown("./base.js");\n'
+        'const decoy = await readFile(new URL("app/service.py", filesystemRoot), "utf8");\n'
+        'const fileBaseRead = await readFile(new URL("base.js", fileUrl), "utf8");\n'
+        'const dynamicBaseRead = await readFile(new URL("base.js", unknownUrl), "utf8");\n'
+        'const outsideBaseRead = await readFile(new URL("secret.js", outsideUrl), "utf8");\n'
+        "const templateRead = await read(`app/service.py`);\n",
+        (
+            "app/service.py",
+            "frontend/tests/e2e/base.js",
+            "frontend/tests/e2e/secret.js",
+            "frontend/tests/e2e/app/service.py",
+        ),
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        "app/service.py",
+        "frontend/tests/e2e/base.js",
+    }
+
+
+def test_recursive_javascript_scan_fails_closed_for_unproven_collectors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "recursive.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "nested" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    valid_collector = (
+        "function collectAuthoredFiles(root) {\n"
+        "  const files = [];\n"
+        "  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {\n"
+        "    if (entry.isDirectory()) {\n"
+        "      if (!ignoredDirectories.has(entry.name)) {\n"
+        "        files.push(...collectAuthoredFiles(path.join(root, entry.name)));\n"
+        "      }\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (authoredExtensions.has(path.extname(entry.name))) {\n"
+        "      files.push(path.join(root, entry.name));\n"
+        "    }\n"
+        "  }\n"
+        "  return files;\n"
+        "}\n"
+    )
+    scan = (
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["src"];\n'
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        "const ignoredDirectories = new Set([]);\n"
+        "{collector}"
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        "  for (const filePath of collectAuthoredFiles(absoluteRoot)) {\n"
+        '    fs.readFileSync(filePath, "utf8");\n'
+        "  }\n"
+        "}\n"
+    )
+    variants = (
+        scan.replace("{collector}", ""),
+        scan.replace(
+            "{collector}", valid_collector.replace("return files;", "return [];")
+        ),
+        scan.replace(
+            "{collector}",
+            valid_collector.replace("const files = [];", "const files = new Set();"),
+        ),
+        scan.replace(
+            "{collector}",
+            valid_collector.replace("withFileTypes: true", "withFileTypes: false"),
+        ),
+        scan.replace(
+            "{collector}",
+            valid_collector.replace("entry.isDirectory()", "entry.isFile()"),
+        ),
+        scan.replace(
+            "{collector}",
+            valid_collector.replace("return files;", "return otherFiles;"),
+        ),
+        scan.replace("{collector}", valid_collector).replace(
+            'const authoredExtensions = new Set([".ts", ".tsx"]);\n', ""
+        ),
+        scan.replace("{collector}", valid_collector).replace(
+            'const authoredExtensions = new Set([".ts", ".tsx"]);',
+            "const authoredExtensions = new Set([]);",
+        ),
+        scan.replace("{collector}", valid_collector).replace(
+            "const ignoredDirectories = new Set([]);\n", ""
+        ),
+        scan.replace("{collector}", valid_collector).replace(
+            'fs.readFileSync(filePath, "utf8")', "readFile(filePath)"
+        ),
+        scan.replace(
+            'const scanRoots = ["src"];', 'const scanRoots = ["../../../../outside"];'
+        ),
+        scan.replace(
+            'const scanRoots = ["src"];', 'const scanRoots = ["src/nested/Button.tsx"];'
+        ),
+        scan.replace(
+            'const scanRoots = ["src"];',
+            'const scanRoots = ["file:src", "src/nested/Button.tsx"];',
+        ),
+        scan.replace(
+            'const frontendRoot = path.resolve(import.meta.dirname, "..");',
+            'const frontendRoot = path.resolve(import.meta.dirname, "../../../../");',
+        ),
+    )
+    for index, source_text in enumerate(variants):
+        test_file.write_text(source_text, encoding="utf-8")
+        assert checker.find_javascript_repository_references(test_file) == set(), (
+            f"variant {index}: {source_text}"
+        )
+
+
+def test_recursive_javascript_scan_requires_actual_roots_loops_and_read_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "recursive.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "nested" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    collector = (
+        "function collectAuthoredFiles(root) {\n"
+        "  const files = [];\n"
+        "  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {\n"
+        "    if (entry.isDirectory()) {\n"
+        "      if (!ignoredDirectories.has(entry.name)) {\n"
+        "        files.push(...collectAuthoredFiles(path.join(root, entry.name)));\n"
+        "      }\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (authoredExtensions.has(path.extname(entry.name))) {\n"
+        "      files.push(path.join(root, entry.name));\n"
+        "    }\n"
+        "  }\n"
+        "  return files;\n"
+        "}\n"
+    )
+    root_loop = (
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        "  for (const filePath of collectAuthoredFiles(absoluteRoot)) {\n"
+        '    fs.readFileSync(filePath, "utf8");\n'
+        "  }\n"
+        "}\n"
+    )
+    header = (
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["src"];\n'
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        "const ignoredDirectories = new Set([]);\n"
+    )
+    malformed = (
+        header + collector + "const unrelated = true;\n",
+        header + "function collectAuthoredFiles(root) {\n",
+        header + collector + "for (const root of scanRoots) {\n",
+        header
+        + collector
+        + "for (const root of scanRoots) {\n  const ignored = true;\n}\n",
+        header
+        + collector
+        + root_loop.replace(
+            "const absoluteRoot = path.join(frontendRoot, root);",
+            "const absoluteRoot = root;",
+        ),
+        header
+        + collector
+        + root_loop.replace(
+            "for (const filePath of collectAuthoredFiles(absoluteRoot)) {",
+            "for (const filePath of files) {",
+        ),
+        header
+        + collector
+        + root_loop.replace(
+            'fs.readFileSync(filePath, "utf8");', "readFile(filePath);"
+        ),
+        header.replace(
+            'const frontendRoot = path.resolve(import.meta.dirname, "..");',
+            "const frontendRoot = path.resolve(import.meta.dirname, `..`);",
+        )
+        + collector
+        + root_loop,
+        header.replace('const scanRoots = ["src"];', "const scanRoots = [dynamicRoot];")
+        + collector
+        + root_loop,
+    )
+    for source_text in malformed:
+        test_file.write_text(source_text, encoding="utf-8")
+        assert checker.find_javascript_repository_references(test_file) == set()
+
+    real_scandir = checker.os.scandir
+
+    def deny_scan(path: object):
+        if Path(path) == repository / "frontend" / "src" / "nested":
+            raise PermissionError("fixture scan is not accessible")
+        return real_scandir(path)
+
+    monkeypatch.setattr(checker.os, "scandir", deny_scan)
+    test_file.write_text(header + collector + root_loop, encoding="utf-8")
+    assert checker.find_javascript_repository_references(test_file) == set()
+
+
+def test_javascript_static_root_reads_and_path_join_reject_unresolved_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, test_file = _write_javascript_fixture(
+        tmp_path,
+        'const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..",);\n'
+        'function readJson(relativePath) { return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), "utf8")); }\n'
+        'function notAReader(relativePath) { return readFileSync(path.join(otherRoot, relativePath), "utf8"); }\n'
+        'const good = readJson("package.json");\n'
+        "const templated = readJson(`package-lock.json`);\n"
+        "const templatedJoin = path.join(repositoryRoot, `package-lock.json`);\n"
+        'const direct = readFileSync(path.join(repositoryRoot, ".releaserc.json"), "utf8");\n'
+        'const outsideHelper = readJson("../../../../outside.json");\n'
+        'const outside = readFileSync(path.join(repositoryRoot, "../../../../outside.json"), "utf8");\n'
+        "const noStaticRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), dynamicRoot);\n"
+        'const outsideRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../../",);\n',
+        ("package.json", ".releaserc.json", "package-lock.json"),
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == {
+        "package.json",
+        ".releaserc.json",
+    }
+
+
+def test_recursive_reference_matcher_rejects_escaped_root_and_non_directory_targets(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend" / "scripts" / "recursive.test.mjs"
+    test_file.parent.mkdir(parents=True)
+    source = repository / "frontend" / "src" / "nested" / "Button.tsx"
+    source.parent.mkdir(parents=True)
+    source.write_text("export const Button = 1\n", encoding="utf-8")
+    collector = (
+        'const authoredExtensions = new Set([".ts", ".tsx"]);\n'
+        "const ignoredDirectories = new Set([]);\n"
+        "function collectAuthoredFiles(root) {\n"
+        "  const files = [];\n"
+        "  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {\n"
+        "    if (entry.isDirectory()) {\n"
+        "      if (!ignoredDirectories.has(entry.name)) {\n"
+        "        files.push(...collectAuthoredFiles(path.join(root, entry.name)));\n"
+        "      }\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (authoredExtensions.has(path.extname(entry.name))) {\n"
+        "      files.push(path.join(root, entry.name));\n"
+        "    }\n"
+        "  }\n"
+        "  return files;\n"
+        "}\n"
+    )
+    loop = (
+        "for (const root of scanRoots) {\n"
+        "  const absoluteRoot = path.join(frontendRoot, root);\n"
+        "  for (const filePath of collectAuthoredFiles(absoluteRoot)) {\n"
+        '    fs.readFileSync(filePath, "utf8");\n'
+        "  }\n"
+        "}\n"
+    )
+
+    escaped = (
+        'const frontendRoot = path.resolve(import.meta.dirname, "../../../../../../../../");\n'
+        'const scanRoots = ["src"];\n' + collector + loop
+    )
+    masked, literals = checker._mask_javascript_non_code(escaped)
+    escaped_root = (
+        test_file.parent
+        / checker._javascript_string_value(
+            checker._JS_IMPORT_META_DIRNAME_ROOT.search(masked).group("path"), literals
+        )
+    ).resolve()
+    assert repository.resolve() not in escaped_root.parents
+    assert (
+        checker._recursive_scan_references(
+            masked, test_file, repository.resolve(), literals
+        )
+        == set()
+    )
+
+    invalid_targets = (
+        'const frontendRoot = path.resolve(import.meta.dirname, "..");\n'
+        'const scanRoots = ["file:src", "src/nested/Button.tsx"];\n' + collector + loop
+    )
+    masked, literals = checker._mask_javascript_non_code(invalid_targets)
+    assert (
+        checker._recursive_scan_references(
+            masked, test_file, repository.resolve(), literals
+        )
+        == set()
+    )
+
+
+def test_static_base_extractors_reject_paths_outside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, test_file = _write_javascript_fixture(
+        tmp_path,
+        'const outsideFrontend = path.resolve(import.meta.dirname, "../../../../../../../../");\n'
+        'const outsideRepository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../../../../",);\n',
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert checker.find_javascript_repository_references(test_file) == set()
+
+
+def test_mjs_source_stem_match_is_exact_and_nearby() -> None:
+    test_path = "frontend/scripts/validator.test.mjs"
+    assert checker.matches_source(test_path, {"frontend/scripts/validator.mjs"}, [])
+    assert checker.matches_source(test_path, {"frontend/validator.js"}, [])
+    assert not checker.matches_source(
+        test_path, {"frontend/scripts/validator-extra.js"}, []
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_message"),
+    [
+        (
+            '@pytest.mark.skip(reason="unavailable")\ndef test_case(): ...\n',
+            "Python dynamic skip",
+        ),
+        (
+            '@pytest.mark.xfail(reason="known failure")\ndef test_case(): ...\n',
+            "Python dynamic skip",
+        ),
+        (
+            'pytest.skip(\n    "unavailable",\n)\n',
+            "Python dynamic skip",
+        ),
+        (
+            'func TestCase(t *testing.T) { t.Skipf("unavailable: %s", reason) }\n',
+            "Go dynamic skip",
+        ),
+        (
+            'describe\n  .skip("unavailable", () => {})\n',
+            "JS/TS dynamic skip (describe.skip)",
+        ),
+    ],
+)
+def test_aud508_dynamic_skip_syntax_is_detected(
+    tmp_path: Path, source: str, expected_message: str
+) -> None:
+    suffix = (
+        ".py"
+        if expected_message.startswith("Python")
+        else ".go"
+        if expected_message.startswith("Go")
+        else ".ts"
+    )
+    test_file = tmp_path / f"test_dynamic_skip{suffix}"
+    test_file.write_text(source, encoding="utf-8")
+
+    errors: list[str] = []
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert any(expected_message in error for error in errors)
+
+
+def test_aud508_skip_exemptions_require_real_comment_evidence(tmp_path: Path) -> None:
+    cases = {
+        "commented.py": ('# pytest.skip("example")\n', False),
+        "string.py": ('message = "pytest.skip(\\"reason\\")"\n', False),
+        "static_skipif.py": (
+            '@pytest.mark.skipif(not PLATFORM_SUPPORTED, reason="platform")\ndef test_case(): ...\n',
+            False,
+        ),
+        "commented_skip.py": ('# QUALITY-123 @owner\npytest.skip("reason")\n', False),
+        "reason_text_is_not_comment.py": (
+            'pytest.skip("QUALITY-123 @owner")\n',
+            True,
+        ),
+        "quarantine_text_is_not_allowance.py": (
+            'pytest.skip("quarantined pending review")\n',
+            True,
+        ),
+    }
+    for name, (source, should_error) in cases.items():
+        test_file = tmp_path / name
+        test_file.write_text(source, encoding="utf-8")
+        errors: list[str] = []
+
+        check_anti_patterns(test_file, errors, [], [])
+
+        assert any("dynamic skip" in error for error in errors) is should_error, name
+
+
+def test_aud509_source_matching_requires_exact_module_relationships(
+    tmp_path: Path, monkeypatch
+) -> None:
+    assert not matches_source("tests/test_auth.py", {"app/subauth.py"}, [])
+    assert not matches_source("tests/test_auth.py", {"app/authentication.py"}, [])
+    assert matches_source("tests/test_auth_service.py", {"app/auth.py"}, [])
+
+    repository = tmp_path / "repository"
+    gateway = repository / "services" / "gateway"
+    gateway.mkdir(parents=True)
+    (gateway / "go.mod").write_text("module example.com/gateway\n", encoding="utf-8")
+    (gateway / "unrelated.go").write_text("package unrelated\n", encoding="utf-8")
+    (gateway / "auth.go").write_text("package gateway\n", encoding="utf-8")
+    (gateway / "auth_test.go").write_text("package gateway\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(
+        "services/gateway/auth_test.go", {"services/gateway/unrelated.go"}, []
+    )
+    assert matches_source(
+        "services/gateway/auth_test.go", {"services/gateway/auth.go"}, []
+    )
+
+    assert not matches_source(
+        "frontend/src/components/__tests__/Button.test.tsx",
+        {"frontend/src/other/Button.tsx"},
+        [],
+    )
+    assert not matches_source(
+        "frontend/src/components/__tests__/Button.test.tsx", set(), []
+    )
+
+
+def test_aud509_go_test_matches_its_same_package_without_a_sibling_name(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    package = repository / "services" / "gateway" / "middleware"
+    package.mkdir(parents=True)
+    (repository / "go.mod").write_text("module example.com/repo\n", encoding="utf-8")
+    (package / "auth.go").write_text("package middleware\n", encoding="utf-8")
+    (package / "auth_and_jwks_setup_test.go").write_text(
+        "package middleware\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        "services/gateway/middleware/auth_and_jwks_setup_test.go",
+        {"services/gateway/middleware/auth.go"},
+        [],
+        reference_paths={"services/gateway/middleware/auth.go"},
+    )
+    assert not matches_source(
+        "services/gateway/middleware/auth_and_jwks_setup_test.go",
+        {"services/gateway/handlers.go"},
+        [],
+        reference_paths={"services/gateway/handlers.go"},
+    )
+
+
+def test_aud509_go_external_test_requires_exact_package_ownership(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    package = repository / "services" / "pkg" / "spiffe"
+    package.mkdir(parents=True)
+    (package / "spiffe.go").write_text("package spiffe\n", encoding="utf-8")
+    test_file = package / "spiffe_dynamic_rotation_stress_test.go"
+    test_file.write_text(
+        'package spiffe_test\nimport "github.com/spiffe/go-spiffe/v2/workloadapi"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        "services/pkg/spiffe/spiffe_dynamic_rotation_stress_test.go",
+        {"services/pkg/spiffe/spiffe.go"},
+        [],
+        reference_paths={
+            "services/pkg/spiffe/spiffe.go",
+        },
+    )
+
+    test_file.write_text(
+        'package unrelated_test\nimport "github.com/spiffe/go-spiffe/v2/workloadapi"\n',
+        encoding="utf-8",
+    )
+    assert not matches_source(
+        "services/pkg/spiffe/spiffe_dynamic_rotation_stress_test.go",
+        {"services/pkg/spiffe/spiffe.go"},
+        [],
+        reference_paths={"services/pkg/spiffe/spiffe.go"},
+    )
+
+
+def test_aud509_imports_match_only_the_exact_inventoried_module() -> None:
+    assert not matches_source(
+        "tests/test_auth.py",
+        {"app/unrelated.py"},
+        [],
+        imported_modules={"app"},
+        reference_paths={"app/unrelated.py"},
+    )
+    assert matches_source(
+        "tests/test_auth.py",
+        {"app/auth.py"},
+        [],
+        imported_modules={"app", "app.auth"},
+        reference_paths={"app/auth.py"},
+    )
+
+
+def test_aud509_typescript_import_must_resolve_to_an_inventoried_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend/src/components/__tests__/unrelated.test.tsx"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text('import helper from "../../helpers";\n', encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    sources = {"frontend/src/components/Button.tsx"}
+
+    assert not matches_source(
+        "frontend/src/components/__tests__/unrelated.test.tsx",
+        sources,
+        [],
+        reference_paths=sources,
+    )
+
+    test_file.write_text('import Button from "../Button";\n', encoding="utf-8")
+    assert matches_source(
+        "frontend/src/components/__tests__/unrelated.test.tsx",
+        sources,
+        [],
+        reference_paths=sources,
+    )
+
+
+def test_aud509_relative_python_import_resolves_inside_its_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "tests/unit/test_case.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("from .helpers import helper\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    imported_modules = checker.check_python_duplicates_and_imports(test_file, [])
+
+    assert matches_source(
+        "tests/unit/test_case.py",
+        set(),
+        [],
+        imported_modules=imported_modules,
+        reference_paths={"tests/unit/helpers.py"},
+    )
+    assert not matches_source(
+        "tests/unit/test_case.py",
+        set(),
+        [],
+        imported_modules=imported_modules,
+        reference_paths={"helpers.py"},
+    )
+
+
+def test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity() -> None:
+    assert matches_source(
+        "tests/test_report_api.py",
+        {"app/report.py", "app/report_api.py"},
+        [],
+    )
+    assert not matches_source(
+        "tests/test_report_api.py",
+        {"app/report.py", "services/report.py"},
+        [],
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "fake_skip.go",
+            '// t.Skipf("comment only")\nmessage := "t.Skipf(\\"string only\\")"\n',
+        ),
+        (
+            "fake_skip.mjs",
+            '// describe.skip("comment only")\nconst text = "describe.skip(\\"string only\\")";\n',
+        ),
+    ],
+)
+def test_aud508_non_python_skip_scanner_ignores_comments_and_strings(
+    tmp_path: Path, filename: str, source: str
+) -> None:
+    test_file = tmp_path / filename
+    test_file.write_text(source, encoding="utf-8")
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert not any("dynamic skip" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("tracked_skip.go", 't.Skipf("reason") // QUALITY-123 @owner\n'),
+        ("tracked_skip.mjs", 'describe.skip("reason") // QUALITY-123 @owner\n'),
+    ],
+)
+def test_aud508_non_python_skip_accepts_tracking_comments(
+    tmp_path: Path, filename: str, source: str
+) -> None:
+    test_file = tmp_path / filename
+    test_file.write_text(source, encoding="utf-8")
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert not any("dynamic skip" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        "<main>content</main>",
+        "<><section>content</section></>",
+        "<Widget.Part><span /></Widget.Part>",
+        '<main title={">"}>content</main>',
+        "<Widget<string> />",
+        "<Widget<Array<string>>><span /></Widget>",
+        "<Widget-1>content</Widget-1>",
+        "<Élement>content</Élement>",
+        "<Élement>content</Élement>",
+        '<main title="line one\nline two" />',
+        '<main>{value ? <span /> : "</main>"}</main>',
+    ],
+)
+def test_typescript_import_after_jsx_keeps_exact_source_relationship(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, markup: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/jsx.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        f'const view = {markup};\nimport Button from "../Button";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const view = <main>import Button from "../Button"</main>;\n',
+        "const view = <main title='import Button from \"../Button\"' />;\n",
+        'const value = left </main>\nimport Button from "../Button";\n',
+        'const view = <main>import Button from "../Button";\n',
+        'const view = <main>import Button from "../Button"</other>;\n',
+        'const view = <Widget<string>>import Button from "../Button"</Widget>;\n',
+        'const view = <Widget-1>import Button from "../Button"</Widget-1>;\n',
+        'const view = <Élement>import Button from "../Button"</Élement>;\n',
+        'const view = <Élement>import Button from "../Button"</Élement>;\n',
+        'const view = <Widget!>import Button from "../Button"</Widget!>;\n',
+        'const view = <main title="line one\nline two">'
+        'import Button from "../Button"</main>;\n',
+        (
+            "const view = "
+            + "<main>" * 66
+            + 'import Button from "../Button"'
+            + "</main>" * 66
+            + ";\n"
+        ),
+    ],
+)
+def test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/unrelated.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_dotted_module_stem_resolves_exact_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/test/__tests__/mockIsolation.test.ts"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import config from "../../../vitest.config";\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        relative, set(), [], reference_paths={"frontend/vitest.config.ts"}
+    )
+    assert not matches_source(
+        relative, set(), [], reference_paths={"frontend/other.config.ts"}
+    )
+
+
+_LOCAL_TYPESCRIPT_GLOB_CONTRACT = """import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
+import { glob } from "glob"
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const SRC_ROOT = path.resolve(__dirname, "..")
+const MATCHER = /removed/
+async function scan() {
+  const files = await glob("**/*.{ts,tsx,css}", {
+    cwd: SRC_ROOT,
+    ignore: [
+      "tests/**",
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+      "**/*.stories.{ts,tsx}",
+    ],
+  })
+  expect(files.length).toBeGreaterThan(0)
+  const violations = files.filter((relFile) =>
+    MATCHER.test(readFileSync(path.join(SRC_ROOT, relFile), "utf-8"))
+  )
+  return violations
+}
+"""
+
+
+def _write_typescript_glob_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> tuple[Path, Path]:
+    repository = tmp_path / "repo"
+    contract = repository / "frontend/src/tests/glob.test.ts"
+    contract.parent.mkdir(parents=True)
+    (repository / "frontend/package.json").write_text("{}", encoding="utf-8")
+    for relative in (
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+        "frontend/src/tests/fixture.ts",
+        "frontend/src/components/__tests__/fixture.tsx",
+        "frontend/src/components/Button.test.tsx",
+        "frontend/src/components/Button.spec.tsx",
+        "frontend/src/components/Button.stories.tsx",
+        "frontend/src/components/data.json",
+        "frontend/src/.hidden.ts",
+        "frontend/src/.private/hidden.ts",
+    ):
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture\n", encoding="utf-8")
+    contract.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    return repository, contract
+
+
+def test_typescript_glob_scan_links_only_files_it_recursively_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT
+    )
+
+    references = find_typescript_repository_references(contract)
+
+    assert references == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+    assert matches_source(
+        "frontend/src/tests/glob.test.ts",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/utils/nested/helper.ts"},
+    )
+    assert not matches_source(
+        "frontend/src/tests/glob.test.ts",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/components/Unscanned.tsx"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("fileURLToPath(import.meta.url)", "fileURLToPath(otherUrl)"),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "../../../..")',
+        ),
+        ("cwd: SRC_ROOT", "cwd: otherRoot"),
+        ("path.join(SRC_ROOT, relFile)", "path.join(otherRoot, relFile)"),
+        ("files.filter", '["components/Button.tsx"].filter'),
+        (
+            'readFileSync(path.join(SRC_ROOT, relFile), "utf-8")',
+            "String(path.join(SRC_ROOT, relFile))",
+        ),
+        ("async function scan()", "async function scan(SRC_ROOT: string)"),
+        ('"tests/**",', '"tests/**", "**/*",'),
+        ('"**/*.{ts,tsx,css}"', '"*.{ts,tsx,css}"'),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "..") + "/elsewhere"',
+        ),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "..")\n + "/elsewhere"',
+        ),
+        ("  })\n  expect", "  }).then(() => [])\n  expect"),
+        ("  })\n  expect", "  })\n .then(() => [])\n  expect"),
+        (
+            "async function scan()",
+            r"async function scan(SRC_\u0052OOT: string)",
+        ),
+        (
+            'const SRC_ROOT = path.resolve(__dirname, "..")',
+            'const SRC_ROOT = path.resolve(__dirname, "..") as string',
+        ),
+    ],
+)
+def test_typescript_glob_scan_rejects_unproven_traversal_or_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old: str, new: str
+) -> None:
+    _, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(old, new)
+    )
+
+    assert find_typescript_repository_references(contract) == set()
+
+
+def test_typescript_glob_scan_does_not_follow_external_file_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT
+    )
+    outside = tmp_path / "outside.ts"
+    outside.write_text("external\n", encoding="utf-8")
+    os.symlink(outside, repository / "frontend/src/components/external.ts")
+
+    assert find_typescript_repository_references(contract) == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+
+
+def test_python_contract_accepts_verified_test_root_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "TEST_ROOT = Path(__file__).resolve().parents[1]\n"
+        'VALIDATOR_PATH = TEST_ROOT / "scripts" / "quality"'
+        ' / "validate_trivy_kyverno_fixture.py"\n',
+    )
+
+    assert find_python_repository_references(contract) == {
+        "scripts/quality/validate_trivy_kyverno_fixture.py"
+    }
+
+
+@pytest.mark.parametrize(
+    ("rebind", "expected"),
+    [
+        ('TEST_ROOT = Path("elsewhere")\n', {"elsewhere"}),
+        ("import elsewhere as TEST_ROOT\n", set()),
+    ],
+)
+def test_python_contract_rejects_rebound_test_root_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rebind: str,
+    expected: set[str],
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        f"TEST_ROOT = Path(__file__).resolve().parents[1]\n{rebind}"
+        'TARGET = TEST_ROOT / "scripts" / "quality"'
+        ' / "validate_trivy_kyverno_fixture.py"\n',
+    )
+
+    references = find_python_repository_references(contract)
+    assert references == expected
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"scripts/quality/validate_trivy_kyverno_fixture.py"},
+    )
+
+
+@pytest.mark.parametrize("root_name", ["TEST_ROOT", "ROOT"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def helper({root_name}):\n    return {root_name} / {target}\n",
+        "async def helper({root_name}):\n    return {root_name} / {target}\n",
+        "def helper():\n    {root_name} = fallback\n"
+        "    return {root_name} / {target}\n",
+        "def helper():\n    return {root_name} / {target}\n"
+        "    {root_name} = fallback\n",
+        "def helper():\n    {root_name}: Path\n    return {root_name} / {target}\n",
+        "def helper[{root_name}]():\n    return {root_name} / {target}\n",
+        "class Subject[{root_name}]:\n    target = {root_name} / {target}\n",
+        "type Subject[{root_name}] = list[{root_name} / {target}]\n",
+        "subject = lambda {root_name}: {root_name} / {target}\n",
+        "class Subject:\n    {root_name} = fallback\n"
+        "    target = {root_name} / {target}\n",
+        "targets = [{root_name} / {target} for {root_name} in roots]\n",
+        "targets = ({root_name} / {target} for {root_name} in roots)\n",
+        "targets = [{root_name} / {target} for value in roots "
+        "for {root_name} in value]\n",
+    ],
+)
+def test_python_contract_does_not_borrow_shadowed_root_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    root_name: str,
+    body: str,
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        f"{root_name} = Path(__file__).resolve().parents[1]\n"
+        + body.format(
+            root_name=root_name,
+            target='"scripts" / "quality" / "validate_trivy_kyverno_fixture.py"',
+        )
+        + f'MODULE_TARGET = {root_name} / "app" / "unrelated.py"\n',
+    )
+
+    references = find_python_repository_references(contract)
+
+    assert references == {"app/unrelated.py"}
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"scripts/quality/validate_trivy_kyverno_fixture.py"},
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def helper():\n    return TEST_ROOT / {target}\n",
+        "def helper[Value]():\n    return TEST_ROOT / {target}\n",
+        "subject = lambda: TEST_ROOT / {target}\n",
+        "class Subject:\n    TEST_ROOT = fallback\n"
+        "    def helper(self):\n        return TEST_ROOT / {target}\n",
+        "targets = [TEST_ROOT / {target} for item in items]\n",
+        "targets = [item for TEST_ROOT in [TEST_ROOT / {target}] for item in items]\n",
+        "def helper(TEST_ROOT=TEST_ROOT / {target}):\n    return TEST_ROOT\n",
+    ],
+)
+def test_python_contract_keeps_unshadowed_root_references(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "TEST_ROOT = Path(__file__).resolve().parents[1]\n"
+        + body.format(
+            target='"scripts" / "quality" / "validate_trivy_kyverno_fixture.py"'
+        ),
+    )
+
+    assert find_python_repository_references(contract) == {
+        "scripts/quality/validate_trivy_kyverno_fixture.py"
+    }
+
+
+def test_typescript_glob_scan_accepts_closed_semicolon_initializers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(")\nconst", ");\nconst")
+        .replace("  })\n  expect", "  });\n  expect")
+        .replace(
+            "expect(files.length).toBeGreaterThan(0)\n",
+            "expect(files.length).toBeGreaterThan(0);\n",
+        )
+    )
+    _, contract = _write_typescript_glob_fixture(tmp_path, monkeypatch, source)
+
+    assert find_typescript_repository_references(contract) == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+
+
+def test_typescript_glob_scan_requires_module_scope_root_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(
+        "const __filename", "function unrelated() {\nconst __filename"
+    ).replace("async function scan()", "}\nasync function scan()")
+    _, contract = _write_typescript_glob_fixture(tmp_path, monkeypatch, source)
+
+    assert find_typescript_repository_references(contract) == set()
+
+
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "const page = <T,>(items: T[]) => ({ items });\n",
+        "const deferred = <T,>() => {\n"
+        "  let resolve!: (value: T) => void;\n"
+        "  const promise = new Promise<T>((accept) => { resolve = accept; });\n"
+        "  return { promise, resolve };\n"
+        "};\n",
+        "const mockResponse = <T,>(data: T): AxiosResponse<T> => ({ data });\n",
+    ],
+)
+def test_typescript_ownership_keeps_imports_before_unsupported_generic_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        + helper
+        + 'import Other from "../Other";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        '// import Button from "../Button";\n',
+        "const example = 'import Button from \"../Button\"';\n",
+        'const example = /[import Button from "../Button"]/;\n',
+        'if (true) {} /[} import Button from "../Button"]/.test("");\n',
+        'const example = <main>import Button from "../Button"</main>;\n',
+    ],
+)
+def test_typescript_ownership_prefix_excludes_preceding_non_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prefix: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        prefix + "const helper = <T,>() => ({});\n" + 'import Other from "../Other";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const helper = <T,>() => ({});\nimport Button from "../Button";\n',
+        "const helper = <T,>() => { if (true) { void 0; } "
+        '/[} import Button from "../Button"]/.test(""); };\n',
+        "const helper = <T,>() => { while (true) { break\n"
+        '/[}} import Button from "../Button"]/.test(""); } };\n',
+        "const helper = <T,>() => { debugger\n"
+        '<main>} import Button from "../Button"</main>; };\n',
+        'const helper = <T,>import Button from "../Button"</T>;\n',
+    ],
+)
+def test_typescript_ownership_discards_all_unsupported_tail_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_ownership_boundary_does_not_truncate_skip_detection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        'const helper = <T,>() => { describe.skip("hidden", () => {}); };\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    errors: list[str] = []
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert any("JS/TS dynamic skip (describe.skip)" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'import Button from "../Button"\n',
+        'import * as ButtonModule from "../Button";\n',
+        'import { Button, type ButtonProps as Props } from "../Button"\n',
+        'import type { ButtonProps } from "../Button"\n',
+        'import "../Button"\n',
+        'import Button from "../Button"; // source dependency\n',
+        'import Button from "../Button" /* source dependency */\n',
+    ],
+)
+def test_typescript_ownership_fallback_accepts_only_leading_static_declarations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        '/* import Other from "../Other"; */\n// leading comment\n'
+        + declaration
+        + "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'import("../Button");\n',
+        'import class from "../Button";\n',
+        'import Button from "../Button" + suffix;\n',
+        'import Button from "../Button" with { type: "json" };\n',
+        'import Button from "../Button"\nwith { type: "json" }\n',
+        'import {\n  Button,\n} from "../Button";\n',
+    ],
+)
+def test_typescript_ownership_fallback_rejects_unproven_declarations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        declaration + "const helper = <T,>() => ({});\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_ownership_fallback_never_resumes_after_arbitrary_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        'if (true) {} /[} import Other from "../Other"]/.test("");\n'
+        'import Later from "../Later";\n'
+        "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Later.tsx"}, [])
+
+
+@pytest.mark.parametrize("line_terminator", ["\u2028", "\u2029"])
+@pytest.mark.parametrize("leading_import", ["", 'import Other from "../Other";\n'])
+def test_typescript_ownership_fallback_honors_unicode_comment_termination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    line_terminator: str,
+    leading_import: str,
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        leading_import
+        + "// comment"
+        + line_terminator
+        + "const text = `\n"
+        + 'import Button from "../Button";\n'
+        + "<T,>\n`;\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    owns_other = matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+    assert owns_other is bool(leading_import)
+
+
+@pytest.mark.parametrize("character", ["\x85", "\x1c", "\x1d", "\x1e", "\x1f"])
+def test_typescript_ownership_fallback_rejects_non_javascript_whitespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, character: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        character
+        + 'import Button from "../Button";\n'
+        + "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+_AUDIT_TRACKING_REGISTRY = (
+    "# Audit\n\n"
+    "| AUD-999 | reference outside the registry |\n\n"
+    "## 7. Реестр открытых находок\n\n"
+    "| ID | Finding |\n"
+    "|---|---|\n"
+    "| AUD-327 | registered table finding |\n"
+    "- AUD-433 registered observation\n\n"
+    "## 8. Evidence\n\n"
+    "- AUD-998 reference outside the registry\n"
+)
+
+
+def _write_audit_tracking_registry(
+    repository: Path, content: str = _AUDIT_TRACKING_REGISTRY
+) -> Path:
+    audit = repository / "docs" / "audits" / "AUDIT-2026-10.md"
+    audit.parent.mkdir(parents=True)
+    audit.write_text(content, encoding="utf-8")
+    return audit
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n",
+        "pytest.skip('owned PostgreSQL slot required')  # AUD-327 @egorribun\n",
+        "# AUD-433 @egorribun\npytest.skip('owned PostgreSQL slot required')\n",
+    ],
+)
+def test_audit_tracking_accepts_registered_ids_in_adjacent_comments(
+    tmp_path: Path, monkeypatch, source: str
+) -> None:
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    "tracking",
+    [
+        "AUD-999 @egorribun",
+        "AUD-998 @egorribun",
+        "AUD-111 @egorribun",
+        "AUD-327",
+        "aud-327 @egorribun",
+        "AUD-32 @egorribun",
+        "AUD-0327 @egorribun",
+        "AUD-327x @egorribun",
+        "AUD-327-extra @egorribun",
+        "prefixAUD-327 @egorribun",
+        "prefix-AUD-327 @egorribun",
+        "AUD-\uff13\uff12\uff17 @egorribun",
+    ],
+)
+def test_audit_tracking_rejects_unregistered_malformed_or_ownerless_ids(
+    tmp_path: Path, monkeypatch, tracking: str
+) -> None:
+    source = f"# {tracking}\npytest.skip('owned PostgreSQL slot required')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "pytest.skip('AUD-327 @egorribun')\n",
+        "tracking = 'AUD-327 @egorribun'\npytest.skip('unavailable')\n",
+        "# AUD-327 @egorribun\n\npytest.skip('unavailable')\n",
+    ],
+)
+def test_audit_tracking_requires_real_adjacent_comment_evidence(
+    tmp_path: Path, monkeypatch, source: str
+) -> None:
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "registry",
+    [
+        None,
+        "",
+        "# Wrong document\n| AUD-327 | not a registry |\n",
+        "## 7. Реестр открытых находок\nNo registered entries.\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-0327 | malformed ID |\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | valid row |\n"
+        "| AUD-0328 | malformed second row |\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | incomplete registry |\n",
+        "## 7. Реестр открытых находок\n```text\n"
+        "| AUD-327 | example, not registry data |\n```\n## 8. Evidence\n",
+        "```text\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | fenced example |\n## 8. Evidence\n```\n",
+        "<!--\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | commented example |\n## 8. Evidence\n-->\n",
+        "~~~text\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | unclosed fenced example |\n## 8. Evidence\n",
+        "```text\n~~~\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | mismatched fence example |\n## 8. Evidence\n",
+        "```text\nopaque prelude\n```\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | opaque authority prefix |\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | first registry |\n"
+        "## 7. Реестр открытых находок\n| AUD-327 | second registry |\n"
+        "## 8. Evidence\n",
+    ],
+)
+def test_audit_tracking_fails_closed_without_a_valid_registry(
+    tmp_path: Path, monkeypatch, registry: str | None
+) -> None:
+    source = "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    if registry is not None:
+        _write_audit_tracking_registry(test_file.parent.parent, registry)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "family", ["QUALITY", "TD", "FIX", "RZ", "MOD", "DESIGN", "CQ", "INFRA", "A11Y"]
+)
+def test_existing_tracking_families_do_not_depend_on_the_audit_registry(
+    tmp_path: Path, monkeypatch, family: str
+) -> None:
+    source = f"# {family}-123 @egorribun\npytest.skip('unavailable')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []
+
+
+def test_audit_tracking_registry_snapshot_is_reused_only_within_its_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n"
+    first = _write_repository_contract(tmp_path / "first", monkeypatch, source)
+    audit = _write_audit_tracking_registry(first.parent.parent)
+    original_read_text = Path.read_text
+    registry_reads: list[Path] = []
+
+    def read_text(path: Path, *args, **kwargs):
+        if path == audit:
+            registry_reads.append(path)
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    for _ in range(2):
+        errors: list[str] = []
+        check_anti_patterns(first, errors, [], [])
+        assert errors == []
+    assert registry_reads == [audit]
+
+    second = _write_repository_contract(tmp_path / "second", monkeypatch, source)
+    _write_audit_tracking_registry(
+        second.parent.parent,
+        _AUDIT_TRACKING_REGISTRY.replace("AUD-327", "AUD-328"),
+    )
+    errors = []
+    check_anti_patterns(second, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    ("suffix", "source"),
+    [
+        (".go", 't.Skipf("owned PostgreSQL slot required") // AUD-327 @egorribun\n'),
+        (
+            ".mjs",
+            'describe.skip("owned PostgreSQL slot required") // AUD-433 @egorribun\n',
+        ),
+    ],
+)
+def test_audit_tracking_accepts_real_go_and_javascript_comments(
+    tmp_path: Path, monkeypatch, suffix: str, source: str
+) -> None:
+    python_path = _write_repository_contract(tmp_path, monkeypatch, source)
+    test_file = python_path.with_suffix(suffix)
+    python_path.rename(test_file)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []

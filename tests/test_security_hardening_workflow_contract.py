@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +40,23 @@ SLSA_VERIFIER_SHA256 = (
 )
 KUBECONFORM_SHA256 = "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
 K6_SHA256 = "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1"
+SQUAWK_SHA256 = "03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+SQUAWK_RELEASE_URL = (
+    "https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
+)
+SQUAWK_BINARY_DIRECTORY = "university-ecosystem-tools/squawk/v2.67.0/linux-x64"
+SQUAWK_BINARY_SUFFIX = f"{SQUAWK_BINARY_DIRECTORY}/squawk-linux-x64"
+SQUAWK_RUNNER = "ubuntu-24.04"
+SQUAWK_VERIFY_SHELL = "/bin/bash --noprofile --norc -e -o pipefail {0}"
+SQUAWK_EXCLUSIONS = (
+    "require-concurrent-index-creation",
+    "constraint-missing-not-valid",
+    "adding-foreign-key-constraint",
+    "prefer-text-field",
+    "prefer-bigint-over-int",
+)
+SQUAWK_BASELINE_PATH = "alembic/versions/202611020000_mvp_baseline.py"
+
 TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
@@ -50,6 +69,218 @@ def _workflow(path: Path) -> dict[str, Any]:
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     return next(step for step in job["steps"] if step.get("name") == name)
+
+
+def _squawk_exclusions(run: Any) -> tuple[str, ...] | None:
+    if not isinstance(run, str):
+        return None
+    lines = [line.strip() for line in run.splitlines()]
+    expected = [
+        "while IFS= read -r migration; do",
+        '[ -z "$migration" ] && continue',
+        "squawk_args=()",
+        f'if [[ "$migration" == "{SQUAWK_BASELINE_PATH}" ]]; then',
+        "squawk_args=(",
+        *(f"--exclude {rule}" for rule in SQUAWK_EXCLUSIONS),
+        ")",
+        "fi",
+    ]
+    width = len(expected)
+    matches = sum(
+        lines[index : index + width] == expected
+        for index in range(len(lines) - width + 1)
+    )
+    if (
+        matches != 1
+        or run.count("squawk_args") != 3
+        or run.count("--exclude") != len(SQUAWK_EXCLUSIONS)
+    ):
+        return None
+    return SQUAWK_EXCLUSIONS
+
+
+def _has_standalone_squawk_checks(run: Any, target: str, expected_count: int) -> bool:
+    if not isinstance(run, str):
+        return False
+    input_line = f'printf \'%s  %s\\n\' "$expected_sha256" "${target}" |'
+    pattern = re.compile(
+        r"(?m)^[ \t]*"
+        + re.escape(input_line)
+        + r"\r?\n[ \t]*/usr/bin/sha256sum --check --strict[ \t]*$"
+    )
+    return len(pattern.findall(run)) == expected_count
+
+
+def _has_pinned_squawk_integrity_contract(job: Any) -> bool:
+    if not isinstance(job, dict):
+        return False
+    if (
+        job.get("name") != "Alembic Migrations"
+        or job.get("runs-on") != SQUAWK_RUNNER
+        or job.get("needs") != "pre-commit-check"
+        or job.get("timeout-minutes") != 15
+        or "if" in job
+        or "strategy" in job
+        or "continue-on-error" in job
+    ):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return False
+    names = [step.get("name") for step in steps if isinstance(step, dict)]
+    if "Install Squawk Linter" in names:
+        return False
+
+    def named_step(name: str) -> dict[str, Any] | None:
+        found = [
+            step
+            for step in steps
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        return found[0] if len(found) == 1 else None
+
+    verifier = named_step("Download and verify Squawk Linter")
+    setup_python = named_step("Set up Python")
+    lint = named_step("Lint Postgres Migrations (Squawk)")
+    if any(step is None for step in (verifier, setup_python, lint)):
+        return False
+    assert verifier is not None and lint is not None
+    if not (
+        names.index("Download and verify Squawk Linter")
+        < names.index("Set up Python")
+        < names.index("Lint Postgres Migrations (Squawk)")
+    ):
+        return False
+    for step in (verifier, lint):
+        if "if" in step or "continue-on-error" in step:
+            return False
+    if "uses" in verifier or verifier.get("shell") != SQUAWK_VERIFY_SHELL:
+        return False
+    if lint.get("id") != "migration-squawk":
+        return False
+    # ADR-051 retires the old revision-specific diagnostic, not the live gate.
+    if "Collect bounded 148642dd1207 DDL evidence" in names:
+        return False
+
+    verify_run = verifier.get("run")
+    lint_run = lint.get("run")
+    if not all(isinstance(run, str) for run in (verify_run, lint_run)):
+        return False
+    assert isinstance(verify_run, str)
+    assert isinstance(lint_run, str)
+
+    expected_sha = f'expected_sha256="{SQUAWK_SHA256}"'
+    asset_url = f'asset_url="{SQUAWK_RELEASE_URL}"'
+    binary_assignment = (
+        'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
+        f'{SQUAWK_BINARY_SUFFIX}"'
+    )
+    checksum_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$squawk_binary_path"'
+    verify_requirements = (
+        "set -euo pipefail",
+        'if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]]; then',
+        "$(/usr/bin/uname -s)",
+        "$(/usr/bin/uname -m)",
+        'if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" != /* ]]; then',
+        expected_sha,
+        asset_url,
+        f'download_dir="$RUNNER_TEMP/{SQUAWK_BINARY_DIRECTORY}"',
+        'binary_path="$download_dir/squawk-linux-x64"',
+        'partial_path="$binary_path.partial"',
+        'if [[ -e "$download_dir" || -L "$download_dir" ]]; then',
+        "/usr/bin/curl --fail --silent --show-error --location",
+        "--proto '=https' --proto-redir '=https' --tlsv1.2",
+        '--max-redirs 5 --output "$partial_path" "$asset_url"',
+        'if [[ ! -f "$partial_path" || '
+        '-L "$partial_path" || ! -s "$partial_path" ]]; then',
+        "/usr/bin/sha256sum --check --strict",
+        'printf \'%s  %s\\n\' "$expected_sha256" "$partial_path" |',
+        'printf \'%s  %s\\n\' "$expected_sha256" "$binary_path" |',
+        '/usr/bin/chmod 0755 -- "$partial_path"',
+    )
+    if not all(fragment in verify_run for fragment in verify_requirements):
+        return False
+    if re.search(r"(?<!/)curl\b|(?<!/)sha256sum\b", verify_run):
+        return False
+    if not (
+        _has_standalone_squawk_checks(verify_run, "partial_path", 1)
+        and _has_standalone_squawk_checks(verify_run, "binary_path", 1)
+    ):
+        return False
+    partial_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$partial_path" |'
+    final_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$binary_path" |'
+    partial_index = verify_run.find(partial_input)
+    partial_checker = verify_run.find(
+        "/usr/bin/sha256sum --check --strict", partial_index
+    )
+    chmod_index = verify_run.find('/usr/bin/chmod 0755 -- "$partial_path"')
+    move_index = verify_run.find('/usr/bin/mv -- "$partial_path" "$binary_path"')
+    final_index = verify_run.find(final_input)
+    final_checker = verify_run.find("/usr/bin/sha256sum --check --strict", final_index)
+    if not (
+        0
+        <= partial_index
+        < partial_checker
+        < chmod_index
+        < move_index
+        < final_index
+        < final_checker
+    ):
+        return False
+
+    if not all(fragment in lint_run for fragment in (binary_assignment, expected_sha)):
+        return False
+    lint_invocation = '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"'
+    lint_call_index = lint_run.find(lint_invocation)
+    lint_render_index = lint_run.find(
+        "uv run python -m scripts.quality.render_live_alembic_sql"
+    )
+    lint_input_index = lint_run.rfind(checksum_input + " |", 0, lint_call_index)
+    lint_checker_index = lint_run.find(
+        "/usr/bin/sha256sum --check --strict", lint_input_index
+    )
+    if (
+        "set -euo pipefail" not in lint_run
+        or lint_call_index < 0
+        or not (
+            0
+            <= lint_render_index
+            < lint_input_index
+            < lint_checker_index
+            < lint_call_index
+        )
+        or lint_run.count("/usr/bin/sha256sum --check --strict") < 2
+        or lint_run.count(checksum_input) < 2
+        or not _has_standalone_squawk_checks(lint_run, "squawk_binary_path", 2)
+        or lint_invocation not in lint_run
+        or _squawk_exclusions(lint_run) != SQUAWK_EXCLUSIONS
+        or "command -v squawk" in lint_run
+        or 'squawk "${squawk_args[@]}"' in lint_run
+    ):
+        return False
+
+    return True
+
+
+def _job_with_step_update(
+    job: dict[str, Any], name: str, updates: dict[str, Any]
+) -> dict[str, Any]:
+    changed_steps = []
+    for step in job["steps"]:
+        if step.get("name") == name:
+            changed_steps.append({**step, **updates})
+        else:
+            changed_steps.append(step)
+    return {**job, "steps": changed_steps}
+
+
+def _suppress_squawk_checksum(run: str, occurrence: int) -> str:
+    command = "/usr/bin/sha256sum --check --strict"
+    matches = list(re.finditer(re.escape(command), run))
+    if not 0 <= occurrence < len(matches):
+        raise AssertionError("requested Squawk checksum occurrence is missing")
+    match = matches[occurrence]
+    return run[: match.end()] + " || true" + run[match.end() :]
 
 
 def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> None:
@@ -155,11 +386,24 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "detect-secrets==1.5.0": "e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060",  # pragma: allowlist secret -- wheel checksum
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
-        "certifi==2026.10.19": "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b",
         "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
         "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum
     }
+    # certifi is checked against its uv.lock wheel record rather than a literal:
+    # the runner must name the locked version and the locked wheel digest.
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    certifi = next(
+        package for package in lock["package"] if package["name"] == "certifi"
+    )
+    certifi_wheel = next(
+        wheel
+        for wheel in certifi["wheels"]
+        if wheel["url"].endswith("-py3-none-any.whl")
+    )
+    expected[f"certifi=={certifi['version']}"] = certifi_wheel["hash"].removeprefix(
+        "sha256:"
+    )
     requirement_lines = {
         line.split(maxsplit=1)[0]: line
         for line in requirements.splitlines()
@@ -198,6 +442,15 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "scripts/quality/filter_checkov_sarif.py",
         "scripts/verify_secrets_baseline.py",
         "scripts/quality/validate_semgrep_sarif.py",
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
+        "quality/semgrep-dispositions.json",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".pre-commit-config.yaml",
         "security/detect-secrets-requirements.txt",
         "native/rust_ext/deny.toml",
         "frontend/package.json",
@@ -207,6 +460,22 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "frontend/scripts/setup-lhci-binaries.cjs",
     ):
         assert f'"{protected_input}"' in run
+
+    pip_integrity = _step(
+        jobs["pip-audit"], "Verify security policy inputs against protected base"
+    )["run"]
+    for protected_input in (
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
+        "quality/semgrep-dispositions.json",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".pre-commit-config.yaml",
+    ):
+        assert f'"{protected_input}"' in pip_integrity
 
     consumers = (
         "pip-audit",
@@ -295,6 +564,7 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
         assert verify["env"] == {
             "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
             "BASE_REPOSITORY": "${{ github.event.pull_request.base.repo.full_name }}",
+            "HEAD_REPOSITORY": "${{ github.event.pull_request.head.repo.full_name }}",
             "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
         }
         run = verify["run"]
@@ -520,3 +790,266 @@ def test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking() -> N
         assert f"{field}: scalar(" in run
     assert "console.log(result.stdout)" not in run
     assert "--fix" not in run
+
+
+def test_squawk_integrity_contract_rejects_weakening_controls() -> None:
+    """Pin the Linux x64 asset, trusted checker, consumers, and blocking guard."""
+    job = _workflow(CI)["jobs"]["alembic-migrations"]
+    assert _has_pinned_squawk_integrity_contract(job)
+
+    verifier = _step(job, "Download and verify Squawk Linter")
+    verify_run = verifier["run"]
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace(SQUAWK_SHA256, "0" * 64, 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace("/usr/bin/sha256sum", "sha256sum", 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace("/usr/bin/curl", "curl", 1)},
+        )
+    )
+    lint = _step(job, "Lint Postgres Migrations (Squawk)")
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": lint["run"].replace(SQUAWK_SHA256, "0" * 64, 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": lint["run"].replace("/usr/bin/sha256sum", "sha256sum", 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {
+                "run": lint["run"].replace(
+                    'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
+                    + SQUAWK_BINARY_SUFFIX
+                    + '"',
+                    'squawk_binary_path="$(command -v squawk)"',
+                    1,
+                )
+            },
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"if": "false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"continue-on-error": True},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "if": "false"})
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"if": "false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"continue-on-error": True},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": _suppress_squawk_checksum(verify_run, 0)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": _suppress_squawk_checksum(lint["run"], 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "continue-on-error": True})
+    # Removing historical machinery cannot silently bring it back under the
+    # current baseline's integrity contract.
+    assert not _has_pinned_squawk_integrity_contract(
+        {
+            **job,
+            "steps": [
+                *job["steps"],
+                {"name": "Collect bounded 148642dd1207 DDL evidence", "run": "true"},
+            ],
+        }
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "runs-on": "macos-15"})
+    assert not _has_pinned_squawk_integrity_contract(
+        {**job, "strategy": {"matrix": {"os": ["ubuntu-24.04", "macos-15"]}}}
+    )
+
+
+def test_npm_audit_uses_the_compiler_archive_bootstrap_node_version() -> None:
+    """The audit runner must satisfy the existing archive producer preflight."""
+
+    workflow = _workflow(SECURITY_AUDIT)
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["workflow_call"]["inputs"]["node-version"]["default"] == "24.21.0"
+    setup = _step(workflow["jobs"]["npm-audit"], "Set up Node.js")
+    assert setup["with"]["node-version"] == "${{ inputs.node-version }}"
+
+    callers = [
+        (path, name, job)
+        for path in WORKFLOWS.glob("*.yml")
+        for name, job in _workflow(path).get("jobs", {}).items()
+        if job.get("uses") == "./.github/workflows/reusable-security-audit.yml"
+    ]
+    assert callers, "the security audit must remain part of CI"
+    for path, name, job in callers:
+        assert job.get("with", {}).get("node-version", "24.21.0") == "24.21.0", (
+            path.name,
+            name,
+        )
+
+
+def test_generated_signing_keys_are_masked_before_environment_export() -> None:
+    openssl = 'secret="$(openssl rand -hex 32)"'
+    python = (
+        "secret=\"$(python -c 'import secrets; print(secrets.token_urlsafe(48))')\""
+    )
+    conditional = "env.SECRET_KEY == ''"
+    cases = [
+        (
+            CI,
+            name,
+            "Generate CI secret key if not configured (RZ-14-06)",
+            openssl,
+            None,
+            conditional,
+        )
+        for name in (
+            "compose-validate",
+            "backend-type-check",
+            "alembic-migrations",
+            "openapi-verify",
+            "verify-runtime-reqs",
+            "msw-mock-drift",
+        )
+    ]
+    cases.append(
+        (
+            CI,
+            "quality-inventory-check",
+            "Generate ephemeral audit settings",
+            openssl,
+            None,
+            conditional,
+        )
+    )
+    cases.extend(
+        (CI, job, name, python, "bash", None)
+        for job, name in (
+            ("rust-ffi-asan", "Generate ephemeral ASan signing key"),
+            ("rust-ffi-tsan", "Generate ephemeral TSan signing key"),
+        )
+    )
+    cases.extend(
+        (
+            WORKFLOWS / "deploy.yml",
+            job,
+            "Generate migration secret key",
+            openssl,
+            None,
+            None,
+        )
+        for job in ("validate", "rollback")
+    )
+    for path, job_name, step_name, generator, shell, guard in cases:
+        job = _workflow(path)["jobs"][job_name]
+        steps = [step for step in job["steps"] if step.get("name") == step_name]
+        assert len(steps) == 1, (path.name, job_name)
+        step = steps[0]
+        assert step.get("shell") == shell
+        assert step.get("if") == guard
+        assert step["run"].splitlines() == [
+            "set -euo pipefail",
+            generator,
+            "printf '::add-mask::%s\\n' \"$secret\"",
+            'printf \'SECRET_KEY=%s\\n\' "$secret" >> "$GITHUB_ENV"',
+        ], (path.name, job_name)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing-reset", "wrong-path", "extra-rule", "extra-assignment", "unguarded"],
+)
+def test_squawk_integrity_contract_rejects_baseline_exception_scope_drift(
+    defect: str,
+) -> None:
+    job = _workflow(CI)["jobs"]["alembic-migrations"]
+    assert _has_pinned_squawk_integrity_contract(job)
+    lint = _step(job, "Lint Postgres Migrations (Squawk)")
+    run = lint["run"]
+    if defect == "missing-reset":
+        changed = run.replace("squawk_args=()", "", 1)
+    elif defect == "wrong-path":
+        changed = run.replace(SQUAWK_BASELINE_PATH, "alembic/versions/other.py", 1)
+    elif defect == "extra-rule":
+        changed = run.replace(
+            "--exclude adding-foreign-key-constraint",
+            "--exclude adding-foreign-key-constraint --exclude ban-drop-table",
+            1,
+        )
+    elif defect == "extra-assignment":
+        changed = run + "\nsquawk_args=(--exclude ban-drop-table)\n"
+    else:
+        assert defect == "unguarded"
+        changed = run.replace(
+            f'if [[ "$migration" == "{SQUAWK_BASELINE_PATH}" ]]; then',
+            "if true; then",
+            1,
+        )
+    assert changed != run
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job, "Lint Postgres Migrations (Squawk)", {"run": changed}
+        )
+    )
+
+
+def test_security_audit_protects_aud381_gate_inputs() -> None:
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    for job_name in ("policy-integrity", "pip-audit"):
+        run = _step(
+            jobs[job_name], "Verify security policy inputs against protected base"
+        )["run"]
+        for path in (
+            "scripts/quality/dast_privacy.py",
+            "scripts/quality/nuclei_findings_gate.py",
+            "scripts/quality/sqlmap_scan_gate.py",
+            "scripts/quality/scorecard_floors_gate.py",
+            "quality/scorecard-floors.json",
+        ):
+            assert f'"{path}"' in run

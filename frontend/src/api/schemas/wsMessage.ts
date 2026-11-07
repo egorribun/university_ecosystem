@@ -105,7 +105,7 @@ const ErrorSchema = v.object({
 
 // Wave 204 SW3 — ws-hub emits this directly to the client socket when a client
 // exceeds its outgoing message rate (client.go:178). Acknowledged in the union
-// so the hook stops logging it as an invalid frame; no handler action today.
+// so the hook accepts it and can correlate a recent resume join for bounded retry.
 const RateLimitExceededSchema = v.object({ type: v.literal("rate_limit_exceeded") })
 
 const NewMessageSchema = v.object({
@@ -143,6 +143,20 @@ const PresenceSchema = v.object({
   user_id: UuidString,
   active: v.boolean(),
   last_seen: v.nullable(v.string()),
+})
+
+const HeartbeatNonceSchema = v.pipe(v.string(), v.regex(/^[0-9a-f]{32}$/))
+
+export const WsClientHeartbeatPingSchema = v.object({
+  type: v.literal("heartbeat_ping"),
+  nonce: HeartbeatNonceSchema,
+})
+
+export type WsClientHeartbeatPing = v.InferOutput<typeof WsClientHeartbeatPingSchema>
+
+const HeartbeatPongSchema = v.object({
+  type: v.literal("heartbeat_pong"),
+  nonce: HeartbeatNonceSchema,
 })
 
 // Wave 205 — REST-initiated server→client broadcasts (the author edited / soft-deleted
@@ -184,12 +198,17 @@ const ReactionChangedSchema = v.object({
 const ReplayCheckpointSchema = v.object({
   type: v.literal("replay_checkpoint"),
   chat_id: UuidString,
+  // Set only when a trusted ws-hub has suppressed a known persisted legacy
+  // event because its producer frame omitted the audience. Other checkpoints
+  // remain cursor-only and must not trigger a REST refresh.
+  refresh_required: v.optional(v.literal(true)),
 })
 
 // ── Discriminated union of all valid server→client frames ─────────────────────
 
 export const WsServerMessageSchema = v.variant("type", [
   PongSchema,
+  HeartbeatPongSchema,
   ErrorSchema,
   RateLimitExceededSchema,
   NewMessageSchema,
