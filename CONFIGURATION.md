@@ -526,6 +526,7 @@ or `os.getenv` reads, and fails when a name has no row with a documented default
 | `NATS_TASK_TIMEOUT_SECONDS` | Per-task timeout for the NATS task worker in `app/core/nats_broker.py`. | `30` |
 | `NATS_FETCH_BATCH_SIZE` | Messages fetched per NATS task-worker batch, clamped to 1 through 100. | `20` |
 | `SPICEDB_INSECURE` | Permits a plaintext SpiceDB connection when `true`; TLS is otherwise forced. Local development only. Read in `app/core/spicedb.py`. | `false` |
+| `AUD373_TLS_DIAGNOSTICS` | Opt-in, bounded AUD-373 handshake proof telemetry when internal HTTP mTLS is enabled. Only the exact value `1` enables it; all other values leave it disabled. Read in `app/server/spiffe_worker.py`; it does not change TLS verification or authorization. | Unset (disabled) |
 | `INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID` | Exact backend workload identity; required when internal HTTP mTLS is enabled. | Unset |
 | `INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS` | Comma-separated, unique client identities in the server trust domain; must include the backend's own probe identity when internal HTTP mTLS is enabled. | Unset |
 

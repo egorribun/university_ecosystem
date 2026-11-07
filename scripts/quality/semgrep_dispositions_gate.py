@@ -312,6 +312,36 @@ def _matches_reviewed_semgrep_ignore(repository_path: str) -> bool:
     return False
 
 
+def _fixpoint_timeout_details(timeouts: list[Any]) -> str:
+    """Expose bounded source coordinates, never scanner messages or source text."""
+    details: list[dict[str, str | int]] = []
+    for entry in timeouts[:8]:
+        detail: dict[str, str | int] = {}
+        if isinstance(entry, dict):
+            rule_id = entry.get("rule_id")
+            if isinstance(rule_id, str) and re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,200}", rule_id
+            ):
+                detail["rule_id"] = rule_id
+            location = entry.get("location")
+            if isinstance(location, dict):
+                path = location.get("path")
+                if isinstance(path, str) and re.fullmatch(
+                    r"[A-Za-z0-9_./-]{1,240}", path
+                ):
+                    try:
+                        detail["path"] = normalize_path(path)
+                    except GateError:
+                        pass
+                start = location.get("start")
+                line = start.get("line") if isinstance(start, dict) else None
+                if type(line) is int and 0 < line <= 1_000_000_000:
+                    detail["line"] = line
+        details.append(detail)
+    summary = {"details": details, "omitted": max(0, len(timeouts) - len(details))}
+    return json.dumps(summary, ensure_ascii=True, separators=(",", ":"))
+
+
 def load_findings(
     path: Path, repository_root: Path | None = None
 ) -> list[dict[str, Any]]:
@@ -344,7 +374,8 @@ def load_findings(
     if fixpoint_timeouts:
         raise GateError(
             f"Semgrep reported {len(fixpoint_timeouts)} fixpoint timeout(s); "
-            "results are not authoritative"
+            "results are not authoritative; "
+            + _fixpoint_timeout_details(fixpoint_timeouts)
         )
     paths = loaded.get("paths")
     scanned = paths.get("scanned") if isinstance(paths, dict) else None

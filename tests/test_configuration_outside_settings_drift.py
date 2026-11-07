@@ -100,6 +100,10 @@ def test_every_backend_environment_read_has_a_documented_default() -> None:
     assert without_default == []
 
 
+def test_tls_proof_diagnostics_documented_default_is_disabled() -> None:
+    assert _documented_defaults()["AUD373_TLS_DIAGNOSTICS"] == ["Unset (disabled)"]
+
+
 def test_literal_environment_scan_finds_known_outside_settings_reads() -> None:
     reads = _code_env_reads()
 

@@ -969,6 +969,9 @@ EOF
     --set-file "backend.config.jwtPrivateKeyPEM=${WORK_DIR}/jwt-private.pem" \
     --set-file "gateway.config.jwtSecret=${WORK_DIR}/secret-files/gateway-jwt" \
     --set-file "fileProcessor.config.rsaPublicKeyPEM=${WORK_DIR}/jwt-public.pem"
+  # The second upgrade also changes the backend Pod template. Finish that
+  # rollout before probes so a retiring replica cannot lose handshake evidence.
+  kubectl -n "$NAMESPACE" rollout status "deployment/${BACKEND_SVC}" --timeout=600s || return 1
   kubectl -n "$NAMESPACE" rollout status \
     "deployment/${FILE_PROCESSOR_SVC}" --timeout=600s
   # Gateway readiness performs the existing authenticated FileProcessingService

@@ -2634,3 +2634,42 @@ def test_public_sslobject_handshake_observer(
         import uvloop
 
         uvloop.run(exercise())
+
+
+@pytest.mark.parametrize("rollout_status", [0, 1, 124])
+def test_final_backend_rollout_precedes_probes_and_fails_closed(
+    rollout_status: int,
+) -> None:
+    deploy = _shell_function("deploy_stack")
+    final_upgrade = deploy.rsplit('  helm upgrade --install "$RELEASE"', 1)[1]
+    tail = final_upgrade.split('  kubectl -n "$NAMESPACE" rollout status', 1)[1]
+    rollout_tail = '  kubectl -n "$NAMESPACE" rollout status' + tail
+    assert rollout_tail.index('"deployment/${BACKEND_SVC}"') < rollout_tail.index(
+        '"deployment/${FILE_PROCESSOR_SVC}"'
+    )
+    command = f"""set -euo pipefail
+NAMESPACE=fixture
+BACKEND_SVC=backend
+FILE_PROCESSOR_SVC=file-processor
+GATEWAY_SVC=gateway
+kubectl() {{
+  printf '%s\\n' "$*"
+  case "$*" in *deployment/backend*) return {rollout_status} ;; esac
+}}
+finish_deploy() {{
+{rollout_tail}
+if finish_deploy; then printf 'PROBES_ALLOWED\\n'; else printf 'PROBES_BLOCKED\\n'; fi
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout.decode("utf-8")
+    assert "rollout status deployment/backend --timeout=600s" in output
+    if rollout_status == 0:
+        assert "PROBES_ALLOWED" in output
+        assert "deployment/file-processor" in output
+        assert "deployment/gateway" in output
+    else:
+        assert "PROBES_BLOCKED" in output
+        assert "PROBES_ALLOWED" not in output
+        assert "deployment/file-processor" not in output
+        assert "deployment/gateway" not in output

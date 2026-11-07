@@ -1687,3 +1687,74 @@ def test_main_accepts_the_strip_prefix_option(
         "out.",
     ]
     assert gate.main(args) == 0
+
+
+def test_fixpoint_diagnostics_include_only_bounded_source_coordinates() -> None:
+    report = gate._fixpoint_timeout_details(
+        [
+            {
+                "rule_id": "python.security.example",
+                "message": "private scanner message",
+                "source": "private source text",
+                "location": {"path": "./app/example.py", "start": {"line": 12}},
+            }
+        ]
+    )
+    assert json.loads(report) == {
+        "details": [
+            {"rule_id": "python.security.example", "path": "app/example.py", "line": 12}
+        ],
+        "omitted": 0,
+    }
+    assert "private" not in report
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["../outside.py", "/absolute.py", "app/file\n::error::text", "a\x1bb", "x" * 241],
+)
+def test_fixpoint_diagnostics_omit_unsafe_paths(path: str) -> None:
+    report = gate._fixpoint_timeout_details([{"location": {"path": path}}])
+    assert json.loads(report) == {"details": [{}], "omitted": 0}
+
+
+@pytest.mark.parametrize("rule_id", [None, 1, "bad\nrule", "a" * 201])
+def test_fixpoint_diagnostics_omit_unsafe_rule_ids(rule_id: object) -> None:
+    report = gate._fixpoint_timeout_details([{"rule_id": rule_id}])
+    assert json.loads(report) == {"details": [{}], "omitted": 0}
+
+
+@pytest.mark.parametrize("line", [None, True, 0, -1, "12", 1_000_000_001])
+def test_fixpoint_diagnostics_omit_invalid_lines(line: object) -> None:
+    report = gate._fixpoint_timeout_details([{"location": {"start": {"line": line}}}])
+    assert json.loads(report) == {"details": [{}], "omitted": 0}
+
+
+def test_fixpoint_diagnostics_bound_entries_and_tolerate_unknown_shapes() -> None:
+    report = gate._fixpoint_timeout_details(
+        [None, {}, "unknown", {"location": None}, {"location": {"start": None}}] * 20
+    )
+    assert json.loads(report) == {"details": [{}] * 8, "omitted": 92}
+
+
+def test_fixpoint_failure_retains_count_and_source_without_becoming_a_pass(
+    tmp_path: Path,
+) -> None:
+    report = {
+        "results": [],
+        "errors": [],
+        "skipped_rules": [],
+        "paths": {"scanned": [PATH], "skipped": []},
+        "time": {
+            "fixpoint_timeouts": [
+                {"rule_id": CHECK, "location": {"path": PATH, "start": {"line": 7}}}
+            ]
+        },
+    }
+    with pytest.raises(gate.GateError) as caught:
+        gate.load_findings(_write(tmp_path / "timed-out.json", report))
+    message = str(caught.value)
+    assert "1 fixpoint timeout(s); results are not authoritative" in message
+    assert f'"rule_id":"{CHECK}"' in message
+    assert f'"path":"{PATH}"' in message
+    assert '"line":7' in message
