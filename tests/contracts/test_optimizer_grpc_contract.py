@@ -111,36 +111,35 @@ def test_detect_conflicts_grpc_contract(pact: Pact) -> None:
     assert len(interaction_snapshots) == 1
     [(description, request, responses)] = interaction_snapshots
     assert description == "a gRPC request for DetectConflicts"
-    assert request == {
-        "target": {
-            "weekday": "Monday",
-            "start_time": {"seconds": 1710000000, "nanos": 0},
-            "end_time": {"seconds": 1710003600, "nanos": 0},
-            "parity": "both",
-            "room": "404",
-            "teacher": "Dr. Smith",
+
+    def expected_type_matcher(value: object) -> dict[str, object]:
+        return {
+            "pact:matcher:type": "type",
+            "value": value,
+            "min": None,
+            "max": None,
+        }
+
+    expected_event = {
+        "weekday": expected_type_matcher("Monday"),
+        "start_time": {
+            "seconds": expected_type_matcher(1710000000),
+            "nanos": 0,
         },
-        "existing": [
-            {
-                "weekday": "Monday",
-                "start_time": {"seconds": 1710000000, "nanos": 0},
-                "end_time": {"seconds": 1710003600, "nanos": 0},
-                "parity": "both",
-                "room": "404",
-                "teacher": "Dr. Smith",
-            }
-        ],
+        "end_time": {
+            "seconds": expected_type_matcher(1710003600),
+            "nanos": 0,
+        },
+        "parity": expected_type_matcher("both"),
+        "room": expected_type_matcher("404"),
+        "teacher": expected_type_matcher("Dr. Smith"),
     }
+    expected_request = {
+        "target": expected_event,
+        "existing": [expected_event],
+    }
+    expected_response = {"conflicts": [expected_event]}
+
+    assert request == expected_request
     assert len(responses) == 1
-    assert responses[0] == {
-        "conflicts": [
-            {
-                "weekday": "Monday",
-                "start_time": {"seconds": 1710000000, "nanos": 0},
-                "end_time": {"seconds": 1710003600, "nanos": 0},
-                "parity": "both",
-                "room": "404",
-                "teacher": "Dr. Smith",
-            }
-        ]
-    }
+    assert responses[0] == expected_response
