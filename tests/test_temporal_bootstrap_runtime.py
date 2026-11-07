@@ -46,7 +46,8 @@ $script:fixtureError = $false
 function Fail-Fixture { $script:fixtureError = $true; throw 'synthetic fixture contract error' }
 function docker {
     $a = @($args | ForEach-Object { [string]$_ })
-    if ($f.dockerFailure -eq $true) { $global:LASTEXITCODE = 5; return }
+    if ($f.dockerFailure -eq $true) { Write-Error 'synthetic docker command detail' -ErrorAction Continue; $global:LASTEXITCODE = 5; return }
+    if ($f.dockerOutputShapeFailure -eq $true) { $global:LASTEXITCODE = 0; return @('synthetic stdout one', 'synthetic stdout two') }
     $global:LASTEXITCODE = 0
     if ($a[0] -ceq 'image' -and $a[1] -ceq 'inspect') {
         if ($a[2] -cne '--format' -or $a[3] -cne '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}') { Fail-Fixture }
@@ -121,6 +122,7 @@ try {
     Write-Output 'ACCEPTED'
 } catch {
     if ($script:fixtureError) { Write-Output 'FIXTURE_ERROR'; exit 3 }
+    if ($f.dockerFailure -eq $true -or $f.dockerOutputShapeFailure -eq $true) { [Console]::Error.WriteLine("THROWN_EXCEPTION=$($_.Exception.Message)") }
     Write-Output 'REJECTED'
     exit 2
 }
@@ -347,6 +349,52 @@ class RuntimeGuard(unittest.TestCase):
 
     def test_baseline(self):
         self.check(self.good, True)
+
+    def test_inspection_failure_emits_only_allowlisted_phase_and_preserves_throw(self):
+        for field, result in (
+            ("dockerFailure", "command-failed"),
+            ("dockerOutputShapeFailure", "invalid-output-shape"),
+        ):
+            with self.subTest(result=result):
+                value = copy.deepcopy(self.good)
+                value[field] = True
+                self.json_path.write_text(json.dumps(value), encoding="utf-8")
+                code, stdout, stderr = asyncio.run(
+                    run_powershell(
+                        [
+                            self.pwsh,
+                            "-NoProfile",
+                            "-NonInteractive",
+                            "-File",
+                            str(self.runner),
+                            str(HELPER),
+                            str(self.json_path),
+                            str(self.state),
+                            str(self.repo),
+                        ]
+                    )
+                )
+                self.assertEqual(code, 2, stdout + stderr)
+                self.assertEqual(stdout.strip(), "REJECTED")
+                self.assertIn(
+                    f"TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=temporal-server-image result={result}",
+                    stderr,
+                )
+                self.assertIn(
+                    "THROWN_EXCEPTION=Cannot inspect Temporal bootstrap runtime identity.",
+                    stderr,
+                )
+                for forbidden in (
+                    "synthetic docker command detail",
+                    "synthetic stdout one",
+                    "synthetic stdout two",
+                    SERVER_ID,
+                    INIT_ID,
+                    SERVER_REF,
+                    INIT_REF,
+                    self.secret,
+                ):
+                    self.assertNotIn(forbidden, stdout + stderr)
 
     def test_image_and_ownership_negatives(self):
         changes = []

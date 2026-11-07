@@ -503,11 +503,32 @@ function Assert-InPlaceTemporalBootstrapVolumeSafety {
 }
 
 function Get-TemporalBootstrapDockerObject {
-    param([Parameter(Mandatory=$true)][string[]]$Arguments)
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateSet(
+            'temporal-server-image', 'temporal-init-image',
+            'temporal-server-container', 'temporal-init-container',
+            'network-namespace-target', 'network-namespace-mode',
+            'pid-namespace-target', 'pid-namespace-mode',
+            'peer-network-mode', 'peer-pid-mode', 'peer-mount-metadata'
+        )]
+        [string]$Phase,
+        [Parameter(Mandatory=$true)][string[]]$Arguments
+    )
     $output = @(docker @Arguments 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $output.Count -ne 1) { throw 'Cannot inspect Temporal bootstrap runtime identity.' }
+    if ($LASTEXITCODE -ne 0) {
+        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=command-failed") } catch { }
+        throw 'Cannot inspect Temporal bootstrap runtime identity.'
+    }
+    if ($output.Count -ne 1) {
+        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=invalid-output-shape") } catch { }
+        throw 'Cannot inspect Temporal bootstrap runtime identity.'
+    }
     try { return ($output[0] | ConvertFrom-Json -ErrorAction Stop) }
-    catch { throw 'Cannot parse Temporal bootstrap runtime identity.' }
+    catch {
+        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=invalid-json") } catch { }
+        throw 'Cannot parse Temporal bootstrap runtime identity.'
+    }
 }
 
 function Get-TemporalBootstrapContainerId {
@@ -634,11 +655,13 @@ function Test-TemporalBootstrapSharedNamespace {
         }
         $reference = $Mode.Substring('container:'.Length)
         if ($reference -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$') { throw 'A running network namespace reference is invalid.' }
-        $targetId = [string](Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', '{{json .Id}}', $reference))
+        $targetPhase = if ($Field -ceq 'NetworkMode') { 'network-namespace-target' } else { 'pid-namespace-target' }
+        $targetId = [string](Get-TemporalBootstrapDockerObject -Phase $targetPhase -Arguments @('container', 'inspect', '--format', '{{json .Id}}', $reference))
         if ($targetId -cnotmatch '^[0-9a-f]{64}$' -or -not $seen.Add($targetId)) { throw 'A running network namespace chain is invalid.' }
         if ($targetId -ceq $ServerId -or $targetId -ceq $InitId) { return $true }
         $format = if ($Field -ceq 'NetworkMode') { '{{json .HostConfig.NetworkMode}}' } else { '{{json .HostConfig.PidMode}}' }
-        $nextMode = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', $format, $targetId)
+        $modePhase = if ($Field -ceq 'NetworkMode') { 'network-namespace-mode' } else { 'pid-namespace-mode' }
+        $nextMode = Get-TemporalBootstrapDockerObject -Phase $modePhase -Arguments @('container', 'inspect', '--format', $format, $targetId)
         if ($null -eq $nextMode) { throw 'A running namespace cannot be verified.' }
         $Mode = [string]$nextMode
         if ($Field -ceq 'NetworkMode' -and [string]::IsNullOrWhiteSpace($Mode)) { throw 'A running network namespace cannot be verified.' }
@@ -682,18 +705,18 @@ function Assert-TemporalBootstrapRunningPeers {
     $checkedVolumes = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($peerId in $running) {
         if ([string]$peerId -cnotmatch '^[0-9a-f]{64}$' -or [string]$peerId -ceq $InitId) { throw 'A running container identity is invalid for Temporal bootstrap.' }
-        $mode = [string](Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', '{{json .HostConfig.NetworkMode}}', [string]$peerId))
+        $mode = [string](Get-TemporalBootstrapDockerObject -Phase 'peer-network-mode' -Arguments @('container', 'inspect', '--format', '{{json .HostConfig.NetworkMode}}', [string]$peerId))
         if ([string]::IsNullOrWhiteSpace($mode) -or (Test-TemporalBootstrapSharedNamespace -Mode $mode -ServerId $ServerId -InitId $InitId -Field 'NetworkMode')) {
             throw 'A running container shares or obscures the Temporal network namespace.'
         }
-        $pidValue = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', '{{json .HostConfig.PidMode}}', [string]$peerId)
+        $pidValue = Get-TemporalBootstrapDockerObject -Phase 'peer-pid-mode' -Arguments @('container', 'inspect', '--format', '{{json .HostConfig.PidMode}}', [string]$peerId)
         if ($null -eq $pidValue) { throw 'A running process namespace cannot be verified.' }
         $pidMode = [string]$pidValue
         if ($pidMode -ceq 'host' -or (Test-TemporalBootstrapSharedNamespace -Mode $pidMode -ServerId $ServerId -InitId $InitId -Field 'PidMode')) {
             throw 'A running container can observe a Temporal process namespace.'
         }
         $peerFormat = '{"Labels":{{json .Config.Labels}},"Mounts":{{json .Mounts}}}'
-        $peer = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', $peerFormat, [string]$peerId)
+        $peer = Get-TemporalBootstrapDockerObject -Phase 'peer-mount-metadata' -Arguments @('container', 'inspect', '--format', $peerFormat, [string]$peerId)
         $labelsProperty = $peer.PSObject.Properties['Labels']
         $mountsProperty = $peer.PSObject.Properties['Mounts']
         if ($null -eq $labelsProperty -or $null -eq $mountsProperty -or $null -eq $peer.Labels) {
@@ -757,8 +780,8 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     $serverModel = $ComposeModel.services.PSObject.Properties['temporal'].Value
     $initModel = $ComposeModel.services.PSObject.Properties['temporal-namespace-init'].Value
     $imageFormat = '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
-    $serverImage = Get-TemporalBootstrapDockerObject -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$serverModel.image)
-    $initImage = Get-TemporalBootstrapDockerObject -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$initModel.image)
+    $serverImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-server-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$serverModel.image)
+    $initImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-init-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$initModel.image)
     if ([string]$serverImage.Id -cnotmatch '^sha256:[0-9a-f]{64}$' -or
         [string]$initImage.Id -cnotmatch '^sha256:[0-9a-f]{64}$' -or
         [string]$serverImage.Config.User -cne 'temporal') { throw 'Temporal image identities are invalid.' }
@@ -776,8 +799,8 @@ function Assert-InPlaceTemporalBootstrapRuntime {
         '"SecurityOpt":{{json .HostConfig.SecurityOpt}},"PidMode":{{json .HostConfig.PidMode}},"UsernsMode":{{json .HostConfig.UsernsMode}},' +
         '"Devices":{{json .HostConfig.Devices}},"DeviceCgroupRules":{{json .HostConfig.DeviceCgroupRules}},"Tmpfs":{{json .HostConfig.Tmpfs}}},' +
         '"Mounts":{{json .Mounts}}}'
-    $server = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', $format, $serverId)
-    $init = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', $format, $initId)
+    $server = Get-TemporalBootstrapDockerObject -Phase 'temporal-server-container' -Arguments @('container', 'inspect', '--format', $format, $serverId)
+    $init = Get-TemporalBootstrapDockerObject -Phase 'temporal-init-container' -Arguments @('container', 'inspect', '--format', $format, $initId)
     foreach ($pair in @(@($server, $serverId, 'temporal', $serverImage), @($init, $initId, 'temporal-namespace-init', $initImage))) {
         $container, $id, $service, $image = $pair
         if ([string]$container.Id -cne $id -or [string]$container.Image -cne [string]$image.Id -or

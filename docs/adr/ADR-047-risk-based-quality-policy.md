@@ -2279,3 +2279,19 @@ passed A, C and D. B received EOF without a correlated server event and
 remains open. This decision covers only the two bindings. Scanner
 inventories, expiries, required checks and the separate Temporal and
 ADR-052 decisions retain their existing scope.
+
+## Owner-approved AUD-373 rollout source bindings (2026-11-07 UTC)
+
+The owner approved the two exact source bindings in published commit
+`1f532f35`. The SHA-256 for
+`scripts/kind/aud373_internal_mtls_proof.sh` moved from
+`84878536...78d5226` to `a2721732...3973ddf1`. The SHA-256 for
+`tests/test_internal_mtls_kind_contract.py` moved from
+`071d3336...fd2c12` to `4bef0e32...939d2a7e`. The private decision
+receipt retains the full digests.
+
+This revision waits for the backend deployment to finish its second rollout
+before running the probes. It retains the exact TLS certificate-required
+criterion for B. The decision covers these two bindings and leaves
+Semgrep dispositions, scanner inventories, required checks and ADR-052
+under their existing decision scopes.
