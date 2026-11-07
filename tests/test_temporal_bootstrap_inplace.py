@@ -151,18 +151,35 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
         fixture.write_text("synthetic bind source\n", encoding="utf-8")
     runner = tmp_path / "validate.ps1"
     runner.write_text(
-        "param($Helper,$Config,$State,$Repo)\n"
+        "param($Helper,$Config,$State,$Repo,$ComposeVersion)\n"
         "$ErrorActionPreference='Stop'\n. $Helper\n"
+        "$global:composeVersionCalls=0\n"
+        "function docker {\n"
+        "  if (($args -join ' ') -cne 'compose version --short') { throw 'unexpected Docker command' }\n"
+        "  $global:composeVersionCalls++; if ($global:composeVersionCalls -gt 1) { throw 'Compose version was not cached' }\n"
+        "  if ($ComposeVersion -ceq '__exit_error__') { $global:LASTEXITCODE=1; return }\n"
+        "  $global:LASTEXITCODE=0; return $ComposeVersion\n"
+        "}\n"
         "$m=Get-Content -Raw -LiteralPath $Config | ConvertFrom-Json\n"
         "Assert-InPlaceTemporalBootstrapModel -ComposeModel $m -StateRoot $State -ProjectRoot $Repo\n",
         encoding="utf-8",
     )
     config = tmp_path / "compose.json"
 
-    async def validate(value: dict, *, expected: bool = False) -> bool:
+    async def validate(
+        value: dict,
+        *,
+        expected: bool = False,
+        compose_version: str = "v2.38.2",
+    ) -> bool:
         config.write_text(json.dumps(value), encoding="utf-8")
         status, output = await _run_powershell(
-            runner, str(HELPER), str(config), str(state), str(repo)
+            runner,
+            str(HELPER),
+            str(config),
+            str(state),
+            str(repo),
+            compose_version,
         )
         if expected:
             assert status == 0, output
@@ -170,12 +187,72 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
 
     good = _model(state, repo)
     assert await validate(good, expected=True)
+    legacy_fixture = {
+        "compose": "v2.38.2",
+        "compose_go": "v2.7.1",
+        "explicit_false_bind": {},
+        "short_path_bind": {"create_host_path": True},
+    }
+    # Captured from the separate config-only Compose 5.6.0 reproduction.
+    modern_fixture = {
+        "compose": "5.6.0",
+        "explicit_false_bind": {"create_host_path": False},
+        "short_path_bind": {},
+    }
     omitted_defaults = copy.deepcopy(good)
     for service in omitted_defaults["services"].values():
         for mount in service.get("volumes", []):
             if mount.get("type") == "bind":
                 mount["bind"] = {}
-    assert not await validate(omitted_defaults)
+    # compose-go v2.7.1's bool default is false and omits false in JSON.
+    assert await validate(
+        omitted_defaults,
+        expected=True,
+        compose_version=legacy_fixture["compose"],
+    )
+    assert await validate(omitted_defaults, expected=True, compose_version="2.38.2")
+    short_bind_legacy = copy.deepcopy(good)
+    short_bind_legacy["services"]["temporal-namespace-init"]["volumes"][1]["bind"] = (
+        legacy_fixture["short_path_bind"]
+    )
+    assert not await validate(
+        short_bind_legacy,
+        compose_version=legacy_fixture["compose"],
+    )
+    # Newer OptOut defaults are true and also omit true in JSON.
+    assert not await validate(
+        omitted_defaults,
+        compose_version=modern_fixture["compose"],
+    )
+    # An explicit false remains sufficient under modern or unknown versions.
+    assert await validate(
+        good,
+        expected=True,
+        compose_version=modern_fixture["compose"],
+    )
+
+    # Counterexample: an allowed full-mode overlay replaces this expected
+    # target with `./.temporal-bootstrap/profile.toml:/run/temporal-bootstrap/profile.toml:ro`.
+    # The modern config-only fixture records the short bind's true default as bind:{}.
+    short_profile_override = copy.deepcopy(good)
+    short_profile_override["services"]["temporal-namespace-init"]["volumes"][1][
+        "bind"
+    ] = modern_fixture["short_path_bind"]
+    # The same bind:{} model is safe under the verified legacy default but
+    # unsafe under the exact modern version that produced the fixture.
+    assert await validate(
+        short_profile_override,
+        expected=True,
+        compose_version=legacy_fixture["compose"],
+    )
+    assert not await validate(
+        short_profile_override,
+        compose_version=modern_fixture["compose"],
+    )
+
+    missing_source = copy.deepcopy(good)
+    del missing_source["services"]["temporal-namespace-init"]["volumes"][1]["source"]
+    assert not await validate(missing_source, compose_version="v2.38.2")
     token_path.unlink()
     assert not await validate(good)
     token_path.write_text("synthetic-worker-token", encoding="ascii")
@@ -985,3 +1062,82 @@ catch { Write-Output 'REJECTED'; exit 2 }
     assert not await accepts(malformed)
     malformed["mounts"][peer] = {}
     assert not await accepts(malformed)
+
+
+@pytest.mark.asyncio
+async def test_normalized_compose_host_path_creation_flag_is_version_aware(
+    tmp_path: Path,
+) -> None:
+    # The normalized omission has two meanings across compose-go versions.
+    cases = [
+        ({"bind": {}}, False),
+        ({"bind": {"create_host_path": False}}, True),
+        ({}, False),
+        ({"bind": None}, False),
+        ({"bind": False}, False),
+        ({"bind": []}, False),
+        ({"bind": {"create_host_path": True}}, False),
+        ({"bind": {"create_host_path": None}}, False),
+        ({"bind": {"create_host_path": "false"}}, False),
+        ({"bind": {"create_host_path": 0}}, False),
+        ({"bind": {"create_host_path": []}}, False),
+        ({"bind": {"create_host_path": {}}}, False),
+    ]
+    input_path = tmp_path / "normalized-mounts.json"
+    input_path.write_text(json.dumps([mount for mount, _ in cases]))
+    runner = tmp_path / "host-path-flag.ps1"
+    runner.write_text(
+        "param($Helper,$InputPath,$ComposeVersion)\n"
+        "$ErrorActionPreference='Stop'\n. $Helper\n"
+        "$global:composeVersionCalls=0\n"
+        "function docker {\n"
+        "  if (($args -join ' ') -cne 'compose version --short') { throw 'unexpected Docker command' }\n"
+        "  $global:composeVersionCalls++; if ($global:composeVersionCalls -gt 1) { throw 'Compose version was not cached' }\n"
+        "  if ($ComposeVersion -ceq '__exit_error__') { $global:LASTEXITCODE=1; return }\n"
+        "  $global:LASTEXITCODE=0; return $ComposeVersion\n"
+        "}\n"
+        "$mounts=Get-Content -Raw -LiteralPath $InputPath | ConvertFrom-Json\n"
+        "$results=@(foreach($mount in $mounts) { Test-TemporalBootstrapNoHostPathCreation -Mount $mount })\n"
+        "ConvertTo-Json -Compress -InputObject $results\n"
+    )
+    version_cases = (
+        ("v2.38.2", True),
+        ("2.38.2", True),
+        ("v5.1.2", False),
+        ("v5.6.0", False),
+        ("5.6.0", False),
+        ("v2.38.2-desktop.1", False),
+        ("__exit_error__", False),
+    )
+    for compose_version, omitted_expected in version_cases:
+        status, output = await _run_powershell(
+            runner, str(HELPER), str(input_path), compose_version
+        )
+        assert status == 0, output
+        expected = [value for _, value in cases]
+        expected[0] = omitted_expected
+        assert json.loads(output) == expected, compose_version
+
+
+def test_compose_version_is_internal_and_cached_before_config_validation() -> None:
+    helper = HELPER.read_text(encoding="utf-8")
+    launcher = (ROOT / "start-docker.ps1").read_text(encoding="utf-8")
+    config_start = launcher.index("function Assert-ComposeConfiguration {")
+    config_end = launcher.index(
+        "function Resolve-LiveAcceptanceSelection {", config_start
+    )
+    config_function = launcher[config_start:config_end]
+    live_start = launcher.index("function Assert-LiveComposeVersion {")
+    live_end = launcher.index("# -- Prerequisite: Docker running", live_start)
+    live_function = launcher[live_start:live_end]
+
+    assert "function Get-TemporalBootstrapComposeVersion {" in helper
+    assert "docker compose version --short" in helper
+    assert "param([Parameter(Mandatory=$true)]$Mount)" in helper
+    assert "AllowOmittedCreateHostPath" not in helper
+    assert "if ($script:TemporalBootstrapRequested)" in config_function
+    assert config_function.index(
+        "Get-TemporalBootstrapComposeVersion"
+    ) < config_function.index("docker compose @ComposeArgs")
+    assert "$script:TemporalBootstrapComposeVersionText = $versionText" in live_function
+    assert "$script:TemporalBootstrapComposeVersionCaptured = $true" in live_function

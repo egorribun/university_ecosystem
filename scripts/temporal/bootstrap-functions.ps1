@@ -237,16 +237,40 @@ function Assert-TemporalBootstrapNoReparseComponents {
     }
 }
 
+function Get-TemporalBootstrapComposeVersion {
+    if ($script:TemporalBootstrapComposeVersionCaptured -eq $true) {
+        return [string]$script:TemporalBootstrapComposeVersionText
+    }
+    $script:TemporalBootstrapComposeVersionCaptured = $true
+    $script:TemporalBootstrapComposeVersionText = ''
+    try {
+        $versionOutput = @(docker compose version --short 2>$null)
+        $versionExitCode = $LASTEXITCODE
+        if ($versionExitCode -ne 0 -or $versionOutput.Count -ne 1) { return '' }
+        $versionText = ([string]$versionOutput[0]).Trim()
+        if ($versionText -cnotmatch '^v?\d+\.\d+\.\d+$') { return '' }
+        $script:TemporalBootstrapComposeVersionText = $versionText
+        return $versionText
+    } catch {
+        return ''
+    }
+}
+
 function Test-TemporalBootstrapNoHostPathCreation {
     param([Parameter(Mandatory=$true)]$Mount)
     $bindProperty = $Mount.PSObject.Properties['bind']
     if ($null -eq $bindProperty -or $bindProperty.Value -isnot [pscustomobject]) {
         return $false
     }
-    # An omitted create_host_path permits Compose's default host-path creation.
-    # Only an explicit false bool proves that creation is disabled.
+    # Normalized bind:{} has version-dependent meaning: Compose v2.38.2 uses
+    # compose-go v2.7.1, where false is omitted; newer compose-go releases use
+    # OptOut (true by default), where short syntax's true is also omitted.
+    # Only the exact source-verified legacy version may omit this field.
     $createProperty = $bindProperty.Value.PSObject.Properties['create_host_path']
-    if ($null -eq $createProperty) { return $false }
+    if ($null -eq $createProperty) {
+        $composeVersion = Get-TemporalBootstrapComposeVersion
+        return ($composeVersion -ceq 'v2.38.2' -or $composeVersion -ceq '2.38.2')
+    }
     return ($createProperty.Value -is [bool] -and $createProperty.Value -eq $false)
 }
 

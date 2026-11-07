@@ -2601,6 +2601,11 @@ function Assert-ComposeConfiguration {
     # Compose config can contain credentials in its rendered JSON. Capture it
     # only to validate the exact startup model, and never print or persist it.
     Write-Status "Validating Docker Compose configuration..."
+    if ($script:TemporalBootstrapRequested) {
+        # Bind omission is interpreted using the Compose binary queried in this
+        # process, before its normalized config is checked or applied.
+        $null = Get-TemporalBootstrapComposeVersion
+    }
     $configOutput = @(docker compose @ComposeArgs --env-file $EnvFile config --format json 2>$null)
     $composeExitCode = $LASTEXITCODE
     if ($composeExitCode -ne 0) {
@@ -2970,6 +2975,10 @@ function Assert-LiveComposeVersion {
     if ($versionExitCode -ne 0 -or
         $versionText -notmatch '^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)') {
         throw "Cannot determine Docker Compose version required by the live override."
+    }
+    if ($script:TemporalBootstrapRequested) {
+        $script:TemporalBootstrapComposeVersionText = $versionText
+        $script:TemporalBootstrapComposeVersionCaptured = $true
     }
     $major = [int]$Matches.major
     $minor = [int]$Matches.minor
