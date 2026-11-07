@@ -96,6 +96,10 @@ function scenario(
   const fixture = {
     expect: fakeExpect,
     ROLES: { student },
+    loginPasswordForRole(role) {
+      assert.equal(role, "student")
+      return student.password
+    },
     test(name, callback) {
       callbacks.push({ name, callback })
     },

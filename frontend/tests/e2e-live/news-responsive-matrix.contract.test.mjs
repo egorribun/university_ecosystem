@@ -60,7 +60,7 @@ test("real News content is checked in RU and EN across the approved width matrix
   )
   assert.match(
     fixtures,
-    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*loginPasswordForRole\(role\),\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
   )
   assert.match(config, /name:\s*["']desktop["']/u)
   assert.match(config, /name:\s*["']mobile["']/u)

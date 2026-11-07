@@ -56,7 +56,7 @@ test("Settings tab keyboard acceptance uses the live authenticated route without
 
   assert.match(
     fixtures,
-    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*loginPasswordForRole\(role\),\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
   )
   assert.match(settingsRoute, /createFileRoute\(["']\/_auth\/settings["']\)/u)
   assert.match(settingsPage, /ariaLabel=\{t\(["']settings:tabs\.ariaLabel["']\)\}/u)
