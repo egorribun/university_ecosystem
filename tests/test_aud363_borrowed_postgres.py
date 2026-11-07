@@ -518,6 +518,11 @@ def test_main_rechecks_service_before_running_proof(
     provision.assert_awaited_once_with("p" * 24, "a" * 64)
     run.assert_called_once_with("a" * 64, tmp_path)
     captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        *(f"AUD363_454_CASE status=passed nodeid={_MODULE}::{name}" for name in _NAMES),
+        "AUD-363/454: all six named PostgreSQL cases passed without skips",
+    ]
+    assert not captured.err
     assert "a" * 64 not in captured.out + captured.err
     assert "p" * 24 not in captured.out + captured.err
 
@@ -558,7 +563,16 @@ def test_main_fails_closed_without_exposing_diagnostics(
     elif failure == "admin-changed":
         inspect.side_effect = ["p" * 24, "q" * 24]
     elif failure == "pytest":
-        run.side_effect = proof.ProofError("sensitive detail")
+        report = _report()
+        suite = report.find("testsuite")
+        assert suite is not None
+        suite.set("skipped", "1")
+        case = suite.find("testcase")
+        assert case is not None
+        ElementTree.SubElement(case, "skipped")
+        report_path = tmp_path / "skipped.xml"
+        _write_report(report_path, report)
+        run.side_effect = lambda *_args: proof.validate_report(report_path)
     elif failure == "unexpected":
         inspect.side_effect = RuntimeError("sensitive detail")
     monkeypatch.setattr(proof, "inspect_service", inspect)

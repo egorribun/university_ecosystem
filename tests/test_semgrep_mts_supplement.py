@@ -137,7 +137,7 @@ def test_mts_report_rejects_incomplete_or_out_of_scope_evidence(
         gate._validate_mts_supplement_report(report, TARGETS)
 
 
-def test_report_merge_retains_both_scans_findings_and_sarif_runs() -> None:
+def test_report_merge_retains_both_scans_findings_in_one_sarif_run() -> None:
     primary = _report(("app/example.py",))
     primary["results"] = [{"check_id": "out.primary", "path": "app/example.py"}]
     supplementary = _report()
@@ -175,16 +175,410 @@ def test_report_merge_retains_both_scans_findings_and_sarif_runs() -> None:
     assert primary["paths"]["scanned"] == ["app/example.py"]
 
     merged_sarif = gate._merge_sarif_reports(
-        {"version": "2.1.0", "runs": [{"results": [{"ruleId": "primary"}]}]},
-        {"version": "2.1.0", "runs": [{"results": [{"ruleId": "mts"}]}]},
+        {
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Semgrep OSS",
+                            "semanticVersion": "1.179.0",
+                            "rules": [{"id": "primary"}],
+                        }
+                    },
+                    "invocations": [{"executionSuccessful": True}],
+                    "results": [{"ruleId": "primary"}],
+                }
+            ],
+        },
+        {
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Semgrep OSS",
+                            "semanticVersion": "1.179.0",
+                            "rules": [{"id": "mts"}],
+                        }
+                    },
+                    "invocations": [{"executionSuccessful": True}],
+                    "results": [{"ruleId": "mts"}],
+                }
+            ],
+        },
     )
-    assert len(merged_sarif["runs"]) == 2
-    assert [run["results"][0]["ruleId"] for run in merged_sarif["runs"]] == [
+    assert len(merged_sarif["runs"]) == 1
+    merged_run = merged_sarif["runs"][0]
+    assert [rule["id"] for rule in merged_run["tool"]["driver"]["rules"]] == [
         "primary",
         "mts",
     ]
+    assert [result["ruleId"] for result in merged_run["results"]] == [
+        "primary",
+        "mts",
+    ]
+    assert len(merged_run["invocations"]) == 2
     with pytest.raises(gate.SemgrepGateError, match="version is unsupported"):
         gate._merge_sarif_reports({"version": "1.0", "runs": [{}]}, {})
+
+
+def test_sarif_merge_keeps_one_run_and_all_direct_uri_evidence() -> None:
+    srcroot = {"uri": "file:///src/"}
+    primary = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "Semgrep OSS",
+                        "semanticVersion": "1.179.0",
+                        "rules": [{"id": "out.primary"}],
+                    },
+                    "extensions": [],
+                },
+                "invocations": [
+                    {"executionSuccessful": True, "properties": {"scan": "primary"}}
+                ],
+                "artifacts": [{"location": {"uri": "app/a.py"}}],
+                "originalUriBaseIds": {"%SRCROOT%": srcroot},
+                "results": [
+                    {
+                        "ruleId": "out.primary",
+                        "properties": {
+                            "ruleIndex": 12,
+                            "toolComponent": "custom Semgrep property",
+                        },
+                        "locations": [
+                            {
+                                "physicalLocation": {
+                                    "artifactLocation": {
+                                        "uri": "app/a.py",
+                                        "uriBaseId": "%SRCROOT%",
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    supplemental = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "Semgrep OSS",
+                        "semanticVersion": "1.179.0",
+                        "rules": [
+                            {"id": "out.primary"},
+                            {"id": "out.supplemental"},
+                        ],
+                    }
+                },
+                "invocations": [
+                    {
+                        "executionSuccessful": True,
+                        "properties": {"scan": "supplemental"},
+                    }
+                ],
+                "artifacts": [{"location": {"uri": "app/a.py"}}],
+                "originalUriBaseIds": {"%SRCROOT%": srcroot},
+                "results": [
+                    {
+                        "ruleId": "out.supplemental",
+                        "locations": [
+                            {
+                                "physicalLocation": {
+                                    "artifactLocation": {
+                                        "uri": "frontend/index.html",
+                                        "uriBaseId": "%SRCROOT%",
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    merged = gate._merge_sarif_reports(primary, supplemental)
+
+    assert len(merged["runs"]) == 1
+    merged_run = merged["runs"][0]
+    assert [rule["id"] for rule in merged_run["tool"]["driver"]["rules"]] == [
+        "out.primary",
+        "out.supplemental",
+    ]
+    assert [result["ruleId"] for result in merged_run["results"]] == [
+        "out.primary",
+        "out.supplemental",
+    ]
+    assert merged_run["results"][0]["properties"] == {
+        "ruleIndex": 12,
+        "toolComponent": "custom Semgrep property",
+    }
+    assert [
+        invocation["properties"]["scan"] for invocation in merged_run["invocations"]
+    ] == ["primary", "supplemental"]
+    assert [artifact["location"]["uri"] for artifact in merged_run["artifacts"]] == [
+        "app/a.py"
+    ]
+    assert merged_run["originalUriBaseIds"] == {"%SRCROOT%": srcroot}
+    assert merged_run["results"][1]["locations"][0]["physicalLocation"][
+        "artifactLocation"
+    ] == {"uri": "frontend/index.html", "uriBaseId": "%SRCROOT%"}
+
+
+@pytest.mark.parametrize(
+    ("supplemental_rule", "message"),
+    [
+        ({"id": "out.shared", "name": "supplemental"}, "conflicting duplicate rule"),
+    ],
+    ids=("conflicting-rule-descriptor",),
+)
+def test_sarif_merge_rejects_conflicting_shared_metadata(
+    supplemental_rule: dict[str, str], message: str
+) -> None:
+    primary_run: dict[str, Any] = {
+        "tool": {
+            "driver": {
+                "name": "Semgrep OSS",
+                "semanticVersion": "1.179.0",
+                "rules": [{"id": "out.shared", "name": "primary"}],
+            }
+        },
+        "results": [{"ruleId": "out.shared"}],
+    }
+    supplemental_run: dict[str, Any] = {
+        "tool": {
+            "driver": {
+                "name": "Semgrep OSS",
+                "semanticVersion": "1.179.0",
+                "rules": [supplemental_rule],
+            }
+        },
+        "results": [],
+    }
+    with pytest.raises(gate.SemgrepGateError, match=message):
+        gate._merge_sarif_reports(
+            {"version": "2.1.0", "runs": [primary_run]},
+            {"version": "2.1.0", "runs": [supplemental_run]},
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("empty-runs", "exactly one run"),
+        ("multiple-runs", "exactly one run"),
+        ("non-list-runs", "exactly one run"),
+        ("non-object-run", "run is malformed"),
+        ("missing-tool", "pinned Semgrep 1.179 profile"),
+        ("bad-rules-type", "pinned Semgrep 1.179 profile"),
+        ("bad-results-type", "pinned Semgrep 1.179 profile"),
+        ("bad-rule-item", "driver rule is malformed"),
+        ("missing-driver-name", "does not match the pinned Semgrep"),
+        ("empty-driver-name", "does not match the pinned Semgrep"),
+        ("bad-result-item", "result is malformed"),
+        ("top-level-metadata", "top-level metadata is incompatible"),
+        ("run-metadata", "run metadata is incompatible"),
+        ("tool-metadata", "tool metadata is incompatible"),
+        ("extensions", "extensions cannot be merged safely"),
+        ("null-extensions", "extensions cannot be merged safely"),
+        ("bad-rule-id-type", "rule identity is malformed"),
+        ("empty-rule-id", "rule identity is malformed"),
+        ("duplicate-rule-id", "duplicate driver rule identity"),
+        ("bad-result-id-type", "undeclared driver rule"),
+        ("undeclared-result-id", "undeclared driver rule"),
+        ("bad-invocations-type", "invocations are malformed"),
+        ("bad-invocation-item", "invocations are malformed"),
+        ("missing-invocation-success", "invocations are malformed"),
+        ("bad-invocation-success", "invocations are malformed"),
+    ],
+    ids=(
+        "empty-runs",
+        "multiple-runs",
+        "non-list-runs",
+        "non-object-run",
+        "missing-tool",
+        "bad-rules-type",
+        "bad-results-type",
+        "bad-rule-item",
+        "missing-driver-name",
+        "empty-driver-name",
+        "bad-result-item",
+        "top-level-metadata",
+        "run-metadata",
+        "tool-metadata",
+        "extensions",
+        "null-extensions",
+        "bad-rule-id-type",
+        "empty-rule-id",
+        "duplicate-rule-id",
+        "bad-result-id-type",
+        "undeclared-result-id",
+        "bad-invocations-type",
+        "bad-invocation-item",
+        "missing-invocation-success",
+        "bad-invocation-success",
+    ),
+)
+def test_sarif_merge_rejects_profile_mutations(mutation: str, message: str) -> None:
+    def report(rule_id: str) -> dict[str, Any]:
+        return {
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Semgrep OSS",
+                            "semanticVersion": "1.179.0",
+                            "rules": [{"id": rule_id}],
+                        }
+                    },
+                    "results": [{"ruleId": rule_id}],
+                    "invocations": [{"executionSuccessful": True}],
+                }
+            ],
+        }
+
+    primary = report("out.primary")
+    supplemental = report("out.supplemental")
+    primary_run = primary["runs"][0]
+    supplemental_run = supplemental["runs"][0]
+    if mutation == "empty-runs":
+        primary["runs"] = []
+    elif mutation == "multiple-runs":
+        primary["runs"].append(primary_run)
+    elif mutation == "non-list-runs":
+        primary["runs"] = None
+    elif mutation == "non-object-run":
+        primary["runs"] = [None]
+    elif mutation == "missing-tool":
+        del primary_run["tool"]
+    elif mutation == "bad-rules-type":
+        primary_run["tool"]["driver"]["rules"] = None
+    elif mutation == "bad-results-type":
+        primary_run["results"] = None
+    elif mutation == "bad-rule-item":
+        primary_run["tool"]["driver"]["rules"] = ["not-a-rule"]
+    elif mutation == "missing-driver-name":
+        del primary_run["tool"]["driver"]["name"]
+    elif mutation == "empty-driver-name":
+        primary_run["tool"]["driver"]["name"] = ""
+    elif mutation == "bad-result-item":
+        primary_run["results"] = ["not-a-result"]
+    elif mutation == "top-level-metadata":
+        supplemental["$schema"] = "https://example.invalid/sarif.json"
+    elif mutation == "run-metadata":
+        supplemental_run["artifacts"] = [{"location": {"uri": "other.py"}}]
+    elif mutation == "tool-metadata":
+        supplemental_run["tool"]["driver"]["semanticVersion"] = "1.180.0"
+    elif mutation == "extensions":
+        supplemental_run["tool"]["extensions"] = [{"name": "unsupported"}]
+    elif mutation == "null-extensions":
+        supplemental_run["tool"]["extensions"] = None
+    elif mutation == "bad-rule-id-type":
+        primary_run["tool"]["driver"]["rules"][0]["id"] = 1
+    elif mutation == "empty-rule-id":
+        primary_run["tool"]["driver"]["rules"][0]["id"] = ""
+    elif mutation == "duplicate-rule-id":
+        primary_run["tool"]["driver"]["rules"].append({"id": "out.primary"})
+    elif mutation == "bad-result-id-type":
+        primary_run["results"][0]["ruleId"] = 1
+    elif mutation == "undeclared-result-id":
+        primary_run["results"][0]["ruleId"] = "out.unknown"
+    elif mutation == "bad-invocations-type":
+        primary_run["invocations"] = None
+    elif mutation == "bad-invocation-item":
+        primary_run["invocations"] = ["not-an-invocation"]
+    elif mutation == "missing-invocation-success":
+        primary_run["invocations"] = [{}]
+    elif mutation == "bad-invocation-success":
+        primary_run["invocations"] = [{"executionSuccessful": "yes"}]
+
+    with pytest.raises(gate.SemgrepGateError, match=message):
+        gate._merge_sarif_reports(primary, supplemental)
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        {"ruleIndex": 0},
+        {"toolComponent": {"index": 0}},
+        {
+            "invocations": [
+                {
+                    "toolExecutionNotifications": [
+                        {"associatedRule": {"id": "out.primary", "index": 0}}
+                    ]
+                }
+            ]
+        },
+        {
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": "app/a.py", "index": 0}
+                    }
+                }
+            ]
+        },
+        {"logicalLocations": [{"parentIndex": 0}]},
+        {"taxonIndex": 0},
+    ],
+    ids=(
+        "rule-index",
+        "tool-component-index",
+        "associated-rule-index",
+        "artifact-index",
+        "logical-location-parent-index",
+        "taxon-index",
+    ),
+)
+def test_sarif_merge_rejects_indexed_references_until_they_can_be_remapped(
+    reference: dict[str, Any],
+) -> None:
+    primary = {
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "Semgrep OSS",
+                        "semanticVersion": "1.179.0",
+                        "rules": [{"id": "out.primary"}],
+                    }
+                },
+                "results": [{"ruleId": "out.primary", **reference}],
+            }
+        ],
+    }
+    supplemental = {
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "Semgrep OSS",
+                        "semanticVersion": "1.179.0",
+                        "rules": [{"id": "out.supplemental"}],
+                    }
+                },
+                "results": [],
+            }
+        ],
+    }
+
+    with pytest.raises(gate.SemgrepGateError, match="indexed references"):
+        gate._merge_sarif_reports(primary, supplemental)
 
 
 def test_docker_mts_scan_uses_exact_roots_and_deterministic_cli_flags(
@@ -373,9 +767,21 @@ def test_run_gate_scans_mts_targets_and_dispositions_gate_receives_merged_report
         (output_directory / f"{prefix}.json").write_text(
             json.dumps(report), encoding="utf-8"
         )
+        rule_id = "mts" if is_mts_scan else "primary"
         sarif = {
             "version": "2.1.0",
-            "runs": [{"results": [{"ruleId": "mts" if is_mts_scan else "primary"}]}],
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Semgrep OSS",
+                            "semanticVersion": "1.179.0",
+                            "rules": [{"id": rule_id}],
+                        }
+                    },
+                    "results": [{"ruleId": rule_id}],
+                }
+            ],
         }
         (output_directory / f"{prefix}.sarif").write_text(
             json.dumps(sarif), encoding="utf-8"

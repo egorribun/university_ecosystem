@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import http.client
 import importlib.machinery
@@ -2114,19 +2115,168 @@ def _validate_dockerfile_supplement_report(
             )
 
 
+def _sarif_contains_unsupported_index_reference(value: Any) -> bool:
+    if isinstance(value, dict):
+        if "toolComponent" in value or any(
+            isinstance(key, str) and key.casefold().endswith("index") for key in value
+        ):
+            return True
+        return any(
+            _sarif_contains_unsupported_index_reference(child)
+            for key, child in value.items()
+            if key != "properties"
+        )
+    if isinstance(value, list):
+        return any(
+            _sarif_contains_unsupported_index_reference(child) for child in value
+        )
+    return False
+
+
 def _merge_sarif_reports(
     primary: dict[str, Any], supplemental: dict[str, Any]
 ) -> dict[str, Any]:
-    if primary.get("version") != "2.1.0" or supplemental.get("version") != "2.1.0":
-        raise SemgrepGateError("Semgrep SARIF report version is unsupported")
-    primary_runs = primary.get("runs")
-    supplemental_runs = supplemental.get("runs")
-    if not isinstance(primary_runs, list) or not isinstance(supplemental_runs, list):
-        raise SemgrepGateError("Semgrep SARIF report runs are malformed")
-    if not primary_runs or not supplemental_runs:
-        raise SemgrepGateError("Semgrep SARIF report has no runs")
-    merged = dict(primary)
-    merged["runs"] = [*primary_runs, *supplemental_runs]
+    """Merge one-run reports from the pinned Semgrep 1.179 SARIF profile."""
+    reports = (primary, supplemental)
+    for report in reports:
+        if report.get("version") != "2.1.0":
+            raise SemgrepGateError("Semgrep SARIF report version is unsupported")
+
+    try:
+        (primary_run,) = primary["runs"]
+        (supplemental_run,) = supplemental["runs"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SemgrepGateError(
+            "pinned Semgrep SARIF must contain exactly one run per report"
+        ) from exc
+    source_runs = (primary_run, supplemental_run)
+    if not all(isinstance(run, dict) for run in source_runs):
+        raise SemgrepGateError("Semgrep SARIF run is malformed")
+
+    primary_metadata = {key: value for key, value in primary.items() if key != "runs"}
+    supplemental_metadata = {
+        key: value for key, value in supplemental.items() if key != "runs"
+    }
+    if primary_metadata != supplemental_metadata:
+        raise SemgrepGateError("Semgrep SARIF top-level metadata is incompatible")
+
+    if any(_sarif_contains_unsupported_index_reference(run) for run in source_runs):
+        raise SemgrepGateError(
+            "Semgrep SARIF contains indexed references that cannot be merged safely"
+        )
+
+    merged_fields = {"tool", "results", "invocations"}
+    primary_metadata = {
+        key: value for key, value in primary_run.items() if key not in merged_fields
+    }
+    supplemental_metadata = {
+        key: value
+        for key, value in supplemental_run.items()
+        if key not in merged_fields
+    }
+    if primary_metadata != supplemental_metadata:
+        raise SemgrepGateError("Semgrep SARIF run metadata is incompatible")
+
+    try:
+        tools_by_run = [run["tool"] for run in source_runs]
+        drivers_by_run = [tool["driver"] for tool in tools_by_run]
+        rules_by_run = [driver["rules"] for driver in drivers_by_run]
+        results_by_run = [run["results"] for run in source_runs]
+    except (KeyError, TypeError) as exc:
+        raise SemgrepGateError(
+            "Semgrep SARIF does not match the pinned Semgrep 1.179 profile"
+        ) from exc
+    if not all(
+        isinstance(tool, dict)
+        and isinstance(driver, dict)
+        and isinstance(driver.get("name"), str)
+        and bool(driver["name"])
+        and isinstance(rules, list)
+        and isinstance(results, list)
+        for tool, driver, rules, results in zip(
+            tools_by_run, drivers_by_run, rules_by_run, results_by_run, strict=True
+        )
+    ):
+        raise SemgrepGateError(
+            "Semgrep SARIF does not match the pinned Semgrep 1.179 profile"
+        )
+    if any("extensions" in tool and tool["extensions"] != [] for tool in tools_by_run):
+        raise SemgrepGateError("Semgrep SARIF tool extensions cannot be merged safely")
+
+    normalized_tools = []
+    for tool in tools_by_run:
+        normalized_tool = copy.deepcopy(tool)
+        normalized_tool["driver"].pop("rules")
+        normalized_tool.pop("extensions", None)
+        normalized_tools.append(normalized_tool)
+    if normalized_tools[0] != normalized_tools[1]:
+        raise SemgrepGateError("Semgrep SARIF tool metadata is incompatible")
+
+    merged_driver_rules: list[dict[str, Any]] = []
+    rules_by_id: dict[str, dict[str, Any]] = {}
+    merged_results: list[dict[str, Any]] = []
+    merged_invocations: list[dict[str, Any]] = []
+    saw_invocations = False
+
+    for run, source_rules, results in zip(
+        source_runs, rules_by_run, results_by_run, strict=True
+    ):
+        local_rule_ids: set[str] = set()
+        for rule in source_rules:
+            if not isinstance(rule, dict):
+                raise SemgrepGateError("Semgrep SARIF driver rule is malformed")
+            rule_id = rule.get("id")
+            if not isinstance(rule_id, str) or not rule_id:
+                raise SemgrepGateError(
+                    "Semgrep SARIF driver rule identity is malformed"
+                )
+            if rule_id in local_rule_ids:
+                raise SemgrepGateError(
+                    "Semgrep SARIF has a duplicate driver rule identity within a run"
+                )
+            local_rule_ids.add(rule_id)
+            existing_rule = rules_by_id.get(rule_id)
+            if existing_rule is None:
+                copied_rule = copy.deepcopy(rule)
+                rules_by_id[rule_id] = copied_rule
+                merged_driver_rules.append(copied_rule)
+            elif existing_rule != rule:
+                raise SemgrepGateError(
+                    "Semgrep SARIF has conflicting duplicate rule definitions"
+                )
+
+        for result in results:
+            if not isinstance(result, dict):
+                raise SemgrepGateError("Semgrep SARIF result is malformed")
+            rule_id = result.get("ruleId")
+            if not isinstance(rule_id, str) or rule_id not in local_rule_ids:
+                raise SemgrepGateError(
+                    "Semgrep SARIF result refers to an undeclared driver rule"
+                )
+            merged_results.append(copy.deepcopy(result))
+
+        invocations = run.get("invocations", [])
+        if not isinstance(invocations, list) or any(
+            not isinstance(invocation, dict)
+            or not isinstance(invocation.get("executionSuccessful"), bool)
+            for invocation in invocations
+        ):
+            raise SemgrepGateError("Semgrep SARIF run invocations are malformed")
+        saw_invocations = saw_invocations or "invocations" in run
+        merged_invocations.extend(copy.deepcopy(invocations))
+
+    merged_tool = copy.deepcopy(source_runs[0]["tool"])
+    merged_tool_driver = merged_tool["driver"]
+    merged_tool_driver["rules"] = merged_driver_rules
+
+    merged_run = copy.deepcopy(primary_run)
+    merged_run["tool"] = merged_tool
+    merged_run["results"] = merged_results
+    if saw_invocations:
+        merged_run["invocations"] = merged_invocations
+
+    merged = copy.deepcopy(primary)
+    merged["runs"] = [merged_run]
     return merged
 
 

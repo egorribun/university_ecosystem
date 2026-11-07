@@ -381,9 +381,18 @@ def _runner_for_scan(
                             "version": "2.1.0",
                             "runs": [
                                 {
-                                    "artifacts": [{"location": {"uri": targets[0]}}],
+                                    "tool": {
+                                        "driver": {
+                                            "name": "Semgrep OSS",
+                                            "semanticVersion": "1.179.0",
+                                            "rules": [
+                                                {"id": "out." + gate.DOCKERFILE_RULE_ID}
+                                            ],
+                                        }
+                                    },
                                     "results": [
                                         {
+                                            "ruleId": "out." + gate.DOCKERFILE_RULE_ID,
                                             "locations": [
                                                 {
                                                     "physicalLocation": {
@@ -392,7 +401,7 @@ def _runner_for_scan(
                                                         }
                                                     }
                                                 }
-                                            ]
+                                            ],
                                         }
                                     ],
                                 }
@@ -418,16 +427,14 @@ def _runner_for_scan(
                                 {
                                     "tool": {
                                         "driver": {
+                                            "name": "Semgrep OSS",
+                                            "semanticVersion": "1.179.0",
                                             "rules": [
                                                 {"id": "out." + rule["id"]}
                                                 for rule in mts_config["rules"]
-                                            ]
+                                            ],
                                         }
                                     },
-                                    "artifacts": [
-                                        {"location": {"uri": alias.replace("/", "\\")}}
-                                        for alias in gate.INLINE_JAVASCRIPT_ALIASES
-                                    ],
                                     "results": [
                                         {
                                             "ruleId": "out." + javascript_rule["id"],
@@ -459,7 +466,23 @@ def _runner_for_scan(
                         sarif_payload = (
                             {
                                 "version": "2.1.0",
-                                "runs": [{"results": []}],
+                                "runs": [
+                                    {
+                                        "tool": {
+                                            "driver": {
+                                                "name": "Semgrep OSS",
+                                                "semanticVersion": "1.179.0",
+                                                "rules": [
+                                                    {"id": "out." + rule["id"]}
+                                                    for rule in selected_config.get(
+                                                        "rules", []
+                                                    )
+                                                ],
+                                            }
+                                        },
+                                        "results": [],
+                                    }
+                                ],
                             }
                             if selected_config is not None
                             else {}
@@ -1391,7 +1414,7 @@ def test_dockerfile_report_rejects_incomplete_or_out_of_scope_evidence(
         )
 
 
-def test_dockerfile_merge_retains_findings_scanned_paths_and_sarif_runs() -> None:
+def test_dockerfile_merge_retains_findings_scanned_paths_in_one_sarif_run() -> None:
     primary = {
         "results": [],
         "errors": [],
@@ -1455,14 +1478,36 @@ def test_dockerfile_merge_retains_findings_scanned_paths_and_sarif_runs() -> Non
         "explicit-unknown-extension-typescript",
     ]
     merged_sarif = gate._merge_sarif_reports(
-        {"version": "2.1.0", "runs": [{"results": []}]},
+        {
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Semgrep OSS",
+                            "semanticVersion": "1.179.0",
+                            "rules": [{"id": "out.primary"}],
+                        }
+                    },
+                    "results": [],
+                }
+            ],
+        },
         gate._remap_dockerfile_sarif(
             {
                 "version": "2.1.0",
                 "runs": [
                     {
+                        "tool": {
+                            "driver": {
+                                "name": "Semgrep OSS",
+                                "semanticVersion": "1.179.0",
+                                "rules": [{"id": "out." + gate.DOCKERFILE_RULE_ID}],
+                            }
+                        },
                         "results": [
                             {
+                                "ruleId": "out." + gate.DOCKERFILE_RULE_ID,
                                 "locations": [
                                     {
                                         "physicalLocation": {
@@ -1471,18 +1516,21 @@ def test_dockerfile_merge_retains_findings_scanned_paths_and_sarif_runs() -> Non
                                             }
                                         }
                                     }
-                                ]
+                                ],
                             }
-                        ]
+                        ],
                     }
                 ],
             },
             DOCKERFILE_ALIAS_TO_SOURCE,
         ),
     )
-    assert len(merged_sarif["runs"]) == 2
+    assert len(merged_sarif["runs"]) == 1
+    assert merged_sarif["runs"][0]["results"][0]["ruleId"] == (
+        "out." + gate.DOCKERFILE_RULE_ID
+    )
     assert (
-        merged_sarif["runs"][1]["results"][0]["locations"][0]["physicalLocation"][
+        merged_sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
             "artifactLocation"
         ]["uri"]
         == DOCKERFILE_TARGETS[0]
@@ -2383,8 +2431,10 @@ def test_run_gate_executes_and_merges_the_four_path_dockerfile_supplement(
         (reports / "semgrep-dockerfile.sarif").read_text("utf-8")
     )
     assert (
-        sarif_remapped["runs"][0]["artifacts"][0]["location"]["uri"]
-        == (DOCKERFILE_TARGETS[0])
+        sarif_remapped["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
+            "artifactLocation"
+        ]["uri"]
+        == DOCKERFILE_TARGETS[0]
     )
     merged = json.loads((reports / "semgrep.json").read_text("utf-8"))
     assert set(merged["paths"]["scanned"]) == {
@@ -2395,7 +2445,7 @@ def test_run_gate_executes_and_merges_the_four_path_dockerfile_supplement(
     assert merged["supplemental_scan_evidence"][0]["targets"] == list(
         DOCKERFILE_TARGETS
     )
-    assert len(json.loads((reports / "semgrep.sarif").read_text("utf-8"))["runs"]) == 2
+    assert len(json.loads((reports / "semgrep.sarif").read_text("utf-8"))["runs"]) == 1
 
 
 def test_run_gate_scans_current_staged_inline_javascript_slices(
@@ -2515,7 +2565,7 @@ def test_run_gate_scans_current_staged_inline_javascript_slices(
     assert [item["mode"] for item in merged["supplemental_scan_evidence"]] == [
         "inline-javascript-source-slice"
     ]
-    assert len(json.loads((reports / "semgrep.sarif").read_text("utf-8"))["runs"]) == 2
+    assert len(json.loads((reports / "semgrep.sarif").read_text("utf-8"))["runs"]) == 1
 
 
 def test_run_gate_rechecks_inline_source_binding_after_scan(

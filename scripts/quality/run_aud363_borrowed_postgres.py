@@ -295,6 +295,8 @@ def main() -> int:
         # message is fixed, so no exception text or credential reaches the log.
         print("AUD363_454_OWNED_POSTGRES_REJECTED", file=sys.stderr)
         return 1
+    for name in _CASES:
+        print(f"AUD363_454_CASE status=passed nodeid={_MODULE}::{name}")
     print("AUD-363/454: all six named PostgreSQL cases passed without skips")
     return 0
 
