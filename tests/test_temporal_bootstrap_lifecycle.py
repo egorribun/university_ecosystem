@@ -222,12 +222,14 @@ try {
             $n.Extent.Text.StartsWith('if ($LiveStateMode)') -and
             $n.Extent.Text.Contains('$prepareManagedFull')
         }, $true)
-        $prepareLease = $ast.Find({
+        $prepareLeases = @($ast.FindAll({
             param($n)
             $n -is [System.Management.Automation.Language.IfStatementAst] -and
-            $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')
-        }, $true)
-        if ($null -eq $selection -or $null -eq $prepareLease) { throw 'managed prepare selection or lease guard missing' }
+            $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)') -and
+            $n.Extent.Text.Contains('Enter-TemporalBootstrapLease -StateRoot $StateRoot')
+        }, $true))
+        if ($null -eq $selection -or $prepareLeases.Count -ne 1) { throw 'managed prepare selection or unique lease guard missing' }
+        $prepareLease = $prepareLeases[0]
         Invoke-Expression $selection.Extent.Text
         Invoke-Expression $bootstrapAssignment.Extent.Text
         function Enter-TemporalBootstrapLease {

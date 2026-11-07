@@ -104,12 +104,12 @@ function docker {
             return (ConvertTo-Json -InputObject ([string]$entry.Value) -Compress)
         }
         $allowed = @('.Id','.Image','.Config.User','.Config.Env','.Config.Labels','.Config.Entrypoint','.Config.Cmd',
-            '.Config.Healthcheck','.State.Status','.State.Running','.State.Health.Status','.HostConfig.NetworkMode',
+            '(index .Config "Healthcheck")','.State.Status','.State.Running','.State.Health.Status','.HostConfig.NetworkMode',
             '.HostConfig.ReadonlyRootfs','.HostConfig.Privileged','.HostConfig.CapDrop','.HostConfig.CapAdd',
             '.HostConfig.SecurityOpt','.HostConfig.PidMode','.HostConfig.UsernsMode','.HostConfig.Devices',
-            '.HostConfig.DeviceCgroupRules','.HostConfig.Tmpfs','.Mounts') | Sort-Object -CaseSensitive
+            '.HostConfig.DeviceCgroupRules','(index .HostConfig "Tmpfs")','.Mounts') | Sort-Object -CaseSensitive
         $matches = @([regex]::Matches($a[3], '{{json ([^}]+)}}') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
-        $remaining = [regex]::Replace($a[3], '{{json [^}]+}}|{{if \.State\.Health}}|{{else}}|{{end}}', '')
+        $remaining = [regex]::Replace($a[3], '{{json [^}]+}}|{{if index \.State "Health"}}|{{else}}|{{end}}', '')
         if (($matches -join '|') -cne ($allowed -join '|') -or $remaining.Contains('{{')) { Fail-Fixture }
         if ($a[-1] -ceq $f.serverIds[0]) { return ($f.server | ConvertTo-Json -Depth 30 -Compress) }
         if ($a[-1] -ceq $f.initIds[0]) { return ($f.init | ConvertTo-Json -Depth 30 -Compress) }
@@ -349,6 +349,45 @@ class RuntimeGuard(unittest.TestCase):
 
     def test_baseline(self):
         self.check(self.good, True)
+
+    def test_omitted_optional_fields_preserve_fail_closed_semantics(self):
+        omitted_optional = copy.deepcopy(self.good)
+        del omitted_optional["init"]["Config"]["Healthcheck"]
+        omitted_optional["init"]["State"].pop("Health", None)
+        self.check(omitted_optional, True)
+
+        missing_server_health = copy.deepcopy(self.good)
+        del missing_server_health["server"]["State"]["Health"]
+        self.check(missing_server_health, False)
+
+        missing_init_tmpfs = copy.deepcopy(self.good)
+        del missing_init_tmpfs["init"]["HostConfig"]["Tmpfs"]
+        self.check(missing_init_tmpfs, False)
+
+        for label, mutate in (
+            (
+                "missing required init tmpfs target",
+                lambda value: value["init"]["HostConfig"]["Tmpfs"].pop(
+                    "/run/temporal-bootstrap-runtime"
+                ),
+            ),
+            (
+                "unexpected init tmpfs target",
+                lambda value: value["init"]["HostConfig"]["Tmpfs"].__setitem__(
+                    "/unexpected", "uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev"
+                ),
+            ),
+            (
+                "unsafe init tmpfs options",
+                lambda value: value["init"]["HostConfig"]["Tmpfs"].__setitem__(
+                    "/run/temporal-bootstrap-runtime", "mode=0777"
+                ),
+            ),
+        ):
+            with self.subTest(label=label):
+                value = copy.deepcopy(self.good)
+                mutate(value)
+                self.check(value, False)
 
     def test_inspection_failure_emits_only_allowlisted_phase_and_preserves_throw(self):
         for field, result in (
