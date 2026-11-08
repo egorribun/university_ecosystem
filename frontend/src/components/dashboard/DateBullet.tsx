@@ -43,7 +43,9 @@ export function DateBullet({ date, locale, size, descriptionId }: DateBulletProp
 
   return (
     <Tooltip content={description} id={descriptionId} descriptionOnly>
+      {/* The abbreviated digits are decorative; the description states the full date. */}
       <span
+        aria-hidden="true"
         className={cn(
           "relative flex flex-col items-center justify-center rounded-full",
           outerSize,

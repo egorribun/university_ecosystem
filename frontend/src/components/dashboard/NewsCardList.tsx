@@ -60,20 +60,18 @@ export const NewsCardList = memo(function NewsCardList({
               )}
               onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
               title={n.title}
-              aria-labelledby={`${rowId}-title`}
               aria-describedby={n.content ? `${rowId} ${rowId}-excerpt` : rowId}
               style={{ "--stagger-i": idx } as React.CSSProperties}
             >
               <DateBullet date={n.created_at} locale={locale} descriptionId={rowId} />
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span
-                  id={`${rowId}-title`}
-                  className="text-base font-bold leading-snug text-text-primary line-clamp-2"
-                >
+                <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
                   {n.title}
                 </span>
+                {/* The title alone names the row; the excerpt is its description. */}
                 <span
                   id={`${rowId}-excerpt`}
+                  aria-hidden="true"
                   className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2"
                 >
                   {(n.content ?? String()).slice(0, 110)}

@@ -220,7 +220,6 @@ const EventsCardContent = memo(function EventsCardContent({
               {scopedEvents.map((e, idx) => {
                 const eventKey = `${eventsScope}-${e.id}`
                 const eventDescriptionId = `${dateDescriptionId}-${encodeURIComponent(eventKey)}`
-                const eventTitleId = `${eventDescriptionId}-title`
                 const eventMetaId = `${eventDescriptionId}-meta`
                 return (
                   <m.li
@@ -242,7 +241,6 @@ const EventsCardContent = memo(function EventsCardContent({
                         "active:scale-(--scale-active)"
                       )}
                       onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
-                      aria-labelledby={eventTitleId}
                       aria-describedby={`${eventDescriptionId} ${eventMetaId}`}
                       style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
@@ -253,13 +251,15 @@ const EventsCardContent = memo(function EventsCardContent({
                         descriptionId={eventDescriptionId}
                       />
                       <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                        <span
-                          id={eventTitleId}
-                          className="text-base font-semibold leading-tight text-text-primary line-clamp-2"
-                        >
+                        <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                           {e.title}
                         </span>
-                        <span id={eventMetaId} className="flex flex-wrap items-center gap-2">
+                        {/* The title alone names the row; time and place are its description. */}
+                        <span
+                          id={eventMetaId}
+                          aria-hidden="true"
+                          className="flex flex-wrap items-center gap-2"
+                        >
                           {!isNaN(e.d.getTime()) && timeZone && (
                             <span className="font-mono text-sm font-medium text-brand">
                               {formatCampusDate(

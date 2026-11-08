@@ -124,6 +124,26 @@ const decodeHtmlText = (value: string): string => {
 /** Decodes HTML5 character references in ordinary text, consistently on SSR and in browsers. */
 export const decodeArticleText = decodeHtmlText
 
+const NON_VISIBLE_TEXT_TAGS = new Set(["script", "style", "template", "noscript"])
+
+/**
+ * Returns the visible text of an HTML fragment from parse5's tree, for rendering as
+ * plain text. Parsing rather than pattern matching leaves no partial tag behind.
+ */
+export const articleHtmlToText = (source: string): string => {
+  const parts: string[] = []
+  const pending: DefaultTreeAdapterTypes.ChildNode[] = [...parseFragment(source).childNodes]
+  pending.reverse()
+  for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+    if (node.nodeName === "#text") {
+      parts.push((node as DefaultTreeAdapterTypes.TextNode).value)
+    } else if ("childNodes" in node && !NON_VISIBLE_TEXT_TAGS.has(node.nodeName)) {
+      pending.push(...[...node.childNodes].reverse())
+    }
+  }
+  return parts.join("")
+}
+
 /** Decodes references using HTML attribute parsing rules without allowing attribute breakout. */
 export const decodeArticleAttribute = (value: string): string => {
   if (!hasEntityReference(value)) return value

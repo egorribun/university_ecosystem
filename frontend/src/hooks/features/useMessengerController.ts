@@ -1,4 +1,4 @@
-import { SEND_MESSAGE_MUTATION_KEY } from "@/hooks/useChatWebSocket"
+import { SEND_MESSAGE_MUTATION_KEY } from "@/hooks/sendMessageMutationKey"
 import {
   startTransition,
   useState,

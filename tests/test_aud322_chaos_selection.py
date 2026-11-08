@@ -145,3 +145,28 @@ def test_validator_rejects_missing_malformed_or_unexpected_reports(
         report.write_text(contents, encoding="utf-8")
 
     assert _run_validator(monkeypatch, report) != 0
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "tests.chaos.test_network_failures",
+        "tests.chaos.test_memory_pressure",
+        # A lookalike name must not inherit the S3 skip exception.
+        "tests.chaos.test_minio_chaos_extra",
+    ],
+)
+def test_validator_rejects_a_skipped_chaos_case_outside_the_s3_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module: str
+) -> None:
+    root = _report()
+    suite = root.find("testsuite")
+    assert suite is not None
+    skipped = ElementTree.SubElement(
+        suite, "testcase", classname=module, name="test_skipped"
+    )
+    ElementTree.SubElement(skipped, "skipped")
+    report = tmp_path / "chaos.xml"
+    _write_report(report, root)
+
+    assert _run_validator(monkeypatch, report) != 0

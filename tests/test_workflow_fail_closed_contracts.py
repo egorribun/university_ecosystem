@@ -121,6 +121,7 @@ _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--mount",
     "--name",
     "--network",
+    "--network-alias",
     "--pids-limit",
     "--platform",
     "--publish",

@@ -1,4 +1,4 @@
-# Статус выпуска MVP v1.0.0
+# Статус выпуска MVP v1.0.0 — current totals live in [docs/audits/INDEX.md](../../audits/INDEX.md); dated sections below are history with counts valid only on their date.
 
 ## Current reconciliation — 2026-11-07
 

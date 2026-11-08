@@ -25,7 +25,7 @@ previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum, and appends the owner-approved AUD-428 row13 public-integrity
 identity. The new row expires 2027-01-10. These are inventory counts only and do
 not establish passing scanner results or required checks.
-All 78 required context/app pairs, blocking CodeQL, hooks and quality floors
+All 78 required context/app pairs (78 is the count from the live GitHub ruleset; the repository holds no script deriving it), blocking CodeQL, hooks and quality floors
 remain in force.
 
 ---

@@ -334,7 +334,12 @@ describe("AUD030 loaded chat-list lifetime", () => {
       wrapper: HookWrapper,
     })
     await waitFor(() => expect(result.current.contacts).toHaveLength(21))
-    expect(cursors).toEqual([])
+    // Entering the messenger refreshes the loaded extent even from a fresh cache,
+    // because the socket hears no room it has not joined.
+    await waitFor(() => expect(cursors).toEqual([undefined, "chat-page-2"]))
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    expect(result.current.contacts).toHaveLength(21)
+    cursors.length = 0
 
     await act(async () => {
       await result.current.refetchChats()

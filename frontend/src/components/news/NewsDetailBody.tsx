@@ -11,6 +11,7 @@ import { Marked, type Token, type Tokens } from "marked"
 import {
   articleFragmentToReactNodes,
   decodeArticleAttribute,
+  articleHtmlToText,
   decodeArticleText,
   sanitizeArticleFragment,
   sanitizeArticleUrl,
@@ -113,13 +114,6 @@ function findRawHtmlClose(tokens: readonly Token[], startIndex: number, name: st
   }
   return -1
 }
-
-/**
- * Visible text of raw HTML used while the sanitizer is unavailable. Plain string and
- * parse5 operations only, so the server render and the first client render match.
- */
-const rawHtmlToText = (source: string): string =>
-  decodeArticleText(source.replace(/<!-{2}[\s\S]*?-{2}>|<[^>]*>/g, ""))
 
 /**
  * Detects whether content uses Markdown syntax.
@@ -271,7 +265,8 @@ function useSanitizedRawNodes(source: string): RenderedRawNodes | null {
 function SanitizedRawHtml({ source }: { source: string }) {
   const rendered = useSanitizedRawNodes(source)
   // Until the sanitizer runs, raw HTML shows as its stripped text, never as tag source.
-  return <>{rendered ? rendered.nodes : rawHtmlToText(source)}</>
+  // parse5 only, so the server render and the first client render match.
+  return <>{rendered ? rendered.nodes : articleHtmlToText(source)}</>
 }
 
 /**

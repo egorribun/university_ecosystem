@@ -1,5 +1,7 @@
 # ADR-047: Risk-Based Quality Policy for the MVP Release
 
+> Current totals live in [docs/audits/INDEX.md](../audits/INDEX.md); dated sections below are history with counts valid only on their date.
+
 <!-- cspell:ignore mutmut -->
 
 ## Status

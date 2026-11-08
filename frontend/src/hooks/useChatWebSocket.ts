@@ -15,6 +15,7 @@ import {
   type ChatsListResponse,
 } from "@/api/chat"
 // Auth token storage handled natively via cookies
+import { SEND_MESSAGE_MUTATION_KEY } from "@/hooks/sendMessageMutationKey"
 import { logError } from "@/app/logger"
 import { compareMessageOrder, messageEpochMicroseconds } from "@/utils/messageOrder"
 import { parseWsMessage, type WsClientHeartbeatPing } from "@/api/schemas/wsMessage"
@@ -38,8 +39,6 @@ import {
 } from "@/hooks/chatReplayCheckpoints"
 
 // Reconnection configuration
-export const SEND_MESSAGE_MUTATION_KEY = ["messages", "send"] as const
-
 function isPendingSendEcho(queryClient: QueryClient, chatId: unknown, content: unknown): boolean {
   return queryClient
     .getMutationCache()

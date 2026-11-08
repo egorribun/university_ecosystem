@@ -50,7 +50,8 @@ vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 vi.mock("@/api/schemas/wsMessage", () => ({ parseWsMessage: mocks.parseWsMessage }))
 vi.mock("@/db/lazy", () => ({ getDatabaseLazily: mocks.dbLoad }))
 
-import { SEND_MESSAGE_MUTATION_KEY, useChatWebSocket, WebSocketProvider } from "../useChatWebSocket"
+import { SEND_MESSAGE_MUTATION_KEY } from "@/hooks/sendMessageMutationKey"
+import { useChatWebSocket, WebSocketProvider } from "../useChatWebSocket"
 
 const ROOM = "replay-room-edge"
 const TICKET = { data: { ticket: "ticket-1", expires_in: 15 } }

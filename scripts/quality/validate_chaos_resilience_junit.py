@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from pathlib import Path
+from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 
 _MODULE = "tests.chaos.test_resilience"
+# The S3 job proves these two cases separately (validate_chaos_s3_junit.py).
+_S3_MODULE = "tests.chaos.test_minio_chaos"
 _CASES = frozenset(
     {
         "test_nats_outage_outbox_durability",
@@ -21,8 +24,17 @@ _CASES = frozenset(
 )
 
 
+def _in_module(case: Element, module: str) -> bool:
+    classname = case.get("classname") or ""
+    return classname == module or classname.startswith(module + ".")
+
+
 def validate_report(path: Path) -> None:
-    """Reject missing, duplicate, unexpected or unsuccessful resilience cases."""
+    """Reject missing, duplicate, unexpected, unsuccessful or skipped chaos cases.
+
+    Every case in the report must execute.  The only permitted skips belong to
+    the S3 module, which the S3 job validates separately.
+    """
     try:
         root = ElementTree.parse(path).getroot()
     except (DefusedXmlException, ElementTree.ParseError, OSError) as error:
@@ -48,6 +60,12 @@ def validate_report(path: Path) -> None:
         for outcome in ("skipped", "failure", "error")
     ):
         raise ValueError("a resilience case did not pass")
+    if any(
+        case.find("skipped") is not None
+        for case in root.iter("testcase")
+        if not _in_module(case, _S3_MODULE)
+    ):
+        raise ValueError("a chaos case in the report was skipped")
 
 
 def main() -> int:
@@ -58,7 +76,7 @@ def main() -> int:
         validate_report(args.report)
     except ValueError as error:
         parser.exit(1, f"AUD-322 proof failed: {error}\n")
-    print("AUD-322: all five named resilience cases passed without skips")
+    print("AUD-322: all five named resilience cases passed; no chaos case was skipped")
     return 0
 
 

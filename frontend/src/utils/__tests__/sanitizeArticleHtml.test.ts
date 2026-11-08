@@ -3,6 +3,7 @@ import { render } from "@testing-library/react"
 import { createElement, Fragment } from "react"
 import {
   articleFragmentToReactNodes,
+  articleHtmlToText,
   decodeArticleAttribute,
   decodeArticleText,
   sanitizeArticleFragment,
@@ -51,6 +52,17 @@ describe("sanitizeArticleHtml", () => {
     expect(decodeArticleText("&euro; <strong>literal</strong> &lt;img src=x&gt;")).toBe(
       "€ <strong>literal</strong> <img src=x>"
     )
+  })
+
+  it("reads only visible text from raw HTML, whatever its nesting or comments", () => {
+    expect(articleHtmlToText("<strong>Campus</strong> &eacute;<!-- hidden --> end")).toBe(
+      "Campus é end"
+    )
+    expect(articleHtmlToText("<b><i>deep</i> text</b> after")).toBe("deep text after")
+    expect(articleHtmlToText("<scr<script>ipt>payload()</script>tail")).toBe("ipt>payload()tail")
+    expect(articleHtmlToText("<script>hidden()</script><style>a{}</style>shown")).toBe("shown")
+    expect(articleHtmlToText("a < b &lt;img src=x&gt;")).toBe("a < b <img src=x>")
+    expect(articleHtmlToText("<div".repeat(50_000))).toBe("")
   })
 
   it("restores only matching safe heading ids after DOM sanitization", () => {

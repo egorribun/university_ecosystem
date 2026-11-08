@@ -90,7 +90,7 @@ _REVIEWED_NIGHTLY_HUNKS = (
         """        run: |
           report="$RUNNER_TEMP/chaos-resilience.xml"
           set +e
-          uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$report"
+          uv run pytest tests/chaos/ -v -m chaos --tb=short --ignore=tests/chaos/test_network_failures.py --junitxml="$report"
           pytest_status=$?
           uv run python scripts/quality/validate_chaos_resilience_junit.py "$report"
           validator_status=$?
@@ -111,6 +111,76 @@ _REVIEWED_NIGHTLY_HUNKS = (
         """        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
 """,
+    ),
+    # ToxiProxy PostgreSQL latency proof. The listener line and the disposable
+    # PostgreSQL step are pure additions; the Load job narrowing is in the AUD-322 entry.
+    (
+        """          - 9004:9004
+""",
+        "",
+    ),
+    (
+        r"""      # The PostgreSQL latency proof runs in its own invocation so the
+      # application's engine dials PostgreSQL through the ToxiProxy listener.
+      - name: Start disposable PostgreSQL behind ToxiProxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          toxiproxy_container="$(docker ps --quiet --filter publish=8474)"
+          [[ "$(printf '%s\n' "$toxiproxy_container" | wc -l)" -eq 1 ]]
+          mapfile -t networks < <(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$toxiproxy_container" | grep -v '^bridge$' | sed '/^$/d')
+          [[ "${#networks[@]}" -eq 1 ]]
+          pg_password="$(openssl rand -hex 24)"
+          echo "::add-mask::${pg_password}"
+          echo "CHAOS_POSTGRES_PASSWORD=${pg_password}" >> "$GITHUB_ENV"
+          docker run --detach --name chaos-postgres \
+            --network "${networks[0]}" --network-alias chaos-postgres \
+            --env POSTGRES_USER=postgres \
+            --env POSTGRES_DB=test_ecosystem \
+            --env POSTGRES_PASSWORD="$pg_password" \
+            pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+          ready=""
+          for _attempt in {1..60}; do
+            if docker exec chaos-postgres pg_isready -h 127.0.0.1 -U postgres -d test_ecosystem >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ -z "$ready" ]]; then
+            docker logs --tail=80 chaos-postgres
+            exit 1
+          fi
+          # The test fixtures create only the vector extension; the trigram index
+          # that the schema declares needs pg_trgm, which the chaos job never migrates.
+          docker exec chaos-postgres psql --username postgres --dbname test_ecosystem \
+            --set ON_ERROR_STOP=1 \
+            --command 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
+            --command 'CREATE EXTENSION IF NOT EXISTS vector'
+
+      - name: Configure ToxiProxy PostgreSQL proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --request POST http://127.0.0.1:8474/proxies \
+            --header 'Content-Type: application/json' \
+            --data '{"name":"postgres","listen":"0.0.0.0:9004","upstream":"chaos-postgres:5432","enabled":true}'
+
+      - name: Run PostgreSQL latency chaos through ToxiProxy
+        env:
+          CHAOS_NETWORK_REQUIRED: "1"
+          TOXIPROXY_URL: http://127.0.0.1:8474
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 127.0.0.1 rather than localhost: localhost can resolve to ::1 first and
+          # stall on Docker Desktop before falling back to IPv4.
+          export DATABASE_URL="postgresql+asyncpg://postgres:${CHAOS_POSTGRES_PASSWORD}@127.0.0.1:9004/test_ecosystem"
+          uv run pytest tests/chaos/test_network_failures.py -v -m chaos --tb=short
+
+""",
+        "",
     ),
     (
         "      - browser-matrix\n      - live-realtime-visual\n      - schemathesis-api-tests\n",
@@ -2429,8 +2499,12 @@ def test_load_and_chaos_writes_and_validates_junit_even_on_failure() -> None:
     run = pytest_step["run"]
     assert 'report="$RUNNER_TEMP/chaos-resilience.xml"' in run
     assert "set +e" in run
+    # The PostgreSQL proof needs ToxiProxy, which this job does not run, so
+    # its module is excluded here instead of being skipped into a failing report.
     assert (
-        'uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$report"' in run
+        "uv run pytest tests/chaos/ -v -m chaos --tb=short"
+        " --ignore=tests/chaos/test_network_failures.py"
+        ' --junitxml="$report"' in run
     )
     assert "pytest_status=$?" in run
     assert (

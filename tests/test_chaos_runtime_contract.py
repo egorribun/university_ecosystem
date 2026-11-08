@@ -70,7 +70,65 @@ def test_chaos_uses_pinned_minio_and_toxiproxy_services() -> None:
 
     toxiproxy = services["toxiproxy"]
     assert "@sha256:" in toxiproxy["image"]
-    assert toxiproxy["ports"] == ["8474:8474", "9003:9003"]
+    assert toxiproxy["ports"] == ["8474:8474", "9003:9003", "9004:9004"]
+
+
+def test_postgres_latency_proof_runs_in_its_own_invocation_through_toxiproxy() -> None:
+    job = _job()
+    steps = job["steps"]
+    names = [step.get("name") for step in steps]
+    start = next(
+        step
+        for step in steps
+        if step.get("name") == "Start disposable PostgreSQL behind ToxiProxy"
+    )
+    proxy = next(
+        step
+        for step in steps
+        if step.get("name") == "Configure ToxiProxy PostgreSQL proxy"
+    )
+    proof = next(
+        step
+        for step in steps
+        if step.get("name") == "Run PostgreSQL latency chaos through ToxiProxy"
+    )
+
+    # The database is a step-level container on the job network, not a service.
+    assert set(job["services"]) == {"minio", "toxiproxy"}
+    assert "docker run --detach --name chaos-postgres" in start["run"]
+    # The proof must use the same pinned image as the stack it stands in for.
+    compose = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "docker-compose.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    postgres_image = compose["services"]["postgres"]["image"]
+    assert postgres_image.startswith("pgvector/pgvector:pg17@sha256:")
+    assert postgres_image in start["run"]
+    assert "openssl rand -hex 24" in start["run"]
+    assert 'echo "::add-mask::${pg_password}"' in start["run"]
+    assert (
+        'echo "CHAOS_POSTGRES_PASSWORD=${pg_password}" >> "$GITHUB_ENV"'
+        in (start["run"])
+    )
+    assert '"listen":"0.0.0.0:9004"' in proxy["run"]
+    assert '"upstream":"chaos-postgres:5432"' in proxy["run"]
+    assert '"name":"postgres"' in proxy["run"]
+
+    assert proof["env"]["CHAOS_NETWORK_REQUIRED"] == "1"
+    assert "127.0.0.1:9004/test_ecosystem" in proof["run"]
+    assert "${CHAOS_POSTGRES_PASSWORD}" in proof["run"]
+    assert "tests/chaos/test_network_failures.py" in proof["run"]
+    assert "continue-on-error" not in proof
+    assert "if" not in proof
+    assert (
+        names.index("Start disposable PostgreSQL behind ToxiProxy")
+        < (names.index("Configure ToxiProxy PostgreSQL proxy"))
+        < names.index("Run PostgreSQL latency chaos through ToxiProxy")
+    )
+    # The S3 receipt command stays on its own selection, unchanged.
+    tests = next(step for step in steps if step.get("name") == "Run chaos tests")
+    assert "test_network_failures" not in tests["run"]
 
 
 def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety() -> (
