@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// Config holds application configuration.
 // DefaultWSUpgradeRatePerMinute is the per-client-IP budget outside explicit configuration.
 const DefaultWSUpgradeRatePerMinute = 10
 
+// Config holds application configuration.
 type Config struct {
 	Port string
 	// MetricsAddr is the bind address of the scrape-only Prometheus listener.

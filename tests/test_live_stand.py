@@ -8359,7 +8359,8 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         environment = services[sender]["environment"]
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
-    assert set(services["caddy"]) == {"ports"}
+    assert set(services["caddy"]) == {"ports", "environment"}
+    assert services["caddy"]["environment"] == {"WS_UPGRADE_RATE_PER_MINUTE": "600"}
     mailpit_limits = services["mailpit"]["deploy"]["resources"]["limits"]
     assert services["mailpit"]["pids_limit"] == 64
     assert mailpit_limits == {"cpus": "0.25", "memory": "512M", "pids": 64}

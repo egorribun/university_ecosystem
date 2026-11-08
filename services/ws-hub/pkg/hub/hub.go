@@ -636,8 +636,6 @@ func validateReplayChatBinding(subject, room string, frame map[string]any) bool 
 	return exists && chatPayloadMatchesRoom(room, payload)
 }
 
-// NewHub creates a new Hub instance. Cache construction and revocation-client
-// configuration failures are returned to the caller (AGENTS.md section 2.1).
 // wsUpgradeRatePerMinute returns the configured per-IP upgrade budget, or the
 // default when a caller leaves it unset or configures a non-positive value.
 func wsUpgradeRatePerMinute(cfg *config.Config) int {
@@ -647,6 +645,8 @@ func wsUpgradeRatePerMinute(cfg *config.Config) int {
 	return cfg.WSUpgradeRatePerMinute
 }
 
+// NewHub creates a new Hub instance. Cache construction and revocation-client
+// configuration failures are returned to the caller (AGENTS.md section 2.1).
 func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) (*Hub, error) {
 	bufSize := 4096
 	maxC := 10000
