@@ -7,9 +7,11 @@ type TooltipProps = {
   children: ReactElement
   className?: string
   id?: string
+  /** Keep referenced text as a description without adding it to ancestor names. */
+  descriptionOnly?: boolean
 }
 
-export function Tooltip({ content, children, className, id }: TooltipProps) {
+export function Tooltip({ content, children, className, id, descriptionOnly }: TooltipProps) {
   const generatedId = useId()
   const tooltipId = id ?? generatedId
 
@@ -31,7 +33,7 @@ export function Tooltip({ content, children, className, id }: TooltipProps) {
   return (
     <span className={cn("inline-flex", className)} data-tooltip-id={tooltipId}>
       {cloneElement(children, clonedProps)}
-      <span id={tooltipId} role="tooltip" className="sr-only">
+      <span id={tooltipId} role="tooltip" className="sr-only" hidden={descriptionOnly}>
         {content}
       </span>
     </span>

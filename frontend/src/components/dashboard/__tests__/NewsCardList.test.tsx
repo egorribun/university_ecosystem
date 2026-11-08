@@ -84,7 +84,7 @@ describe("NewsCardList", () => {
       "sm:gap-5"
     )
     expect(items[0]).toHaveAttribute("title", NEWS[0]!.title)
-    expect(items[0]).toHaveAttribute("aria-label", `dashboard:aria.newsItem:${NEWS[0]!.title}`)
+    expect(items[0]).toHaveAccessibleName(expect.stringContaining(NEWS[0]!.title))
   })
 
   it("navigates to the news detail route when a row is clicked", async () => {

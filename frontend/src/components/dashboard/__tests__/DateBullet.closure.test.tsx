@@ -14,12 +14,6 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
-vi.mock("@/components/ui/Tooltip", () => ({
-  Tooltip: ({ children, content }: { children: ReactNode; content: string }) => (
-    <div data-tooltip={content}>{children}</div>
-  ),
-}))
-
 import { DateBullet } from "@/components/dashboard/DateBullet"
 import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 
@@ -38,7 +32,7 @@ describe("DateBullet closure branches", () => {
   it("renders a formatted default bullet", () => {
     renderInCampusTimezone(<DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />)
 
-    const bullet = screen.getByLabelText(/ariaDatePublished/)
+    const bullet = screen.getByText("15").parentElement
     expect(bullet).toBeInTheDocument()
     expect(bullet).toHaveClass(
       "relative",
@@ -69,7 +63,7 @@ describe("DateBullet closure branches", () => {
       "text-brand",
       "text-base"
     )
-    expect(screen.getByText(/Jun/i)).toHaveClass(
+    expect(screen.getByText("Jun")).toHaveClass(
       "relative",
       "z-[1]",
       "font-bold",
@@ -86,7 +80,7 @@ describe("DateBullet closure branches", () => {
 
     expect(screen.getByText("—")).toBeInTheDocument()
     expect(screen.getByText("--")).toBeInTheDocument()
-    expect(screen.getByLabelText("ariaDatePublished:dateUnknown")).toBeInTheDocument()
+    expect(screen.getByText("—").parentElement).toHaveAccessibleDescription("dateUnknown")
     const bullet = container.querySelector(".h-10.w-10")
     expect(bullet).toBeInTheDocument()
     expect(bullet).toHaveClass("min-h-10", "min-w-10")
@@ -99,13 +93,13 @@ describe("DateBullet closure branches", () => {
 
     expect(screen.getByText("—")).toBeInTheDocument()
     expect(screen.getByText("--")).toBeInTheDocument()
-    expect(screen.getByLabelText("ariaDatePublished:dateUnknown")).toBeInTheDocument()
+    expect(screen.getByText("—").parentElement).toHaveAccessibleDescription("dateUnknown")
   })
 
-  it("formats the accessible full date in the configured campus timezone", () => {
+  it("formats the accessible date description in the configured campus timezone", () => {
     renderInCampusTimezone(<DateBullet date="2026-06-15T14:30:00Z" locale="ru-RU" />)
 
-    expect(screen.getByLabelText(/ariaDatePublished:.*17:30/)).toBeInTheDocument()
+    expect(screen.getByText("15").parentElement).toHaveAccessibleDescription(/17:30/)
   })
 
   it("keeps the default size when size is omitted", () => {

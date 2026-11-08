@@ -157,6 +157,9 @@ describe("EventsCard SSR hydration with the serialized campus timezone", () => {
     hydrationContainer = document.createElement("div")
     hydrationContainer.innerHTML = serverMarkup
     document.body.append(hydrationContainer)
+    const serverRow = hydrationContainer.querySelector("button[aria-describedby]")
+    const serverDescriptionId = serverRow?.getAttribute("aria-describedby")
+    expect(serverRow).toHaveAccessibleDescription("09 октября 2026 г. в 18:00")
     const recoverableErrors: unknown[] = []
 
     await act(async () => {
@@ -167,10 +170,9 @@ describe("EventsCard SSR hydration with the serialized campus timezone", () => {
 
     expect(recoverableErrors).toEqual([])
     expect(hydrationContainer.textContent).toContain("18:00")
-    expect(hydrationContainer.querySelector('[aria-label^="Опубликовано:"]')).toHaveAttribute(
-      "aria-label",
-      expect.stringContaining("09 октября 2026 г. в 18:00")
-    )
+    const row = hydrationContainer.querySelector("button[aria-describedby]")
+    expect(row).toHaveAccessibleDescription("09 октября 2026 г. в 18:00")
+    expect(row).toHaveAttribute("aria-describedby", serverDescriptionId)
   })
 
   it("keeps the server and first client event-day filter on the campus calendar", async () => {

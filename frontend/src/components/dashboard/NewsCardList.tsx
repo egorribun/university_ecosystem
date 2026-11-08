@@ -1,4 +1,4 @@
-import { memo } from "react"
+import { memo, useId } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ArrowRight } from "lucide-react"
@@ -20,6 +20,7 @@ export const NewsCardList = memo(function NewsCardList({
 }: NewsCardListProps) {
   const { t } = useTranslation(["dashboard"])
   const navigate = useNavigate()
+  const dateDescriptionId = useId()
 
   if (loading) {
     return (
@@ -57,10 +58,14 @@ export const NewsCardList = memo(function NewsCardList({
             )}
             onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
             title={n.title}
-            aria-label={t("dashboard:aria.newsItem", { title: n.title })}
+            aria-describedby={`${dateDescriptionId}-${idx}`}
             style={{ "--stagger-i": idx } as React.CSSProperties}
           >
-            <DateBullet date={n.created_at} locale={locale} />
+            <DateBullet
+              date={n.created_at}
+              locale={locale}
+              descriptionId={`${dateDescriptionId}-${idx}`}
+            />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
                 {n.title}

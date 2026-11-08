@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties } from "react"
+import { memo, useId, useMemo, useState, type CSSProperties } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -61,6 +61,7 @@ const EventsCardContent = memo(function EventsCardContent({
 }: EventsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
+  const dateDescriptionId = useId()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
   const timeZone = useCampusTimezone()
@@ -218,6 +219,7 @@ const EventsCardContent = memo(function EventsCardContent({
             <AnimatePresence mode="popLayout" initial={false}>
               {scopedEvents.map((e, idx) => {
                 const eventKey = `${eventsScope}-${e.id}`
+                const eventDescriptionId = `${dateDescriptionId}-${encodeURIComponent(eventKey)}`
                 return (
                   <m.li
                     key={eventKey}
@@ -238,10 +240,15 @@ const EventsCardContent = memo(function EventsCardContent({
                         "active:scale-(--scale-active)"
                       )}
                       onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
-                      aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                      aria-describedby={eventDescriptionId}
                       style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
-                      <DateBullet date={e.starts_at!} locale={language} size="compact" />
+                      <DateBullet
+                        date={e.starts_at!}
+                        locale={language}
+                        size="compact"
+                        descriptionId={eventDescriptionId}
+                      />
                       <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                         <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                           {e.title}

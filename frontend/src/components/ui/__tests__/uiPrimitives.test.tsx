@@ -204,6 +204,24 @@ describe("Tooltip", () => {
     expect(tooltip).toHaveTextContent("Help text")
   })
 
+  it("keeps an opt-in description out of ancestor names while preserving its reference", () => {
+    render(
+      <button aria-describedby="nested-description">
+        <Tooltip content="Full description" id="nested-description" descriptionOnly>
+          <span>Visible date</span>
+        </Tooltip>
+        <span>Visible title</span>
+      </button>
+    )
+    const button = screen.getByRole("button")
+    expect(button).toHaveAccessibleName(/Visible date\s*Visible title/)
+    expect(button).not.toHaveAccessibleName(/Full description/)
+    expect(button).toHaveAccessibleDescription("Full description")
+    expect(screen.getByText("Visible date")).toHaveAttribute("title", "Full description")
+    expect(screen.getByText("Visible date")).toHaveAttribute("data-tooltip", "Full description")
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveAttribute("hidden")
+  })
+
   it("renders an sr-only tooltip region for node content (no title attr)", () => {
     render(
       <Tooltip content={<strong>rich</strong>}>

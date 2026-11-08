@@ -7,11 +7,12 @@ import { formatCampusDate } from "@/utils/campusTimezone"
 interface DateBulletProps {
   date?: string
   locale: string
+  descriptionId?: string
   /** Compact mode for event lists (slightly smaller) */
   size?: "default" | "compact"
 }
 
-export function DateBullet({ date, locale, size }: DateBulletProps) {
+export function DateBullet({ date, locale, size, descriptionId }: DateBulletProps) {
   const { t } = useTranslation("common")
   const timeZone = useCampusTimezone()
   const d = date ? new Date(date) : null
@@ -38,9 +39,8 @@ export function DateBullet({ date, locale, size }: DateBulletProps) {
   const outerSize = isCompact ? "h-10 w-10 min-h-10 min-w-10" : "h-12 w-12 min-h-12 min-w-12"
 
   return (
-    <Tooltip content={full}>
+    <Tooltip content={full} id={descriptionId} descriptionOnly>
       <span
-        aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
           "relative flex flex-col items-center justify-center rounded-full",
           outerSize,
