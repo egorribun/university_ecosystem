@@ -226,7 +226,6 @@ class ChaosLoadTestOrchestrator:
         try:
             # Operator-supplied load-test target; URL structure and scheme are
             # constrained above, so file/data handlers cannot be reached.
-            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             with urlopen(req, timeout=timeout) as resp:  # noqa: S310
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
                 return resp.status, elapsed_ms, None
@@ -499,7 +498,7 @@ class ChaosLoadTestOrchestrator:
     async def _wait_for_injection_status(self) -> bool:
         deadline = time.monotonic() + _FAULT_STATUS_POLL_BUDGET_SEC
         while not self._shutdown_requested and time.monotonic() < deadline:
-            if self._all_owned_faults_confirmed():
+            if await asyncio.to_thread(self._all_owned_faults_confirmed):
                 self._fault_status_confirmed = True
                 logger.info(
                     "Chaos Mesh confirmed successful injection for every run-owned fault."
@@ -722,7 +721,7 @@ class ChaosLoadTestOrchestrator:
                 while not monitor_task.done():
                     if self._shutdown_requested:
                         raise _TerminationRequested
-                    if not self._all_owned_faults_confirmed():
+                    if not await asyncio.to_thread(self._all_owned_faults_confirmed):
                         status_confirmed = False
                         logger.error(
                             "Run-owned Chaos Mesh injection status was lost during the fault traffic window."

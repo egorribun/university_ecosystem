@@ -1031,7 +1031,7 @@ EOF
 
 run_probe() {
   # Read retained logs only after termination; live attach may miss early output.
-  # Each operation is bounded. Never rerun a probe or infer success from EOF.
+  # Each operation is bounded. Never infer success from EOF.
   (
     local name="$1" script="$2" pod created=no exit_status created_uid observed_uid status_record
     pod="ue-r9-aud373-probe-${name}-${RUN_SUFFIX}"
@@ -1339,13 +1339,20 @@ verify_no_svid_evidence() {
 }
 
 run_proofs() {
-  local output server_evidence_prepared=no
-  if output="$(capture_probe gateway-hop "$GATEWAY_HOP_PY")" &&
-    grep -qx 'STATUS=200' <<<"$output" && grep -qx 'BODY_HAS_KEYS=True' <<<"$output"; then
-    record "a-gateway-to-backend-mtls-hop" yes
-  else
-    record "a-gateway-to-backend-mtls-hop" no
-  fi
+  local output server_evidence_prepared=no attempt hop_proved=no
+  # Right after the rollout and the probe NetworkPolicy, the gateway's dial to the backend
+  # Service can time out, which it reports as 502. Only that status is retried, and only a
+  # real 200 with keys passes. Each attempt is a new probe with its own complete evidence.
+  for attempt in 1 2 3 4 5 6; do
+    output="$(capture_probe gateway-hop "$GATEWAY_HOP_PY")" || break
+    if grep -qx 'STATUS=200' <<<"$output" && grep -qx 'BODY_HAS_KEYS=True' <<<"$output"; then
+      hop_proved=yes
+      break
+    fi
+    grep -qx 'STATUS=502' <<<"$output" || break
+    if [[ "$attempt" != 6 ]]; then sleep "${GATEWAY_HOP_RETRY_SECONDS:-10}"; fi
+  done
+  record "a-gateway-to-backend-mtls-hop" "$hop_proved"
 
   if backend_logged_gateway_peer; then
     record "d-backend-logs-gateway-peer-spiffe-id" yes

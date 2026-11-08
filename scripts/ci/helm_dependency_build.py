@@ -26,6 +26,7 @@ DEFAULT_BACKOFF_SECONDS = 15
 NATS_REPOSITORY_NAME = "nats"
 NATS_REPOSITORY_URL = "https://nats-io.github.io/k8s/helm/charts/"
 HELM_HOME_VARIABLES = ("HELM_CONFIG_HOME", "HELM_CACHE_HOME", "HELM_DATA_HOME")
+HELM_TIMEOUT_STATUS = 124
 
 # Helm's registry client reports these conditions with several subtly
 # different messages.  Keep this allowlist deliberately narrow: a generic
@@ -89,7 +90,7 @@ def _run_helm(
         if isinstance(stderr, bytes):
             stderr = stderr.decode("utf-8", errors="replace")
         return (
-            124,
+            HELM_TIMEOUT_STATUS,
             f"Helm dependency build timed out after {timeout_seconds}s\n{stdout}{stderr}",
         )
     except OSError as error:
@@ -238,7 +239,7 @@ def run(
 
             if first_failure is None:
                 first_failure = output
-            if not is_transient_failure(output):
+            if status != HELM_TIMEOUT_STATUS and not is_transient_failure(output):
                 print(
                     "::error::Helm dependency build failed with a non-transient error; "
                     "retry suppressed.",

@@ -198,6 +198,32 @@ def test_helm_helper_retries_transient_nats_repository_bootstrap(
     ]
 
 
+def test_helm_helper_retries_a_timed_out_dependency_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    outcomes = iter(
+        [
+            subprocess.TimeoutExpired(["helm"], 120),
+            subprocess.CompletedProcess(["helm"], 0, stdout="ok", stderr=""),
+        ]
+    )
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(helper.subprocess, "run", fake_run)
+    monkeypatch.setenv("HELM_RETRY_SLEEP_BASE_SECONDS", "0")
+
+    assert helper.main([str(chart)]) == 0
+    assert "attempt 2" in capsys.readouterr().out
+
+
 def test_helm_helper_fails_fast_on_permanent_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

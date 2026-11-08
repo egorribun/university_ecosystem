@@ -31054,3 +31054,27 @@ def test_aud428_row13_approved_506_rejects_scope_drift(mutation: str) -> None:
         )
     with pytest.raises(AssertionError):
         _aud428_assert_live_policy_is_exact_506(changed, historical_490)
+
+
+# Exact source rebinds after the 2026-11-08 CI fixes; each value is a file digest.
+_AUD380_NOV8_SOURCE_REBINDS = {
+    "scripts/kind/aud373_internal_mtls_proof.sh": bytes.fromhex(
+        "df f2 11 ea a4 bb 49 1b 37 0d cd 1f b7 d4 90 b5 c1 a8 79 0f 61 2e cb 30 53 7d de 7d 99 41 26 55"
+    ),
+    "tests/test_internal_mtls_kind_contract.py": bytes.fromhex(
+        "70 58 2b 5f bf f6 fc 4a 91 af e0 ca 08 ea d2 e1 e6 88 80 6d b2 8d 24 ca 7f 8c b8 ef 8f ac 60 4b"
+    ),
+}
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    **_AUD380_NOV8_SOURCE_REBINDS,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    **{
+        path: digest
+        for path, digest in _AUD380_NOV8_SOURCE_REBINDS.items()
+        if path in _AUD380_N6_FINAL_SOURCE_SHA256
+    },
+}
+# End of 2026-11-08 source rebinds.

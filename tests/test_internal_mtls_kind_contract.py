@@ -3189,3 +3189,81 @@ printf 'FAILURES=%s\\n' "$FAILURES"
     assert "FAIL a-gateway-to-backend-mtls-hop\n" in text
     assert "FAILURES=1\n" in text
     assert text.count("PASS ") == 3
+
+
+@pytest.mark.parametrize(
+    ("statuses", "attempts", "passes"),
+    [
+        (["200"], 1, True),
+        (["502", "502", "200"], 3, True),
+        (["502"] * 6, 6, False),
+        (["503", "200"], 1, False),
+        (["502", "401", "200"], 2, False),
+    ],
+)
+def test_gateway_hop_retries_only_a_proxy_dial_failure(
+    statuses: list[str], attempts: int, passes: bool, tmp_path: Path
+) -> None:
+    sequence = tmp_path / "statuses"
+    sequence.write_text("\n".join(statuses) + "\n", encoding="utf-8")
+    calls = tmp_path / "calls"
+    no_svid = "".join(f"{k}={v}\n" for k, v in _complete_no_svid_markers().items())
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path / "diagnostics"))}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+GATEWAY_HOP_RETRY_SECONDS=0
+run_probe() {{
+  case "$1" in
+    gateway-hop)
+      printf 'x\\n' >>{shlex.quote(_bash_path(calls))}
+      status="$(sed -n "$(wc -l <{shlex.quote(_bash_path(calls))})p" {shlex.quote(_bash_path(sequence))})"
+      keys=False
+      if [[ "$status" == 200 ]]; then keys=True; fi
+      printf 'STATUS=%s\\nBODY_HAS_KEYS=%s\\n' "$status" "$keys"
+      ;;
+    no-svid-tls) printf '%s' {shlex.quote(no_svid)} ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+prepare_no_svid_evidence() {{ return 0; }}
+verify_no_svid_evidence() {{ return 1; }}
+run_proofs
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    verdict = "PASS" if passes else "FAIL"
+    assert f"{verdict} a-gateway-to-backend-mtls-hop\n" in result.stdout.decode()
+    assert len(calls.read_text(encoding="utf-8").splitlines()) == attempts
+
+
+def test_gateway_hop_requires_keys_even_with_a_success_status(tmp_path: Path) -> None:
+    no_svid = "".join(f"{k}={v}\n" for k, v in _complete_no_svid_markers().items())
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path / "diagnostics"))}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+run_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=False\\n' ;;
+    no-svid-tls) printf '%s' {shlex.quote(no_svid)} ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+prepare_no_svid_evidence() {{ return 0; }}
+verify_no_svid_evidence() {{ return 1; }}
+run_proofs
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    assert "FAIL a-gateway-to-backend-mtls-hop\n" in result.stdout.decode()
