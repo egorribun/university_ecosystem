@@ -2907,3 +2907,24 @@ def test_merged_report_replace_failure_keeps_original_and_cleans_temporary(
 
     assert output_path.read_bytes() == original
     assert list(tmp_path.glob(f".{output_path.name}.*.tmp")) == []
+
+
+def test_no_tracked_source_carries_an_inline_semgrep_suppression() -> None:
+    """Semgrep exceptions live only in the exact, reviewed dispositions ledger."""
+    allowed = {"AGENTS.md", "scripts/quality/validate_semgrep_sarif.py"}
+    marker = "nosem" + "grep"
+    tracked = subprocess.run(  # noqa: S603  # Fixed git command over this repository.
+        ["git", "grep", "-l", "-I", marker],  # noqa: S607  # git comes from PATH in CI.
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert tracked.returncode in (0, 1), tracked.stderr
+    offenders = sorted(
+        path
+        for path in tracked.stdout.splitlines()
+        if path not in allowed and not path.startswith(("docs/", "quality/", "tests/"))
+    )
+    assert offenders == []

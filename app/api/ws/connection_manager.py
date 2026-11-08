@@ -385,13 +385,18 @@ class ConnectionManager:
         # only. ws-hub unmarshals + re-fans the `{type, room, payload}` envelope
         # to room members (join-gated via /api/internal/chat/check-participant).
         #
+        # `audience` is the roster read above. ws-hub replaces the body of any
+        # chat event without it by a cursor-only checkpoint and delivers only to
+        # listed users, including on JetStream replay, so a removed member gets
+        # no frame even if a stale room join survives. It is the whole roster,
+        # not `targets`: the sender's other sessions need the frame, and the
+        # frontend self-echo guard (W204 SW4) drops the sender's own echo.
+        #
         # Best-effort by default: local sends above remain independent.
         # Durable outbox callers opt into propagating NATS failures for retry.
-        # No per-recipient exclusion here (ws-hub fans to ALL room members,
-        # it can't honour exclude_user_id) — the frontend self-echo guard
-        # (W204 SW4) drops the sender's own echo. publish_core uses core NATS
-        # without a PubAck; CHAT_EVENTS captures chat.* but this call does not
-        # confirm persistence or recipient delivery. orjson supports UUIDs.
+        # publish_core uses core NATS without a PubAck; CHAT_EVENTS captures
+        # chat.* but this call does not confirm persistence or recipient
+        # delivery. orjson supports UUIDs.
         try:
             from app.core.nats_broker import (  # lazy — avoid import cycle (ws_hub_client.py:52 pattern)
                 broker,
@@ -402,6 +407,7 @@ class ConnectionManager:
                 {
                     "type": message.get("type"),
                     "room": str(chat_id),
+                    "audience": sorted({str(p_id) for p_id in participant_ids}),
                     "payload": message,
                 },
                 strict=propagate_nats_failure,
