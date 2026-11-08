@@ -52,7 +52,8 @@
 # Main HTTPS site — matches the public hostname or falls back to :443.
 {$PUBLIC_HOSTNAME} {
 	# --- WebSocket upgrade rate limit (MED-05) --------------------------------
-	# Throttle WebSocket connection creation to 10 upgrades / minute per IP.
+	# Throttle WebSocket connection creation to 10 upgrades / minute per IP unless
+	# WS_UPGRADE_RATE_PER_MINUTE sets another budget.
 	# This is a network-layer guard before the request reaches the Python backend,
 	# which applies its own /ws rate limit as defense-in-depth.
 	# Requires the caddy-ratelimit plugin (see services/caddy/Dockerfile).
@@ -63,7 +64,7 @@
 	rate_limit @ws_upgrade {
 		zone ws_upgrades {
 			key {http.request.remote.host}
-			events 10
+			events {$WS_UPGRADE_RATE_PER_MINUTE:10}
 			window 1m
 		}
 	}

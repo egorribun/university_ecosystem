@@ -16058,6 +16058,12 @@ def test_live_overlay_alone_raises_the_shared_ip_socket_budget() -> None:
     live = (root / "docker-compose.live.yml").read_text(encoding="utf-8")
     ws_hub = live.split("\n  ws-hub:\n", 1)[1].split("\n  temporal:\n", 1)[0]
     assert 'WS_UPGRADE_RATE_PER_MINUTE: "600"' in ws_hub
+    caddy = live.split("\n  caddy:\n", 1)[1].split("\n  mailpit:\n", 1)[0]
+    assert 'WS_UPGRADE_RATE_PER_MINUTE: "600"' in caddy
+    # Both edges keep the ten-per-minute default for every other deployment.
+    for edge in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        source = (root / edge).read_text(encoding="utf-8")
+        assert "events {$WS_UPGRADE_RATE_PER_MINUTE:10}" in source
     for name in (
         "docker-compose.yml",
         "docker-compose.full.yml",
