@@ -1389,6 +1389,10 @@ const VISUAL_CONSOLE_CLASSES = [
   "react_minified_error",
   "preload_notice",
   "resource_failure",
+  "content_security_policy",
+  "cors_failure",
+  "module_load_failure",
+  "mime_type",
   "react_other",
   "other",
 ]
@@ -1432,6 +1436,16 @@ function classifyVisualConsoleMessage(message) {
     return "react_hydration"
   }
   if (/minified react error #\d+/u.test(value)) return "react_minified_error"
+  if (/content security policy|content-security-policy/u.test(value))
+    return "content_security_policy"
+  if (/cors policy|cross-origin request blocked/u.test(value)) return "cors_failure"
+  if (
+    /failed to fetch dynamically imported module|chunkloaderror|loading chunk .* failed/u.test(
+      value
+    )
+  )
+    return "module_load_failure"
+  if (/mime type/u.test(value)) return "mime_type"
   if (/preload|preloaded using link preload/u.test(value)) return "preload_notice"
   if (/failed to load resource|net::err_|resource .*failed|network .*failed/u.test(value)) {
     return "resource_failure"
@@ -1484,11 +1498,14 @@ export function summarizeAuthenticatedVisualDiagnostics({
 } = {}) {
   const consoleTypeCounts = createDiagnosticCounts(VISUAL_CONSOLE_TYPES)
   const consoleClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
+  const consoleErrorClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
   const requestMethodCounts = createDiagnosticCounts(VISUAL_REQUEST_METHODS)
   const requestOriginCounts = createDiagnosticCounts(VISUAL_REQUEST_ORIGINS)
   const requestEndpointCounts = createDiagnosticCounts(VISUAL_REQUEST_ENDPOINTS)
   const requestReasonCounts = createDiagnosticCounts(VISUAL_REQUEST_REASONS)
   const httpStatusClassCounts = { "4xx": 0, "5xx": 0, other: 0 }
+  const httpFailureOriginCounts = createDiagnosticCounts(VISUAL_REQUEST_ORIGINS)
+  const httpFailureEndpointCounts = createDiagnosticCounts(VISUAL_REQUEST_ENDPOINTS)
   let capped =
     consoleMessages.length > DIAGNOSTIC_COUNT_LIMIT ||
     requestFailures.length > DIAGNOSTIC_COUNT_LIMIT ||
@@ -1499,6 +1516,9 @@ export function summarizeAuthenticatedVisualDiagnostics({
     capped = incrementDiagnosticCount(consoleTypeCounts, type) || capped
     const messageClass = classifyVisualConsoleMessage(message?.text)
     capped = incrementDiagnosticCount(consoleClassCounts, messageClass) || capped
+    if (type === "error" || type === "pageerror") {
+      capped = incrementDiagnosticCount(consoleErrorClassCounts, messageClass) || capped
+    }
   }
   for (const request of requestFailures) {
     const classified = classifyVisualRequestFailure(request, expectedOrigin)
@@ -1512,6 +1532,9 @@ export function summarizeAuthenticatedVisualDiagnostics({
     const statusClass =
       status >= 500 && status <= 599 ? "5xx" : status >= 400 && status <= 499 ? "4xx" : "other"
     capped = incrementDiagnosticCount(httpStatusClassCounts, statusClass) || capped
+    const classified = classifyVisualRequestFailure(response, expectedOrigin)
+    capped = incrementDiagnosticCount(httpFailureOriginCounts, classified.origin) || capped
+    capped = incrementDiagnosticCount(httpFailureEndpointCounts, classified.endpoint) || capped
   }
 
   return {
@@ -1519,6 +1542,7 @@ export function summarizeAuthenticatedVisualDiagnostics({
     capped,
     consoleTypeCounts,
     consoleClassCounts,
+    consoleErrorClassCounts,
     requestFailureCount: Math.min(requestFailures.length, DIAGNOSTIC_COUNT_LIMIT),
     requestMethodCounts,
     requestOriginCounts,
@@ -1526,8 +1550,62 @@ export function summarizeAuthenticatedVisualDiagnostics({
     requestReasonCounts,
     httpFailureCount: Math.min(httpFailures.length, DIAGNOSTIC_COUNT_LIMIT),
     httpStatusClassCounts,
+    httpFailureOriginCounts,
+    httpFailureEndpointCounts,
   }
 }
+// Public output is a fresh projection of closed keys, never a sidecar or error payload.
+export function emitAuthenticatedVisualRuntimeDiagnostics(
+  routePath,
+  captureConfig,
+  diagnostics,
+  write
+) {
+  try {
+    const count = (value) => {
+      if (!Number.isSafeInteger(value) || value < 0 || value > DIAGNOSTIC_COUNT_LIMIT) {
+        throw new TypeError("Invalid runtime diagnostic count")
+      }
+      return value
+    }
+    const counts = (values, keys) =>
+      Object.fromEntries(keys.map((key) => [key, count(values[key])]))
+    const capped = diagnostics.capped
+    const locale = captureConfig?.locale
+    const theme = captureConfig?.theme
+    const width = captureConfig?.width
+    if (diagnostics.schema !== 1 || typeof capped !== "boolean") return
+    const record = {
+      schema: 1,
+      route: DEFAULT_ROUTE_SET.has(routePath) ? routePath : "other",
+      locale: locale === "en" || locale === "ru" ? locale : "other",
+      theme: theme === "light" || theme === "dark" ? theme : "other",
+      width: [360, 375, 390, 414, 768, 1024, 1280, 1440, 1920].includes(width) ? width : 0,
+      capped,
+      consoleTypeCounts: counts(diagnostics.consoleTypeCounts, VISUAL_CONSOLE_TYPES),
+      consoleErrorClassCounts: counts(diagnostics.consoleErrorClassCounts, VISUAL_CONSOLE_CLASSES),
+      requestFailureCount: count(diagnostics.requestFailureCount),
+      requestMethodCounts: counts(diagnostics.requestMethodCounts, VISUAL_REQUEST_METHODS),
+      requestOriginCounts: counts(diagnostics.requestOriginCounts, VISUAL_REQUEST_ORIGINS),
+      requestEndpointCounts: counts(diagnostics.requestEndpointCounts, VISUAL_REQUEST_ENDPOINTS),
+      requestReasonCounts: counts(diagnostics.requestReasonCounts, VISUAL_REQUEST_REASONS),
+      httpFailureCount: count(diagnostics.httpFailureCount),
+      httpStatusClassCounts: counts(diagnostics.httpStatusClassCounts, ["4xx", "5xx", "other"]),
+      httpFailureOriginCounts: counts(diagnostics.httpFailureOriginCounts, VISUAL_REQUEST_ORIGINS),
+      httpFailureEndpointCounts: counts(
+        diagnostics.httpFailureEndpointCounts,
+        VISUAL_REQUEST_ENDPOINTS
+      ),
+    }
+    const line = "visual-runtime-diagnostics " + JSON.stringify(record)
+    if (line.length > 4096) return
+    const output = write ?? console.log
+    output(line)
+  } catch {
+    // Diagnostics never change acceptance, expose an exception, or retry a failed sink.
+  }
+}
+
 import { emitAxeDiagnostics } from "./visual-smoke-contract.mjs"
 
 async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
@@ -1800,6 +1878,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     requestFailures: networkFailures,
     httpFailures: failedNetworkRequests,
   })
+  emitAuthenticatedVisualRuntimeDiagnostics(routePath, captureConfig, visualDiagnostics)
 
   const hydrationErrors = consoleMessages.filter(
     (m) =>
