@@ -276,7 +276,6 @@ def run_process(
     proc: subprocess.Popen[str] | None = None
     try:
         # Python 3.14 is required; these Python <3.6 compatibility findings do not apply.
-        # nosemgrep: python.lang.compatibility.python36.python36-compatibility-Popen1, python.lang.compatibility.python36.python36-compatibility-Popen2
         proc = subprocess.Popen(  # noqa: S603
             cmd,
             cwd=str(cwd) if cwd else None,

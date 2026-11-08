@@ -487,7 +487,6 @@ jobs:
           set -euo pipefail
           # Use the maintained Avito fork; the pinned pseudo-version is
           # reproducible and avoids the old Go 1.26 go/types panic.
-          # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
           GOBIN=/usr/local/bin go install github.com/avito-tech/go-mutesting/cmd/go-mutesting@v0.0.0-20261002081621-9ce5f731e321
 
       - name: Run bounded Go mutation diagnostic

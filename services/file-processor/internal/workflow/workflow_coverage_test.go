@@ -78,7 +78,7 @@ func (f *fakeS3) handler() http.HandlerFunc {
 			w.Header().Set("Content-Length", strconv.Itoa(len(f.getBody)))
 			w.WriteHeader(http.StatusOK)
 			if r.Method == http.MethodGet {
-				_, _ = w.Write(f.getBody) //nolint:errcheck // nosemgrep // test server serving binary file body; XSS not applicable
+				_, _ = w.Write(f.getBody) //nolint:errcheck // test server serving binary file body; XSS not applicable
 			}
 		case http.MethodPut:
 			b, _ := io.ReadAll(r.Body) //nolint:errcheck // test handler best-effort
@@ -274,7 +274,7 @@ func TestDownloadAndDecodeImage_ContextCancelledMidDecode(t *testing.T) {
 		w.Header().Set("Content-Length", "1000")
 		w.WriteHeader(http.StatusOK)
 		// Write PNG header
-		_, _ = w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) //nolint:errcheck // nosemgrep // test server serving PNG magic bytes; XSS not applicable
+		_, _ = w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) //nolint:errcheck // test server serving PNG magic bytes; XSS not applicable
 		w.(http.Flusher).Flush()
 		<-blockCh
 	}))

@@ -77,7 +77,7 @@ async def cleanup_stale_email_change_tokens(
             total,
             updated_count,
             removed_count,
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        )
     return total
 
 

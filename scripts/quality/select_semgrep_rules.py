@@ -31,6 +31,7 @@ DEFAULT_DIRECTORIES = (
     "yaml",
     "dockerfile",
     "bash",
+    "rust",
     "generic/ci",
 )
 RULE_SUFFIXES = frozenset({".yaml", ".yml"})

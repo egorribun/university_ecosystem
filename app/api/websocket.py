@@ -224,9 +224,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
     )
 
     if not user or not session_jti:
-        logger.warning(
-            "WebSocket auth failed - no valid credentials"
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        logger.warning("WebSocket auth failed - no valid credentials")
         await websocket.close(code=4001, reason="Authentication required")
         return
 
@@ -267,9 +265,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     # Reject over-limit raw frames before parsing, matching ws-hub's
                     # 60 KiB ingress guard and avoiding unnecessary JSON work.
                     if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
-                        logger.warning(
-                            "WS payload too large from user %s", user.id
-                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        logger.warning("WS payload too large from user %s", user.id)
                         await websocket.close(code=1009, reason="Payload too large")
                         return
 
@@ -278,7 +274,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                         logger.warning(
                             "WS rate limit exceeded for user %s - dropping message",
                             user.id,
-                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        )
                         await websocket.send_json(
                             {"type": "error", "message": "Rate limit exceeded"}
                         )
@@ -295,7 +291,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     if not _is_websocket_payload_within_limits(text_data, data):
                         logger.warning(
                             "WS message content too large from user %s", user.id
-                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        )
                         await websocket.close(code=1009, reason="Payload too large")
                         return
                 except (
@@ -316,7 +312,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                         getattr(user, "id", "unknown"),
                         exc,
                         frame_preview,
-                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    )
                     await websocket.send_json(
                         {"type": "error", "message": "Invalid JSON"}
                     )

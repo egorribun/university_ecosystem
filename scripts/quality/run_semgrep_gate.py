@@ -41,6 +41,8 @@ IMAGE_PATTERN = re.compile(
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
 GIT_TIMEOUT_SECONDS = 300
 SCAN_TIMEOUT_SECONDS = 900
+FIXPOINT_CONFIRMATION_TIMEOUT_SECONDS = 300
+FIXPOINT_CONFIRMATION_MAX_TARGETS = 64
 HELM_ARCHIVE_MAX_BYTES = 128 * 1024 * 1024
 HELM_ARCHIVE_TIMEOUT_SECONDS = 30
 HELM_ARCHIVE_CHUNK_BYTES = 64 * 1024
@@ -1931,11 +1933,11 @@ def _read_semgrep_report(path: Path) -> dict[str, Any]:
 
 
 def _validate_mts_supplement_report(
-    report: dict[str, Any], targets: Sequence[str]
+    report: dict[str, Any], targets: Sequence[str], *, label: str = "MTS"
 ) -> None:
     expected = set(targets)
     if not expected:
-        raise SemgrepGateError("MTS supplemental scan has no targets")
+        raise SemgrepGateError(f"{label} supplemental scan has no targets")
     errors = report.get("errors")
     skipped_rules = report.get("skipped_rules")
     results = report.get("results")
@@ -1945,33 +1947,35 @@ def _validate_mts_supplement_report(
     timing = report.get("time")
     timeouts = timing.get("fixpoint_timeouts") if isinstance(timing, dict) else None
     if not isinstance(errors, list) or errors:
-        raise SemgrepGateError("MTS supplemental scan reported diagnostics")
+        raise SemgrepGateError(f"{label} supplemental scan reported diagnostics")
     if not isinstance(skipped_rules, list) or skipped_rules:
-        raise SemgrepGateError("MTS supplemental scan skipped rules")
+        raise SemgrepGateError(f"{label} supplemental scan skipped rules")
     if not isinstance(results, list):
-        raise SemgrepGateError("MTS supplemental scan has no result list")
+        raise SemgrepGateError(f"{label} supplemental scan has no result list")
     if not isinstance(scanned, list) or not isinstance(skipped, list):
-        raise SemgrepGateError("MTS supplemental scan has malformed path evidence")
+        raise SemgrepGateError(f"{label} supplemental scan has malformed path evidence")
     normalized_scanned = [_normalize_report_path(path) for path in scanned]
     if (
         len(normalized_scanned) != len(set(normalized_scanned))
         or set(normalized_scanned) != expected
     ):
         raise SemgrepGateError(
-            "MTS supplemental scan did not scan the exact target set"
+            f"{label} supplemental scan did not scan the exact target set"
         )
     if skipped:
-        raise SemgrepGateError("MTS supplemental scan skipped an explicit target")
+        raise SemgrepGateError(f"{label} supplemental scan skipped an explicit target")
     if not isinstance(timeouts, list) or timeouts:
         raise SemgrepGateError(
-            "MTS supplemental scan has missing or timed-out analysis"
+            f"{label} supplemental scan has missing or timed-out analysis"
         )
     for result in results:
         if (
             not isinstance(result, dict)
             or _normalize_report_path(result.get("path")) not in expected
         ):
-            raise SemgrepGateError("MTS supplemental finding is outside its target set")
+            raise SemgrepGateError(
+                f"{label} supplemental finding is outside its target set"
+            )
 
 
 def _merge_semgrep_reports(
@@ -2041,6 +2045,117 @@ def _merge_semgrep_reports(
     }
     merged["supplemental_scan_evidence"] = [*existing_evidence, new_evidence]
     return merged
+
+
+def _fixpoint_timeout_targets(report: dict[str, Any]) -> tuple[str, ...]:
+    """Return the sorted files whose taint analysis hit a fixpoint timeout.
+
+    A timeout that names no scanned file cannot be confirmed, so it stays fatal.
+    """
+    timing = report.get("time")
+    timeouts = timing.get("fixpoint_timeouts") if isinstance(timing, dict) else None
+    if not isinstance(timeouts, list) or not timeouts:
+        return ()
+    paths = report.get("paths")
+    scanned = paths.get("scanned") if isinstance(paths, dict) else None
+    if not isinstance(scanned, list):
+        raise SemgrepGateError("Semgrep report has malformed scanned target evidence")
+    normalized_scanned = {_normalize_report_path(path) for path in scanned}
+    targets: set[str] = set()
+    for entry in timeouts:
+        location = entry.get("location") if isinstance(entry, dict) else None
+        path = location.get("path") if isinstance(location, dict) else None
+        if not isinstance(path, str):
+            raise SemgrepGateError("Semgrep fixpoint timeout names no target")
+        target = _normalize_report_path(path)
+        if target not in normalized_scanned:
+            raise SemgrepGateError("Semgrep fixpoint timeout names an unscanned target")
+        targets.add(target)
+    if len(targets) > FIXPOINT_CONFIRMATION_MAX_TARGETS:
+        raise SemgrepGateError(
+            "Semgrep fixpoint timeouts exceed the confirmation bound"
+        )
+    return tuple(sorted(targets))
+
+
+def _semgrep_result_identity(result: Any) -> str:
+    if not isinstance(result, dict):
+        raise SemgrepGateError("Semgrep result is malformed")
+    return json.dumps(
+        [
+            result.get("check_id"),
+            result.get("path"),
+            result.get("start"),
+            result.get("end"),
+        ],
+        sort_keys=True,
+    )
+
+
+def _sarif_result_identity(result: Any) -> str:
+    if not isinstance(result, dict):
+        raise SemgrepGateError("Semgrep SARIF result is malformed")
+    return json.dumps([result.get("ruleId"), result.get("locations")], sort_keys=True)
+
+
+def _merge_fixpoint_confirmation(
+    report: dict[str, Any], confirmation: dict[str, Any], targets: Sequence[str]
+) -> dict[str, Any]:
+    """Keep every finding of both scans and clear only the confirmed timeouts."""
+    results = report.get("results")
+    confirmed_results = confirmation.get("results")
+    timing = report.get("time")
+    evidence = report.get("supplemental_scan_evidence", [])
+    if (
+        not isinstance(results, list)
+        or not isinstance(confirmed_results, list)
+        or not isinstance(timing, dict)
+        or not isinstance(evidence, list)
+    ):
+        raise SemgrepGateError("Semgrep fixpoint confirmation inputs are malformed")
+    seen = {_semgrep_result_identity(result) for result in results}
+    merged = dict(report)
+    merged["results"] = [
+        *results,
+        *(
+            result
+            for result in confirmed_results
+            if _semgrep_result_identity(result) not in seen
+        ),
+    ]
+    merged["time"] = {**timing, "fixpoint_timeouts": []}
+    merged["supplemental_scan_evidence"] = [
+        *evidence,
+        {
+            "mode": "fixpoint-timeout-confirmation",
+            "targets": list(targets),
+            "confirmed_fixpoint_timeouts": timing.get("fixpoint_timeouts"),
+            "time": confirmation.get("time"),
+        },
+    ]
+    return merged
+
+
+def _new_sarif_results_only(
+    primary: dict[str, Any], confirmation: dict[str, Any]
+) -> dict[str, Any]:
+    """Drop confirmation SARIF results that the merged report already holds."""
+    try:
+        (primary_run,) = primary["runs"]
+        (confirmation_run,) = confirmation["runs"]
+        seen = {_sarif_result_identity(item) for item in primary_run["results"]}
+        confirmed = confirmation_run["results"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SemgrepGateError(
+            "pinned Semgrep SARIF must contain exactly one run per report"
+        ) from exc
+    filtered = copy.deepcopy(confirmation)
+    filtered["runs"][0]["results"] = [
+        copy.deepcopy(item)
+        for item in confirmed
+        if _sarif_result_identity(item) not in seen
+    ]
+    return filtered
 
 
 def _validate_dockerfile_supplement_report(
@@ -2455,6 +2570,38 @@ def _git_common_directory(
         raise SemgrepGateError(f"Git common directory is unavailable: {exc}") from exc
 
 
+def _isolated_git_environment() -> dict[str, str]:
+    """Return an environment that cannot point Git at the repository being committed.
+
+    Git exports GIT_DIR and friends to hooks that run from a linked worktree. Left
+    in place, `git init` for the rules checkout rewrites the real repository's
+    shared configuration, including core.bare.
+    """
+    local_variables = {
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG",
+        "GIT_DIR",
+        "GIT_GRAFT_FILE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_INTERNAL_SUPER_PREFIX",
+        "GIT_NAMESPACE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_QUARANTINE_PATH",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_SHALLOW_FILE",
+        "GIT_WORK_TREE",
+    }
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name.upper() not in local_variables
+    }
+
+
 def _run_git(
     command: list[str],
     *,
@@ -2469,6 +2616,7 @@ def _run_git(
             capture_output=True,
             text=True,
             timeout=GIT_TIMEOUT_SECONDS,
+            env=_isolated_git_environment(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SemgrepGateError(
@@ -2517,6 +2665,7 @@ def _checkout_rules(
             check=False,
             capture_output=True,
             timeout=GIT_TIMEOUT_SECONDS,
+            env=_isolated_git_environment(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SemgrepGateError(f"cannot archive pinned Semgrep rules: {exc}") from exc
@@ -3453,6 +3602,8 @@ def _docker_scan(
     scan_unknown_extensions: bool = False,
     scan_dockerfile_aliases: bool = False,
     scan_inline_javascript_aliases: bool = False,
+    explicit_file_targets: bool = False,
+    jobs: int = 2,
     timeout_seconds: int = SCAN_TIMEOUT_SECONDS,
 ) -> int:
     if (
@@ -3470,26 +3621,26 @@ def _docker_scan(
                 scan_unknown_extensions,
                 scan_dockerfile_aliases,
                 scan_inline_javascript_aliases,
+                explicit_file_targets,
             )
         )
         > 1
     ):
         raise SemgrepGateError("Semgrep scan target modes are mutually exclusive")
-    if scan_unknown_extensions:
+    if scan_unknown_extensions or explicit_file_targets:
+        label = "unknown-extension" if scan_unknown_extensions else "explicit-target"
         if "." in target_paths:
-            raise SemgrepGateError(
-                "unknown-extension scan requires explicit file targets"
-            )
+            raise SemgrepGateError(f"{label} scan requires explicit file targets")
         for relative in target_paths:
             path = PurePosixPath(relative)
             if path.is_absolute() or any(
                 part in {"", ".", ".."} for part in path.parts
             ):
-                raise SemgrepGateError("unknown-extension scan target is not relative")
+                raise SemgrepGateError(f"{label} scan target is not relative")
             target = scan_root.joinpath(*path.parts)
             if target.is_symlink() or target.is_junction() or not target.is_file():
                 raise SemgrepGateError(
-                    f"unknown-extension scan target is missing or linked: {relative}"
+                    f"{label} scan target is missing or linked: {relative}"
                 )
     elif scan_dockerfile_aliases:
         expected_aliases = tuple(
@@ -3577,7 +3728,7 @@ def _docker_scan(
         "--verbose",
         "--max-target-bytes=0",
         "--jobs",
-        "2",
+        str(jobs),
         "--config",
         f"/out/{config_name}",
     ]
@@ -3824,6 +3975,8 @@ def _persist_reports(output_directory: Path, report_directory: Path | None) -> N
         "semgrep-inline-js-raw.sarif",
         "semgrep-inline-js-inputs.json",
         "security-rules-mts.json",
+        "semgrep-fixpoint-confirmation.json",
+        "semgrep-fixpoint-confirmation.sarif",
     ):
         source = output_directory / name
         try:
@@ -4397,6 +4550,94 @@ def _run_inline_javascript_supplement(
     return primary_reports_preserved
 
 
+def _run_fixpoint_confirmation(
+    context: _SupplementContext, *, primary_reports_preserved: bool
+) -> bool:
+    """Re-analyse files whose taint analysis timed out on a loaded runner.
+
+    Semgrep's fixpoint limit is wall-clock time, so a timeout can follow from CPU
+    contention rather than from the code. It leaves only that file's analysis
+    incomplete, so those files alone are scanned again, one job at a time, under
+    the same rules and limits. The result counts only if that scan completes with
+    no timeout. Otherwise the gate still fails.
+    """
+    report = _read_semgrep_report(context.results_path)
+    targets = _fixpoint_timeout_targets(report)
+    if not targets:
+        return primary_reports_preserved
+    if not primary_reports_preserved:
+        _preserve_primary_scan_reports(context.scan_output_directory)
+    prefix = "semgrep-fixpoint-confirmation"
+    scan_status: int | None = None
+    scan_error: SemgrepGateError | None = None
+    try:
+        scan_status = _docker_scan(
+            scan_root=context.overlay_root,
+            output_directory=context.scan_output_directory,
+            image=context.image,
+            command_runner=context.run_command,
+            scan_id=prefix,
+            report_prefix=prefix,
+            target_paths=targets,
+            explicit_file_targets=True,
+            jobs=1,
+            timeout_seconds=FIXPOINT_CONFIRMATION_TIMEOUT_SECONDS,
+        )
+    except SemgrepGateError as exc:
+        scan_error = exc
+    _persist_reports(context.scan_output_directory, context.report_directory)
+    _verify_source_snapshot(context.scan_root, context.snapshot_manifest)
+    actual_overlay_hashes = _tree_file_hashes(
+        context.overlay_root, description="rendered scan overlay after confirmation"
+    )
+    if actual_overlay_hashes != context.overlay_target_hashes:
+        scan_error = scan_error or SemgrepGateError(
+            "rendered scan overlay changed during fixpoint confirmation"
+        )
+    _verify_index_unchanged(
+        repository_root=context.repository_root,
+        expected_entries=context.index_entries,
+        command_runner=context.run_command,
+        manifest_directory=context.manifest_directory,
+        target_count=len(context.snapshot_manifest),
+        manifest_sha256=context.manifest_sha256,
+    )
+    if scan_error is not None:
+        raise scan_error
+    if scan_status not in (0, 1):
+        raise SemgrepGateError("fixpoint confirmation scan returned an invalid status")
+    json_path = context.scan_output_directory / f"{prefix}.json"
+    sarif_path = context.scan_output_directory / f"{prefix}.sarif"
+    for evidence_path in (json_path, sarif_path):
+        if (
+            not evidence_path.is_file()
+            or evidence_path.is_symlink()
+            or evidence_path.is_junction()
+            or evidence_path.stat().st_size == 0
+        ):
+            raise SemgrepGateError(
+                "fixpoint confirmation evidence is missing or invalid"
+            )
+    confirmation = _read_semgrep_report(json_path)
+    _validate_mts_supplement_report(
+        confirmation, targets, label="fixpoint confirmation"
+    )
+    confirmation_sarif = _read_semgrep_report(sarif_path)
+    primary_sarif = _read_semgrep_report(context.sarif_path)
+    _write_semgrep_json(
+        context.results_path,
+        _merge_fixpoint_confirmation(report, confirmation, targets),
+    )
+    _write_semgrep_sarif(
+        context.sarif_path,
+        _merge_sarif_reports(
+            primary_sarif, _new_sarif_results_only(primary_sarif, confirmation_sarif)
+        ),
+    )
+    _persist_reports(context.scan_output_directory, context.report_directory)
+    return True
+
+
 def _evaluate_merged_dispositions(context: _SupplementContext) -> int:
     """Evaluate the merged report and verify the unchanged source snapshots."""
     repository_root = context.repository_root
@@ -4698,6 +4939,10 @@ def run_gate(
                 primary_reports_preserved=primary_reports_preserved,
             )
             primary_reports_preserved = _run_inline_javascript_supplement(
+                supplement_context,
+                primary_reports_preserved=primary_reports_preserved,
+            )
+            _run_fixpoint_confirmation(
                 supplement_context,
                 primary_reports_preserved=primary_reports_preserved,
             )

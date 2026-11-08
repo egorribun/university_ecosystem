@@ -57,8 +57,8 @@ spec:
       # The Kubernetes workload attestor resolves container PIDs and reaches
       # the node-local kubelet. These two host namespaces are its intentional,
       # documented trust boundary; the container itself is not privileged.
-      hostPID: true # nosemgrep: yaml.kubernetes.security.hostpid-pod.hostpid-pod
-      hostNetwork: true # nosemgrep: yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
+      hostPID: true
+      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: spire-agent
       securityContext:

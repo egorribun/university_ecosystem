@@ -235,7 +235,7 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
             if remaining <= 0:
                 raise SameRunArtifactError("GitHub API selection deadline exceeded")
             timeout = min(20.0, remaining)
-        http_request = urllib.request.Request(  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
+        http_request = urllib.request.Request(  # noqa: S310  # URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
             url,
             method="GET",
             headers=dict(request.headers),
