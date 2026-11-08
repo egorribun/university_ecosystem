@@ -192,6 +192,26 @@ describe("sanitizeArticleHtml", () => {
     }
   })
 
+  it("parses nothing when the app policy rejects the HTML under Trusted Types", () => {
+    const createHTML = vi.fn(() => {
+      throw new TypeError("sanitizer is not ready")
+    })
+    Object.defineProperty(window, "trustedTypes", {
+      configurable: true,
+      value: { createPolicy: () => ({ createHTML, createScriptURL: (value: string) => value }) },
+    })
+    Reflect.deleteProperty(window, "__ttAppPolicy")
+
+    try {
+      expect(sanitizeArticleFragment("<p>Rejected</p>")).toBeNull()
+      expect(createHTML).toHaveBeenCalledWith("<p>Rejected</p>")
+      expect(sanitizeArticleHtml("<p>Rejected</p>")).toBe("Rejected")
+    } finally {
+      Reflect.deleteProperty(window, "trustedTypes")
+      Reflect.deleteProperty(window, "__ttAppPolicy")
+    }
+  })
+
   it("uses the plain-text fallback when app Trusted Types policy creation fails", () => {
     const trustedTypesDescriptor = Object.getOwnPropertyDescriptor(window, "trustedTypes")
     const appPolicyDescriptor = Object.getOwnPropertyDescriptor(window, "__ttAppPolicy")
