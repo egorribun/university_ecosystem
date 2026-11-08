@@ -668,6 +668,12 @@ test("a real DM read receipt clears only that chat's unread state", async ({
       )
       .toBe(1)
 
+    // A phone shows the open chat full-screen; the list returns through the back button.
+    if (mobile) {
+      await receiverPage.getByRole("button", { name: "Назад к чатам", exact: true }).click()
+    }
+    await expect(secondReceiverChatRow).toBeVisible()
+
     const secondMarkReadResponsePromise = receiverPage.waitForResponse((response) => {
       const request = response.request()
       return (
