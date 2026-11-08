@@ -16050,3 +16050,23 @@ def test_live_e2e_selection_rejects_non_live_specs_for_live_runner() -> None:
             live_stand.StandError, match="invalid live E2E focused selection"
         ):
             live_stand._live_e2e_command(mode="full", platform="posix", specs=(spec,))
+
+
+def test_live_overlay_alone_raises_the_shared_ip_socket_budget() -> None:
+    """One stand client IP opens every socket; the default must stay elsewhere."""
+    root = Path(__file__).resolve().parents[1]
+    live = (root / "docker-compose.live.yml").read_text(encoding="utf-8")
+    ws_hub = live.split("\n  ws-hub:\n", 1)[1].split("\n  temporal:\n", 1)[0]
+    assert 'WS_UPGRADE_RATE_PER_MINUTE: "600"' in ws_hub
+    for name in (
+        "docker-compose.yml",
+        "docker-compose.full.yml",
+        "docker-compose.go.yml",
+    ):
+        assert "WS_UPGRADE_RATE_PER_MINUTE" not in (root / name).read_text(
+            encoding="utf-8"
+        )
+    assert "WS_UPGRADE_RATE_PER_MINUTE" not in "".join(
+        path.read_text(encoding="utf-8")
+        for path in (root / "charts/university-ecosystem").rglob("*.yaml")
+    )

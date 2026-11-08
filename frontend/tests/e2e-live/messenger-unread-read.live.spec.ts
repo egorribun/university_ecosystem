@@ -529,7 +529,8 @@ test("a real DM read receipt clears only that chat's unread state", async ({
           )
           for (const action of rendered.actions) {
             expect(action.color).toBe("rgb(255, 255, 255)")
-            expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+            // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+            expect(action.opacity).toBeGreaterThanOrEqual(0.799)
           }
         }
       }

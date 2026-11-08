@@ -11,6 +11,9 @@ import (
 )
 
 // Config holds application configuration.
+// DefaultWSUpgradeRatePerMinute is the per-client-IP budget outside explicit configuration.
+const DefaultWSUpgradeRatePerMinute = 10
+
 type Config struct {
 	Port string
 	// MetricsAddr is the bind address of the scrape-only Prometheus listener.
@@ -72,6 +75,10 @@ type Config struct {
 	// NATS/cache-invalidation secret in configuration, while deployments may
 	// provision both from the same existing secret during this rollout.
 	InternalAuthToken string
+	// WSUpgradeRatePerMinute is the per-client-IP WebSocket upgrade budget, also its
+	// burst. WS_UPGRADE_RATE_PER_MINUTE overrides it; a non-positive value means default.
+	WSUpgradeRatePerMinute int
+
 	// MaxClients is the maximum number of concurrently connected WebSocket clients.
 	// 0 means unlimited (not recommended in production).
 	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
@@ -318,6 +325,7 @@ func LoadConfig() (*Config, error) {
 		InternalSecret:          internalSecret, // no default — empty secret allows HMAC forgery
 		InternalAuthToken:       internalAuthToken,
 		MaxClients:              getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		WSUpgradeRatePerMinute:  getEnvInt("WS_UPGRADE_RATE_PER_MINUTE", DefaultWSUpgradeRatePerMinute),
 		ClientMsgRateLimit:      getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
 		ClientMsgRateBurst:      getEnvInt("WS_CLIENT_MSG_BURST", 20),
 		TicketTTLSeconds:        getEnvInt("WS_TICKET_TTL_SECONDS", 15),

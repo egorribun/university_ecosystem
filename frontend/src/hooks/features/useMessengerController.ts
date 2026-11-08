@@ -154,6 +154,8 @@ const mergeHydratedMessagePage = (
   return { ...fetched, items }
 }
 
+const NO_CONFIRMED_SENDS: ReadonlySet<string> = new Set()
+
 type SendPayloadIdentity = {
   accountId: string | null
   chatId: string
@@ -687,9 +689,14 @@ export const useMessengerController = () => {
 
   // --- Optimistic UI ---
 
+  // The send's success handler adds the server row while its transition is still
+  // open. A confirmed optimistic row must leave at that moment, or both would render.
+  const [confirmedOptimisticIds, setConfirmedOptimisticIds] =
+    useState<ReadonlySet<string>>(NO_CONFIRMED_SENDS)
   const [optimisticMessages, addOptimisticMessage] = useOptimistic(
     transformedMessages,
-    (state: UiMessage[], newMessage: UiMessage) => [...state, newMessage]
+    (state: UiMessage[], newMessage: UiMessage) =>
+      confirmedOptimisticIds.has(newMessage.id) ? state : [...state, newMessage]
   )
 
   const revokeOwnedBlobUrls = useCallback((urls: readonly string[]) => {
@@ -713,6 +720,7 @@ export const useMessengerController = () => {
       replyToMessageId,
       idempotencyKey,
       optimisticBlobUrls: _optimisticBlobUrls,
+      optimisticId: _optimisticId,
     }: {
       chatId: string
       content: string
@@ -720,8 +728,10 @@ export const useMessengerController = () => {
       replyToMessageId?: string
       idempotencyKey: string
       optimisticBlobUrls: string[]
+      optimisticId: string
     }) => chatApi.sendMessage(chatId, content, files, replyToMessageId, idempotencyKey),
     onSuccess: (newMessage, variables) => {
+      setConfirmedOptimisticIds((current) => new Set(current).add(variables.optimisticId))
       queryClient.setQueryData<MessagesListResponse | undefined>(
         ["messages", variables.chatId],
         (old) => {
@@ -1082,6 +1092,10 @@ export const useMessengerController = () => {
     // above stays stable when an unchanged failed payload is retried.
     const tempId = crypto.randomUUID()
     const now = new Date()
+    // Settled sends have no optimistic row left to hide.
+    if (queryClient.isMutating({ mutationKey: SEND_MESSAGE_MUTATION_KEY }) === 0) {
+      setConfirmedOptimisticIds(NO_CONFIRMED_SENDS)
+    }
 
     // Wave 183 SW3 — track Blob URLs created here so the mutation onSuccess/
     // onError handlers can revoke them (preventing memory leak per-attachment).
@@ -1134,6 +1148,7 @@ export const useMessengerController = () => {
             replyToMessageId: replyToMessageId ?? undefined,
             idempotencyKey: sendAttempt.idempotencyKey,
             optimisticBlobUrls,
+            optimisticId: tempId,
           })
           if (retryableSendAttemptRef.current === sendAttempt) {
             retryableSendAttemptRef.current = null

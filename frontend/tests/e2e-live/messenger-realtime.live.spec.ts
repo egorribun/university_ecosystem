@@ -553,7 +553,8 @@ test.describe("live messenger delivery", () => {
             )
             for (const action of rendered.actions) {
               expect(action.color).toBe("rgb(255, 255, 255)")
-              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
             }
           }
         }
@@ -653,7 +654,8 @@ test.describe("live messenger delivery", () => {
       )
       expect(editFrameIndex).toBeGreaterThanOrEqual(0)
       expect(deleteFrameIndex).toBeGreaterThan(editFrameIndex)
-      const tombstone = messageLog.getByText("Сообщение удалено", { exact: true })
+      // The shared chat keeps earlier tombstones; this message is the newest row.
+      const tombstone = messageLog.getByText("Сообщение удалено", { exact: true }).last()
       await expect(tombstone).toBeVisible()
       await expect(messageLog.getByText(editedContent, { exact: true })).toHaveCount(0)
       const tombstoneRow = tombstone.locator(
@@ -1079,7 +1081,7 @@ test.describe("live messenger delivery", () => {
       const removeReactionResponsePromise = receiverPage.waitForResponse((response) => {
         const request = response.request()
         return (
-          request.method() === "POST" &&
+          request.method() === "DELETE" &&
           new URL(response.url()).pathname ===
             `/api/v1/chats/${activeChatId}/messages/${createdMessage?.id}/reactions`
         )
@@ -1421,7 +1423,8 @@ test.describe("live messenger delivery", () => {
             )
             for (const action of rendered.actions) {
               expect(action.color).toBe("rgb(255, 255, 255)")
-              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
             }
           }
         }
@@ -1638,9 +1641,10 @@ test.describe("live messenger delivery", () => {
           )
         )
         .toHaveLength(1)
-      const receiverForwardAttribution = receiverLog.getByText(`Переслано от ${senderName}`, {
-        exact: true,
-      })
+      // The shared chat keeps earlier forwards; this message is the newest row.
+      const receiverForwardAttribution = receiverLog
+        .getByText(`Переслано от ${senderName}`, { exact: true })
+        .last()
       await expect(receiverForwardAttribution).toBeVisible()
       const receiverForwardRow = receiverForwardAttribution
         .locator(
@@ -1783,7 +1787,8 @@ test.describe("live messenger delivery", () => {
             )
             for (const action of rendered.actions) {
               expect(action.color).toBe("rgb(255, 255, 255)")
-              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
             }
           }
         }

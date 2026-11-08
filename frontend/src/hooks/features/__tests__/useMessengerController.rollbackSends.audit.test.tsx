@@ -164,3 +164,51 @@ it("keeps reverse-completed sends when an unrelated optimistic edit fails", asyn
     queryClient.clear()
   }
 })
+
+it("never renders a sent message twice while its transition settles", async () => {
+  const sent = message("11111111-1111-4111-8111-111111111112", "2026-08-25T12:00:00Z", "only once")
+  const response = deferred<Message>()
+  mocks.chatApi.getMessages.mockResolvedValue(page([]))
+  mocks.chatApi.sendMessage.mockReturnValue(response.promise)
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  })
+  queryClient.setQueryData(messageKey, page([]))
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  const renderedCopies: number[] = []
+  const { result, unmount } = renderHook(
+    () => {
+      const controller = useMessengerController()
+      renderedCopies.push(controller.messages.filter(({ text }) => text === "only once").length)
+      return controller
+    },
+    { wrapper: Wrapper }
+  )
+  try {
+    let delivery: Promise<boolean> | undefined
+    act(() => {
+      delivery = result.current.handleSendMessage("only once", [])
+    })
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledOnce())
+    expect(renderedCopies).toContain(1)
+
+    await act(async () => {
+      response.resolve(sent)
+      await delivery
+    })
+
+    await waitFor(() =>
+      expect(result.current.messages.map(({ id, text }) => [id, text])).toEqual([
+        [sent.id, "only once"],
+      ])
+    )
+    expect(Math.max(...renderedCopies)).toBe(1)
+  } finally {
+    unmount()
+    response.resolve(sent)
+    await queryClient.cancelQueries()
+    queryClient.clear()
+  }
+})

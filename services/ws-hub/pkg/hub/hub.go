@@ -638,6 +638,15 @@ func validateReplayChatBinding(subject, room string, frame map[string]any) bool 
 
 // NewHub creates a new Hub instance. Cache construction and revocation-client
 // configuration failures are returned to the caller (AGENTS.md section 2.1).
+// wsUpgradeRatePerMinute returns the configured per-IP upgrade budget, or the
+// default when a caller leaves it unset or configures a non-positive value.
+func wsUpgradeRatePerMinute(cfg *config.Config) int {
+	if cfg == nil || cfg.WSUpgradeRatePerMinute <= 0 {
+		return config.DefaultWSUpgradeRatePerMinute
+	}
+	return cfg.WSUpgradeRatePerMinute
+}
+
 func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) (*Hub, error) {
 	bufSize := 4096
 	maxC := 10000
@@ -709,7 +718,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Nats:                              nc,
 		Logger:                            logger,
 		authClient:                        authClient,
-		UpgradeLimiter:                    NewWSUpgradeRateLimiter(10, 60),
+		UpgradeLimiter:                    NewWSUpgradeRateLimiter(wsUpgradeRatePerMinute(cfg), 60),
 		webTransportServer:                &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
 		jwksCache:                         nil, // Initialised via SetupJWKS()
 		maxClients:                        maxC,

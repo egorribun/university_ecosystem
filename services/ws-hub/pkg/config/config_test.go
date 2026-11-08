@@ -27,6 +27,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
 		"WS_REVOCATION_REPLAY_WINDOW_SECONDS",
 		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB", "WS_HUB_METRICS_ADDR",
+		"WS_UPGRADE_RATE_PER_MINUTE",
 	}
 	// Clear env at test start (each Unsetenv is benign if var already unset).
 	for _, env := range envVars {
@@ -59,6 +60,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, "", cfg.InternalSecret)
 	require.Equal(t, 10000, cfg.MaxClients)
+	require.Equal(t, 10, cfg.WSUpgradeRatePerMinute)
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
@@ -149,6 +151,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 256, cfg.SendBufferSize)
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, 10000, cfg.MaxClients)
+	require.Equal(t, 10, cfg.WSUpgradeRatePerMinute)
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
@@ -160,4 +163,11 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	cfg, err = LoadConfig()
 	require.NoError(t, err)
 	require.False(t, cfg.EnableJetStream)
+}
+
+func TestLoadConfigReadsTheUpgradeRateOverride(t *testing.T) {
+	t.Setenv("WS_UPGRADE_RATE_PER_MINUTE", "600")
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, 600, cfg.WSUpgradeRatePerMinute)
 }

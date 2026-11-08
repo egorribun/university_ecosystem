@@ -36,6 +36,9 @@ services:
       # Admit this stand's exact loopback origin without weakening WS origin checks.
       ALLOWED_ORIGINS: >-
         ${LIVE_BASE_URL:?set by scripts/live_stand.py},http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173
+      # Browser projects share one client IP and open sockets for every page and
+      # receiver session. The 10/minute default stays in effect outside this overlay.
+      WS_UPGRADE_RATE_PER_MINUTE: "600"
 
   temporal:
     ports: !override
