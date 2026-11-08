@@ -1427,6 +1427,36 @@ function incrementDiagnosticCount(counts, key) {
   return false
 }
 
+// Console-wording categories only, not browser violation-event evidence.
+// Never emit policy text, nonces, samples, source locations or resource URLs.
+const VISUAL_CSP_ERROR_KINDS = [
+  "inline_script",
+  "script_resource",
+  "inline_style",
+  "style_resource",
+  "eval",
+  "trusted_type_policy",
+  "trusted_type_sink",
+  "connection",
+  "other",
+]
+
+function classifyVisualCspError(message) {
+  const value = typeof message === "string" ? message.toLowerCase() : ""
+  if (/executing inline script|refused to execute inline script/u.test(value))
+    return "inline_script"
+  if (/loading the script|refused to load the script/u.test(value)) return "script_resource"
+  if (/applying inline style|refused to apply inline style/u.test(value)) return "inline_style"
+  if (/loading the stylesheet|refused to load the stylesheet/u.test(value)) return "style_resource"
+  if (/evaluating a string as javascript|refused to evaluate a string/u.test(value)) return "eval"
+  if (/creating a trustedtypepolicy|refused to create a trustedtypepolicy/u.test(value))
+    return "trusted_type_policy"
+  if (/requires .trusted(?:html|script|scripturl). assignment/u.test(value))
+    return "trusted_type_sink"
+  if (/connecting to|refused to connect/u.test(value)) return "connection"
+  return "other"
+}
+
 function classifyVisualConsoleMessage(message) {
   const value = typeof message === "string" ? message.toLowerCase() : ""
   if (/each child in a list should have a unique .?key.? prop/u.test(value)) {
@@ -1499,6 +1529,7 @@ export function summarizeAuthenticatedVisualDiagnostics({
   const consoleTypeCounts = createDiagnosticCounts(VISUAL_CONSOLE_TYPES)
   const consoleClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
   const consoleErrorClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
+  const cspErrorKindCounts = createDiagnosticCounts(VISUAL_CSP_ERROR_KINDS)
   const requestMethodCounts = createDiagnosticCounts(VISUAL_REQUEST_METHODS)
   const requestOriginCounts = createDiagnosticCounts(VISUAL_REQUEST_ORIGINS)
   const requestEndpointCounts = createDiagnosticCounts(VISUAL_REQUEST_ENDPOINTS)
@@ -1518,6 +1549,11 @@ export function summarizeAuthenticatedVisualDiagnostics({
     capped = incrementDiagnosticCount(consoleClassCounts, messageClass) || capped
     if (type === "error" || type === "pageerror") {
       capped = incrementDiagnosticCount(consoleErrorClassCounts, messageClass) || capped
+      if (messageClass === "content_security_policy") {
+        capped =
+          incrementDiagnosticCount(cspErrorKindCounts, classifyVisualCspError(message?.text)) ||
+          capped
+      }
     }
   }
   for (const request of requestFailures) {
@@ -1543,6 +1579,7 @@ export function summarizeAuthenticatedVisualDiagnostics({
     consoleTypeCounts,
     consoleClassCounts,
     consoleErrorClassCounts,
+    cspErrorKindCounts,
     requestFailureCount: Math.min(requestFailures.length, DIAGNOSTIC_COUNT_LIMIT),
     requestMethodCounts,
     requestOriginCounts,
@@ -1584,6 +1621,7 @@ export function emitAuthenticatedVisualRuntimeDiagnostics(
       capped,
       consoleTypeCounts: counts(diagnostics.consoleTypeCounts, VISUAL_CONSOLE_TYPES),
       consoleErrorClassCounts: counts(diagnostics.consoleErrorClassCounts, VISUAL_CONSOLE_CLASSES),
+      cspErrorKindCounts: counts(diagnostics.cspErrorKindCounts, VISUAL_CSP_ERROR_KINDS),
       requestFailureCount: count(diagnostics.requestFailureCount),
       requestMethodCounts: counts(diagnostics.requestMethodCounts, VISUAL_REQUEST_METHODS),
       requestOriginCounts: counts(diagnostics.requestOriginCounts, VISUAL_REQUEST_ORIGINS),
