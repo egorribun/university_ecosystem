@@ -101,7 +101,7 @@ const NewsCardContent = ({
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/[calc(var(--opacity-hover)*100%)]"
             )}
-            aria-label={isLiked ? t("common:aria.unlike") : t("common:aria.like")}
+            aria-label={`${isLiked ? t("common:aria.unlike") : t("common:aria.like")} ${likesCount}`}
           >
             <span className={cn(celebrating && "news-heart-celebrate")}>
               <HeartIcon size={16} fill={isLiked ? "currentColor" : "none"} />

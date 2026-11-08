@@ -2,13 +2,19 @@ import { createElement } from "react"
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const translationState = vi.hoisted(() => ({ namespaces: [] as unknown[] }))
+import enCommon from "@/i18n/locales/en/common.json"
+import ruCommon from "@/i18n/locales/ru/common.json"
+
+const translationState = vi.hoisted(() => ({
+  namespaces: [] as unknown[],
+  labels: {} as Record<string, string>,
+}))
 const linkState = vi.hoisted(() => ({ params: undefined as unknown }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: (namespaces?: unknown) => {
     translationState.namespaces.push(namespaces)
-    return { t: (key: string) => key }
+    return { t: (key: string) => translationState.labels[key] ?? key }
   },
 }))
 
@@ -39,6 +45,7 @@ const baseProps = {
 
 beforeEach(() => {
   translationState.namespaces.length = 0
+  translationState.labels = {}
   linkState.params = undefined
 })
 
@@ -64,9 +71,9 @@ describe("NewsCardContent closure", () => {
     expect(screen.getByText("5 common:time.minuteShort")).toBeInTheDocument()
     expect(screen.getByText("common:cta.learnMore")).toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "common:aria.like" }).querySelector("svg")
+      screen.getByRole("button", { name: "common:aria.like 4" }).querySelector("svg")
     ).toHaveAttribute("fill", "none")
-    fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:aria.like 4" }))
     fireEvent.click(screen.getByRole("button", { name: "common:aria.addBookmark" }))
     expect(onToggleLike).toHaveBeenCalledTimes(1)
     expect(onToggleBookmark).toHaveBeenCalledTimes(1)
@@ -76,7 +83,9 @@ describe("NewsCardContent closure", () => {
     const onToggleLike = vi.fn()
     render(<NewsCardContent {...baseProps} isLiked onToggleLike={onToggleLike} />)
 
-    const likeButton = screen.getByRole("button", { name: "common:aria.unlike" })
+    const likeButton = screen.getByRole("button", {
+      name: "common:aria.unlike 4",
+    })
     expect(likeButton.querySelector("svg")).toHaveAttribute("fill", "currentColor")
     fireEvent.click(likeButton)
 
@@ -121,7 +130,7 @@ describe("NewsCardContent closure", () => {
     )
     host.addEventListener("click", onCardClick)
 
-    fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:aria.like 4" }))
     fireEvent.click(screen.getByRole("button", { name: "common:aria.addBookmark" }))
 
     expect(onToggleLike).toHaveBeenCalledOnce()
@@ -136,7 +145,9 @@ describe("NewsCardContent closure", () => {
 
     try {
       render(<NewsCardContent {...baseProps} />)
-      const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+      const likeButton = screen.getByRole("button", {
+        name: "common:aria.like 4",
+      })
 
       fireEvent.click(likeButton)
       expect(likeButton.querySelector(".news-heart-celebrate")).toBeInTheDocument()
@@ -156,7 +167,7 @@ describe("NewsCardContent closure", () => {
 
     try {
       const { unmount } = render(<NewsCardContent {...baseProps} />)
-      fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+      fireEvent.click(screen.getByRole("button", { name: "common:aria.like 4" }))
       clearTimeoutSpy.mockClear()
 
       unmount()
@@ -174,7 +185,9 @@ describe("NewsCardContent closure", () => {
 
     try {
       render(<NewsCardContent {...baseProps} />)
-      const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+      const likeButton = screen.getByRole("button", {
+        name: "common:aria.like 4",
+      })
 
       fireEvent.click(likeButton)
       clearTimeoutSpy.mockClear()
@@ -204,10 +217,12 @@ describe("NewsCardContent closure", () => {
 
     const link = screen.getByRole("link", { name: "Research update" })
     expect(link).toHaveClass("pointer-events-none")
-    expect(screen.getByRole("button", { name: "common:aria.unlike" })).toBeInTheDocument()
-    const bookmark = screen.getByRole("button", { name: "common:aria.removeBookmark" })
+    expect(screen.getByRole("button", { name: "common:aria.unlike 4" })).toBeInTheDocument()
+    const bookmark = screen.getByRole("button", {
+      name: "common:aria.removeBookmark",
+    })
     fireEvent.click(bookmark)
-    fireEvent.click(screen.getByRole("button", { name: "common:aria.unlike" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:aria.unlike 4" }))
     expect(onToggleLike).toHaveBeenCalledTimes(1)
     expect(onToggleBookmark).toHaveBeenCalledTimes(1)
   })
@@ -223,9 +238,38 @@ describe("NewsCardContent closure", () => {
     const { rerender } = render(<NewsCardContent {...baseProps} onToggleLike={staleToggle} />)
     rerender(<NewsCardContent {...baseProps} onToggleLike={onToggleLike} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:aria.like 4" }))
 
     expect(onToggleLike).toHaveBeenCalledOnce()
     expect(staleToggle).not.toHaveBeenCalled()
   })
 })
+
+describe("NewsCardContent visible count in accessible name", () => {
+  it.each([0, 1, 12])("preserves count %i for both like actions", (likesCount) => {
+    const { rerender } = render(<NewsCardContent {...baseProps} likesCount={likesCount} />)
+    expect(screen.getByRole("button", { name: `common:aria.like ${likesCount}` }).textContent).toBe(
+      String(likesCount)
+    )
+    rerender(<NewsCardContent {...baseProps} likesCount={likesCount} isLiked />)
+    expect(
+      screen.getByRole("button", {
+        name: `common:aria.unlike ${likesCount}`,
+      }).textContent
+    ).toBe(String(likesCount))
+  })
+})
+
+it.each([enCommon, ruCommon])(
+  "includes the visible count in localized like and unlike names",
+  (messages) => {
+    translationState.labels = {
+      "common:aria.like": messages.aria.like,
+      "common:aria.unlike": messages.aria.unlike,
+    }
+    const { rerender } = render(<NewsCardContent {...baseProps} />)
+    expect(screen.getByRole("button", { name: `${messages.aria.like} 4` }).textContent).toBe("4")
+    rerender(<NewsCardContent {...baseProps} isLiked likesCount={5} />)
+    expect(screen.getByRole("button", { name: `${messages.aria.unlike} 5` }).textContent).toBe("5")
+  }
+)
