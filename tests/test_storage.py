@@ -6,6 +6,7 @@ Coverage targets:
 - get_storage_backend: factory logic
 """
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -372,3 +373,119 @@ def test_get_storage_backend_s3():
     assert isinstance(backend, S3Storage)
     assert backend.bucket == "bucket"
     assert backend.base_url == "https://cdn"
+
+
+# ============================================================
+# S3Storage cancellable save tests
+# ============================================================
+
+
+@pytest.mark.asyncio
+async def test_s3_cancelled_put_deletes_exact_key_and_reraises(
+    s3_storage, mock_s3_client
+):
+    """A cancelled PUT may have landed, so the exact key is deleted."""
+    put_started = asyncio.Event()
+
+    async def blocking_put(**_kwargs):
+        put_started.set()
+        await asyncio.Event().wait()
+
+    mock_s3_client.put_object.side_effect = blocking_put
+    task = asyncio.create_task(
+        s3_storage.save_file_cancellable("chat_uploads/a-b.pdf", b"data")
+    )
+    await put_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="test-bucket", Key="chat_uploads/a-b.pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_s3_cancelled_delete_survives_second_cancellation(
+    s3_storage, mock_s3_client
+):
+    """A second cancellation must not abort the compensating delete."""
+    put_started = asyncio.Event()
+    delete_started = asyncio.Event()
+    release_delete = asyncio.Event()
+    delete_finished = asyncio.Event()
+
+    async def blocking_put(**_kwargs):
+        put_started.set()
+        await asyncio.Event().wait()
+
+    async def blocking_delete(**_kwargs):
+        delete_started.set()
+        await release_delete.wait()
+        delete_finished.set()
+        return {}
+
+    mock_s3_client.put_object.side_effect = blocking_put
+    mock_s3_client.delete_object.side_effect = blocking_delete
+    task = asyncio.create_task(
+        s3_storage.save_file_cancellable("chat_uploads/held.pdf", b"data")
+    )
+    await put_started.wait()
+    task.cancel()
+    await delete_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    release_delete.set()
+    await asyncio.wait_for(delete_finished.wait(), timeout=1)
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="test-bucket", Key="chat_uploads/held.pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_s3_put_timeout_deletes_exact_key_and_reraises(
+    s3_storage, mock_s3_client
+):
+    """A timed-out PUT may have landed, so the exact key is deleted."""
+    mock_s3_client.put_object.side_effect = TimeoutError("put timed out")
+
+    with pytest.raises(TimeoutError):
+        await s3_storage.save_file_cancellable("chat_uploads/slow.pdf", b"data")
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="test-bucket", Key="chat_uploads/slow.pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_s3_cancellable_success_does_not_delete(s3_storage, mock_s3_client):
+    """A completed PUT keeps the object and returns its public URL."""
+    url = await s3_storage.save_file_cancellable(
+        "chat_uploads/ok.pdf", b"data", content_type="application/pdf"
+    )
+
+    assert url == "https://cdn.example.com/chat_uploads/ok.pdf"
+    mock_s3_client.put_object.assert_awaited_once()
+    mock_s3_client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_s3_plain_save_file_does_not_delete_on_cancellation(
+    s3_storage, mock_s3_client
+):
+    """Shared keys can be overwritten, so plain save_file must never compensate."""
+    put_started = asyncio.Event()
+
+    async def blocking_put(**_kwargs):
+        put_started.set()
+        await asyncio.Event().wait()
+
+    mock_s3_client.put_object.side_effect = blocking_put
+    task = asyncio.create_task(s3_storage.save_file("shared/avatar.png", b"data"))
+    await put_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    mock_s3_client.delete_object.assert_not_awaited()

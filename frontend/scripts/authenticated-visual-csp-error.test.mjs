@@ -1,23 +1,10 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
-import vm from "node:vm"
+import {
+  emitAuthenticatedVisualRuntimeDiagnostics,
+  summarizeAuthenticatedVisualDiagnostics,
+} from "./authenticated-visual-audit.mjs"
 
-const source = readFileSync(new URL("./authenticated-visual-audit.mjs", import.meta.url), "utf8")
-const start = source.indexOf("const DIAGNOSTIC_COUNT_LIMIT =")
-const end = source.indexOf("import { emitAxeDiagnostics }", start)
-assert.ok(start > 0 && end > start)
-const context = vm.createContext({
-  URL,
-  ORIGIN: "https://stand.invalid",
-  DEFAULT_ROUTE_SET: new Set(["/dashboard"]),
-})
-vm.runInContext(
-  source.slice(start, end).replaceAll("export function ", "function ") +
-    ";this.summarize = summarizeAuthenticatedVisualDiagnostics;" +
-    "this.emit = emitAuthenticatedVisualRuntimeDiagnostics",
-  context
-)
 const cases = [
   ["inline_script", "Executing inline script"],
   ["script_resource", "Loading the script"],
@@ -31,12 +18,15 @@ const cases = [
 ]
 const privateMarker = "private-marker https://private.invalid/?nonce=private-nonce"
 function summary(messages) {
-  return context.summarize({ consoleMessages: messages })
+  return summarizeAuthenticatedVisualDiagnostics({ consoleMessages: messages })
 }
 function emit(diagnostics) {
   const lines = []
-  context.emit("/dashboard", { locale: "en", theme: "dark", width: 390 }, diagnostics, (line) =>
-    lines.push(line)
+  emitAuthenticatedVisualRuntimeDiagnostics(
+    "/dashboard",
+    { locale: "en", theme: "dark", width: 390 },
+    diagnostics,
+    (line) => lines.push(line)
   )
   return lines
 }
@@ -81,7 +71,7 @@ test("closed count projection stays bounded and rejects invalid counts", () => {
 })
 test("throwing output sink is contained without exposing the error", () => {
   assert.doesNotThrow(() => {
-    context.emit("/dashboard", {}, summary([]), () => {
+    emitAuthenticatedVisualRuntimeDiagnostics("/dashboard", {}, summary([]), () => {
       throw new Error(privateMarker)
     })
   })

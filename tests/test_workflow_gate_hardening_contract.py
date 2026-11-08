@@ -551,8 +551,8 @@ def test_sqlmap_runs_both_scans_gates_each_outcome_and_retains_reports() -> None
     assert publish.get("continue-on-error", False) is False
     names = _names(job)
     assert (
-        names.index(openapi_gate["name"])
-        < names.index(news_gate["name"])
+        names.index(news_gate["name"])
+        < names.index(openapi_gate["name"])
         < names.index(publish["name"])
         < names.index(upload["name"])
     )

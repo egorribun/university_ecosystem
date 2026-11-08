@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rust_ext"
+license = "MIT"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",

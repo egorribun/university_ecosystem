@@ -7,7 +7,7 @@ import {
   createContext,
   useContext,
 } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { type QueryClient, useQueryClient } from "@tanstack/react-query"
 import {
   chatApi,
   type Message,
@@ -38,6 +38,18 @@ import {
 } from "@/hooks/chatReplayCheckpoints"
 
 // Reconnection configuration
+export const SEND_MESSAGE_MUTATION_KEY = ["messages", "send"] as const
+
+function isPendingSendEcho(queryClient: QueryClient, chatId: unknown, content: unknown): boolean {
+  return queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: SEND_MESSAGE_MUTATION_KEY, status: "pending" })
+    .some((mutation) => {
+      const variables = mutation.state.variables as
+        { chatId?: unknown; content?: unknown } | undefined
+      return String(variables?.chatId) === String(chatId) && variables?.content === content
+    })
+}
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
 const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
 // Wave 183 SW3 — Cap reconnection attempts to prevent runaway retry loops
@@ -974,6 +986,14 @@ export function useChatWebSocket({
                 if (
                   cachedMessages?.items.some((message) => message.id === validated.message.id) ||
                   (!firstDelivery && !selfAuthored)
+                )
+                  break
+                // This tab's own echo can beat its POST response. The send's success
+                // handler adds the message; adding it here too would show it next to
+                // the optimistic row until the request settles.
+                if (
+                  selfAuthored &&
+                  isPendingSendEcho(queryClient, validated.chat_id, validated.message.content)
                 )
                   break
 

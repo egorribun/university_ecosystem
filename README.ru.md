@@ -283,5 +283,5 @@ make test-integration # Запуск интеграционных тестов A
 <div align="center">
   <br />
   <h3>Сконструировано с ❤️ инженерами University Ecosystem</h3>
-  © 2026 University Ecosystem Platform • Распространяется по <a href="LICENSE">лицензии MIT</a>.
+  © 2026 egorribun • University Ecosystem Platform • Распространяется по <a href="LICENSE">лицензии MIT</a>.
 </div>

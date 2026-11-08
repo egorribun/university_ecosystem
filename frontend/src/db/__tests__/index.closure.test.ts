@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { addRxPlugin, createRxDatabase, getRxStorageDexie, wrappedValidateAjvStorage } = vi.hoisted(
-  () => ({
+const { addRxPlugin, createRxDatabase, getRxStorageDexie, wrappedValidateZSchemaStorage } =
+  vi.hoisted(() => ({
     addRxPlugin: vi.fn(),
     createRxDatabase: vi.fn(),
     getRxStorageDexie: vi.fn(() => "dexie-storage"),
-    wrappedValidateAjvStorage: vi.fn(({ storage }: { storage: unknown }) => ({
+    wrappedValidateZSchemaStorage: vi.fn(({ storage }: { storage: unknown }) => ({
       storage,
     })),
-  })
-)
+  }))
 
 vi.mock("rxdb", () => ({
   addRxPlugin,
@@ -17,7 +16,7 @@ vi.mock("rxdb", () => ({
 }))
 vi.mock("rxdb/plugins/dev-mode", () => ({ RxDBDevModePlugin: "dev-mode-plugin" }))
 vi.mock("rxdb/plugins/storage-dexie", () => ({ getRxStorageDexie }))
-vi.mock("rxdb/plugins/validate-ajv", () => ({ wrappedValidateAjvStorage }))
+vi.mock("rxdb/plugins/validate-z-schema", () => ({ wrappedValidateZSchemaStorage }))
 
 let getDatabase: typeof import("../index").getDatabase
 let resetDatabaseForTesting: typeof import("../index").resetDatabaseForTesting
@@ -102,7 +101,7 @@ describe("RxDB database lifecycle", () => {
       storage: { storage: "dexie-storage" },
     })
     expect(getRxStorageDexie).toHaveBeenCalledOnce()
-    expect(wrappedValidateAjvStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
+    expect(wrappedValidateZSchemaStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
     expect(database.addCollections).toHaveBeenCalledOnce()
     expect(database.addCollections).toHaveBeenCalledWith({
       schedule: expect.objectContaining({ schema: expect.any(Object) }),

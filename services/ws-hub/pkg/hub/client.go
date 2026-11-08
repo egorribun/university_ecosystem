@@ -1147,8 +1147,11 @@ func (c *Client) deliverOfflineAudienceCheckpoint(
 	checkpoint, err := c.invalidOfflineMessageCheckpoint(
 		room, msg.Subject, stream, sequence, refreshRequired,
 	)
-	if err != nil || len(checkpoint) == 0 {
+	if err != nil {
 		return false
+	}
+	if len(checkpoint) == 0 {
+		return c.terminateOfflineMessage(ctx, msg, nil, nil)
 	}
 	if !c.sendReplayWithRetry(ctx, checkpoint) {
 		c.nakOfflineReplay(ctx, msg)

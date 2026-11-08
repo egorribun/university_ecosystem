@@ -38,8 +38,11 @@ export function DateBullet({ date, locale, size, descriptionId }: DateBulletProp
   const isCompact = size === "compact"
   const outerSize = isCompact ? "h-10 w-10 min-h-10 min-w-10" : "h-12 w-12 min-h-12 min-w-12"
 
+  // The localized "Published on" phrase is kept for dated rows; an unknown date is stated plainly.
+  const description = hasCampusDate ? t("ariaDatePublished", { date: full }) : fallback
+
   return (
-    <Tooltip content={full} id={descriptionId} descriptionOnly>
+    <Tooltip content={description} id={descriptionId} descriptionOnly>
       <span
         className={cn(
           "relative flex flex-col items-center justify-center rounded-full",

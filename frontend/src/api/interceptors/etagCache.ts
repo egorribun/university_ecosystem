@@ -312,6 +312,10 @@ export const handleEtagResponse = async (
   if (response.status === 304) {
     const tagEntry = getEtagMap().get(etagKey)
     // A delayed 304 must not replace a newer validator or reuse its body.
+    // Invariant: a stale 304 returns with status 304 and no body, and the newer
+    // validator and body stay in place. Events list callers (api/hooks/events.ts)
+    // then read the React Query cache for their key; that key maps 1:1 to this
+    // etag key, so the stale 304 only fails there when that cache is empty too.
     if (typeof tag === "string" && tag.trim() && tagEntry?.tag !== tag) return
 
     const signingKey = getSigningKey()

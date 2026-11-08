@@ -4179,6 +4179,7 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
     assert len(set(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES)) == len(
         declared_sources
     )
+    assert live_stand._LIVE_E2E_SELECTABLE_SPECS == tracked_sources
     assert live_stand._PLAYWRIGHT_FAILURE_SOURCES == expected_sources
     assert live_stand._PLAYWRIGHT_FAILURE_FRAME_SOURCES == expected_frame_sources
 
@@ -4830,7 +4831,7 @@ def test_live_e2e_command_handles_windows_npm_shim_without_secret_interpolation(
 
 
 def test_live_e2e_focused_command_uses_only_canonical_reviewed_specs() -> None:
-    sources = live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+    sources = live_stand._LIVE_E2E_SELECTABLE_SPECS
     selected = (sources[-1], sources[0])
     canonical = (sources[0], sources[-1])
 
@@ -4974,12 +4975,12 @@ def test_e2e_cli_propagates_valid_focus_in_canonical_order_before_execution(
     side_effects: list[str] = []
     observed: list[tuple[str, tuple[str, ...]]] = []
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     monkeypatch.setattr(
         live_stand,
@@ -5005,12 +5006,12 @@ def test_e2e_direct_call_propagates_valid_focus_before_password_read(
 
     observed: list[tuple[str, str, tuple[str, ...]]] = []
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     password_marker = uuid4().hex
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
@@ -5039,12 +5040,12 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
     tmp_path: Path,
 ) -> None:
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     expected_command = live_stand._live_e2e_command(mode="full", specs=expected)
     completed = subprocess.CompletedProcess((), 0, stdout=b"", stderr=b"")
@@ -16024,3 +16025,28 @@ def test_live_forgot_sink_literal_domains_match_validation_guards() -> None:
         and isinstance(node.orelse.value, int)
     ]
     assert attempt_domains == [guard_domains["attempt"]]
+
+
+def test_live_e2e_selection_rejects_non_live_specs_for_live_runner() -> None:
+    non_live_specs = (
+        "tests/e2e/audit375-service-worker.spec.ts",
+        "tests/e2e/rate-limit-ux.spec.ts",
+    )
+    declared = live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+
+    assert set(non_live_specs) <= set(declared)
+    assert live_stand._LIVE_E2E_SELECTABLE_SPECS
+    assert all(
+        source.endswith(".live.spec.ts")
+        for source in live_stand._LIVE_E2E_SELECTABLE_SPECS
+    )
+    assert not set(non_live_specs) & set(live_stand._LIVE_E2E_SELECTABLE_SPECS)
+    for spec in non_live_specs:
+        with pytest.raises(
+            live_stand.StandError, match="invalid live E2E focused selection"
+        ):
+            live_stand._validated_live_e2e_specs((spec,), mode="full")
+        with pytest.raises(
+            live_stand.StandError, match="invalid live E2E focused selection"
+        ):
+            live_stand._live_e2e_command(mode="full", platform="posix", specs=(spec,))

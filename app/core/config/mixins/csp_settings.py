@@ -19,6 +19,7 @@ class CspSettingsMixin:
 
     security_csp: str = ""
     security_connect_src_extra: str | list[str] = (
+        "https://api.open-meteo.com,"
         "https://api.spotify.com,"
         "https://fcm.googleapis.com,"
         "https://fcmregistrations.googleapis.com,"

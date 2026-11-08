@@ -5405,10 +5405,19 @@ def _playwright_browser_cache_path(
     )
 
 
+# The failure parser also attributes audit-config specs, but the live runner's
+# testMatch collects only tests/e2e-live/*.live.spec.ts, so only those are selectable.
+_LIVE_E2E_SELECTABLE_SPECS = tuple(
+    source
+    for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+    if source.endswith(".live.spec.ts")
+)
+
+
 def _validated_live_e2e_specs(
     specs: Sequence[str] | None, *, mode: str
 ) -> tuple[str, ...]:
-    """Return only distinct, canonical full-suite paths from the reviewed list."""
+    """Return only distinct, canonical live-suite paths from the reviewed list."""
     if mode not in {"smoke", "full"}:
         raise StandError("live E2E mode must be smoke or full")
     if specs is None:
@@ -5417,23 +5426,19 @@ def _validated_live_e2e_specs(
         raise StandError("invalid live E2E focused selection")
     if not specs:
         return ()
-    if mode != "full" or len(specs) > len(_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES):
+    if mode != "full" or len(specs) > len(_LIVE_E2E_SELECTABLE_SPECS):
         raise StandError("invalid live E2E focused selection")
     if any(
         type(spec) is not str
         or not spec.isascii()
-        or spec not in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+        or spec not in _LIVE_E2E_SELECTABLE_SPECS
         for spec in specs
     ):
         raise StandError("invalid live E2E focused selection")
     if len(set(specs)) != len(specs):
         raise StandError("invalid live E2E focused selection")
     selected = set(specs)
-    return tuple(
-        source
-        for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
-        if source in selected
-    )
+    return tuple(source for source in _LIVE_E2E_SELECTABLE_SPECS if source in selected)
 
 
 def _live_e2e_probe_selected(mode: str, selected_specs: Sequence[str]) -> bool:

@@ -48,42 +48,48 @@ export const NewsCardList = memo(function NewsCardList({
 
   return (
     <ul className="space-y-2.5" aria-label={t("dashboard:aria.newsList")}>
-      {news.map((n, idx) => (
-        <li key={n.id} className="dash-list-item">
-          <button
-            type="button"
-            className={cn(
-              "group list-item-blue list-item-blue-hover",
-              "flex items-center gap-4 text-left sm:gap-5"
-            )}
-            onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
-            title={n.title}
-            aria-describedby={`${dateDescriptionId}-${idx}`}
-            style={{ "--stagger-i": idx } as React.CSSProperties}
-          >
-            <DateBullet
-              date={n.created_at}
-              locale={locale}
-              descriptionId={`${dateDescriptionId}-${idx}`}
-            />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
-                {n.title}
-              </span>
-              <span className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2">
-                {(n.content ?? String()).slice(0, 110)}
-                {(n.content ?? String()).length > 110 ? "…" : ""}
-              </span>
-            </div>
-            <span
-              aria-hidden="true"
-              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:text-brand"
+      {news.map((n, idx) => {
+        const rowId = `${dateDescriptionId}-${idx}`
+        return (
+          <li key={n.id} className="dash-list-item">
+            <button
+              type="button"
+              className={cn(
+                "group list-item-blue list-item-blue-hover",
+                "flex items-center gap-4 text-left sm:gap-5"
+              )}
+              onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
+              title={n.title}
+              aria-labelledby={`${rowId}-title`}
+              aria-describedby={n.content ? `${rowId} ${rowId}-excerpt` : rowId}
+              style={{ "--stagger-i": idx } as React.CSSProperties}
             >
-              <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </span>
-          </button>
-        </li>
-      ))}
+              <DateBullet date={n.created_at} locale={locale} descriptionId={rowId} />
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <span
+                  id={`${rowId}-title`}
+                  className="text-base font-bold leading-snug text-text-primary line-clamp-2"
+                >
+                  {n.title}
+                </span>
+                <span
+                  id={`${rowId}-excerpt`}
+                  className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2"
+                >
+                  {(n.content ?? String()).slice(0, 110)}
+                  {(n.content ?? String()).length > 110 ? "…" : ""}
+                </span>
+              </div>
+              <span
+                aria-hidden="true"
+                className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:text-brand"
+              >
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </span>
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 })

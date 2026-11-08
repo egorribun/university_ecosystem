@@ -74,13 +74,13 @@
       "companions": [
         {
           "path": "frontend/scripts/visual-smoke-contract.test.mjs",
-          "sha256": "4a76ffea737e60cc02837bf2bc7ccceef8eab833da9ebf539a46c349cceef335"
+          "sha256": "746811ca9789b0e81c6d1e95d309819ccea59e32ab4828d87407e0af0bbf24a3"
         }
       ],
       "context": {
-        "end_line": 422,
+        "end_line": 427,
         "sha256": "fd3d49beb9bbff46b0939d1c793abe118782fa4e7b9692abfecc2f07227ddf0a",
-        "start_line": 418
+        "start_line": 423
       },
       "expires": "2027-01-10",
       "line_sha256": "9477c2d4f37e6464db63cf8e696046b90e180036dba0abffd4755923dd3d6ed4",
@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "fec319a400dadb6994ff30ef4e0041d84cbd2f5c307c285d8c006df3cea7d2a5"
+          "sha256": "43866aacdb318ac3d4e296207a30eb232ac458b924a0038449b5c6f543544275"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -378,7 +378,7 @@
         },
         {
           "path": "tests/test_quality_workflow_contract.py",
-          "sha256": "f3193c43aa7d733f9cdc3d510b0e965ee0d1086505919e8ed73dbffb54f18b41"
+          "sha256": "3f001523efb055ea1947639c39117294b78dbc53ef2dc380aecc7a85f2e22f0f"
         }
       ],
       "expires": "2027-01-10",
@@ -446,7 +446,7 @@
         },
         {
           "path": "frontend/scripts/server-csp.mjs",
-          "sha256": "f33c4bbc54fced03ff1152ab97ea2b51e21bddc88036a8ff8a0b2175f44ec242"
+          "sha256": "c2156221068aa40bb14bbea7c80b4c8ee7c0e3b4f2650a34954263c4931e81c4"
         },
         {
           "path": "frontend/WASM_SOURCE_PROVENANCE.json",
@@ -478,11 +478,11 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "b4e6f59d236b1c8cbf1f0c239572d4af1c982e855edbc6b3627e17bea456d46d"
+          "sha256": "c370dc11749182b5779b6289447f84f3123ff5f751e9c37e76ed1ab7fdcfe98b"
         },
         {
           "path": "frontend/package-lock.json",
-          "sha256": "a009f2a56d7552d287a9e9babeeab0b4935ab000836eb46503d0a05ebec7d20c"
+          "sha256": "0db6a93767d7079e9cd314e80adb052b8839d0920ab505cf03afac007e497e3b"
         }
       ],
       "context": {

@@ -15,6 +15,7 @@ from app.services.file_scanner import scan_for_malware
 from app.services.quarantine import QuarantineError, QuarantineService
 from app.services.storage import (
     QuarantineStorageBackend,
+    S3Storage,
     StaticFSStorage,
     StorageBackend,
     get_storage_backend,
@@ -582,9 +583,10 @@ async def save_attachment(
     )
     await _prepare_local_storage(backend, sanitized_subdir)
     cache_control = _cache_control_for_subdir(sanitized_subdir)
-    if canonical_url is not None and isinstance(backend, StaticFSStorage):
-        # ChatAttachmentService opts into canonical StaticFS URLs. Keep its
-        # cancellation ownership scoped to this existing chat-only call path.
+    if canonical_static_url and isinstance(backend, (StaticFSStorage, S3Storage)):
+        # ChatAttachmentService opts into canonical URLs. Keep its cancellation
+        # ownership scoped to this chat-only call path; both backends compensate
+        # an abandoned write of the exact key they were given.
         url = await backend.save_file_cancellable(
             relative_path,
             data,

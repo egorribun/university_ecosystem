@@ -36,6 +36,8 @@ jobs:
     needs: verify-default-branch-dispatch
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      SCAN_RATE_LIMIT_CEILING: "100000/minute"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,9 +75,28 @@ jobs:
           AUTO_CREATE_SCHEMA: "true"
           CACHE_ENABLED: "false"
           OTEL_SDK_DISABLED: "true"
-          # Keep the limiter active with a disposable scan-only request budget.
-          RATE_LIMIT_DEFAULT: "100000/minute"
-          RATE_LIMIT_NEWS: "100000/minute"
+          # The limiter stays enabled. Every anonymous budget gets a disposable
+          # scan-only ceiling so probe volume is never mistaken for a rate-limit
+          # verdict (429 still fails the gate). Source: app/core/config/mixins/
+          # rate_limit_settings.py, every rate_limit_* field except enabled,
+          # headers and storage.
+          RATE_LIMIT_DEFAULT: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_SENSITIVE: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_LOGIN: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_REGISTER: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_PASSWORD_RESET: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_MFA: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_USERS_ME: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_USERS_AVATAR: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_NEWS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_EVENTS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_CHAT: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_STORIES: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_INTERACTIONS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_UPLOAD: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_WEBSOCKET: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_STATIC: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_GRAPHQL: ${{ env.SCAN_RATE_LIMIT_CEILING }}
         run: |
           set -euo pipefail
           unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
@@ -180,35 +201,8 @@ jobs:
           # Only queries issued after readiness count as scan execution proof.
           : > "$SQLMAP_QUERY_EVIDENCE"
 
-      - name: Run SQLMap scan for every anonymous OpenAPI operation
-        id: sqlmap-openapi-scan
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
-          mkdir -p sqlmap-openapi-output
-          # The scope builder retains every HTTP operation and pins its origin
-          # to the disposable local backend. No Authorization header is sent.
-          # Keep the original complete-surface BEU scan settings from c3693dbed.
-          uv run sqlmap --openapi="sqlmap-openapi-output/scoped-openapi.json" \
-            --openapi-base="http://127.0.0.1:8000" \
-            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
-            --ignore-redirects \
-            --answers='refresh=N' \
-            --scope='^http://127[.]0[.]0[.]1:8000/' \
-            --batch \
-            --crawl=0 \
-            --technique=BEU \
-            --risk=1 \
-            --level=1 \
-            --threads=2 \
-            --timeout=5 \
-            --retries=0 \
-            --output-dir=sqlmap-openapi-output \
-            --results-file=sqlmap-openapi-output/results.csv \
-            --flush-session \
-            > sqlmap-openapi-output/scan-console.log 2>&1
-
+      # The news proof runs first: the full-document scan writes to the same
+      # disposable database and can change the seed rows the proof relies on.
       - name: Run SQLMap Scan on API
         id: sqlmap-news-scan
         continue-on-error: true
@@ -240,20 +234,6 @@ jobs:
 
       # Both gates require SQLMap's post-loop CSV marker, one ending banner,
       # exact target counts and no injection, timeout or incomplete-target evidence.
-      - name: Gate SQLMap complete OpenAPI scan
-        id: sqlmap-openapi-gate
-        if: ${{ always() }}
-        shell: bash
-        env:
-          SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
-        run: |
-          set -euo pipefail
-          python3 scripts/quality/sqlmap_scan_gate.py gate-openapi \
-            --scan-outcome "$SCAN_OUTCOME" \
-            --output-dir sqlmap-openapi-output \
-            --console-log sqlmap-openapi-output/scan-console.log \
-            --summary-file "$GITHUB_STEP_SUMMARY"
-
       - name: Gate SQLMap seeded news proof scan
         id: sqlmap-news-gate
         if: ${{ always() }}
@@ -266,6 +246,75 @@ jobs:
             --scan-outcome "$SCAN_OUTCOME" \
             --output-dir sqlmap-output \
             --console-log sqlmap-output/scan-console.log \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      # The full-document scan's requests also append to the query evidence file.
+      # Keep the news proof's evidence so the receipt counts only news queries.
+      - name: Snapshot news query evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f sqlmap-output/db-query-evidence.log; then
+            cp sqlmap-output/db-query-evidence.log "$RUNNER_TEMP/news-query-evidence.log"
+          fi
+
+      - name: Run SQLMap scan for every anonymous OpenAPI operation
+        id: sqlmap-openapi-scan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-openapi-output
+          # The scope builder retains every HTTP operation and pins its origin
+          # to the disposable local backend. No Authorization header is sent.
+          # Keep the original complete-surface BEU scan settings from c3693dbed.
+          # 401/403 are the anonymous answer for protected operations, 404 and
+          # 405 the answer for absent or method-restricted ones, and 422 the
+          # answer to probe values that fail request validation. sqlmap would
+          # otherwise abort the target on these; the gate still checks every
+          # target has a negative result.
+          uv run sqlmap --openapi="sqlmap-openapi-output/scoped-openapi.json" \
+            --openapi-base="http://127.0.0.1:8000" \
+            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
+            --ignore-redirects \
+            --ignore-code=401,403,404,405,422 \
+            --answers='refresh=N' \
+            --scope='^http://127[.]0[.]0[.]1:8000/' \
+            --batch \
+            --crawl=0 \
+            --technique=BEU \
+            --risk=1 \
+            --level=1 \
+            --threads=2 \
+            --timeout=5 \
+            --retries=0 \
+            --output-dir=sqlmap-openapi-output \
+            --results-file=sqlmap-openapi-output/results.csv \
+            --flush-session \
+            > sqlmap-openapi-output/scan-console.log 2>&1
+
+      - name: Restore news query evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/news-query-evidence.log"; then
+            cp "$RUNNER_TEMP/news-query-evidence.log" sqlmap-output/db-query-evidence.log
+          fi
+
+      - name: Gate SQLMap complete OpenAPI scan
+        id: sqlmap-openapi-gate
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/sqlmap_scan_gate.py gate-openapi \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --output-dir sqlmap-openapi-output \
+            --console-log sqlmap-openapi-output/scan-console.log \
             --summary-file "$GITHUB_STEP_SUMMARY"
 
       - name: Publish sanitized SQLMap evidence receipt

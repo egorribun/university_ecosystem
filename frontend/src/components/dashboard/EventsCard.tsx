@@ -220,6 +220,8 @@ const EventsCardContent = memo(function EventsCardContent({
               {scopedEvents.map((e, idx) => {
                 const eventKey = `${eventsScope}-${e.id}`
                 const eventDescriptionId = `${dateDescriptionId}-${encodeURIComponent(eventKey)}`
+                const eventTitleId = `${eventDescriptionId}-title`
+                const eventMetaId = `${eventDescriptionId}-meta`
                 return (
                   <m.li
                     key={eventKey}
@@ -240,7 +242,8 @@ const EventsCardContent = memo(function EventsCardContent({
                         "active:scale-(--scale-active)"
                       )}
                       onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
-                      aria-describedby={eventDescriptionId}
+                      aria-labelledby={eventTitleId}
+                      aria-describedby={`${eventDescriptionId} ${eventMetaId}`}
                       style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
                       <DateBullet
@@ -250,10 +253,13 @@ const EventsCardContent = memo(function EventsCardContent({
                         descriptionId={eventDescriptionId}
                       />
                       <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                        <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
+                        <span
+                          id={eventTitleId}
+                          className="text-base font-semibold leading-tight text-text-primary line-clamp-2"
+                        >
                           {e.title}
                         </span>
-                        <span className="flex flex-wrap items-center gap-2">
+                        <span id={eventMetaId} className="flex flex-wrap items-center gap-2">
                           {!isNaN(e.d.getTime()) && timeZone && (
                             <span className="font-mono text-sm font-medium text-brand">
                               {formatCampusDate(
@@ -268,6 +274,7 @@ const EventsCardContent = memo(function EventsCardContent({
                               )}
                             </span>
                           )}
+                          {/* Flex gaps are not text: a space keeps the time and location apart for the description. */}{" "}
                           {!!e.location && (
                             <Badge
                               size="sm"

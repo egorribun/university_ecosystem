@@ -360,6 +360,11 @@ test("Node production CSP defaults match the shared policy contract", async () =
     await readFile(path.join(REPOSITORY_ROOT, "quality", "frontend-csp-defaults.json"), "utf8")
   )
 
+  // Node-only script-src tokens are declared explicitly in the shared contract so
+  // drift is visible; they are the only expected difference from the backend policy.
+  const nodeOnlyScriptSrcTokens = contract.nodeOnlyScriptSrcTokens
+  assert.deepEqual(nodeOnlyScriptSrcTokens, ["'wasm-unsafe-eval'"])
+
   const headers = buildNodeCspHeaders(contract.nonce)
   const addTokenToScriptSrc = (policy) => {
     const directives = policy.split("; ")
@@ -367,8 +372,10 @@ test("Node production CSP defaults match the shared policy contract", async () =
     assert.notEqual(scriptSrcIndex, -1, "CSP contract includes script-src")
     const scriptSrcTokens = directives[scriptSrcIndex].split(" ")
     assert.ok(scriptSrcTokens.includes("'report-sample'"))
-    assert.equal(scriptSrcTokens.includes("'wasm-unsafe-eval'"), false)
-    directives[scriptSrcIndex] = [...scriptSrcTokens, "'wasm-unsafe-eval'"].join(" ")
+    for (const token of nodeOnlyScriptSrcTokens) {
+      assert.equal(scriptSrcTokens.includes(token), false)
+    }
+    directives[scriptSrcIndex] = [...scriptSrcTokens, ...nodeOnlyScriptSrcTokens].join(" ")
     return directives.join("; ")
   }
 
@@ -393,7 +400,9 @@ test("Node production CSP defaults match the shared policy contract", async () =
     const scriptSrc = directives.find((directive) => directive.startsWith("script-src "))
     assert.ok(scriptSrc)
     const scriptSrcTokens = scriptSrc.split(" ")
-    assert.equal(scriptSrcTokens.filter((token) => token === "'wasm-unsafe-eval'").length, 1)
+    for (const token of nodeOnlyScriptSrcTokens) {
+      assert.equal(scriptSrcTokens.filter((candidate) => candidate === token).length, 1)
+    }
     assert.equal(scriptSrcTokens.includes("'unsafe-eval'"), false)
 
     const trustedTypes = directives.find((directive) => directive.startsWith("trusted-types "))

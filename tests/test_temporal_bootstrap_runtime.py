@@ -325,21 +325,23 @@ class RuntimeGuard(unittest.TestCase):
 
     def check(self, value: dict, accepted: bool):
         self.json_path.write_text(json.dumps(value), encoding="utf-8")
-        code, stdout, stderr = asyncio.run(
-            run_powershell(
-                [
-                    self.pwsh,
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-File",
-                    str(self.runner),
-                    str(HELPER),
-                    str(self.json_path),
-                    str(self.state),
-                    str(self.repo),
-                ]
-            )
-        )
+        command = [
+            self.pwsh,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(self.runner),
+            str(HELPER),
+            str(self.json_path),
+            str(self.state),
+            str(self.repo),
+        ]
+        code, stdout, stderr = asyncio.run(run_powershell(command))
+        if code < 0:
+            # pwsh itself was killed by a signal under runner load (seen once as
+            # SIGABRT), so the helper gave no verdict. Ask once more; every
+            # assertion below still applies to the answer.
+            code, stdout, stderr = asyncio.run(run_powershell(command))
         self.assertEqual(
             hashlib.sha256(HELPER.read_bytes()).hexdigest(), self.helper_hash
         )

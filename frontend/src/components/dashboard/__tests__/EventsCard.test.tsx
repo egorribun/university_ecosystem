@@ -36,8 +36,7 @@ const {
   mockPrefetchEventsListQuery: vi.fn(),
   mockUseMediaQuery: vi.fn(() => true),
   mockUseTranslation: vi.fn(() => ({
-    t: (key: string, options?: { title?: string }) =>
-      key === "dashboard:aria.eventItem" && options?.title ? `${key}:${options.title}` : key,
+    t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   })),
   reducedMotion: { value: true },
@@ -383,8 +382,8 @@ describe("EventsCard", () => {
       )
       const eventButtons = within(todayList).getAllByRole("button")
       expect(eventButtons).toHaveLength(2)
-      expect(eventButtons[0]).toHaveAccessibleName(expect.stringContaining("Morning event"))
-      expect(eventButtons[1]).toHaveAccessibleName(expect.stringContaining("No-location event"))
+      expect(eventButtons[0]).toHaveAccessibleName("Morning event")
+      expect(eventButtons[1]).toHaveAccessibleName("No-location event")
       expect(eventButtons[0]).toHaveClass(
         "group",
         "list-item-blue",

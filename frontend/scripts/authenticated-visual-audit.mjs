@@ -61,6 +61,7 @@ import { fileURLToPath } from "node:url"
 import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 import {
   classifyAuthenticatedAuditSummaries,
+  emitAxeDiagnostics,
   requestFailureRecord,
 } from "./visual-smoke-contract.mjs"
 
@@ -90,14 +91,17 @@ const OUT_DIR = path.resolve(
   process.env.OUT_DIR ?? ".screenshots/authenticated-visual-audit"
 )
 const AUDIT_ENVIRONMENT_KEYS = [
+  "APPDATA",
   "CI",
   "GITHUB_SHA",
   "HOME",
   "LANG",
   "LC_ALL",
+  "LOCALAPPDATA",
   "ORIGIN",
   "OUT_DIR",
   "PATH",
+  "ProgramData",
   "REPO_ROOT",
   "ROUTES",
   "SOURCE_SHA",
@@ -105,6 +109,7 @@ const AUDIT_ENVIRONMENT_KEYS = [
   "TEMP",
   "TMP",
   "TMPDIR",
+  "USERPROFILE",
   "VISUAL_CAPTURE_MATRIX",
   "VISUAL_HEIGHT",
   "VISUAL_LOCALES",
@@ -1643,8 +1648,6 @@ export function emitAuthenticatedVisualRuntimeDiagnostics(
     // Diagnostics never change acceptance, expose an exception, or retry a failed sink.
   }
 }
-
-import { emitAxeDiagnostics } from "./visual-smoke-contract.mjs"
 
 async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
   const consoleMessages = []

@@ -96,6 +96,17 @@ describe("ETag cache concurrent publication", () => {
     expect(responseCache.get(KEY)?.data).toEqual({ version: 2 })
   })
 
+  it("keeps a stale 304 bodiless when its validator was evicted, without touching newer state", async () => {
+    await handleEtagResponse(response(1), KEY)
+    const notModified = response(1, 304)
+    etagCache.delete(KEY)
+    responseCache.set(KEY, { data: { version: 3 }, hmac: "unused", ts: Date.now() })
+    await handleEtagResponse(notModified, KEY)
+    expect(notModified).toMatchObject({ status: 304, data: null })
+    expect(etagCache.get(KEY)).toBeUndefined()
+    expect(responseCache.get(KEY)?.data).toEqual({ version: 3 })
+  })
+
   it("discards a 304 whose entry was replaced while its HMAC was verified", async () => {
     await handleEtagResponse(response(1), KEY)
     const pause = pauseNextSign()

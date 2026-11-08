@@ -1,6 +1,7 @@
 {
   "name": "university-ecosystem-root",
   "private": true,
+  "license": "MIT",
   "description": "Root management for University Ecosystem",
   "scripts": {
     "release": "semantic-release",

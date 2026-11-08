@@ -50,7 +50,7 @@ fields. The historical restore commands below remain historical, and routine
 copying, publication, extraction, or further bundle creation remains forbidden.
 This evidence supports the one-time criterion-specific AUD-420 acceptance
 recorded in the current reassessment. It does not recreate the missing historical
-files or authorize routine backup, copying, publication, or distribution.
+files or authorize routine backup, copying, publication, or distribution. AUD-420 is an owner decision on private recovery material, not a technical closure that the repository can re-verify; the owner keeps that material.
 
 ## Current quality-closure roadmap
 

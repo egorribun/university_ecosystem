@@ -50,7 +50,7 @@ vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 vi.mock("@/api/schemas/wsMessage", () => ({ parseWsMessage: mocks.parseWsMessage }))
 vi.mock("@/db/lazy", () => ({ getDatabaseLazily: mocks.dbLoad }))
 
-import { useChatWebSocket, WebSocketProvider } from "../useChatWebSocket"
+import { SEND_MESSAGE_MUTATION_KEY, useChatWebSocket, WebSocketProvider } from "../useChatWebSocket"
 
 const ROOM = "replay-room-edge"
 const TICKET = { data: { ticket: "ticket-1", expires_in: 15 } }
@@ -216,5 +216,66 @@ describe("replay REST recovery timer edges", () => {
     // Model a timeout callback already queued when cleanup cancels its timer.
     if (typeof cooldownTimer === "function") act(() => cooldownTimer())
     expect(session.invalidateQueries).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe("self-authored echo while this tab is sending", () => {
+  const CHAT = "chat-echo"
+
+  function echo(socket: ScriptedWebSocket, id: string, content: string) {
+    act(() =>
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT,
+        message: {
+          id,
+          chat_id: CHAT,
+          sender_id: "user-a",
+          content,
+          created_at: "2026-08-25T12:00:00.000000Z",
+        },
+      })
+    )
+  }
+
+  function cachedIds(queryClient: QueryClient) {
+    const data = queryClient.getQueryData<{ items: { id: string }[] }>(["messages", CHAT])
+    return (data?.items ?? []).map((message) => message.id)
+  }
+
+  function startPendingSend(queryClient: QueryClient, content: string) {
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationKey: SEND_MESSAGE_MUTATION_KEY,
+      mutationFn: () => new Promise(() => undefined),
+    })
+    void mutation.execute({ chatId: CHAT, content })
+  }
+
+  it("leaves the pending send's own echo to the send's success handler", async () => {
+    const session = await connected()
+    startPendingSend(session.queryClient, "pending text")
+    await flush()
+
+    echo(session.socket, "echo-1", "pending text")
+
+    expect(cachedIds(session.queryClient)).toEqual([])
+  })
+
+  it("still adds the user's message from another tab while this tab sends other text", async () => {
+    const session = await connected()
+    startPendingSend(session.queryClient, "pending text")
+    await flush()
+
+    echo(session.socket, "other-tab", "sent from another tab")
+
+    expect(cachedIds(session.queryClient)).toEqual(["other-tab"])
+  })
+
+  it("adds the echo when nothing is being sent", async () => {
+    const session = await connected()
+
+    echo(session.socket, "echo-2", "sent earlier")
+
+    expect(cachedIds(session.queryClient)).toEqual(["echo-2"])
   })
 })

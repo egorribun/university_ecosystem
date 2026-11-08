@@ -1,7 +1,7 @@
 import { createRxDatabase, type RxDatabase, addRxPlugin } from "rxdb"
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie"
 import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode"
-import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv"
+import { wrappedValidateZSchemaStorage } from "rxdb/plugins/validate-z-schema"
 
 import { scheduleSchema, type ScheduleDoc } from "./schemas/schedule"
 import { notesSchema, type NoteDoc } from "./schemas/notes"
@@ -27,7 +27,8 @@ export async function getDatabase(): Promise<AppDatabase> {
   if (!dbPromise) {
     const pending: Promise<AppDatabase> = createRxDatabase<AppCollections>({
       name: "university_ecosystem_rxdb",
-      storage: wrappedValidateAjvStorage({ storage: getRxStorageDexie() }),
+      // The Ajv validator compiles with new Function, which the production CSP blocks.
+      storage: wrappedValidateZSchemaStorage({ storage: getRxStorageDexie() }),
     }).then(
       async (db) => {
         try {

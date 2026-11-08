@@ -220,3 +220,32 @@ def test_entrypoint_refuses_to_start_without_the_service_variable(
     )
     assert result.returncode != 0
     assert b"args=" not in result.stdout
+
+
+@pytest.mark.parametrize("variable", ["POSTGRES_USER", "POSTGRES_PWD"])
+@pytest.mark.parametrize("character", ["&", "|", "\\", "]", "[", '"', "'", " ", "\n"])
+def test_entrypoint_refuses_sed_metacharacters_in_postgres_credentials(
+    tmp_path: Path, variable: str, character: str
+) -> None:
+    secret = f"secret{character}value"
+    result, _ = _run_entrypoint(tmp_path, env_overrides={variable: secret})
+    assert result.returncode != 0
+    assert b"args=" not in result.stdout
+    stderr = result.stderr.decode("utf-8")
+    assert (
+        f"{variable} contains characters the config renderer does not accept" in stderr
+    )
+    assert "secret" not in stderr, "the rejected credential must never be echoed"
+
+
+def test_entrypoint_renders_postgres_password_with_safe_punctuation(
+    tmp_path: Path,
+) -> None:
+    safe_value = "p@ss:w#rd$%!+=~.(){}*"
+    result, rendered = _run_entrypoint(
+        tmp_path, env_overrides={"POSTGRES_PWD": safe_value}
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8")
+    store = rendered["persistence"]["datastores"]["postgres-default"]["sql"]
+    assert store["password"] == safe_value
+    assert "${" not in result.stdout.decode("utf-8")

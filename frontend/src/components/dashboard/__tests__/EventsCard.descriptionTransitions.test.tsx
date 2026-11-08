@@ -85,19 +85,30 @@ describe("Event description references during animated transitions", () => {
       "week-event-1",
       "week-event-2",
     ])
-    const ids = rows.map((row) => row.querySelector("button")!.getAttribute("aria-describedby"))
-    expect(new Set(ids).size).toBe(3)
+    // The first id in each row is its date tooltip; the second is the time and location.
+    const dateIds = rows.map(
+      (row) => row.querySelector("button")!.getAttribute("aria-describedby")!.split(" ")[0]
+    )
+    expect(new Set(dateIds).size).toBe(3)
     for (const row of rows) {
       const button = row.querySelector("button")!
-      const id = button.getAttribute("aria-describedby")!
-      const targets = Array.from(document.querySelectorAll("[id]")).filter((node) => node.id === id)
-      expect(targets).toHaveLength(1)
-      expect(row.contains(targets[0]!)).toBe(true)
-      expect(targets[0]).toHaveAttribute("hidden")
+      const [dateId, metaId] = button.getAttribute("aria-describedby")!.split(" ")
+      const dateTargets = Array.from(document.querySelectorAll("[id]")).filter(
+        (node) => node.id === dateId
+      )
+      expect(dateTargets).toHaveLength(1)
+      expect(row.contains(dateTargets[0]!)).toBe(true)
+      expect(dateTargets[0]).toHaveAttribute("hidden")
+      const metaTargets = Array.from(document.querySelectorAll("[id]")).filter(
+        (node) => node.id === metaId
+      )
+      expect(metaTargets).toHaveLength(1)
+      expect(row.contains(metaTargets[0]!)).toBe(true)
+      const isSecondWeekEvent = row.getAttribute("data-event-key") === "week-event-2"
       expect(button).toHaveAccessibleDescription(
-        row.getAttribute("data-event-key") === "week-event-2"
-          ? "November 09, 2026 at 11:45 AM"
-          : "November 08, 2026 at 10:30 AM"
+        isSecondWeekEvent
+          ? "Published on November 09, 2026 at 11:45 AM 11:45 Room 205"
+          : "Published on November 08, 2026 at 10:30 AM 10:30 Room 204"
       )
     }
   })

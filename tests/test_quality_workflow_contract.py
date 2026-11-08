@@ -5824,6 +5824,11 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
             f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
             "--headers=Accept-Encoding: identity\\nX-Request-ID: sqlmap-aud-381",
             "--ignore-redirects",
+            *(
+                ("--ignore-code=401,403,404,405,422",)
+                if output_dir == "sqlmap-openapi-output"
+                else ()
+            ),
             "--answers=refresh=N",
             f"--scope={scope}",
             "--batch",

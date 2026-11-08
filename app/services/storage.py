@@ -582,6 +582,8 @@ class S3Storage(StorageBackend):
         self.base_url = resolved_base_url
         self._base_url_parsed = urlparse(self.base_url)
         self._extra_put_object_args: dict[str, str] = extra_put_object_args or {}
+        # Strong references keep compensating deletes alive if their caller is cancelled.
+        self._abandoned_delete_tasks: set[asyncio.Task[None]] = set()
 
     def _normalize_key(self, relative_path: str) -> str:
         if _has_control_chars(relative_path):
@@ -634,6 +636,50 @@ class S3Storage(StorageBackend):
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise
         return f"{self.base_url}/{key}"
+
+    async def save_file_cancellable(
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
+    ) -> str:
+        """Save one exclusively owned object and delete it if the upload is abandoned.
+
+        Only use this for keys the caller exclusively owns: the compensating delete
+        removes the exact key, which would also remove an overwritten shared object.
+        A cancelled or failed PUT may still have landed, so the key is deleted and
+        the original exception is re-raised.
+        """
+        key = self._normalize_key(relative_path)
+        try:
+            return await self.save_file(
+                relative_path,
+                data,
+                content_type=content_type,
+                cache_control=cache_control,
+            )
+        except (
+            asyncio.CancelledError,
+            ConnectionError,
+            TimeoutError,
+            OSError,
+        ):
+            await self._delete_abandoned_key(key)
+            raise
+
+    async def _delete_abandoned_key(self, key: str) -> None:
+        """Run the compensating delete to completion even if the caller is cancelled again."""
+        task = asyncio.create_task(self.delete_file(f"{self.base_url}/{key}"))
+        self._abandoned_delete_tasks.add(task)
+        task.add_done_callback(self._abandoned_delete_tasks.discard)
+        try:
+            await asyncio.shield(task)
+        except Exception as err:  # RZ-22-01-JUSTIFIED: compensation must not replace the original upload failure
+            logger.warning(
+                "s3_abandoned_upload_delete_failed", error_type=type(err).__name__
+            )
 
     @asynccontextmanager
     async def _build_aioboto3_client(self) -> AsyncIterator[Any]:

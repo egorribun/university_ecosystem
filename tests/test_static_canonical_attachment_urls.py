@@ -14,7 +14,7 @@ from fastapi import UploadFile
 from starlette.datastructures import Headers
 
 from app.core.config.storage import StorageSettings
-from app.services.storage import StaticFSStorage, get_storage_backend
+from app.services.storage import S3Storage, StaticFSStorage, get_storage_backend
 from app.utils import files
 
 _USERINFO_ORIGIN = f"https://{':'.join(('reader', 'fixture'))}@media.example.test"
@@ -753,3 +753,47 @@ async def test_noncanonical_static_attachment_keeps_generic_save_path(
         b"%PDF-1.7\ngeneric upload\n"
     )
     assert not backend._pending_cancellable_writes
+
+
+@pytest.mark.asyncio
+async def test_chat_canonical_opt_in_routes_s3_through_cancellable_save(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = S3Storage(
+        bucket="uploads",
+        base_url="https://media.example.test/uploads",
+        client=AsyncMock(),
+    )
+    saved_url = "https://media.example.test/uploads/chat_uploads/note.txt"
+    cancellable = AsyncMock(return_value=saved_url)
+    save = AsyncMock(side_effect=AssertionError("Plain save used for chat opt-in"))
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    monkeypatch.setattr(files, "_prepare_local_storage", AsyncMock())
+    monkeypatch.setattr(backend, "save_file_cancellable", cancellable)
+    monkeypatch.setattr(backend, "save_file", save)
+    monkeypatch.setattr(files, "_gen_name", lambda _prefix, _ext: "note.txt")
+    monkeypatch.setattr(files, "detect_mime_type", lambda _data: "text/plain")
+    monkeypatch.setattr(files, "scan_for_malware", AsyncMock())
+    upload = UploadFile(
+        filename="note.txt",
+        file=io.BytesIO(b"private"),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+
+    try:
+        url = await files.save_attachment(
+            upload,
+            "chat_uploads",
+            "chat",
+            allowed_mime_types={"text/plain"},
+            allowed_extensions={"txt"},
+            max_size_bytes=1024,
+            canonical_static_url=True,
+        )
+    finally:
+        await upload.close()
+
+    assert url == saved_url
+    cancellable.assert_awaited_once()
+    assert cancellable.await_args.args[0] == "chat_uploads/note.txt"
+    save.assert_not_awaited()

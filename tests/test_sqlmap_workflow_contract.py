@@ -67,7 +67,7 @@ def test_sqlmap_proves_openapi_capability_and_backend_readiness_before_scan() ->
         < indexes["Start FastAPI Backend in Background"]
     )
     assert indexes["Start FastAPI Backend in Background"] < indexes[full_scan["name"]]
-    assert indexes[full_scan["name"]] < indexes[news_scan["name"]]
+    assert indexes[news_scan["name"]] < indexes[full_scan["name"]]
     assert re.fullmatch(
         r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
     )

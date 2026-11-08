@@ -1,5 +1,7 @@
 # Cumulative scoped review — AUD-426, AUD-231, and AUD-449 — 2026-11-06
 
+Dated checkpoint. The current total is in [the audit index](INDEX.md).
+
 This cumulative review preserves the prior scoped AUD-426 acceptance and
 records separate criterion-specific acceptances for AUD-231 and AUD-449.
 Together they account for 452 accepted / 512 (88.3%), with 60 open: 13

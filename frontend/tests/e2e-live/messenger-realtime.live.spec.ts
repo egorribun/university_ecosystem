@@ -126,6 +126,8 @@ function findMessageMutationFrames(value: unknown): MessageMutationFrame[] {
 function findReactionMutationFrames(value: unknown): ReactionMutationFrame[] {
   if (Array.isArray(value)) return value.flatMap(findReactionMutationFrames)
   if (!isRecord(value)) return []
+  // The hub envelope repeats the event type; the event fields are in its payload.
+  if (isRecord(value.payload)) return findReactionMutationFrames(value.payload)
   if (value.type === "reaction_changed") {
     return [
       {
@@ -472,6 +474,21 @@ test.describe("live messenger delivery", () => {
                 opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
               )
             })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
             const rendered = await bubble.evaluate((element) => {
               const effective = (target: Element | null) => {
                 if (!target) return null
@@ -840,6 +857,8 @@ test.describe("live messenger delivery", () => {
         1
       )
 
+      // Replay polls once more after its last message (offlineReplayFetchWait, 1 s).
+      await receiverPage.waitForTimeout(2_500)
       const afterReconnect = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -1323,6 +1342,21 @@ test.describe("live messenger delivery", () => {
                 opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
               )
             })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
             const rendered = await bubble.evaluate((element) => {
               const effective = (target: Element | null) => {
                 if (!target) return null
@@ -1670,6 +1704,21 @@ test.describe("live messenger delivery", () => {
                 opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
               )
             })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
             const rendered = await bubble.evaluate((element) => {
               const effective = (target: Element | null) => {
                 if (!target) return null
@@ -1882,9 +1931,10 @@ test.describe("live messenger delivery", () => {
       await receiverPage.goto(`/messenger/${activeChatId}`)
       await receiverPage.bringToFront()
       await expect(receiverPage.getByRole("log", { name: /Сообщения чата/i })).toBeVisible()
+      // The client pings every 30 s and allows 10 s for the pong (useChatWebSocket).
       await expect
         .poll(() => receiverSessions.some((session) => session.acknowledged && !session.closed), {
-          timeout: 35_000,
+          timeout: 45_000,
         })
         .toBe(true)
       const receiverSession = receiverSessions.find(

@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest"
 import { NewsCardList } from "../NewsCardList"
 import { EventsCard } from "../EventsCard"
 import type { NewsItem } from "@/api/news"
+import { checkA11y } from "@/tests/axeTest"
 import enDashboard from "@/i18n/locales/en/dashboard.json"
 import ruDashboard from "@/i18n/locales/ru/dashboard.json"
 import enCommon from "@/i18n/locales/en/common.json"
@@ -79,13 +80,11 @@ describe.each(["en", "ru"])("Dashboard item names in %s", (language) => {
     ] as NewsItem[]
     await renderLocalized(language, <NewsCardList news={news} loading={false} locale={language} />)
     const button = screen.getByRole("button")
-    expect(button).toHaveAccessibleName(
-      language === "en"
-        ? /^08\s*Nov\s*Campus research\s*Join our laboratory tour\.$/
-        : /^08\s*нояб\.\s*Campus research\s*Join our laboratory tour\.$/
-    )
+    expect(button).toHaveAccessibleName("Campus research")
     expect(button).toHaveAccessibleDescription(
-      language === "en" ? "November 08, 2026 at 10:30 AM" : "08 ноября 2026 г. в 10:30"
+      language === "en"
+        ? "Published on November 08, 2026 at 10:30 AM Join our laboratory tour."
+        : "Опубликовано: 08 ноября 2026 г. в 10:30 Join our laboratory tour."
     )
     fireEvent.click(button)
     expect(state.navigate).toHaveBeenCalledWith({ to: "/news/$id", params: { id: "news-1" } })
@@ -94,13 +93,11 @@ describe.each(["en", "ru"])("Dashboard item names in %s", (language) => {
   it("includes event time and location after the title", async () => {
     await renderLocalized(language, <EventsCard />)
     const button = screen.getByText("Open laboratory").closest("button")!
-    expect(button).toHaveAccessibleName(
-      language === "en"
-        ? /^08\s*Nov\s*Open laboratory\s*10:30\s*Room 204$/
-        : /^08\s*нояб\.\s*Open laboratory\s*10:30\s*Room 204$/
-    )
+    expect(button).toHaveAccessibleName("Open laboratory")
     expect(button).toHaveAccessibleDescription(
-      language === "en" ? "November 08, 2026 at 10:30 AM" : "08 ноября 2026 г. в 10:30"
+      language === "en"
+        ? "Published on November 08, 2026 at 10:30 AM 10:30 Room 204"
+        : "Опубликовано: 08 ноября 2026 г. в 10:30 10:30 Room 204"
     )
     fireEvent.click(button)
     expect(state.navigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "event-1" } })
@@ -117,7 +114,7 @@ describe.each(["en", "ru"])("Dashboard item names in %s", (language) => {
         <NewsCardList news={news} loading={false} locale={language} />
       )
       const button = screen.getByRole("button")
-      expect(button).toHaveAccessibleName(/^—\s*--\s*Campus research$/)
+      expect(button).toHaveAccessibleName("Campus research")
       expect(button).toHaveAccessibleDescription(
         language === "en" ? "Date unavailable" : "Дата недоступна"
       )
@@ -139,23 +136,29 @@ describe.each(["en", "ru"])("Dashboard item names in %s", (language) => {
     }
     await renderLocalized(
       language,
-      <>
+      <main>
         <NewsCardList news={[first, second]} loading={false} locale={language} />
         <NewsCardList news={[first]} loading={false} locale={language} />
         <EventsCard />
-      </>
+      </main>
     )
     const rows = screen
       .getAllByRole("button")
       .filter((button) => button.hasAttribute("aria-describedby"))
     expect(rows).toHaveLength(4)
-    const ids = rows.map((button) => button.getAttribute("aria-describedby"))
+    await checkA11y(document.body.querySelector("main")!)
+    // Each row lists its date tooltip first, then its excerpt or metadata.
+    const ids = rows.map((button) => button.getAttribute("aria-describedby")!.split(" ")[0])
     expect(new Set(ids).size).toBe(4)
     expect(rows[0]).toHaveAccessibleDescription(
-      language === "en" ? "November 08, 2026 at 10:30 AM" : "08 ноября 2026 г. в 10:30"
+      language === "en"
+        ? "Published on November 08, 2026 at 10:30 AM First preview"
+        : "Опубликовано: 08 ноября 2026 г. в 10:30 First preview"
     )
     expect(rows[1]).toHaveAccessibleDescription(
-      language === "en" ? "November 09, 2026 at 11:45 AM" : "09 ноября 2026 г. в 11:45"
+      language === "en"
+        ? "Published on November 09, 2026 at 11:45 AM First preview"
+        : "Опубликовано: 09 ноября 2026 г. в 11:45 First preview"
     )
     for (const id of ids) {
       const target = document.getElementById(id!)!

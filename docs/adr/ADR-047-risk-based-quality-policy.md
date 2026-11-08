@@ -2391,3 +2391,76 @@ owned seed record. The approval covers only the whole-file test binding.
 The existing source-line and context bindings, scanner inventories and
 disposition expiries retain their scope. AUD-313 still needs the owned
 Compose mount and cleanup proof.
+
+## Decisions recorded on 2026-11-08
+
+The owner made or confirmed these decisions during the review of
+`1cc8fb2db..d5a94bb51`.
+
+### Scanner inventory
+
+The owner confirmed approval of the 144 detect-secrets identities added in that
+range, which took the policy from 362 to 506 records. 107 of them are the digests
+in `quality/semgrep-dispositions.json`. Companion digest changes are 1:1 rebinds:
+same path, type and line, with only the digest following the reviewed file bytes.
+
+### Semgrep gate
+
+- `semgrep-sast` is a required context for pull requests to `main`.
+- The local hook and CI run the same gate, pinned rules and exact dispositions. No
+  inline Semgrep comment remains in source, and a test keeps it that way.
+- Semgrep's fixpoint limit is wall-clock time. After a timeout the gate rescans only
+  the affected files, one job at a time, with the same rules and limits. It keeps
+  every finding from both scans. A repeated timeout, a diagnostic or a target
+  mismatch still fails. No limit or rule changed.
+- The selection now includes the Rust security rules. HTML rules stay out because
+  the inline JavaScript supplement already owns those files.
+
+### TruffleHog license
+
+The GitHub Action `trufflesecurity/trufflehog` is reported as AGPL-3.0. It is allowed
+by one exact entry, `pkg:githubactions/trufflesecurity/trufflehog`, not by a global
+license allowance. It runs only in CI and is not distributed. The scope verifier
+accepts one row bound to the workflow pin and fails on anything else. The exception
+expires on 2027-01-10.
+
+### SQLMap
+
+Two scans run: the seeded `/api/v1/news` execution proof, and an anonymous scan of
+every OpenAPI operation that blocks on any injection and must prove it reached every
+operation. Reports are kept for 90 days.
+
+The anonymous scan treats 401, 403, 404, 405 and 422 as correct answers. It accepts
+503 only on `/healthz`, whose SpiceDB check has nothing to reach on the disposable
+stand. It still fails on 429, other 5xx, timeouts and any missing target.
+
+The owner approved one exact exception: `/api/v1/csp-report` answers 204 with no
+body, so SQLMap cannot test it. Its handler only logs and counts, and a test fails
+if the module gains any other import. A different error or an injection on that path
+still fails the gate.
+
+### Temporal network boundary
+
+`internal-frontend`, history, matching and worker bind to 127.0.0.1. The public
+frontend gRPC 7233 authenticates callers and has no internode certificates.
+
+Temporal binds its frontend membership (6933) and HTTP API (7243) to the same address
+as 7233, and Prometheus metrics listen on 8000. All three are reachable on the
+`internal` Docker network, which also carries Caddy. Bearer tokens to 7233 travel in
+cleartext on that network. `temporal-namespace-init` shares Temporal's network
+namespace, so it can reach the loopback system-admin listener; its image and script
+are trusted for that reason. These are accepted limits of the owner's decision to run
+without internode TLS.
+
+### Browser connections
+
+`connect-src` allows exactly one more origin, `https://api.open-meteo.com`, in the
+backend default, the Node SSR policy and the shared contract. The dashboard and map
+weather widgets call it directly from the browser with campus coordinates only. The
+policy blocked those calls, so the widgets could never load in production.
+
+### Licensing
+
+All project-level metadata declares MIT, matching `LICENSE`: the root and frontend
+packages, both Python projects and the native crate.
+

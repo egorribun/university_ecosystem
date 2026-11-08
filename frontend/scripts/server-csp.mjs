@@ -10,6 +10,7 @@ const DEFAULT_CONNECT_SOURCES = Object.freeze([
   "'self'",
   "https://*.push.apple.com",
   "https://*.push.services.mozilla.com",
+  "https://api.open-meteo.com",
   "https://api.spotify.com",
   "https://fcm.googleapis.com",
   "https://fcmregistrations.googleapis.com",

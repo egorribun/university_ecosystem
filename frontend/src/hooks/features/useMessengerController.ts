@@ -1,3 +1,4 @@
+import { SEND_MESSAGE_MUTATION_KEY } from "@/hooks/useChatWebSocket"
 import {
   startTransition,
   useState,
@@ -357,6 +358,9 @@ export const useMessengerController = () => {
   } = useQuery({
     ...chatsQueryOptions(queryClient),
     enabled: !!user,
+    // The socket joins rooms only here, so messages that arrived elsewhere are absent
+    // from a cached or restored list. Unread counts must come from the server on entry.
+    refetchOnMount: "always",
   })
   const chatsData = useProjectedMessengerChats(canonicalChats, accountId)
   const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
@@ -699,6 +703,7 @@ export const useMessengerController = () => {
   // --- Mutations ---
 
   const sendMessageMutation = useMutation({
+    mutationKey: SEND_MESSAGE_MUTATION_KEY,
     // Wave 207 — replyToMessageId threaded into the existing send mutation (no
     // separate mutation): the FormData append is conditional in chatApi.sendMessage.
     mutationFn: ({

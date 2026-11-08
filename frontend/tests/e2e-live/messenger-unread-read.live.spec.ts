@@ -468,6 +468,21 @@ test("a real DM read receipt clears only that chat's unread state", async ({
               opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
             )
           })
+          await expect
+            .poll(() =>
+              bubble.evaluate((element) => {
+                let opacity = 1
+                for (
+                  let current: Element | null = element;
+                  current;
+                  current = current.parentElement
+                ) {
+                  opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                }
+                return opacity
+              })
+            )
+            .toBeGreaterThan(0.9995)
           const rendered = await bubble.evaluate((element) => {
             const effective = (target: Element | null) => {
               if (!target) return null

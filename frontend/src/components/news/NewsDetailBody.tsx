@@ -1,4 +1,12 @@
-import { createElement, type ReactNode, useEffect, useMemo, useState } from "react"
+import {
+  cloneElement,
+  createElement,
+  isValidElement,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { Marked, type Token, type Tokens } from "marked"
 import {
   articleFragmentToReactNodes,
@@ -44,10 +52,25 @@ const RAW_VOID_TAGS = new Set([
   "wbr",
 ])
 
-interface RawHtmlSequence {
+interface RenderedRawNodes {
   source: string
-  endIndex: number
+  nodes: ReactNode[]
 }
+
+/** Raw elements whose contents the sanitizer drops with the element, so their text is never shown. */
+const DROPPED_RAW_CONTENT_TAGS = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "object",
+  "script",
+  "style",
+  "template",
+  "textarea",
+  "title",
+  "xmp",
+])
 
 const getRawHtmlTag = (
   source: string
@@ -62,41 +85,41 @@ const getRawHtmlTag = (
   }
 }
 
-/** Groups Marked's separate tag/text tokens into a fragment for the WASM sanitizer. */
-function collectRawHtmlSequence(
-  tokens: readonly Token[],
-  startIndex: number,
-  first: Tokens.HTML | Tokens.Tag
-): RawHtmlSequence {
-  const firstTag = getRawHtmlTag(first.raw)
-  if (!firstTag || firstTag.closing || firstTag.selfClosing || RAW_VOID_TAGS.has(firstTag.name)) {
-    return { source: first.raw, endIndex: startIndex }
-  }
+/** True for an opening tag that can enclose inline content (not void, not self-closing). */
+const isRawContainerTag = (tag: {
+  name: string
+  closing: boolean
+  selfClosing: boolean
+}): boolean => !tag.closing && !tag.selfClosing && !RAW_VOID_TAGS.has(tag.name)
 
-  const openTags = [firstTag.name]
-  let source = first.raw
-  let endIndex = startIndex
-
-  for (const [offset, token] of tokens.slice(startIndex + 1).entries()) {
-    const index = startIndex + offset + 1
-    source += token.raw
-    endIndex = index
+/**
+ * Returns the index of the token closing the inline element opened at startIndex,
+ * or -1 when it never closes. An unclosed tag therefore ends at its own token.
+ */
+function findRawHtmlClose(tokens: readonly Token[], startIndex: number, name: string): number {
+  const openTags = [name]
+  for (let index = startIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
     if (token.type !== "html") continue
-
     const tag = getRawHtmlTag(token.raw)
     if (!tag) continue
     if (tag.closing) {
       const matchingOpenTag = openTags.lastIndexOf(tag.name)
       if (matchingOpenTag !== -1) openTags.length = matchingOpenTag
-    } else if (!tag.selfClosing && !RAW_VOID_TAGS.has(tag.name)) {
+    } else if (isRawContainerTag(tag)) {
       openTags.push(tag.name)
     }
-
-    if (openTags.length === 0) break
+    if (openTags.length === 0) return index
   }
-
-  return { source, endIndex }
+  return -1
 }
+
+/**
+ * Visible text of raw HTML used while the sanitizer is unavailable. Plain string and
+ * parse5 operations only, so the server render and the first client render match.
+ */
+const rawHtmlToText = (source: string): string =>
+  decodeArticleText(source.replace(/<!-{2}[\s\S]*?-{2}>|<[^>]*>/g, ""))
 
 /**
  * Detects whether content uses Markdown syntax.
@@ -210,8 +233,12 @@ function collectArticleHeadings(tokens: readonly Token[]): ArticleHeading[] {
   return headings
 }
 
-function SanitizedRawHtml({ source }: { source: string }) {
-  const [rendered, setRendered] = useState<{ source: string; nodes: ReactNode[] } | null>(null)
+/**
+ * Sanitizes one raw HTML source into React nodes. Null until the sanitizer can run
+ * for this exact source; the SSR and hydration render never has nodes.
+ */
+function useSanitizedRawNodes(source: string): RenderedRawNodes | null {
+  const [rendered, setRendered] = useState<RenderedRawNodes | null>(null)
 
   useEffect(() => {
     let active = true
@@ -223,7 +250,6 @@ function SanitizedRawHtml({ source }: { source: string }) {
         setRendered({ source, nodes: articleFragmentToReactNodes(fragment) })
         return true
       } catch {
-        // Keep the source visible as text if parsing or React-node conversion fails.
         return false
       }
     }
@@ -239,9 +265,34 @@ function SanitizedRawHtml({ source }: { source: string }) {
     }
   }, [source])
 
-  // Raw HTML is text in the SSR and hydration render. The approved sanitizer
-  // upgrades it to the safe editor allowlist after hydration.
-  return <>{rendered?.source === source ? rendered.nodes : source}</>
+  return rendered?.source === source ? rendered : null
+}
+
+function SanitizedRawHtml({ source }: { source: string }) {
+  const rendered = useSanitizedRawNodes(source)
+  // Until the sanitizer runs, raw HTML shows as its stripped text, never as tag source.
+  return <>{rendered ? rendered.nodes : rawHtmlToText(source)}</>
+}
+
+/**
+ * Wraps Markdown children in the sanitized allowlisted element for a closed inline tag.
+ * Only the tag itself reaches the sanitizer; the children are already React nodes.
+ * Without a sanitized element, the children render unwrapped.
+ */
+function SanitizedRawElement({
+  openSource,
+  name,
+  children,
+}: {
+  openSource: string
+  name: string
+  children: ReactNode
+}) {
+  const rendered = useSanitizedRawNodes(`${openSource}</${name}>`)
+  const nodes = rendered?.nodes ?? []
+  const element = nodes.length === 1 ? nodes[0] : null
+  if (isValidElement(element)) return cloneElement(element, undefined, children)
+  return <>{children}</>
 }
 
 function renderInlineTokens(tokens: readonly Token[], path: string): ReactNode[] {
@@ -252,9 +303,25 @@ function renderInlineTokens(tokens: readonly Token[], path: string): ReactNode[]
     const key = `${path}-inline-${index}`
 
     if (token.type === "html") {
-      const sequence = collectRawHtmlSequence(tokens, index, token as Tokens.HTML | Tokens.Tag)
-      parts.push(<SanitizedRawHtml key={`${key}-${sequence.source}`} source={sequence.source} />)
-      index = sequence.endIndex
+      const html = token as Tokens.HTML | Tokens.Tag
+      const tag = getRawHtmlTag(html.raw)
+      const closeIndex =
+        tag && isRawContainerTag(tag) ? findRawHtmlClose(tokens, index, tag.name) : -1
+      if (tag && closeIndex !== -1) {
+        // The enclosed Markdown renders as React nodes; it is never sent to the sanitizer as HTML.
+        if (!DROPPED_RAW_CONTENT_TAGS.has(tag.name)) {
+          const children = renderInlineTokens(tokens.slice(index + 1, closeIndex), key)
+          parts.push(
+            <SanitizedRawElement key={`${key}-${html.raw}`} openSource={html.raw} name={tag.name}>
+              {children}
+            </SanitizedRawElement>
+          )
+        }
+        index = closeIndex
+        continue
+      }
+      // Unclosed or standalone raw tags are sanitized alone and never swallow later tokens.
+      parts.push(<SanitizedRawHtml key={`${key}-${html.raw}`} source={html.raw} />)
       continue
     }
 

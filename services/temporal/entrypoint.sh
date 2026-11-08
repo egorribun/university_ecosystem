@@ -28,6 +28,32 @@ fi
 # environment: block on the temporal service).
 : "${POSTGRES_USER:?POSTGRES_USER env var required}"
 : "${POSTGRES_PWD:?POSTGRES_PWD env var required}"
+# The sed renderer below treats `&` as the matched text, `|` as the delimiter and
+# `\` as an escape, and the config quotes these values, so the same character
+# guard as TEMPORAL_JWKS_URL applies. grep reads line by line, so a line break is
+# refused separately. Messages name the variable, never its value.
+LINE_BREAK='
+'
+case "${POSTGRES_USER}" in
+  *"${LINE_BREAK}"*)
+    echo "POSTGRES_USER contains characters the config renderer does not accept" >&2
+    exit 1
+    ;;
+esac
+case "${POSTGRES_PWD}" in
+  *"${LINE_BREAK}"*)
+    echo "POSTGRES_PWD contains characters the config renderer does not accept" >&2
+    exit 1
+    ;;
+esac
+if printf '%s' "${POSTGRES_USER}" | grep -q '[][|&\\"'"'"' ]'; then
+  echo "POSTGRES_USER contains characters the config renderer does not accept" >&2
+  exit 1
+fi
+if printf '%s' "${POSTGRES_PWD}" | grep -q '[][|&\\"'"'"' ]'; then
+  echo "POSTGRES_PWD contains characters the config renderer does not accept" >&2
+  exit 1
+fi
 
 # AUD-506: JWT signing keys must be fetched over TLS. The claim mapper trusts
 # whatever keys this endpoint returns, so plain HTTP would let a network

@@ -589,3 +589,39 @@ func TestChatAudienceMissingReplayCheckpointOmitsRefreshForEphemeralAndUnknownTy
 		})
 	}
 }
+
+func TestChatAudienceCheckpointTerminatesUncheckpointableReplay(t *testing.T) {
+	tests := []struct {
+		name     string
+		subject  string
+		room     string
+		sequence uint64
+	}{
+		{name: "subject does not match room", subject: "chat.other", room: "room", sequence: 46},
+		{name: "empty room", subject: "chat.", room: "", sequence: 47},
+		{name: "zero sequence", subject: "chat.room", room: "room", sequence: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			h := setupTestHub()
+			enableSecureReplayForTest(h)
+			client := &Client{UserID: audienceFixtureID(70), Hub: h, ctx: context.Background(), Send: make(chan []byte, 1)}
+			message := replayMessage(test.sequence)
+			message.Subject = test.subject
+			oldAck, oldTerm := ackOfflineMessageFunc, termOfflineMessageFunc
+			t.Cleanup(func() { ackOfflineMessageFunc, termOfflineMessageFunc = oldAck, oldTerm })
+			ackCount, termCount := 0, 0
+			ackOfflineMessageFunc = func(*nats.Msg) error { ackCount++; return nil }
+			termOfflineMessageFunc = func(*nats.Msg) error { termCount++; return nil }
+			maxSequence := uint64(45)
+
+			require.True(t, client.deliverOfflineAudienceCheckpoint(
+				context.Background(), test.room, message, "CHAT_EVENTS", test.sequence, &maxSequence, false,
+			), "an uncheckpointable replay must not stop the replay cursor")
+			assert.Equal(t, 1, termCount, "the invalid message must be terminated")
+			assert.Zero(t, ackCount)
+			assert.Empty(t, client.Send, "no checkpoint may be emitted for an invalid message")
+			assert.Equal(t, uint64(45), maxSequence)
+		})
+	}
+}

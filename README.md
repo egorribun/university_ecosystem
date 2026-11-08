@@ -285,5 +285,5 @@ The platform includes an integrated observability stack:
 <div align="center">
   <br />
   <h3>Built with ❤️ by University Ecosystem Engineers</h3>
-  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
+  © 2026 egorribun • University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>

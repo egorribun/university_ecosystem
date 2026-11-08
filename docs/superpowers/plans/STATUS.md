@@ -34,7 +34,7 @@ remain in force.
 
 ## Датированный checkpoint 478/34 — 2026-11-07 UTC (superseded above)
 
-Работа продолжается в основном checkout ветки `egorribun`; изменяющие состояние Git операции выполняет root. Локальный checkout HEAD — `8a4367b`; текущий reviewed index tree — `ea381c19bda1`. Синхронизация local/remote не заявляется.
+Локальный checkout HEAD — `8a4367b`; текущий reviewed index tree — `ea381c19bda1`. Синхронизация local/remote не заявляется.
 
 Формальная приёмка составляет **478/512 (93,4%), 34 открытых**: сохранены прежние 452 решения, добавлены 25 scoped acceptances и оставлена отдельная ретракция false-positive AUD-384. Текущие классы — **20S/13P/0U/1N** ([датированный список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#previous-public-34-finding-reconciliation--2026-11-07); [полный 60-строчный отчёт](../../audits/AUDIT-2026-11-06-full-reassessment.md)). Срез 476/512 и 36 открытых от 2026-11-06 23:59 UTC сохранён как dated history.
 
@@ -470,16 +470,16 @@ encryption/signing/Redis требования нельзя удалить по �
 
 [Matrix b72](https://github.com/egorribun/university_ecosystem/actions/runs/41312782528):
 91 job = **61 SUCCESS / 14 FAILURE / 16 SKIPPED**, отмен нет.
-Все23 workflow: **17 SUCCESS / 4 FAILURE / 2 SKIPPED**.
+Все 23 workflow: **17 SUCCESS / 4 FAILURE / 2 SKIPPED**.
 Backend: **23 395 PASS / 456 SKIP / 21 FAIL**. Frontend: **10 672 PASS / 3 FAIL**.
-Core: **52 browser PASS / 2 SKIP**, плюс357 Node и1 preflight.
+Core: **52 browser PASS / 2 SKIP**, плюс 357 Node и 1 preflight.
 PG: **173 PASS / 11 SKIP / 1 FAIL; 248 NOT RUN** после `-x`;
-отдельные13 + 5 PASS. Coverage Policy/Codecov SKIPPED.
+отдельные 13 + 5 PASS. Coverage Policy/Codecov SKIPPED.
 Actual PR merge `dcd6518e9fc4691532a96e31559e0f296c370abd` имеет
 идентичное source-дерево `52aae0798fae3676f336f7a6983d0f76d2c75461`.
 
 Узкий [recovery953c6aa2](https://github.com/egorribun/university_ecosystem/commit/953c6aa2aee8fb4044ccbbe3dd5cc26b568058f8)
-опубликован после independent whole-chain review: ровно5 путей в2 commits,
+опубликован после independent whole-chain review: ровно 5 путей в 2 commits,
 без изменений production DLQ/миграций/policy. Он восстанавливает target-only
 PG adapter, корректный SQLAlchemy result double, явный nil guard в Go-тесте,
 два реальных SW listeners в тестах и убирает два неиспользуемых TS exports.
@@ -521,7 +521,7 @@ actual merge `5e05942387f79864c4d37a42bd15ea61d3ce1d86`.
    raw 17 warnings остаются FAIL. Не менять raw exit, атомарность или policy
    ради зелёного результата; точная причина/границы требуют отдельного разбора.
 2. Password12 /two-class hardening/HIBP сохраняются. Подготовленный отдельный
-   пакет7 test fixtures адресует17 старых положительных inputs/length expectations;
+   пакет 7 test fixtures адресует 17 старых положительных inputs/length expectations;
    все score/class/boundary preconditions должны подтвердиться собственным CI.
    Исходники предсказывают 10 исчезнувших старых baseline identities и переносы
    строк, но actual scanner ещё не запускался на этом кандидате. Baseline 315
@@ -1446,7 +1446,7 @@ No complete current coverage, full-CI, deployment or release GREEN is claimed.
   security disposition.
 - Raw Squawk's 37 findings remain blocking. The exact-capture validators are
   not an active migration admission or permission to migrate populated data.
-- Policy494, baseline319, Gitleaks26, required contexts and all quality floors
+- Policy494, baseline 319, Gitleaks 26, required contexts and all quality floors
   remain unchanged. Static Map286 admission is the approved six-KiB budget
   tradeoff, not optimization or proof of dynamic/network completeness.
 
@@ -1608,7 +1608,7 @@ Next: obtain the successor's concrete Map rejection stage; fix only its proven
 cause, verify Chat ownership/lifecycle behavior and required coverage, then
 complete full exact-source CI. Obtain a fresh complete scanner inventory after
 this recapture before proposing any finite owner grant. Policy405 and
-baseline319 are unchanged. The accompanying **394-ID decision remains bound
+baseline 319 are unchanged. The accompanying **394-ID decision remains bound
 only to the completed 3d83 evidence below**, not these pending successor checks.
 AUD-030, AUD-334 and AUD-428 remain open.
 
@@ -1696,7 +1696,7 @@ must supply its own results; the completed 3d83 results do not transfer.
 
 The exact two S603 and one S104 annotations were separately owner-approved
 and are bounded by ADR-047 and the 12 source-scope tests; no broader exception
-is authorized. Policy405, baseline319, Gitleaks26, inactive Squawk admission,
+is authorized. Policy405, baseline 319, Gitleaks 26, inactive Squawk admission,
 required checks, quality floors and GitHub-only/egorribun restrictions remain.
 No deployment, merge, force-push or new access is authorized here.
 
@@ -1770,7 +1770,7 @@ remaining cause without lowering a gate. AUD-030 remains partial because the
 chat list still consumes only the first twenty entries;
 successful comment pagination does not close that original four-surface finding.
 Only after stable renderer evidence and actual scanner triage may a new finite
-hash disposition be proposed to the owner. Policy405, baseline319, Gitleaks26,
+hash disposition be proposed to the owner. Policy405, baseline 319, Gitleaks 26,
 inactive Map286/Squawk admission, all floors and branch/access restrictions
 remain unchanged.
 
@@ -1962,7 +1962,7 @@ Own checks for the next publication remain required.
 **382/512 accepted; 130 remain unaccepted. No acceptance increment.**
 AUD-340, AUD-447, AUD-208 and AUD-432 remain OPEN. Historical Squawk admission
 and the 286 KiB Map allowance remain inactive. The 405 finite dispositions,
-baseline319 and Gitleaks26 are unchanged; no new hash disposition is authorized
+baseline 319 and Gitleaks 26 are unchanged; no new hash disposition is authorized
 by this checkpoint.
 
 The receipts below belong to source
@@ -2164,7 +2164,7 @@ is activated.
 The inactive historical recapture preserves actual 35aeedeb SQL and all 37
 warning objects, with reviewed source/provenance and physical file identities.
 The old 15eaaa fixture remains unchanged. The matcher has no gate consumer or
-execution permission. All **405 dispositions, baseline319 and Gitleaks26 remain
+execution permission. All **405 dispositions, baseline 319 and Gitleaks 26 remain
 unchanged**; prior approval of 58 exact identities does not cover new paths,
 digests or whole-source bindings. A fresh scanner inventory and any necessary
 exact owner decision must precede a separate disposition update. The resulting
@@ -2692,7 +2692,7 @@ This new source still needs its own tests and coverage evidence.
 - [feda6c74](https://github.com/egorribun/university_ecosystem/commit/feda6c74c7dbea47d72e4d96a1c06f4fe96e1d50)
   added compatibility/invalid-representation and real-PG regressions, corrected
   the exact cleanup-profile entries and the test-only zombie terminal predicate.
-  Contract recorded **3550 PASS / 19 FAIL**, with profile213 and Gitleaks94 PASS.
+  Contract recorded **3550 PASS / 19 FAIL**, with profile213 and Gitleaks 94 PASS.
   Two Ruff-only folds failed pre-commit, so PostgreSQL, backend and Alembic were
   SKIPPED, not semantic RED. All its workflows reached terminal before the next
   publication; Matrix was **22 SUCCESS / 6 FAILURE / 32 SKIP**, not cancelled.
@@ -2746,7 +2746,7 @@ The MapLibre 286 KiB decision remains inactive; all current chunk limits stay
 unchanged. Raw Squawk still reports 13 ordinary plus 24 expanded warnings.
 The owner approved exactly the 58 public-integrity dispositions on 2026-10-29;
 their source-bound policy/ADR/test delta is being prepared separately and is
-not active in this source. No additional identity is covered by that approval. Baseline319, policy347, Gitleaks26, all 78 required context/app pairs,
+not active in this source. No additional identity is covered by that approval. Baseline319, policy 347, Gitleaks 26, all 78 required context/app pairs,
 blocking CodeQL, coverage floors and dependency freezes are preserved. The
 121-case owned-PostgreSQL policy scaffold remains unpublished while Contract
 headroom is this small. AUD-454 and infrastructure/data claims require their
@@ -4165,13 +4165,13 @@ No final frontend proof is claimed. The current frontend working snapshot remain
 
 Go proof остаётся локальным: для новых Go bytes нет опубликованного required-check результата, поэтому AUD-511 не принят. Последний terminal all-pages snapshot для базы source 6760 охватывает 2026-10-27 08:23:39–08:24:14 UTC: 141 checks (113 success, 24 skipped, 3 failed, 1 neutral, 0 active), 22 runs (19 success, 2 skipped, 1 failed) и 135 jobs (108 success, 24 skipped, 3 failed, 0 active); CodeQL завершился success. Три failed checks — Alembic Migrations/Squawk, Coverage Normalize и производный aggregate CI Success; причина Coverage Normalize ещё диагностируется. Оба Python shard завершились success до 45-минутного timeout. Этот snapshot привязан к базе 6760 и не включает локальные postimage bytes тестов AUD-511/AUD-329. Более ранний terminal snapshot source 218 с тремя failures остаётся историческим. Browser PWA4 не проверен после eab3; полный CI green, merge и release не заявляются.
 
-Запрошенные owner decisions по pre-MVP Squawk tooling, 37 warning records и отдельному proposal из 64 public hashes остаются pending; ничего из этого не применено. Policy347, baseline319, Gitleaks26, 78 required pairs, blocking CodeQL, hooks и quality floors не менялись.
+Запрошенные owner decisions по pre-MVP Squawk tooling, 37 warning records и отдельному proposal из 64 public hashes остаются pending; ничего из этого не применено. Policy347, baseline 319, Gitleaks 26, 78 required pairs, blocking CodeQL, hooks и quality floors не менялись.
 
 ## Предыдущая локальная контрольная точка — source eab3 и следующая backend workspace, 2026-10-27
 
 Принятая нижняя граница остаётся **332/512 (64,8%)**; 180 ID не приняты. Новых audit ID нет. На момент этого датированного снимка опубликованный remote PR #1343 всё ещё указывал на 218eedba99d122682a085144fd4f5a6ccdf55624. Локальный committed HEAD eab3f19b348772ba4de02d18df386bcd0828c60c (tree 161e9cba58fdae0780facc51689696729a2f107f, parent d43c3ed7bb152a443a1725e96063ccc94e4dd040) — второй unpublished commit. Следующая backend workspace содержит три изменённых backend файла поверх eab3 и ещё не закоммичена. Hosted CI ниже относится только к опубликованному 218; для eab3 и backend workspace новых hosted checks нет. [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343) показывает опубликованный источник.
 
-Committed source eab3 прошёл обычный четырёхфайловый commit и hooks без bypass. PWA window-marker fixture прошёл 8 Node-контрактов, full TypeScript, ESLint и Prettier; 79 quality-markdown checks прошли. Финальный scan под policy347 охватил 27 plugins и дал 576 findings в 222 файлах, 0 unmatched. Эти локальные проверки не добавляют audit ID и не доказывают результат PWA browser E2E.
+Committed source eab3 прошёл обычный четырёхфайловый commit и hooks без bypass. PWA window-marker fixture прошёл 8 Node-контрактов, full TypeScript, ESLint и Prettier; 79 quality-markdown checks прошли. Финальный scan под policy 347 охватил 27 plugins и дал 576 findings в 222 файлах, 0 unmatched. Эти локальные проверки не добавляют audit ID и не доказывают результат PWA browser E2E.
 
 Предыдущий локальный пакет на d43 дал Auth11/R2: 31 suite, 597 PASS, 0 failure/error/skip; четыре production target имели 100% строк, statements, ветвей и функций, а full TypeScript, ESLint и Prettier прошли. PWA selector-fixture прошёл 7 Node-контрактов. Предшествующий metadata-only refresh detect-secrets сохранил все 319 нормализованных identities; эти результаты остаются source-bound к d43.
 
@@ -4199,7 +4199,7 @@ All-pages snapshot точного опубликованного source 218/tree
 
 ## Исторические локальные проверки опубликованного source 218
 
-На опубликованном source 218 прошли обычные hooks, commit/push и post-commit проверки. Докоммитная Python-проверка исходников, вошедших в 218, дала **1 238 уникальных PASS**: 1 233 в основном прогоне и ещё пять Git-тестов после повторного запуска с коротким basetemp из-за `Filename too long`. Все 125 PWA unit-тестов прошли; для `pwaEvents.ts`, `register-sw.ts` и `InstallPrompt.tsx` подтверждены 100% строк, statements, ветвей и функций. Core build прошёл; установлены `curl` и `libcurl` версии `8.23.0-r0`. Финальный 27-plugin scan под policy347 зарегистрировал 576 findings в 222 файлах, 0 unmatched. Hosted [Trivy Image Scan — caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661489) успешно завершил все рабочие шаги.
+На опубликованном source 218 прошли обычные hooks, commit/push и post-commit проверки. Докоммитная Python-проверка исходников, вошедших в 218, дала **1 238 уникальных PASS**: 1 233 в основном прогоне и ещё пять Git-тестов после повторного запуска с коротким basetemp из-за `Filename too long`. Все 125 PWA unit-тестов прошли; для `pwaEvents.ts`, `register-sw.ts` и `InstallPrompt.tsx` подтверждены 100% строк, statements, ветвей и функций. Core build прошёл; установлены `curl` и `libcurl` версии `8.23.0-r0`. Финальный 27-plugin scan под policy 347 зарегистрировал 576 findings в 222 файлах, 0 unmatched. Hosted [Trivy Image Scan — caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661489) успешно завершил все рабочие шаги.
 
 На опубликованном source 218 два offline PWA-сценария прошли; два update-сценария завершились RED на шаге 528 при bundleUpdateResponses=0. Этот source-bound результат предшествует d43 и не заменяет текущую браузерную проверку выше.
 
@@ -4229,7 +4229,7 @@ AUD-161 ограничен одним случаем: docstring-only Python func
 
 Обычный principal pytest batch выполнен на незакоммиченном рабочем snapshot на базе 90eef вместе с reviewed двухфайловым live-stand guard: 2 070 PASS, 0 FAIL/ERROR/SKIP, stderr пустой; 93,11 с, guard завершился с кодом 0. Точный AUD-161 test входит в эти 2 070 один раз. Остальные 2 069 live-stand cases проверяют операционную работу guard; они не являются тестами или дополнительной приёмкой AUD-161. Весь batch не приписывается точному committed SHA 90eef; source/test файлы самого AUD-161 совпадают с ним.
 
-Известное состояние hosted CI для source 90eef остаётся незелёным: Contract Tests отменён по 10-минутному timeout, Caddy scan сообщает о двух HIGH findings, а Alembic Migrations — о 37 Squawk warnings. Эта узкая приёмка не закрывает эти проверки и не подтверждает full CI, merge/release или Tier 0 all-metrics. Policy346, baseline319 и Gitleaks26 не менялись. Незакоммиченные изменения Auth/PWA/tests и работы по непрерывности аутентификации, согласию каждой вкладки на PWA-обновление, news sessions и chat receipts остаются за границами приёмки; новых ID и coverage acceptance для них нет.
+Известное состояние hosted CI для source 90eef остаётся незелёным: Contract Tests отменён по 10-минутному timeout, Caddy scan сообщает о двух HIGH findings, а Alembic Migrations — о 37 Squawk warnings. Эта узкая приёмка не закрывает эти проверки и не подтверждает full CI, merge/release или Tier 0 all-metrics. Policy346, baseline 319 и Gitleaks 26 не менялись. Незакоммиченные изменения Auth/PWA/tests и работы по непрерывности аутентификации, согласию каждой вкладки на PWA-обновление, news sessions и chat receipts остаются за границами приёмки; новых ID и coverage acceptance для них нет.
 
 ## Историческая source-bound приёмка — a701, 2026-10-26
 
@@ -4246,7 +4246,7 @@ AUD-430 ограничен проверкой настроенных KEK lengths
 Терминальный снимок включает 143 checks: 114 success, 24 skipped, 1 neutral,
 4 failure, 0 active; 25 runs и 138 jobs. Четыре отказа: [Caddy image scan](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146554) — CVE-2026-92392 в curl/libcurl, решение владельца по cooldown ожидается; [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146816) — 37 Squawk warnings, ожидается решение владельца архитектуры; [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121656687207) — 8 изменённых строк не покрыты, покрытие 98%, реальный отказ гейта; производный aggregate [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121657400703). Снимок не подтверждает прохождение всех проверок, объединение PR или готовность к выпуску.
 
-Policy346, baseline319, Gitleaks26, все 78 required context/app pairs,
+Policy346, baseline 319, Gitleaks 26, все 78 required context/app pairs,
 blocking CodeQL, hooks и пороги качества не менялись. Работы по сохранению
 непрерывности аутентификации в текущей вкладке, получению согласия каждой
 открытой вкладки на применение PWA-обновления и дополнительным проверкам
@@ -4265,7 +4265,7 @@ Hosted explain-check на source f22c52819cbea63851ec563f45ffed023c85ceb3
 завершился SUCCESS: [job 121566219335, run 40321185604](https://github.com/egorribun/university_ecosystem/actions/runs/40321185604/job/121566219335),
 80 queries checked. Root сверил три целевых source blobs между f22 и 979 и
 независимо подтвердил локальные PostgreSQL 17.11/asyncpg 0.32.0 проверки:
-3 PASS, без FAIL/ERROR/SKIP. Policy346, baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL, hooks и quality floors не менялись. Это не подтверждает all-required-checks для 979,
+3 PASS, без FAIL/ERROR/SKIP. Policy346, baseline 319, Gitleaks 26, all 78 required context/app pairs, blocking CodeQL, hooks и quality floors не менялись. Это не подтверждает all-required-checks для 979,
 полный CI или release readiness. Для source 979 required hosted checks
 остаются pending.
 
@@ -4283,12 +4283,12 @@ source-bound приёмка на предыдущем checkpoint
 `0f86541180e8ef003145265df793d49536a78939` добавила только AUD-183/368/379 к
 325 прежним ID. На 9c новых ID не принято; AUD-231 и AUD-461 остаются открытыми.
 
-В опубликованном source 9c действует policy346: прежний упорядоченный префикс
+В опубликованном source 9c действует policy 346: прежний упорядоченный префикс
 337 и девять ранее одобренных владельцем точных integrity dispositions
 ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#nine-exact-owner-approved-integrity-dispositions-2026-10-26)).
 Source-bound локальный scan на 9c использовал 27 plugins и дал 575 findings
 в 222 finding files, 0 unmatched; verifier завершился с exit 0, baseline не
-менялся. Baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors
+менялся. Baseline319, Gitleaks 26, required78, blocking CodeQL, hooks и floors
 сохранены. Обычные commit/push hooks и pre-push TypeScript прошли; root сверил
 remote HEAD и 31 post-commit hash.
 
@@ -4308,7 +4308,7 @@ archive foundation (2026-10-25)`; `tests/test_markdown_links.py` требует�
 оставшиеся migration DB steps были skipped. Снимок terminal, но required checks
 не green и merge/release не подтверждены.
 
-Прежние 0f865 snapshots, policy337 и candidate-local результаты ниже —
+Прежние 0f865 snapshots, policy 337 и candidate-local результаты ниже —
 исторические source-bound evidence; они не заменяют датированный 9c snapshot
 или более поздние проверки f22.
 
@@ -4352,7 +4352,7 @@ root-alembic-full-closure-v4-verification-20261026.json. Ранее V2 closure d
 str-to-bytes ошибки на bootstrap stdin; V4 исправил кодирование. Это local runtime closure, не
 Tier 0 all-metrics и не hosted check.
 
-Исторически published source 0f865 имел policy337; integration candidate с policy346 (337 плюс девять owner-approved dispositions) впоследствии опубликован как 9c. Текущий scan и hosted статус 9c приведены выше.
+Исторически published source 0f865 имел policy 337; integration candidate с policy 346 (337 плюс девять owner-approved dispositions) впоследствии опубликован как 9c. Текущий scan и hosted статус 9c приведены выше.
 
 Ранее локальные Node R7/R8 checks на guarded integration-candidate source set: R7 passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
 
@@ -4395,8 +4395,8 @@ PostgreSQL-сценарий ещё требует fresh CI, runtime PASS не з
 chat rollback, registration parity, safe email retry и SQL EXPLAIN проходят
 отдельные review/runtime этапы. SQL EXPLAIN v4 дал обычный unit-модуль
 86 PASS / 0 error/skip, но actual PostgreSQL ещё не проверен.
-На опубликованном evidence checkpoint 0f865 зафиксированы policy337,
-baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors; incoming
+На опубликованном evidence checkpoint 0f865 зафиксированы policy 337,
+baseline 319, Gitleaks 26, required78, blocking CodeQL, hooks и floors; incoming
 integration source set отдельно records policy346. Новые scanner identities
 ожидают отдельного решения, а resulting SHA требует собственных проверок.
 Датированные pause-разделы ниже — история, а не текущее указание остановиться.
@@ -4464,8 +4464,8 @@ Archive и legacy baseline не менялись; независимое code re
 application inputs не установлена; caller-controlled compiler options и
 экспортированный test helper имеют путь к parser. Это отдельный незакрытый
 риск, не исправление или scanner dismissal.
-На published-source checkpoint 0f865 оставались policy337, baseline319,
-Gitleaks26, required78, blocking CodeQL, hooks и floors. Публикация требует итоговых hooks/scans, cleanup,
+На published-source checkpoint 0f865 оставались policy 337, baseline 319,
+Gitleaks 26, required78, blocking CodeQL, hooks и floors. Публикация требует итоговых hooks/scans, cleanup,
 проверки diff и ожидаемого HEAD; новый SHA требует собственных hosted checks.
 Независимый пакет из 25 путей прошёл обычные pre-commit и pre-push hooks:
 lint-staged, Ruff, detect-secrets, Gitleaks, Bandit, mypy, Semgrep и typecheck.
@@ -4473,11 +4473,11 @@ Semgrep потребовал убрать промежуточный списо�
 повторный обычный hook прошёл, без исключений. Detect-secrets оставляет
 блокирующим новый публичный Git checksum в отдельном migration trace кандидате.
 Точное приватное предложение прошло 604 теста и независимое ревью, направлено
-владельцу. В том pre-decision checkpoint policy337 не была расширена; три reviewed DDL postimages,
+владельцу. В том pre-decision checkpoint policy 337 не была расширена; три reviewed DDL postimages,
 diff и PostgreSQL-доказательства сохранены приватно. В checkout/index эти три
 файла оставлены на неизменных опубликованных версиях. Независимый пакет
 опубликован отдельно: полный captured scan дал 567 findings / 0 unmatched
-по published checkpoint policy337, без новых исключений. Финальный интегрированный scan и новые
+по published checkpoint policy 337, без новых исключений. Финальный интегрированный scan и новые
 hosted checks обязательны для каждого следующего SHA.
 
 P1 AUD-164/167 остаются открытыми: условное поведение текущего кода проверено
@@ -4609,7 +4609,7 @@ header/default controls для AUD-314. Все exact identities, source bindings
 нулевые skips/errors и прежние 90-second/2-minute/10-minute budgets сохранены.
 Это подготовленная расширенная проверка, не новый 20-case PASS и не приёмка
 AUD-314/354/362. Исходные три AUD-339/341 уже имеют отдельный observed PASS.
-AUD-262 остаётся OPEN. Policy337, baseline319, Gitleaks26, required78,
+AUD-262 остаётся OPEN. Policy337, baseline 319, Gitleaks 26, required78,
 blocking CodeQL и coverage thresholds не меняются.
 
 ## Receipt digest oracle correction, 2026-10-25
@@ -4650,7 +4650,7 @@ Migration bytes, прежние tests и восемь historical dispositions н
 Это не снижение lock duration или устранение Squawk warnings; исходные
 14 original / 25 expanded warnings остаются последним наблюдённым результатом.
 
-Ledger **303/512**, AUD-262 OPEN; policy337, baseline319, Gitleaks26, required78
+Ledger **303/512**, AUD-262 OPEN; policy 337, baseline 319, Gitleaks 26, required78
 и coverage thresholds сохранены. First committed archive readback и
 final-source CI ещё требуются; full CI/release/deployment GREEN не заявляются.
 
@@ -4689,7 +4689,7 @@ MOD-03 теперь fail-closed: явно проверяет refusal и неиз
 Protective downgrade boundary — новое ограничение, не расширение восьми
 исторических dispositions. Scoped cleanup ограничен 100 строками;
 inactive physical retention остаётся OPEN, historical/mixed writers —
-вне durable guarantee. Policy337, baseline319, Gitleaks26, required78,
+вне durable guarantee. Policy337, baseline 319, Gitleaks 26, required78,
 coverage thresholds и исходные пять regression tests не меняются.
 
 ## Compiler archive foundation, 2026-10-25
@@ -4714,7 +4714,7 @@ source files не менялись. Manifest/lock не переключены, m
 Последующий старый final generator всё ещё отказал на strict npm ls из-за
 relative-file edge. Успех упаковки не означает исправление graph, universal
 peer compatibility, Docker/production transfer или embedded Babel risk.
-Ledger **303/512**, policy337, baseline319, Gitleaks26, required78 и все
+Ledger **303/512**, policy 337, baseline 319, Gitleaks 26, required78 и все
 coverage thresholds остаются без изменений. Дополнительная приёмка находок
 или full CI/release GREEN здесь не заявляются.
 
@@ -4770,7 +4770,7 @@ production-classified record не объявляется development-only или
 Archive ещё не создан/не опубликован; manifest/lock и original compiler bundle
 не меняются. Hosted 26-case GREEN, pack evidence и последующая отдельная
 strict-graph/native/Docker/parity приёмка остаются необходимыми.
-Policy337, baseline319, Gitleaks26, required78 и ledger303 сохранены.
+Policy337, baseline 319, Gitleaks 26, required78 и ledger303 сохранены.
 
 ## Текущий checkpoint: AUD-197 и AUD-343, 2026-10-25
 
@@ -4832,7 +4832,7 @@ dependency graph:
   paths добавлены во все три protective inventories; прежние 48 guards и
   required gates не ослаблены.
 
-Policy337, baseline319, Gitleaks26, 78 required context/app pairs и blocking
+Policy337, baseline 319, Gitleaks 26, 78 required context/app pairs и blocking
 CodeQL сохранены. Исторические результаты ниже привязаны к своим SHA, а не
 автоматически к новому коммиту.
 
@@ -4909,7 +4909,7 @@ npm ls по-прежнему hard rejection; graph/peer ranges не измене
 
 [Markdown/CSpell](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992268830)
 прошли: 119 Markdown files, zero issues; исправленный AUD-198 anchor валиден.
-Fast lint, security/types, baseline319, Gitleaks, frontend format/17 staged
+Fast lint, security/types, baseline 319, Gitleaks, frontend format/17 staged
 parity cases/build/bundle прошли. Migration81, raw14/25 и DB gate86+2 сохраняют
 прежний scoped результат; это не full CI/release GREEN.
 
@@ -4932,7 +4932,7 @@ table неизменной; transaction sentinel проверяет сохран
 дал **2742 consumer PASS / 590 policy PASS**. Исправленный detector различает
 точный literal pytest selector и реальные retry markers; исходные metadata,
 dynamic-command и negative controls сохранены. Fast lint, security/types,
-inventory и baseline319 scan прошли. В consumer cohort входят все 110 catalog
+inventory и baseline 319 scan прошли. В consumer cohort входят все 110 catalog
 cases (включая 40 новых guards), 343 logging/email/config/DLQ/Knip cases,
 121 related content/handler/outbox cases, 17 grades API и 22 delivery cases.
 Это не full CI GREEN.
@@ -5275,7 +5275,7 @@ Ledger остаётся **283/512**. Source75de40e / merge
 `d5b57fe9c2e13b31c6ad31cdccf2ef9906050d3c` имеет одинаковое дерево
 `3aa9b2ac0031c45e3e7c73b13e41a1f0ccf0d80e`. Contract job120806473928
 получил 16 ожидаемых поведенческих FAIL / 1624 PASS, без setup failures;
-отдельный policy325 cohort — 395 PASS. AUD-388 получил named PASS для
+отдельный policy 325 cohort — 395 PASS. AUD-388 получил named PASS для
 `test_healthz_brief_cache_hit_filters_full_payload`; его ledger-запись ещё
 не обновлена. Общий CI не принят.
 
@@ -5296,7 +5296,7 @@ Gitleaks history на75de отказал со scanner code2 после успе�
 не доказанную утечку. ZIP report не прочитан в разрешённом plugin-only режиме.
 Добавляются только tests-first требования к ограниченному metadata diagnostic:
 без match/snippet/message/секретных значений, без изменения scanner/ignore/config.
-Полный test module добавлен как selector140; прежние139 сохранены.
+Полный test module добавлен как selector140; прежние 139 сохранены.
 
 Новый staged adapter lock generator также находится в inert tests-first стадии:
 ожидаются assertion RED, сетевых запросов и генерации пока нет. Это не изменение
@@ -5306,7 +5306,7 @@ npm graph. Применение root4.6.7 lock всё ещё ожидает от
 ## Транзакционные предпочтения и следующий RED cohort, 2026-10-24
 
 Ledger остаётся **283/512 (55,3%)**. На 2bc65c3 Contract завершился 1555 + 366
-PASS, inventory — PASS с 28 harness tests. Политика323 принята проверками;
+PASS, inventory — PASS с 28 harness tests. Политика 323 принята проверками;
 единственная новая unmatched identity — публичный Git pin временного root-Zod
 генератора. Он не подавляется: генератор удаляется только после применения
 проверенного npm-produced lock-кандидата, запись которого пока ожидает
@@ -5324,7 +5324,7 @@ PASS, inventory — PASS с 28 harness tests. Политика323 принята
 optional NULL, false и midnight сохраняются, несовместимый NULL dnd_enabled
 должен откатывать миграцию. Production fix имеет независимое source review,
 но PostgreSQL GREEN нового кода ещё требуется. Два пересмотренных публичных
-source pins оформлены отдельными exact dispositions в политике325; прежние323
+source pins оформлены отдельными exact dispositions в политике 325; прежние 323
 records неизменны. Их fingerprints вычислены независимо, но новый scanner
 результат ещё не получен. Более ранняя 202511240001 остаётся отдельным вопросом.
 
@@ -5333,7 +5333,7 @@ records неизменны. Их fingerprints вычислены независ�
 symlinks, не ослабляя требование одной пары из одного каталога; девять regression
 cases ещё ждут hosted execution. Это не Squawk exception и не replay SQL.
 
-Consumer cohort сохраняет исходные136 selectors и добавляет три явных
+Consumer cohort сохраняет исходные 136 selectors и добавляет три явных
 назначения: существующая проверка AUD-388, tests-first AUD-359 и AUD-446.
 Новые tests должны сначала воспроизвести logging/JWKS defects; соответствующие
 production исправления ещё не применены. Два workers, loadfile, budgets,
@@ -5366,7 +5366,7 @@ run 40067042826 PASS на этом exact source. Main CI run 40067042977 нач�
 По разрешению владельца применять аналогичные узкие обоснованные исключения
 подготовлены ещё ровно две public_integrity_digest identities для проверенных
 Git-pin rebindings migration trace и historical reference guard. Policy325
-сохраняет прежние 323 записи побайтно; baseline319 и Gitleaks25 неизменны,
+сохраняет прежние 323 записи побайтно; baseline 319 и Gitleaks 25 неизменны,
 expiry новых записей — 2027-01-10. [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#exact-public-git-blob-rebindings-for-preference-preservation-2026-10-24)
 фиксирует конечные path/type/fingerprint tuples и ограничения.
 
@@ -5420,8 +5420,8 @@ Actual detect-secrets scan обнаружил ровно два новых пу�
 в trace helper и historical MFA guard. В 05:35 UTC владелец явно разрешил
 именно эти две finite public_integrity_digest dispositions до 2027-01-10.
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#owner-approved-two-exact-public-git-blob-dispositions-2026-10-24)
-фиксирует policy323: прежние 321 записи сохранены, baseline319 identities и
-Gitleaks25 не меняются. Точный inactive identity.path второго record учитывается
+фиксирует policy 323: прежние 321 записи сохранены, baseline 319 identities и
+Gitleaks 25 не меняются. Точный inactive identity.path второго record учитывается
 только как scanner bookkeeping; category/evidence и active references остаются
 под guard. Новый или изменённый finding по-прежнему блокирует; это не разрешение
 на автоматическую замену Git pin. Новые tests/scan/hosted GREEN ещё не получены.
@@ -5492,7 +5492,7 @@ evidence ещё не получено; expanded Squawk ожидаемо оста
 Никакой migration waiver не применён: владелец разрешил только подготовить
 конечное предложение, точные границы требуют отдельного подтверждения.
 
-Baseline319 identities, approved policy321, Gitleaks25, 78 required context/app
+Baseline319 identities, approved policy 321, Gitleaks 25, 78 required context/app
 pairs, blocking CodeQL и coverage floors сохранены. Предыдущие датированные
 значения ниже исторические. Новому source нужны собственные проверки.
 
@@ -5518,7 +5518,7 @@ deployment не выполняются. Это ещё не доказатель�
 
 Actual detect-secrets job 120738399103 потребовал обновить восемь номеров строк
 и generated_at. Интегрируются только эти metadata изменения: все 319 identities,
-flags, plugins и filters совпадают; approved policy321 и Gitleaks25 не изменены.
+flags, plugins и filters совпадают; approved policy 321 и Gitleaks 25 не изменены.
 Это не новая disposition и не утверждение о побайтной неизменности baseline.
 
 Broad PostgreSQL integration job 120738976887 остановился после 97 PASS:
@@ -5711,8 +5711,8 @@ jobs; точные причины разбираются по текущему s
 Порядок продолжения: получить собственный результат live-contract follow-up;
 устранить доказанные текущие inventory/migration/dependency блокеры без
 ослабления гейтов; сверить все страницы required checks и только затем
-принимать дополнительные AUD IDs. Baseline319, approved policy321,
-Gitleaks25, 78 required context/app pairs и действующие coverage floors
+принимать дополнительные AUD IDs. Baseline319, approved policy 321,
+Gitleaks 25, 78 required context/app pairs и действующие coverage floors
 сохраняются. Новые scanner dispositions и cooldown exceptions требуют
 отдельного решения владельца.
 
@@ -5759,7 +5759,7 @@ cooldown и ровно три path/type/digest dispositions до `2027-01-10`.
 Точные границы записаны в
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
 [dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
-Approved policy теперь 321; первые 318 записей, baseline319 и Gitleaks25
+Approved policy теперь 321; первые 318 записей, baseline 319 и Gitleaks 25
 сохранены. Verifier и 39 новых cases ограничивают категории, пути, identities,
 owner/date/evidence и expiry; новые исключения не распространяются на другие
 совпадения. Hosted tests и новый полный scan ещё требуются.
@@ -5827,7 +5827,7 @@ timeouts до reflection/DDL, без изменения атомарности �
 
 ## Историческая пауза перед публикацией 8efec0df
 
-**Работа приостановлена по поручению владельца (2026-10-24).** Ветка `egorribun`, PR #1343; последний проверенный опубликованный HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Приватная контрольная точка перед финальной правкой документации сохраняет 322 staged paths, index tree `60ce5601b067ced4972c6079d85a6cf7cedde9e4`, без unstaged/untracked files. Интегрированы Gateway issuer, frontend, AUD-343/350/370/486/488/498/499/500/505/507/508/509; интеграция не означает приёмку. Approved policy — ровно 318 identities; итоговые baseline319 и Gitleaks25 совпадают с сохранёнными эталонами. Новые scanner identities остаются блокирующими; неподтверждённые кандидаты не считаются закрытиями.
+**Работа приостановлена по поручению владельца (2026-10-24).** Ветка `egorribun`, PR #1343; последний проверенный опубликованный HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Приватная контрольная точка перед финальной правкой документации сохраняет 322 staged paths, index tree `60ce5601b067ced4972c6079d85a6cf7cedde9e4`, без unstaged/untracked files. Интегрированы Gateway issuer, frontend, AUD-343/350/370/486/488/498/499/500/505/507/508/509; интеграция не означает приёмку. Approved policy — ровно 318 identities; итоговые baseline 319 и Gitleaks 25 совпадают с сохранёнными эталонами. Новые scanner identities остаются блокирующими; неподтверждённые кандидаты не считаются закрытиями.
 
 На соответствующих сохранённых исходниках подтверждены 298 policy-тестов, 135 quality/catalog/Gitleaks-тестов, четыре обычных workflow-контракта, 125 Gateway cmd-тестов и 29 notifications/migration-тестов. Предшествующий frontend cohort — 457/457 PASS и 100% всех четырёх метрик для восьми модулей; его typecheck/ESLint и coverage не покрывают последующую интеграцию AUD-498/499/500. Исходный post-run wrapper failure сохранён и отдельно сверён с raw reports. Canonical AUD-505 — 27 PASS; raw coverage подтверждает 41/41 изменённых executable lines и 6/6 branch arcs, тогда как полный exporter module остаётся 70,59%. Canonical AUD-500 — 11 Node PASS с 100% helper coverage; composed inventory — 161 PASS. Canonical AUD-507 — полный пакет Go PASS и 100% statement coverage client.go, без race. Это пересекающиеся локальные наборы, не полный CI или прохождение aggregate coverage gate.
 
@@ -5837,7 +5837,7 @@ TLS остаётся приватным кандидатом: текущий res
 
 ## Контрольная точка безопасной паузы 2026-10-24
 
-Обычный commit **не создан**: штатные hooks обнаружили три новые detect-secrets identities (два gateway issuer fixtures и public migration checksum), две Gitleaks identities (`tests/test_aud354_jwt_issuer.py:10`, `tests/test_cache_object_keys_aud495.py:109`) и один Semgrep finding `missing-ssl-minversion` в file processor. Требуются отдельная проверка находок и, для новых исключений, решение владельца. Hooks не обходились. Первоначальный ESLint отказ Lighthouse исправлен с сохранением обеих ошибок через `AggregateError`; regression RED, затем 14 PASS и focused ESLint/Prettier PASS. Ruff formatting восьми файлов проверен по AST и сохранён; изменение точной исторической AUD-350 fixture отменено до её неизменённых index bytes, поэтому конфликт formatting/frozen-byte contract остаётся открытым. Финальные byte-identical baseline319 и Gitleaks25 подтверждены. Все 322 изменённых пути сохраняются в index и приватном checkpoint; это незавершённый source, не готовый release.
+Обычный commit **не создан**: штатные hooks обнаружили три новые detect-secrets identities (два gateway issuer fixtures и public migration checksum), две Gitleaks identities (`tests/test_aud354_jwt_issuer.py:10`, `tests/test_cache_object_keys_aud495.py:109`) и один Semgrep finding `missing-ssl-minversion` в file processor. Требуются отдельная проверка находок и, для новых исключений, решение владельца. Hooks не обходились. Первоначальный ESLint отказ Lighthouse исправлен с сохранением обеих ошибок через `AggregateError`; regression RED, затем 14 PASS и focused ESLint/Prettier PASS. Ruff formatting восьми файлов проверен по AST и сохранён; изменение точной исторической AUD-350 fixture отменено до её неизменённых index bytes, поэтому конфликт formatting/frozen-byte contract остаётся открытым. Финальные byte-identical baseline 319 и Gitleaks 25 подтверждены. Все 322 изменённых пути сохраняются в index и приватном checkpoint; это незавершённый source, не готовый release.
 
 Новые реализации и тяжёлые прогоны остановлены. Приватные пакеты и незавершённые drafts сохранены отдельно от репозитория; они не импортируются автоматически. Git определяет итоговый локальный commit и staged state, а PR — опубликованный source. В этой остановке push, merge и deploy не выполняются.
 
@@ -5889,7 +5889,7 @@ Dependency Review run 39492089723/job 118867601939 и Python Dependency Audit jo
 
 Далее сохранена хронология предшествующих локальных и hosted проверок. Слова «локально», «staged» и «следующий source» в ней относятся к описанному этапу до публикации 8c202a75, а не к текущему состоянию ветки.
 
-Опубликован следующий source [0dca1faf](https://github.com/egorribun/university_ecosystem/commit/0dca1faf01e56e9b0b6fdfabe19cd9231fdb6eee), tree 8a6bbcea1e86ebc34b429b574bb146431e45b24c, exact checkout 8f618888ad0602b0c4cd7184378dce59c9520287. Ordinary hooks, full trusted scan и local merge-aware Gitleaks PASS. Hosted Gitleaks 39471485768/job 118796397165 и detect-secrets job 118798262077 — SUCCESS; AUD-185/186 приняты в своём точном объёме. Model inventory в Matrix 39471486170 теперь PASS, но следующий strict hygiene check нашёл три test sleeps и один dynamic skip. Их двухфайловое исправление проверено root: 67 PASS / zero SKIP, полный inventory/anti-pattern check PASS; собственный hosted recheck ещё нужен. На 0dca также SUCCESS: CodeQL, четыре frontend shard, production build, обычный Owned Live и DB Performance. Backend shard-1 теперь SUCCESS; shard-0 сохраняет единственный FAIL отсутствующего NATS outage step (832 PASS). Rust performance job 118796400463 — SUCCESS; WS-Hub job 118796400932 повторно отказал до измерений из-за HTTP/2 INTERNAL_ERROR proxy.golang.org при загрузке testcontainers/nats v0.44.0. Artifact 12286614172 проверен по digest. Полный CI не принят. Root дополнительно выявил vacuous frontend differential check: LCOV использует src/..., а Git diff — frontend/src/.... На digest-verified artifact после нормализации и immutable ac74..0dca diff: 4320 reportable changed lines, 12 missing, 99,72% при floor 100%; исправление gate и тестов готовится без снижения требования. Новые поведенческие тесты интегрированы: combined root cohort 89 PASS. Focused differential diagnostic больше не показывает прежние12 violations; три expression locations учитываются как BRDA, синтетические DA не добавляются. Полный новый patch100 ещё требует свежего общего CI.
+Опубликован следующий source [0dca1faf](https://github.com/egorribun/university_ecosystem/commit/0dca1faf01e56e9b0b6fdfabe19cd9231fdb6eee), tree 8a6bbcea1e86ebc34b429b574bb146431e45b24c, exact checkout 8f618888ad0602b0c4cd7184378dce59c9520287. Ordinary hooks, full trusted scan и local merge-aware Gitleaks PASS. Hosted Gitleaks 39471485768/job 118796397165 и detect-secrets job 118798262077 — SUCCESS; AUD-185/186 приняты в своём точном объёме. Model inventory в Matrix 39471486170 теперь PASS, но следующий strict hygiene check нашёл три test sleeps и один dynamic skip. Их двухфайловое исправление проверено root: 67 PASS / zero SKIP, полный inventory/anti-pattern check PASS; собственный hosted recheck ещё нужен. На 0dca также SUCCESS: CodeQL, четыре frontend shard, production build, обычный Owned Live и DB Performance. Backend shard-1 теперь SUCCESS; shard-0 сохраняет единственный FAIL отсутствующего NATS outage step (832 PASS). Rust performance job 118796400463 — SUCCESS; WS-Hub job 118796400932 повторно отказал до измерений из-за HTTP/2 INTERNAL_ERROR proxy.golang.org при загрузке testcontainers/nats v0.44.0. Artifact 12286614172 проверен по digest. Полный CI не принят. Root дополнительно выявил vacuous frontend differential check: LCOV использует src/..., а Git diff — frontend/src/.... На digest-verified artifact после нормализации и immutable ac74..0dca diff: 4320 reportable changed lines, 12 missing, 99,72% при floor 100%; исправление gate и тестов готовится без снижения требования. Новые поведенческие тесты интегрированы: combined root cohort 89 PASS. Focused differential diagnostic больше не показывает прежние 12 violations; три expression locations учитываются как BRDA, синтетические DA не добавляются. Полный новый patch100 ещё требует свежего общего CI.
 
 AUD-241 принят в точном source/evidence scope; собственный 0dca PostgreSQL job 118798357406: 206 PASS / девять штатных SKIP, все три целевых case PASS. Независимое ревью и root подтвердили неизменность app/alembic между c844, 0dca и working tree. Rollout с миграцией/draining old writers остаётся отдельным этапом. В c844 интегрированы durable storage-scoped quota-before-PUT, cross-worker reservations и TTL для подтверждённых stored objects. Root ordinary cohort: 412 PASS / zero SKIP; два service modules — 647 statements / 246 branches, 100% строк и ветвей. Root7 actual PostgreSQL: **3 PASS / zero SKIP**, три database receipts, реальные DDL/index/constraint проверки, стабильные source pins и exact-ID cleanup; host guard PASS. Прежний Root5 outer-runner SystemExit defect исправлен отдельно; его исторический exit 1 сохранён в evidence. Неопределённые pending writes занимают квоту до fenced reconciliation; versioned S3 и неполный inventory запрещают admission. Новая миграция не входит в finite131; текущие coverage/quality gates сохраняются.
 
@@ -5932,7 +5932,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 Следующий список сохраняет план прежней контрольной точки; актуальные результаты и оставшиеся блокеры приведены ниже.
 
 1. Завершить source-bound проверку опубликованного набора AUD-015/257/470/328 и ровно 18 утверждённых font dispositions. Follow-redirects уже обновлён до 1.16.1 и собственный npm audit прошёл. Выполнить разрешённое точечное обновление certifi, затем проверить окончательный lock и все обычные gates. Go-prefetch helper остаётся отдельным кандидатом до завершения immutable checkpoint/pin перехода; performance workflow на bef8 уже SUCCESS, поэтому новая попытка оправдана только проверенным повторным отказом.
-2. AUD-085 принят в точном объёме CSS generation. AUD-141 ждёт исправленного differential coverage gate и свежего полного coverage evidence. Meaningful regressions для fallback actor и остальных11 schedule/export/weather точек интегрированы и проверены локально. Root cohort: 35 PASS; четыре hosted frontend shard, lint, build и bundle analysis на 0dca SUCCESS. Новая визуальная приёмка остаётся отдельной.
+2. AUD-085 принят в точном объёме CSS generation. AUD-141 ждёт исправленного differential coverage gate и свежего полного coverage evidence. Meaningful regressions для fallback actor и остальных 11 schedule/export/weather точек интегрированы и проверены локально. Root cohort: 35 PASS; четыре hosted frontend shard, lint, build и bundle analysis на 0dca SUCCESS. Новая визуальная приёмка остаётся отдельной.
 3. Разобрать отказ hosted Caddy verifier при успешном локальном focused proof, сохранить лимиты и повторить smoke на исправленном source. Затем продолжить operational holds AUD-164/167/169. Browser, deployed infrastructure и визуальная приёмка остаются отдельными видами evidence.
 4. Продолжить [NATS spec](../specs/2026-10-18-owned-nats-outbox-acceptance.md), [outage plan](2026-10-19-owned-nats-outage.md) и [Docker observation](2026-10-20-owned-nats-docker-observation.md). SQL имеет ограниченный actual PG proof; HTTP/broker/composite/pin factory — private contracts. Lease-bootstrap и адаптеры интегрированы после исправления optional-map/JSON projection и замены четырёх credential-shaped test literals на свежие synthetic values. Root native cohort: 610 PASS; actual stopped-container projection PASS. Минимальный CLI интегрирован и проверен: root 143 PASS, независимое ревью без blockers. Workflow wiring интегрирован; root 150 обычных тестов, полный launcher/Caddy cohort 2088 PASS и isolated Linux cohort 619 PASS. Actual outage ещё не выполнялся.
 5. Закрывать оставшиеся AUD IDs, причину отказа Go prefetch и AUD-015 Cyrillic PDF export с именованными source-bound доказательствами. Тематические планы: [UI lifecycle](2026-10-19-ui-lifecycle-reconciliation.md), [cleanup/timing](2026-10-20-runtime-cleanup-timing.md), [quality entrypoints](2026-10-20-quality-entrypoints.md).
@@ -6173,7 +6173,7 @@ callback/metadata boundary и четыре конечных inventory verdicts.
 
 Добавлена HTTP-проверка запрета retry для persisted COMPLETED с localized409
 и неизменностью четырёх изменяемых handler полей. FAILED/PENDING/stale RETRYING
-сохраняют успешный retry; прежний404 test не изменён. Полный test_api_dlq
+сохраняют успешный retry; прежний 404 test не изменён. Полный test_api_dlq
 включён в ранний прогон. Production пока не изменён, RED ещё не подтверждён.
 Worker/admin race не считается покрытым; ledger остаётся 169/512.
 
@@ -6331,7 +6331,7 @@ deselection) and all 239 policy tests passing, with lint and security/type
 hooks successful. Its tested merge `6b2c344` has the identical tree
 `a89754933a89dad213e777e6c7a0025bfc9168bb`. These results do not transfer
 to the new Go pins: fresh hosted compatibility and security evidence is
-pending. No module dependency, scanner disposition, baseline319, required78,
+pending. No module dependency, scanner disposition, baseline 319, required78,
 blocking CodeQL, hook, or finite131 migration exception is changed.
 No merge or deployment is authorized or performed. Accepted audit progress
 remains **170/512**; this refresh does not accept AUD-466 or live NATS.
@@ -6538,7 +6538,7 @@ API policy документирует осознанное сужение ран
 Предыдущий source `e6afe376` / merge `5fc33f83` имеет tree
 `e685c6c6df967d38d18535441878b98b7ba77eeb`.
 Consumer119313051165: 76 length-only FAIL / 1235 PASS / 1 deselected,
-425.29 s; policy240 PASS, 43.36 s. Исправление времени проверено.
+425.29 s; policy 240 PASS, 43.36 s. Исправление времени проверено.
 PG119314226606: все 57 AUD-256 PASS; весь shard267 PASS / 9 SKIP,
 240.22 s. OpenAPI, lint, inventory, baseline, types/security зелёные.
 Эти результаты относятся к предыдущему source, не к новой реализации.
@@ -6553,49 +6553,49 @@ Ledger остаётся **171/512** до own-source приёмки AUD-256.
 Принята только AUD-256: **172/512 (33,6%)**, остаются 340 исходных IDs.
 Source `c1aed673` / merge `28a17a87`, одинаковый tree
 `89e9a60c8e7edabc44a372aa8ad479362bbaf97d`.
-Consumer119368407218: 1311 PASS / 1 deselected, 478.58 s; policy240 PASS,
+Consumer119368407218: 1311 PASS / 1 deselected, 478.58 s; policy 240 PASS,
 48.41 s; все 114 event API cases и internal partial-time control прошли.
-PG119369545215: все57 AUD-256 PASS; весь shard267 PASS / 9 SKIP,231.59 s.
+PG119369545215: все 57 AUD-256 PASS; весь shard267 PASS / 9 SKIP,231.59 s.
 Lint, types/security, inventory, baseline, spelling/Markdown, OpenAPI и
 migration gates зелёные. Это scoped приёмка, не полный global CI/NATS.
 
 Начат полный разбор остатка аудита: сначала простые и быстрые независимые
 находки, затем сложнее с учётом зависимостей. Отдельно появился блокер
 Dependency Review: virtualenv21.14.5 / GHSA-vxj4-q4g9-crj7.
-Исправленная21.14.7 выпущена12 октября и не требует обхода cooldown.
+Исправленная21.14.7 выпущена 12 октября и не требует обхода cooldown.
 В текущем tests-first checkpoint добавлена проверка dev-only floor/lock;
 пакет ещё не обновлён. Также в ранний cohort включён существующий
 scanner-bootstrap guard для наблюдения устаревшего ожидания Go1.26.9.
-Timeouts, required78, baseline319, policy284 и finite131 не изменены.
+Timeouts, required78, baseline 319, policy 284 и finite131 не изменены.
 
 
 ## Быстрые подтверждения и полная очередь: 174/512
 
-Приняты только AUD-142/143 сверх предыдущих172: **174/512 (34,0%)**,
-остаются338 IDs. weatherCodes прошёл3 теста в job119379643479 на b7549f87.
-MapSidebar и buildingHours прошли7+16 тестов в jobs119369639102/119369639034
+Приняты только AUD-142/143 сверх предыдущих 172: **174/512 (34,0%)**,
+остаются 338 IDs. weatherCodes прошёл 3 теста в job119379643479 на b7549f87.
+MapSidebar и buildingHours прошли 7+16 тестов в jobs119369639102/119369639034
 на c1aed673. Полное frontend-поддерево обеих ревизий одинаково:
 `d9123a1d5501c8e967e0a9a5bee1ea6605adac46`. Это scoped доказательства,
 не общий GREEN текущего HEAD. Изменять уже исправленный frontend не нужно.
 
-Первичный разбор всех512 исходных записей и точная сверка accepted set
-завершены. Весь остаток338 распределён без пересечений:16 quick/local или
+Первичный разбор всех 512 исходных записей и точная сверка accepted set
+завершены. Весь остаток 338 распределён без пересечений:16 quick/local или
 verification,113 moderate,84 complex/dependent,125 требуют уточнения.
 Точные ID-наборы и условия приоритета приведены в checkpoint174 аудита.
-Начальная очередь:496; подтверждения148 и353/367/448; маленькие042/410;
+Начальная очередь:496; подтверждения 148 и353/367/448; маленькие042/410;
 далее421/424/437,355,395,398 и037. Не подменять source-проверку угадыванием:
 318,396,488 и Windows-зависимый502 требуют дополнительных условий.
 
 Текущий slice исправляет отдельный dev-tooling blocker virtualenv до21.14.7
 без обхода cooldown и обновляет два устаревших ожидания Go до1.26.10.
-Предыдущий consumer119378763256 дал ровно2 ожидаемых FAIL / 1311 PASS /
-1 deselected,511.44 s; policy240 PASS,45.12 s; финальный job cancelled,
+Предыдущий consumer119378763256 дал ровно 2 ожидаемых FAIL / 1311 PASS /
+1 deselected,511.44 s; policy 240 PASS,45.12 s; финальный job cancelled,
 поэтому это не GREEN. Новые hash-install/lock/scanner результаты требуются.
 
 Добавлены tests-first042/410 и точные lifecycle guards для будущего
-DB-only ускорения67 policy-функций. Fixtures/GC/task cleanup пока не
-изменены; все240 policy-кейсов,10-minute budget, baseline319, policy284,
-required78 и finite131 сохраняются. Для496 удалён только ложный комментарий,
+DB-only ускорения 67 policy-функций. Fixtures/GC/task cleanup пока не
+изменены; все 240 policy-кейсов,10-minute budget, baseline 319, policy 284,
+required78 и finite131 сохраняются. Для 496 удалён только ложный комментарий,
 приёмка ожидает проверки. NATS/global CI остаются отдельными блокерами.
 
 
@@ -6703,29 +6703,29 @@ AUD-398 пока tests-first: изолированный временный fixt
 ## Проверка AUD-150 и исправление Storybook
 
 Нижняя граница **189/512 (36,9%)**, остаток323. Добавлен только AUD-150:
-три scope-регрессии прошли в119432893457, проверяемые файлы совпадают
+три scope-регрессии прошли в 119432893457, проверяемые файлы совпадают
 с текущими. Существующая реализация уже корректна, лишней правки нет.
 AUD-149 получает два существующих Go masking-теста в раннем cohort;
 приёмка ждёт hosted PASS. Очередь:3 quick,111 moderate,84 complex,125 uncertain.
 
 Storybook обновлён согласованно до10.6.2, Chromatic addon до5.5.1.
-Обе версии от12 октября старше cooldown; исключения не нужны.
-Изменены11 package entries и root lock floors, остальные2377 сохранены.
+Обе версии от 12 октября старше cooldown; исключения не нужны.
+Изменены 11 package entries и root lock floors, остальные 2377 сохранены.
 Integrity metadata взяты из immutable публичного lock, обычный npm ci
 ещё должен подтвердить загрузку. Добавлены floor/alignment contract и
 bounded static Storybook build без dev-server, публикации, токена или
 ослабления origin-защит. Chromatic workflow не включается.
 
 Новое npm audit/static build и общий CI ещё не приняты; NATS остаётся
-отдельно. Required78, baseline319, policy294, Gitleaks25 и finite131 прежние.
+отдельно. Required78, baseline 319, policy 294, Gitleaks 25 и finite131 прежние.
 
 
 На a7fabb quick Vitest прошёл95/95, frontend lint/format тоже. Node suite:
 657 PASS и один ожидаемый AUD-398 FAIL: CI ошибочно принял focused fixture,
 при успешном контрольном запуске вне CI. Добавлен только forbidOnly для CI.
 Security/types прошёл mypy, но detect-secrets потребовал metadata refresh:
-одна прежняя запись en/auth.json сдвинулась211→212; применён точный hosted
-diff с timestamp19:42:39. Все319 identities и флаги неизменны.
+одна прежняя запись en/auth.json сдвинулась 211→212; применён точный hosted
+diff с timestamp19:42:39. Все 319 identities и флаги неизменны.
 AUD-395/396 пока не засчитаны до чистой повторной проверки.
 
 
@@ -6738,21 +6738,21 @@ canonical metadata. Production-код этих пяти находок не ме
 
 ## Проверенная нижняя граница: 205/512
 
-На c6cc7816 / merge04bf9b7f с одинаковым tree приняты ещё16 IDs:
+На c6cc7816 / merge04bf9b7f с одинаковым tree приняты ещё 16 IDs:
 020/021/074/141/149/152/153/209/210/213/215/217/222/395/396/398.
-Итого **205/512 (40,0%)**, остаток307:98 moderate,84 complex,125 uncertain.
+Итого **205/512 (40,0%)**, остаток 307:98 moderate,84 complex,125 uncertain.
 Исходная quick-очередь исчерпана. Точные ID и границы доказательств в аудите.
 
-Все четыре frontend shard дали9631 PASS; aggregate/differential coverage,
+Все четыре frontend shard дали 9631 PASS; aggregate/differential coverage,
 production build, lint, security/types, inventory и baseline прошли.
 Node658/658, worker/export55/55, quick120/120. Storybook прошёл установку,
 blocking npm audit, Dependency Review и статическую сборку без исключений.
 
-Consumer1356 PASS/1deselected за511,41s, но отдельная policy-проверка
-прервана около91% фиксированным10-minute budget. Это не GREEN; GC,
+Consumer1356 PASS/1deselected за 511,41s, но отдельная policy-проверка
+прервана около 91% фиксированным10-minute budget. Это не GREEN; GC,
 лимит и тесты не ослабляются. После terminal всего run один точный retry
-принят в20:45 UTC: job119475683195 завершился успешно, consumer1356 PASS /
-1deselected за463,51s, затем policy241 PASS за52,51s. Первый запрос был
+принят в 20:45 UTC: job119475683195 завершился успешно, consumer1356 PASS /
+1deselected за 463,51s, затем policy 241 PASS за 52,51s. Первый запрос был
 отклонён как already running; обхода не было. Другие jobs не перезапускались.
 
 Полные backend shards обнаружили две отдельные несогласованности:
@@ -6761,27 +6761,27 @@ Consumer1356 PASS/1deselected за511,41s, но отдельная policy-про
 с прямым контрактом, без расширения исключений или изменения readiness.
 
 Следующие036/049/196/199 получают проверку существующих исправлений,
-050 и220 остаются tests-first без production-правки до RED. Для214
+050 и 220 остаются tests-first без production-правки до RED. Для 214
 добавлены недостающие error-state tests. AUD015 ждёт extraction/render PDF.
-Owned Live прошёл38 browser cases/2SKIP и Caddy redaction, затем отказал
+Owned Live прошёл 38 browser cases/2SKIP и Caddy redaction, затем отказал
 на NATS stage=broker. Global CI/NATS и релиз не приняты; merge/deploy нет.
 
 Все пять обнаруженных CI-контрактов добавлены в ранний запуск; consumer и policy
-выводят20 slowest durations без смены fixtures, выборки или бюджета.
+выводят 20 slowest durations без смены fixtures, выборки или бюджета.
 Данные нужны до любого предложения менять GC; оптимизация не предполагается.
 
 Shard3 завершился: 5998 PASS / 38 SKIP / 3 FAIL устаревших ожиданий.
 Синхронизируются только test literals Go1.26.10 и API1.1.1; последнее
 подтверждено commit234280b и не равно версии MVP/package. Для Caddy
-меняется только ожидаемый log deadline110 при сохранении общего125,
+меняется только ожидаемый log deadline110 при сохранении общего 125,
 финального отказа125.001 и всех production timeout/ownership guards.
-Всего13 новых selector entries дают21 case:16 audit и5 CI-регрессий.
+Всего 13 новых selector entries дают 21 case:16 audit и 5 CI-регрессий.
 Свежие hosted проверки исправлений ещё требуются.
 
 
 ## Подтверждённые существующие исправления: 210/512
 
-Приняты AUD-036/049/196/199/214: **210/512 (41,0%)**, остаток302
+Приняты AUD-036/049/196/199/214: **210/512 (41,0%)**, остаток 302
 (93 moderate,84 complex,125 uncertain). Source dbb586 / merge0e0a8b52
 имеют одинаковое полное дерево. Подробные границы приёмки в аудите:
 UUID cleanup SQL, DM/group lookup, публичные имена без email, campus-timezone
@@ -6790,26 +6790,26 @@ unit/test-database/component evidence, не новое live DB/browser acceptanc
 
 Contract119482431331:1376 PASS/1 ожидаемый AUD-050 UUID FAIL/1deselected,
 509,77s. Все пять исправленных CI-контрактов прошли. Policy напечатала
-241 PASS за40,18s, затем step/job cancelled при фиксированном10-minute cap.
+241 PASS за 40,18s, затем step/job cancelled при фиксированном10-minute cap.
 Общий job не GREEN. Durations выявили readiness5,56s и повторные catalog
 cases около3s; GC, cleanup и бюджеты не меняются без отдельных доказательств.
 
 Frontend quick119484393637:154 PASS/2 ожидаемых AUD-220 FAIL;
-полный shard1:2698 PASS/те же2 FAIL. Все9 EventsList cases прошли,
+полный shard1:2698 PASS/те же 2 FAIL. Все 9 EventsList cases прошли,
 lint/format и production build тоже. Теперь внесены минимальные исправления:
 новый JSON-compatible wire payload без мутации исходного сообщения и
 настоящие кнопки выбора обложки с отдельными скрытыми inputs.
 AUD-050/220 ждут собственный GREEN и пока не засчитаны. Baseline319,
-policy294,required78,Gitleaks25,CodeQL и finite131 прежние; NATS/global
+policy 294,required78,Gitleaks 25,CodeQL и finite131 прежние; NATS/global
 CI не приняты, merge/deploy отсутствуют.
 
 
 ## AUD-050 и AUD-220: подтверждённый RED → GREEN
 
-Приняты только AUD-050/220 сверх210: **212/512 (41,4%)**, остаток300
+Приняты только AUD-050/220 сверх 210: **212/512 (41,4%)**, остаток 300
 (91 moderate,84 complex,125 uncertain). Source1684c437 и mergec69f4aa5
 имеют одинаковый treefcb209a9. Contract119492368556 SUCCESS:
-1377 PASS/1deselected за465,46s, затем241 policy PASS за34,28s;
+1377 PASS/1deselected за 465,46s, затем 241 policy PASS за 34,28s;
 оба шага и cleanup завершены до следующей публикации.
 
 Реальный Starlette JSON boundary теперь принимает plain и UUID chat/reply
@@ -6831,8 +6831,8 @@ Validator пока не меняется; global cache, урезание тес�
 ## Устранение повторного YAML parse после измеренного RED
 
 На1f00f10 consumer119500457771:1378 PASS/1 ожидаемый parse-count FAIL/
-1deselected за548,77s. Все workflow читались минимум дважды, ci.yml шесть
-раз. Malformed unlisted control прошёл. Policy cancelled около37% при
+1deselected за 548,77s. Все workflow читались минимум дважды, ci.yml шесть
+раз. Malformed unlisted control прошёл. Policy cancelled около 37% при
 прежнем10-minute cap; lint потребовал только убрать пустую строку импорта.
 Теперь parsed map живёт ровно один вызов validate_catalog и разделяется
 между timeout inventory, catalog и expansion checks. Следующий вызов
@@ -7912,7 +7912,7 @@ further audit implementation is outside this checkpoint.
   acceptance остаётся открытой.
 - AGENTS.md сокращён до общих требований проекта; хронология разрешений и инструкции
   конкретному агентскому инструменту заменены ссылками на действующие ADR и contracts.
-  Baseline319, approved298, Gitleaks25, required78, CodeQL, hooks и finite131 сохранены.
+  Baseline319, approved298, Gitleaks 25, required78, CodeQL, hooks и finite131 сохранены.
 - Ошибочно созданный каталог временных тестов .codex вынесен из checkout в приватный
   карантин без удаления evidence. Стенд не запускался; Docker-контейнеров не оставлено.
 
@@ -7981,7 +7981,7 @@ AUD-224, AUD-225, AUD-227 и AUD-229. Root связал 27 файлов с оп�
 сохранены в аудите. Это не приёмка общего CI или production.
 
 Первый пакет опубликован в PR #1343, обычные hooks и полный скан прошли;
-baseline319, dispositions301, Gitleaks25 и 78 required contexts сохранены.
+baseline 319, dispositions301, Gitleaks 25 и 78 required contexts сохранены.
 На этом source прошли Nilaway, Cargo Deny, SBOM vulnerability gate, CodeQL,
 Contract, frontend unit shards, inventory и Kyverno. Linux production build
 успешен; общий CI остаётся незелёным. Trivy config gate упал; локальный скан
@@ -8064,7 +8064,7 @@ plan/performance, browser lifecycle или assistive-technology acceptance.
 На момент этого снимка два файла AUD-253 (`start-docker.ps1` и новый private-env test) были сохранены вне
 checkout вместе с полным diff; тогда в checkout были восстановлены опубликованные версии.
 На тот момент они не входили в выбранную партию до отдельного решения по пяти scanner identities.
-Ни Trivy-пакет, ни семь новых dispositions не применены: policy301 и baseline319
+Ни Trivy-пакет, ни семь новых dispositions не применены: policy 301 и baseline 319
 сохранены. Приватные кандидаты миграции, inventory, receipt schema, titles и theme
 также не интегрированы и не увеличивают принятый счёт 263.
 
@@ -8073,7 +8073,7 @@ checkout вместе с полным diff; тогда в checkout были во
 сохранение session/owner rollback. Typecheck и lint с нулём новых предупреждений
 прошли. Bounded production build прошёл за 21,72s (2 workers, RSS 2048 MiB,
 heap 1536 MiB, peak host 57,73%); retained artifacts и итоговые exit codes приватны.
-Скан выбранного кода на момент этого снимка: 545 findings, 0 unmatched, baseline319 неизменён. Тогда финальные hooks и проверки source ещё требовались.
+Скан выбранного кода на момент этого снимка: 545 findings, 0 unmatched, baseline 319 неизменён. Тогда финальные hooks и проверки source ещё требовались.
 
 На момент этой записи четырёхслучайный PostgreSQL sanity для AUD-265 ещё не был выполнен: первая
 попытка остановилась в launcher до тестов, owned container/volume были удалены и
@@ -8146,14 +8146,14 @@ This policy-only update does not change the accepted audit lower bound of **272/
 
 Работа безопасно приостановлена по прямому поручению владельца. Ветка `egorribun`, PR #1343; локальный и последний проверенный удалённый HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Новый commit/push, merge и deploy не выполнялись. Подготовленные изменения сохранены в index и рабочем каталоге; приватная резервная копия diff и receipt связывают полный список файлов и хеши. Принятый audit ledger остаётся **272/512 (53,1%)**, осталось 240 ID: локальные проверки сами по себе новых закрытий не добавляют.
 
-Одобренные владельцем 315 конечных dispositions применены вместе с точным validator/test diff и документацией; прежние 310 записей сохранены. Baseline319, Gitleaks25, исторические `origin_*`, 78 required context/app pairs, blocking CodeQL, hooks и пороги не менялись. Новые или изменённые identities остаются блокирующими.
+Одобренные владельцем 315 конечных dispositions применены вместе с точным validator/test diff и документацией; прежние 310 записей сохранены. Baseline319, Gitleaks 25, исторические `origin_*`, 78 required context/app pairs, blocking CodeQL, hooks и пороги не менялись. Новые или изменённые identities остаются блокирующими.
 
 На подготовленных исходниках подтверждены: 302 обычных policy/Markdown теста после интеграции 315; 313 cache/users/semantic-search тестов, при этом cache имеет 579/579 statements и 190/190 branch arms; 78 migration-тестов с 771/771 statements и 426/426 branch arms; три реальные PostgreSQL-проверки адаптированного AUD-348 integration test; 323 frontend-теста. Production frontend build, typecheck, ESLint для 15 изменённых JS/TS файлов и форматирование 16 файлов прошли. Это отдельные пересекающиеся наборы, не суммарный full-suite результат; новые final-source hooks и hosted checks ещё обязательны.
 
 Оставшиеся блокеры этого пакета:
 
-- Последний полный detect-secrets scan содержит 556 findings. При точной одобренной политике315 остаются две неутверждённые `Secret Keyword` identities в `tests/test_cache_object_keys_aud495.py` (строки 109 и 159). Baseline и suppressions для них не расширялись. Требуется обычное рассмотрение находок; автоматического разрешения нет.
-- Linux AUD-253 harness v2 остановился с кодом15 на `release-manifest-entry` до поведенческого теста: официальный GNU binary checksum имеет один пробел перед `*`, тогда как проверка ожидала два. Исправленный parser и повторный Linux-прогон ещё не выполнены; Windows proof сохранён.
+- Последний полный detect-secrets scan содержит 556 findings. При точной одобренной политике 315 остаются две неутверждённые `Secret Keyword` identities в `tests/test_cache_object_keys_aud495.py` (строки 109 и 159). Baseline и suppressions для них не расширялись. Требуется обычное рассмотрение находок; автоматического разрешения нет.
+- Linux AUD-253 harness v2 остановился с кодом 15 на `release-manifest-entry` до поведенческого теста: официальный GNU binary checksum имеет один пробел перед `*`, тогда как проверка ожидала два. Исправленный parser и повторный Linux-прогон ещё не выполнены; Windows proof сохранён.
 - Приватный AUD-304 style-harness на production CSS в системном Chrome156 завершился assertion о прозрачном hover-цвете. Причина в fixture или продукте ещё не установлена; четыре browser-сценария и AUD-304 не приняты.
 - Полный consumer diagnostic run сохранил все 126 selectors и 1486 JUnit cases: 1454 PASS, 26 SKIP, два stale Brotli contract failures и четыре POSIX setup errors на Windows; один тест deselected штатным фильтром. Ожидания Brotli исправлены, обычный полный модуль прошёл 8/8. POSIX cases остаются для Linux/CI. Это не зелёный полный CI.
 
@@ -8179,7 +8179,7 @@ This policy-only update does not change the accepted audit lower bound of **272/
 - File-processor Go1.26.10: 13 targeted `TestConnectTemporal` PASS; все 4/4 исполняемые добавленные строки `main.go` покрыты. Это patch-line proof, не весь компонент. Для AUD-348 существующий normalizer вывел 18/18 функций из прежнего source-bound coverage DB; lines/statements 771/771, branches 426/426. Полный межкомпонентный manifest и hosted gates ещё обязательны.
 - Полная инвентаризация 23 CI runs текущего опубликованного HEAD сохранена приватно. Matrix39988114362 завершён: 67 success, 7 failure, 17 skipped. Owned Live39988114353 Core и NATS outage — success; два frozen-RC задания штатно skipped. Общий CI не green.
 
-Оставшиеся блокеры сохранённого пакета: production CSS opacity fix с повторным build/browser proof; ровно две неутверждённые AUD-495 detector identities; итоговые source-bound coverage/diff проверки, полный scan и обычные hooks; новая публикация и собственные required checks. Последний полный scan до новых документационных правок имел 556 findings и две unmatched identities при одобренной политике315. Он не выдаётся за final-source scan этой контрольной точки. Пакет finite2 находится только приватно, разрешение владельца не получено; policy315, baseline319, Gitleaks25, 78 contexts и blocking CodeQL сохранены. В приватном v2 есть лог 296 PASS, но сохранённые артефакты не устанавливают, что исполнялись именно v2 source/test copies; прежняя попытка имела восемь отказов. Перед owner-review требуется однозначный source-bound повтор, а не принятие этого лога на доверии.
+Оставшиеся блокеры сохранённого пакета: production CSS opacity fix с повторным build/browser proof; ровно две неутверждённые AUD-495 detector identities; итоговые source-bound coverage/diff проверки, полный scan и обычные hooks; новая публикация и собственные required checks. Последний полный scan до новых документационных правок имел 556 findings и две unmatched identities при одобренной политике315. Он не выдаётся за final-source scan этой контрольной точки. Пакет finite2 находится только приватно, разрешение владельца не получено; policy 315, baseline 319, Gitleaks 25, 78 contexts и blocking CodeQL сохранены. В приватном v2 есть лог 296 PASS, но сохранённые артефакты не устанавливают, что исполнялись именно v2 source/test copies; прежняя попытка имела восемь отказов. Перед owner-review требуется однозначный source-bound повтор, а не принятие этого лога на доверии.
 
 Приватные RED/GREEN кандидаты новых областей и existing-source evidence сохранены отдельно от checkout. AUD-197 tenant-context correction и AUD-262 stale completed-cache correction остаются незавершёнными приватными пакетами без PostgreSQL приёмки. Исправление normalizer для docstring-only functions выявило отдельную границу finite131: возможное удаление ровно одного файла из исключения и его строгая 100% проверка требуют готового отдельного owner-review пакета; политика не менялась и разрешение не запрашивалось. Старые записи о работающих субагентах не являются доказательством живых процессов: продолжение должно сверить реальные handles и артефакты.
 
@@ -8200,7 +8200,7 @@ This policy-only update does not change the accepted audit lower bound of **272/
 
 ## Active integration validation checkpoint (2026-10-23)
 
-На локальном пакете после сверки 53-file checkpoint выполнены обычные канонические проверки: normalizer/quality-contract/migration producer — 259 PASS; adopted policy317, Markdown links, Gitleaks contract и CI catalog — 371 PASS. Ruff check и форматирование изменённых normalizer/policy файлов прошли. Полный скан репозитория перед adoption дал 556 findings и только две AUD-495 unmatched identities; после отдельного решения владельца тот же captured scan проходит действующий validator с policy317. Итоговый повторный scan после всех изменений ещё обязателен.
+На локальном пакете после сверки 53-file checkpoint выполнены обычные канонические проверки: normalizer/quality-contract/migration producer — 259 PASS; adopted policy 317, Markdown links, Gitleaks contract и CI catalog — 371 PASS. Ruff check и форматирование изменённых normalizer/policy файлов прошли. Полный скан репозитория перед adoption дал 556 findings и только две AUD-495 unmatched identities; после отдельного решения владельца тот же captured scan проходит действующий validator с policy317. Итоговый повторный scan после всех изменений ещё обязателен.
 
 Frontend: production build прошёл; новый source-bound целевой прогон — 350 PASS, 11 suites, без предупреждений. Coverage шести целевых файлов ниже 100% (statements 96.7%, branches 93.0%, functions 95.83%, lines 97.1%); пакет пока не принят. CSS browser oracle отказал из-за несовпадения имён полей сценария в приватном harness; исправление harness и повторная проверка pending, визуальная приёмка не заявлена.
 
@@ -8213,7 +8213,7 @@ AUD-350: actual PostgreSQL17 baseline/candidate cohort — 2 PASS, pytest exit0;
 
 Actual CSS oracle v5 в Chrome156 подтвердил все четыре сочетания explicit light/dark и OS light/dark: alpha 26/255, light black и dark white независимо от OS. Один browser закрыт; это minimal-DOM проверка exact compiled production CSS, не полная визуальная приёмка. Новый typecheck PASS и ESLint182/182 PASS; 23 найденных Prettier отклонения исправлены стандартным formatter без изменения правил.
 
-Повторный полный scan после policy317 дал 557 findings и ровно одну новую Hex High Entropy String identity — публичный 315-prefix checksum в tests/test_verify_secrets_baseline.py. Она остаётся блокирующей; частный finite proposal не принят и новых разрешений не подразумевает. Принятый audit ledger остаётся 277/512; staged implementations и частные проверки не засчитываются как hosted acceptance.
+Повторный полный scan после policy 317 дал 557 findings и ровно одну новую Hex High Entropy String identity — публичный 315-prefix checksum в tests/test_verify_secrets_baseline.py. Она остаётся блокирующей; частный finite proposal не принят и новых разрешений не подразумевает. Принятый audit ledger остаётся 277/512; staged implementations и частные проверки не засчитываются как hosted acceptance.
 
 ## Rate-limit configuration and frontend regression checkpoint (2026-10-24)
 
@@ -8221,7 +8221,7 @@ Actual CSS oracle v5 в Chrome156 подтвердил все четыре со�
 
 Расширенный frontend V8 cohort завершился 446 PASS / 11 FAIL из 457 tests: 14 suites PASS / три FAIL, 23,80s. Семь отказов относятся к SSR issuer harness; три новых теста имеют подтверждённые ошибки вызова/ожиданий. Один тест выявил реальную гонку useLessonNotes: edit нового ключа до завершения load может потерять pending write. Исправления и повтор остаются приватными; coverage100 не заявляется, прежние V6/V8 отчёты сохранены.
 
-Gateway issuer v4 сохраняет все 17 source hashes v3 и добавляет actual setupRouter regression; source review и canonical integration ещё завершаются. AUD-350 v5 PG tests только collected: ревью выявило неверное ожидание UTC offset после SET LOCAL TIME ZONE America/Los_Angeles; actual v5 PG proof отсутствует. Общий PG runner AUD-197/262/343 до исправления resource/cleanup guards запускать нельзя. Новый Caddy entrypoint требует полноценного coverage producer и отдельного owner review изменения quality contract. Нижняя граница остаётся 277/512; policy317, baseline319, Gitleaks25, 78 contexts и blocking CodeQL сохранены.
+Gateway issuer v4 сохраняет все 17 source hashes v3 и добавляет actual setupRouter regression; source review и canonical integration ещё завершаются. AUD-350 v5 PG tests только collected: ревью выявило неверное ожидание UTC offset после SET LOCAL TIME ZONE America/Los_Angeles; actual v5 PG proof отсутствует. Общий PG runner AUD-197/262/343 до исправления resource/cleanup guards запускать нельзя. Новый Caddy entrypoint требует полноценного coverage producer и отдельного owner review изменения quality contract. Нижняя граница остаётся 277/512; policy 317, baseline 319, Gitleaks 25, 78 contexts и blocking CodeQL сохранены.
 
 
 ## Terminal CI and four scoped frontend closures, 2026-10-25
@@ -8252,4 +8252,4 @@ hosted scanner step. Текущая граница — 320/512 (62,5%), оста
 Общий Python CI и release по этой приёмке не объявляются. Новые приватные
 AUD-499 cache-restore и AUD-352 cookie-transition кандидаты не приняты;
 неутверждённые scanner identities остаются блокирующими. Baseline319 identities,
-policy337, Gitleaks26, required78, CodeQL и hooks сохранены.
+policy 337, Gitleaks 26, required78, CodeQL и hooks сохранены.

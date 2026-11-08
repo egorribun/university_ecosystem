@@ -169,6 +169,21 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
 })
 
+test("every run-stryker split test file is imported by run-stryker.test.mjs", async () => {
+  const runnerTest = await readFile(new URL("./run-stryker.test.mjs", import.meta.url), "utf8")
+  const importedLines = new Set(runnerTest.split("\n").map((line) => line.trim()))
+  const splitFiles = (await readdir(new URL("./", import.meta.url))).filter((name) =>
+    /^run-stryker-.+\.test\.mjs$/u.test(name)
+  )
+  assert.ok(splitFiles.length > 0, "The Stryker split test files must exist")
+  for (const name of splitFiles) {
+    assert.ok(
+      importedLines.has(`import "./${name}"`),
+      `${name} must be imported by run-stryker.test.mjs so its tests run with test:wasm`
+    )
+  }
+})
+
 test("canonical Node gates exercise the non-release progress reporter contracts", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
   assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-reporter\.test\.mjs/u)

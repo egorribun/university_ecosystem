@@ -35,14 +35,38 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 START_MARKER = re.compile(rb"\[\*\] starting @ \S")
 END_MARKER = re.compile(rb"\[\*\] ending @ \S")
 TARGET_MARKER = re.compile(
     rb"\[INFO\] derived ([0-9]+) target\(s\) from the OpenAPI/Swagger specification"
 )
-OPENAPI_TARGET_INSTANCE_MARKER = re.compile(
-    rb"\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] \[INFO\] \[([0-9]{1,7})/([0-9]{1,7})\] URL:\r?\n"
+TESTING_URL_MARKER = re.compile(rb"testing URL '([^']+)'")
+PER_RESPONSE_HTTP_ERROR = re.compile(
+    rb"the web server responded with an HTTP error code \(([0-9]{3})\)"
+)
+HTTP_ERROR_SUMMARY = re.compile(
+    rb"\[WARNING\] HTTP error codes detected during run:\r?\n([^\r\n]*)"
+)
+HTTP_ERROR_SUMMARY_ENTRY = re.compile(rb"([0-9]{3}) \([^)]*\) - [0-9]+ times")
+# Quoted text (target URLs, option values) and bare URLs are not message text.
+MESSAGE_TEXT_ONLY_STRIP = re.compile(rb"'[^']*'|https?://\S+")
+# Anonymous answers that are correct for a probe of a protected or absent
+# operation: 401/403 protected, 404 absent, 405 method not allowed, 422 probe
+# values that fail validation. Passed as --ignore-code on the full scan only.
+FULL_SCAN_IGNORED_CODES = frozenset({401, 403, 404, 405, 422})
+# Reviewed exception: /healthz answers 503 on the disposable stand because its
+# SpiceDB subsystem is not running (the reviewed readiness route /health/ready
+# returns 200). No other target may produce a 503.
+FULL_SCAN_PATH_CODES = {"/healthz": frozenset({503})}
+# Reviewed exception (owner decision 2026-11-08): this operation answers 204 with
+# no body, so SQLMap's stability check cannot run and it tests no parameter. Its
+# handler only logs and counts, with no database access, which
+# tests/test_sqlmap_scan_gate.py enforces against the handler source.
+FULL_SCAN_UNTESTABLE_PATHS = frozenset({"/api/v1/csp-report"})
+UNTESTABLE_STABILITY_ERROR = (
+    b"there was an error checking the stability of page because of lack of content."
 )
 RESULTS_MARKER_PREFIX = (
     b"[INFO] you can find results of scanning in multiple targets mode "
@@ -407,6 +431,99 @@ def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> 
     return console
 
 
+def _is_untestable_stability_error(line: bytes) -> bool:
+    """Match only the exact stability error for an operation with an empty answer."""
+
+    message = line.split(b"[ERROR]", 1)[1].strip()
+    return message.startswith(UNTESTABLE_STABILITY_ERROR)
+
+
+def _full_scan_allowed_codes(url: bytes) -> frozenset[int]:
+    """Codes a target may return: the anonymous answers plus its reviewed ones."""
+
+    path = urlsplit(url.decode("ascii", "replace")).path
+    return FULL_SCAN_IGNORED_CODES | FULL_SCAN_PATH_CODES.get(path, frozenset())
+
+
+def _validate_full_scan_targets(console: bytes, operations: int) -> None:
+    """Bind every operation to its own block: one testing URL, one negative.
+
+    SQLMap 1.10.10 in --batch mode prints "testing URL" per target and no
+    indexed header, so the target block is the unit of proof. HTTP error codes
+    are judged per block: sqlmap resets its counters for each target, so the
+    summary printed at the end of a block belongs to that block alone.
+    """
+
+    if b"[CRITICAL]" in console:
+        raise ScanEvidenceError("SQLMap reported a critical scan error")
+    completion = console.index(OPENAPI_COMPLETION_MARKER)
+    targets = list(TARGET_MARKER.finditer(console))
+    blocks: list[tuple[bytes, bytes]] = []
+    matches = list(TESTING_URL_MARKER.finditer(console, targets[0].end(), completion))
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else completion
+        blocks.append((match.group(1), console[match.end() : end]))
+    if len(blocks) != operations:
+        raise ScanEvidenceError("SQLMap did not test every scoped OpenAPI operation")
+    block_codes = 0
+    block_summaries = 0
+    reviewed_errors = 0
+    for url, body in blocks:
+        path = urlsplit(url.decode("ascii", "replace")).path
+        for line in body.splitlines():
+            if b"[ERROR]" in line and not _is_negative_result(line):
+                if path in FULL_SCAN_UNTESTABLE_PATHS and (
+                    _is_untestable_stability_error(line)
+                ):
+                    reviewed_errors += 1
+                    continue
+                raise ScanEvidenceError(
+                    f"SQLMap reported a failed OpenAPI target at {path}"
+                )
+        negatives = sum(
+            1
+            for line in body.splitlines()
+            if b"[ERROR]" in line and _is_negative_result(line)
+        )
+        if negatives != 1:
+            raise ScanEvidenceError(
+                f"SQLMap did not complete exactly one negative result at {path}"
+            )
+        allowed = _full_scan_allowed_codes(url)
+        for match in PER_RESPONSE_HTTP_ERROR.finditer(body):
+            block_codes += 1
+            if int(match.group(1)) not in allowed:
+                raise ScanEvidenceError(
+                    f"SQLMap received HTTP {int(match.group(1))} at {path}"
+                )
+        for match in HTTP_ERROR_SUMMARY.finditer(body):
+            block_summaries += 1
+            for entry in HTTP_ERROR_SUMMARY_ENTRY.finditer(match.group(1)):
+                if int(entry.group(1)) not in allowed:
+                    raise ScanEvidenceError(
+                        f"SQLMap received HTTP {int(entry.group(1))} at {path}"
+                    )
+    for line in console.splitlines():
+        if b"[ERROR]" in line and not _is_negative_result(line):
+            # Each reviewed line was attributed to its own target block above.
+            if reviewed_errors and _is_untestable_stability_error(line):
+                reviewed_errors -= 1
+                continue
+            raise ScanEvidenceError("SQLMap reported a failed OpenAPI target")
+        # HTTP error lines are judged per target above, not as incomplete words.
+        if PER_RESPONSE_HTTP_ERROR.search(line) or HTTP_ERROR_SUMMARY.search(line):
+            continue
+        message = MESSAGE_TEXT_ONLY_STRIP.sub(b"", line).lower()
+        if any(marker.lower() in message for marker in INCOMPLETE_WARNINGS):
+            raise ScanEvidenceError("SQLMap reported an incomplete target")
+    # Any HTTP error line outside a target block would escape the per-block rule.
+    if (
+        len(PER_RESPONSE_HTTP_ERROR.findall(console)) != block_codes
+        or len(HTTP_ERROR_SUMMARY.findall(console)) != block_summaries
+    ):
+        raise ScanEvidenceError("SQLMap reported HTTP errors outside a target")
+
+
 def check_openapi_completion(
     scan_outcome: str, console_log: Path, output_dir: Path
 ) -> tuple[bytes, int]:
@@ -415,44 +532,30 @@ def check_openapi_completion(
     operations = count_scoped_operations(output_dir / SCOPED_OPENAPI_NAME)
     if operations == 0:
         raise ScanEvidenceError("SQLMap OpenAPI scope declares no operations")
-    console = _validate_target_loop(
-        scan_outcome,
-        console_log,
-        output_dir,
-        completion_marker=OPENAPI_COMPLETION_MARKER,
-        expected_targets=operations,
-    )
-    target_marker = TARGET_MARKER.search(console)
-    if target_marker is None:
-        raise ScanEvidenceError("SQLMap did not declare its OpenAPI targets")
-    target_loop = console[
-        target_marker.end() : console.index(OPENAPI_COMPLETION_MARKER)
-    ]
-    # SQLMap 1.10.10 writes an indexed URL header for each multiple-target
-    # iteration. Bind each negative result to that block so duplicates from one
-    # target cannot make up for an operation with no result.
-    target_instances = list(OPENAPI_TARGET_INSTANCE_MARKER.finditer(target_loop))
-    if len(target_instances) != operations or any(
-        int(instance.group(1)) != index or int(instance.group(2)) != operations
-        for index, instance in enumerate(target_instances, start=1)
+    if scan_outcome != "success":
+        raise ScanEvidenceError(
+            f"SQLMap scan step did not succeed (outcome: {scan_outcome or 'unknown'})"
+        )
+    if not console_log.is_file():
+        raise ScanEvidenceError("SQLMap produced no console log")
+    console = ANSI_ESCAPE.sub(b"", _read_bytes(console_log))
+    starts = list(START_MARKER.finditer(console))
+    targets = list(TARGET_MARKER.finditer(console))
+    ends = list(END_MARKER.finditer(console))
+    completion = console.find(OPENAPI_COMPLETION_MARKER)
+    if not (
+        len(starts) == len(targets) == len(ends) == 1
+        and _declared_targets(console) == operations
+        and starts[0].start() < targets[0].start() < completion < ends[0].start()
+        and console.count(OPENAPI_COMPLETION_MARKER) == 1
     ):
-        raise ScanEvidenceError("SQLMap did not identify every indexed OpenAPI target")
-    for index, instance in enumerate(target_instances):
-        target_end = (
-            target_instances[index + 1].start()
-            if index + 1 < len(target_instances)
-            else len(target_loop)
-        )
-        target_section = target_loop[instance.end() : target_end]
-        negatives = sum(
-            1
-            for line in target_section.splitlines()
-            if b"[ERROR]" in line and _is_negative_result(line)
-        )
-        if negatives != 1:
-            raise ScanEvidenceError(
-                "SQLMap did not complete one negative result for every OpenAPI operation"
-            )
+        raise ScanEvidenceError("SQLMap console log does not prove the run completed")
+    if not output_dir.is_dir() or not any(
+        path.is_file() and path.name == RESULT_LOG_NAME
+        for path in output_dir.rglob("*")
+    ):
+        raise ScanEvidenceError("SQLMap produced no result log")
+    _validate_full_scan_targets(console, operations)
     return console, operations
 
 

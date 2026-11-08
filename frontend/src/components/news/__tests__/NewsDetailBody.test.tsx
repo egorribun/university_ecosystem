@@ -567,9 +567,8 @@ Inline ---
     const serverMarkup = renderServerMarkup(content)
     container.innerHTML = serverMarkup
     expect(container.querySelector(".news-article-body strong")).toBeNull()
-    expect(container.querySelector(".news-article-body")?.textContent).toContain(
-      "<strong>Raw update</strong>"
-    )
+    expect(container.querySelector(".news-article-body")?.textContent).toContain("Raw update")
+    expect(container.querySelector(".news-article-body")?.textContent).not.toContain("<strong>")
     document.body.append(container)
     const recoverableError = vi.fn()
     try {
@@ -725,7 +724,8 @@ Inline ---
       const { container } = render(<NewsDetailBody content={content} />)
       const body = container.querySelector(".news-article-body")
       expect(body?.querySelector("strong")).toBeNull()
-      expect(body?.textContent).toContain("<strong>Approved raw formatting</strong>")
+      expect(body?.textContent).toContain("Approved raw formatting")
+      expect(body?.textContent).not.toContain("<strong>")
       expect(enforcement.rawWrites).toEqual([])
       expect(sanitizeArticleFragment).toHaveBeenCalledTimes(1)
 
@@ -756,7 +756,8 @@ Inline ---
     )
     const body = container.querySelector(".news-article-body")
     expect(body?.querySelector("strong")).toBeNull()
-    expect(body?.textContent).toContain("<strong>Visible source</strong>")
+    expect(body?.textContent).toContain("Visible source")
+    expect(body?.textContent).not.toContain("<strong>")
     expect(sanitizeArticleFragment).toHaveBeenCalledTimes(1)
 
     unmount()
@@ -822,6 +823,47 @@ Inline ---
     expect(body?.innerHTML).not.toContain("</u>")
   })
 
+  it("renders Markdown inside a closed inline raw tag as Markdown in the allowlisted element", () => {
+    const { container } = render(<NewsDetailBody content={'<a href="https://e.edu">**x**</a>'} />)
+
+    const link = container.querySelector(".news-article-body a")
+    expect(link).toHaveAttribute("href", "https://e.edu")
+    expect(link?.querySelector("strong")).toHaveTextContent("x")
+    expect(container.querySelector(".news-article-body p")?.textContent).toBe("x")
+    expect(container.querySelector(".news-article-body")?.textContent).not.toContain("**")
+  })
+
+  it("keeps an unsafe href off a closed link while its Markdown still renders", () => {
+    const { container } = render(
+      <NewsDetailBody content={'<a href="javascript:alert(1)">**x**</a>'} />
+    )
+
+    const link = container.querySelector(".news-article-body a")
+    expect(link?.hasAttribute("href")).toBe(false)
+    expect(link?.querySelector("strong")).toHaveTextContent("x")
+    expect(container.innerHTML).not.toMatch(/javascript:/i)
+  })
+
+  it("lets Markdown after an unclosed inline raw tag render normally", () => {
+    const { container } = render(
+      <NewsDetailBody content={'<span class="x">Read **this** [docs](https://e.edu)'} />
+    )
+
+    const body = container.querySelector(".news-article-body")
+    expect(body?.querySelector("span")).toBeNull()
+    expect(body?.querySelector("strong")).toHaveTextContent("this")
+    expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute("href", "https://e.edu")
+    expect(body?.querySelector("p")?.textContent).toBe("Read this docs")
+  })
+
+  it("server-renders the stripped text of a closed inline raw tag with its Markdown children", () => {
+    const markup = renderServerMarkup('<a href="https://e.edu">**x**</a>')
+
+    expect(markup).toContain("<p><strong>x</strong></p>")
+    expect(markup).not.toContain("**x**")
+    expect(markup).not.toContain("&lt;a")
+  })
+
   it("renders readable text only when no approved Trusted Types policy can be created", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined)
     const enforcement = enforceTrustedTypes({ policy: false })
@@ -831,7 +873,8 @@ Inline ---
       )
       const body = container.querySelector(".news-article-body")
       expect(body).toHaveTextContent("Readable update")
-      expect(body?.textContent).toContain("<strong>Raw markup</strong>")
+      expect(body?.textContent).toContain("Raw markup")
+      expect(body?.textContent).not.toContain("<strong>")
       expect(body?.querySelector("strong")).toHaveTextContent("Readable update")
       expect(body?.querySelectorAll("strong")).toHaveLength(1)
       expect(enforcement.rawWrites).toEqual([])
@@ -853,10 +896,9 @@ Inline ---
       enforcement.state.failPolicy = true
       rerender(<NewsDetailBody content="# Same title\n\n<strong>Updated</strong>" />)
       expect(container.querySelector(".news-article-body h1")).toHaveTextContent("Same title")
-      expect(container.querySelector(".news-article-body strong")).toBeNull()
-      expect(container.querySelector(".news-article-body")?.textContent).toContain(
-        "<strong>Updated</strong>"
-      )
+      // The identical `<strong>` tag keeps its earlier sanitized element; only its Markdown children change.
+      expect(container.querySelector(".news-article-body strong")).toHaveTextContent("Updated")
+      expect(container.querySelector(".news-article-body")?.textContent).not.toContain("<strong>")
       expect(container.querySelector(".news-article-body")).toHaveTextContent("Same title")
       expect(enforcement.rawWrites).toEqual([])
       expect(enforcement.trustedWrites.length).toBeGreaterThan(0)

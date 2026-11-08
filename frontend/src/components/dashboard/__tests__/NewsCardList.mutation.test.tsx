@@ -53,9 +53,7 @@ describe("NewsCardList mutation contracts", () => {
       />
     )
 
-    const button = screen.getByRole("button", {
-      name: /^Long article\s*x{110}…$/,
-    })
+    const button = screen.getByRole("button", { name: "Long article" })
     const content = button.querySelector("span.text-sm.leading-relaxed")
     expect(content).not.toBeNull()
     expect(content?.textContent).toBe(`${longContent.slice(0, 110)}…`)

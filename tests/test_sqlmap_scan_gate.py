@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import os
@@ -1103,9 +1104,23 @@ def test_script_entry_point_exits_with_the_gate_status(
 
 # Scope v2: the complete OpenAPI document, scanned by its own SQLMap run.
 
+# Sanitized from the real full-document console (SQLMap 1.10.10, --batch).
 _OPENAPI_NEGATIVE = (
-    b"[10:00:05] [ERROR] all tested parameters do not appear to be injectable. "
-    b"Try to increase values for '--level'/'--risk', skipping to the next target\n"
+    b"[13:00:05] [ERROR] all tested parameters do not appear to be injectable. "
+    b"Try to increase values for '--level'/'--risk' options if you wish to perform "
+    b"more tests. Rerun without providing the option '--technique'. If you suspect "
+    b"that there is some kind of protection mechanism involved (e.g. WAF) maybe you "
+    b"could try to use option '--tamper' (e.g. '--tamper=space2comment') and/or "
+    b"switch '--random-agent', skipping to the next target\n"
+)
+_OPENAPI_ABORTED = (
+    b"[13:00:04] [ERROR] not authorized, try to provide right HTTP authentication "
+    b"type and valid credentials (401). If this is intended, try to rerun by "
+    b"providing a valid value for option '--ignore-code', skipping to the next target\n"
+)
+_OPENAPI_HEALTH_503 = (
+    b"[13:00:03] [WARNING] the web server responded with an HTTP error code (503) "
+    b"which could interfere with the results of the tests\n"
 )
 _OPENAPI_SCAN_DONE = (
     b"[10:00:08] [INFO] you can find results of scanning in multiple targets mode "
@@ -1119,23 +1134,26 @@ def _openapi_clean_run(
     negatives: int = 3,
     extra: bytes = b"",
     duplicate_first: bool = False,
+    urls: list[str] | None = None,
 ) -> bytes:
+    """Build a console in SQLMap's --batch shape: one 'testing URL' per target."""
+
     declared_line = (
-        f"[10:00:00] [INFO] derived {declared} target(s) from the OpenAPI/Swagger "
+        f"[13:00:00] [INFO] derived {declared} target(s) from the OpenAPI/Swagger "
         "specification\n"
     ).encode("ascii")
     target_blocks = bytearray()
-    for index in range(1, declared + 1):
-        target_blocks.extend(
-            f"[10:00:01] [INFO] [{index}/{declared}] URL:\n"
-            f"GET http://127.0.0.1:8000/api/v1/item{index - 1}\n".encode("ascii")
+    for index in range(declared):
+        url = (
+            urls[index]
+            if urls is not None
+            else f"http://127.0.0.1:8000/api/v1/item{index}"
         )
-        result_count = int(index <= negatives)
-        if index == 1 and negatives > declared:
-            result_count += negatives - declared
-        if index == 1 and duplicate_first:
-            result_count += 1
-        target_blocks.extend(_OPENAPI_NEGATIVE * result_count)
+        target_blocks.extend(f"[13:00:01] [INFO] testing URL '{url}'\n".encode("ascii"))
+        if index < negatives:
+            target_blocks.extend(_OPENAPI_NEGATIVE)
+        if index == 0 and duplicate_first:
+            target_blocks.extend(_OPENAPI_NEGATIVE)
     return (
         _START
         + declared_line
@@ -1252,7 +1270,7 @@ def test_openapi_missing_negative_result_for_an_operation_fails(
     console = _openapi_clean_run(declared=3, negatives=2)
 
     assert _run_openapi(tmp_path, console) == 1
-    assert "negative result for every OpenAPI operation" in capsys.readouterr().err
+    assert "exactly one negative result at /api/v1/item2" in capsys.readouterr().err
 
 
 def test_openapi_duplicate_negative_for_one_target_cannot_fill_a_missing_operation(
@@ -1263,12 +1281,16 @@ def test_openapi_duplicate_negative_for_one_target_cannot_fill_a_missing_operati
     assert _run_openapi(tmp_path, console) == 1
 
 
-def test_openapi_target_block_indices_must_be_unique_and_sequential(
-    tmp_path: Path,
+def test_openapi_missing_testing_url_block_fails_as_a_missing_target(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    console = _openapi_clean_run().replace(b"[2/3] URL:\n", b"[1/3] URL:\n", 1)
+    console = _openapi_clean_run().replace(
+        b"[13:00:01] [INFO] testing URL 'http://127.0.0.1:8000/api/v1/item1'\n",
+        b"",
+    )
 
     assert _run_openapi(tmp_path, console) == 1
+    assert "did not test every scoped OpenAPI operation" in capsys.readouterr().err
 
 
 def test_openapi_negative_result_after_completion_cannot_fill_a_missing_target(
@@ -1285,10 +1307,267 @@ def test_openapi_negative_result_after_completion_cannot_fill_a_missing_target(
     assert _run_openapi(tmp_path, console) == 1
 
 
-def test_openapi_extra_negative_result_fails_exact_operation_count(
+def test_openapi_extra_negative_result_in_one_target_fails_exact_count(
     tmp_path: Path,
 ) -> None:
-    assert _run_openapi(tmp_path, _openapi_clean_run(negatives=4)) == 1
+    assert _run_openapi(tmp_path, _openapi_clean_run(extra=_OPENAPI_NEGATIVE)) == 1
+
+
+_OPENAPI_TESTED_URLS = [
+    "http://127.0.0.1:8000/api/v1/news",
+    "http://127.0.0.1:8000/api/v1/notifications/admin/dead-letter/retry",
+    "http://127.0.0.1:8000/healthz?brief=false",
+]
+
+
+def _block_with(url_index: int, line: bytes) -> bytes:
+    """Insert a warning line into the block of one target, as sqlmap logs it."""
+
+    console = _openapi_clean_run(urls=_OPENAPI_TESTED_URLS)
+    marker = f"testing URL '{_OPENAPI_TESTED_URLS[url_index]}'\n".encode("ascii")
+    position = console.index(marker) + len(marker)
+    return console[:position] + line + console[position:]
+
+
+@pytest.mark.parametrize(
+    "summary_line",
+    [
+        # Real full-scan summaries from anonymous probes of protected and absent
+        # operations (per target): 401, 403, 404, 405, 422 are correct answers.
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"401 (Unauthorized) - 3 times, 404 (Not Found) - 50 times\n",
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"403 (Forbidden) - 311 times\n",
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"405 (Method Not Allowed) - 3 times, 422 (Unprocessable Content) - 50 times\n",
+    ],
+)
+def test_openapi_expected_anonymous_answers_pass(
+    tmp_path: Path, summary_line: bytes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    console = _block_with(0, summary_line)
+    assert _run_openapi(tmp_path, console, operations=3) == 0
+    assert "tested every operation" in capsys.readouterr().out
+
+
+def test_openapi_reviewed_healthz_503_passes_only_on_healthz(tmp_path: Path) -> None:
+    console = _block_with(2, _OPENAPI_HEALTH_503)
+    assert _run_openapi(tmp_path, console, operations=3) == 0
+
+
+@pytest.mark.parametrize(
+    ("url_index", "line"),
+    [
+        # 503 on any target other than the reviewed /healthz route fails.
+        (0, _OPENAPI_HEALTH_503),
+        (1, _OPENAPI_HEALTH_503),
+        # A 503 summary from a non-reviewed route fails too.
+        (
+            0,
+            b"[WARNING] HTTP error codes detected during run:\n"
+            b"503 (Service Unavailable) - 3 times\n",
+        ),
+    ],
+)
+def test_openapi_503_outside_the_reviewed_healthz_route_fails(
+    tmp_path: Path, url_index: int, line: bytes
+) -> None:
+    assert _run_openapi(tmp_path, _block_with(url_index, line), operations=3) == 1
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"429 (Too Many Requests) - 171 times\n",
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"500 (Internal Server Error) - 2 times\n",
+        b"[WARNING] the web server responded with an HTTP error code (429) "
+        b"which could interfere with the results of the tests\n",
+    ],
+)
+def test_openapi_429_and_5xx_still_fail(tmp_path: Path, line: bytes) -> None:
+    assert _run_openapi(tmp_path, _block_with(1, line), operations=3) == 1
+
+
+def test_openapi_aborted_target_fails_even_with_ignored_codes(tmp_path: Path) -> None:
+    # A 401 abort with no negative result: the target was never tested.
+    console = _openapi_clean_run(urls=_OPENAPI_TESTED_URLS, negatives=2)
+    assert _OPENAPI_NEGATIVE in console
+    console = console.replace(_OPENAPI_NEGATIVE, _OPENAPI_ABORTED, 1)
+    assert _run_openapi(tmp_path, console, operations=3) == 1
+
+
+def test_openapi_retry_word_in_a_target_path_does_not_fail(tmp_path: Path) -> None:
+    assert (
+        _run_openapi(
+            tmp_path,
+            _openapi_clean_run(urls=_OPENAPI_TESTED_URLS),
+            operations=3,
+        )
+        == 0
+    )
+
+
+def test_openapi_retry_word_in_message_text_still_fails(tmp_path: Path) -> None:
+    line = b"[WARNING] retrying request after a transient failure\n"
+    assert _run_openapi(tmp_path, _block_with(1, line), operations=3) == 1
+
+
+_OPENAPI_STABILITY = (
+    b"[13:01:17] [ERROR] there was an error checking the stability of page because "
+    b"of lack of content. Please check the page request results (and probable "
+    b"errors) by using higher verbosity levels\n"
+)
+
+
+def test_openapi_stability_error_on_a_target_fails_and_names_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Only the reviewed empty-answer operation may report this line.
+    assert _run_openapi(tmp_path, _block_with(2, _OPENAPI_STABILITY), operations=3) == 1
+    assert "at /healthz" in capsys.readouterr().err
+
+
+def _csp_report_console(line: bytes) -> bytes:
+    urls = ["http://127.0.0.1:8000/api/v1/csp-report", *_OPENAPI_TESTED_URLS[:2]]
+    console = _openapi_clean_run(urls=urls)
+    marker = f"testing URL '{urls[0]}'\n".encode("ascii")
+    position = console.index(marker) + len(marker)
+    return console[:position] + line + console[position:]
+
+
+def test_openapi_accepts_the_stability_error_only_for_the_reviewed_operation(
+    tmp_path: Path,
+) -> None:
+    assert (
+        _run_openapi(tmp_path, _csp_report_console(_OPENAPI_STABILITY), operations=3)
+        == 0
+    )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        b"[13:01:17] [ERROR] connection timed out to the target URL\n",
+        b"[13:01:17] [ERROR] page not found (404)\n",
+    ],
+)
+def test_openapi_reviewed_operation_still_fails_on_any_other_error(
+    tmp_path: Path, line: bytes
+) -> None:
+    assert _run_openapi(tmp_path, _csp_report_console(line), operations=3) == 1
+
+
+def test_openapi_reviewed_operation_still_fails_on_an_injection(tmp_path: Path) -> None:
+    line = b"[13:01:17] [INFO] sqlmap identified the following injection point(s)\n"
+    assert _run_openapi(tmp_path, _csp_report_console(line), operations=3) == 1
+
+
+def test_reviewed_untestable_operation_has_no_database_access() -> None:
+    """The exception holds only while the handler cannot reach SQL at all."""
+    root = Path(gate.__file__).resolve().parents[2]
+    assert gate.FULL_SCAN_UNTESTABLE_PATHS == {"/api/v1/csp-report"}
+    tree = ast.parse(
+        (root / "app/api/internal/csp_report.py").read_text(encoding="utf-8")
+    )
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add(node.module or "")
+    assert imported == {
+        "__future__",
+        "json",
+        "re",
+        "typing",
+        "urllib.parse",
+        "fastapi",
+        "fastapi.params",
+        "app.core.logging",
+        "app.core.metrics",
+        "app.core.ratelimit",
+    }
+
+
+def test_news_gate_still_fails_a_401(tmp_path: Path) -> None:
+    summary = (
+        b"[WARNING] HTTP error codes detected during run:\n"
+        b"401 (Unauthorized) - 3 times\n"
+    )
+    assert _run(tmp_path, "success", _CLEAN_RUN + summary) == 1
+
+
+def test_news_gate_still_fails_a_per_response_401(tmp_path: Path) -> None:
+    line = (
+        b"[WARNING] the web server responded with an HTTP error code (401) "
+        b"which could interfere with the results of the tests\n"
+    )
+    assert _run(tmp_path, "success", _CLEAN_RUN + line) == 1
+
+
+def test_workflow_news_proof_runs_before_the_full_scan_and_full_scan_ignores_only_reviewed_codes() -> (
+    None
+):
+    path = Path(gate.__file__).resolve().parents[2] / ".github/workflows/sqlmap.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    names = [step.get("name") for step in workflow["jobs"]["sqlmap"]["steps"]]
+    assert names.index("Run SQLMap Scan on API") < names.index(
+        "Run SQLMap scan for every anonymous OpenAPI operation"
+    )
+    assert names.index("Gate SQLMap seeded news proof scan") < names.index(
+        "Run SQLMap scan for every anonymous OpenAPI operation"
+    )
+    steps = {step["name"]: step for step in workflow["jobs"]["sqlmap"]["steps"]}
+    full = steps["Run SQLMap scan for every anonymous OpenAPI operation"]["run"]
+    news = steps["Run SQLMap Scan on API"]["run"]
+    ignore = [line for line in full.splitlines() if "--ignore-code=" in line]
+    assert len(ignore) == 1
+    codes = {
+        int(code)
+        for code in ignore[0]
+        .split("--ignore-code=")[1]
+        .split("\\")[0]
+        .strip()
+        .split(",")
+    }
+    assert codes == gate.FULL_SCAN_IGNORED_CODES
+    assert "--ignore-code" not in news
+
+
+def test_workflow_rate_limit_budgets_cover_every_anonymous_setting() -> None:
+    from app.core.config.mixins.rate_limit_settings import RateLimitSettingsMixin
+
+    path = Path(gate.__file__).resolve().parents[2] / ".github/workflows/sqlmap.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    backend = next(
+        step
+        for step in workflow["jobs"]["sqlmap"]["steps"]
+        if step["name"] == "Start FastAPI Backend in Background"
+    )
+    env = backend["env"]
+    # Every budget the limiter applies stays enabled and gets a scan-only ceiling.
+    # The enabled, headers and storage settings are not budgets.
+    budgets = [
+        name.upper()
+        for name in RateLimitSettingsMixin.__annotations__
+        if name.startswith("rate_limit_")
+        and name
+        not in {
+            "rate_limit_enabled",
+            "rate_limit_headers_enabled",
+            "rate_limit_storage_backend",
+            "rate_limit_storage_uri",
+        }
+    ]
+    assert len(budgets) >= 15
+    assert workflow["jobs"]["sqlmap"]["env"] == {
+        "SCAN_RATE_LIMIT_CEILING": "100000/minute"
+    }
+    for field in budgets:
+        assert env[field] == "${{ env.SCAN_RATE_LIMIT_CEILING }}", field
+    assert "RATE_LIMIT_ENABLED" not in env
 
 
 def test_openapi_declared_targets_must_match_the_scoped_operations(

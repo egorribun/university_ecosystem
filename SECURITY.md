@@ -90,5 +90,5 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 ---
 
 <div align="center">
-  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
+  © 2026 egorribun • University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>

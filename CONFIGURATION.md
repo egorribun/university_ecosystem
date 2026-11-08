@@ -359,7 +359,7 @@ and are not part of this inventory.
 | `ENABLE_COOP` | Enable coop. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
 | `ENABLE_CORP` | Enable corp. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
 | `ENABLE_STRICT_SECURITY_HEADERS` | Enable strict security headers. Defined in `app/core/config/mixins/csp_settings.py`. | Unset |
-| `SECURITY_CONNECT_SRC_EXTRA` | Security connect src extra. Defined in `app/core/config/mixins/csp_settings.py`. | `https://api.spotify.com,https://fcm.googleapis.com,https://fcmregistrations.googleapis.com,https://*.push.services.mozilla.com,https://updates.push.services.mozilla.com,https://*.push.apple.com` |
+| `SECURITY_CONNECT_SRC_EXTRA` | Security connect src extra. Defined in `app/core/config/mixins/csp_settings.py`. | `https://api.open-meteo.com,https://api.spotify.com,https://fcm.googleapis.com,https://fcmregistrations.googleapis.com,https://*.push.services.mozilla.com,https://updates.push.services.mozilla.com,https://*.push.apple.com` |
 | `SECURITY_COOKIE_SAMESITE_OVERRIDE` | Security cookie samesite override. Defined in `app/core/config/mixins/csp_settings.py`. | Empty |
 | `SECURITY_CSP_REPORT_ONLY` | Security CSP report only. Defined in `app/core/config/mixins/csp_settings.py`. | Unset |
 | `SECURITY_CSP_REPORT_URI` | Security CSP report URI. Defined in `app/core/config/mixins/csp_settings.py`. | Empty |
