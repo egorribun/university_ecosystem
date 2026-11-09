@@ -4573,6 +4573,70 @@
       }
     },
     {
+      "path": ".github/workflows/owned-client-ip-acceptance.yml",
+      "name": "Owned client-IP acceptance",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"scripts/owned_client_ip_*.py\",\".github/workflows/owned-client-ip-acceptance.yml\"]}"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "owned-client-ip": {
+          "profile": "advisory",
+          "check_name_template": "Owned client-IP probe",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/focused-live-evidence.yml",
+      "name": "Focused live evidence",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\".github/workflows/focused-live-evidence.yml\"]}"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "focused-live-evidence": {
+          "profile": "advisory",
+          "check_name_template": "Focused live spec evidence",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
       "path": ".github/workflows/scorecard.yml",
       "name": "OpenSSF Scorecard",
       "owner": "@egorribun",
