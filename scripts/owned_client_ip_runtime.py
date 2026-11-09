@@ -329,13 +329,14 @@ def derive_probe_input(
 
         attachments = probe["NetworkSettings"]["Networks"]
         result: dict[str, object] = {
-            "schema": "ue-owned-client-ip-probe-input-v2",
+            "schema": "ue-owned-client-ip-probe-input-v3",
             "source_sha": owner.source_sha,
             "run_id": run_id,
             "routes": [
                 row(name, attachments[names[name]]["IPAddress"], address("caddy", name))
                 for name in ("public", "frontend_net")
             ],
+            "caddy_internal_ip": address("caddy", "internal"),
             "gateway_ip": address("gateway", "public"),
             "ws_hub_ip": address("ws-hub", "public"),
             "backend_public_ip": address("backend", "public"),

@@ -64,6 +64,13 @@ def _inspect_fixture():
             "IPAddress": f"172.31.0.{host}",
             "GlobalIPv6Address": "",
         }
+    # docker-compose.full.yml also attaches Caddy to the internal network.
+    internal = f"{project}_internal"
+    containers["caddy"]["NetworkSettings"]["Networks"][internal] = {
+        "NetworkID": networks[internal]["Id"],
+        "IPAddress": "172.29.0.2",
+        "GlobalIPv6Address": "",
+    }
 
     bindings = (
         *(
@@ -76,7 +83,7 @@ def _inspect_fixture():
     )
     service_network_map = {
         "backend": ("frontend_net", "internal", "public", "revocation_net"),
-        "caddy": ("frontend_net", "public"),
+        "caddy": ("frontend_net", "internal", "public"),
         "flagd": ("internal",),
         "flagd-healthprobe": (),
         "frontend": ("frontend_net",),
@@ -113,7 +120,7 @@ def _inspect_fixture():
         service_networks=service_networks,
     )
 
-    backend_trust = "172.28.0.2,172.28.0.4,172.29.0.4,172.30.0.4,172.31.0.2"
+    backend_trust = "172.28.0.2,172.28.0.4,172.29.0.2,172.29.0.4,172.30.0.4,172.31.0.2"
     backend_marker = secrets.token_urlsafe(24)
     containers["backend"]["Config"]["Cmd"] = list(_BACKEND_COMMAND)
     containers["backend"]["Config"]["Entrypoint"] = ["/usr/bin/tini", "--"]
@@ -122,8 +129,10 @@ def _inspect_fixture():
         f"TRUSTED_PROXIES={backend_trust}",
         f"BACKEND_RUNTIME_MARKER={backend_marker}",
     ]
-    containers["gateway"]["Config"]["Env"] = ["GATEWAY_TRUSTED_PROXIES=172.28.0.2"]
-    containers["ws-hub"]["Config"]["Env"] = ["TRUSTED_PROXIES=172.28.0.2"]
+    containers["gateway"]["Config"]["Env"] = [
+        "GATEWAY_TRUSTED_PROXIES=172.28.0.2,172.29.0.2"
+    ]
+    containers["ws-hub"]["Config"]["Env"] = ["TRUSTED_PROXIES=172.28.0.2,172.29.0.2"]
     for record in containers.values():
         record["RestartCount"] = 0
 
@@ -242,7 +251,7 @@ def _expected_input(snapshot):
         for name in ("public", "frontend_net", "internal", "revocation_net")
     }
     return {
-        "schema": "ue-owned-client-ip-probe-input-v2",
+        "schema": "ue-owned-client-ip-probe-input-v3",
         "source_sha": snapshot["owner"].source_sha,
         "run_id": snapshot["run_id"],
         "routes": [
@@ -261,6 +270,7 @@ def _expected_input(snapshot):
                 "caddy_ip": "172.31.0.2",
             },
         ],
+        "caddy_internal_ip": "172.29.0.2",
         "gateway_ip": "172.28.0.4",
         "ws_hub_ip": "172.28.0.5",
         "backend_public_ip": "172.28.0.3",
@@ -278,9 +288,16 @@ def _expected_input(snapshot):
             )
         ],
         "trusted_proxies": [
-            ["172.28.0.2", "172.28.0.4", "172.29.0.4", "172.30.0.4", "172.31.0.2"],
-            ["172.28.0.2"],
-            ["172.28.0.2"],
+            [
+                "172.28.0.2",
+                "172.28.0.4",
+                "172.29.0.2",
+                "172.29.0.4",
+                "172.30.0.4",
+                "172.31.0.2",
+            ],
+            ["172.28.0.2", "172.29.0.2"],
+            ["172.28.0.2", "172.29.0.2"],
         ],
     }
 

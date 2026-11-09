@@ -82,7 +82,8 @@ jobs:
       - name: Run each spec alone and require every case to pass
         timeout-minutes: 75
         run: |
-          set -uo pipefail
+          # Actions starts bash with -e; one failing spec must not hide the others.
+          set +e -uo pipefail
           status=0
           for spec in \
             tests/e2e-live/aud178-reset-referer-csp.live.spec.ts \

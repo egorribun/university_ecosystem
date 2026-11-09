@@ -21,7 +21,7 @@ def _topology() -> dict[str, object]:
         for name in ("public", "frontend_net", "internal", "revocation_net")
     }
     return {
-        "schema": "ue-owned-client-ip-probe-input-v2",
+        "schema": "ue-owned-client-ip-probe-input-v3",
         "source_sha": secrets.token_hex(20),
         "run_id": secrets.token_hex(32),
         "routes": [
@@ -40,6 +40,7 @@ def _topology() -> dict[str, object]:
                 "caddy_ip": "172.24.0.20",
             },
         ],
+        "caddy_internal_ip": "172.25.0.20",
         "gateway_ip": "172.23.0.30",
         "ws_hub_ip": "172.23.0.40",
         "backend_public_ip": "172.23.0.50",
@@ -67,12 +68,13 @@ def _topology() -> dict[str, object]:
             [
                 "172.23.0.20",
                 "172.24.0.20",
+                "172.25.0.20",
                 "172.23.0.30",
                 "172.25.0.30",
                 "172.26.0.30",
             ],
-            ["172.23.0.20"],
-            ["172.23.0.20"],
+            ["172.23.0.20", "172.25.0.20"],
+            ["172.23.0.20", "172.25.0.20"],
         ],
     }
 
@@ -87,6 +89,24 @@ def test_inspected_multi_network_shape_is_accepted_without_claiming_ownership():
     assert config.ws_hub_ip == value["ws_hub_ip"]
     assert config.backend_public_ip == value["backend_public_ip"]
     assert len(config.routes) == 2
+
+
+@pytest.mark.parametrize(
+    "address",
+    (
+        "172.23.0.20",  # Not on the internal network.
+        "172.25.0.30",  # The gateway's internal address.
+        "172.25.0.255",  # The broadcast address.
+        "203.0.113.20",
+        None,
+    ),
+)
+def test_caddy_internal_address_must_be_its_own_internal_host(address):
+    value = _topology()
+    value["caddy_internal_ip"] = address
+
+    with pytest.raises(probe.ProbeError, match="invalid topology"):
+        probe.parse_input(value)
 
 
 def test_ambiguous_v1_topology_is_rejected():

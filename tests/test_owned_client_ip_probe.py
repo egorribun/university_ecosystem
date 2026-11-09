@@ -27,7 +27,7 @@ from scripts.owned_nats_process import (
 
 def _input() -> dict[str, object]:
     return {
-        "schema": "ue-owned-client-ip-probe-input-v2",
+        "schema": "ue-owned-client-ip-probe-input-v3",
         "source_sha": "a" * 40,
         "run_id": "b" * 64,
         "routes": [
@@ -46,6 +46,7 @@ def _input() -> dict[str, object]:
                 "caddy_ip": "172.24.0.20",
             },
         ],
+        "caddy_internal_ip": "172.25.0.20",
         "gateway_ip": "172.23.0.30",
         "ws_hub_ip": "172.23.0.40",
         "backend_public_ip": "172.23.0.50",
@@ -73,12 +74,13 @@ def _input() -> dict[str, object]:
             [
                 "172.23.0.20",
                 "172.24.0.20",
+                "172.25.0.20",
                 "172.23.0.30",
                 "172.25.0.30",
                 "172.26.0.30",
             ],
-            ["172.23.0.20"],
-            ["172.23.0.20"],
+            ["172.23.0.20", "172.25.0.20"],
+            ["172.23.0.20", "172.25.0.20"],
         ],
     }
 
