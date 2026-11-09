@@ -60,6 +60,7 @@
  * ```
  */
 import type { QueryClient, QueryFunctionContext } from "@tanstack/react-query"
+import { isAxiosError } from "axios"
 
 import {
   chatApi,
@@ -207,16 +208,37 @@ export const chatsQueryOptions = (queryClient?: QueryClient) => ({
  * quickly without exponential backoff. We expose retry: 2 default in the
  * factory because that's the codebase convention; consumers override.
  */
-export const chatQueryOptions = (chatId: string | undefined) => ({
+/**
+ * True when the server says this user may no longer see the chat: 403 after removal,
+ * 404 after deletion. A cached copy must then be replaced, not kept, because React
+ * Query keeps the last data on error and that data may be restored from IndexedDB.
+ * Network failures and 5xx keep the cache, so offline reading still works.
+ */
+export function deniesChatAccess(error: unknown): boolean {
+  if (!isAxiosError(error)) return false
+  const status = error.response?.status
+  return status === 403 || status === 404
+}
+
+export const chatQueryOptions = (
+  chatId: string | undefined,
+  onDenied?: (chatId: string) => void
+) => ({
   queryKey: chatQueryKey(chatId ?? ""),
-  queryFn: async ({ signal }: QueryFunctionContext<ChatQueryKey>): Promise<Chat> => {
+  queryFn: async ({ signal }: QueryFunctionContext<ChatQueryKey>): Promise<Chat | null> => {
     if (!chatId) {
       // Defensive — `enabled: !!chatId` in the consumer prevents this from
       // firing, but if a caller forgets the gate this throws cleanly
       // rather than hitting `chatApi.getChat("")` and producing a 404.
       throw new Error("chatId required")
     }
-    return chatApi.getChat(chatId, signal)
+    try {
+      return await chatApi.getChat(chatId, signal)
+    } catch (error) {
+      if (!deniesChatAccess(error)) throw error
+      onDenied?.(chatId)
+      return null
+    }
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,

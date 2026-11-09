@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
-import { devices, type BrowserContext, type Page } from "@playwright/test"
+import { devices, type BrowserContext, type Locator, type Page } from "@playwright/test"
 import { expect, GROUP_CHAT_ACCOUNTS, loginAs, loginWith, test } from "./fixtures"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
@@ -127,9 +127,13 @@ async function expectSocketMessage(
   groupId: string,
   content: string
 ): Promise<void> {
+  // Delivery runs through the outbox after commit; on a loaded runner it can
+  // exceed the default 15-second poll, so allow a bounded 30 seconds.
   await expect
-    .poll(() =>
-      socket.newMessages.some((event) => event.chatId === groupId && event.content === content)
+    .poll(
+      () =>
+        socket.newMessages.some((event) => event.chatId === groupId && event.content === content),
+      { timeout: 30_000 }
     )
     .toBe(true)
 }
@@ -251,6 +255,12 @@ async function sameOriginMutation(
   )
 }
 
+// The chat list repeats the last message as a preview on wide layouts, so a
+// visibility check must name the open conversation, not the whole page.
+function chatLog(page: Page): Locator {
+  return page.getByRole("log", { name: /Сообщения чата/i })
+}
+
 function isDenied(status: number): boolean {
   return status === 403 || status === 404
 }
@@ -308,6 +318,8 @@ test.describe("live Messenger membership revocation", () => {
     browser,
     page,
   }, testInfo) => {
+    // Several live deliveries are awaited in sequence, each bounded at 30 seconds.
+    test.setTimeout(240_000)
     const mobile = testInfo.project.name === "mobile"
     const contextOptions = {
       ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
@@ -492,7 +504,7 @@ test.describe("live Messenger membership revocation", () => {
       }
       for (const memberPage of [page, remainingPage]) {
         await expect(
-          memberPage.getByText(preReconnectRevocationMessage, { exact: true })
+          chatLog(memberPage).getByText(preReconnectRevocationMessage, { exact: true })
         ).toBeVisible()
       }
       for (const { socket, messages } of postRevocationMessageBaselines) {
@@ -563,11 +575,10 @@ test.describe("live Messenger membership revocation", () => {
         await expectSocketMessage(socket, groupId, postRevocationMessage)
       }
       for (const memberPage of [page, remainingPage]) {
-        await expect(memberPage.getByText(messageContent, { exact: true })).toBeVisible()
-        await expect(
-          memberPage.getByText(preReconnectRevocationMessage, { exact: true })
-        ).toBeVisible()
-        await expect(memberPage.getByText(postRevocationMessage, { exact: true })).toBeVisible()
+        const log = chatLog(memberPage)
+        await expect(log.getByText(messageContent, { exact: true })).toBeVisible()
+        await expect(log.getByText(preReconnectRevocationMessage, { exact: true })).toBeVisible()
+        await expect(log.getByText(postRevocationMessage, { exact: true })).toBeVisible()
       }
       for (const socket of [removedSocket, removedSecondSocket]) {
         expect(

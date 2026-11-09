@@ -1,0 +1,79 @@
+name: Owned client-IP acceptance
+
+# AUD-164: run the fixed client-IP probe once against an owned Core stand and
+# print its finite per-route results. This is finding evidence, not a required
+# check; it does not assess the gateway or a deployment.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/owned_client_ip_*.py"
+      - ".github/workflows/owned-client-ip-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owned-client-ip-${{ github.event.pull_request.number || github.ref }}
+  # Let an active owned run finish its cleanup before a newer run starts.
+  cancel-in-progress: false
+
+jobs:
+  owned-client-ip:
+    name: Owned client-IP probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the event commit without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Select unique owned Core state directory
+        run: |
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-client-ip\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Start the owned live stand
+        id: start-stand
+        env:
+          STAND_REF: ${{ github.sha }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF"
+          --stack core
+
+      - name: Run the owned client-IP probe
+        timeout-minutes: 10
+        run: >-
+          uv run --frozen --no-sync python -m scripts.owned_client_ip_cli
+          --state-dir "$LIVE_STATE_DIR"
+
+      - name: Stop owned containers
+        if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand stop
+          --in-place --state-dir "$LIVE_STATE_DIR"

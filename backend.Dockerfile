@@ -72,7 +72,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install tini for proper signal handling (PID-1 reaping).
+# Install tini for proper signal handling (PID-1 reaping), and libmagic1 for
+# python-magic: without it uploads other than PDF, SVG and images are refused
+# with 415 because their content type cannot be detected.
 # curl is intentionally omitted — healthcheck uses Python stdlib instead,
 # reducing the attack surface by one CVE-prone binary.
 # apt-get upgrade ensures Debian security patches released after the base
@@ -81,7 +83,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-runtime,target=/var/cache/apt \
     apt-get update \
     && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends tini \
+    && apt-get install -y --no-install-recommends tini libmagic1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --create-home app

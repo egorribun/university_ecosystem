@@ -34,6 +34,7 @@ _INPUT_KEYS = frozenset(
         "source_sha",
         "run_id",
         "routes",
+        "caddy_internal_ip",
         "gateway_ip",
         "ws_hub_ip",
         "backend_public_ip",
@@ -165,7 +166,7 @@ def parse_input(value: object) -> _Config:
         raise ProbeError("invalid topology")
     if (
         type(value["schema"]) is not str
-        or value["schema"] != "ue-owned-client-ip-probe-input-v2"
+        or value["schema"] != "ue-owned-client-ip-probe-input-v3"
         or not _identity(value["source_sha"], 40)
         or not _identity(value["run_id"], 64)
         or type(value["routes"]) is not list
@@ -237,9 +238,13 @@ def parse_input(value: object) -> _Config:
         for other in networks[index + 1 :]
     ):
         raise ProbeError("invalid topology")
+    caddy_internal = _topology_address(value["caddy_internal_ip"])
+    if not _usable_host(caddy_internal, networks[2]):
+        raise ProbeError("invalid topology")
     addresses = [
         *(route.source_ip for route in routes),
         *(route.caddy_ip for route in routes),
+        str(caddy_internal),
         *gateway_addresses,
         str(ws_hub),
         str(backend_public),
@@ -248,9 +253,14 @@ def parse_input(value: object) -> _Config:
         raise ProbeError("invalid topology")
     trust = value["trusted_proxies"]
     expected = (
-        {routes[0].caddy_ip, routes[1].caddy_ip, *gateway_addresses},
-        {routes[0].caddy_ip},
-        {routes[0].caddy_ip},
+        {
+            routes[0].caddy_ip,
+            routes[1].caddy_ip,
+            str(caddy_internal),
+            *gateway_addresses,
+        },
+        {routes[0].caddy_ip, str(caddy_internal)},
+        {routes[0].caddy_ip, str(caddy_internal)},
     )
     if type(trust) is not list or len(trust) != 3:
         raise ProbeError("invalid topology")

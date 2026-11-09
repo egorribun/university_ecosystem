@@ -255,7 +255,7 @@ def test_tls_edge_sets_the_shared_browser_security_headers() -> None:
         r"^\s*header\s+X-Content-Type-Options\s+nosniff\s*$",
         r"^\s*header\s+X-Frame-Options\s+DENY\s*$",
         r'^\s*header\s+X-XSS-Protection\s+"0"\s*$',
-        r"^\s*header\s+Referrer-Policy\s+no-referrer\s*$",
+        r"^\s*header\s+>Referrer-Policy\s+no-referrer\s*$",
     )
     for pattern in required_headers:
         assert re.search(pattern, site_config, re.MULTILINE), (
@@ -265,7 +265,7 @@ def test_tls_edge_sets_the_shared_browser_security_headers() -> None:
     for relative_path in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
         edge_config = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
         assert re.search(
-            r"^\s*(?:header\s+)?Referrer-Policy\s+no-referrer\s*$",
+            r"^\s*header\s+>Referrer-Policy\s+no-referrer\s*$",
             edge_config,
             re.MULTILINE,
         ), f"{relative_path} must not override the reset page's no-referrer policy"

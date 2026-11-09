@@ -92,7 +92,8 @@
 	encode zstd gzip
 
 	# Security headers
-	header Referrer-Policy no-referrer
+	# Deferred so it replaces the value the proxied app also sends, not adds to it.
+	header >Referrer-Policy no-referrer
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY

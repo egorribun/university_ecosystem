@@ -118,7 +118,13 @@ test("AUD178 binds both initial reset targets to bounded Caddy rows", async () =
     /if \(isLegacyDocumentRequest\) \{\s*const requestHeaders = await route\.request\(\)\.allHeaders\(\)\s*requestHeaders\["x-aud178-correlation"\] = resetBinding\.correlationId/u
   )
   assert.match(resetSpec, /x-aud178-correlation/u)
-  assert.match(resetSpec, /Reflect\.set\(requestHeaders, "x-aud178-correlation", undefined\)/u)
+  // Only the token-bearing 302 may carry the selector: route.continue overrides
+  // would follow the redirect, so the spec fulfils the unfollowed response instead.
+  assert.match(
+    resetSpec,
+    /const redirect = await route\.fetch\(\{ headers: requestHeaders, maxRedirects: 0 \}\)\s*await route\.fulfill\(\{ response: redirect \}\)/u
+  )
+  assert.doesNotMatch(resetSpec, /route\.continue\(\{ headers: requestHeaders \}\)/u)
   assert.match(resetSpec, /aud178-reset-caddy-probe-\$\{project\}\.json/u)
   assert.match(resetSpec, /query_completed_at_ms/u)
   assert.match(resetSpec, /path_completed_at_ms/u)

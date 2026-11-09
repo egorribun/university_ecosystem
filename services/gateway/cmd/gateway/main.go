@@ -544,6 +544,13 @@ func isPublicPasswordRecoveryRoute(subPath, method string) bool {
 	}
 }
 
+// isPublicCSPReportRoute admits the browser's own violation report. Browsers send it
+// without an application token, including from signed-out pages such as password reset,
+// so requiring a JWT here would drop those reports before the backend sees them.
+func isPublicCSPReportRoute(subPath, method string) bool {
+	return method == http.MethodPost && subPath == "/csp-report"
+}
+
 // configureJWKSBackendTLS presents the SPIFFE client identity only when the JWKS
 // endpoint is the internal backend origin. Public JWKS URLs keep ordinary
 // certificate verification because the internal trust bundle does not sign them.
@@ -830,6 +837,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			}
 			if (subPath == "/campus/config" && c.Request.Method == http.MethodGet) ||
 				strings.HasPrefix(subPath, "/auth/") || isPublicPasswordRecoveryRoute(subPath, c.Request.Method) ||
+				isPublicCSPReportRoute(subPath, c.Request.Method) ||
 				(strings.HasPrefix(subPath, "/img/") &&
 					(c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead)) {
 				// Auth routes and the campus config read use optional JWT.

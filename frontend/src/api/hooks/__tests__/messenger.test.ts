@@ -16,12 +16,14 @@
  * shapes from useMessengerController.ts (line 69 + 75 + 82) so the
  * factory refactor preserves React Query cache continuity.
  */
+import { AxiosError, type AxiosResponse } from "axios"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { chatApi } from "@/api/chat"
 import {
   chatQueryKey,
   chatQueryOptions,
+  deniesChatAccess,
   chatsQueryKey,
   chatsQueryOptions,
   messagesQueryKey,
@@ -122,6 +124,73 @@ describe("chatQueryOptions", () => {
         signal: new AbortController().signal,
       })
     ).rejects.toThrow("chatId required")
+  })
+
+  const httpError = (status: number) =>
+    new AxiosError("request failed", "ERR_BAD_REQUEST", undefined, undefined, {
+      status,
+    } as AxiosResponse)
+  const run = (chatId: string) =>
+    (chatQueryOptions(chatId).queryFn as (ctx: { signal: AbortSignal }) => Promise<unknown>)({
+      signal: new AbortController().signal,
+    })
+
+  it.each([403, 404])(
+    "queryFn resolves null when the server denies the chat (%i)",
+    async (status) => {
+      vi.spyOn(chatApi, "getChat").mockRejectedValue(httpError(status))
+      await expect(run("chat-x")).resolves.toBeNull()
+    }
+  )
+
+  it("queryFn reports a denial to its caller and only a denial", async () => {
+    const onDenied = vi.fn()
+    const query = (chatId: string) =>
+      (
+        chatQueryOptions(chatId, onDenied).queryFn as (ctx: {
+          signal: AbortSignal
+        }) => Promise<unknown>
+      )({
+        signal: new AbortController().signal,
+      })
+    vi.spyOn(chatApi, "getChat").mockRejectedValueOnce(httpError(503))
+    await expect(query("chat-x")).rejects.toBeInstanceOf(AxiosError)
+    expect(onDenied).not.toHaveBeenCalled()
+
+    vi.spyOn(chatApi, "getChat").mockRejectedValueOnce(httpError(403))
+    await expect(query("chat-x")).resolves.toBeNull()
+    expect(onDenied).toHaveBeenCalledExactlyOnceWith("chat-x")
+  })
+
+  it("queryFn rethrows other failures so the cached chat survives them", async () => {
+    const failure = httpError(503)
+    vi.spyOn(chatApi, "getChat").mockRejectedValue(failure)
+    await expect(run("chat-x")).rejects.toBe(failure)
+  })
+
+  it("queryFn returns the chat the server sends", async () => {
+    const chat = { id: "chat-x" } as Awaited<ReturnType<typeof chatApi.getChat>>
+    vi.spyOn(chatApi, "getChat").mockResolvedValue(chat)
+    await expect(run("chat-x")).resolves.toBe(chat)
+  })
+})
+
+describe("deniesChatAccess", () => {
+  it.each([
+    [403, true],
+    [404, true],
+    [401, false],
+    [500, false],
+  ])("status %i -> %s", (status, denied) => {
+    const error = new AxiosError("x", "ERR", undefined, undefined, {
+      status,
+    } as AxiosResponse)
+    expect(deniesChatAccess(error)).toBe(denied)
+  })
+
+  it("is false for errors without an HTTP response", () => {
+    expect(deniesChatAccess(new Error("offline"))).toBe(false)
+    expect(deniesChatAccess(new AxiosError("network"))).toBe(false)
   })
 })
 

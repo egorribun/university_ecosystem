@@ -36,7 +36,12 @@ _SNAPSHOT_KEYS = frozenset(
 
 
 class RuntimeNotReady(RuntimeError):
-    """A closed failure without private Docker or network details."""
+    """A closed failure without private Docker or network details.
+
+    ``step`` names the failed group of checks from a fixed list and carries no data.
+    """
+
+    step = "unspecified"
 
 
 def _not_ready() -> NoReturn:
@@ -222,6 +227,7 @@ def derive_probe_input(
     run_id: str,
 ) -> dict[str, object]:
     """Derive the producer input from mutually consistent private records."""
+    step = "owner"
     try:
         if (
             type(owner) is not live_stand.StandOwner
@@ -241,9 +247,11 @@ def derive_probe_input(
             or type(run_id) is not str
         ):
             _not_ready()
+        step = "trust"
         settings, addresses = live_stand._trusted_proxy_settings_from_inspects(
             owner, evidence, containers, networks
         )
+        step = "networks"
         bindings = {
             key: (name, external) for key, name, external in evidence.network_bindings
         }
@@ -253,9 +261,11 @@ def derive_probe_input(
         names = {name: bindings[name][0] for name in logical}
         if set(networks) != set(names.values()):
             _not_ready()
+        step = "endpoints"
         for record in (*containers.values(), probe):
             _check_endpoints(record, networks)
 
+        step = "proxy_env"
         expected_env = {
             "backend": ("TRUSTED_PROXIES", "TRUSTED_PROXIES"),
             "gateway": ("GATEWAY_TRUSTED_PROXIES", "GATEWAY_TRUSTED_PROXIES"),
@@ -266,11 +276,13 @@ def derive_probe_input(
                 settings[setting]
             ):
                 _not_ready()
+        step = "ws_limit"
         # The bounded producer is calibrated to the reviewed 120/minute bucket.
         # Unknown, malformed, or overridden capacity cannot establish its proof.
         ws_limit = _environment(containers["ws-hub"]).get("WS_UPGRADE_RATE_PER_MINUTE")
         if ws_limit not in (None, "120"):
             _not_ready()
+        step = "backend"
         backend_env = _environment(containers["backend"])
         if (
             containers["backend"]["Config"].get("Cmd") != list(_BACKEND_COMMAND)
@@ -285,6 +297,7 @@ def derive_probe_input(
         ):
             _not_ready()
 
+        step = "probe"
         _check_probe(
             probe,
             image,
@@ -295,6 +308,8 @@ def derive_probe_input(
             public_id=networks[names["public"]]["Id"],
             frontend_name=names["frontend_net"],
         )
+
+        step = "input"
 
         def address(service: str, network: str) -> str:
             values = addresses[service][network]
@@ -314,13 +329,14 @@ def derive_probe_input(
 
         attachments = probe["NetworkSettings"]["Networks"]
         result: dict[str, object] = {
-            "schema": "ue-owned-client-ip-probe-input-v2",
+            "schema": "ue-owned-client-ip-probe-input-v3",
             "source_sha": owner.source_sha,
             "run_id": run_id,
             "routes": [
                 row(name, attachments[names[name]]["IPAddress"], address("caddy", name))
                 for name in ("public", "frontend_net")
             ],
+            "caddy_internal_ip": address("caddy", "internal"),
             "gateway_ip": address("gateway", "public"),
             "ws_hub_ip": address("ws-hub", "public"),
             "backend_public_ip": address("backend", "public"),
@@ -346,8 +362,11 @@ def derive_probe_input(
         ValueError,
         live_stand.StandError,
         owned_client_ip_probe.ProbeError,
+        RuntimeNotReady,
     ):
-        _not_ready()
+        failure = RuntimeNotReady("owned client-IP runtime is not ready")
+        failure.step = step
+        raise failure from None
 
 
 @dataclass(frozen=True, slots=True, repr=False)

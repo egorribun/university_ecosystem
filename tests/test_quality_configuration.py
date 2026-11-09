@@ -391,6 +391,18 @@ def test_test_image_installs_git_for_openapi_baseline_regressions() -> None:
     assert "git" in package_install.group("packages").split()
 
 
+def test_backend_runtime_image_installs_libmagic_for_upload_detection() -> None:
+    """Unit tests stub MIME detection, so only the image contract catches its absence."""
+    dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
+    runtime = dockerfile.split(" AS runtime", 1)[1]
+    package_install = re.search(
+        r"apt-get install -y --no-install-recommends (?P<packages>[^\\\n]+)\\", runtime
+    )
+
+    assert package_install is not None
+    assert "libmagic1" in package_install.group("packages").split()
+
+
 def test_test_image_copies_rust_benches_declared_in_workspace_manifests() -> None:
     dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
 
