@@ -14,6 +14,7 @@ import { useURLState } from "@/hooks/useURLState"
 import { logError } from "@/app/logger"
 import { breakpoints } from "@/theme/tokens"
 import { MapBackdrop } from "@/components/map/MapBackdrop"
+import { Button } from "@/components/ui/Button"
 import { MapHeader } from "@/components/map/MapHeader"
 import { MapSidebar } from "@/components/map/MapSidebar"
 import { MapSearchBar } from "@/components/map/MapSearchBar"
@@ -95,7 +96,7 @@ export function MapFeature() {
   const { todayLessons } = useScheduleData()
 
   /* ── Events on map ── */
-  const { events: mapEvents } = useMapEvents()
+  const { events: mapEvents, hasMoreEvents, isLoadingMoreEvents, loadMoreEvents } = useMapEvents()
 
   /* ── Weather ── */
   const { data: weatherData } = useMapWeather()
@@ -332,6 +333,19 @@ export function MapFeature() {
               />
             )}
           </div>
+          {hasMoreEvents ? (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                loading={isLoadingMoreEvents}
+                onClick={loadMoreEvents}
+              >
+                {t("common:buttons.loadMore")}
+              </Button>
+            </div>
+          ) : null}
         </FadeSection>
       </div>
 

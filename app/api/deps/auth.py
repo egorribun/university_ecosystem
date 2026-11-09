@@ -66,6 +66,7 @@ async def _resolve_current_user(
     x_user_id = request.headers.get("X-User-ID")
     x_session_id = request.headers.get("X-Session-ID")
     x_tenant_id = request.headers.get("X-Tenant-ID", "")
+    asserted_tenant: object = x_tenant_id
 
     if x_user_id and x_session_id:
         # RZ-14-05: Verify gateway HMAC-SHA256 signature before trusting these headers.
@@ -113,6 +114,14 @@ async def _resolve_current_user(
         # Fallback tracking for direct backend access
         payload = AuthTokenService.extract_and_decode_token(request, token, locale)
         user_id, jti = AuthTokenService.validate_payload(payload, locale)
+        asserted_tenant = payload.get("tenant_id")
+
+    if settings.mvp_tenant_id is not None:
+        # Gateway HMAC or decoded JWT has already authenticated this claim.
+        # Legacy unscoped tokens must reauthenticate; an HTTP routing hint is
+        # never a substitute for the issuer's durable tenant assignment.
+        if asserted_tenant != str(settings.mvp_tenant_id):
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     # 2. JTI Revocation Check — required O(1) cross-service check before cache
     # or database access. PostgreSQL remains authoritative in this process,
@@ -194,6 +203,9 @@ async def _resolve_current_user(
             session_id=session.id,
             mfa_epoch=session.mfa_epoch,
         )
+
+    if settings.mvp_tenant_id is not None and user.tenant_id != settings.mvp_tenant_id:
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     # 4. Security Lifecycle Validation
     if session is None:

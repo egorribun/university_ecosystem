@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, settings
+from app.core.db.base import Base as Base
 from app.core.logging import get_logger, is_logger_enabled
 from app.core.protocols import AsyncDatabaseSession
 
@@ -644,23 +644,25 @@ def get_read_engine() -> AsyncEngine:
     return _read_replica_engine if _read_replica_engine is not None else _engine  # type: ignore[return-value]
 
 
-class Base(DeclarativeBase):
-    """Declarative Base for all models. (TD-002: id is per-model or mixin)"""
-
-
 async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
     # PERF-05 (audit 2026-03-04): Removed the `for _ in range(3)` retry loop.
     # FastAPI generator dependencies yield exactly once — the loop body after
     # `yield` is never re-entered, so all three retry iterations were dead code.
     # Stale connections are already handled by pool_pre_ping=True at engine level.
+    from app.core.tenant import require_mvp_tenant
+
     async with async_session() as session:
+        await require_mvp_tenant(session)
         yield session
 
 
 async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
     # Use the pre-allocated read_session_factory for efficiency
+    from app.core.tenant import require_mvp_tenant
+
     async with read_session_factory() as session:
+        await require_mvp_tenant(session)
         yield session
 
 

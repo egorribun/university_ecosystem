@@ -24,16 +24,17 @@ const SCRYPT_V3: &str = "7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f
 
 #[test]
 fn pbkdf2_hmac_sha256_rfc7914_vector() {
-    assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
-        PBKDF2_PASSWD_SALT_C1
-    );
+    // The one-round RFC vector tests the upstream primitive, not the exported
+    // API: production callers cannot opt out of the compatibility floor.
+    let mut derived = [0_u8; 64];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(b"passwd", b"salt", 1, &mut derived);
+    assert_eq!(hex::encode(derived), PBKDF2_PASSWD_SALT_C1);
 }
 
 #[test]
 fn pbkdf2_length_tracks_key_size() {
     assert_eq!(
-        pbkdf2_derive("pw", "salt", 2, 20)
+        pbkdf2_derive("pw", "salt", 1_000, 20)
             .expect("valid PBKDF2 parameters")
             .len(),
         40
@@ -44,8 +45,21 @@ fn pbkdf2_length_tracks_key_size() {
 fn pbkdf2_rejects_unbounded_parameters() {
     assert!(pbkdf2_derive("pw", "salt", 0, 32).is_err());
     assert!(pbkdf2_derive("pw", "salt", 1_000_001, 32).is_err());
-    assert!(pbkdf2_derive("pw", "salt", 1, 0).is_err());
-    assert!(pbkdf2_derive("pw", "salt", 1, 1_025).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1_000, 0).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1_000, 1_025).is_err());
+}
+
+#[test]
+fn pbkdf2_public_api_enforces_the_cost_boundary() {
+    for iterations in [1, 2, 999] {
+        assert!(pbkdf2_derive("pw", "salt", iterations, 32).is_err());
+    }
+    let mut expected = [0_u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(b"pw", b"salt", 1_000, &mut expected);
+    assert_eq!(
+        pbkdf2_derive("pw", "salt", 1_000, 32).expect("valid minimum cost"),
+        hex::encode(expected)
+    );
 }
 
 #[test]
@@ -121,6 +135,19 @@ fn scrypt_rfc7914_vector3() {
 fn scrypt_dk_len_is_honored() {
     let out = scrypt_derive(b"pw", b"salt", 16, 1, 1, 32).expect("valid params");
     assert_eq!(out.len(), 32);
+}
+
+#[test]
+fn scrypt_public_api_rejects_degenerate_cost() {
+    // AUD-414: N=1 was accepted through the public entry point before the floor.
+    assert!(scrypt_derive(b"pw", b"salt", 1, 1, 1, 32).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 8, 1, 1, 32).is_err());
+    assert_eq!(
+        scrypt_derive(b"pw", b"salt", 16, 1, 1, 32)
+            .expect("the RFC 7914 minimum cost is valid")
+            .len(),
+        32
+    );
 }
 
 #[test]
@@ -205,7 +232,7 @@ proptest! {
 
     #[test]
     fn pbkdf2_output_size_is_exact(key_size in 1usize..=128) {
-        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size)
+        let digest = pbkdf2_derive("property-password", "property-salt", 1_000, key_size)
             .expect("bounded PBKDF2 key size is valid");
         prop_assert_eq!(digest.len(), key_size * 2);
     }

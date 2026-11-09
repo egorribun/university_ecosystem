@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("wasm-sanitizer", () => ({
+  default: vi.fn(async () => undefined),
   sanitize_rich_text: mocks.sanitize_rich_text,
   strip_html: mocks.strip_html,
 }))

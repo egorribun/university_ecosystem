@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -26,6 +26,7 @@ from scripts.owned_nats_coordinator import (
     MessagePostEvidence,
     OwnerEvidence,
     ParticipantEvidence,
+    SendPhase,
 )
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict, MessageEvidence
 from scripts.owned_nats_owner_adapter import OwnerFilePins
@@ -54,6 +55,14 @@ class HttpObservationNotReady(RuntimeError):
 
     def __repr__(self) -> str:
         return "HttpObservationNotReady()"
+
+
+class _TransportPhaseFailure(HttpObservationNotReady):
+    """Closed transport phase for the send boundary; carries no transport text."""
+
+    def __init__(self, phase: SendPhase) -> None:
+        super().__init__()
+        self.phase = phase
 
 
 def _not_ready() -> None:
@@ -140,6 +149,7 @@ class OwnedNatsHttpPort:
         "_peer_id",
         "_pins",
         "_send_attempted",
+        "_send_request_id",
         "_test_transport",
         "_verified_login",
     )
@@ -170,6 +180,7 @@ class OwnedNatsHttpPort:
             self._verified_login = False
             self._create_attempted = False
             self._send_attempted = False
+            self._send_request_id: str | None = None
             self._closed = False
         except (AttributeError, TypeError, ValueError):
             _not_ready()
@@ -450,6 +461,8 @@ class OwnedNatsHttpPort:
             return _decode_json_object(body)
         except HttpObservationNotReady:
             raise
+        except httpx.TimeoutException:
+            raise _TransportPhaseFailure(SendPhase.TIMEOUT) from None
         except Exception:
             _not_ready()
         finally:
@@ -466,12 +479,17 @@ class OwnedNatsHttpPort:
         data: dict[str, str] | None = None,
         json_body: dict[str, str] | None = None,
         files: dict[str, tuple[None, str]] | None = None,
+        request_id: str | None = None,
     ) -> tuple[int, dict[str, object] | None]:
         self._check_owner(owner, deadline)
         seconds = self._seconds(deadline)
         headers: dict[str, str] = {}
         if method == "POST":
             headers["X-CSRF-Token"] = self._csrf_token(client.cookies)
+        if request_id is not None:
+            if not _uuid(request_id):
+                _not_ready()
+            headers["X-Request-ID"] = request_id
         response: httpx.Response | None = None
         try:
             request = client.build_request(
@@ -502,6 +520,15 @@ class OwnedNatsHttpPort:
                 follow_redirects=False,
             )
             status = response.status_code
+            if request_id is not None:
+                echoed = response.headers.get_list("x-request-id")
+                # ServerErrorMiddleware writes an unhandled 500 outside
+                # RequestIDMiddleware, so that status carries no echo by design.
+                # The adapter-generated id stays the only correlation key then.
+                # Every other status must echo exactly this id or lose correlation.
+                server_error_without_echo = status == 500 and not echoed
+                if not server_error_without_echo and echoed != [request_id]:
+                    self._send_request_id = None
             if type(status) is not int or 300 <= status < 400:
                 _not_ready()
             body = (
@@ -512,6 +539,10 @@ class OwnedNatsHttpPort:
             return status, body
         except HttpObservationNotReady:
             raise
+        except httpx.TimeoutException:
+            raise _TransportPhaseFailure(SendPhase.TIMEOUT) from None
+        except httpx.ConnectError:
+            raise _TransportPhaseFailure(SendPhase.CONNECT_ERROR) from None
         except Exception:
             _not_ready()
         finally:
@@ -716,20 +747,30 @@ class OwnedNatsHttpPort:
         ):
             _not_ready()
         self._send_attempted = True
+        self._send_request_id = str(uuid4())
         operation_deadline = self._operation_deadline(deadline)
         try:
-            return self._run_bounded(
+            evidence = self._run_bounded(
                 operation_deadline,
                 lambda bounded: self._send_operation(
                     owner, admin_id, chat_id, content, bounded
                 ),
             )
-        except HttpObservationNotReady:
+        except HttpObservationNotReady as error:
             self._poison()
-            raise
+            phase = (
+                error.phase
+                if isinstance(error, _TransportPhaseFailure)
+                else SendPhase.NOT_READY
+            )
+            return MessagePostEvidence(status_code=None, message=None, phase=phase)
         except Exception:
             self._poison()
             _not_ready()
+        if evidence.message is None or evidence.phase is not None:
+            # A failed or unexpected POST is never followed by another request.
+            self._poison()
+        return evidence
 
     async def _send_operation(
         self,
@@ -747,9 +788,14 @@ class OwnedNatsHttpPort:
                 "POST",
                 f"/api/v1/chats/{chat_id}/messages",
                 files={"content": (None, content)},
+                request_id=self._send_request_id,
             )
-            if status != 200 or body is None:
-                _not_ready()
+            if status != 200:
+                return MessagePostEvidence(status_code=status, message=None)
+            if body is None:
+                return MessagePostEvidence(
+                    status_code=status, message=None, phase=SendPhase.BODY_MISMATCH
+                )
             message_id = body.get("id")
             response_chat_id = body.get("chat_id")
             sender_id = body.get("sender_id")
@@ -766,7 +812,9 @@ class OwnedNatsHttpPort:
                 or type(attachments) is not list
                 or attachments
             ):
-                _not_ready()
+                return MessagePostEvidence(
+                    status_code=status, message=None, phase=SendPhase.BODY_MISMATCH
+                )
             self._save_cookies(client)
             return MessagePostEvidence(
                 status_code=status,
@@ -777,6 +825,7 @@ class OwnedNatsHttpPort:
         if type(deadline) is not Deadline:
             _not_ready()
         self._closed = True
+        self._send_request_id = None
         self._verified_login = False
         try:
             self._cookies.clear()

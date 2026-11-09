@@ -317,22 +317,58 @@ describe("etagCache — session epoch invalidation", () => {
 describe("etagCache — applyEtagHeader", () => {
   beforeEach(() => {
     etagCache.clear()
+    responseCache.clear()
+    registerSigningKeyAccessor(() => SIGNING_KEY)
   })
 
-  it("sets If-None-Match from the cached tag when none present", () => {
+  afterEach(() => {
+    etagCache.clear()
+    responseCache.clear()
+    registerSigningKeyAccessor(() => null)
+  })
+
+  it("sets If-None-Match only when a signed response body is available", async () => {
+    await handleEtagResponse(
+      makeResponse(
+        200,
+        { etag: '"cached-etag"', "content-type": "application/json" },
+        { items: ["retained response"] }
+      ),
+      "events:list"
+    )
+    const config = makeRequestConfig()
+    applyEtagHeader(config, "events:list")
+    expect((config.headers as AxiosHeaders).get("if-none-match")).toBe('"cached-etag"')
+  })
+
+  it("does not generate If-None-Match for an orphaned ETag", () => {
     etagCache.set("events:list", '"cached-etag"')
     const config = makeRequestConfig()
     applyEtagHeader(config, "events:list")
-    const headers = config.headers as AxiosHeaders
-    expect(headers.get("if-none-match")).toBe('"cached-etag"')
+    expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
   })
 
-  it("does not overwrite an existing If-None-Match header", () => {
+  it("does not generate If-None-Match when the live signing key is unavailable", async () => {
+    await handleEtagResponse(
+      makeResponse(
+        200,
+        { etag: '"cached-etag"', "content-type": "application/json" },
+        { items: ["retained response"] }
+      ),
+      "events:list"
+    )
+    registerSigningKeyAccessor(() => null)
+
+    const config = makeRequestConfig()
+    applyEtagHeader(config, "events:list")
+    expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
+  })
+
+  it("preserves an explicit caller condition even without a cached response body", () => {
     etagCache.set("events:list", '"cached-etag"')
     const config = makeRequestConfig({ "if-none-match": '"caller-supplied"' })
     applyEtagHeader(config, "events:list")
-    const headers = config.headers as AxiosHeaders
-    expect(headers.get("if-none-match")).toBe('"caller-supplied"')
+    expect((config.headers as AxiosHeaders).get("if-none-match")).toBe('"caller-supplied"')
   })
 
   it("leaves headers without If-None-Match when there is no cached tag", () => {
@@ -340,8 +376,7 @@ describe("etagCache — applyEtagHeader", () => {
     const setSpy = vi.spyOn(AxiosHeaders.prototype, "set")
     try {
       applyEtagHeader(config, "no-such-key")
-      const headers = config.headers as AxiosHeaders
-      expect(headers.has("if-none-match")).toBe(false)
+      expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
       expect(setSpy).not.toHaveBeenCalled()
     } finally {
       setSpy.mockRestore()
@@ -1111,6 +1146,27 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
 
   afterEach(() => {
     localStorage.clear()
+  })
+
+  it("does not send a rehydrated ETag without its in-memory body", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([["reload:key", { tag: '"persisted-tag"', lastUsed: 123 }]])
+    )
+    const mod = await import("../etagCache")
+    mod.registerSigningKeyAccessor(() => SIGNING_KEY)
+
+    try {
+      expect(mod.etagCache.get("reload:key")).toBe('"persisted-tag"')
+      expect(mod.responseCache.get("reload:key")).toBeUndefined()
+      const config = makeRequestConfig()
+      mod.applyEtagHeader(config, "reload:key")
+      expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
+    } finally {
+      mod.etagCache.clear()
+      mod.responseCache.clear()
+      mod.registerSigningKeyAccessor(() => null)
+    }
   })
 
   it("hydrates the in-memory map from localStorage on first get()", async () => {

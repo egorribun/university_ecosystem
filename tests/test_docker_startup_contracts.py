@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
+import shlex
 import shutil
 import subprocess
+import sys
+from ipaddress import IPv4Address
 from pathlib import Path
 
 import pytest
@@ -16,6 +21,11 @@ from tests.test_helm_staging_contract import _resolved_staging_args
 def _find_repo_root() -> Path:
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
+        if (
+            parent.name == "candidate"
+            and parent.parent.name == "temporal-full-auth-luna"
+        ):
+            return parent
         if parent.name == "mutants":
             continue
         if (parent / "pyproject.toml").exists() and (parent / "charts").exists():
@@ -24,6 +34,7 @@ def _find_repo_root() -> Path:
 
 
 ROOT = _find_repo_root()
+REPOSITORY_ROOT = ROOT
 PROMETHEUS_IMAGE = (
     "prom/prometheus:v3.15.0@"
     "sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e"
@@ -492,14 +503,44 @@ def test_backend_image_retries_transient_uv_registry_failures() -> None:
     assert "uv sync failed (network), retry $n/5 in 5s" in dockerfile
 
 
-def test_backend_disables_uvicorn_access_logging_with_query_strings() -> None:
-    """UvicornWorker emits the full ASGI target; keep access logging disabled."""
+def test_backend_disables_uvicorn_access_logging_with_query_strings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The SPIFFE UvicornWorker emits the full ASGI target; keep access logs off."""
     dockerfile = _read("backend.Dockerfile")
     command = dockerfile[dockerfile.index('CMD ["gunicorn"') :]
 
-    assert '"--worker-class", "uvicorn.workers.UvicornWorker"' in command
+    assert '"--worker-class", "app.server.spiffe_worker.BackendWorker"' in command
     assert '"--access-logfile"' not in command
     assert '"--error-logfile", "-"' in command
+
+    # Behavioural proof: build the real worker from the gunicorn defaults the
+    # image uses (no access logfile) and check that uvicorn.access stays silent.
+    if sys.platform == "win32":
+        pytest.importorskip("grp", reason="Gunicorn requires the Unix-only grp module.")
+
+    from gunicorn.config import Config
+    from gunicorn.glogging import Logger
+
+    from app.server.spiffe_worker import BackendWorker
+
+    access = logging.getLogger("uvicorn.access")
+    error = logging.getLogger("uvicorn.error")
+    for logger in (access, error):
+        monkeypatch.setattr(logger, "handlers", list(logger.handlers))
+        monkeypatch.setattr(logger, "propagate", logger.propagate)
+        monkeypatch.setattr(logger, "level", logger.level)
+
+    cfg = Config()
+    assert cfg.accesslog is None
+    worker = BackendWorker(0, 1, [], None, 30, cfg, Logger(cfg))
+    assert worker.log.access_log.handlers == []
+    assert access.handlers == []
+    assert access.propagate is False
+
+    access.info('127.0.0.1 - "GET /assets?token=do-not-log HTTP/1.1" 200')
+    captured = capsys.readouterr()
+    assert "do-not-log" not in captured.out + captured.err
 
 
 def test_launcher_validates_and_reconciles_existing_rsa_material() -> None:
@@ -558,6 +599,27 @@ def test_temporal_token_claims_are_initialized_and_existing_token_is_validated()
     assert "Test-TemporalServiceToken" in token_function
     assert "Valid existing Temporal service token" in token_function
     assert "Remove-Item" in token_function
+
+
+def test_temporal_service_token_grants_the_permissions_the_default_authorizer_requires() -> (
+    None
+):
+    """Temporal's default claim mapper grants roles only from a permissions claim (AUD-506)."""
+    script = _read("start-docker.ps1")
+    minter = _powershell_function(
+        script, "New-TemporalServiceToken", "Test-ServiceHttp"
+    )
+    validator = _powershell_function(
+        script, "Test-TemporalServiceToken", "New-TemporalServiceToken"
+    )
+
+    payload_start = minter.index("$payloadObj = [PSCustomObject]@{")
+    payload = minter[payload_start : minter.index("}", payload_start)]
+    assert "permissions = @('default:write')" in payload
+    assert "$payload.permissions -isnot [array]" in validator
+    assert "$permissions = @($payload.permissions)" in validator
+    assert "$permissions.Count -ne 1" in validator
+    assert "$permissions[0] -cne 'default:write'" in validator
 
 
 def test_nightly_gate_mints_a_signed_temporal_service_jwt() -> None:
@@ -736,6 +798,25 @@ def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
         assert "docker-compose.full.yml" in wrapper
 
 
+def test_direct_full_compose_bootstrap_fails_closed_without_launcher_lease() -> None:
+    # The wrappers pass through to Compose and do not mint credentials. Their
+    # first-run behavior therefore depends on the initializer's no-create binds.
+    for wrapper_path in ("scripts/dc.ps1", "scripts/dc.sh"):
+        wrapper = (REPOSITORY_ROOT / wrapper_path).read_text(encoding="utf-8")
+        assert "docker compose" in wrapper.lower()
+        assert "New-TemporalBootstrapProfile" not in wrapper
+        assert "temporal operator namespace create" not in wrapper
+
+    for compose_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        init = _compose(compose_path)["services"]["temporal-namespace-init"]
+        profile = next(
+            mount
+            for mount in init["volumes"]
+            if mount["target"] == "/run/temporal-bootstrap/profile.toml"
+        )
+        assert profile["bind"]["create_host_path"] is False
+
+
 def test_start_script_waits_for_the_full_stack_without_auto_removing_containers() -> (
     None
 ):
@@ -751,7 +832,21 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     selection_end = script.index("do {", selection_start)
     selection_block = script[selection_start:selection_end]
 
-    assert "--force-recreate" not in script
+    start_services = script[script.index("# -- Start services") : services_start]
+    initializer_start = start_services.index("if ($fullTemporalBootstrap) {")
+    long_lived_start = start_services.index(
+        "\nif ($script:LiveAcceptanceCore) {", initializer_start
+    )
+    recreate_lines = [
+        line.strip() for line in script.splitlines() if "--force-recreate" in line
+    ]
+    assert recreate_lines == [
+        "docker compose @ComposeArgs --env-file $EnvFile up --no-start "
+        "--no-deps --no-build --pull never --force-recreate temporal-namespace-init"
+    ]
+    assert recreate_lines[0] in start_services[initializer_start:long_lived_start]
+    assert "--force-recreate" not in start_services[long_lived_start:]
+    assert "--remove-orphans" not in start_services
     assert "ps --all" in script
     assert (
         "logs --tail=50 migrations postgres-databases-init minio-init "
@@ -1053,6 +1148,65 @@ def test_base_worker_metrics_are_reachable_only_through_loopback_publish() -> No
     assert "127.0.0.1:9102:9101" in worker["ports"]
 
 
+@pytest.mark.parametrize("live_overlay", [False, True], ids=["full", "full-live"])
+def test_full_worker_metrics_bind_for_internal_prometheus(live_overlay: bool) -> None:
+    worker = _compose("docker-compose.full.yml")["services"]["notifications-worker"]
+    environment = dict(worker["environment"])
+    if live_overlay:
+        # Compose merges environment mappings by variable name. Delivery settings
+        # in the live overlay must not revert the worker to its loopback default.
+        live = _compose("docker-compose.live.yml")["services"]["notifications-worker"]
+        environment.update(live.get("environment", {}))
+
+    assert environment.get("NOTIFICATIONS_WORKER_METRICS_HOST") == str(IPv4Address(0))
+    assert environment.get("NOTIFICATIONS_WORKER_METRICS_PORT") == "9101"
+
+    prometheus = _compose("infrastructure/observability/prometheus.yml")
+    jobs = [
+        job
+        for job in prometheus["scrape_configs"]
+        if job["job_name"] == "notifications-worker"
+    ]
+    assert len(jobs) == 1
+    assert jobs[0]["static_configs"] == [{"targets": ["notifications-worker:9101"]}]
+    assert jobs[0].get("scheme", "http") == "http"
+    assert jobs[0].get("metrics_path", "/metrics") == "/metrics"
+
+
+@pytest.mark.parametrize("live_overlay", [False, True], ids=["full", "full-live"])
+def test_full_worker_monitor_stays_on_unpublished_internal_network(
+    live_overlay: bool,
+) -> None:
+    models = [_compose("docker-compose.full.yml")]
+    if live_overlay:
+        models.append(_compose("docker-compose.live.yml"))
+
+    worker_networks = set()
+    prometheus_networks = set()
+    network_config = {}
+    for model in models:
+        worker = model["services"]["notifications-worker"]
+        assert not worker.get("ports"), "worker monitoring must not publish a host port"
+        assert not worker.get("network_mode"), (
+            "worker must use its own bridge namespace"
+        )
+        worker_networks.update(worker.get("networks", []))
+        prometheus = model["services"]["prometheus"]
+        assert not prometheus.get("network_mode"), (
+            "scraper must use its bridge networks"
+        )
+        prometheus_networks.update(prometheus.get("networks", []))
+        for name, config in model.get("networks", {}).items():
+            network_config[name] = {**network_config.get(name, {}), **(config or {})}
+
+    assert worker_networks == {"internal"}
+    assert "internal" in prometheus_networks
+    assert network_config["internal"].get("internal") is True
+    assert not network_config["internal"].get("external")
+    worker = models[0]["services"]["notifications-worker"]
+    assert "http://127.0.0.1:9101/healthz" in " ".join(worker["healthcheck"]["test"])
+
+
 def test_backend_compose_healthchecks_use_lean_readiness_endpoint() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         healthcheck = _compose(relative_path)["services"]["backend"]["healthcheck"]
@@ -1087,7 +1241,18 @@ def test_temporal_waits_for_its_healthy_jwks_source() -> None:
 def test_rs256_backend_mounts_the_launcher_managed_keypair() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         backend = _compose(relative_path)["services"]["backend"]
-        assert "./.secrets:/app/.secrets:ro" in backend["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/jwt_rs256.pem",
+            "target": "/app/.secrets/jwt_rs256.pem",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in backend["volumes"]
+        assert not any(
+            volume.get("source") == "./.secrets"
+            for volume in backend["volumes"]
+            if isinstance(volume, dict)
+        )
 
 
 def test_file_processor_exports_traces_to_tempo() -> None:
@@ -1208,16 +1373,37 @@ def test_full_stack_observability_is_wired_end_to_end() -> None:
 
 
 def test_temporal_namespace_init_is_quietly_idempotent() -> None:
+    init_script = _read("scripts/temporal/namespace-init.sh")
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
-        command = _compose(relative_path)["services"]["temporal-namespace-init"][
-            "command"
-        ][0]
-
-        cluster_health = command.index("temporal operator cluster health")
-        describe = command.index("temporal operator namespace describe")
-        create = command.index("temporal operator namespace create")
-        assert cluster_health < describe < create
-        assert "stabilization" in command
+        service = _compose(relative_path)["services"]["temporal-namespace-init"]
+        assert service["entrypoint"] == ["/bin/sh", "/etc/temporal/namespace-init.sh"]
+        assert service["command"] == []
+        assert service["network_mode"] == "service:temporal"
+        assert "networks" not in service
+        assert service.get("environment", {}) == {}
+        assert service["user"] == "1000:1000"
+        assert service["read_only"] is True
+        assert service["cap_drop"] == ["ALL"]
+        assert service["security_opt"] == ["no-new-privileges:true"]
+        assert {mount["target"] for mount in service["volumes"]} == {
+            "/etc/temporal/namespace-init.sh",
+            "/run/temporal-bootstrap/profile.toml",
+            "/run/temporal-worker/token",
+        }
+        assert all(
+            mount["type"] == "bind"
+            and mount["read_only"] is True
+            and mount["bind"]["create_host_path"] is False
+            for mount in service["volumes"]
+        )
+        assert (
+            "env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp temporal" in init_script
+        )
+        assert "127.0.0.1:7233" in init_script
+        assert '--config-file "$worker_profile"' in init_script
+        assert '--config-file "$profile"' in init_script
+        assert "operator namespace create" in init_script
+        assert "exit 0" in init_script
 
 
 def test_temporal_frontend_binds_every_attached_compose_network() -> None:
@@ -1228,13 +1414,82 @@ def test_temporal_frontend_binds_every_attached_compose_network() -> None:
         namespace_init = services["temporal-namespace-init"]
 
         assert temporal["environment"]["BIND_ON_IP"] == "0.0.0.0"  # noqa: S104
-        assert set(temporal["networks"]) & set(namespace_init["networks"])
+        assert namespace_init["network_mode"] == "service:temporal"
+        assert "networks" not in namespace_init
+    base_temporal_networks = set(
+        _compose("docker-compose.yml")["services"]["temporal"]["networks"]
+    )
+    for relative_path in ("docker-compose.full.yml", "docker-compose.go.yml"):
+        services = _compose(relative_path)["services"]
+        temporal_networks = set(services.get("temporal", {}).get("networks", {}))
+        if not temporal_networks:
+            temporal_networks = base_temporal_networks
+        assert temporal_networks & set(services["file-processor"]["networks"])
 
     temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
-    for service in ("frontend", "matching", "history", "worker"):
+    rpc = temporal_config["services"]["frontend"]["rpc"]
+    assert rpc["bindOnLocalHost"] is False
+    assert rpc["bindOnIP"] == "0.0.0.0"  # noqa: S104 - the authenticated public frontend
+    # Internal services share the container. Only loopback can reach them, so
+    # the unauthenticated internal-frontend is never on another container's network.
+    for service in ("internal-frontend", "matching", "history", "worker"):
         rpc = temporal_config["services"][service]["rpc"]
         assert rpc["bindOnLocalHost"] is False
-        assert rpc["bindOnIP"] == "0.0.0.0"  # noqa: S104
+        assert rpc["bindOnIP"] == "127.0.0.1"
+    assert temporal_config["global"]["membership"]["broadcastAddress"] == "127.0.0.1"
+
+
+def test_temporal_runs_internal_frontend_for_the_worker_system_client() -> None:
+    """Without internal-frontend the scanner's system client uses the auth-gated public port."""
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    services = temporal_config["services"]
+    authorization = temporal_config["global"]["authorization"]
+    assert authorization["claimMapper"] == "default"
+    assert authorization["authorizer"] == "default"
+    assert authorization["audience"] == "temporal"
+    assert authorization["jwtKeyProvider"]["keySourceURIs"] == ["${TEMPORAL_JWKS_URL}"]
+
+    internal_ports = {
+        str(port)
+        for name, spec in services.items()
+        if name != "frontend"
+        for port in (
+            spec["rpc"]["grpcPort"],
+            spec["rpc"]["membershipPort"],
+        )
+    }
+    internal_http_port = services["internal-frontend"]["rpc"].get("httpPort")
+    if internal_http_port:
+        internal_ports.add(str(internal_http_port))
+
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        temporal = _compose(relative_path)["services"]["temporal"]
+        assert temporal["environment"]["TEMPORAL_SERVICES"] == (
+            "frontend,history,matching,worker,internal-frontend"
+        )
+        assert temporal["environment"]["TEMPORAL_JWKS_URL"].startswith("https://")
+        ca_volume = (
+            "temporal_jwks_ca"
+            if relative_path == "docker-compose.yml"
+            else "temporal-jwks-ca"
+        )
+        assert set(temporal["volumes"]) == {
+            "./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro",
+            "./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro",
+            f"{ca_volume}:/etc/temporal/jwks-ca:ro",
+        }
+        published_ports = temporal.get("ports", [])
+        published_container_ports = set()
+        for declaration in published_ports:
+            assert isinstance(declaration, str)
+            host_ip, _host_port, container_port = declaration.split(":")
+            assert host_ip == "127.0.0.1"
+            published_container_ports.add(container_port)
+        assert published_container_ports <= {"7233", "7243"}
+        assert not internal_ports & published_container_ports
+
+    assert services["internal-frontend"]["rpc"]["grpcPort"] == 7236
+    assert "authorization" not in services["internal-frontend"]
 
 
 def test_postgres_database_bootstrap_is_cleanly_idempotent() -> None:
@@ -1386,8 +1641,24 @@ def test_local_frontend_documentation_uses_caddy_as_supported_entry() -> None:
     assert "Единый цифровой хаб (Caddy edge, включая Frontend SSR)" in _read(
         "README.ru.md"
     )
-    assert "supported host entry" in _read("docs/DEPLOY.en.md")
-    assert "поддерживаемая точка входа с хоста" in _read("docs/DEPLOY.md")
+    english_deploy = _read("docs/DEPLOY.en.md")
+    assert "host ports `80` and `443`" in english_deploy
+    assert "full-Compose Caddyfile serves the app on `:80`" in english_deploy
+    assert "Caddy proxies requests to `frontend:3000`" in english_deploy
+    russian_deploy = _read("docs/DEPLOY.md")
+    russian_frontend_line = next(
+        line for line in russian_deploy.splitlines() if "`frontend_net`" in line
+    )
+    assert all(
+        detail in russian_frontend_line
+        for detail in (
+            "Caddy",
+            "`80`",
+            "`443`",
+            "`:80`",
+            "`frontend:3000`",
+        )
+    )
 
     for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
         document = _read(relative_path)
@@ -1433,14 +1704,16 @@ def test_spicedb_does_not_log_database_credentials_and_has_watch_support() -> No
         spicedb = services["spicedb"]
 
         assert "${POSTGRES_PASSWORD}" not in spicedb["command"]
-        assert spicedb["environment"]["PGPASSWORD"].startswith("${POSTGRES_PASSWORD:?")
+        assert spicedb["environment"]["PGPASSWORD"].startswith(
+            "${UE_SPICEDB_DB_PASSWORD:?"
+        )
         assert "track_commit_timestamp=on" in postgres["command"]
 
         assert migration["image"] == spicedb["image"]
         assert migration["command"][:3] == ["datastore", "migrate", "head"]
         assert "--skip-release-check=true" in migration["command"]
         assert migration["environment"]["PGPASSWORD"].startswith(
-            "${POSTGRES_PASSWORD:?"
+            "${UE_SPICEDB_DB_PASSWORD:?"
         )
         assert migration["depends_on"]["postgres-databases-init"]["condition"] == (
             "service_completed_successfully"
@@ -1762,7 +2035,25 @@ def test_file_processor_uses_prefixed_env_and_file_based_rs256_verification() ->
         assert all(
             not key.startswith(("NATS_", "MINIO_", "JWT_")) for key in environment
         )
-        assert "./.secrets:/app/.secrets:ro" in service["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/jwt_rs256.pub.pem",
+            "target": "/app/.secrets/jwt_rs256.pub.pem",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in service["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/temporal_api_key",
+            "target": "/app/.secrets/temporal_api_key",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in service["volumes"]
+        assert not any(
+            volume.get("source") == "./.secrets"
+            for volume in service["volumes"]
+            if isinstance(volume, dict)
+        )
 
         revocation_service = (
             "revocation-redis"
@@ -1804,15 +2095,17 @@ def test_production_pgbouncer_uses_a_supported_image_and_file_secret() -> None:
     assert compose["secrets"]["postgres_password"]["file"].startswith(
         "${POSTGRES_PASSWORD_SOURCE_FILE:"
     )
-    assert "postgres_password" in pgbouncer["secrets"]
+    assert set(pgbouncer["secrets"]) == {"ue_app_db_password", "ue_worker_db_password"}
     assert "postgres_password" in postgres["secrets"]
     assert postgres["environment"]["POSTGRES_PASSWORD_FILE"] == (
         "/run/secrets/postgres_password"
     )
-    assert pgbouncer["environment"]["POOL_MODE"] == "transaction"
-    assert pgbouncer["environment"]["SERVER_TLS_SSLMODE"] == "prefer"
+    pooler_start = _read("infrastructure/pgbouncer/start.sh")
+    assert "pool_mode = transaction" in pooler_start
+    assert "server_tls_sslmode = prefer" in pooler_start
     assert "5432" in " ".join(pgbouncer["healthcheck"]["test"])
-    assert services["migrations"]["depends_on"]["pgbouncer"]["condition"] == (
+    assert "pgbouncer" not in services["migrations"]["depends_on"]
+    assert services["migrations"]["depends_on"]["postgres"]["condition"] == (
         "service_healthy"
     )
 
@@ -1970,9 +2263,11 @@ BACKEND_APPLICATION_SECRET_KEYS = {
     "mfa-trusted-device-active-hmac-key-id",
 }
 MIGRATION_CONNECTION_SECRET_KEYS = {
-    "database-url",
+    # Owner login only: the runtime database-url key is never projected here.
+    "migration-database-url",
     "redis-revocation-url",
     "redis-backend-url",
+    "rate-limit-storage-uri",
     "nats-auth-token",
 }
 MIGRATION_APPLICATION_SECRET_KEYS = {
@@ -1984,11 +2279,13 @@ MIGRATION_APPLICATION_SECRET_KEYS = {
     "spicedb-preshared-key",
     "spotify-token-secret",
     "token-hmac-secret",
+    "idempotency-hmac-secret",
     "mfa-totp-encryption-keys",
 }
 OUTBOX_CONNECTION_SECRET_KEYS = {
     "database-url",
     "redis-backend-url",
+    "rate-limit-storage-uri",
     "nats-url",
     "nats-auth-token",
 }
@@ -2197,7 +2494,10 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": trigger_auth["metadata"]["name"]
     }
     assert "connectionFromEnv" not in postgresql_trigger["metadata"]
-    assert not any(item.get("kind") == "CronJob" for item in resources)
+    # The only CronJob this render may contain is the daily partition retention job.
+    assert {
+        item["metadata"]["name"] for item in resources if item.get("kind") == "CronJob"
+    } == {"contract-university-ecosystem-partition-maintenance"}
     migration = next(
         item
         for item in resources
@@ -2210,14 +2510,19 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     migration_spec = migration["spec"]["template"]["spec"]
     assert migration_spec["automountServiceAccountToken"] is False
     migration_container = migration_spec["containers"][0]
-    assert migration_container["command"] == ["alembic", "upgrade", "head"]
+    assert migration_container["command"] == [
+        "sh",
+        "-c",
+        "alembic upgrade head && python -m app.services.partition_manager",
+    ]
     assert migration_container["image"].endswith(":contract-sha")
     migration_env = {entry["name"]: entry for entry in migration_container["env"]}
     _assert_secret_file_values(
         migration_env,
         connections_secret,
         {
-            "DATABASE_URL": "database-url",
+            "DATABASE_URL": "migration-database-url",
+            "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "REVOCATION_REDIS_URL": "redis-revocation-url",
         },
     )
@@ -2228,6 +2533,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "SECRET_KEY": "jwt-secret",
             "AUDIT_LOG_SECRET": "audit-log-secret",
             "ELASTICSEARCH_PASSWORD": "elasticsearch-password",
+            "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",
             "INTERNAL_AUTH_TOKEN": "ws-hub-internal-secret",
             "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
             "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
@@ -2246,6 +2552,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         MIGRATION_CONNECTION_SECRET_KEYS,
         MIGRATION_APPLICATION_SECRET_KEYS,
     )
+    assert migration_env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert migration_env["ENVIRONMENT"]["value"] == "development"
     assert migration_container["securityContext"]["readOnlyRootFilesystem"] is True
     deployments = {
@@ -2420,11 +2727,13 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         {
             "DATABASE_URL": "database-url",
             "CACHE_REDIS_URL": "redis-backend-url",
+            "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "NATS_URL": "nats-url",
             "NATS_AUTH_TOKEN": "nats-auth-token",
         },
     )
     assert "KEDA_POSTGRESQL_CONNECTION" not in outbox_env
+    assert outbox_env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
     assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
     assert "REVOCATION_REDIS_URL" not in outbox_env
@@ -2693,6 +3002,8 @@ def _production_render_command(helm: str) -> list[str]:
         *_resolved_staging_args(),
         "--set-string",
         "backend.config.mfaTotpActiveEncryptionKeyId=totp-active-contract",
+        "--set",
+        "internalHttpMTLS.enabled=true",
         "--set-string",
         "global.environment=production",
         "--set-string",
@@ -2766,16 +3077,16 @@ def test_non_root_python_images_create_the_declared_home_directory() -> None:
 
 def test_caddy_plugin_dependency_is_version_pinned() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
+    go_mod = _read("services/caddy/go.mod")
 
-    assert "ARG XCADDY_VERSION=v0.4.7" in dockerfile
-    assert "go install" in dockerfile
-    assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
+    # AUD-482: the plugin version is committed in go.mod; xcaddy no longer resolves
+    # the graph while the image is built.
+    assert "xcaddy" not in dockerfile
+    assert "go install" not in dockerfile
     assert "ca-certificates=20260909-r0" in dockerfile
     assert "git=2.54.0-r0" in dockerfile
-    assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
-    assert not re.search(
-        r"--with github\.com/mholt/caddy-ratelimit\s*$", dockerfile, re.M
-    )
+    assert "github.com/mholt/caddy-ratelimit v0.1.0" in go_mod
+    assert "github.com/caddyserver/caddy/v2 v2.11.7" in go_mod
     for caddyfile in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
         assert "rate_limit @ws_upgrade" in _read(caddyfile), caddyfile
 
@@ -2790,23 +3101,27 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
     )
     assert runtime_image in dockerfile
+    runtime_stage = dockerfile.split(runtime_image, maxsplit=1)[1]
     assert "ARG CADDY_VERSION=2.11.7" in dockerfile
-    assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
-    assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
-    assert (
-        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
-    )
-    assert re.search(r"RUN apk update \\\s+&& apk add --no-cache", dockerfile)
+    # AUD-482: the selected security floors live in the committed build go.mod.
+    go_mod = _read("services/caddy/go.mod")
+    assert "golang.org/x/net => golang.org/x/net v0.62.0" in go_mod
+    assert "golang.org/x/text => golang.org/x/text v0.42.0" in go_mod
+    assert "google.golang.org/grpc => google.golang.org/grpc v1.83.2" in go_mod
+    assert "go build" in dockerfile
+    assert "-mod=readonly" in dockerfile
+    assert re.search(r"&& apk update \\\s+&& apk add --no-cache", runtime_stage)
     for package in (
         "libapk=3.0.8-r0",
         "apk-tools=3.0.8-r0",
         "libcrypto3=3.5.9-r0",
         "libssl3=3.5.9-r0",
-        "c-ares=1.34.8-r0",
-        "libcurl=8.22.0-r0",
-        "curl=8.22.0-r0",
+        "c-ares=1.34.9-r0",
+        "brotli-libs=1.2.1-r0",
+        "libcurl=8.23.0-r0",
+        "curl=8.23.0-r0",
     ):
-        assert package in dockerfile
+        assert package in runtime_stage
     assert "apk upgrade" not in dockerfile
     assert "build" in full_caddy
     assert full_caddy["build"]["context"] == "./services/caddy"
@@ -2814,18 +3129,161 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "image" not in full_caddy
 
 
-def test_ci_caddy_smokes_use_the_pinned_project_runtime() -> None:
+@pytest.mark.parametrize(
+    ("workflow_name", "job_id", "job_name", "job_timeout", "smoke_script"),
+    [
+        (
+            "visual-audit.yml",
+            "visual-audit",
+            "Axe a11y audit on Linux",
+            30,
+            "authenticated-visual-audit.mjs",
+        ),
+        (
+            "admin-smoke-monitoring.yml",
+            "admin-smoke",
+            "Admin React",  # The workflow's #418 suffix is a YAML comment.
+            30,
+            "admin-visual-smoke.mjs",
+        ),
+        (
+            "unauthenticated-routes-smoke.yml",
+            "unauthed-smoke",
+            "Unauthenticated routes smoke (theme=${{ matrix.theme }})",
+            20,
+            "unauthenticated-routes-smoke.mjs",
+        ),
+    ],
+)
+def test_ci_caddy_smokes_use_the_pinned_project_runtime(
+    workflow_name: str,
+    job_id: str,
+    job_name: str,
+    job_timeout: int,
+    smoke_script: str,
+) -> None:
+    """Smoke the patched checkout image, never the unpatched upstream runtime."""
+    workflow = yaml.safe_load(_read(f".github/workflows/{workflow_name}"))
+    job = workflow["jobs"][job_id]
+    steps = job["steps"]
+    builds = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("docker/build-push-action@")
+    ]
+    assert len(builds) == 1, f"{workflow_name} must build the project Caddy runtime"
+    build = builds[0]
+    assert build["uses"] == (
+        "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    )
+    assert "if" not in build
+    assert build.get("continue-on-error", False) is False
+    assert 0 < build["timeout-minutes"] <= 10
+    build_inputs = build["with"]
+    image = "university-ecosystem/caddy:${{ github.sha }}"
+    assert build_inputs["context"] == "services/caddy"
+    assert build_inputs["file"] == "services/caddy/Dockerfile"
+    assert build_inputs["tags"] == image
+    assert build_inputs["platforms"] == "linux/amd64"
+    assert build_inputs["load"] is True
+    assert build_inputs["push"] is False
+    assert build_inputs["cache-from"] == "type=gha,scope=university-caddy"
+    assert "cache-to" not in build_inputs
+    assert not {"build-args", "target", "secrets", "ssh", "allow"} & build_inputs.keys()
+    assert (
+        "org.opencontainers.image.revision=${{ github.sha }}"
+        in build_inputs["labels"].splitlines()
+    )
+
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"].get("ref", "${{ github.sha }}") == "${{ github.sha }}"
+    buildx = next(
+        step
+        for step in steps
+        if step.get("uses", "").startswith("docker/setup-buildx-action@")
+    )
+    assert buildx["uses"] == (
+        "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    start = next(step for step in steps if step.get("name") == "Start Caddy ingress")
+    assert steps.index(checkout) < steps.index(buildx) < steps.index(build)
+    assert steps.index(build) < steps.index(start)
+    assert "if" not in start
+    assert start.get("continue-on-error", False) is False
+    assert start.get("env", {}).get("IMAGE_TAG") == "${{ github.sha }}"
+
+    start_script = start["run"]
+    commands = [
+        shlex.split(line)
+        for line in start_script.replace("\\\n", " ").splitlines()
+        if line.strip().startswith("docker run ")
+    ]
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[-1] == "university-ecosystem/caddy:${IMAGE_TAG}"
+    assert "--pull=never" in command
+    assert command[command.index("--network") + 1] == "host"
+    assert command[command.index("--name") + 1] == "caddy"
+    assert "${RUNNER_TEMP}/Caddyfile:/etc/caddy/Caddyfile:ro" in command
+    assert 'cat > "${RUNNER_TEMP}/Caddyfile" <<' in start_script
+    assert 'chmod 0444 "${RUNNER_TEMP}/Caddyfile"' in start_script
+    for argument in command:
+        assert not argument.startswith(
+            ("--user", "--privileged", "--cap-add", "--sysctl", "--entrypoint")
+        )
+        assert not argument.startswith("-u")
+    runtime_users = re.findall(
+        r"^USER\s+(.+)$", _read("services/caddy/Dockerfile"), re.MULTILINE
+    )
+    assert runtime_users[-1] == "100:101"
+
+    origin = "http://localhost:8080"
+    assert re.search(r"^\s*:8080\s*\{", start_script, re.MULTILINE)
+    assert not re.search(r"^\s*:80\s*\{", start_script, re.MULTILINE)
+    assert "reverse_proxy 127.0.0.1:8000" in start_script
+    assert "reverse_proxy 127.0.0.1:3000" in start_script
+    assert f"curl -sf {origin}/healthz" in start_script
+    assert f"curl -sf {origin}/.well-known/jwks.json" in start_script
+    assert "auto_https off" in start_script
+    assert "admin off" in start_script
+
+    backend = next(step for step in steps if step.get("name") == "Start backend")
+    frontend_build = next(
+        step for step in steps if "npm run build" in step.get("run", "")
+    )
+    frontend_start = next(
+        step for step in steps if step.get("name") == "Start frontend Node SSR"
+    )
+    browser = next(
+        step for step in steps if step.get("run") == f"node ./scripts/{smoke_script}"
+    )
+    backend_env = {
+        **workflow.get("env", {}),
+        **job.get("env", {}),
+        **backend.get("env", {}),
+    }
+    for key in ("FRONTEND_ORIGIN", "FRONTEND_ORIGINS", "APP_BASE_URL"):
+        assert backend_env.get(key) == origin
+    assert frontend_build.get("env", {}).get("VITE_BACKEND_ORIGIN") == origin
+    assert browser.get("env", {}).get("ORIGIN") == origin
+    assert "--host 127.0.0.1 --port 8000" in backend["run"]
+    assert frontend_start["env"]["PORT"] == "3000"
+    assert backend_env.get("JWT_ISSUER") == "university-ecosystem"
+    assert frontend_start["env"].get("JWT_ISSUER") == "university-ecosystem"
+    assert job["name"] == job_name
+    assert job["timeout-minutes"] == job_timeout
+    if job_id == "unauthed-smoke":
+        assert job["strategy"]["matrix"]["theme"] == ["light", "dark"]
+        assert job["strategy"]["fail-fast"] is False
+
     workflows = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (ROOT / ".github" / "workflows").glob("*.yml")
     )
-    runtime = (
-        "caddy:2.11.7-alpine@sha256:"
-        "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
-    )
-
-    assert "caddy:2.11.2" not in workflows
-    assert workflows.count(runtime) == 3
+    assert not re.search(r"(?<![/\w-])caddy:[^\s]+", workflows)
 
 
 def test_default_caddy_config_references_only_compose_services() -> None:
@@ -3020,6 +3478,16 @@ def test_docker_context_excludes_frontend_generated_artifacts() -> None:
         assert expected <= patterns
 
 
+def test_docker_context_excludes_temporal_bootstrap_credentials() -> None:
+    patterns = {
+        line.strip()
+        for line in _read(".dockerignore").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert {".temporal-bootstrap/", "**/.temporal-bootstrap/"} <= patterns
+
+
 def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
     dockerfile = _read("Dockerfile.protogen")
 
@@ -3071,10 +3539,11 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
 
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.57" in health_probe
     for dependency in (
+        "github.com/go-jose/go-jose/v4@v4.1.7",
         "github.com/spiffe/go-spiffe/v2@v2.9.0",
         "google.golang.org/grpc@v1.84.0",
-        "golang.org/x/net@v0.60.0",
-        "golang.org/x/text@v0.42.0",
+        "golang.org/x/net@v0.62.0",
+        "golang.org/x/text@v0.43.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe
@@ -3153,6 +3622,229 @@ def test_migrations_disable_inherited_backend_runtime_healthcheck(
 
     assert migrations["build"]["dockerfile"] == "backend.Dockerfile"
     assert migrations["build"]["target"] == "runtime"
-    assert migrations["command"] == "alembic upgrade head"
+    assert migrations["command"] == [
+        "sh",
+        "-c",
+        "alembic upgrade head && python -m app.services.partition_manager",
+    ]
     assert re.search(r"^HEALTHCHECK\b", runtime, re.MULTILINE)
     assert migrations.get("healthcheck") == {"disable": True}
+
+
+def test_temporal_startup_diagnostic_is_scoped_to_full_start_failures() -> None:
+    script = _read("start-docker.ps1")
+    call = "Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile"
+    assert script.count(call) == 2
+    bootstrap_start = script.index("# -- Start services")
+    bootstrap_end = script.index(
+        "    $bootstrapLease = Enter-TemporalBootstrapLease", bootstrap_start
+    )
+    bootstrap_branch = script[bootstrap_start:bootstrap_end]
+    assert bootstrap_branch.index("if ($LASTEXITCODE -ne 0)") < bootstrap_branch.index(
+        call
+    )
+    assert bootstrap_branch.index(call) < bootstrap_branch.index(
+        "throw 'Temporal dependency startup failed"
+    )
+    start = script.index('    Write-Status "Starting containers..."')
+    end = script.index("# -- Health check loop", start)
+    branch = script[start:end]
+    assert branch.index("if ($LASTEXITCODE -ne 0)") < branch.index(call)
+    assert branch.index(call) < branch.index("exit 1")
+
+
+def test_temporal_startup_diagnostic_suppresses_untrusted_output() -> None:
+    pwsh = shutil.which("pwsh")
+    assert pwsh is not None
+    definitions = _powershell_function(
+        _read("start-docker.ps1"),
+        "Get-TemporalDiagnosticSummary",
+        "Assert-LiveStandPrivatePath",
+    )
+    controls = r"""$ErrorActionPreference = "Stop"
+
+$privateMarker = "PRIVATE-MARKER-DO-NOT-EMIT"
+$summary = @(Get-TemporalDiagnosticSummary `
+    -StateLine "restarting|false|2|false|4|starting|0" `
+    -LogLines @("irrelevant $privateMarker", "password authentication failed $privateMarker", "yaml: line 4 $privateMarker") `
+    -LogsAvailable $true)
+if ($summary -notcontains "temporal_state=restarting|false|2|false|4|starting|0") { throw "state summary missing" }
+if ($summary -notcontains "temporal_signature=database_auth") { throw "database category missing" }
+if ($summary -notcontains "temporal_signature=render_or_config") { throw "config category missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "private log text leaked" }
+
+$summary = @(Get-TemporalDiagnosticSummary -StateLine "running|true|0|false|0|healthy|0|$privateMarker" -LogLines @("$privateMarker") -LogsAvailable $true)
+if ($summary -notcontains "temporal_state=unavailable") { throw "invalid state accepted" }
+if ($summary -notcontains "temporal_logs=unrecognized") { throw "unrecognized log state missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "private state or log text leaked" }
+
+$examples = [ordered]@{
+    missing_input = "POSTGRES_PWD env var required"
+    invalid_jwks_url = "TEMPORAL_JWKS_URL must use the https scheme"
+    missing_trust_anchor = "JWKS trust anchor private-path was not provided"
+    tls_trust = "x509: certificate signed by unknown authority"
+    missing_utility = "getent: not found"
+    render_or_config = "sed: unterminated replacement"
+    database_auth = "password authentication failed"
+    network = "connection refused"
+    fatal_or_panic = "panic: failure"
+}
+foreach ($name in $examples.Keys) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @("$($examples[$name]) $privateMarker") -LogsAvailable $true)
+    if ($summary -notcontains "temporal_signature=$name") { throw "expected category missing" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "private category source leaked" }
+}
+
+$summary = @(Get-TemporalDiagnosticSummary -LogsAvailable $false)
+if ($summary -notcontains "temporal_logs=unavailable") { throw "unavailable logs not marked" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @() -LogsAvailable $true)
+if ($summary -notcontains "temporal_logs=empty") { throw "empty logs not marked" }
+
+function global:docker {
+    $global:LASTEXITCODE = 0
+    if ($args -contains "ps") { return ("a" * 64) }
+    if ($args -contains "inspect") { return "exited|false|2|false|3|none|0" }
+    if ($args -contains "logs") { return "yaml: line 4 $privateMarker" }
+    $global:LASTEXITCODE = 1
+}
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_state=exited|false|2|false|3|none|0") { throw "inspect tuple missing" }
+if ($summary -notcontains "temporal_signature=render_or_config") { throw "captured category missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "captured log text leaked" }
+
+function global:docker { $global:LASTEXITCODE = 0; return "untrusted-$privateMarker" }
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_diagnostic=container_unavailable") { throw "invalid container id accepted" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "invalid id leaked" }
+
+function global:docker { throw "private-$privateMarker" }
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_diagnostic=unavailable") { throw "docker failure not contained" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "exception text leaked" }
+
+$scannerCategory = "temporal_worker_scanner_auth=denied"
+$scannerLine = 'temporal-1 | {"level":"error","msg":"error starting workflow","error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
+$fatalLine = 'temporal-1 | {"level":"fatal","msg":"error starting scanner","error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine, $fatalLine, $scannerLine) -LogsAvailable $true)
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory,temporal_fatal=scanner_start_auth_denied") { throw "scanner category or existing category order incorrect" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "scanner record leaked" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $true)
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,temporal_fatal=scanner_start_auth_denied") { throw "fatal-only classification changed" }
+$fatalCategory = "temporal_fatal=scanner_start_auth_denied"
+$absoluteCaller = '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+$absoluteFatalLine = $fatalLine.Replace('service/worker/service.go:314', $absoluteCaller)
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($absoluteFatalLine) -LogsAvailable $true)
+if ($summary -notcontains $fatalCategory) { throw "official absolute fatal caller not classified" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "absolute fatal record leaked" }
+foreach ($caller in @(
+    ('prefix' + $absoluteCaller),
+    ($absoluteCaller + 'suffix'),
+    $absoluteCaller.Replace('/service/', '/../service/'),
+    $absoluteCaller.Replace('/worker/', '/Worker/'),
+    $absoluteCaller.Replace(':314', ':315'),
+    $absoluteCaller.Replace('service.go', 'scanner.go'),
+    '/different/build/service/worker/service.go:314',
+    ($absoluteCaller + '\n'),
+    ($absoluteCaller + '\r')
+)) {
+    $line = $fatalLine.Replace('service/worker/service.go:314', $caller)
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "unrecognized fatal caller accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "caller negative record leaked" }
+}
+# The bound includes the Compose prefix and measures PowerShell UTF-16 units.
+foreach ($length in @(16384, 16385)) {
+    $line = $absoluteFatalLine.Replace($privateMarker, $privateMarker + ('x' * ($length - $absoluteFatalLine.Length)))
+    if ($line.Length -ne $length) { throw "fatal length fixture incorrect" }
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($length -eq 16384)) { throw "fatal line length boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded fatal record leaked" }
+}
+foreach ($position in @(50, 51)) {
+    $lines = @('unrecognized PRIVATE-MARKER-DO-NOT-EMIT') * ($position - 1)
+    $lines += $absoluteFatalLine
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines $lines -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($position -eq 50)) { throw "fatal record count boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded record sequence leaked" }
+}
+
+$fatalNegatives = @(
+    $scannerLine,
+    $fatalLine.Replace('"level":"fatal"', '"level":"error"'),
+    $fatalLine.Replace('"msg":"error starting scanner"', '"msg":"different"'),
+    $fatalLine.Replace('Request unauthorized.', 'Request unauthorized. extra'),
+    $fatalLine.Replace('service.go:314', 'service.go:315'),
+    $fatalLine.Replace('"error":', '"Error":'),
+    $fatalLine.Replace('"error":"Request unauthorized."', '"error":null'),
+    $fatalLine.Replace('"level":"fatal"', '"level":"error","level":"fatal"'),
+    $fatalLine.Replace('"level":"fatal"', '"Level":"error","level":"fatal"'),
+    ('{"nested":' + $fatalLine.Substring($fatalLine.IndexOf('{')) + '}'),
+    $fatalLine.Substring(0, $fatalLine.Length - 1),
+    $fatalLine.Replace('PRIVATE-MARKER-DO-NOT-EMIT', ('x' * 16384))
+)
+foreach ($line in $fatalNegatives) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "untrusted fatal tuple accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "fatal private text leaked" }
+}
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine, $fatalLine) -LogsAvailable $true)
+if (@($summary | Where-Object { $_ -ceq $fatalCategory }).Count -ne 1) { throw "duplicate fatal categories emitted" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $false)
+if ($summary -contains $fatalCategory) { throw "unavailable fatal logs classified" }
+
+$reordered = 'temporal-1 | { "logging-call-at": "github.com/temporalio/temporal/service/worker/scanner/scanner.go:270", "error": "Request unauthorized." }'
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($reordered) -LogsAvailable $true)
+if ($summary -notcontains $scannerCategory) { throw "reordered scanner fields not classified" }
+
+$negativeControls = @(
+    [PSCustomObject]@{ name = "source only in stacktrace"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"service/worker/scanner/scanner.go:270 PRIVATE-MARKER-DO-NOT-EMIT"}') }
+    [PSCustomObject]@{ name = "denial only in stacktrace"; lines = @('{"error":"different","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"Request unauthorized. PRIVATE-MARKER-DO-NOT-EMIT"}') }
+    [PSCustomObject]@{ name = "different line"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:2700"}') }
+    [PSCustomObject]@{ name = "different denial"; lines = @('{"error":"Request unauthorized. extra","logging-call-at":"service/worker/scanner/scanner.go:270"}') }
+    [PSCustomObject]@{ name = "split records"; lines = @('{"error":"different","logging-call-at":"service/worker/scanner/scanner.go:270"}', '{"error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314"}') }
+    [PSCustomObject]@{ name = "nested fields"; lines = @('{"nested":{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270"}}') }
+    [PSCustomObject]@{ name = "malformed"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270" PRIVATE-MARKER-DO-NOT-EMIT') }
+)
+foreach ($control in $negativeControls) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines $control.lines -LogsAvailable $true)
+    if ($summary -contains $scannerCategory) { throw "scanner negative control matched: $($control.name)" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "negative control leaked" }
+}
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine) -LogsAvailable $false)
+if ($summary -contains $scannerCategory) { throw "unavailable logs were classified" }
+
+function global:docker {
+    $global:LASTEXITCODE = 0
+    if ($args -contains "ps") { return ("a" * 64) }
+    if ($args -contains "inspect") { return "exited|false|2|false|3|none|0" }
+    if ($args -contains "logs") { return $scannerLine }
+    $global:LASTEXITCODE = 1
+}
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains $scannerCategory) { throw "scanner category missing from bounded Docker diagnostic" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "Docker scanner record leaked" }
+"synthetic diagnostic checks passed"
+"""
+
+    async def run() -> tuple[int | None, str, str]:
+        process = await asyncio.create_subprocess_exec(
+            pwsh,
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            definitions + "\n" + controls,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=20)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            raise
+        return process.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
+
+    exit_code, stdout, stderr = asyncio.run(run())
+    assert exit_code == 0, stderr
+    assert stdout.strip() == "synthetic diagnostic checks passed"
+    assert stderr == ""

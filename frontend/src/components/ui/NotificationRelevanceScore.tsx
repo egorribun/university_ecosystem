@@ -45,7 +45,7 @@ export function NotificationRelevanceScore({
             "block h-1.5 w-1.5 rounded-full transition-colors",
             idx <= ["high", "medium", "low"].indexOf(relevance)
               ? config.color
-              : "bg-(--text-tertiary)/(--opacity-faint)"
+              : "bg-(--text-tertiary)/[calc(var(--opacity-faint)*100%)]"
           )}
           aria-hidden="true"
         />

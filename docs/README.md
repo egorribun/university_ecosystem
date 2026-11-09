@@ -1,5 +1,29 @@
 # University Ecosystem documentation
 
+## Current reconciliation — 2026-11-09
+
+The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
+**13S / 9P / 0U / 0N**. Twelve scope additions since the **478/34** checkpoint are
+AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-478 and AUD-480.
+Only AUD-360, AUD-373, AUD-428 and AUD-429 are added by this update, each for its
+own stated criterion. The prior **486/26**, **485/27**, **484/28**, **478/34** and
+**476/36** checkpoints remain dated history.
+
+[Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **509 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+---
+
 This directory contains the durable operating, architecture, API, and quality
 documentation for University Ecosystem. Temporary execution notes and completed
 handoffs are intentionally not part of the canonical index.
@@ -28,6 +52,7 @@ handoffs are intentionally not part of the canonical index.
 - [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
 - [Database backup and restore runbook](runbooks/database-backup-restore.md)
+- [Temporal network access runbook](runbooks/temporal-network-access.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Rejected-upload quarantine and capacity](runbooks/upload-quarantine.md)
 - [Observability configuration and reference examples](observability/README.md)
@@ -40,9 +65,22 @@ handoffs are intentionally not part of the canonical index.
   current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
   and the certification backlog for `v1.1`.
 - [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
-  — Tier 0 keeps 100% coverage, with the owner-approved finite no-decrease
-  baseline for exactly 131 unchanged migrations through 2026-11-13. Mutation
-  testing is a nightly signal after Q1; other coverage floors remain until Q3.
+  — Tier 0 requires 100% for every applicable coverage metric; all migrations
+  require 100% line, statement, branch and function coverage. The 131-file
+  migration exception was retired on 2026-11-02. Full mutation testing runs in
+  nightly/manual lanes outside the MVP release gate; other coverage floors
+  remain until Q3.
+- [ADR-051: MVP migration baseline squash](adr/ADR-051-mvp-migration-baseline-squash.md)
+  — the 143 historical Alembic revisions are replaced by one irreversible
+  baseline, accepted 2026-11-02; pre-squash databases must be recreated.
+- [ADR-052: Backend SPIFFE identity at the HTTP transport boundary](adr/ADR-052-backend-spiffe-transport.md)
+  — proposed and unaccepted. The transport exists in source; the Helm chart
+  defaults it off and requires it in production. SPIRE issuance/rotation proof
+  and AUD-373 acceptance remain outstanding.
+- [ADR-053: Operator-scoped single-organization MVP authentication](adr/ADR-053-operator-scoped-mvp-authentication.md)
+- [ADR-054: Docker Compose is the MVP deployment target](adr/ADR-054-mvp-docker-compose-deployment-target.md)
+  — scope accepted 2026-11-02 and implemented in source; full source-bound
+  hosted acceptance remains pending.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
@@ -51,6 +89,13 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
+- [Current full audit reassessment, 2026-11-09 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 490 / 512 accepted or resolved (95.7%), 22 open; 37 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 486 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-486-26-scoped-supplement--2026-11-09) — 26 open (14S / 12P / 0U / 0N), retained as history.
+- [Dated 485 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 27 open (15S / 12P / 0U / 0N), retained as history.
+- [Dated 484 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-484-28-scoped-supplement--2026-11-07) — 28 open (16S / 12P / 0U / 0N), retained as history.
+- [Dated prior public checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-public-checkpoint--2026-11-07) — 478 / 512, 34 open (20S / 13P / 0U / 1N); superseded and retained as history.
+- [Dated previous cohort checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — 476 / 512, 36 open (19S / 15P / 1U / 1N), retained as history.
+- [Dated cumulative scoped audit review, 2026-11-06](audits/AUDIT-2026-11-06-review.md) — AUD-426 PostgreSQL, AUD-231 compiled SSR CSP/nonce, and AUD-449 log-redaction acceptances for Caddy and the Python application server with separate evidence limits; overall CI and release readiness are not accepted.
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
   records frozen dependency selection and source-bound local evidence. The
@@ -59,14 +104,33 @@ handoffs are intentionally not part of the canonical index.
   2-identity approvals, preserving the prior 250 records. The later nine-identity
   Go source-contract approval extended the historical scope to 261; see the
   [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
-  The 319-identity baseline and 78 required contexts remain unchanged. The
+  The current baseline contains 242 identities after the
+  [62 deleted-source identities were retired](adr/ADR-047-risk-based-quality-policy.md#deleted-source-baseline-retirement-2026-11-02)
+  from the preceding 304-identity checkpoint;
+  78 required contexts remain unchanged. The
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing
-  tests, final-source validation, or hosted-check results. Git and PR #1306 determine published source
-  and hosted status. The current detect-secrets disposition scope is 282;
-  the separate finite Gitleaks approval covers 25 historical fingerprints.
-  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](audits/AUDIT-2026-10.md#exact-historical-gitleaks-owner-decision-and-quarantine-evidence--2026-10-20).
+  tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
+  and hosted status. At HEAD `1cc8fb2db`, the detect-secrets disposition file
+  contained 362 records. At the 2026-11-05 checkpoint, the working tree
+  contained 363 after adding the owner-approved Semgrep rules-checkout pin; that
+  interim staged update was unpublished and still required source-bound
+  validation. At the N5 integration snapshot on 2026-11-06, the working tree
+  contained 495 approved disposition records: 363 previously active records,
+  106 previously owner-approved identities now materialized, 21 previously
+  approved exact identities, and five newly approved exact identities (two
+  `public_integrity_digest` and three `ci_test_contract_sentinel`). The prior
+  494-record set remained unchanged, including expiry values; the additional
+  `public_integrity_digest` identity expires 2027-01-10. The inventory is not evidence of a passing scan or required checks; each source SHA requires its own validation.
+  This historical inventory did not establish passing tests, final-source validation, or hosted-check results.
+  The separate finite Gitleaks approval covers 27 historical fingerprints.
+  The subsequent N6 decisions approve four Semgrep companion-hash refreshes
+  for rows #7–#10 and exactly two `public_integrity_digest` identities. At the N6 integration snapshot, the working tree contained 505 approved disposition records;
+  expiry values remain unchanged, and the two additions expire 2027-01-10. The
+  baseline remains at 242 identities and Gitleaks at 27 historical fingerprints.
+  After the owner-approved AUD-428 row13 integration and WASM CLI integrity update, the working tree contains 509 approved records; the row13 public-integrity identity follows the unchanged 505-record prefix, the three WASM CLI checksum identities follow it, and all four expire 2027-01-10.
+  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
@@ -89,7 +153,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Platform audit, October 2026](audits/AUDIT-2026-10.md)                                                                                 |
+| Current open findings                         | [Current 22-finding complement, 2026-11-09 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-22-finding-reconciliation--2026-11-09)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable
@@ -99,3 +163,5 @@ historical pass does not certify a later checkout. Retain useful procedures
 and decisions while removing superseded handoffs and duplicate snapshots.
 The vendored skill catalog under `.agents/skills/` retains upstream guidance;
 current task and repository instructions determine how it applies here.
+
+The current inventory includes the eight unchanged, previously approved zlib APK integrity identities restored after the merge omission. Their owner, exact scope and 2027-01-10 expiry are unchanged; the preceding 497 records are preserved. The owner-approved AUD-428 row13 public-integrity identity is appended at record index 505, preserving all 505 prior records. The three owner-approved WASM CLI checksum identities follow at record indexes 506-508, preserving those 506 records and bringing the total to 509.

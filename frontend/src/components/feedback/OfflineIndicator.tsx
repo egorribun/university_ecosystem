@@ -69,8 +69,8 @@ export function OfflineIndicator() {
         "text-xs font-black uppercase tracking-widest shadow-2xl backdrop-blur-2xl border",
         "transition-all duration-slow ease-out animate-in fade-in slide-in-from-bottom-4",
         isOffline
-          ? "bg-(--warning-bg) border-(--warning-text)/(--opacity-dim) text-(--warning-text)"
-          : "bg-(--success-bg) border-(--success-text)/(--opacity-dim) text-(--success-text)"
+          ? "bg-(--warning-bg) border-(--warning-text)/[calc(var(--opacity-dim)*100%)] text-(--warning-text)"
+          : "bg-(--success-bg) border-(--success-text)/[calc(var(--opacity-dim)*100%)] text-(--success-text)"
       )}
     >
       {isOffline ? (

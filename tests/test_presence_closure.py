@@ -13,7 +13,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_uses_redis_cache_hit() -> None:
+async def test_presence_audience_ignores_redis_cache_hit() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
@@ -21,101 +21,82 @@ async def test_presence_audience_uses_redis_cache_hit() -> None:
     cache = AsyncMock()
     cache.enabled = True
     cache.get.return_value = SimpleNamespace(payload=list(audience))
-    with patch.object(presence, "get_cache", return_value=cache):
+    repo = MagicMock(get_presence_audience=AsyncMock(return_value=set()))
+
+    @asynccontextmanager
+    async def session_context():
+        yield MagicMock()
+
+    with (
+        patch.object(presence, "get_cache", return_value=cache),
+        patch.object(presence, "ChatRepository", return_value=repo),
+        patch.object(presence, "async_session", session_context),
+    ):
         result = await presence._get_presence_audience(user_id)
-    assert result == audience
+    assert result == set()
+    cache.get.assert_not_awaited()
     cache.set.assert_not_awaited()
+    repo.get_presence_audience.assert_awaited_once_with(user_id)
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_refreshes_stale_memory_and_sets_redis() -> None:
+async def test_presence_audience_reloads_database_each_time() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
-    presence._PRESENCE_DB_CACHE.clear()
-    loop = asyncio.get_running_loop()
-    presence._PRESENCE_DB_CACHE[user_id] = (
-        {uuid.uuid4()},
-        loop.time() - presence._PRESENCE_DB_CACHE_TTL - 1,
-    )
+    first, second = {uuid.uuid4()}, {uuid.uuid4()}
     repo = MagicMock()
-    repo.get_presence_audience = AsyncMock(return_value=audience)
+    repo.get_presence_audience = AsyncMock(side_effect=[first, second])
 
     @asynccontextmanager
     async def session_context():
         yield MagicMock()
 
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
     with (
-        patch.object(presence, "get_cache", return_value=cache),
         patch.object(presence, "ChatRepository", return_value=repo),
         patch.object(presence, "async_session", session_context),
     ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    cache.set.assert_awaited_once()
-    presence._PRESENCE_DB_CACHE.clear()
+        assert await presence._get_presence_audience(user_id) == first
+        assert await presence._get_presence_audience(user_id) == second
+    assert repo.get_presence_audience.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_second_lock_check_returns_newly_cached_value() -> None:
+async def test_presence_audience_session_failure_is_not_suppressed() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
-    presence._PRESENCE_DB_CACHE.clear()
 
-    class LockThatPopulatesCache:
-        async def __aenter__(self):
-            presence._PRESENCE_DB_CACHE[user_id] = (
-                audience,
-                asyncio.get_running_loop().time(),
-            )
-            return self
+    async def fail_session():
+        raise OSError("owned database outage")
 
-        async def __aexit__(self, *_args):
-            return None
+    @asynccontextmanager
+    async def session_context():
+        yield await fail_session()
 
-    cache = MagicMock(enabled=False)
-    with (
-        patch.object(presence, "get_cache", return_value=cache),
-        patch.object(
-            presence, "_get_presence_cache_lock", return_value=LockThatPopulatesCache()
-        ),
-    ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    presence._PRESENCE_DB_CACHE.clear()
+    with patch.object(presence, "async_session", session_context):
+        with pytest.raises(OSError, match="owned database outage"):
+            await presence._get_presence_audience(user_id)
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_evicts_oldest_entry_at_cache_limit() -> None:
+async def test_presence_audience_query_failure_is_not_suppressed() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
     repo = MagicMock()
-    repo.get_presence_audience = AsyncMock(return_value=audience)
+    repo.get_presence_audience = AsyncMock(side_effect=OSError("owned query outage"))
 
     @asynccontextmanager
     async def session_context():
         yield MagicMock()
 
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
     with (
-        patch.object(presence, "_PRESENCE_DB_CACHE_MAX_SIZE", 0),
-        patch.object(presence, "get_cache", return_value=cache),
         patch.object(presence, "ChatRepository", return_value=repo),
         patch.object(presence, "async_session", session_context),
     ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    assert user_id not in presence._PRESENCE_DB_CACHE
+        with pytest.raises(OSError, match="owned query outage"):
+            await presence._get_presence_audience(user_id)
 
 
 @pytest.mark.asyncio
@@ -184,11 +165,20 @@ async def test_presence_pubsub_initialize_without_redis_does_not_start_listener(
         cache_redis_url="",
         presence_pubsub_channel="presence:updates",
     )
-    with patch.object(presence, "settings", settings):
+    get_cache_client = AsyncMock()
+    with (
+        patch.object(presence, "settings", settings),
+        patch("app.deps.cache.get_cache_client", new=get_cache_client),
+        patch.object(presence.Redis, "from_url") as from_url,
+        patch.object(presence.asyncio, "create_task") as create_task,
+    ):
         pubsub = presence.PresencePubSub()
         await pubsub.initialize()
     assert pubsub._redis is None
     assert pubsub._pubsub_task is None
+    get_cache_client.assert_not_awaited()
+    from_url.assert_not_called()
+    create_task.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -237,10 +227,17 @@ async def test_presence_listener_processes_messages_and_cancellation() -> None:
 async def test_presence_listener_handles_no_redis_and_connection_error() -> None:
     from app.api.ws import presence
 
-    await presence.PresencePubSub()._listen_for_updates()
+    no_redis_listener = presence.PresencePubSub()
+    no_redis_handler = AsyncMock()
+    with patch.object(presence, "_handle_presence_pubsub", new=no_redis_handler):
+        await no_redis_listener._listen_for_updates()
+    assert no_redis_listener._redis is None
+    no_redis_handler.assert_not_awaited()
 
     pubsub_client = MagicMock()
     pubsub_client.subscribe = AsyncMock()
+    pubsub_client.unsubscribe = AsyncMock()
+    pubsub_client.close = AsyncMock()
 
     async def failing_messages():
         raise ConnectionError("pubsub disconnected")
@@ -255,11 +252,19 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await listener._listen_for_updates()
+    redis.pubsub.assert_called_once_with()
+    pubsub_client.subscribe.assert_awaited_once_with("presence")
+    pubsub_client.close.assert_awaited_once_with()
+    pubsub_client.unsubscribe.assert_not_awaited()
 
     normal_ps = MagicMock()
     normal_ps.subscribe = AsyncMock()
+    normal_ps.unsubscribe = AsyncMock()
+    normal_ps.close = AsyncMock()
+    normal_messages_seen = []
 
     async def normal_messages():
+        normal_messages_seen.append("subscribe")
         yield {"type": "subscribe"}
 
     normal_ps.listen.return_value = normal_messages()
@@ -271,12 +276,20 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await normal_listener._listen_for_updates()
+    normal_ps.subscribe.assert_awaited_once_with("presence")
+    normal_ps.listen.assert_called_once_with()
+    normal_ps.unsubscribe.assert_not_awaited()
+    normal_ps.close.assert_not_awaited()
+    assert normal_messages_seen == ["subscribe"]
 
     class FalseyPubSub:
+        def __init__(self):
+            self.subscribe = AsyncMock()
+            self.unsubscribe = AsyncMock()
+            self.close = AsyncMock()
+
         def __bool__(self):
             return False
-
-        subscribe = AsyncMock()
 
         def listen(self):
             async def cancelled_messages():
@@ -294,6 +307,9 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await falsey_listener._listen_for_updates()
+    falsey_ps.subscribe.assert_awaited_once_with("presence")
+    falsey_ps.unsubscribe.assert_not_awaited()
+    falsey_ps.close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -308,3 +324,33 @@ async def test_presence_pubsub_start_and_stop_wrappers() -> None:
         await presence.stop_presence_pubsub()
     init.assert_awaited_once()
     stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_presence_listener_accepts_synchronous_close_after_subscribe_failure() -> (
+    None
+):
+    from app.api.ws import presence
+
+    pubsub = MagicMock()
+    pubsub.subscribe = AsyncMock(side_effect=ConnectionError("subscription failed"))
+    pubsub.close = MagicMock(return_value=None)
+    redis = MagicMock()
+    redis.pubsub.return_value = pubsub
+    listener = presence.PresencePubSub()
+    listener._redis = redis
+    handler = AsyncMock()
+    with (
+        patch.object(
+            presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
+        ),
+        patch.object(presence, "_handle_presence_pubsub", handler),
+        patch.object(presence, "logger") as logger,
+    ):
+        await listener._listen_for_updates()
+    pubsub.subscribe.assert_awaited_once_with("presence")
+    pubsub.close.assert_called_once_with()
+    pubsub.listen.assert_not_called()
+    pubsub.unsubscribe.assert_not_called()
+    handler.assert_not_awaited()
+    logger.error.assert_called_once()

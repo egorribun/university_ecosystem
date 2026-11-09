@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { renderHook } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -33,24 +33,40 @@ function wrapper(client: QueryClient) {
 const mockEventsState = vi.hoisted(() => ({
   events: [] as unknown[],
   isLoading: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  fetchNextPage: vi.fn(),
 }))
 
 vi.mock("@/api/hooks/events", () => ({
   useEventsListQuery: () => ({
     events: mockEventsState.events,
     isLoading: mockEventsState.isLoading,
+    hasNextPage: mockEventsState.hasNextPage,
+    isFetchingNextPage: mockEventsState.isFetchingNextPage,
+    fetchNextPage: mockEventsState.fetchNextPage,
   }),
 }))
 
-const stubEventsHook = (events: unknown[], isLoading = false) => {
+const stubEventsHook = (
+  events: unknown[],
+  isLoading = false,
+  hasNextPage = false,
+  isFetchingNextPage = false
+) => {
   mockEventsState.events = events
   mockEventsState.isLoading = isLoading
+  mockEventsState.hasNextPage = hasNextPage
+  mockEventsState.isFetchingNextPage = isFetchingNextPage
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
   mockEventsState.events = []
   mockEventsState.isLoading = false
+  mockEventsState.hasNextPage = false
+  mockEventsState.isFetchingNextPage = false
+  mockEventsState.fetchNextPage = vi.fn()
 })
 
 describe("useMapEvents — empty / loading", () => {
@@ -72,6 +88,47 @@ describe("useMapEvents — empty / loading", () => {
     })
     expect(result.current.events).toEqual([])
     expect(result.current.isLoading).toBe(false)
+  })
+})
+
+describe("useMapEvents — cursor pagination", () => {
+  it("exposes and requests the next event page when a cursor is available", () => {
+    const fetchNextPage = vi.fn()
+    mockEventsState.fetchNextPage = fetchNextPage
+    stubEventsHook([], false, true)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapEvents(), {
+      wrapper: wrapper(client),
+    })
+
+    expect(result.current.hasMoreEvents).toBe(true)
+    expect(result.current.isLoadingMoreEvents).toBe(false)
+    act(() => result.current.loadMoreEvents())
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+  })
+
+  it("does not request another page when exhausted or already fetching", () => {
+    const fetchNextPage = vi.fn()
+    mockEventsState.fetchNextPage = fetchNextPage
+    stubEventsHook([], false, false)
+
+    const client = newClient()
+    const exhausted = renderHook(() => useMapEvents(), {
+      wrapper: wrapper(client),
+    })
+    expect(exhausted.result.current.hasMoreEvents).toBe(false)
+    act(() => exhausted.result.current.loadMoreEvents())
+    expect(fetchNextPage).not.toHaveBeenCalled()
+    exhausted.unmount()
+
+    stubEventsHook([], false, true, true)
+    const loading = renderHook(() => useMapEvents(), {
+      wrapper: wrapper(client),
+    })
+    expect(loading.result.current.isLoadingMoreEvents).toBe(true)
+    act(() => loading.result.current.loadMoreEvents())
+    expect(fetchNextPage).not.toHaveBeenCalled()
   })
 })
 

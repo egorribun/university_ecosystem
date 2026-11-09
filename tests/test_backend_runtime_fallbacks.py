@@ -403,7 +403,8 @@ def test_spotify_coerce_expires():
 def test_spotify_disconnect_user_none():
     mock_user = MagicMock()
     mock_user.spotify = None
-    spotify_api._disconnect_user(mock_user)
+    assert (spotify_api._disconnect_user(mock_user)) is None
+    assert mock_user.spotify is None
 
 
 def test_spotify_fallback_now_playing_none():
@@ -535,14 +536,25 @@ async def test_request_metrics_middleware_exception():
 
 
 def test_record_system_metrics_gputil():
-    with patch("app.core.metrics._load_gputil") as mock_gputil:
+    gpu_metric = MagicMock()
+    with (
+        patch.object(metrics_core, "_CPU_LOAD", None),
+        patch.object(metrics_core, "_GPU_LOAD", gpu_metric),
+        patch("app.core.metrics._load_gputil") as mock_gputil,
+    ):
         gpu = MagicMock()
         gpu.id = 0
         gpu.name = "Tesla V100"
         gpu.load = 0.5
         mock_gputil.return_value.getGPUs.return_value = [gpu]
 
-        metrics_core._record_system_metrics()
+        assert (metrics_core._record_system_metrics()) is None
+
+    mock_gputil.assert_called_once_with()
+    mock_gputil.return_value.getGPUs.assert_called_once_with()
+    gpu_metric.clear.assert_called_once_with()
+    gpu_metric.labels.assert_called_once_with(index="0", name="Tesla V100")
+    gpu_metric.labels.return_value.set.assert_called_once_with(50.0)
 
 
 # ----------------------------------------------------
@@ -604,19 +616,50 @@ async def test_websocket_chat_connect_rejected():
     ws.headers = {}
     ws.query_params = {}
     ws.cookies = {}
+    ws.close = AsyncMock()
     from app.models import User
 
     user = User(id=uuid.uuid4())
     session_jti = "some-session-jti"
+    existing_connection = MagicMock()
+    active_connections = websocket_api.manager.active_connections
+    assert user.id not in active_connections
+    active_connections[user.id] = {existing_connection}
 
-    with (
-        patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(user, session_jti, None)),
-        ),
-        patch("app.api.websocket.manager.connect", AsyncMock(return_value=False)),
-    ):
-        await websocket_api.websocket_chat(ws)
+    authenticate_upgrade = AsyncMock(return_value=(user, session_jti, None))
+    connect = AsyncMock(wraps=websocket_api.manager.connect)
+    update_last_seen = AsyncMock()
+    broadcast_presence = AsyncMock()
+
+    try:
+        with (
+            patch(
+                "app.api.ws.authenticator.authenticator.authenticate_upgrade",
+                authenticate_upgrade,
+            ),
+            patch.object(websocket_api.manager, "connect", new=connect),
+            patch("app.api.ws.connection_manager.settings") as ws_settings,
+            patch("app.api.websocket.metrics.inc_ws_connections") as inc_connections,
+            patch("app.api.websocket._update_last_seen", update_last_seen),
+            patch.object(
+                websocket_api.manager, "broadcast_presence", new=broadcast_presence
+            ),
+        ):
+            ws_settings.ws_max_connections_per_user = 1
+            await websocket_api.websocket_chat(ws)
+
+        authenticate_upgrade.assert_awaited_once_with(ws)
+        connect.assert_awaited_once_with(
+            ws, user.id, subprotocol=None, session_jti=session_jti
+        )
+        ws.close.assert_awaited_once_with(code=1008, reason="Connection limit exceeded")
+        ws.accept.assert_not_called()
+        inc_connections.assert_not_called()
+        update_last_seen.assert_not_awaited()
+        broadcast_presence.assert_not_awaited()
+        assert active_connections[user.id] == {existing_connection}
+    finally:
+        active_connections.pop(user.id, None)
 
 
 # ----------------------------------------------------

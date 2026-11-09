@@ -3,6 +3,7 @@ package hub
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -80,6 +81,10 @@ func (dummyAddr) String() string  { return "127.0.0.1:0" }
 
 // Close closes the underlying WebTransport session and stream.
 func (s *WebTransportSession) Close() error {
+	return s.closeSession(0, "normal closure")
+}
+
+func (s *WebTransportSession) closeSession(code webtransport.SessionErrorCode, reason string) error {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
 	if s.closed.Load() {
@@ -88,7 +93,15 @@ func (s *WebTransportSession) Close() error {
 	s.closed.Store(true)
 	var closeErr error
 	if s.sess != nil {
-		closeErr = s.sess.CloseWithError(0, "normal closure")
+		closeErr = s.sess.CloseWithError(code, reason)
+	}
+	// The concrete WebTransport session cancels its streams when closed. A
+	// second Close on one of those streams reports a spurious cancellation.
+	// Preserve the existing ordinary-close path and fake-stream error handling.
+	if code == webtransport.SessionErrorCode(websocket.CloseTryAgainLater) && closeErr == nil {
+		if _, concrete := s.sess.(*webtransport.Session); concrete {
+			return nil
+		}
 	}
 	s.streamMu.Lock()
 	if s.stream != nil {
@@ -297,6 +310,11 @@ func (s *WebTransportSession) WriteMessage(messageType int, data []byte) error {
 		return nil
 	}
 	if messageType == websocket.CloseMessage {
+		// Session error codes are uint32. Preserve the retryable 1013 signal
+		// for external WebTransport clients instead of reporting normal close.
+		if len(data) >= 2 && binary.BigEndian.Uint16(data[:2]) == websocket.CloseTryAgainLater {
+			return s.closeSession(webtransport.SessionErrorCode(websocket.CloseTryAgainLater), string(data[2:]))
+		}
 		return s.Close()
 	}
 	s.writeMu.Lock()

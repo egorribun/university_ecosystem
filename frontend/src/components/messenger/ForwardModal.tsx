@@ -77,7 +77,7 @@ export function ForwardModal({
           role="presentation"
         >
           <div
-            className="absolute inset-0 bg-black/(--opacity-strong) backdrop-blur-md cursor-default"
+            className="absolute inset-0 bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-md cursor-default"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -92,7 +92,7 @@ export function ForwardModal({
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="messenger-card-matte w-full max-w-[28rem] backdrop-blur-2xl"
           >
-            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
+            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)]">
               <h3
                 id={titleId}
                 className="text-xl font-black tracking-tight text-text-primary sf-pro"
@@ -103,7 +103,7 @@ export function ForwardModal({
                 type="button"
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="min-h-[44px] min-w-[44px] p-2 rounded-xl flex items-center justify-center hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] p-2 rounded-xl flex items-center justify-center hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -162,7 +162,7 @@ export function ForwardModal({
                             srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
                             fallback={AVATAR_PLACEHOLDER_URL}
                             alt=""
-                            className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
+                            className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/[calc(var(--opacity-faint)*100%)]"
                           />
                         </div>
                         <div className="flex-1 min-w-0">

@@ -63,10 +63,12 @@ export function PageErrorFallback({
     >
       <div className="max-w-[28rem]">
         <h1 className="mb-2 text-2xl font-bold text-text-primary">{t("system:pageError.title")}</h1>
-        <p className="text-text-primary/(--opacity-strong)">{t("system:pageError.description")}</p>
+        <p className="text-text-primary/[calc(var(--opacity-strong)*100%)]">
+          {t("system:pageError.description")}
+        </p>
         {import.meta.env.DEV && error && (
           <details className="mt-4 text-left">
-            <summary className="cursor-pointer text-sm text-text-primary/(--opacity-medium)">
+            <summary className="cursor-pointer text-sm text-text-primary/[calc(var(--opacity-medium)*100%)]">
               Error details
             </summary>
             <div className="mt-2 overflow-auto rounded bg-(--glass-bg) p-3 text-left text-xs font-mono">
@@ -114,7 +116,7 @@ export function PageErrorFallback({
         <button
           type="button"
           onClick={onGoHome}
-          className="rounded-full border border-(--text-primary)/(--opacity-soft) px-6 py-2 font-medium text-text-primary transition-colors hover:bg-(--glass-bg)"
+          className="rounded-full border border-(--text-primary)/[calc(var(--opacity-soft)*100%)] px-6 py-2 font-medium text-text-primary transition-colors hover:bg-(--glass-bg)"
         >
           {t("system:pageError.home")}
         </button>

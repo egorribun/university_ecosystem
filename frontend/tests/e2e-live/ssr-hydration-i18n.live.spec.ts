@@ -1,9 +1,13 @@
 import { type BrowserContext, type Page } from "@playwright/test"
 import { JSDOM } from "jsdom"
 import { extractSeoMetadata, normalizeMetadataText } from "./seo-metadata.mjs"
+import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
+import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
 import enActivity from "../../src/i18n/locales/en/activity.json" with { type: "json" }
+import enCommon from "../../src/i18n/locales/en/common.json" with { type: "json" }
 import enDashboard from "../../src/i18n/locales/en/dashboard.json" with { type: "json" }
 import enNavigation from "../../src/i18n/locales/en/navigation.json" with { type: "json" }
+import ruCommon from "../../src/i18n/locales/ru/common.json" with { type: "json" }
 import ruDashboard from "../../src/i18n/locales/ru/dashboard.json" with { type: "json" }
 import ruActivity from "../../src/i18n/locales/ru/activity.json" with { type: "json" }
 import ruNavigation from "../../src/i18n/locales/ru/navigation.json" with { type: "json" }
@@ -14,11 +18,21 @@ import { expect, loginAs, test } from "./fixtures"
 type Language = "ru" | "en"
 type TitleLandmark = "activity" | "dashboard" | "news"
 
+const MAIN_SKIP_LINK_CATALOGS = {
+  en: enCommon.skipToMain,
+  ru: ruCommon.skipToMain,
+} satisfies Record<Language, string>
+
 const PAGE_TITLE_CATALOGS = {
   activity: { en: enActivity.title, ru: ruActivity.title },
   dashboard: { en: enDashboard.pageTitle, ru: ruDashboard.pageTitle },
   news: { en: enNews.pageTitle, ru: ruNews.pageTitle },
 } satisfies Record<TitleLandmark, Record<Language, string>>
+
+const NEWS_SEARCH_PLACEHOLDER_CATALOGS = {
+  en: enNews.search.placeholder,
+  ru: ruNews.search.placeholder,
+} satisfies Record<Language, string>
 
 const PAGE_DESCRIPTION_CATALOGS = {
   activity: { en: enActivity.pageDescription, ru: ruActivity.pageDescription },
@@ -57,11 +71,11 @@ function expectedRootHeadSnapshot(language: Language) {
     ogType: "website",
     ogTitle: title,
     ogDescription: socialDescription,
-    ogImage: "/og-image.png",
+    ogImage: "/icon-512.png",
     twitterCard: "summary_large_image",
     twitterTitle: title,
     twitterDescription: socialDescription,
-    twitterImage: "/og-image.png",
+    twitterImage: "/icon-512.png",
     seoMetaCounts: {
       'meta[name="title"]': 0,
       'meta[name="description"]': 1,
@@ -89,6 +103,16 @@ function readDocumentTitle(markup: string | null): string | null {
   return extractSeoMetadata(markup)?.title ?? null
 }
 
+function readNewsSearchPlaceholder(markup: string | null): string | null {
+  if (markup === null) return null
+  const root = new JSDOM(markup).window.document.querySelector("#root")
+  return (
+    root
+      ?.querySelector<HTMLInputElement>(".news-theme header input[placeholder]")
+      ?.getAttribute("placeholder") ?? null
+  )
+}
+
 function readHeadSnapshot(markup: string | null) {
   return extractSeoMetadata(markup)
 }
@@ -107,11 +131,11 @@ function expectedPageHeadSnapshot(language: Language, landmark: TitleLandmark) {
     ogType: "website",
     ogTitle: title,
     ogDescription: socialDescription,
-    ogImage: "/og-image.png",
+    ogImage: "/icon-512.png",
     twitterCard: "summary_large_image",
     twitterTitle: title,
     twitterDescription: socialDescription,
-    twitterImage: "/og-image.png",
+    twitterImage: "/icon-512.png",
     seoMetaCounts: Object.fromEntries(
       [
         'meta[name="title"]',
@@ -149,11 +173,11 @@ async function assertSingleClientHead(
     ['meta[property="og:type"]', "website"],
     ['meta[property="og:title"]', title],
     ['meta[property="og:description"]', PAGE_SOCIAL_DESCRIPTION_CATALOGS[landmark][language]],
-    ['meta[property="og:image"]', "/og-image.png"],
+    ['meta[property="og:image"]', "/icon-512.png"],
     ['meta[name="twitter:card"]', "summary_large_image"],
     ['meta[name="twitter:title"]', title],
     ['meta[name="twitter:description"]', PAGE_SOCIAL_DESCRIPTION_CATALOGS[landmark][language]],
-    ['meta[name="twitter:image"]', "/og-image.png"],
+    ['meta[name="twitter:image"]', "/icon-512.png"],
   ] as const
   for (const [selector, content] of metadata) {
     const locator = page.locator(`head ${selector}`)
@@ -260,10 +284,17 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
       expectedPageHeadSnapshot(language, "dashboard")
     )
     expect(serverMarkup?.includes('data-ssr-auth="authenticated:student"')).toBe(true)
+    expect(matchesMainSkipLinkLocale(serverMarkup ?? null, MAIN_SKIP_LINK_CATALOGS[language])).toBe(
+      true
+    )
 
     await page.waitForFunction(() => window.__APP_HYDRATED === true)
     await expect(page.locator("html")).toHaveAttribute("lang", language)
     await expect(page.getByRole("main")).toBeVisible()
+    const hydratedDashboardMarkup = await page.locator("#root").evaluate((root) => root.outerHTML)
+    expect(
+      matchesMainSkipLinkLocale(hydratedDashboardMarkup, MAIN_SKIP_LINK_CATALOGS[language])
+    ).toBe(true)
     expect(normalizeMetadataText(await page.title())).toBe(
       expectedDocumentTitle(language, "dashboard")
     )
@@ -292,6 +323,10 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
     await expect(
       page.getByRole("heading", { name: expectedNewsHeading, exact: true })
     ).toBeVisible()
+    const spaNewsMarkup = await page.locator("#root").evaluate((root) => root.outerHTML)
+    expect(matchesNewsSearchLocale(spaNewsMarkup, NEWS_SEARCH_PLACEHOLDER_CATALOGS[language])).toBe(
+      true
+    )
 
     expect(normalizeMetadataText(await page.title())).toBe(expectedDocumentTitle(language, "news"))
     await assertSingleClientHead(
@@ -313,6 +348,12 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
     expect(newsResponse?.headers()["content-type"] ?? "").toContain("text/html")
     const newsServerMarkup = await newsResponse?.text()
     expect(newsServerMarkup).toBeTruthy()
+    expect(readNewsSearchPlaceholder(newsServerMarkup ?? null)).toBe(
+      NEWS_SEARCH_PLACEHOLDER_CATALOGS[language]
+    )
+    expect(
+      matchesNewsSearchLocale(newsServerMarkup ?? null, NEWS_SEARCH_PLACEHOLDER_CATALOGS[language])
+    ).toBe(true)
     const newsServerLanguage = newsServerMarkup?.match(/<html\b[^>]*\blang=["'](ru|en)["']/u)?.[1]
     expect(newsServerLanguage).toBe(language)
     expect(readDocumentTitle(newsServerMarkup ?? null)).toBe(
@@ -328,6 +369,10 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
     await expect(
       page.getByRole("heading", { name: expectedNewsHeading, exact: true })
     ).toBeVisible()
+    const hydratedNewsMarkup = await page.locator("#root").evaluate((root) => root.outerHTML)
+    expect(
+      matchesNewsSearchLocale(hydratedNewsMarkup, NEWS_SEARCH_PLACEHOLDER_CATALOGS[language])
+    ).toBe(true)
     expect(normalizeMetadataText(await page.title())).toBe(expectedDocumentTitle(language, "news"))
     await assertSingleClientHead(
       page,

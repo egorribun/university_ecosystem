@@ -10,7 +10,7 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { registerHooks } from "node:module"
 
-const expectedVersion = "10.0.0"
+const expectedVersion = "10.1.1"
 // Keep the public integrity digest as an auditable sha256sum record, following
 // the repository's vendored-artifact checksum convention.
 const checksumRecord = readFileSync(
@@ -26,7 +26,7 @@ const expectedSourceHash = checksumMatch[1]
 export function rewriteStrykerErrorFormatter(source, metadata) {
   if (metadata.name !== "@stryker-mutator/util" || metadata.version !== expectedVersion) {
     throw new Error(
-      "Stryker error adapter requires @stryker-mutator/util 10.0.0; revalidate the adapter"
+      "Stryker error adapter requires @stryker-mutator/util 10.1.1; revalidate the adapter"
     )
   }
   if (createHash("sha256").update(source).digest("hex") !== expectedSourceHash) {

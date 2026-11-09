@@ -360,8 +360,32 @@ test("Node production CSP defaults match the shared policy contract", async () =
     await readFile(path.join(REPOSITORY_ROOT, "quality", "frontend-csp-defaults.json"), "utf8")
   )
 
+  // Node-only script-src tokens are declared explicitly in the shared contract so
+  // drift is visible; they are the only expected difference from the backend policy.
+  const nodeOnlyScriptSrcTokens = contract.nodeOnlyScriptSrcTokens
+  assert.deepEqual(nodeOnlyScriptSrcTokens, ["'wasm-unsafe-eval'"])
+
   const headers = buildNodeCspHeaders(contract.nonce)
-  assert.deepEqual(headers, contract.headers)
+  const addTokenToScriptSrc = (policy) => {
+    const directives = policy.split("; ")
+    const scriptSrcIndex = directives.findIndex((directive) => directive.startsWith("script-src "))
+    assert.notEqual(scriptSrcIndex, -1, "CSP contract includes script-src")
+    const scriptSrcTokens = directives[scriptSrcIndex].split(" ")
+    assert.ok(scriptSrcTokens.includes("'report-sample'"))
+    for (const token of nodeOnlyScriptSrcTokens) {
+      assert.equal(scriptSrcTokens.includes(token), false)
+    }
+    directives[scriptSrcIndex] = [...scriptSrcTokens, ...nodeOnlyScriptSrcTokens].join(" ")
+    return directives.join("; ")
+  }
+
+  assert.deepEqual(headers, {
+    ...contract.headers,
+    "content-security-policy": addTokenToScriptSrc(contract.headers["content-security-policy"]),
+    "content-security-policy-report-only": addTokenToScriptSrc(
+      contract.headers["content-security-policy-report-only"]
+    ),
+  })
 
   const enforced = headers["content-security-policy"]
   const reportOnly = headers["content-security-policy-report-only"].replace(
@@ -370,8 +394,27 @@ test("Node production CSP defaults match the shared policy contract", async () =
   )
   assert.ok(enforced.includes("upgrade-insecure-requests"))
   assert.equal(reportOnly, enforced.replace("; upgrade-insecure-requests", ""))
-  assert.ok(reportOnly.includes("trusted-types app dompurify-news goog#html 'allow-duplicates'"))
-  assert.ok(reportOnly.includes("require-trusted-types-for 'script'"))
+
+  for (const policy of Object.values(headers)) {
+    const directives = policy.split("; ")
+    const scriptSrc = directives.find((directive) => directive.startsWith("script-src "))
+    assert.ok(scriptSrc)
+    const scriptSrcTokens = scriptSrc.split(" ")
+    for (const token of nodeOnlyScriptSrcTokens) {
+      assert.equal(scriptSrcTokens.filter((candidate) => candidate === token).length, 1)
+    }
+    assert.equal(scriptSrcTokens.includes("'unsafe-eval'"), false)
+
+    const trustedTypes = directives.find((directive) => directive.startsWith("trusted-types "))
+    assert.deepEqual(trustedTypes?.split(" "), [
+      "trusted-types",
+      "app",
+      "dompurify-news",
+      "goog#html",
+      "'allow-duplicates'",
+    ])
+    assert.ok(directives.includes("require-trusted-types-for 'script'"))
+  }
 })
 
 test("HTML CSP response headers preserve compressed bytes and leave non-HTML untouched", async () => {

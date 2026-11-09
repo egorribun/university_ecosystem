@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.util
@@ -36,6 +37,36 @@ assert _SPEC is not None and _SPEC.loader is not None
 live_stand = importlib.util.module_from_spec(_SPEC)
 sys.modules["live_stand"] = live_stand
 _SPEC.loader.exec_module(live_stand)
+
+
+def _patch_live_playwright_result(
+    monkeypatch: pytest.MonkeyPatch,
+    completed: subprocess.CompletedProcess,
+    *,
+    calls: list[dict[str, object]] | None = None,
+) -> None:
+    """Feed a fixed child result through the bounded live-command runner."""
+
+    def fake_run_check(check: Any, **kwargs: Any) -> Any:
+        if calls is not None:
+            calls.append({"check": check, **kwargs})
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return live_stand.fast_preflight.CheckResult(
+            name=check.name,
+            command=tuple(check.command),
+            status="passed" if completed.returncode == 0 else "failed",
+            exit_code=completed.returncode,
+            duration_seconds=0.0,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(live_stand.fast_preflight, "run_check", fake_run_check)
 
 
 @pytest.fixture(scope="session")
@@ -476,7 +507,7 @@ def test_in_place_compose_command_uses_the_shared_live_overlay(
     )
 
 
-def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
+def test_seed_cli_reuses_owner_scoped_password_for_student_and_admin_seeds(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -588,9 +619,11 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     if len(runs) != 6 or token_sizes != [32]:
         pytest.fail("repeated seed invocations must reuse one owner-scoped password")
 
+    demo_commands = [runs[0][0], runs[3][0]]
+    demo_environments = [runs[0][1], runs[3][1]]
     admin_commands = [runs[1][0], runs[4][0]]
     admin_environments = [runs[1][1], runs[4][1]]
-    non_admin_environments = [runs[index][1] for index in (0, 2, 3, 5)]
+    authorization_environments = [runs[index][1] for index in (2, 5)]
     expected_seed_environment = {
         "COMPOSE_PROJECT_NAME": owner.project_name,
         "LIVE_STAND_OWNER_VERIFIED": "1",
@@ -609,11 +642,14 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         pytest.fail("each seed subprocess must reverify the owned Docker daemon")
     if [check[1] for check in resource_checks] != [owner] * 6:
         pytest.fail("each seed subprocess must verify signed Compose resources")
-    if any("TEST_PASSWORD" in environment for environment in non_admin_environments):
-        pytest.fail("only admin-account seeding may receive the admin password")
+    if any(
+        "TEST_PASSWORD" in environment for environment in authorization_environments
+    ):
+        pytest.fail("authorization seeding must not receive the generated password")
 
     generated_passwords = [
-        environment.get("TEST_PASSWORD") for environment in admin_environments
+        environment.get("TEST_PASSWORD")
+        for environment in (*demo_environments, *admin_environments)
     ]
     if not all(
         isinstance(password, str)
@@ -624,18 +660,24 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         and any(not character.isalnum() for character in password)
         for password in generated_passwords
     ):
-        pytest.fail("admin seeding must receive a strong generated password")
+        pytest.fail("student and admin seeds must receive a strong generated password")
     if generated_passwords[0] != generated_passwords[1]:
-        pytest.fail("separate seed invocations must reuse the persisted password")
-    if any(password == inherited_password for password in generated_passwords):
-        pytest.fail("admin seeding must replace inherited passwords with fresh values")
-    if any(
-        "-e" not in command
-        or "TEST_PASSWORD" not in command
-        or command.index("TEST_PASSWORD") > command.index("backend")
-        for command in admin_commands
+        pytest.fail("student seed reruns must reuse the persisted password")
+    if (
+        generated_passwords[0] != generated_passwords[2]
+        or generated_passwords[0] != generated_passwords[3]
     ):
-        pytest.fail("Compose must explicitly pass TEST_PASSWORD to the backend")
+        pytest.fail("student and admin seeds must share the persisted password")
+    if any(password == inherited_password for password in generated_passwords):
+        pytest.fail("seed commands must replace inherited passwords with fresh values")
+    for command in (*demo_commands, *admin_commands):
+        if (
+            "-e" not in command
+            or "TEST_PASSWORD" not in command
+            or command.index("TEST_PASSWORD") > command.index("backend")
+            or any(generated_passwords[0] in part for part in command)
+        ):
+            pytest.fail("Compose must pass the password by environment name only")
 
     captured = capsys.readouterr()
     if any(
@@ -888,14 +930,47 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers == json.loads(
+            playwright_runs[-1][1]["LIVE_AUD178_PROBE_MARKERS"]
+        )
         assert output_directory.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == probe_nonce
         assert dict(correlation_ids) == probe_correlation_ids
         assert container_pin == expected_container_pin
         assert docker_context is expected_docker_context
+        assert reset_probe_markers is not None
+        assert set(reset_probe_markers) == set(live_stand.LIVE_CADDY_PROBE_PROJECTS)
+        reset_marker_values: list[str] = []
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS:
+            project_markers = reset_probe_markers[project]
+            assert set(project_markers) == {"query", "path"}
+            for source in ("query", "path"):
+                binding = project_markers[source]
+                assert set(binding) == {"marker", "correlationId"}
+                marker = binding["marker"]
+                correlation_id = binding["correlationId"]
+                assert re.fullmatch(r"[0-9a-f]{32}", marker) is not None
+                assert re.fullmatch(r"[0-9a-f]{32}", correlation_id) is not None
+                reset_marker_values.extend((marker, correlation_id))
+        assert len(set(reset_marker_values)) == 8
+        assert set(reset_marker_values).isdisjoint(
+            {password_nonce, *correlation_ids.values()}
+        )
+        expected_reset_markers = {
+            project: {
+                source: dict(reset_probe_markers[project][source])
+                for source in ("query", "path")
+            }
+            for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+        }
+        assert json.loads(playwright_runs[-1][1]["LIVE_AUD178_PROBE_MARKERS"]) == (
+            expected_reset_markers
+        )
         probe_log_calls.append(
             (
                 started_at_ms,
@@ -1053,8 +1128,10 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             or stored_password.get("password") != generated_password
         ):
             pytest.fail("the persisted admin password must belong to this stand")
-        if "TEST_PASSWORD" in demo_env or "TEST_PASSWORD" in authorization_env:
-            pytest.fail("only the admin account seed may receive the admin password")
+        if demo_env.get("TEST_PASSWORD") != generated_password:
+            pytest.fail("the student seed must use the same per-run password")
+        if "TEST_PASSWORD" in authorization_env:
+            pytest.fail("authorization seed must not receive the generated password")
         if e2e_env.get("TEST_PASSWORD") != generated_password:
             pytest.fail("the Playwright child must receive the same per-run password")
         if playwright_password != generated_password:
@@ -1076,6 +1153,14 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         ):
             pytest.fail(
                 "Compose argv must contain only the variable name, never its value"
+            )
+        if (
+            "-e" not in demo_command
+            or "TEST_PASSWORD" not in demo_command
+            or any(generated_password in part for part in demo_command)
+        ):
+            pytest.fail(
+                "demo seed argv must contain only the variable name, never its value"
             )
         if live_stand.LIVE_E2E_COMMAND != ("npm", "run", "test:e2e:live"):
             pytest.fail(
@@ -1538,9 +1623,14 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         text: bool,
         encoding: str,
         errors: str,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         assert check is False and capture_output and text and encoding == "utf-8"
         assert errors == "replace"
+        assert timeout in {
+            live_stand.LIVE_INSTALL_TIMEOUT_SECONDS,
+            live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
+        }
         calls.append((command, cwd, dict(env)))
         assert user_config.is_file() and user_config.read_bytes() == b""
         assert global_config.is_file() and global_config.read_bytes() == b""
@@ -1684,17 +1774,14 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         f'  - locator.fill("{password}")\n'
         f"failed reset URL https://localhost/reset-password?token={reset_token}\n"
     )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        1,
+        stdout=stdout.encode(),
+        stderr=stderr.encode(),
+    )
     captured_calls: list[dict[str, object]] = []
-
-    def fake_subprocess_run(
-        command: Sequence[str], **kwargs: object
-    ) -> subprocess.CompletedProcess:
-        captured_calls.append({"command": command, **kwargs})
-        return subprocess.CompletedProcess(
-            command, 1, stdout=stdout.encode(), stderr=stderr.encode()
-        )
-
-    monkeypatch.setattr(live_stand.subprocess, "run", fake_subprocess_run)
+    _patch_live_playwright_result(monkeypatch, completed, calls=captured_calls)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(
@@ -1727,16 +1814,17 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         pytest.fail("the live runner should launch Playwright once")
 
     call = captured_calls[0]
-    command = call["command"]
-    if not isinstance(command, (list, tuple)) or any(
-        password in part for part in command
-    ):
+    check = call["check"]
+    command = check.command
+    if not isinstance(command, tuple) or any(password in part for part in command):
         pytest.fail("the admin password must not appear in Playwright argv")
     if tuple(command) != live_stand._live_e2e_command():
         pytest.fail("the runner must use the platform-specific fixed npm launcher")
-    if call.get("capture_output") is not True or call.get("text") is not False:
-        pytest.fail("Playwright output must be captured before diagnostics are emitted")
-    assert "encoding" not in call and "errors" not in call
+    assert check.name == "live-playwright"
+    assert call["repo_root"] == tmp_path
+    assert call["env"] == {"TEST_PASSWORD": password}
+    assert call["timeout_seconds"] == live_stand.LIVE_E2E_TIMEOUT_SECONDS
+    assert call["include_output"] is True
 
 
 @pytest.mark.parametrize(
@@ -1874,23 +1962,19 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(identities, title=private_title)
-        + "212 passed (3m)\n8 skipped\n"
+        + "222 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess,
-        "run",
-        lambda *_args, **_kwargs: completed,
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
     printed = capsys.readouterr()
     expected_output = [
         "+ " + " ".join(live_stand._live_e2e_command()),
-        "live E2E counts passed=212 skipped=8",
+        "live E2E counts passed=222 skipped=8",
         *(
             f"live E2E skipped project={project} source={source} line={line_number}"
             for project, source, line_number in identities
@@ -1901,7 +1985,6 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     assert printed.out.splitlines() == expected_output
     assert printed.err == ""
     assert private_title not in printed.out + printed.err
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("extra_summary", ["flaky", "interrupted"])
@@ -1914,14 +1997,12 @@ def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(identities, title="private title")
-        + f"212 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
+        + f"222 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -1945,14 +2026,12 @@ def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(observed, title="private title")
-        + f"212 passed{newline}8 skipped{newline}"
+        + f"222 passed{newline}8 skipped{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -1973,22 +2052,18 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(substituted, title=private_title)
-        + "212 passed (3m)\n8 skipped\n"
+        + "222 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess,
-        "run",
-        lambda *_args, **_kwargs: completed,
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
     printed = capsys.readouterr()
-    assert "live E2E counts passed=212 skipped=8" in printed.out
+    assert "live E2E counts passed=222 skipped=8" in printed.out
     assert (
         "live E2E skip accounting=failed observed=8 rejected=0 overflow=false"
         in printed.out
@@ -1997,18 +2072,21 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     assert "verified count=8" not in printed.out
     assert printed.err == ""
     assert private_title not in printed.out + printed.err
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
     ("passed", "accepted"),
     [
-        pytest.param(212, True, id="current-220-instance-inventory"),
+        pytest.param(222, True, id="current-230-instance-inventory"),
+        pytest.param(220, False, id="obsolete-228-instance-inventory"),
+        pytest.param(216, False, id="obsolete-224-instance-inventory"),
+        pytest.param(214, False, id="obsolete-222-instance-inventory"),
+        pytest.param(212, False, id="obsolete-220-instance-inventory"),
         pytest.param(210, False, id="obsolete-218-instance-inventory"),
         pytest.param(190, False, id="obsolete-198-instance-inventory"),
-        pytest.param(209, False, id="three-passes-missing"),
-        pytest.param(211, False, id="one-pass-missing"),
-        pytest.param(213, False, id="one-pass-extra"),
+        pytest.param(219, False, id="three-passes-missing"),
+        pytest.param(221, False, id="one-pass-missing"),
+        pytest.param(223, False, id="one-pass-extra"),
     ],
 )
 def test_live_playwright_full_count_matches_collected_inventory(
@@ -2027,9 +2105,7 @@ def test_live_playwright_full_count_matches_collected_inventory(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     if accepted:
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -2047,7 +2123,6 @@ def test_live_playwright_full_count_matches_collected_inventory(
         assert "live E2E outcome=failed exit_code=0" in printed.out
     assert private_title not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -2055,8 +2130,8 @@ def test_live_playwright_full_count_matches_collected_inventory(
     [
         pytest.param(198, True, id="previous-boundary"),
         pytest.param(199, True, id="above-previous-boundary"),
-        pytest.param(216, True, id="current-boundary"),
-        pytest.param(217, False, id="above-current-boundary"),
+        pytest.param(220, True, id="current-boundary"),
+        pytest.param(221, False, id="above-current-boundary"),
     ],
 )
 def test_live_playwright_skip_index_matches_collected_inventory(
@@ -2168,9 +2243,7 @@ def test_live_playwright_emits_only_validated_profile_save_diagnostics(
         ),
         stderr=b"private-stack private-credential\n",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -2302,7 +2375,7 @@ def test_live_playwright_emits_only_bounded_a11y_contrast_values(
         stdout=(sentinel + sentinel.rstrip() + " private-token\n").encode(),
         stderr=b"private body and credential",
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -2674,9 +2747,7 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
         ).encode(),
         stderr=b"private traceback and credential\n" + _footer_geometry_row().encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -2700,13 +2771,16 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
     assert "private" not in printed.out + printed.err
     assert "credential" not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize(
     "check",
     [
+        "student-users-denied",
+        "teacher-users-denied",
+        "student-feature-flags-denied",
+        "teacher-feature-flags-denied",
         "admin-users",
         "admin-feature-flags",
         "admin-feature-flags-ui",
@@ -2715,7 +2789,7 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
         "chat-attachment-create",
     ],
 )
-@pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
+@pytest.mark.parametrize("status", [100, 200, 401, 403, 429, 500, 599])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_live_playwright_http_status_accepts_only_fixed_domains(
     project: str, check: str, status: int, newline: str
@@ -3054,9 +3128,7 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
         stdout=(row + private + "\n").encode(),
         stderr=(row + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3069,7 +3141,6 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 _STORY_MEMORY_EVENT_KEYS = (
@@ -3266,9 +3337,7 @@ def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
         stdout=(valid + malformed + private + "\n").encode(),
         stderr=(valid + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3281,7 +3350,6 @@ def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -3380,9 +3448,7 @@ def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
         stdout=(rows + private + "\n").encode(),
         stderr=(rows + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3393,7 +3459,6 @@ def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
@@ -3492,7 +3557,7 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
             b"private-body private-credential private-browser-state\n"
         ),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -3517,7 +3582,6 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -3898,7 +3962,7 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
             b"private-name private-message private-stack private-code private-browser-state\n"
         ),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -3914,7 +3978,6 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_only_bounded_news_and_page_error_details(
@@ -3951,9 +4014,7 @@ def test_live_playwright_emits_only_bounded_news_and_page_error_details(
             + "private stderr diagnostic\n"
         ).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     printed = capsys.readouterr()
@@ -3969,7 +4030,6 @@ def test_live_playwright_emits_only_bounded_news_and_page_error_details(
     ]
     assert "private" not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_preserves_control_characters_before_diagnostic_validation(
@@ -3977,7 +4037,6 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    run = subprocess.run
     child_source = (
         "import sys; "
         "sys.stdout.buffer.write("
@@ -3990,12 +4049,8 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
         "+ b'UE_LIVE_PROFILE_SAVE_V1 project=mobile status=422 detail=array detail_count=1 detail_msg=true alert_count=0 save_disabled=false route=profile page_error_count=0 page_error=none\\r\\n')"
     )
 
-    def run_actual_child(
-        _command: Sequence[str], **kwargs: Any
-    ) -> subprocess.CompletedProcess:
-        return run((sys.executable, "-c", child_source), **kwargs)
-
-    monkeypatch.setattr(live_stand.subprocess, "run", run_actual_child)
+    command = (sys.executable, "-c", child_source)
+    monkeypatch.setattr(live_stand, "_live_e2e_command", lambda **_kwargs: command)
     live_stand._run_live_playwright(
         cwd=tmp_path, environment=dict(os.environ), mode="smoke"
     )
@@ -4026,10 +4081,13 @@ def test_live_playwright_emits_only_validated_failure_locations(
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("// public source\n" * 3, encoding="utf-8")
     private_title = "password=fixture-private-password token=fixture-private-token"
-    frame_sources = [
-        str(tmp_path / source) if path_style == "absolute" else source
+    frame_sources = {
+        source: str(tmp_path / source) if path_style == "absolute" else source
         for source in sources
-    ]
+    }
+    auth_frame = frame_sources["tests/e2e-live/auth-roles.live.spec.ts"]
+    reset_frame = frame_sources["tests/e2e-live/password-reset.live.spec.ts"]
+    fixture_frame = frame_sources["tests/e2e-live/fixtures.ts"]
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
@@ -4037,21 +4095,21 @@ def test_live_playwright_emits_only_validated_failure_locations(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title} ─────\n"
             "\n    Error: fixture-private-assertion\n\n"
-            f"        at fixturePrivateFunction ({frame_sources[0]}:3:1)\n"
-            f"        at {frame_sources[0]}:2:1\n"
+            f"        at fixturePrivateFunction ({auth_frame}:3:1)\n"
+            f"        at {auth_frame}:2:1\n"
             "  2) [mobile] › tests/e2e-live/password-reset.live.spec.ts:3:17 › "
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
             "\n    Error: fixture-private-error\n\n"
-            f"        at {frame_sources[1]}:1:17\n"
-            f"        at privateHelper ({frame_sources[-1]}:2:17)\n"
-            f"        at {frame_sources[-1]}:3:1\n"
+            f"        at {reset_frame}:1:17\n"
+            f"        at privateHelper ({fixture_frame}:2:17)\n"
+            f"        at {fixture_frame}:3:1\n"
             "6 passed\n12 failed\n2 skipped\n1 flaky\n3 interrupted\n4 did not run\n"
         ),
         stderr=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title}\n"
             "Error: locator.fill('fixture-private-password')\n"
-            f"        at {frame_sources[0]}:1:1\n"
+            f"        at {auth_frame}:1:1\n"
         ),
     )
     if path_style == "windows":
@@ -4064,7 +4122,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
             )
     completed.stdout = completed.stdout.replace("\n", newline).encode()
     completed.stderr = completed.stderr.replace("\n", newline).encode()
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -4089,7 +4147,6 @@ def test_live_playwright_emits_only_validated_failure_locations(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
@@ -4102,9 +4159,14 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
         if path.startswith("frontend/tests/e2e-live/")
         and path.endswith(".live.spec.ts")
     )
-    expected_sources = {source: source for source in tracked_sources}
+    audit_sources = (
+        "tests/e2e/audit375-service-worker.spec.ts",
+        "tests/e2e/rate-limit-ux.spec.ts",
+    )
+    declared_sources = (*tracked_sources, *audit_sources)
+    expected_sources = {source: source for source in declared_sources}
     expected_sources.update(
-        {source.replace("/", "\\"): source for source in tracked_sources}
+        {source.replace("/", "\\"): source for source in declared_sources}
     )
     expected_frame_sources = {
         **expected_sources,
@@ -4113,12 +4175,11 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
     }
 
     assert tracked_sources
-    assert len(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES) == len(
-        tracked_sources
-    )
+    assert live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES == declared_sources
     assert len(set(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES)) == len(
-        tracked_sources
+        declared_sources
     )
+    assert live_stand._LIVE_E2E_SELECTABLE_SPECS == tracked_sources
     assert live_stand._PLAYWRIGHT_FAILURE_SOURCES == expected_sources
     assert live_stand._PLAYWRIGHT_FAILURE_FRAME_SOURCES == expected_frame_sources
 
@@ -4181,9 +4242,7 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
         ).encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4200,7 +4259,6 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
     ]
     assert private_details not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
@@ -4270,9 +4328,7 @@ def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
             + f"    Received: {marker}\n".encode()
         ),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4295,7 +4351,6 @@ def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
     ]
     assert marker not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_lines(
@@ -4325,9 +4380,7 @@ def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_l
         ).encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4339,7 +4392,6 @@ def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_l
     ]
     assert marker not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_classifies_pinned_wait_for_response_timeout(
@@ -4587,7 +4639,7 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n".encode(),
         stderr=f"        at {frame_path}:2:1\n1 failed\n".encode(),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 23"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={})
     printed = capsys.readouterr()
@@ -4599,7 +4651,6 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         "live E2E outcome=failed exit_code=23",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("source_state", ["missing", "invalid-utf8", "directory"])
@@ -4780,7 +4831,7 @@ def test_live_e2e_command_handles_windows_npm_shim_without_secret_interpolation(
 
 
 def test_live_e2e_focused_command_uses_only_canonical_reviewed_specs() -> None:
-    sources = live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+    sources = live_stand._LIVE_E2E_SELECTABLE_SPECS
     selected = (sources[-1], sources[0])
     canonical = (sources[0], sources[-1])
 
@@ -4924,12 +4975,12 @@ def test_e2e_cli_propagates_valid_focus_in_canonical_order_before_execution(
     side_effects: list[str] = []
     observed: list[tuple[str, tuple[str, ...]]] = []
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     monkeypatch.setattr(
         live_stand,
@@ -4955,12 +5006,12 @@ def test_e2e_direct_call_propagates_valid_focus_before_password_read(
 
     observed: list[tuple[str, str, tuple[str, ...]]] = []
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     password_marker = uuid4().hex
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
@@ -4989,35 +5040,28 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
     tmp_path: Path,
 ) -> None:
     selected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
     )
     expected = (
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[0],
-        live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES[-1],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[0],
+        live_stand._LIVE_E2E_SELECTABLE_SPECS[-1],
     )
     expected_command = live_stand._live_e2e_command(mode="full", specs=expected)
     completed = subprocess.CompletedProcess((), 0, stdout=b"", stderr=b"")
-    observed: list[tuple[str, ...]] = []
-
-    def fake_run(command, **_kwargs):
-        observed.append(tuple(command))
-        completed.args = command
-        return completed
-
-    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+    calls: list[dict[str, object]] = []
+    _patch_live_playwright_result(monkeypatch, completed, calls=calls)
 
     live_stand._run_live_playwright(
         cwd=tmp_path, environment={}, mode="full", specs=selected
     )
 
-    assert observed == [expected_command]
+    assert [tuple(call["check"].command) for call in calls] == [expected_command]
     assert capsys.readouterr().out.splitlines() == [
         "live E2E scope=focused diagnostic_only=true",
         "+ " + " ".join(expected_command),
         "live E2E outcome=passed exit_code=0",
     ]
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -5028,7 +5072,9 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
             "smoke",
             (
                 "tests/e2e-live/auth-roles.live.spec.ts",
+                "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
                 "tests/e2e-live/password-reset.live.spec.ts",
+                "tests/e2e-live/pwa-offline-shell.live.spec.ts",
                 "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
                 "tests/e2e-live/settings-radio-focus.live.spec.ts",
                 live_stand.LIVE_CADDY_PROBE_SPEC,
@@ -5216,14 +5262,18 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers is None
         assert output_path.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == nonce
         assert dict(correlation_ids) == expected_correlation_ids
         assert container_pin == expected_container_pin
         assert docker_context is expected_docker_context
+        assert reset_probe_markers is None
         events.append(("log-proof", None, docker_context))
         verification_calls.append(
             {
@@ -5304,7 +5354,9 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         selected_files = live_stand.LIVE_E2E_SMOKE_FILES
         assert selected_files == (
             "tests/e2e-live/auth-roles.live.spec.ts",
+            "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
             "tests/e2e-live/password-reset.live.spec.ts",
+            "tests/e2e-live/pwa-offline-shell.live.spec.ts",
             "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
             "tests/e2e-live/settings-radio-focus.live.spec.ts",
             live_stand.LIVE_CADDY_PROBE_SPEC,
@@ -5924,6 +5976,7 @@ def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
                 "text": True,
                 "encoding": "utf-8",
                 "errors": "replace",
+                "timeout": live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
             },
         )
     ]
@@ -5994,7 +6047,10 @@ def test_core_signed_resume_accepts_reallocated_published_port_values(
     original_fingerprint = owner.compose_resource_fingerprint
     assert original_fingerprint is not None
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
 
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     rebound = live_stand._bind_stand_owner_compose_resources(worktree, incomplete)
@@ -6011,7 +6067,10 @@ def test_core_signed_resume_rejects_compose_mount_drift(
 ) -> None:
     worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     marker = worktree / live_stand.STAND_FILE
     marker_before = marker.read_bytes()
@@ -7191,10 +7250,14 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     temporal_root.mkdir(parents=True)
     (temporal_root / "config.yaml").write_text("global: {}\n", encoding="utf-8")
     (temporal_root / "entrypoint.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    namespace_script = repository / "scripts" / "temporal" / "namespace-init.sh"
+    namespace_script.parent.mkdir(parents=True)
+    namespace_script.write_text("#!/bin/sh\n", encoding="utf-8")
     temporary_root = tmp_path / "temp"
     temporary_root.mkdir()
     state_parent = temporary_root / "ue-live-acceptance"
     state_root = state_parent / "run-36854541120"
+    bootstrap_profile = state_root / ".temporal-bootstrap" / "profile.toml"
     resolved_sha = "a" * 40
     git_calls: list[tuple[str, ...]] = []
     commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
@@ -7271,6 +7334,7 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     def capture(
         command: list[str], *, cwd: Path, env: dict[str, str] | None = None
     ) -> None:
+        assert not bootstrap_profile.exists()
         commands.append((command, cwd, env))
 
     monkeypatch.setattr(live_stand, "_run", capture)
@@ -7333,7 +7397,28 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
         (state_root / ".secrets" / "temporal_api_key").as_posix(),
         (repository / "services" / "temporal" / "config.yaml").as_posix(),
         (repository / "services" / "temporal" / "entrypoint.sh").as_posix(),
+        namespace_script.as_posix(),
+        bootstrap_profile.as_posix(),
     }
+    services = yaml.safe_load(
+        state_override.replace("!override", "").replace("!reset", "")
+    )["services"]
+    mounts = services["temporal-namespace-init"]["volumes"]
+    for target, source in (
+        ("/etc/temporal/namespace-init.sh", namespace_script),
+        ("/run/temporal-bootstrap/profile.toml", bootstrap_profile),
+    ):
+        assert [mount for mount in mounts if mount["target"] == target] == [
+            {
+                "type": "bind",
+                "source": source.as_posix(),
+                "target": target,
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        ]
+    assert not bootstrap_profile.exists()
+    assert namespace_script.read_text(encoding="utf-8") == "#!/bin/sh\n"
     assert not (repository / ".env").exists()
     assert not (repository / ".env.docker").exists()
     assert not (repository / ".secrets").exists()
@@ -7427,10 +7512,78 @@ def test_in_place_compose_override_does_not_store_secret_contents(
     override = live_stand._write_in_place_compose_override(state_root)
 
     content = override.read_text(encoding="utf-8")
+    assert {
+        Path(".temporal-bootstrap"),
+        Path(".temporal-bootstrap/profile.toml"),
+        Path(".temporal-bootstrap/owner.marker"),
+        Path(".temporal-bootstrap/profile.lock"),
+    }.issubset(live_stand.STAND_PATHS_TO_PROTECT)
     assert all(sentinel not in content for sentinel in sentinels)
     assert state_root.as_posix() in content
     assert "jwt_rs256.pem" in content
     assert "temporal_api_key" in content
+    services = yaml.safe_load(content.replace("!override", "").replace("!reset", ""))[
+        "services"
+    ]
+    temporal_mounts = services["temporal"]["volumes"]
+    assert temporal_mounts == [
+        {
+            "type": "bind",
+            "source": (temporal_root / "config.yaml").as_posix(),
+            "target": "/etc/temporal/config/docker.yaml",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (temporal_root / "entrypoint.sh").as_posix(),
+            "target": "/etc/temporal/wave144-entrypoint.sh",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "volume",
+            "source": "temporal-jwks-ca",
+            "target": "/etc/temporal/jwks-ca",
+            "read_only": True,
+        },
+    ]
+    initializer = services["temporal-namespace-init"]
+    assert initializer["network_mode"] == "service:temporal"
+    assert initializer["networks"] is None
+    assert initializer["user"] == "1000:1000"
+    assert initializer["read_only"] is True
+    assert initializer["cap_drop"] == ["ALL"]
+    # Compose validates duplicate security options before the final merge.
+    # Keep this replacement tag: stripping tags for value checks hid the regression.
+    assert '    security_opt: !override ["no-new-privileges:true"]\n' in content
+    assert initializer["security_opt"] == ["no-new-privileges:true"]
+    assert initializer["entrypoint"] == ["/bin/sh", "/etc/temporal/namespace-init.sh"]
+    assert initializer["command"] == []
+    assert initializer["environment"] == {}
+    assert initializer["volumes"] == [
+        {
+            "type": "bind",
+            "source": (repository / "scripts/temporal/namespace-init.sh").as_posix(),
+            "target": "/etc/temporal/namespace-init.sh",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (state_root / ".temporal-bootstrap/profile.toml").as_posix(),
+            "target": "/run/temporal-bootstrap/profile.toml",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (secrets_root / "temporal_api_key").as_posix(),
+            "target": "/run/temporal-worker/token",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+    ]
 
 
 def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
@@ -7797,13 +7950,12 @@ def test_in_place_source_current_rejects_ignored_app_source(
         ("status", "--porcelain", "--untracked-files=normal"),
     ]
     ignored_source_query = git_calls[2]
-    assert ignored_source_query[:7] == (
+    assert ignored_source_query[:6] == (
         "ls-files",
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
     )
     assert set(live_stand.IN_PLACE_BUILD_SOURCE_PATHS).issubset(ignored_source_query)
@@ -7820,6 +7972,93 @@ def test_in_place_source_guard_exclusions_match_dockerignore_rules() -> None:
     for pattern in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS:
         dockerignore_rule = pattern[:-2] if pattern.endswith("/**") else pattern
         assert dockerignore_rule in rules, pattern
+
+
+@pytest.mark.parametrize(
+    ("git_output", "must_reject"),
+    [
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="outside-ignored-nested-git-path-is-filtered",
+        ),
+        pytest.param(
+            ".pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="root-test-fixture-is-outside-copy-roots",
+        ),
+        pytest.param(
+            "frontend/vitest-report.xml\0",
+            True,
+            id="ignored-copy-root-report-still-rejected",
+        ),
+        pytest.param(
+            "frontend/résumé module\nreport.ts\0",
+            True,
+            id="unicode-space-and-newline-path-is-not-split-as-lines",
+        ),
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0"
+            "frontend/vitest-report.xml\0",
+            True,
+            id="outside-nested-repo-does-not-hide-real-source-path",
+        ),
+        pytest.param(
+            "APP/local_settings.py\0",
+            os.path.normcase("APP") == os.path.normcase("app"),
+            id="case-variant-source-root-follows-platform-semantics",
+        ),
+        pytest.param(
+            "frontend-extra/vitest-report.xml\0"
+            "app-extra/local_settings.py\0"
+            "services/pkg-extra/file.go\0",
+            False,
+            id="root-prefix-lookalikes-are-outside-copy-roots",
+        ),
+        pytest.param("", False, id="empty-output-is-allowed"),
+        pytest.param("\0", False, id="empty-nul-record-is-allowed"),
+    ],
+)
+def test_in_place_source_guard_filters_nul_paths_to_exact_copy_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    git_output: str,
+    must_reject: bool,
+) -> None:
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args and args[0] == "ls-files":
+            return git_output
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+
+    if must_reject:
+        with pytest.raises(live_stand.StandError, match="ignored untracked files"):
+            live_stand._assert_no_ignored_in_place_build_sources()
+    else:
+        live_stand._assert_no_ignored_in_place_build_sources()
+
+    assert len(git_calls) == 1
+    ignored_source_query = git_calls[0]
+    assert ignored_source_query[:6] == (
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "-z",
+        "--",
+    )
+    root_paths_end = 6 + len(live_stand.IN_PLACE_BUILD_SOURCE_PATHS)
+    assert (
+        ignored_source_query[6:root_paths_end] == live_stand.IN_PLACE_BUILD_SOURCE_PATHS
+    )
+    assert ignored_source_query[root_paths_end:] == tuple(
+        f":(exclude,glob){path}" for path in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS
+    )
+    assert "--directory" not in ignored_source_query
+    assert "--no-empty-directory" not in ignored_source_query
 
 
 @pytest.mark.parametrize(
@@ -7878,7 +8117,10 @@ def test_in_place_source_guard_allows_exact_ignored_frontend_artifact(
     (reports / "generated-summary.html").write_text("local report\n", encoding="utf-8")
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
 
-    live_stand._assert_no_ignored_in_place_build_sources()
+    assert live_stand._assert_no_ignored_in_place_build_sources() is None
+    assert (reports / "generated-summary.html").read_text(
+        encoding="utf-8"
+    ) == "local report\n"
 
 
 def test_in_place_source_guard_allows_nested_python_bytecode_cache(
@@ -7894,7 +8136,8 @@ def test_in_place_source_guard_allows_nested_python_bytecode_cache(
     (bytecode_cache / "generated.pyc").write_bytes(b"synthetic bytecode")
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
 
-    live_stand._assert_no_ignored_in_place_build_sources()
+    assert live_stand._assert_no_ignored_in_place_build_sources() is None
+    assert (bytecode_cache / "generated.pyc").read_bytes() == b"synthetic bytecode"
 
 
 def test_in_place_up_refuses_owned_runroot_from_another_source_sha(
@@ -8121,6 +8364,23 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
     assert set(services["caddy"]) == {"ports"}
+    mailpit_limits = services["mailpit"]["deploy"]["resources"]["limits"]
+    assert services["mailpit"]["pids_limit"] == 64
+    assert mailpit_limits == {"cpus": "0.25", "memory": "512M", "pids": 64}
+
+
+def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> None:
+    # Cleanup logs owned sessions out through shared accounts in one burst. The
+    # per-user sensitive bucket defaults to 5/minute, so the stand raises only it.
+    source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!override", "").replace("!reset", "")
+    )
+    backend_environment = overlay["services"]["backend"]["environment"]
+
+    assert backend_environment["RATE_LIMIT_SENSITIVE"] == "120/minute"
+    assert backend_environment["RATE_LIMIT_AUTH_LOGIN"] == "60/minute"
+    assert "RATE_LIMIT_DEFAULT" not in backend_environment
 
 
 def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
@@ -8596,9 +8856,7 @@ def test_live_playwright_auth_diagnostics_are_failure_only(
         stdout=rows.encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     printed = capsys.readouterr()
@@ -8609,7 +8867,6 @@ def test_live_playwright_auth_diagnostics_are_failure_only(
     assert "live E2E auth UI" not in printed.out
     assert "live E2E auth HTTP" not in printed.out
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
@@ -8631,9 +8888,7 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
         stdout=(valid_ui + valid_http + malformed_ui + private + "\n").encode(),
         stderr=(valid_ui + valid_http + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -8646,7 +8901,6 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 _STORY_SETUP_STAGES = (
@@ -8771,9 +9025,7 @@ def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -8784,7 +9036,6 @@ def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
@@ -8796,9 +9047,7 @@ def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -8994,9 +9243,7 @@ def test_live_playwright_emits_registration_diagnostics_only_from_failure_stdout
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9018,9 +9265,7 @@ def test_live_playwright_suppresses_registration_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9116,9 +9361,7 @@ def test_live_playwright_emits_only_validated_pwa_route_diagnostics_from_failure
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9140,9 +9383,7 @@ def test_live_playwright_suppresses_pwa_bundle_route_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9505,9 +9746,7 @@ def test_live_playwright_emits_only_validated_new_diagnostics_on_failure(
         stdout=(row + private + "\n").encode(),
         stderr=row.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9539,9 +9778,7 @@ def test_live_playwright_suppresses_new_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9575,9 +9812,7 @@ def test_live_playwright_emits_closed_login_failure_observations(
         stdout=(row + "private-body https://private.invalid/?token=x\n").encode(),
         stderr=b"private-stack private-credential\n",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9587,7 +9822,6 @@ def test_live_playwright_emits_closed_login_failure_observations(
         "live E2E outcome=failed exit_code=1",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -9621,9 +9855,7 @@ def test_live_playwright_discards_malformed_login_failure_rows(
         "requests=1 responses=1 status=200 route=login\n"
     ).replace(*replacement)
     completed = subprocess.CompletedProcess([], 1, stdout=row.encode(), stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9646,9 +9878,7 @@ def test_live_playwright_bounds_and_deduplicates_login_failure_rows(
     ]
     stdout = "".join(f"UE_LIVE_LOGIN_FAILURE_V1 {row}\n" * 2 for row in fields).encode()
     completed = subprocess.CompletedProcess([], 1, stdout=stdout, stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9673,9 +9903,7 @@ def test_live_playwright_never_accepts_login_failure_rows_from_stderr(
         b"requests=1 responses=1 status=200 route=login\n"
     )
     completed = subprocess.CompletedProcess([], return_code, stdout=b"", stderr=row)
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     expectation = pytest.raises(live_stand.StandError) if return_code else nullcontext()
     with expectation:
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -9694,9 +9922,7 @@ def test_live_playwright_suppresses_login_failure_rows_after_success(
         b"requests=1 responses=1 status=200 route=login\n"
     )
     completed = subprocess.CompletedProcess([], 0, stdout=row, stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert "live E2E login failure " not in printed.out
@@ -9890,6 +10116,7 @@ def _install_projection_process(
             "check": True,
             "capture_output": True,
             "text": True,
+            "timeout": live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
         }
         assert calls == [], "unexpected additional process invocation"
         calls.append(tuple(command))
@@ -10132,7 +10359,10 @@ def test_compose_resource_projection_preserves_core_selection_errors(
     ["invalid-project", "os-error", "process-error", "invalid-json", "none-output"],
 )
 def test_compose_resource_wrapper_preserves_preprojection_failures(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, case: str
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     ports = _port_map()
     stdout: Any = json.dumps(_projection_model())
@@ -10145,7 +10375,11 @@ def test_compose_resource_wrapper_preserves_preprojection_failures(
         error = OSError("synthetic process failure")
         message = "cannot verify resolved Compose resource ownership"
     elif case == "process-error":
-        error = subprocess.CalledProcessError(1, ["docker", "compose"])
+        error = subprocess.CalledProcessError(
+            1,
+            ["docker", "compose"],
+            stderr="required variable TEST_PLACEHOLDER is missing: canary-never-log",
+        )
         message = "cannot verify resolved Compose resource ownership"
     elif case == "invalid-json":
         stdout = "{"
@@ -10173,6 +10407,240 @@ def test_compose_resource_wrapper_preserves_preprojection_failures(
     assert len(calls) == (0 if case == "invalid-project" else 1)
     if case != "invalid-project":
         assert caught.value.__suppress_context__ is True
+    if case == "process-error":
+        diagnostic = capsys.readouterr().err
+        assert diagnostic == (
+            "live_stand_compose_config_diagnostic="
+            "category:required_interpolation;exit:1\n"
+        )
+        assert "TEST_PLACEHOLDER" not in diagnostic
+        assert "canary-never-log" not in diagnostic
+
+
+def _called_process_error_with_noninteger_status() -> subprocess.CalledProcessError:
+    error = subprocess.CalledProcessError(22, ["docker", "compose"], stderr="")
+    error.returncode = None
+    return error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            subprocess.TimeoutExpired(["docker", "compose"], 1),
+            ("compose_timeout", "unavailable"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                3,
+                ["docker", "compose"],
+                stderr="required variable SECRET_VALUE is missing",
+            ),
+            ("required_interpolation", "3"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                4,
+                ["docker", "compose"],
+                stderr="variable ENV_NAME is not set",
+            ),
+            ("required_interpolation", "4"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                5,
+                ["docker", "compose"],
+                stderr="variable is present but set explicitly",
+            ),
+            ("compose_nonzero_unclassified", "5"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                6,
+                ["docker", "compose"],
+                stderr="required variable SECRET_VALUE and unknown flag",
+            ),
+            ("required_interpolation", "6"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                7, ["docker", "compose"], stderr="unknown flag --bad"
+            ),
+            ("unsupported_compose_option", "7"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                8, ["docker", "compose"], stderr="unknown shorthand flag: -x"
+            ),
+            ("unsupported_compose_option", "8"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                9, ["docker", "compose"], stderr="permission denied reading config"
+            ),
+            ("compose_input_permission", "9"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                10, ["docker", "compose"], stderr="no such file or directory"
+            ),
+            ("missing_or_unreadable_input", "10"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                11, ["docker", "compose"], stderr="env file not found"
+            ),
+            ("missing_or_unreadable_input", "11"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                12, ["docker", "compose"], stderr="cannot open config"
+            ),
+            ("missing_or_unreadable_input", "12"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                13, ["docker", "compose"], stderr="failed to read env file"
+            ),
+            ("missing_or_unreadable_input", "13"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                14, ["docker", "compose"], stderr="yaml parse error"
+            ),
+            ("compose_parse_or_schema", "14"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                15, ["docker", "compose"], stderr="unmarshal error"
+            ),
+            ("compose_parse_or_schema", "15"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                16, ["docker", "compose"], stderr="invalid compose model"
+            ),
+            ("compose_parse_or_schema", "16"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                17,
+                ["docker", "compose"],
+                stderr="cannot connect to the Docker daemon",
+            ),
+            ("unexpected_daemon_dependency", "17"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                18, ["docker", "compose"], stderr="unclassified synthetic failure"
+            ),
+            ("compose_nonzero_unclassified", "18"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                19, ["docker", "compose"], stderr=b"required variable NAME missing"
+            ),
+            ("required_interpolation", "19"),
+        ),
+        (
+            subprocess.CalledProcessError(20, ["docker", "compose"], stderr=None),
+            ("compose_nonzero_unclassified", "20"),
+        ),
+        (
+            subprocess.CalledProcessError(21, ["docker", "compose"], stderr=object()),
+            ("compose_nonzero_unclassified", "21"),
+        ),
+        (
+            _called_process_error_with_noninteger_status(),
+            ("compose_nonzero_unclassified", "unavailable"),
+        ),
+        (FileNotFoundError("synthetic"), ("compose_executable_missing", "unavailable")),
+        (PermissionError("synthetic"), ("compose_process_permission", "unavailable")),
+        (OSError("synthetic"), ("compose_process_io", "unavailable")),
+        (UnicodeError("synthetic"), ("compose_output_encoding", "unavailable")),
+        (
+            live_stand.StandError("synthetic"),
+            ("compose_ownership_precondition", "unavailable"),
+        ),
+        (RuntimeError("synthetic"), ("compose_process_failure", "unavailable")),
+    ],
+    ids=(
+        "timeout",
+        "required-variable",
+        "variable-unset",
+        "variable-other",
+        "required-variable-precedence",
+        "unknown-flag",
+        "unknown-shorthand-flag",
+        "permission-denied",
+        "no-such-file",
+        "not-found",
+        "cannot-open",
+        "failed-to-read",
+        "yaml",
+        "unmarshal",
+        "invalid-compose",
+        "daemon-dependency",
+        "unclassified-stderr",
+        "bytes-stderr",
+        "none-stderr",
+        "other-stderr-type",
+        "noninteger-status",
+        "missing-executable",
+        "process-permission",
+        "process-io",
+        "output-encoding",
+        "ownership-precondition",
+        "fallback",
+    ),
+)
+def test_compose_resource_failure_category_is_allowlisted(
+    error: BaseException, expected: tuple[str, str]
+) -> None:
+    assert live_stand._compose_resource_failure_category(error) == expected
+
+
+@pytest.mark.parametrize(
+    "write_error",
+    [OSError("write failed"), UnicodeError("write failed"), ValueError("write failed")],
+    ids=("os-error", "unicode-error", "value-error"),
+)
+def test_compose_resource_wrapper_keeps_generic_error_when_diagnostic_write_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, write_error: Exception
+) -> None:
+    ports = _port_map()
+    command_error = subprocess.CalledProcessError(
+        1,
+        ["docker", "compose"],
+        stderr="required variable TEST_SECRET is missing: hidden-sentinel",
+    )
+    _install_projection_process(
+        monkeypatch,
+        tmp_path,
+        ports,
+        json.dumps(_projection_model()),
+        error=command_error,
+    )
+    attempted_diagnostics: list[str] = []
+
+    class FailingDiagnosticStream:
+        def write(self, value: str) -> int:
+            attempted_diagnostics.append(value)
+            raise write_error
+
+    monkeypatch.setattr(
+        live_stand, "sys", SimpleNamespace(stderr=FailingDiagnosticStream())
+    )
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._compose_resource_evidence(tmp_path, _PROJECTION_PROJECT, ports)
+
+    assert str(caught.value) == "cannot verify resolved Compose resource ownership"
+    assert caught.value.__suppress_context__ is True
+    assert attempted_diagnostics == [
+        "live_stand_compose_config_diagnostic=category:required_interpolation;exit:1\n"
+    ]
+    assert "TEST_SECRET" not in attempted_diagnostics[0]
+    assert "hidden-sentinel" not in attempted_diagnostics[0]
 
 
 def _aud174_access_log_row(
@@ -10210,25 +10678,38 @@ def _aud174_docker_read_context(
     )
 
 
-def test_live_caddy_probe_accepts_distinct_project_correlations_and_successful_gets() -> (
-    None
-):
+def test_live_caddy_probe_accepts_distinct_project_correlations_and_successful_gets(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
     nonce = "0123456789abcdef" * 2
     correlations = {
         "desktop": "1" * 32,
         "mobile": "2" * 32,
     }
     assert correlations["desktop"] != correlations["mobile"]
-    for project, correlation_id in correlations.items():
-        redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
-        output = _aud174_access_log_row(redacted_uri, status=200)
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=nonce,
+        correlations=correlations,
+    )
 
-        live_stand._assert_live_caddy_probe_redaction(
-            output,
-            password_nonce=nonce,
-            correlation_id=correlation_id,
-            project=project,
-        )
+    live_stand._verify_live_caddy_probe_log(
+        owner,
+        directory,
+        started_at_ms=min(completed_at.values()) - 1_000,
+        finished_at_ms=max(completed_at.values()) + 1_000,
+        password_nonce=nonce,
+        correlation_ids=correlations,
+        container_pin=pin,
+        docker_context=context,
+    )
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "live Caddy access-log redaction=verified projects=2\n"
 
 
 @pytest.mark.parametrize(
@@ -10717,10 +11198,10 @@ def test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_containe
     assert [call[2:] for call in parser_calls] == [
         (
             project,
-            max(1, timestamp - live_stand._LIVE_CADDY_PROBE_WINDOW_MS),
-            timestamp + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+            max(1, completed_at[project] - live_stand._LIVE_CADDY_PROBE_WINDOW_MS),
+            completed_at[project] + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
         )
-        for project, timestamp in completed_at.items()
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
     ]
     assert parser_calls[0][0] is parser_calls[1][0]
     assert parser_calls[0][1] is parser_calls[1][1]
@@ -10741,12 +11222,40 @@ def test_live_caddy_probe_accepts_timestamped_project_rows_on_stderr(
         stdout=b"",
         stderr=_aud174_two_project_rows(completed_at, correlations),
     )
+    expected_stderr = completed.stderr
     context = _aud174_docker_read_context(tmp_path)
+    parser_calls: list[tuple[bytes, bytes, str, str, int | None, int | None]] = []
+    original_parser = live_stand._assert_live_caddy_probe_redaction
+
+    def record_parser(
+        output: bytes,
+        *,
+        stderr: bytes,
+        password_nonce: str,
+        correlation_id: str,
+        project: str,
+        since_ms: int | None = None,
+        until_ms: int | None = None,
+    ) -> None:
+        parser_calls.append(
+            (output, stderr, correlation_id, project, since_ms, until_ms)
+        )
+        original_parser(
+            output,
+            stderr=stderr,
+            password_nonce=password_nonce,
+            correlation_id=correlation_id,
+            project=project,
+            since_ms=since_ms,
+            until_ms=until_ms,
+        )
+
     monkeypatch.setattr(
         live_stand,
         "_run_live_bounded_read",
         lambda *_args, **_kwargs: completed,
     )
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_probe_redaction", record_parser)
     monkeypatch.setattr(
         live_stand,
         "_assert_live_caddy_container_pin",
@@ -10762,6 +11271,48 @@ def test_live_caddy_probe_accepts_timestamped_project_rows_on_stderr(
         deadline=live_stand.time.monotonic() + 30,
         docker_context=context,
     )
+
+    expected_parser_calls = [
+        (
+            b"",
+            expected_stderr,
+            correlations[project],
+            project,
+            max(
+                1,
+                completed_at[project] - live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+            ),
+            completed_at[project] + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+        )
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    ]
+    assert parser_calls == expected_parser_calls
+    assert completed.stdout == completed.stderr == b""
+
+    accepted_rows: dict[str, tuple[str, str, int]] = {}
+    for _, stderr, correlation_id, project, _, _ in parser_calls:
+        matching_rows = [
+            line
+            for line in stderr.splitlines()
+            if correlation_id.encode("ascii") in line
+        ]
+        assert len(matching_rows) == 1
+        _, payload_bytes = matching_rows[0].split(b" ", 1)
+        payload = json.loads(payload_bytes)
+        request = payload["request"]
+        accepted_rows[project] = (
+            request["method"],
+            request["uri"],
+            payload["status"],
+        )
+    assert accepted_rows == {
+        project: (
+            "GET",
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            200,
+        )
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    }
 
 
 @pytest.mark.parametrize(
@@ -11268,7 +11819,12 @@ def test_live_caddy_probe_emits_only_fixed_stage_code_on_failure(
     assert str(caught.value) == "Caddy access-log redaction proof failed"
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == f"live_caddy_probe_failure_stage={expected_stage}\n"
+    expected_diagnostics = f"live_caddy_probe_failure_stage={expected_stage}\n"
+    if failure == "log-size":
+        expected_diagnostics += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(overflow_origin="returned_size")
+        )
+    assert captured.err == expected_diagnostics
     assert secret_text not in captured.err
     assert password_nonce not in captured.err
     assert all(value not in captured.err for value in correlations.values())
@@ -12863,7 +13419,12 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
     captured = capsys.readouterr()
     assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
     assert captured.out == ""
-    assert captured.err == f"live_caddy_probe_failure_stage={stage}\n"
+    expected_diagnostics = f"live_caddy_probe_failure_stage={stage}\n"
+    if stage == "log_size":
+        expected_diagnostics += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(overflow_origin="reader_limit")
+        )
+    assert captured.err == expected_diagnostics
     if failure == "wait":
         assert wait_attempts
     assert pin_calls == [container_pin, container_pin]
@@ -12982,9 +13543,7 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
         stdout=(valid + valid + private + "\n").encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match="exit code 1"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -13000,7 +13559,210 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
+
+
+def _reset_registration_v3_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "beforeName": {"hydrated": False, "nameState": "empty", "nameError": False},
+        "afterName": {
+            "hydrated": True,
+            "nameState": "at-least-two",
+            "nameError": False,
+        },
+        "beforeSubmit": {
+            "hydrated": True,
+            "nameState": "short",
+            "nameError": True,
+            "trigger": "click",
+        },
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v3_row(record: dict[str, object]) -> str:
+    return (
+        "UE_LIVE_RESET_REGISTRATION_V3 "
+        + json.dumps(record, separators=(",", ":"))
+        + "\n"
+    )
+
+
+def test_live_reset_registration_v3_accepts_only_finite_timeline_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    record = _reset_registration_v3_record()
+    unavailable = _reset_registration_v3_record(
+        project="desktop",
+        step="click",
+        beforeName=None,
+        afterName=None,
+        beforeSubmit=None,
+    )
+    assert parser(
+        _reset_registration_v3_row(record) + _reset_registration_v3_row(unavailable)
+    ) == [
+        record,
+        unavailable,
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for name_state in ("missing", "empty", "short", "at-least-two"):
+            snapshot = {
+                "hydrated": True,
+                "nameState": name_state,
+                "nameError": False,
+            }
+            if field == "beforeSubmit":
+                snapshot["trigger"] = "click"
+            probe = _reset_registration_v3_record(**{field: snapshot})
+            assert parser(_reset_registration_v3_row(probe)) == [probe]
+    for trigger in ("click", "invalid", "submit"):
+        probe = _reset_registration_v3_record(
+            beforeSubmit={
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": trigger,
+            }
+        )
+        assert parser(_reset_registration_v3_row(probe)) == [probe]
+
+
+def test_live_reset_registration_v3_rejects_private_or_malformed_records() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_record()
+    invalid = [
+        {**valid, "url": "private"},
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "value": "private",
+            },
+        },
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "private",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": 1, "nameState": "empty", "nameError": False},
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": True, "nameState": "empty", "nameError": 0},
+        },
+        {**valid, "beforeName": {"hydrated": True, "nameState": "empty"}},
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": "private",
+            },
+        },
+        {**valid, "beforeName": []},
+        {**valid, "project": "private"},
+        {**valid, "step": "private"},
+        {key: value for key, value in valid.items() if key != "afterName"},
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for wrong in (True, 1, "empty", [], {}):
+            invalid.append({**valid, field: wrong})
+    assert (
+        parser("".join(_reset_registration_v3_row(record) for record in invalid)) == []
+    )
+
+
+def test_live_reset_registration_v3_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_row(_reset_registration_v3_record())
+    invalid = [
+        valid[:-1],
+        "private " + valid,
+        "\x1b[31m" + valid,
+        valid.replace('"hydrated":false', '"hydrated":false,"hydrated":true'),
+        valid.replace('"hydrated":false', '"hydrated":NaN'),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V3 " + "x" * 1024 + "\n",
+    ]
+    assert all(parser(row) == [] for row in invalid)
+
+
+def test_live_reset_registration_v3_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    records = [
+        _reset_registration_v3_record(project=project, step=step)
+        for project in ("desktop", "mobile")
+        for step in ("arm-response", "click", "await-response")
+    ]
+    rows = "".join(_reset_registration_v3_row(record) * 2 for record in records)
+    overflow = _reset_registration_v3_row(
+        _reset_registration_v3_record(beforeName=None)
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v3_record()
+    valid = _reset_registration_v3_row(record)
+    stderr_only = _reset_registration_v3_row(
+        _reset_registration_v3_record(project="desktop")
+    )
+    private = "private-diagnostic-noise"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v3 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
 
 
 def _aud174_install_window_log_selector(
@@ -13122,15 +13884,75 @@ def test_live_caddy_probe_excludes_oversized_gap_between_project_windows(
     assert all(result.stdout == result.stderr == b"" for result in state["completed"])
 
 
+def test_live_caddy_probe_windows_fit_observed_e2e_access_log_volume(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two disjoint probe captures must fit the shared reader cap at E2E volume.
+
+    Live Core run 41299274676 logged about 40 Caddy access rows per second of
+    roughly 1.5 KB each. Reading whole plus-or-minus windows for both projects
+    overflowed the 1 MiB cap on the second capture, before any redaction check.
+    """
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 60_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    records: list[tuple[int, bytes, bytes]] = []
+    for project, completed in observed.items():
+        for offset in range(-5_000, 5_000, 25):
+            timestamp = completed + offset
+            records.append(
+                (
+                    timestamp,
+                    b"",
+                    _aud174_access_log_row(
+                        "/static/" + "a" * 1_300,
+                        timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+                    ),
+                )
+            )
+        records.append(
+            (
+                completed,
+                b"",
+                _aud174_access_log_row(
+                    f"/login?probe={correlations[project]}&password=REDACTED",
+                    timestamp=live_stand._caddy_probe_timestamp_argument(completed),
+                ),
+            )
+        )
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+    )
+
+    _aud174_read_project_logs(
+        owner,
+        container_pin=pin,
+        completed_at_ms=observed,
+        password_nonce="0" * 32,
+        correlation_ids=correlations,
+        deadline=live_stand.time.monotonic() + 25,
+        docker_context=context,
+    )
+
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+
+
 @pytest.mark.parametrize(
     ("mobile_offset", "expected_windows"),
     [
-        (0, [(-5_000, 5_000)]),
-        (2_000, [(-5_000, 7_000)]),
-        (10_000, [(-5_000, 15_000)]),
-        (10_001, [(-5_000, 5_000), (5_001, 15_001)]),
-        (-10_001, [(-15_001, -5_001), (-5_000, 5_000)]),
-        (-2_000, [(-7_000, 5_000)]),
+        (0, [(-2_000, 2_000)]),
+        (2_000, [(-2_000, 4_000)]),
+        (4_000, [(-2_000, 6_000)]),
+        (4_001, [(-2_000, 2_000), (2_001, 6_001)]),
+        (-4_001, [(-6_001, -2_001), (-2_000, 2_000)]),
+        (-2_000, [(-4_000, 2_000)]),
     ],
 )
 def test_live_caddy_probe_coalesces_only_overlapping_or_touching_windows(
@@ -13818,3 +14640,1429 @@ def test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission(
     assert state["calls"][0][1]["command_timeout_seconds"] == pytest.approx(10.0)
     assert now[0] == 115.0
     assert started == []
+
+
+def _reset_registration_v2_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "errorCategory": "timeout",
+        "snapshot": "available",
+        "hydrated": True,
+        "formPresent": True,
+        "formInvalid": False,
+        "formError": False,
+        "nameError": False,
+        "emailError": False,
+        "inviteError": False,
+        "passwordError": False,
+        "confirmError": False,
+        "rootError": False,
+        "submitPresent": True,
+        "submitDisabled": False,
+        "submitBusy": False,
+        "csrfRequested": True,
+        "csrfResponse": "success",
+        "csrfFailed": False,
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v2_row(record: dict[str, object]) -> str:
+    encoded = json.dumps(record, separators=(",", ":"))
+    return "UE_LIVE_RESET_REGISTRATION_V2 " + encoded + "\n"
+
+
+def test_live_reset_registration_v2_accepts_only_finite_failure_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    available = _reset_registration_v2_record()
+    unavailable = _reset_registration_v2_record(
+        project="desktop",
+        step="click",
+        errorCategory="other",
+        snapshot="unavailable",
+        hydrated=False,
+        formPresent=False,
+        submitPresent=False,
+        csrfRequested=False,
+        csrfResponse="not-observed",
+    )
+    output = _reset_registration_v2_row(available).replace(
+        "\n", "\r\n"
+    ) + _reset_registration_v2_row(unavailable)
+    assert parser(output) == [available, unavailable]
+    for key, values in {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }.items():
+        for value in values:
+            record = _reset_registration_v2_record(**{key: value})
+            assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_accepts_classified_error_presence(key: str) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    record = _reset_registration_v2_record(formError=True, **{key: True})
+    assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_rejects_classification_without_form_error(
+    key: str,
+) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(**{key: True}),
+        _reset_registration_v2_record(
+            formPresent=False, submitPresent=False, **{key: True}
+        ),
+        _reset_registration_v2_record(
+            snapshot="unavailable",
+            hydrated=False,
+            formPresent=False,
+            submitPresent=False,
+            **{key: True},
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
+def test_live_reset_registration_v2_rejects_private_fields_and_wrong_types() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_record()
+    invalid = [
+        {**valid, "url": "https://private.invalid/"},
+        {**valid, "message": "private-message"},
+        {**valid, "body": "private-body"},
+        {**valid, "cookie": "private-cookie"},
+        {**valid, "password": "private-input"},
+        {**valid, "alertText": "private-alert-copy"},
+        {**valid, "errorDetail": "private-error-detail"},
+        {**valid, "schema": 2},
+    ]
+    enums = {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "snapshot": ("available", "unavailable"),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }
+    for key in enums:
+        for value in ("private", "timeout\nprivate", "", True, 0, None, [], {}):
+            invalid.append({**valid, key: value})
+    boolean_keys = set(valid) - set(enums)
+    for key in boolean_keys:
+        for value in (0, 1, "true", "false", None, [], {}):
+            invalid.append({**valid, key: value})
+    for key in valid:
+        invalid.append({name: value for name, value in valid.items() if name != key})
+    output = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(output) == []
+
+
+def test_live_reset_registration_v2_rejects_inconsistent_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(snapshot="unavailable"),
+        _reset_registration_v2_record(formPresent=False),
+        _reset_registration_v2_record(submitPresent=False, submitDisabled=True),
+        _reset_registration_v2_record(submitPresent=False, submitBusy=True),
+        _reset_registration_v2_record(csrfRequested=False),
+        _reset_registration_v2_record(
+            csrfRequested=False, csrfResponse="not-observed", csrfFailed=True
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
+def test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_row(_reset_registration_v2_record())
+    rows = [
+        valid[:-1],
+        "private " + valid,
+        "private\r" + valid,
+        "private\v" + valid,
+        "private\u2028" + valid,
+        "\x1b[31m" + valid,
+        valid.replace("\n", "\r\r\n"),
+        valid.replace('"project":"mobile"', '"project":"mobile","project":"mobile"'),
+        valid.replace('"formInvalid":false', '"formInvalid":NaN'),
+        valid.replace('"formInvalid":false', '"formInvalid":Infinity'),
+        valid.replace(
+            '"snapshot":"available"', '"snapshot":"available","body":"private"'
+        ),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V2 " + "x" * 1024 + "\n",
+    ]
+    for row in rows:
+        assert parser(row) == []
+
+
+def test_live_reset_registration_v2_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    records = [
+        _reset_registration_v2_record(errorCategory=category)
+        for category in (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        )
+    ]
+    rows = "".join(_reset_registration_v2_row(record) * 3 for record in records)
+    overflow = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v2_record()
+    valid = _reset_registration_v2_row(record)
+    stderr_only = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+
+
+_RESET_URL_DIAGNOSTIC_LINE = (
+    "UE_LIVE_RESET_URL_V1 project=desktop phase=reopen reset_route=false "
+    "token_query_absent=true token_fragment_absent=true token_url_absent=true\n"
+)
+
+
+def test_live_reset_url_parser_preserves_the_emitter_boolean_record() -> None:
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE
+    ) == [("desktop", "reopen", False, True, True, True)]
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\n")
+    ) == [("desktop", "reopen", False, True, True, True)]
+    for field in (
+        "reset_route",
+        "token_query_absent",
+        "token_fragment_absent",
+        "token_url_absent",
+    ):
+        original = "false" if field == "reset_route" else "true"
+        for invalid in ("0", "1", "True", "FALSE", "null", "private"):
+            malformed = _RESET_URL_DIAGNOSTIC_LINE.replace(
+                f"{field}={original}", f"{field}={invalid}"
+            )
+            assert live_stand._live_playwright_reset_url_observations(malformed) == []
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        _RESET_URL_DIAGNOSTIC_LINE.rstrip("\n"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reopen", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(" phase=", " extra=private phase="),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reset_route=false ", ""),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(
+            "reset_route=false ", "reset_route=false reset_route=true "
+        ),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", " extra=private\n"),
+        "private " + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\r" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\v" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\u2028" + _RESET_URL_DIAGNOSTIC_LINE,
+        "\x1b[31m" + _RESET_URL_DIAGNOSTIC_LINE,
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\r\n"),
+        "x" * 161 + "\n",
+    ],
+)
+def test_live_reset_url_parser_rejects_unknown_or_untrusted_framing(
+    output: str,
+) -> None:
+    assert live_stand._live_playwright_reset_url_observations(output) == []
+
+
+def test_live_reset_url_parser_keeps_first_pair_and_caps_all_four_pairs() -> None:
+    expected = [
+        (project, phase, False, True, True, True)
+        for project in ("desktop", "mobile")
+        for phase in ("history", "reopen")
+    ]
+    rows = []
+    for project, phase, *_flags in expected:
+        row = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", project).replace(
+            "reopen", phase
+        )
+        rows.extend((row, row, row.replace("reset_route=false", "reset_route=true")))
+    assert live_stand._live_playwright_reset_url_observations("".join(rows)) == expected
+
+
+@pytest.mark.parametrize("return_code", [0, 1, 23])
+def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    stderr_only = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "mobile").replace(
+        "reopen", "history"
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(
+            _RESET_URL_DIAGNOSTIC_LINE + _RESET_URL_DIAGNOSTIC_LINE + private + "\n"
+        ).encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-url project=desktop phase=reopen reset_route=false "
+            "token_query_absent=true token_fragment_absent=true token_url_absent=true"
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+
+
+def _aud174_capture_budget_metadata(
+    *,
+    window_count: int = 1,
+    capture_ordinal: int = 1,
+    previous_capture_bytes: int = 0,
+    overflow_origin: str = "reader_limit",
+) -> dict[str, object]:
+    return {
+        "window_count": window_count,
+        "capture_ordinal": capture_ordinal,
+        "previous_capture_bytes": previous_capture_bytes,
+        "remaining_budget": (
+            live_stand._LIVE_CADDY_PROBE_MAX_BYTES - previous_capture_bytes
+        ),
+        "overflow_origin": overflow_origin,
+    }
+
+
+def _aud174_capture_budget_line(metadata: Mapping[str, object]) -> str:
+    encoded = json.dumps(dict(metadata), sort_keys=True, separators=(",", ":"))
+    return f"live_caddy_probe_capture_budget={encoded}\n"
+
+
+@pytest.mark.parametrize(
+    ("window_count", "capture_ordinal", "previous_bytes", "origin"),
+    [
+        (1, 1, 0, "reader_limit"),
+        (2, 1, 0, "returned_size"),
+        (2, 2, 7, "reader_limit"),
+        (2, 2, live_stand._LIVE_CADDY_PROBE_MAX_BYTES, "returned_size"),
+    ],
+)
+def test_live_caddy_capture_budget_emits_only_valid_closed_metadata(
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+    capture_ordinal: int,
+    previous_bytes: int,
+    origin: str,
+) -> None:
+    metadata = _aud174_capture_budget_metadata(
+        window_count=window_count,
+        capture_ordinal=capture_ordinal,
+        previous_capture_bytes=previous_bytes,
+        overflow_origin=origin,
+    )
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == _aud174_capture_budget_line(metadata)
+    assert len(captured.err) < 256
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "window_count",
+        "capture_ordinal",
+        "previous_capture_bytes",
+        "remaining_budget",
+    ],
+)
+@pytest.mark.parametrize("kind", ["boolean", "string", "float"])
+def test_live_caddy_capture_budget_rejects_coercible_numeric_types(
+    capsys: pytest.CaptureFixture[str], field: str, kind: str
+) -> None:
+    metadata = _aud174_capture_budget_metadata()
+    canary = uuid4().hex
+    metadata[field] = {"boolean": True, "string": canary, "float": 1.0}[kind]
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("window_count", 0),
+        ("window_count", 3),
+        ("capture_ordinal", 0),
+        ("capture_ordinal", 2),
+        ("previous_capture_bytes", -1),
+        ("previous_capture_bytes", live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1),
+        ("remaining_budget", -1),
+        ("remaining_budget", live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1),
+        ("remaining_budget", live_stand._LIVE_CADDY_PROBE_MAX_BYTES - 1),
+        ("overflow_origin", True),
+        ("overflow_origin", 1.0),
+    ],
+)
+def test_live_caddy_capture_budget_rejects_ranges_and_inconsistent_budget(
+    capsys: pytest.CaptureFixture[str], field: str, value: object
+) -> None:
+    metadata = _aud174_capture_budget_metadata()
+    metadata[field] = value
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "mutation", ["not-dict", "missing-key", "extra-key", "origin", "first-prior"]
+)
+def test_live_caddy_capture_budget_rejects_unknown_shape_without_echo(
+    capsys: pytest.CaptureFixture[str], mutation: str
+) -> None:
+    canary = uuid4().hex
+    metadata: object = _aud174_capture_budget_metadata()
+    assert isinstance(metadata, dict)
+    if mutation == "not-dict":
+        metadata = [canary]
+    elif mutation == "missing-key":
+        del metadata["window_count"]
+    elif mutation == "extra-key":
+        metadata[canary] = canary
+    elif mutation == "origin":
+        metadata["overflow_origin"] = canary
+    else:
+        metadata["previous_capture_bytes"] = 1
+        metadata["remaining_budget"] = live_stand._LIVE_CADDY_PROBE_MAX_BYTES - 1
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(("window_count", "capture_ordinal"), [(1, 1), (2, 1), (2, 2)])
+@pytest.mark.parametrize("origin", ["reader_limit", "returned_size"])
+def test_live_caddy_probe_overflow_reports_only_current_capture_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+    capture_ordinal: int,
+    origin: str,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    canary = uuid4().hex
+    pins: list[object] = []
+    reads: list[dict[str, Any]] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    previous_bytes = 0
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal previous_bytes
+        reads.append(dict(kwargs))
+        if len(reads) == capture_ordinal:
+            if origin == "reader_limit":
+                raise live_stand._LiveBoundedReadFailure("output_limit")
+            stdout = b"x" * kwargs["maximum_bytes"] + canary.encode("ascii")
+        else:
+            stdout = _aud174_access_log_row(
+                f"/login?probe={correlations['desktop']}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at["desktop"]
+                ),
+            )
+            previous_bytes += len(stdout)
+        completed = subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
+        returned.append(completed)
+        return completed
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=lambda *_args, **_kwargs: pins.append(True),
+        log_reader=read_logs,
+    )
+    if window_count == 2:
+        completed_at["mobile"] += 120_000
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_130_000,
+            password_nonce=password_nonce,
+            correlation_ids=correlations,
+            container_pin=pin,
+            docker_context=context,
+        )
+    expected = _aud174_capture_budget_metadata(
+        window_count=window_count,
+        capture_ordinal=capture_ordinal,
+        previous_capture_bytes=previous_bytes,
+        overflow_origin=origin,
+    )
+    captured = capsys.readouterr()
+    assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
+    assert captured.out == ""
+    expected_diagnostics = (
+        "live_caddy_probe_failure_stage=log_size\n"
+        + _aud174_capture_budget_line(expected)
+    )
+    if capture_ordinal == 2:
+        first_summary = {
+            "schema_version": 1,
+            "capture_ordinal": 1,
+            "stdout_bytes": previous_bytes,
+            "stderr_bytes": 0,
+            "stdout_complete_lines": 1,
+            "stderr_complete_lines": 0,
+            "stdout_max_line_bytes": previous_bytes - 1,
+            "stderr_max_line_bytes": 0,
+        }
+        encoded = json.dumps(first_summary, sort_keys=True, separators=(",", ":"))
+        expected_diagnostics += f"live_caddy_probe_first_capture={encoded}\n"
+    assert captured.err == expected_diagnostics
+    assert len(reads) == capture_ordinal
+    assert reads[-1]["maximum_bytes"] == expected["remaining_budget"]
+    assert len(pins) == 2
+    assert all(item.stdout == item.stderr == b"" for item in returned)
+    for private in (canary, password_nonce, *correlations.values()):
+        assert private not in captured.err
+        assert private not in str(caught.value)
+
+
+@pytest.mark.parametrize("window_count", [1, 2])
+def test_live_caddy_probe_exact_capture_cap_emits_no_budget_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    pins: list[object] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    received_bytes = 0
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal received_bytes
+        ordinal = len(returned) + 1
+        projects = (
+            tuple(correlations)
+            if window_count == 1
+            else (("desktop",) if ordinal == 1 else ("mobile",))
+        )
+        rows = b"".join(
+            _aud174_access_log_row(
+                f"/login?probe={correlations[project]}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at[project]
+                ),
+            )
+            for project in projects
+        )
+        padding = b""
+        if ordinal == window_count:
+            padding = _aud174_access_log_row(
+                "/health",
+                message="",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at[projects[-1]]
+                ),
+            )
+            padding_bytes = kwargs["maximum_bytes"] - len(rows) - len(padding)
+            assert padding_bytes > 0
+            assert padding.count(b'"msg": ""') == 1
+            padding = padding.replace(
+                b'"msg": ""', b'"msg": "' + b"x" * padding_bytes + b'"', 1
+            )
+        received_bytes += len(rows) + len(padding)
+        completed = subprocess.CompletedProcess(command, 0, stdout=rows, stderr=padding)
+        returned.append(completed)
+        return completed
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=lambda *_args, **_kwargs: pins.append(True),
+        log_reader=read_logs,
+    )
+    if window_count == 2:
+        completed_at["mobile"] += 120_000
+    live_stand._verify_live_caddy_probe_log(
+        owner,
+        directory,
+        started_at_ms=1_797_999_999_000,
+        finished_at_ms=1_798_000_130_000,
+        password_nonce=password_nonce,
+        correlation_ids=correlations,
+        container_pin=pin,
+        docker_context=context,
+    )
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "live Caddy access-log redaction=verified projects=2\n"
+    assert received_bytes == live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert len(returned) == window_count
+    assert len(pins) == 2
+    assert all(item.stdout == item.stderr == b"" for item in returned)
+
+
+@pytest.mark.parametrize(
+    ("payload", "origin", "fault"),
+    [
+        ("mixed", "reader_limit", "none"),
+        ("mixed", "returned_size", "none"),
+        ("malformed-json", "reader_limit", "none"),
+        ("invalid-utf8", "reader_limit", "none"),
+        ("deep-json", "reader_limit", "none"),
+        ("at-cap", "reader_limit", "none"),
+        ("mixed", "reader_limit", "serialize"),
+        ("mixed", "reader_limit", "write"),
+        ("mixed", "reader_limit", "flush"),
+        ("mixed", "reader_limit", "post-pin"),
+        ("first-failure", "reader_limit", "none"),
+        ("first-too-large", "returned_size", "none"),
+        ("stdout-tail", "reader_limit", "none"),
+        ("stderr-tail", "reader_limit", "none"),
+        ("first-exit", "reader_limit", "none"),
+    ],
+)
+def test_live_caddy_first_capture_summary_preserves_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: str,
+    origin: str,
+    fault: str,
+) -> None:
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert cap == 1_048_576
+    assert live_stand._LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS == 10
+    assert live_stand._LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS == 25
+    assert live_stand._LIVE_CADDY_PROBE_WINDOW_MS == 2_000
+    private = uuid4().hex
+    marker = private.encode("ascii")
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    first_stdout = b"a\n" + marker + b"\r\n"
+    first_stderr = b"\nabc\n"
+    counts = (36, 5, 2, 2, 33, 3)
+    if payload in {"malformed-json", "invalid-utf8"}:
+        prefix_bytes = b"{" if payload == "malformed-json" else b"\xff"
+        first_stdout = prefix_bytes + marker + b"\n"
+        first_stderr = b""
+        counts = (34, 0, 1, 0, 33, 0)
+    elif payload == "deep-json":
+        first_stdout = b"[" * 2_048 + b'"' + marker + b'"' + b"]" * 2_048 + b"\n"
+        first_stderr = b""
+        counts = (4_131, 0, 1, 0, 4_130, 0)
+    elif payload == "at-cap":
+        first_stdout = marker + b"x" * (cap - len(marker) - 1) + b"\n"
+        first_stderr = b""
+        counts = (cap, 0, 1, 0, cap - 1, 0)
+    elif payload == "first-too-large":
+        first_stdout, first_stderr = b"x" * (cap + 1), b""
+    elif payload == "stdout-tail":
+        first_stdout, first_stderr = marker, b""
+    elif payload == "stderr-tail":
+        first_stdout, first_stderr = b"", marker
+
+    prefix = "live_caddy_probe_first_capture="
+    keys = (
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdout_complete_lines",
+        "stderr_complete_lines",
+        "stdout_max_line_bytes",
+        "stderr_max_line_bytes",
+    )
+    summary = {
+        "schema_version": 1,
+        "capture_ordinal": 1,
+        **dict(zip(keys, counts, strict=True)),
+    }
+    original_dumps = json.dumps
+    summary_line = (
+        prefix + original_dumps(summary, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    assert len(summary_line) <= 512
+    calls: list[dict[str, Any]] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    pins: list[float] = []
+    attempts = {"serialize": 0, "write": 0, "flush": 0, "parse": 0}
+
+    def pin_check(*_args: Any, **kwargs: Any) -> None:
+        pins.append(kwargs["deadline"])
+        if fault == "post-pin" and len(pins) == 2:
+            raise live_stand.StandError(private)
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        calls.append(dict(kwargs))
+        assert len(calls) <= 2
+        if payload == "first-failure" or (len(calls) == 2 and origin == "reader_limit"):
+            raise live_stand._LiveBoundedReadFailure("output_limit")
+        if len(calls) == 1:
+            result = subprocess.CompletedProcess(
+                command,
+                7 if payload == "first-exit" else 0,
+                stdout=first_stdout,
+                stderr=first_stderr,
+            )
+        else:
+            result = subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=b"x" * (kwargs["maximum_bytes"] + 1),
+                stderr=marker,
+            )
+        returned.append(result)
+        return result
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=pin_check,
+        log_reader=read_logs,
+    )
+    completed_at["mobile"] += 120_000
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: 100.0)
+
+    def verify(_mode: str) -> None:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_130_000,
+            password_nonce=password_nonce,
+            correlation_ids=correlations,
+            container_pin=pin,
+            docker_context=context,
+        )
+
+    def diagnostic_dumps(value: object, *args: Any, **kwargs: Any) -> str:
+        if type(value) is dict and set(value) == set(summary):
+            attempts["serialize"] += 1
+            if fault == "serialize":
+                raise RuntimeError(private)
+        return original_dumps(value, *args, **kwargs)
+
+    def forbidden_parse(*_args: Any, **_kwargs: Any) -> None:
+        attempts["parse"] += 1
+        raise AssertionError(private)
+
+    original_stderr = live_stand.sys.stderr
+
+    class DiagnosticStream:
+        pending_summary = False
+
+        def write(self, value: str) -> int:
+            if value.startswith(prefix):
+                attempts["write"] += 1
+                self.pending_summary = True
+                if fault == "write":
+                    raise RuntimeError(private)
+            return original_stderr.write(value)
+
+        def flush(self) -> None:
+            if self.pending_summary:
+                attempts["flush"] += 1
+                self.pending_summary = False
+                if fault == "flush":
+                    raise RuntimeError(private)
+            original_stderr.flush()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(live_stand, "e2e", verify)
+        patch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+        patch.setattr(live_stand.json, "dumps", diagnostic_dumps)
+        patch.setattr(live_stand.json, "loads", forbidden_parse)
+        patch.setattr(live_stand.sys, "stderr", DiagnosticStream())
+        assert live_stand.main(["e2e", "--mode", "full"]) == 2
+
+    first_failed = payload in {
+        "first-failure",
+        "first-too-large",
+        "stdout-tail",
+        "stderr-tail",
+        "first-exit",
+    }
+    stage = {
+        "stdout-tail": "project_row",
+        "stderr-tail": "stderr_validation",
+        "first-exit": "log_exit",
+    }.get(payload, "log_size")
+    if fault == "post-pin":
+        stage = "post_pin"
+    expected = f"live_caddy_probe_failure_stage={stage}\n"
+    if stage == "log_size":
+        expected += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(
+                window_count=2,
+                capture_ordinal=1 if first_failed else 2,
+                previous_capture_bytes=(
+                    0 if first_failed else len(first_stdout) + len(first_stderr)
+                ),
+                overflow_origin=origin,
+            )
+        )
+    eligible = not first_failed and stage == "log_size"
+    if eligible and fault not in {"serialize", "write"}:
+        expected += summary_line
+    expected += f"live_stand: {live_stand._LIVE_CADDY_PROBE_FAILURE}\n"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == expected
+    assert len(calls) == (1 if first_failed else 2)
+    assert calls[0]["maximum_bytes"] == cap
+    if not first_failed:
+        assert calls[1]["maximum_bytes"] == cap - len(first_stdout) - len(first_stderr)
+    assert all(call["deadline"] == 110.0 for call in calls)
+    assert all(call["command_timeout_seconds"] == 10.0 for call in calls)
+    assert pins == [125.0, 125.0]
+    assert all(item.stdout == item.stderr == b"" for item in returned)
+    assert attempts["parse"] == 0
+    assert attempts["serialize"] == int(eligible)
+    assert attempts["write"] == int(eligible and fault != "serialize")
+    assert attempts["flush"] == int(eligible and fault not in {"serialize", "write"})
+    for value in (private, password_nonce, *correlations.values()):
+        assert value not in captured.out
+        assert value not in captured.err
+
+
+def _password_forgot_record() -> dict[str, object]:
+    def stat() -> dict[str, object]:
+        return {
+            "requests": "0",
+            "responses": "0",
+            "completed": "0",
+            "failed": "0",
+            "status": "none",
+            "responsePhase": "none",
+        }
+
+    return {
+        "scope": "main-frame-navigation-window",
+        "schema": 1,
+        "project": "mobile",
+        "attempt": 0,
+        "phase": "success",
+        "elapsed": "ge15s",
+        "auth": stat(),
+        "csrf": stat(),
+        "forgot": stat(),
+        "snapshot": None,
+    }
+
+
+def _password_forgot_line(record: dict[str, object]) -> str:
+    return (
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + json.dumps(record, separators=(",", ":")) + "\n"
+    )
+
+
+def test_live_password_forgot_parser_is_closed_and_bounded() -> None:
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    expected = _password_forgot_record()
+    line = _password_forgot_line(expected)
+    assert parse(line) == [expected]
+    assert parse(line.replace("\n", "\r\n")) == [expected]
+    for malformed in (
+        line[:-1],
+        "prefix " + line,
+        "\x1b[0m" + line,
+        line.replace(" ", "\r", 1),
+        line.replace('"schema":1', '"schema":1,"schema":1'),
+        line.replace('"schema":1', '"schema":1,"\\u0073chema":1'),
+        line.replace('"schema":1', '"schema":true'),
+        line.replace('"attempt":0', '"attempt":NaN'),
+        line.replace('"attempt":0', '"attempt":2'),
+        line.replace('"elapsed":"ge15s"', '"elapsed":"private-canary"'),
+        line.replace('"snapshot":null', '"snapshot":{"token":"private-canary"}'),
+        line.replace('"requests":"0"', '"requests":"private-canary"', 1),
+        line.replace('"status":"none"', '"status":"401"', 1),
+        line.replace('"snapshot":null', '"snapshot":null,"email":"private-canary"'),
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + " " * 2048 + "{}\n",
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + "[" * 1000 + "]" * 1000 + "\n",
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + "\ud800" + "\n",
+    ):
+        assert parse(malformed) == []
+    rows = []
+    expected_records = []
+    for project in ("desktop", "mobile"):
+        for attempt in (0, 1):
+            record = {
+                **_password_forgot_record(),
+                "project": project,
+                "attempt": attempt,
+            }
+            expected_records.append(record)
+            rows.extend(
+                (
+                    _password_forgot_line(record),
+                    _password_forgot_line({**record, "phase": "click"}),
+                )
+            )
+    assert parse("".join(rows * 100)) == expected_records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_password_forgot_runner_uses_only_failure_stdout_and_preserves_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _password_forgot_record()
+    valid = _password_forgot_line(record)
+    stderr_only = _password_forgot_line({**record, "project": "desktop"})
+    private = "private-diagnostic-canary"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E password-forgot " + json.dumps(record, separators=(",", ":"))
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+
+
+def test_live_password_forgot_parser_counts_complete_utf8_frame_bytes() -> None:
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    record = _password_forgot_record()
+    content = _password_forgot_line(record).removesuffix("\n")
+    max_lf = content + " " * (2047 - len(content.encode("utf-8"))) + "\n"
+    max_crlf = content + " " * (2046 - len(content.encode("utf-8"))) + "\r\n"
+    assert len(max_lf.encode("utf-8")) == len(max_crlf.encode("utf-8")) == 2048
+    assert parse(max_lf) == parse(max_crlf) == [record]
+    assert parse(" " + max_lf) == []
+    assert parse(max_lf[:-1] + " \n") == []
+    assert parse(max_crlf[:-2] + " \r\n") == []
+
+
+@pytest.mark.parametrize(
+    "kind", ["password", "uri", "header", "body", "list", "integer", "boolean"]
+)
+def test_live_forgot_diagnostics_reject_private_values_in_every_field(
+    kind: str,
+) -> None:
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    private_value = {
+        "password": private,
+        "uri": "https://private.invalid/path?token=" + private,
+        "header": "Authorization: Bearer " + private,
+        "body": {"password": private},
+        "list": [private],
+        "integer": 10**100,
+        "boolean": True,
+    }[kind]
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    for field in ("scope", "schema", "project", "attempt", "phase", "elapsed"):
+        record = {**_password_forgot_record(), field: private_value}
+        assert parse(_password_forgot_line(record)) == []
+    for route in ("auth", "csrf", "forgot"):
+        for field in (
+            "requests",
+            "responses",
+            "completed",
+            "failed",
+            "status",
+            "responsePhase",
+        ):
+            record = _password_forgot_record()
+            stat = dict(record[route])
+            stat[field] = private_value
+            record[route] = stat
+            assert parse(_password_forgot_line(record)) == []
+    for field in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS:
+        if type(private_value) is bool:
+            continue  # Boolean flags are the complete permitted snapshot domain.
+        record = _password_forgot_record()
+        record["snapshot"] = {
+            key: private_value if key == field else False
+            for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+        assert parse(_password_forgot_line(record)) == []
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_live_forgot_diagnostics_reconstruct_public_labels_and_snapshots(
+    flag: bool,
+) -> None:
+    record = _password_forgot_record()
+    record["scope"] = "".join(["main-frame-", "navigation-window"])
+    record["project"] = "".join(["mo", "bile"])
+    record["phase"] = "".join(["suc", "cess"])
+    record["elapsed"] = "".join(["ge", "15s"])
+    snapshot = {key: flag for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS}
+    record["snapshot"] = snapshot
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert projected is not record
+    for field in ("scope", "project", "phase", "elapsed"):
+        assert projected[field] is not record[field]
+    for route in ("auth", "csrf", "forgot"):
+        assert projected[route] is not record[route]
+    assert projected["snapshot"] is not snapshot
+    snapshot["hydrated"] = not flag
+    assert projected["snapshot"]["hydrated"] is flag
+
+
+def test_live_forgot_runner_never_prints_forged_private_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    valid = _password_forgot_record()
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    forged = [
+        {**valid, "password": private},
+        {**valid, "project": private},
+        {**valid, "phase": "https://private.invalid/?token=" + private},
+        {**valid, "snapshot": {"Authorization": "Bearer " + private}},
+        {**valid, "forgot": {"body": private}},
+    ]
+    rows = "".join(_password_forgot_line(record) for record in forged)
+    completed = subprocess.CompletedProcess(
+        command,
+        1,
+        stdout=(rows + _password_forgot_line(valid)).encode(),
+        stderr=rows.encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "+ " + " ".join(command),
+        "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert captured.err == ""
+    assert private not in captured.out
+
+
+@pytest.mark.parametrize("value", [None, True, 1, {}, [], "private-label-canary"])
+def test_closed_diagnostic_label_rejects_unapproved_values(value: object) -> None:
+    assert live_stand._closed_diagnostic_label(value, ("desktop", "mobile")) is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["2xx", "401", "403", "429", "4xx", "5xx", "other", "mixed", "unavailable"],
+)
+@pytest.mark.parametrize("response_phase", ["before-click", "after-click", "mixed"])
+@pytest.mark.parametrize("count", ["1", "many"])
+def test_live_forgot_stats_reconstruct_each_multichar_label(
+    status: str, response_phase: str, count: str
+) -> None:
+    record = _password_forgot_record()
+    expected_stat = {
+        "requests": count,
+        "responses": count,
+        "completed": count,
+        "failed": "0" if count == "1" else "many",
+        "status": status,
+        "responsePhase": response_phase,
+    }
+    for route in ("auth", "csrf", "forgot"):
+        record[route] = {
+            key: "".join([label[:1], label[1:]]) for key, label in expected_stat.items()
+        }
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert json.loads(live_stand._render_forgot_observation(record)) == record
+    assert projected is not None
+    for route in ("auth", "csrf", "forgot"):
+        assert projected[route] == expected_stat
+        assert projected[route] is not record[route]
+        for field, label in expected_stat.items():
+            if len(label) > 1:
+                assert projected[route][field] is not record[route][field]
+
+
+def test_live_forgot_empty_stats_reconstruct_none_labels() -> None:
+    record = _password_forgot_record()
+    for route in ("auth", "csrf", "forgot"):
+        record[route]["status"] = "".join(["no", "ne"])
+        record[route]["responsePhase"] = "".join(["no", "ne"])
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert json.loads(live_stand._render_forgot_observation(record)) == record
+    assert projected is not None
+    for route in ("auth", "csrf", "forgot"):
+        for field in ("status", "responsePhase"):
+            assert projected[route][field] is not record[route][field]
+
+
+@pytest.mark.parametrize("snapshot_present", [False, True])
+def test_live_forgot_sink_renderer_preserves_public_values(
+    snapshot_present: bool,
+) -> None:
+    record = _password_forgot_record()
+    if snapshot_present:
+        record["snapshot"] = {
+            key: True for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+    rendered = live_stand._render_forgot_observation(record)
+    assert type(rendered) is str
+    assert json.loads(rendered) == record
+
+
+def test_live_forgot_sink_rejects_private_values_when_parser_is_bypassed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    valid = _password_forgot_record()
+    forged = [
+        None,
+        private,
+        [private],
+        {**valid, "password": private},
+        {**valid, "project": private},
+        {**valid, "scope": "https://private.invalid/?token=" + private},
+        {**valid, "phase": "Authorization: Bearer " + private},
+        {**valid, "schema": True},
+        {**valid, "attempt": 10**100},
+        {**valid, "snapshot": {"body": private}},
+        {**valid, "forgot": {"body": private}},
+    ]
+    for route in ("auth", "csrf", "forgot"):
+        for field in (
+            "requests",
+            "responses",
+            "completed",
+            "failed",
+            "status",
+            "responsePhase",
+        ):
+            stat = {**valid[route], field: private}
+            forged.append({**valid, route: stat})
+    for value in forged:
+        assert live_stand._render_forgot_observation(value) is None
+    completed = subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
+    _patch_live_playwright_result(monkeypatch, completed)
+    monkeypatch.setattr(
+        live_stand,
+        "_live_playwright_password_forgot_diagnostics",
+        lambda _output: [*forged, valid],
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "+ " + " ".join(command),
+        "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in captured.out
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("scope", ["main-frame-navigation-window", "unconfirmed"])
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("attempt", [0, 1])
+@pytest.mark.parametrize("phase", ["navigate", "fill", "click", "success"])
+@pytest.mark.parametrize("elapsed", ["lt1s", "1to5s", "5to15s", "ge15s", "unavailable"])
+@pytest.mark.parametrize("snapshot_kind", ["none", "all-true", "all-false", "mixed"])
+def test_live_forgot_sink_renderer_matches_all_accepted_public_domains(
+    scope: str,
+    project: str,
+    attempt: int,
+    phase: str,
+    elapsed: str,
+    snapshot_kind: str,
+) -> None:
+    record = {
+        **_password_forgot_record(),
+        "scope": scope,
+        "project": project,
+        "attempt": attempt,
+        "phase": phase,
+        "elapsed": elapsed,
+    }
+    if snapshot_kind != "none":
+        record["snapshot"] = {
+            key: snapshot_kind == "all-true"
+            or (
+                snapshot_kind == "mixed"
+                and key in {"hydrated", "formPresent", "submitPresent"}
+            )
+            for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+    # Zero request statistics are consistent with either observation scope.
+    validated = live_stand._validated_password_forgot_record(record)
+    assert validated == record
+    rendered = live_stand._render_forgot_observation(record)
+    assert type(rendered) is str
+    assert json.loads(rendered) == validated
+    assert (
+        len(("UE_LIVE_PASSWORD_FORGOT_V1 " + rendered + "\n").encode("utf-8")) <= 2048
+    )
+
+
+def test_live_forgot_sink_literal_domains_match_validation_guards() -> None:
+    helper_source = (ROOT / "scripts" / "live_stand_playwright_evidence.py").read_text(
+        encoding="utf-8"
+    )
+    functions = {
+        node.name: node
+        for node in ast.parse(helper_source).body
+        if isinstance(node, ast.FunctionDef)
+    }
+    facade_source = (ROOT / "scripts" / "live_stand.py").read_text(encoding="utf-8")
+    facade_imports = {
+        alias.name: alias.asname or alias.name
+        for node in ast.walk(ast.parse(facade_source))
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "scripts.live_stand_playwright_evidence"
+        for alias in node.names
+    }
+    from scripts import live_stand_playwright_evidence as evidence
+
+    for name in ("_validated_password_forgot_record", "_render_forgot_observation"):
+        assert facade_imports.get(name) == name
+        assert getattr(live_stand, name) is getattr(evidence, name)
+
+    guard_domains = {}
+    for node in ast.walk(functions["_validated_password_forgot_record"]):
+        if (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], ast.NotIn)
+            and isinstance(node.left, ast.Subscript)
+            and isinstance(node.left.slice, ast.Constant)
+            and isinstance(node.comparators[0], ast.Set)
+        ):
+            guard_domains[node.left.slice.value] = ast.literal_eval(node.comparators[0])
+    renderer = functions["_render_forgot_observation"]
+    rendered_domains = {}
+    for node in ast.walk(renderer):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_closed_diagnostic_label"
+        ):
+            observed, labels = node.args
+            assert isinstance(observed, ast.Subscript)
+            assert isinstance(observed.slice, ast.Constant)
+            assert isinstance(labels, ast.Tuple), (
+                "sink labels must remain independent literals"
+            )
+            rendered_domains[observed.slice.value] = set(ast.literal_eval(labels))
+    for field in ("scope", "project", "phase", "elapsed"):
+        assert rendered_domains[field] == guard_domains[field]
+    for field in ("requests", "responses", "completed", "failed"):
+        assert rendered_domains[field] == live_stand._PASSWORD_FORGOT_COUNTS
+    assert rendered_domains["status"] == live_stand._PASSWORD_FORGOT_STATUSES
+    stat_guard = functions["_validated_password_forgot_stat"]
+    phase_sets = [
+        ast.literal_eval(node.comparators[0])
+        for node in ast.walk(stat_guard)
+        if isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.NotIn)
+        and isinstance(node.comparators[0], ast.Set)
+    ]
+    assert phase_sets == [rendered_domains["responsePhase"]]
+    attempt_domains = [
+        {ast.literal_eval(node.body), ast.literal_eval(node.orelse)}
+        for node in ast.walk(renderer)
+        if isinstance(node, ast.IfExp)
+        and isinstance(node.body, ast.Constant)
+        and isinstance(node.body.value, int)
+        and isinstance(node.orelse, ast.Constant)
+        and isinstance(node.orelse.value, int)
+    ]
+    assert attempt_domains == [guard_domains["attempt"]]
+
+
+def test_live_e2e_selection_rejects_non_live_specs_for_live_runner() -> None:
+    non_live_specs = (
+        "tests/e2e/audit375-service-worker.spec.ts",
+        "tests/e2e/rate-limit-ux.spec.ts",
+    )
+    declared = live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+
+    assert set(non_live_specs) <= set(declared)
+    assert live_stand._LIVE_E2E_SELECTABLE_SPECS
+    assert all(
+        source.endswith(".live.spec.ts")
+        for source in live_stand._LIVE_E2E_SELECTABLE_SPECS
+    )
+    assert not set(non_live_specs) & set(live_stand._LIVE_E2E_SELECTABLE_SPECS)
+    for spec in non_live_specs:
+        with pytest.raises(
+            live_stand.StandError, match="invalid live E2E focused selection"
+        ):
+            live_stand._validated_live_e2e_specs((spec,), mode="full")
+        with pytest.raises(
+            live_stand.StandError, match="invalid live E2E focused selection"
+        ):
+            live_stand._live_e2e_command(mode="full", platform="posix", specs=(spec,))
+
+
+def test_live_stand_exercises_the_default_socket_budget_at_both_edges() -> None:
+    """The stand must prove the shipped budget, so nothing may override it."""
+    assert "WS_UPGRADE_RATE_PER_MINUTE" not in (
+        ROOT / "docker-compose.live.yml"
+    ).read_text(encoding="utf-8")
+    for edge in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        source = (ROOT / edge).read_text(encoding="utf-8")
+        assert "events {$WS_UPGRADE_RATE_PER_MINUTE:120}" in source
+    config = (ROOT / "services/ws-hub/pkg/config/config.go").read_text(encoding="utf-8")
+    assert "const DefaultWSUpgradeRatePerMinute = 120" in config

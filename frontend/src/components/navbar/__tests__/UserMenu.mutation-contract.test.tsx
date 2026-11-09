@@ -243,7 +243,7 @@ describe("UserMenu mutation contracts", () => {
       "size-11",
       "duration-500",
       "transition-[transform,opacity,background-color]",
-      "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+      "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)]",
       "hover:scale-105",
       "active:scale-95"
     )

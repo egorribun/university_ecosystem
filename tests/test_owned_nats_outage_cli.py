@@ -517,7 +517,13 @@ def _require_checkpoint_contract() -> type[StrEnum]:
     result = OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
     assert hasattr(result, "checkpoint"), "missing optional result checkpoint"
     assert result.checkpoint is None
-    expected = {*_PREFLIGHT_CHECKPOINT_OPERATIONS, "coordinator_exception"}
+    expected = {
+        *_PREFLIGHT_CHECKPOINT_OPERATIONS,
+        "coordinator_exception",
+        "broker_probe",
+        "broker_receipt",
+        "send_message",
+    }
     assert {entry.value for entry in checkpoint_type} == expected
     assert replace(result, checkpoint=checkpoint_type("acquire_lock")) == result
     return checkpoint_type
@@ -622,13 +628,23 @@ def test_preflight_checkpoint_does_not_override_later_failure_or_cleanup(
     operation: str,
     stage: OutageStage,
 ) -> None:
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
     _require_checkpoint_contract()
     underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
     underlying.script[operation] = [RuntimeError("private transport detail")]
     result = cli.run_owned_nats_outage("/", in_place=True)
     assert result.outcome is OutageOutcome.FAILED
     assert result.stage is stage
-    assert result.checkpoint is None
+    if operation == "send_message_once":
+        assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+        assert result.send_phase is SendPhase.NOT_READY
+    else:
+        assert result.checkpoint is None
+        assert result.send_phase is None
+    assert result.send_http_status is None
+    assert result.runtime_diagnostic is None
+    assert result.broker_diagnostic is None
     names = [call.name for call in underlying.calls]
     for name in (
         "acquire_lock",
@@ -742,6 +758,43 @@ def test_main_renders_only_typed_preflight_checkpoint(
         "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
         f"checkpoint={checkpoint_value}\n"
     )
+
+
+def test_main_renders_broker_receipt_checkpoint_without_private_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from scripts.owned_nats_coordinator import (
+        BrokerMessageEvidence,
+        OutageCheckpoint,
+    )
+
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    private_marker = "private-broker-envelope-must-not-leak"
+    underlying.broker = BrokerMessageEvidence(
+        subject="chat.invalid",
+        sequence=1,
+        envelope={"private": private_marker},
+    )
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_RECEIPT
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+        "checkpoint=broker_receipt\n"
+    )
+    assert private_marker not in captured.out + captured.err
 
 
 @pytest.mark.parametrize("accepted", [False, True])
@@ -941,6 +994,146 @@ def test_main_refuses_runtime_diagnostic_outside_matching_failure(
     )
 
 
+def test_main_rejects_accepted_result_with_stale_checkpoint(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import OutageCheckpoint
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    result = OutageResult(
+        OutageOutcome.ACCEPTED,
+        OutageStage.COMPLETE,
+        OutageCheckpoint.BROKER_PROBE,
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )
+
+
+def test_main_formats_only_exact_broker_probe_diagnostic(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.BROKER,
+        OutageCheckpoint.BROKER_PROBE,
+        broker_diagnostic=BrokerProbePhase.DECODE,
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: result)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+        "checkpoint=broker_probe broker_diagnostic=decode\n"
+    )
+
+    for phase in BrokerProbePhase:
+        annotated = replace(result, broker_diagnostic=phase)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=annotated, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+            f"checkpoint=broker_probe broker_diagnostic={phase.value}\n"
+        )
+
+    class OtherPhase(StrEnum):
+        DECODE = "decode"
+
+    for invalid in ("decode", OtherPhase.DECODE, 3, True, _PrivateOutageValue()):
+        malformed = replace(result, broker_diagnostic=invalid)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=malformed, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+def test_main_rejects_broker_diagnostic_outside_matching_failure(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    results = (
+        OutageResult(
+            OutageOutcome.ACCEPTED,
+            OutageStage.COMPLETE,
+            broker_diagnostic=BrokerProbePhase.PRECHECK,
+        ),
+        OutageResult(
+            OutageOutcome.FAILED,
+            OutageStage.BROKER,
+            OutageCheckpoint.BROKER_RECEIPT,
+            broker_diagnostic=BrokerProbePhase.POSTCHECK,
+        ),
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    for result in results:
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=result, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+def test_broker_diagnostic_field_is_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.BROKER,
+        OutageCheckpoint.BROKER_PROBE,
+    )
+    schema = {item.name: item for item in fields(result)}
+    assert set(schema) == {
+        "outcome",
+        "stage",
+        "checkpoint",
+        "runtime_diagnostic",
+        "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
+        "backend_diagnostic",
+    }
+    assert result.broker_diagnostic is None
+    assert schema["broker_diagnostic"].compare is False
+    assert schema["broker_diagnostic"].repr is False
+    annotated = replace(result, broker_diagnostic=BrokerProbePhase.DECODE)
+    assert annotated == result
+    assert repr(annotated) == repr(result)
+
+
 def test_real_lazy_facade_forwards_finite_runtime_failure(
     monkeypatch, tmp_path, capsys
 ):
@@ -976,10 +1169,335 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
         OutageCheckpoint.OBSERVE_RUNTIME,
     )
     schema = {item.name: item for item in fields(result)}
-    assert set(schema) == {"outcome", "stage", "checkpoint", "runtime_diagnostic"}
+    assert set(schema) == {
+        "outcome",
+        "stage",
+        "checkpoint",
+        "runtime_diagnostic",
+        "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
+        "backend_diagnostic",
+    }
     assert result.runtime_diagnostic is None
     assert schema["runtime_diagnostic"].compare is False
     assert schema["runtime_diagnostic"].repr is False
     annotated = replace(result, runtime_diagnostic=RuntimeObservationPhase.DAEMON)
     assert annotated == result
     assert repr(annotated) == repr(result)
+
+
+@pytest.mark.parametrize(
+    ("phase_name", "status", "token"),
+    [
+        ("TIMEOUT", None, "timeout"),
+        ("CONNECT_ERROR", None, "connect_error"),
+        ("BODY_MISMATCH", None, "body_mismatch"),
+        ("NOT_READY", None, "not_ready"),
+        (None, 401, "http_status=401"),
+        (None, 503, "http_status=503"),
+    ],
+)
+def test_main_formats_only_closed_send_phase(
+    monkeypatch, capsys, phase_name, status, token
+):
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_phase=None if phase_name is None else SendPhase[phase_name],
+        send_http_status=status,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=send "
+        f"checkpoint=send_message phase={token}\n"
+    )
+
+
+def test_send_diagnostic_fields_are_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED, OutageStage.SEND, OutageCheckpoint.SEND_MESSAGE
+    )
+    schema = {item.name: item for item in fields(result)}
+    for name, value in (("send_phase", SendPhase.TIMEOUT), ("send_http_status", 503)):
+        assert getattr(result, name) is None
+        assert schema[name].compare is False
+        assert schema[name].repr is False
+        annotated = replace(result, **{name: value})
+        assert annotated == result
+        assert repr(annotated) == repr(result)
+
+
+def test_main_rejects_invalid_or_misplaced_send_diagnostics(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED, OutageStage.SEND, OutageCheckpoint.SEND_MESSAGE
+    )
+
+    class OtherPhase(StrEnum):
+        TIMEOUT = "timeout"
+
+    invalid_results = [
+        replace(result, send_phase=value)
+        for value in ("timeout", OtherPhase.TIMEOUT, 3, True, _PrivateOutageValue())
+    ]
+    invalid_results.extend(
+        replace(result, send_http_status=value)
+        for value in (99, 600, 200, True, "503", _PrivateOutageValue())
+    )
+    for diagnostic in (
+        {"send_phase": SendPhase.TIMEOUT},
+        {"send_http_status": 503},
+    ):
+        annotated = replace(result, **diagnostic)
+        invalid_results.extend(
+            (
+                replace(annotated, outcome=OutageOutcome.ACCEPTED),
+                replace(annotated, stage=OutageStage.RESTORE),
+                replace(annotated, checkpoint=None),
+                replace(annotated, checkpoint=OutageCheckpoint.READ_DM),
+            )
+        )
+    invalid_results.append(
+        replace(result, send_phase=SendPhase.TIMEOUT, send_http_status=503)
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    for malformed in invalid_results:
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=malformed, **_k: _r
+        )
+        assert (
+            live_stand.main(
+                ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+            )
+            == 2
+        )
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+@pytest.mark.parametrize("cleanup", ["close_clients", "release_lock"])
+def test_send_diagnostic_is_cleared_when_cleanup_supersedes_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cleanup: str
+) -> None:
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    underlying.script["send_message_once"] = [RuntimeError("private send detail")]
+    underlying.script[cleanup] = [RuntimeError("private cleanup detail")]
+
+    result = cli.run_owned_nats_outage("/", in_place=True)
+
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.CLEANUP
+    assert result.checkpoint is None
+    assert result.send_phase is None
+    assert result.send_http_status is None
+    names = [call.name for call in underlying.calls]
+    assert names.count("send_message_once") == names.count("start_container") == 1
+    assert names.count("close_clients") == names.count("release_lock") == 1
+    assert names.index("send_message_once") < names.index("start_container")
+    assert names.index("start_container") < names.index("close_clients")
+    assert names.index("close_clients") < names.index("release_lock")
+    assert underlying.restore_started is True
+    assert underlying.stopped is False
+    assert underlying.contract_errors == []
+    assert "private" not in repr(result)
+
+
+@pytest.mark.parametrize("correlated", [True, False])
+def test_backend_diagnostic_has_separate_versioned_closed_line(
+    monkeypatch, capsys, correlated
+):
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+        backend_diagnostic=projected if correlated else None,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "owned_backend_failure_v1 evidence=correlated category=database kind=programming sqlstate=42501\n"
+        if correlated
+        else "owned_backend_failure_v1 evidence=unknown\n"
+    )
+    assert (
+        captured.err
+        == "live_stand: owned NATS acceptance failed outcome=failed stage=send checkpoint=send_message phase=http_status=500\n"
+    )
+
+
+def test_backend_diagnostic_invalid_values_never_print_private_data(
+    monkeypatch, capsys
+):
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    base = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+    )
+    private = _PrivateOutageValue()
+    invalid = [
+        private,
+        BackendFailureDiagnostic(private, BackendFailureKind.DATABASE),
+        BackendFailureDiagnostic(BackendFailureCategory.DATABASE, private),
+        BackendFailureDiagnostic(
+            BackendFailureCategory.DATABASE, BackendFailureKind.DATABASE, private
+        ),
+    ]
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    for value in invalid:
+        result = replace(base, backend_diagnostic=value)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=result, **_k: _r
+        )
+        assert (
+            live_stand.main(
+                ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+            )
+            == 2
+        )
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert (
+            captured.err
+            == "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+def test_capture_stage_is_unknown_evidence_and_preserves_closed_send_line(
+    monkeypatch, capsys
+):
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.PROJECTION_UNMATCHED,
+    )
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+        backend_diagnostic=projected,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert (
+        captured.out
+        == "owned_backend_failure_v1 evidence=unknown capture_stage=projection_unmatched\n"
+    )
+    assert (
+        captured.err
+        == "live_stand: owned NATS acceptance failed outcome=failed stage=send checkpoint=send_message phase=http_status=500\n"
+    )
+
+
+def test_capture_stage_never_allows_arbitrary_strings_or_correlated_claims():
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        valid_backend_diagnostic,
+    )
+
+    unknown = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.OWNER_AFTER,
+    )
+    assert valid_backend_diagnostic(unknown)
+    assert not valid_backend_diagnostic(replace(unknown, capture_stage="private"))
+    assert not valid_backend_diagnostic(
+        replace(unknown, capture_stage=_PrivateOutageValue())
+    )
+    assert not valid_backend_diagnostic(replace(unknown, sqlstate="42501"))
+    assert not valid_backend_diagnostic(
+        replace(unknown, category=BackendFailureCategory.DATABASE)
+    )
+    assert not valid_backend_diagnostic(
+        replace(unknown, kind=BackendFailureKind.PROGRAMMING)
+    )
+
+
+@pytest.mark.parametrize("cleanup", ["close_clients", "release_lock"])
+def test_capture_checkpoint_is_discarded_when_cleanup_supersedes_send(cleanup):
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        MessagePostEvidence,
+        run_owned_outage,
+    )
+
+    ports = FakePorts()
+    diagnostic = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.RUNTIME_BEFORE,
+    )
+    ports.script["send_message_once"] = [
+        MessagePostEvidence(500, None, backend_diagnostic=diagnostic)
+    ]
+    ports.script[cleanup] = [RuntimeError("synthetic-private")]
+    result = run_owned_outage(ports, clock=ports.clock, sleep=ports.sleep)
+    assert result.stage is OutageStage.CLEANUP
+    assert result.backend_diagnostic is None
+    assert result.send_http_status is None
+    names = [call.name for call in ports.calls]
+    assert names.count("send_message_once") == names.count("start_container") == 1
+    assert names[-2:] == ["close_clients", "release_lock"]

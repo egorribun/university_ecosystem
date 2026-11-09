@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -8,10 +10,18 @@ import (
 	"strings"
 )
 
+// DefaultWSUpgradeRatePerMinute is the per-client-IP budget outside explicit configuration.
+const DefaultWSUpgradeRatePerMinute = 120
+
 // Config holds application configuration.
 type Config struct {
-	Port    string
-	NatsURL string
+	Port string
+	// MetricsAddr is the bind address of the scrape-only Prometheus listener.
+	// It is separate from the public WebSocket port (AUD-438). The loopback
+	// default keeps metrics private unless a deployment opts in explicitly; an
+	// empty value disables the listener.
+	MetricsAddr string
+	NatsURL     string
 	// NatsUser / NatsPassword and NatsAuthToken pass credentials through NATS
 	// client options rather than embedding them in NatsURL. Token auth is
 	// mutually exclusive with user/password auth, and NatsURL must remain
@@ -65,6 +75,10 @@ type Config struct {
 	// NATS/cache-invalidation secret in configuration, while deployments may
 	// provision both from the same existing secret during this rollout.
 	InternalAuthToken string
+	// WSUpgradeRatePerMinute is the per-client-IP WebSocket upgrade budget, also its
+	// burst. WS_UPGRADE_RATE_PER_MINUTE overrides it; a non-positive value means default.
+	WSUpgradeRatePerMinute int
+
 	// MaxClients is the maximum number of concurrently connected WebSocket clients.
 	// 0 means unlimited (not recommended in production).
 	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
@@ -95,11 +109,144 @@ type Config struct {
 	TLSKeyFile       string
 
 	// JetStream configuration options (R1 JetStream delivery & deduplication)
-	NatsStreamChat           string
-	NatsStreamNotifications  string
-	NatsDurableChat          string
-	NatsDurableNotifications string
-	EnableJetStream          bool
+	NatsStreamChat          string
+	NatsStreamNotifications string
+	EnableJetStream         bool
+	// RevocationReplayWindowSeconds bounds how far back a late-starting replica
+	// replays room membership revocations from CACHE_INVALIDATIONS. It must cover
+	// the longest access-token lifetime the backend issues
+	// (access_token_expire_minutes, default 60). Pure cache invalidations are never
+	// replayed. Default: 3600.
+	RevocationReplayWindowSeconds int
+	// NATSConsumer holds the durable-contract settings applied to every
+	// cache-invalidation consumer. The Helm chart renders the same values under
+	// wsHub.config.natsConsumer; DefaultNATSConsumerSettings is the code default.
+	NATSConsumer NATSConsumerSettings
+}
+
+// NATS cache-invalidation consumer contract (AUD-478). The consumers are
+// ephemeral push consumers with explicit acknowledgement, so the settings below
+// are the whole durable contract: nothing is left to server defaults.
+const (
+	// NATSAckPolicyExplicit is the only supported ack policy. Handlers rely on
+	// explicit ACK, NAK and TERM to retry or reject each verified event.
+	NATSAckPolicyExplicit = "explicit"
+	// DefaultNATSAckWaitSeconds exceeds the 30 s NATS callback timeout.
+	DefaultNATSAckWaitSeconds = 60
+	// DefaultNATSMaxDeliver bounds redelivery of an event that keeps failing.
+	DefaultNATSMaxDeliver = 20
+	// DefaultNATSInactiveThresholdSeconds removes an ephemeral consumer that has
+	// had no interest for this long. A replica that reconnects re-creates it.
+	DefaultNATSInactiveThresholdSeconds = 300
+
+	minNATSAckWaitSeconds          = 31
+	maxNATSAckWaitSeconds          = 600
+	minNATSMaxDeliver              = 5
+	maxNATSMaxDeliver              = 100
+	minNATSInactiveThresholdSecond = 60
+	maxNATSInactiveThresholdSecond = 86400
+)
+
+// NATSConsumerSettings is the validated consumer contract.
+type NATSConsumerSettings struct {
+	AckPolicy                string
+	AckWaitSeconds           int
+	MaxDeliver               int
+	InactiveThresholdSeconds int
+}
+
+// DefaultNATSConsumerSettings returns the code default that the chart mirrors.
+func DefaultNATSConsumerSettings() NATSConsumerSettings {
+	return NATSConsumerSettings{
+		AckPolicy:                NATSAckPolicyExplicit,
+		AckWaitSeconds:           DefaultNATSAckWaitSeconds,
+		MaxDeliver:               DefaultNATSMaxDeliver,
+		InactiveThresholdSeconds: DefaultNATSInactiveThresholdSeconds,
+	}
+}
+
+// Validate rejects any setting outside the supported contract. Ranges are
+// inclusive: ack wait must exceed the callback timeout so an in-flight event is
+// not redelivered while it is still being applied, and max deliver must allow
+// several transient NAKs before an invalidation is given up.
+func (s NATSConsumerSettings) Validate() error {
+	var errs []error
+	if s.AckPolicy != NATSAckPolicyExplicit {
+		errs = append(errs, fmt.Errorf("NATS ack policy must be %q", NATSAckPolicyExplicit))
+	}
+	if s.AckWaitSeconds < minNATSAckWaitSeconds || s.AckWaitSeconds > maxNATSAckWaitSeconds {
+		errs = append(errs, fmt.Errorf("NATS ack wait must be between %d and %d seconds",
+			minNATSAckWaitSeconds, maxNATSAckWaitSeconds))
+	}
+	if s.MaxDeliver < minNATSMaxDeliver || s.MaxDeliver > maxNATSMaxDeliver {
+		errs = append(errs, fmt.Errorf("NATS max deliver must be between %d and %d",
+			minNATSMaxDeliver, maxNATSMaxDeliver))
+	}
+	if s.InactiveThresholdSeconds < minNATSInactiveThresholdSecond ||
+		s.InactiveThresholdSeconds > maxNATSInactiveThresholdSecond {
+		errs = append(errs, fmt.Errorf("NATS inactive threshold must be between %d and %d seconds",
+			minNATSInactiveThresholdSecond, maxNATSInactiveThresholdSecond))
+	}
+	return errors.Join(errs...)
+}
+
+// buildTrustedProxies splits configured trusted proxies into exact canonical peers and
+// CIDR blocks. P-03 and PERF-04 (audit 2026-03-08 and Wave 11): the map gives O(1)
+// lookup in RealIP(), and the CIDR blocks support multi-hop chain traversal.
+func buildTrustedProxies(trustedProxies []string) (map[string]struct{}, []*net.IPNet) {
+	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
+	var trustedCIDRs []*net.IPNet
+	for _, entry := range trustedProxies {
+		if strings.Contains(entry, "/") {
+			if _, cidr, err := net.ParseCIDR(entry); err == nil {
+				trustedCIDRs = append(trustedCIDRs, cidr)
+			}
+			continue
+		}
+		// RealIP compares net.IP.String(), so exact peers need the same
+		// canonical form, including equivalent IPv6 and IPv4-mapped forms.
+		if ip := net.ParseIP(entry); ip != nil {
+			entry = ip.String()
+		}
+		trustedProxiesSet[entry] = struct{}{}
+	}
+	return trustedProxiesSet, trustedCIDRs
+}
+
+// natsConsumerSettingsFromEnv reads the consumer contract strictly. Unlike the
+// lenient getEnvInt helper, an unparsable value is an error, so a typo in the
+// chart cannot silently fall back to a default.
+func natsConsumerSettingsFromEnv() (NATSConsumerSettings, error) {
+	settings := DefaultNATSConsumerSettings()
+	settings.AckPolicy = getEnv("WS_NATS_ACK_POLICY", settings.AckPolicy)
+	var err error
+	if settings.AckWaitSeconds, err = getEnvIntStrict("WS_NATS_ACK_WAIT_SECONDS", settings.AckWaitSeconds); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if settings.MaxDeliver, err = getEnvIntStrict("WS_NATS_MAX_DELIVER", settings.MaxDeliver); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if settings.InactiveThresholdSeconds, err = getEnvIntStrict("WS_NATS_INACTIVE_THRESHOLD_SECONDS", settings.InactiveThresholdSeconds); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if err := settings.Validate(); err != nil {
+		return NATSConsumerSettings{}, fmt.Errorf("invalid NATS consumer settings: %w", err)
+	}
+	return settings, nil
+}
+
+// getEnvIntStrict returns defaultValue when the variable is unset and an error
+// when it is set to anything other than a base-10 integer.
+func getEnvIntStrict(key string, defaultValue int) (int, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer", key)
+	}
+	return value, nil
 }
 
 // LoadConfig initializes Config from env vars and fails closed on any configured secret file error.
@@ -148,19 +295,14 @@ func LoadConfig() (*Config, error) {
 	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
 	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
 	// PERF-04 (audit Wave 11): also parse CIDR blocks for multi-hop chain traversal.
-	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
-	var trustedCIDRs []*net.IPNet
-	for _, entry := range trustedProxies {
-		if strings.Contains(entry, "/") {
-			if _, cidr, err := net.ParseCIDR(entry); err == nil {
-				trustedCIDRs = append(trustedCIDRs, cidr)
-			}
-		} else {
-			trustedProxiesSet[entry] = struct{}{}
-		}
+	trustedProxiesSet, trustedCIDRs := buildTrustedProxies(trustedProxies)
+	natsConsumer, err := natsConsumerSettingsFromEnv()
+	if err != nil {
+		return nil, err
 	}
 	return &Config{
 		Port:          getEnv("WS_HUB_PORT", "8081"),
+		MetricsAddr:   getEnv("WS_HUB_METRICS_ADDR", "127.0.0.1:9108"),
 		NatsURL:       natsURL,
 		NatsUser:      natsUser,     // empty means no auth override
 		NatsPassword:  natsPassword, // empty means no auth override
@@ -171,38 +313,41 @@ func LoadConfig() (*Config, error) {
 		// Include the port-80 Caddy edge origin used by local compose.  Explicit
 		// origins configured through ALLOWED_ORIGINS still replace this safe local
 		// default entirely.
-		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
-		TrustedProxies:           trustedProxies,
-		TrustedProxiesSet:        trustedProxiesSet,
-		TrustedCIDRs:             trustedCIDRs,
-		BackendURL:               getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
-		JWKSURL:                  getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
-		SendBufferSize:           getEnvInt("WS_SEND_BUFFER_SIZE", 256),
-		BroadcastBufferSize:      getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
-		BroadcastWorkers:         min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
-		InternalSecret:           internalSecret, // no default — empty secret allows HMAC forgery
-		InternalAuthToken:        internalAuthToken,
-		MaxClients:               getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
-		ClientMsgRateLimit:       getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
-		ClientMsgRateBurst:       getEnvInt("WS_CLIENT_MSG_BURST", 20),
-		TicketTTLSeconds:         getEnvInt("WS_TICKET_TTL_SECONDS", 15),
-		RedisURL:                 redisURL,
-		RedisPassword:            redisPassword,
-		RedisDB:                  getEnvInt("REDIS_DB", 0),
-		RevocationRedisURL:       revocationRedisURL,
-		SpiffeEnabled:            os.Getenv("SPIFFE_ENABLED") == "true",
-		SpiffeEndpointSocket:     getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
-		SpiffeTrustDomain:        getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
-		SpiffeMyID:               getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
-		BackendSpiffeID:          getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
-		WebTransportPort:         getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
-		TLSCertFile:              getEnv("TLS_CERT_FILE", ""),
-		TLSKeyFile:               getEnv("TLS_KEY_FILE", ""),
-		NatsStreamChat:           getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
-		NatsStreamNotifications:  getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
-		NatsDurableChat:          getEnv("NATS_DURABLE_CHAT", "ws-hub-chat"),
-		NatsDurableNotifications: getEnv("NATS_DURABLE_NOTIFICATIONS", "ws-hub-notifications"),
-		EnableJetStream:          getEnvBool("ENABLE_JETSTREAM", true),
+		AllowedOrigins:          getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
+		TrustedProxies:          trustedProxies,
+		TrustedProxiesSet:       trustedProxiesSet,
+		TrustedCIDRs:            trustedCIDRs,
+		BackendURL:              getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
+		JWKSURL:                 getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
+		SendBufferSize:          getEnvInt("WS_SEND_BUFFER_SIZE", 256),
+		BroadcastBufferSize:     getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		BroadcastWorkers:        min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
+		InternalSecret:          internalSecret, // no default — empty secret allows HMAC forgery
+		InternalAuthToken:       internalAuthToken,
+		MaxClients:              getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		WSUpgradeRatePerMinute:  getEnvInt("WS_UPGRADE_RATE_PER_MINUTE", DefaultWSUpgradeRatePerMinute),
+		ClientMsgRateLimit:      getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
+		ClientMsgRateBurst:      getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:        getEnvInt("WS_TICKET_TTL_SECONDS", 15),
+		RedisURL:                redisURL,
+		RedisPassword:           redisPassword,
+		RedisDB:                 getEnvInt("REDIS_DB", 0),
+		RevocationRedisURL:      revocationRedisURL,
+		SpiffeEnabled:           os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:    getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:       getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:              getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
+		BackendSpiffeID:         getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		WebTransportPort:        getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
+		TLSCertFile:             getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:              getEnv("TLS_KEY_FILE", ""),
+		NatsStreamChat:          getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
+		NatsStreamNotifications: getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
+		EnableJetStream:         getEnvBool("ENABLE_JETSTREAM", true),
+
+		// Must cover the backend's access_token_expire_minutes (default 60).
+		RevocationReplayWindowSeconds: getEnvInt("WS_REVOCATION_REPLAY_WINDOW_SECONDS", 3600),
+		NATSConsumer:                  natsConsumer,
 	}, nil
 }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -64,6 +65,87 @@ async def test_seed_user_reuses_matching_partial_state(capsys) -> None:
         assert first.group_id == different_group_id
         assert len(db.users) == 1
         assert len(db.objects) == 3
+    finally:
+        capsys.readouterr()
+
+
+async def test_owned_seed_uses_an_explicit_test_password(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from tests.helpers.synthetic_credentials import make_test_password
+
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.users = []
+            self.objects = []
+
+        async def scalar(self, _statement):
+            return self.users[0] if self.users else None
+
+        def add(self, entity) -> None:
+            self.objects.append(entity)
+            if isinstance(entity, seed_demo_data.User):
+                if entity.id is None:
+                    entity.id = uuid4()
+                self.users.append(entity)
+
+        async def flush(self) -> None:
+            return None
+
+    password = make_test_password()
+    observed_passwords: list[str] = []
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    monkeypatch.setenv("TEST_PASSWORD", password)
+    monkeypatch.setattr(
+        seed_demo_data,
+        "get_password_hash_sync",
+        lambda value: observed_passwords.append(value) or "synthetic-hash",
+    )
+
+    database = RecordingSession()
+    try:
+        user = await seed_demo_data.seed_user(database, SimpleNamespace(id=uuid4()))
+        assert observed_passwords == [password]
+        assert user.hashed_password == "synthetic-hash"
+        assert password not in capsys.readouterr().out
+    finally:
+        capsys.readouterr()
+
+
+@pytest.mark.parametrize("password", [None, " \t "])
+async def test_owned_seed_rejects_missing_or_blank_test_password(
+    monkeypatch: pytest.MonkeyPatch, capsys, password: str | None
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.objects = []
+
+        async def scalar(self, _statement):
+            return None
+
+        def add(self, entity) -> None:
+            self.objects.append(entity)
+
+        async def flush(self) -> None:
+            return None
+
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    if password is None:
+        monkeypatch.delenv("TEST_PASSWORD", raising=False)
+    else:
+        monkeypatch.setenv("TEST_PASSWORD", password)
+    database = RecordingSession()
+
+    try:
+        with pytest.raises(RuntimeError, match="TEST_PASSWORD"):
+            await seed_demo_data.seed_user(database, SimpleNamespace(id=uuid4()))
+        assert database.objects == []
     finally:
         capsys.readouterr()
 
@@ -457,12 +539,40 @@ async def test_demo_content_includes_english_fields() -> None:
         ), "every seeded content record must have its English fields"
 
 
+@pytest.mark.parametrize(
+    "project",
+    [
+        "ue-live-testproject",
+        "ue-live-ABCDEF0123456789",
+        "ue-live-0123456789abcdef0",
+        "ue-live-0123456789abcde",
+        "postgres",
+    ],
+)
+async def test_seed_target_rejects_project_names_outside_the_generated_format(
+    monkeypatch, project: str
+) -> None:
+    # live_stand names owned projects ue-live-<16 lowercase hex>; any other name,
+    # even one that matches the environment flags, is not an owned live stand.
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)
+    monkeypatch.setattr(
+        seed_target,
+        "_configured_database_url",
+        lambda: "postgresql+asyncpg://tester@postgres:5432/demo",
+    )
+
+    with pytest.raises(RuntimeError, match="owned live stand"):
+        seed_target.require_owned_live_stand_target()
+
+
 async def test_seed_target_rejects_a_database_outside_compose_postgres(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-testproject")
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-0123456789abcdef")
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
-    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-testproject")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-0123456789abcdef")
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
@@ -474,9 +584,9 @@ async def test_seed_target_rejects_a_database_outside_compose_postgres(
 
 
 async def test_seed_target_accepts_the_verified_compose_postgres_service(
-    monkeypatch,
+    monkeypatch, tmp_path
 ) -> None:
-    project = "ue-live-testproject"
+    project = "ue-live-0123456789abcdef"
     monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)
@@ -484,6 +594,26 @@ async def test_seed_target_accepts_the_verified_compose_postgres_service(
         seed_target,
         "_configured_database_url",
         lambda: "postgresql+asyncpg://tester@postgres:5432/demo",
+    )
+    record = tmp_path / "owned-stand.json"
+    record.write_text(
+        json.dumps(
+            {"schema_version": 1, "project_name": project, "database_host": "postgres"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record)
+    escaped_path = (
+        str(record)
+        .replace("\\", r"\134")
+        .replace(" ", r"\040")
+        .replace("\t", r"\011")
+        .replace("\n", r"\012")
+    )
+    monkeypatch.setattr(
+        seed_target,
+        "_read_mountinfo_text",
+        lambda: f"42 1 8:1 /source {escaped_path} ro,relatime - ext4 /dev/root rw",
     )
 
     assert seed_target.require_owned_live_stand_target() == project
@@ -607,9 +737,9 @@ async def test_seed_target_rejects_database_outside_admin_smoke_service(
 
 
 async def test_seed_target_rejects_mismatched_compose_project(monkeypatch) -> None:
-    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-owned")
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-0123456789abcdef")
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
-    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-other")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-fedcba9876543210")
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
@@ -623,7 +753,7 @@ async def test_seed_target_rejects_mismatched_compose_project(monkeypatch) -> No
 async def test_seed_target_fails_closed_when_database_url_cannot_be_read(
     monkeypatch,
 ) -> None:
-    project = "ue-live-testproject"
+    project = "ue-live-0123456789abcdef"
     monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)

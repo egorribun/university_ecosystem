@@ -235,6 +235,22 @@ export default function Profile() {
     }
   }
 
+  const handleCopyContact = async (value: string | null | undefined) => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
+    setSnackbar(null)
+    try {
+      if (!value || typeof navigator.clipboard?.writeText !== "function") {
+        setSnackbar({ key: "error", severity: "error" })
+        return
+      }
+      await navigator.clipboard.writeText(value)
+      if (isCurrent()) setSnackbar({ key: "copied", severity: "success" })
+    } catch {
+      if (isCurrent()) setSnackbar({ key: "error", severity: "error" })
+    }
+  }
+
   const handleCancel = () => {
     setEdit(false)
     navigate({ to: "/profile", replace: true })
@@ -281,7 +297,7 @@ export default function Profile() {
             />
             <div className="container-fluid-responsive">
               <m.div
-                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/[calc(var(--opacity-subtle)*100%)] shadow-glass border border-glass-border-subtle/[calc(var(--opacity-dim)*100%)] backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
@@ -302,8 +318,8 @@ export default function Profile() {
                       isOnline={isOnline}
                       statusOffset={statusOffset}
                       statusSize={statusSize}
-                      onEmailClick={() => setSnackbar({ key: "copied", severity: "success" })}
-                      onTelegramClick={() => setSnackbar({ key: "copied", severity: "success" })}
+                      onEmailClick={() => void handleCopyContact(user?.email)}
+                      onTelegramClick={() => void handleCopyContact(user?.profile_detail?.telegram)}
                       onQrClick={() => setQrOpen(true)}
                       vCardData={vCardData}
                       reduceMotion={reduceMotion}

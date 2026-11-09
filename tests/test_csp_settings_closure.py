@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -214,6 +215,31 @@ def test_production_csp_defaults_match_shared_frontend_contract():
     assert actual_headers == contract["headers"]
 
 
+def test_backend_csp_excludes_node_only_script_tokens():
+    from app.core.security_headers import SecurityHeadersMiddleware
+
+    contract_path = (
+        Path(__file__).resolve().parents[1] / "quality" / "frontend-csp-defaults.json"
+    )
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    assert contract["nodeOnlyScriptSrcTokens"] == ["'wasm-unsafe-eval'"]
+
+    middleware = object.__new__(SecurityHeadersMiddleware)
+    middleware._settings = CspSettingsMixin()
+    backend_headers = {
+        name.lower(): value
+        for name, value in middleware._build_csp_header(nonce=contract["nonce"])
+    }
+
+    assert set(backend_headers) == {
+        "content-security-policy",
+        "content-security-policy-report-only",
+    }
+    for value in backend_headers.values():
+        for token in contract["nodeOnlyScriptSrcTokens"]:
+            assert token not in value.split()
+
+
 def test_production_report_only_shadow_omits_unsupported_directives_only():
     from app.core.security_headers import SecurityHeadersMiddleware
 
@@ -361,3 +387,30 @@ def test_production_shadow_detects_mixed_case_custom_report_uri():
         _report_uri_directives(headers["content-security-policy-report-only"])
         == expected
     )
+
+
+def test_browser_weather_requests_are_allowed_by_every_connect_src() -> None:
+    """A provider missing from connect-src is blocked in the browser, so the widget stays empty."""
+    root = Path(__file__).resolve().parents[1]
+    origins = set()
+    for relative in (
+        "frontend/src/api/weather.ts",
+        "frontend/src/hooks/useMapWeather.ts",
+    ):
+        source = (root / relative).read_text(encoding="utf-8")
+        origins.update(re.findall(r"https://[a-z0-9.-]+(?=/)", source))
+    assert origins == {"https://api.open-meteo.com"}
+
+    node_policy = (root / "frontend/scripts/server-csp.mjs").read_text(encoding="utf-8")
+    contract = json.loads(
+        (root / "quality/frontend-csp-defaults.json").read_text(encoding="utf-8")
+    )
+    extra = CspSettingsMixin.security_connect_src_extra
+    for origin in origins:
+        assert f'"{origin}"' in node_policy
+        assert origin in extra.split(",")
+        for header in contract["headers"].values():
+            connect_src = next(
+                part for part in header.split("; ") if part.startswith("connect-src ")
+            )
+            assert origin in connect_src.split()

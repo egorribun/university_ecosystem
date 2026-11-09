@@ -163,7 +163,7 @@ def _github_fetcher(token: str, repository: str) -> Callable[[str], dict[str, An
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
-        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to canonical api.github.com Actions endpoints
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310  # URL is restricted to canonical api.github.com Actions endpoints
             value = json.load(response)
         if not isinstance(value, dict):
             raise ValueError(f"GitHub API endpoint {endpoint!r} returned a non-object")

@@ -82,25 +82,29 @@ async def client(app: FastAPI) -> AsyncClient:
 @pytest.mark.asyncio
 async def test_non_http_scope_passthrough():
     """Non-HTTP scopes (e.g. lifespan) pass through without interference."""
-    test_app = _build_test_app()
+    incoming_event = {"type": "lifespan.startup"}
+    observed_scopes: list[dict] = []
     received_events: list[dict] = []
 
     async def mock_receive():
-        return {"type": "lifespan.startup"}
+        return incoming_event
 
     async def mock_send(message):
         received_events.append(message)
 
-    middleware = ContentSizeLimitMiddleware(test_app, max_bytes=100)
-    scope = {"type": "lifespan"}
+    async def controlled_inner_app(scope, receive, send):
+        observed_scopes.append(scope)
+        event = await receive()
+        assert event == incoming_event
+        await send({"type": "lifespan.startup.complete"})
 
-    # Should delegate to inner app without error
-    # Inner app will fail because scope is not HTTP, but the middleware itself
-    # should not block. We catch the inner error to prove passthrough.
-    try:
-        await middleware(scope, mock_receive, mock_send)
-    except Exception:  # noqa: S110
-        pass  # Inner app doesn't handle lifespan — expected
+    middleware = ContentSizeLimitMiddleware(controlled_inner_app, max_bytes=100)
+    scope = {"type": "lifespan", "asgi": {"version": "3.0"}}
+
+    await middleware(scope, mock_receive, mock_send)
+
+    assert observed_scopes == [scope]
+    assert received_events == [{"type": "lifespan.startup.complete"}]
 
 
 # ---------------------------------------------------------------------------
@@ -207,19 +211,21 @@ async def test_body_replay_full_content(client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
-# WebSocket paths bypass body checking
+# HTTP paths under /ws still enforce body limits
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_websocket_path_bypasses_body_check(client: AsyncClient):
-    """POST to /ws/* path skips body-size enforcement."""
+async def test_http_ws_path_still_enforces_body_check(client: AsyncClient):
+    """HTTP paths under /ws remain subject to the ordinary body limit."""
     payload = b"x" * (_MAX_BYTES + 100)
     response = await client.post("/ws/test", content=payload)
-    # Should succeed because /ws paths are exempted from chunked body check
-    assert response.status_code == 200
-    data = response.json()
-    assert data["length"] == len(payload)
+
+    assert response.status_code == 413
+    assert response.json()["status"] == 413
+    assert response.json()["detail"]
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert int(response.headers["content-length"]) == len(response.content)
 
 
 # ---------------------------------------------------------------------------

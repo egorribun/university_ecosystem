@@ -227,23 +227,7 @@ async def scan_for_malware(
             locale or "en",
         )
 
-    # Check circuit breaker first for fail-fast behavior
-    allow_on_unavailable = getattr(
-        settings, "event_file_scanner_allow_on_unavailable", False
-    )
-    # RZ-13 (audit 2026-03-05): Forbid the allow_on_unavailable escape hatch in
-    # production. If EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE=true leaks from staging
-    # into production, a brief ClamAV blip would silently accept all file uploads
-    # without scanning. Fail hard at startup rather than silently at request time.
-    if (
-        allow_on_unavailable
-        and getattr(settings, "environment", "production") == "production"
-    ):
-        raise RuntimeError(
-            "EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE must not be True in production. "
-            "When set, a ClamAV outage silently accepts file uploads without malware "
-            "scanning. Unset this flag before deploying to production."
-        )
+    # Check circuit breaker first for fail-fast behavior.
     try:
         async with _clamav_circuit_breaker:
             if backend == "clamd":
@@ -259,7 +243,7 @@ async def scan_for_malware(
                 )
     except CircuitBreakerOpenError as exc:
         logger.warning(
-            "File scanner circuit breaker open, skipping scan",
+            "File scanner circuit breaker open, rejecting upload",
             extra={
                 "event": "file_scan",
                 "scan_backend": backend,
@@ -267,14 +251,11 @@ async def scan_for_malware(
                 "remaining_seconds": exc.remaining_seconds,
             },
         )
-        if not allow_on_unavailable:
-            raise_http_error(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "errors.files.scanner_unavailable",
-                locale or "en",
-            )
-        # Allow upload without scanning when configured
-        return
+        raise_http_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "errors.files.scanner_unavailable",
+            locale or "en",
+        )
     except FileScannerPayloadTooLarge as exc:
         logger.warning(
             "File scan aborted: payload exceeded scanner limit",

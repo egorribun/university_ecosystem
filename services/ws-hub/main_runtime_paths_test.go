@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
 
 func TestStartupPacketConn_ForwardsOperationsAndSignalsOnce(t *testing.T) {
@@ -165,7 +164,7 @@ func TestRunServer_WaitsForShutdownAfterWebTransportReady(t *testing.T) {
 
 	quit := make(chan os.Signal, 1)
 	cfg := &config.Config{Port: "0", WebTransportPort: "0"}
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
 	done := make(chan error, 1)
 	go func() {
 		done <- runServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), h, http.NewServeMux(), quit)

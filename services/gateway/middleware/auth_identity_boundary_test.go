@@ -19,6 +19,7 @@ import (
 func identityBoundaryToken(t *testing.T, subject, tokenID string) string {
 	t.Helper()
 	claims := jwt.MapClaims{
+		"iss":       DefaultJWTIssuer,
 		"aud":       DefaultJWTAudience,
 		"exp":       time.Now().Add(time.Hour).Unix(),
 		"iat":       time.Now().Add(-time.Minute).Unix(),

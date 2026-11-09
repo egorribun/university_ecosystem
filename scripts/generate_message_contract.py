@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 TARGET = REPOSITORY_ROOT / "frontend/src/api/schemas/messageLimits.ts"
-SOURCE = REPOSITORY_ROOT / "app/core/config/storage.py"
+SOURCE = REPOSITORY_ROOT / "app/core/chat_constants.py"
 
 
 def _message_limit() -> int:
@@ -22,7 +22,7 @@ def _message_limit() -> int:
                 for target in targets
             ):
                 value = node.value
-                if isinstance(value, ast.Constant) and isinstance(value.value, int):
+                if isinstance(value, ast.Constant) and type(value.value) is int:
                     return value.value
                 break
     raise RuntimeError(f"missing literal CHAT_MAX_MESSAGE_LENGTH in {SOURCE}")
@@ -33,7 +33,7 @@ def _render() -> str:
 
     return f"""/**
  * GENERATED FILE — do not edit by hand.
- * Source: app/core/config/storage.py:CHAT_MAX_MESSAGE_LENGTH
+ * Source: app/core/chat_constants.py:CHAT_MAX_MESSAGE_LENGTH
  * Regenerate with: python scripts/generate_message_contract.py
  */
 export const CHAT_MESSAGE_MAX_LENGTH = {message_limit} as const

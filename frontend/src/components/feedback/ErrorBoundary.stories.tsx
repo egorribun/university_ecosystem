@@ -9,7 +9,7 @@ function ErrorThrowingComponent(): React.ReactNode {
 
 function StableChildComponent() {
   return (
-    <div className="p-4 border rounded-lg border-green-500/(--opacity-soft) bg-green-500/(--opacity-subtle)">
+    <div className="p-4 border rounded-lg border-green-500/[calc(var(--opacity-soft)*100%)] bg-green-500/[calc(var(--opacity-subtle)*100%)]">
       <p className="text-green-400">✓ This component is working correctly</p>
     </div>
   )
@@ -75,7 +75,7 @@ export const CustomFallback: Story = {
   args: {
     children: <ErrorThrowingComponent />,
     fallback: (
-      <div className="flex min-h-72 items-center justify-center bg-red-500/(--opacity-subtle) p-8">
+      <div className="flex min-h-72 items-center justify-center bg-red-500/[calc(var(--opacity-subtle)*100%)] p-8">
         <div className="text-center">
           <span className="text-4xl" role="img" aria-label="error">
             💥

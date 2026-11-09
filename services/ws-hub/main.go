@@ -34,19 +34,21 @@ import (
 // Bootstrap seams keep failure handling deterministic in unit tests while
 // production continues to use the concrete implementations below.
 var (
-	initTracerFunc          = telemetry.InitTracer
-	initRedisFunc           = initRedis
-	initRevocationRedisFunc = initRevocationRedis
-	initSpiffeClientFunc    = initSpiffeClient
-	setupHubFunc            = setupHubWithRevocation
-	runServerFunc           = runServer
-	newSpiffeClientFunc     = spiffe.NewClient
-	closeRedisFunc          = func(client *redis.Client) error { return client.Close() }
-	closeSpiffeClientFunc   = func(client *spiffe.Client) error { return client.Close() }
-	setupJWKSFunc           = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
-	subscribeNATSFunc       = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
-	configureAuthSPIFFEFunc = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) {
-		client.WithSPIFFE(spiffeClient, serverID)
+	initTracerFunc           = telemetry.InitTracer
+	initRedisFunc            = initRedis
+	initRevocationRedisFunc  = initRevocationRedis
+	initSpiffeClientFunc     = initSpiffeClient
+	setupHubFunc             = setupHubWithRevocation
+	newBackendAuthClientFunc = hub.NewInternalAPIAuthClientWithToken
+	newRuntimeHubFunc        = hub.NewHub
+	runServerFunc            = runServer
+	newSpiffeClientFunc      = spiffe.NewClient
+	closeRedisFunc           = func(client *redis.Client) error { return client.Close() }
+	closeSpiffeClientFunc    = func(client *spiffe.Client) error { return client.Close() }
+	setupJWKSFunc            = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
+	subscribeNATSFunc        = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
+	configureAuthSPIFFEFunc  = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) error {
+		return client.WithSPIFFE(spiffeClient, serverID)
 	}
 	healthNATSConnectedFunc   = func(conn *nats.Conn) bool { return conn != nil && conn.IsConnected() }
 	healthRedisConfiguredFunc = func(client *redis.Client) bool { return client != nil }
@@ -56,12 +58,14 @@ var (
 		}
 		return client.Ping(ctx).Err()
 	}
-	healthJWKSReadyFunc    = func(h *hub.Hub) bool { return h.HasJWKSCache() }
-	loadTLSCertFunc        = tls.LoadX509KeyPair
-	listenUDPFunc          = net.ListenUDP
-	closeUDPFunc           = func(conn *net.UDPConn) error { return conn.Close() }
-	webTransportServeFunc  = func(server *webtransport.Server, conn net.PacketConn) error { return server.Serve(conn) }
-	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	healthJWKSReadyFunc = func(h *hub.Hub) bool { return h.HasJWKSCache() }
+	// AUD-478: a replica whose cache.revoke replay is still draining is not ready.
+	healthRevocationCatchingUpFunc = func(h *hub.Hub) bool { return h.AdmissionClosed() }
+	loadTLSCertFunc                = tls.LoadX509KeyPair
+	listenUDPFunc                  = net.ListenUDP
+	closeUDPFunc                   = func(conn *net.UDPConn) error { return conn.Close() }
+	webTransportServeFunc          = func(server *webtransport.Server, conn net.PacketConn) error { return server.Serve(conn) }
+	shutdownHTTPServerFunc         = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 )
 
 func main() {
@@ -354,18 +358,29 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
 	}
-	authClient := hub.NewInternalAPIAuthClientWithToken(cfg.BackendURL, cfg.InternalAuthToken, rdb)
+	authClient, err := newBackendAuthClientFunc(cfg.BackendURL, cfg.InternalAuthToken, rdb)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to construct backend auth client", "err", err)
+		return nil, fmt.Errorf("construct backend auth client: %w", err)
+	}
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, http.ErrServerClosed
 		}
-		configureAuthSPIFFEFunc(authClient, spiffeClient, cfg.BackendSpiffeID)
+		if err := configureAuthSPIFFEFunc(authClient, spiffeClient, cfg.BackendSpiffeID); err != nil {
+			logger.ErrorContext(ctx, "Failed to configure SPIFFE mTLS for backend auth client", "err", err)
+			return nil, fmt.Errorf("configure backend auth SPIFFE mTLS: %w", err)
+		}
 	}
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
-	h := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	h, err := newRuntimeHubFunc(nc, logger, authClient, cfg, rdb, revocationRDB)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to construct ws-hub", "err", err)
+		return nil, fmt.Errorf("construct ws-hub: %w", err)
+	}
 	// A real service bootstrap always has a dedicated revocation Redis: run()
 	// fails before reaching this point when it cannot initialise one. Keep the
 	// nil guard for isolated health/unit fixtures, whose action path is never
@@ -437,6 +452,10 @@ func newReadinessHandler(h *hub.Hub, logger *slog.Logger, nc *nats.Conn, rdb *re
 		if !healthJWKSReadyFunc(h) {
 			checks["jwks"] = "not initialized"
 		}
+		// AUD-478: a replica whose revocation replay is still draining is not ready.
+		if healthRevocationCatchingUpFunc(h) {
+			checks["revocation_replay"] = "catching up"
+		}
 		if len(checks) > 0 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			if err := json.NewEncoder(w).Encode(map[string]interface{}{
@@ -485,8 +504,23 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 			logger.ErrorContext(r.Context(), "Failed to encode health check response", "err", err)
 		}
 	}), "health_check"))
+}
 
+// newMetricsServer builds the scrape-only Prometheus listener. It is kept out
+// of the public WebSocket mux, so unauthenticated metrics are reachable only
+// through the metrics bind address and its network policy (AUD-438).
+func newMetricsServer(addr string) *http.Server {
+	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    1 << 13,
+	}
 }
 
 // startupPacketConn exposes a readiness barrier after webtransport.Server.Serve
@@ -625,13 +659,26 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
-	errChan := make(chan error, 2)
+	errChan := make(chan error, 3)
 	hub.StartTrackedGoroutine(func() {
 		logger.InfoContext(context.Background(), "Starting WebSocket Hub (TCP)", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
 	})
+
+	// A metrics listener failure is a startup/runtime error like the others:
+	// the process must not run without the configured scrape boundary.
+	var metricsServer *http.Server
+	if cfg.MetricsAddr != "" {
+		metricsServer = newMetricsServer(cfg.MetricsAddr)
+		hub.StartTrackedGoroutine(func() {
+			logger.InfoContext(context.Background(), "Starting metrics listener", "addr", cfg.MetricsAddr)
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errChan <- err
+			}
+		})
+	}
 
 	wtReady := make(chan struct{})
 	wtDone := make(chan struct{})
@@ -657,6 +704,11 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	shutdownWebTransport(wtServer, wtDone)
 	if err := shutdownHTTPServerFunc(server, shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
+	}
+	if metricsServer != nil {
+		if err := shutdownHTTPServerFunc(metricsServer, shutdownCtx); err != nil {
+			logger.ErrorContext(context.Background(), "Metrics listener forced to shutdown", "err", err)
+		}
 	}
 	return runErr
 }

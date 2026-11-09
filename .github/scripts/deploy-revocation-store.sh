@@ -124,8 +124,8 @@ preflight_existing_datastore_image() {
     return 0
   fi
 
-  local actual_name="${statefulset_state%%|*}"
-  local image="${statefulset_state#*|}"
+  local actual_name="${statefulset_state%%\|*}"
+  local image="${statefulset_state#*\|}"
   if [[ "$actual_name" != "$statefulset_name" || "$image" == "$statefulset_state" || -z "$image" ]]; then
     echo "Existing revocation StatefulSet is missing its expected Redis container identity; refusing to reuse its PVC." >&2
     return 1

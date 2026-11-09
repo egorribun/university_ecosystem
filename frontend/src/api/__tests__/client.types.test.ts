@@ -1,6 +1,7 @@
-import { describe, it, expectTypeOf } from "vitest"
+import { HttpResponse, http } from "msw"
+import { describe, expect, it, expectTypeOf } from "vitest"
 
-import type { NewsOut } from "@/api/generated"
+import type { NewsOut, PaginatedNews } from "@/api/generated"
 import { createEvent, uploadEventImage, type CreateEventPayload } from "@/api/events"
 import {
   createNews,
@@ -10,11 +11,35 @@ import {
   type CreateNewsPayload,
 } from "@/api/news"
 import { fetchNotificationsList, type NotificationsListResult } from "@/api/notifications"
+import { server } from "@/tests/mocks/server"
 
 describe("typed api client", () => {
   it("fetchNews matches schema", async () => {
+    const expectedPage = {
+      items: [
+        {
+          id: "00000000-0000-0000-0000-000000000001",
+          title: "Campus news",
+          content: "Article content",
+          created_at: "2026-01-15T10:00:00.000Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    } satisfies PaginatedNews
+    let requests = 0
+    server.use(
+      http.get("*/api/v1/news", () => {
+        requests += 1
+        return HttpResponse.json(expectedPage)
+      })
+    )
+
     const result = await fetchNews()
-    expectTypeOf(result.data).toMatchTypeOf<unknown>()
+    expect(requests).toBe(1)
+    expect(result.status).toBe(200)
+    expect(result.data).toStrictEqual(expectedPage)
+    expectTypeOf(result.data).toEqualTypeOf<PaginatedNews | undefined>()
   })
 
   it("fetchNewsItem matches schema", async () => {

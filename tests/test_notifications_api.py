@@ -40,7 +40,7 @@ async def test_clear_notifications_removes_only_current_user(
     user_factory,
     db_session,
 ):
-    password = "ClearIt123!"
+    password = "DataMismatch123!"
     hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
     other = await user_factory(hashed_password=hashed, is_active=True)
@@ -172,7 +172,7 @@ async def test_list_notifications_sets_language_and_cache_headers(
     user_factory,
     db_session,
 ):
-    password = "Headers123!"
+    password = "DataMismatch123!"
     hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 

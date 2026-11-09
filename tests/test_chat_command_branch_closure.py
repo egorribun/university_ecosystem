@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 import app.services.chat.command_service as command_service
+from app.repositories.chat_repository import LockedChatMembership
 from app.services.chat.command_service import (
     ChatMaintenanceService,
     ChatMessageDispatcher,
@@ -21,6 +22,12 @@ from app.services.chat.command_service import (
 def _uow():
     uow = MagicMock()
     uow.chats = MagicMock()
+    uow.chats.get_send_receipt = AsyncMock(return_value=None)
+    uow.chats.create_send_receipt = AsyncMock(
+        return_value=datetime.now(UTC) + timedelta(hours=24)
+    )
+    uow.chats.prune_expired_send_receipts = AsyncMock(return_value=0)
+    uow.chats.send_receipt_remaining_seconds = AsyncMock(return_value=86400)
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.__aenter__ = AsyncMock(return_value=uow)
@@ -313,6 +320,9 @@ async def test_add_participant_skips_invalidation_when_already_present():
     target = _user()
     uow = _uow()
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.lock_membership_snapshot = AsyncMock(
+        return_value=LockedChatMembership("group", user.id, (user.id,))
+    )
     uow.chats.get_user = AsyncMock(return_value=target)
     uow.chats.add_participant = AsyncMock(return_value=False)
     service = ChatMaintenanceService(uow, MagicMock())
@@ -331,25 +341,22 @@ async def test_add_participant_skips_invalidation_when_already_present():
     invalidate_presence.assert_not_awaited()
 
 
-async def test_remove_participant_skips_invalidation_when_no_row_removed():
+async def test_remove_participant_retries_invalidation_when_no_row_removed():
     user = _user()
     chat = _group_chat(user.id)
     target_id = uuid.uuid4()
     uow = _uow()
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.lock_membership_snapshot = AsyncMock(
+        return_value=LockedChatMembership("group", user.id, (user.id,))
+    )
     uow.chats.remove_participant = AsyncMock(return_value=0)
     service = ChatMaintenanceService(uow, MagicMock())
 
-    with (
-        patch.object(
-            command_service, "invalidate_chat_participants_cache", new=AsyncMock()
-        ) as invalidate_chat,
-        patch.object(
-            command_service, "invalidate_presence_audience_cache", new=AsyncMock()
-        ) as invalidate_presence,
-    ):
+    with patch.object(
+        command_service, "invalidate_participant_caches_strict", new=AsyncMock()
+    ) as invalidate_caches:
         await service.remove_participant(chat.id, user, target_id, "en")
 
-    invalidate_chat.assert_not_awaited()
-    invalidate_presence.assert_not_awaited()
+    invalidate_caches.assert_awaited_once_with(chat.id, sorted([user.id, target_id]), 1)
     uow.chats.add.assert_not_called()

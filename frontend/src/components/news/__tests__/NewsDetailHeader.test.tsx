@@ -174,13 +174,13 @@ describe("NewsDetailHeader", () => {
     const inactiveBookmarkIcon = inactiveBookmarkButton.querySelector("svg")!
 
     expect(inactiveLikeButton).not.toHaveClass(
-      "border-(--error-text)/(--opacity-dim)",
-      "bg-(--error-text)/(--opacity-subtle)"
+      "border-(--error-text)/[calc(var(--opacity-dim)*100%)]",
+      "bg-(--error-text)/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(inactiveLikeIcon).toHaveClass("text-(--text-secondary)")
     expect(inactiveBookmarkButton).not.toHaveClass(
-      "border-brand/(--opacity-dim)",
-      "bg-brand/(--opacity-subtle)"
+      "border-brand/[calc(var(--opacity-dim)*100%)]",
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(inactiveBookmarkIcon).not.toHaveClass("fill-brand", "text-brand")
 
@@ -191,13 +191,13 @@ describe("NewsDetailHeader", () => {
     const activeBookmarkIcon = activeBookmarkButton.querySelector("svg")!
 
     expect(activeLikeButton).toHaveClass(
-      "border-(--error-text)/(--opacity-dim)",
-      "bg-(--error-text)/(--opacity-subtle)"
+      "border-(--error-text)/[calc(var(--opacity-dim)*100%)]",
+      "bg-(--error-text)/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(activeLikeIcon).toHaveClass("fill-(--error-text)", "text-(--error-text)")
     expect(activeBookmarkButton).toHaveClass(
-      "border-brand/(--opacity-dim)",
-      "bg-brand/(--opacity-subtle)"
+      "border-brand/[calc(var(--opacity-dim)*100%)]",
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(activeBookmarkIcon).toHaveClass("fill-brand", "text-brand")
   })

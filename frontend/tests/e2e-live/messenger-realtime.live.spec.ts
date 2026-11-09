@@ -1,6 +1,11 @@
-import { devices, type Locator, type Page } from "@playwright/test"
+import { devices, type Locator, type Page, type WebSocket } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
+import {
+  armReconnectConnectivity,
+  createReconnectDiagnostic,
+  type ReconnectObservedSession,
+} from "./messenger-reconnect-diagnostic"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
@@ -126,6 +131,8 @@ function findMessageMutationFrames(value: unknown): MessageMutationFrame[] {
 function findReactionMutationFrames(value: unknown): ReactionMutationFrame[] {
   if (Array.isArray(value)) return value.flatMap(findReactionMutationFrames)
   if (!isRecord(value)) return []
+  // The hub envelope repeats the event type; the event fields are in its payload.
+  if (isRecord(value.payload)) return findReactionMutationFrames(value.payload)
   if (value.type === "reaction_changed") {
     return [
       {
@@ -142,7 +149,13 @@ function findReactionMutationFrames(value: unknown): ReactionMutationFrame[] {
 }
 
 type CreatedLiveMessage = { id: string; content: string }
-type ReceiverSocketSession = { joinedChat: boolean; closed: boolean }
+type ReceiverSocketSession = ReconnectObservedSession
+type TypingObservation = {
+  text: string | null
+  appearedAt: number | null
+  removedAt: number | null
+}
+type TypingObservationWindow = Window & { __liveTypingObservation?: TypingObservation }
 
 async function sendLiveMessage(
   page: Page,
@@ -256,6 +269,7 @@ test.describe("live messenger delivery", () => {
       viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
     })
 
+    const senderStyleFailures: unknown[] = []
     try {
       const receiverPage = await receiverContext.newPage()
       const message = `live-ws-${crypto.randomUUID()}`
@@ -377,6 +391,11 @@ test.describe("live messenger delivery", () => {
         .locator(
           "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
         )
+      await expect(
+        sentMessageRow.getByRole("img", {
+          name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u,
+        })
+      ).toBeVisible()
       await sentMessageRow.getByRole("button", { name: "Изменить сообщение", exact: true }).click()
       await page
         .getByRole("textbox", { name: "Изменить сообщение", exact: true })
@@ -408,6 +427,168 @@ test.describe("live messenger delivery", () => {
       await expect(messageLog.getByText(editedContent, { exact: true })).toBeVisible()
       await expect(messageLog.getByText(message, { exact: true })).toHaveCount(0)
 
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${chatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const editedRow = localizedSenderLog
+              .getByText(editedContent, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+            const bubble = editedRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await expect(editedRow.locator(".text-micro.font-medium.lowercase")).toHaveText(
+              language === "ru" ? "(изменено)" : "(edited)"
+            )
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                edited: effective(element.querySelector(".text-micro.font-medium.lowercase")),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.edited,
+              rendered.status,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
+            }
+          }
+        }
+      } catch (error) {
+        senderStyleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${chatId}`)
+        } catch (restorationError) {
+          senderStyleFailures.push(restorationError)
+        }
+      }
+
+      if (senderStyleFailures.length === 1) throw senderStyleFailures[0]
+      if (senderStyleFailures.length > 1) {
+        throw new AggregateError(
+          senderStyleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
       const receivedEditedMessageRow = messageLog
         .getByText(editedContent, { exact: true })
         .locator(
@@ -478,7 +659,8 @@ test.describe("live messenger delivery", () => {
       )
       expect(editFrameIndex).toBeGreaterThanOrEqual(0)
       expect(deleteFrameIndex).toBeGreaterThan(editFrameIndex)
-      const tombstone = messageLog.getByText("Сообщение удалено", { exact: true })
+      // The shared chat keeps earlier tombstones; this message is the newest row.
+      const tombstone = messageLog.getByText("Сообщение удалено", { exact: true }).last()
       await expect(tombstone).toBeVisible()
       await expect(messageLog.getByText(editedContent, { exact: true })).toHaveCount(0)
       const tombstoneRow = tombstone.locator(
@@ -526,6 +708,7 @@ test.describe("live messenger delivery", () => {
     browser,
     page,
   }, testInfo) => {
+    test.setTimeout(210_000)
     const mobile = testInfo.project.name === "mobile"
     const receiverContext = await browser.newContext({
       ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
@@ -536,9 +719,13 @@ test.describe("live messenger delivery", () => {
     const createdMessages: CreatedLiveMessage[] = []
     let chatId: string | null = null
     let senderLog: Locator | null = null
+    let diagnosticPage: Page | undefined
+    const receiverSessions: ReceiverSocketSession[] = []
+    const diagnostic = createReconnectDiagnostic(testInfo.project.name, testInfo.retry)
 
     try {
       const receiverPage = await receiverContext.newPage()
+      diagnosticPage = receiverPage
       await loginAs(page, "student")
       await loginAs(receiverPage, "teacher")
 
@@ -570,18 +757,26 @@ test.describe("live messenger delivery", () => {
       chatId = chatIdFromRoute
 
       const receiverMessages: ReceivedMessageFrame[] = []
-      const receiverSessions: ReceiverSocketSession[] = []
       receiverPage.on("websocket", (socket) => {
-        const session: ReceiverSocketSession = { joinedChat: false, closed: false }
+        const session: ReceiverSocketSession = {
+          joinedChat: false,
+          closed: false,
+          socket,
+          ordinal: diagnostic.socketCreated(),
+        }
         receiverSessions.push(session)
         socket.on("framesent", (frame) => {
-          if (hasRoomJoin(parseFrame(frame), chatIdFromRoute)) session.joinedChat = true
+          if (hasRoomJoin(parseFrame(frame), chatIdFromRoute)) {
+            session.joinedChat = true
+            diagnostic.note("room-joined", session.ordinal)
+          }
         })
         socket.on("framereceived", (frame) => {
           receiverMessages.push(...findNewMessageFrames(parseFrame(frame)))
         })
         socket.on("close", () => {
           session.closed = true
+          diagnostic.note("socket-closed", session.ordinal)
         })
       })
 
@@ -592,6 +787,8 @@ test.describe("live messenger delivery", () => {
       await expect(receiverLog).toBeVisible()
       await expect.poll(() => receiverSessions.some((session) => session.joinedChat)).toBe(true)
 
+      diagnostic.stage("baseline")
+      const connectivityReady = armReconnectConnectivity(receiverPage)
       const first = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -633,11 +830,21 @@ test.describe("live messenger delivery", () => {
 
       const activeSession = [...receiverSessions].reverse().find((session) => session.joinedChat)
       expect(activeSession).toBeDefined()
+      diagnostic.select(activeSession?.ordinal ?? 0)
       const previousSessionCount = receiverSessions.length
+      diagnostic.connectivityReady(connectivityReady())
+      diagnostic.stage("offline-call")
+      diagnostic.note("offline-called")
       await receiverContext.setOffline(true)
-      await expect.poll(() => activeSession?.closed ?? false).toBe(true)
+      diagnostic.note("offline-returned")
+      diagnostic.stage("old-close-wait")
+      // The app closes at once, but offline the browser reports the socket closed only when
+      // its close handshake gives up, which can take up to a minute.
+      await expect.poll(() => activeSession?.closed ?? false, { timeout: 65_000 }).toBe(true)
+      diagnostic.stage("offline-confirm")
       await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
+      diagnostic.stage("missed-send")
       const missedWhileOffline = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -661,7 +868,11 @@ test.describe("live messenger delivery", () => {
           new URL(response.url()).pathname === `/api/v1/chats/${chatIdFromRoute}/messages`
         )
       })
+      diagnostic.stage("online-call")
+      diagnostic.note("online-called")
       await receiverContext.setOffline(false)
+      diagnostic.note("online-returned")
+      diagnostic.stage("new-join-wait")
       await expect
         .poll(() =>
           receiverSessions.slice(previousSessionCount).some((session) => session.joinedChat)
@@ -670,6 +881,7 @@ test.describe("live messenger delivery", () => {
       const historyRefetch = await historyRefetchPromise
       expect(historyRefetch.ok()).toBe(true)
 
+      diagnostic.stage("replay-check")
       await expect.poll(() => missedDeliveries().length).toBe(1)
       const missedDelivery = missedDeliveries()[0]!
       expect(missedDelivery.replayed).toBe(true)
@@ -682,6 +894,8 @@ test.describe("live messenger delivery", () => {
         1
       )
 
+      // Replay polls once more after its last message (offlineReplayFetchWait, 1 s).
+      await receiverPage.waitForTimeout(2_500)
       const afterReconnect = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -702,6 +916,7 @@ test.describe("live messenger delivery", () => {
       }
       expect(missedSequence).toBeLessThan(afterReconnectSequence)
 
+      diagnostic.stage("final-check")
       const expectedMessageIds = [first.id, second.id, missedWhileOffline.id, afterReconnect.id]
       const allTestDeliveries = receiverMessages.filter(
         (frame) =>
@@ -713,6 +928,9 @@ test.describe("live messenger delivery", () => {
       for (const message of createdMessages) {
         await expect(receiverLog.getByText(message.content, { exact: true })).toHaveCount(1)
       }
+    } catch (error) {
+      if (diagnosticPage) await diagnostic.reportFailure(diagnosticPage, receiverSessions)
+      throw error
     } finally {
       if (chatId && senderLog) {
         for (const message of createdMessages) {
@@ -902,7 +1120,7 @@ test.describe("live messenger delivery", () => {
       const removeReactionResponsePromise = receiverPage.waitForResponse((response) => {
         const request = response.request()
         return (
-          request.method() === "POST" &&
+          request.method() === "DELETE" &&
           new URL(response.url()).pathname ===
             `/api/v1/chats/${activeChatId}/messages/${createdMessage?.id}/reactions`
         )
@@ -1113,6 +1331,167 @@ test.describe("live messenger delivery", () => {
         "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
       )
       await expect(receiverReplyRow.getByText(parentContent, { exact: true })).toBeVisible()
+
+      const styleFailures: unknown[] = []
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${activeChatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const localizedReplyRow = localizedSenderLog
+              .getByText(replyContent, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+            const bubble = localizedReplyRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await expect(localizedReplyRow.locator(".border-l-2 p")).toHaveCount(2)
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                reply: [...element.querySelectorAll(".border-l-2 p")].map(effective),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.status,
+              ...rendered.reply,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
+            }
+          }
+        }
+      } catch (error) {
+        styleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${activeChatId}`)
+        } catch (error) {
+          styleFailures.push(error)
+        }
+      }
+      if (styleFailures.length === 1) throw styleFailures[0]
+      if (styleFailures.length > 1) {
+        throw new AggregateError(
+          styleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
     } finally {
       try {
         if (senderLog && chatId && replyMessage) {
@@ -1301,9 +1680,10 @@ test.describe("live messenger delivery", () => {
           )
         )
         .toHaveLength(1)
-      const receiverForwardAttribution = receiverLog.getByText(`Переслано от ${senderName}`, {
-        exact: true,
-      })
+      // The shared chat keeps earlier forwards; this message is the newest row.
+      const receiverForwardAttribution = receiverLog
+        .getByText(`Переслано от ${senderName}`, { exact: true })
+        .last()
       await expect(receiverForwardAttribution).toBeVisible()
       const receiverForwardRow = receiverForwardAttribution
         .locator(
@@ -1312,6 +1692,170 @@ test.describe("live messenger delivery", () => {
         .filter({ hasText: sourceContent })
       await expect(receiverForwardRow).toHaveCount(1)
       await expect(receiverForwardRow.getByText(sourceContent, { exact: true })).toBeVisible()
+
+      const styleFailures: unknown[] = []
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${activeChatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const attributionText =
+              language === "ru" ? `Переслано от ${senderName}` : `Forwarded from ${senderName}`
+            const localizedForwardRow = localizedSenderLog
+              .getByText(attributionText, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+              .filter({ hasText: sourceContent })
+            await expect(localizedForwardRow).toHaveCount(1)
+            const bubble = localizedForwardRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            await expect
+              .poll(() =>
+                bubble.evaluate((element) => {
+                  let opacity = 1
+                  for (
+                    let current: Element | null = element;
+                    current;
+                    current = current.parentElement
+                  ) {
+                    opacity *= Number.parseFloat(window.getComputedStyle(current).opacity)
+                  }
+                  return opacity
+                })
+              )
+              .toBeGreaterThan(0.9995)
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                forwarded: effective(element.querySelector(".italic")),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.forwarded,
+              rendered.status,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              // Composited opacity carries float error: 0.7999992 is the specified 0.8.
+              expect(action.opacity).toBeGreaterThanOrEqual(0.799)
+            }
+          }
+        }
+      } catch (error) {
+        styleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${activeChatId}`)
+        } catch (error) {
+          styleFailures.push(error)
+        }
+      }
+      if (styleFailures.length === 1) throw styleFailures[0]
+      if (styleFailures.length > 1) {
+        throw new AggregateError(
+          styleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
     } finally {
       try {
         if (senderLog && chatId && forwardedMessage) {
@@ -1326,6 +1870,208 @@ test.describe("live messenger delivery", () => {
           await receiverContext.close()
         }
       }
+    }
+  })
+
+  test("a peer typing indicator appears and expires over the live socket", async ({
+    browser,
+    page,
+  }, testInfo) => {
+    // One natural 30-second heartbeat after the room join confirms that the
+    // hub processed the join before the sender produces the ephemeral event.
+    test.setTimeout(120_000)
+    const mobile = testInfo.project.name === "mobile"
+    const receiverContext = await browser.newContext({
+      ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
+      baseURL: LIVE_BASE_URL,
+      locale: "ru-RU",
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    })
+
+    try {
+      const receiverPage = await receiverContext.newPage()
+      await loginAs(page, "student")
+      await loginAs(receiverPage, "teacher")
+      const studentResponse = await page.request.get("/api/v1/users/me")
+      const teacherResponse = await receiverPage.request.get("/api/v1/users/me")
+      expect(studentResponse.ok()).toBe(true)
+      expect(teacherResponse.ok()).toBe(true)
+      const student = (await studentResponse.json()) as { id: string; role: string }
+      const teacher = (await teacherResponse.json()) as {
+        id: string
+        full_name: string | null
+        role: string
+      }
+      expect(student.role).toBe("student")
+      expect(teacher.role).toBe("teacher")
+      expect(teacher.id).not.toBe(student.id)
+      expect(teacher.full_name).toBeTruthy()
+
+      await page.goto("/messenger")
+      await page.getByRole("button", { name: "Новый чат", exact: true }).click()
+      await page.getByRole("textbox", { name: "Поиск пользователей" }).fill(teacher.full_name!)
+      const teacherOption = page.getByRole("option").filter({ hasText: teacher.full_name! })
+      await expect(teacherOption).toHaveCount(1)
+      await teacherOption.click()
+      await expect(page).toHaveURL(/\/messenger\/[^/]+\/?$/)
+      const activeChatId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)
+      if (!activeChatId) throw new Error("Direct chat route did not contain a chat id")
+
+      const receiverSessions: Array<{
+        socket: WebSocket
+        joined: boolean
+        acknowledged: boolean
+        closed: boolean
+        heartbeats: Set<string>
+        typingFrames: Array<{ user_name: string; socketOpenAtReceipt: boolean }>
+      }> = []
+      receiverPage.on("websocket", (socket) => {
+        const session = {
+          socket,
+          joined: false,
+          acknowledged: false,
+          closed: false,
+          heartbeats: new Set<string>(),
+          typingFrames: [] as Array<{ user_name: string; socketOpenAtReceipt: boolean }>,
+        }
+        receiverSessions.push(session)
+        socket.on("close", () => {
+          session.closed = true
+        })
+        socket.on("framesent", (payload) => {
+          const frame = parseFrame(payload)
+          if (hasRoomJoin(frame, activeChatId)) session.joined = true
+          if (session.joined && isRecord(frame) && frame.type === "heartbeat_ping") {
+            if (typeof frame.nonce === "string") session.heartbeats.add(frame.nonce)
+          }
+        })
+        socket.on("framereceived", (payload) => {
+          const frame = parseFrame(payload)
+          if (
+            isRecord(frame) &&
+            frame.type === "heartbeat_pong" &&
+            typeof frame.nonce === "string" &&
+            session.heartbeats.has(frame.nonce)
+          ) {
+            session.acknowledged = true
+          }
+          const event = isRecord(frame) && isRecord(frame.payload) ? frame.payload : frame
+          if (
+            isRecord(event) &&
+            event.type === "typing" &&
+            event.chat_id === activeChatId &&
+            event.user_id === student.id &&
+            typeof event.user_name === "string" &&
+            event.user_name.length > 0
+          ) {
+            session.typingFrames.push({
+              user_name: event.user_name,
+              socketOpenAtReceipt: !socket.isClosed(),
+            })
+          }
+        })
+      })
+
+      await receiverPage.goto(`/messenger/${activeChatId}`)
+      await receiverPage.bringToFront()
+      await expect(receiverPage.getByRole("log", { name: /Сообщения чата/i })).toBeVisible()
+      // The client pings every 30 s and allows 10 s for the pong (useChatWebSocket).
+      await expect
+        .poll(() => receiverSessions.some((session) => session.acknowledged && !session.closed), {
+          timeout: 45_000,
+        })
+        .toBe(true)
+      const receiverSession = receiverSessions.find(
+        (session) => session.acknowledged && !session.closed && !session.socket.isClosed()
+      )
+      if (!receiverSession) throw new Error("Peer room socket did not remain open")
+
+      const typingIndicator = receiverPage
+        .getByRole("status")
+        .filter({ hasText: /печатает\.\.\./u })
+      await expect(typingIndicator).toHaveCount(0)
+      await receiverPage.evaluate(() => {
+        const root = document.querySelector("#main-content")
+        if (!root) throw new Error("Messenger main region is unavailable")
+        const observation: TypingObservation = { text: null, appearedAt: null, removedAt: null }
+        ;(window as TypingObservationWindow).__liveTypingObservation = observation
+        const observer = new MutationObserver(() => {
+          const indicator = [...root.querySelectorAll('[role="status"][aria-live="polite"]')].find(
+            (element) => /печатает\.\.\./u.test(element.textContent ?? "")
+          )
+          if (indicator && observation.appearedAt === null) {
+            const style = window.getComputedStyle(indicator)
+            const bounds = indicator.getBoundingClientRect()
+            if (
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              Number.parseFloat(style.opacity) > 0 &&
+              bounds.width > 0 &&
+              bounds.height > 0
+            ) {
+              observation.text = indicator.textContent
+              observation.appearedAt = performance.now()
+            }
+          } else if (!indicator && observation.appearedAt !== null) {
+            observation.removedAt = performance.now()
+            observer.disconnect()
+          }
+        })
+        observer.observe(root, { childList: true, subtree: true, characterData: true })
+      })
+      const typingResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === `/api/v1/chats/${activeChatId}/typing`
+      )
+      const draft = `live-typing-${crypto.randomUUID()}`
+      await page.locator("#chat-message-input").fill(draft)
+      const [response] = await Promise.all([
+        typingResponse,
+        expect.poll(() => receiverSession.typingFrames.length).toBeGreaterThan(0),
+        expect
+          .poll(
+            () =>
+              receiverPage.evaluate(
+                () => (window as TypingObservationWindow).__liveTypingObservation?.appearedAt
+              ),
+            { timeout: 10_000 }
+          )
+          .toEqual(expect.any(Number)),
+      ])
+      expect(response.ok()).toBe(true)
+      const received = receiverSession.typingFrames[0]
+      if (!received) throw new Error("Peer typing frame was not observed")
+      expect(received.socketOpenAtReceipt).toBe(true)
+      expect(receiverSession.closed).toBe(false)
+      expect(receiverSession.socket.isClosed()).toBe(false)
+
+      // Leave the draft untouched: the recipient must remove the indicator
+      // after the real typing event expires, with no synthetic stop frame.
+      await expect
+        .poll(
+          () =>
+            receiverPage.evaluate(
+              () => (window as TypingObservationWindow).__liveTypingObservation?.removedAt
+            ),
+          { timeout: 10_000 }
+        )
+        .toEqual(expect.any(Number))
+      const observation = await receiverPage.evaluate(
+        () => (window as TypingObservationWindow).__liveTypingObservation
+      )
+      expect(observation?.text).toContain(`${received.user_name} печатает...`)
+      expect(typeof observation?.appearedAt).toBe("number")
+      expect(typeof observation?.removedAt).toBe("number")
+      if (observation?.appearedAt == null || observation.removedAt == null) {
+        throw new Error("Peer typing appearance or removal was not observed")
+      }
+      expect(observation.removedAt).toBeGreaterThan(observation.appearedAt)
+      expect(receiverSession.closed).toBe(false)
+      expect(receiverSession.socket.isClosed()).toBe(false)
+      await expect(page.locator("#chat-message-input")).toHaveValue(draft)
+    } finally {
+      await receiverContext.close()
     }
   })
 })

@@ -24,11 +24,25 @@
     "validation"
   ],
   "properties": {
-    "schema_version": {"const": 3},
-    "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "source_head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "tested_commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "schema_version": {
+      "const": 3
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "source_head_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tested_commit_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
     "base_ref": {
       "type": "string",
       "minLength": 1,
@@ -38,9 +52,15 @@
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
     },
-    "manifest_path": {"$ref": "#/$defs/repositoryPath"},
-    "source_roots": {"$ref": "#/$defs/sourceRoots"},
-    "coverage_scope": {"$ref": "#/$defs/coverageScope"},
+    "manifest_path": {
+      "$ref": "#/$defs/repositoryPath"
+    },
+    "source_roots": {
+      "$ref": "#/$defs/sourceRoots"
+    },
+    "coverage_scope": {
+      "$ref": "#/$defs/coverageScope"
+    },
     "tool_versions": {
       "type": "object",
       "minProperties": 1,
@@ -49,19 +69,33 @@
         "pattern": "^[0-9]+(?:\\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$"
       }
     },
-    "provenance": {"$ref": "#/$defs/provenance"},
-    "generation": {"$ref": "#/$defs/generation"},
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "generation": {
+      "$ref": "#/$defs/generation"
+    },
     "reports": {
       "type": "array",
-      "items": {"$ref": "#/$defs/report"}
+      "items": {
+        "$ref": "#/$defs/report"
+      }
     },
-    "components": {"$ref": "#/$defs/components"},
-    "tier0": {"$ref": "#/$defs/tier0"},
+    "components": {
+      "$ref": "#/$defs/components"
+    },
+    "tier0": {
+      "$ref": "#/$defs/tier0"
+    },
     "missing_reports": {
       "type": "array",
-      "items": {"$ref": "#/$defs/missingReport"}
+      "items": {
+        "$ref": "#/$defs/missingReport"
+      }
     },
-    "validation": {"$ref": "#/$defs/validation"}
+    "validation": {
+      "$ref": "#/$defs/validation"
+    }
   },
   "$defs": {
     "componentName": {
@@ -77,7 +111,8 @@
         "rust-crypto",
         "infrastructure",
         "workflows",
-        "scripts"
+        "scripts",
+        "node-actions"
       ]
     },
     "repositoryPath": {
@@ -100,21 +135,49 @@
         "rust-crypto",
         "infrastructure",
         "workflows",
-        "scripts"
+        "scripts",
+        "node-actions"
       ],
       "properties": {
-        "python": {"$ref": "#/$defs/pathArray"},
-        "frontend": {"$ref": "#/$defs/pathArray"},
-        "go-gateway": {"$ref": "#/$defs/pathArray"},
-        "go-ws-hub": {"$ref": "#/$defs/pathArray"},
-        "go-file-processor": {"$ref": "#/$defs/pathArray"},
-        "go-shared": {"$ref": "#/$defs/pathArray"},
-        "rust-native": {"$ref": "#/$defs/pathArray"},
-        "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
-        "rust-crypto": {"$ref": "#/$defs/pathArray"},
-        "infrastructure": {"$ref": "#/$defs/pathArray"},
-        "workflows": {"$ref": "#/$defs/pathArray"},
-        "scripts": {"$ref": "#/$defs/pathArray"}
+        "python": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "frontend": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-gateway": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-ws-hub": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-file-processor": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-shared": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-native": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-wasm-sanitizer": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-crypto": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "infrastructure": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "workflows": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "scripts": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "node-actions": {
+          "$ref": "#/$defs/pathArray"
+        }
       }
     },
     "coverageScope": {
@@ -129,25 +192,49 @@
         "go-shared",
         "rust-native",
         "rust-wasm-sanitizer",
-        "rust-crypto"
+        "rust-crypto",
+        "node-actions"
       ],
       "properties": {
-        "python": {"$ref": "#/$defs/pathArray"},
-        "frontend": {"$ref": "#/$defs/pathArray"},
-        "go-gateway": {"$ref": "#/$defs/pathArray"},
-        "go-ws-hub": {"$ref": "#/$defs/pathArray"},
-        "go-file-processor": {"$ref": "#/$defs/pathArray"},
-        "go-shared": {"$ref": "#/$defs/pathArray"},
-        "rust-native": {"$ref": "#/$defs/pathArray"},
-        "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
-        "rust-crypto": {"$ref": "#/$defs/pathArray"}
+        "python": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "frontend": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-gateway": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-ws-hub": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-file-processor": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "go-shared": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-native": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-wasm-sanitizer": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "rust-crypto": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "node-actions": {
+          "$ref": "#/$defs/pathArray"
+        }
       }
     },
     "pathArray": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/repositoryPath"}
+      "items": {
+        "$ref": "#/$defs/repositoryPath"
+      }
     },
     "provenance": {
       "type": "object",
@@ -162,30 +249,69 @@
         "workflow_job"
       ],
       "properties": {
-        "mode": {"enum": ["local", "github-actions"]},
-        "workflow_run_id": {"type": "string", "minLength": 1},
-        "workflow_run_attempt": {"type": "string", "minLength": 1},
-        "workflow_event": {"type": "string", "minLength": 1},
-        "workflow_repository": {"type": "string", "minLength": 1},
-        "workflow_ref": {"type": "string", "minLength": 1},
-        "workflow_job": {"type": "string", "minLength": 1}
+        "mode": {
+          "enum": [
+            "local",
+            "github-actions"
+          ]
+        },
+        "workflow_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_run_attempt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_job": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "generation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command", "normalizer_version"],
+      "required": [
+        "command",
+        "normalizer_version"
+      ],
       "properties": {
-        "command": {"const": "scripts/quality/normalize_coverage_reports.py"},
-        "normalizer_version": {"type": "string", "pattern": "^3\\.[0-9]+\\.[0-9]+$"}
+        "command": {
+          "const": "scripts/quality/normalize_coverage_reports.py"
+        },
+        "normalizer_version": {
+          "type": "string",
+          "pattern": "^3\\.[0-9]+\\.[0-9]+$"
+        }
       }
     },
     "report": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["component", "format", "path", "sha256", "size_bytes"],
+      "required": [
+        "component",
+        "format",
+        "path",
+        "sha256",
+        "size_bytes"
+      ],
       "properties": {
-        "component": {"$ref": "#/$defs/componentName"},
+        "component": {
+          "$ref": "#/$defs/componentName"
+        },
         "format": {
           "enum": [
             "cobertura-xml",
@@ -197,22 +323,65 @@
             "llvm-cov-branch-json"
           ]
         },
-        "path": {"$ref": "#/$defs/repositoryPath"},
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "size_bytes": {"type": "integer", "minimum": 1}
+        "path": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "metric": {
       "description": "A native or trusted derived metric is applicable evidence and must carry counters; unsupported is an explicit N/A with null counters and a machine-readable reason_code.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "covered", "total", "percent"],
+      "required": [
+        "status",
+        "covered",
+        "total",
+        "percent"
+      ],
       "properties": {
-        "status": {"enum": ["native", "derived", "experimental", "unsupported", "missing"]},
-        "covered": {"type": ["integer", "null"], "minimum": 0},
-        "total": {"type": ["integer", "null"], "minimum": 0},
-        "percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
-        "derivation": {"type": "string", "minLength": 1},
+        "status": {
+          "enum": [
+            "native",
+            "derived",
+            "experimental",
+            "unsupported",
+            "missing"
+          ]
+        },
+        "covered": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "derivation": {
+          "type": "string",
+          "minLength": 1
+        },
         "reason_code": {
           "type": "string",
           "minLength": 1,
@@ -221,41 +390,122 @@
       },
       "oneOf": [
         {
-          "not": {"anyOf": [{"required": ["derivation"]}, {"required": ["reason_code"]}]},
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "derivation"
+                ]
+              },
+              {
+                "required": [
+                  "reason_code"
+                ]
+              }
+            ]
+          },
           "properties": {
-            "status": {"const": "native"},
-            "covered": {"type": "integer", "minimum": 0},
-            "total": {"type": "integer", "minimum": 0},
-            "percent": {"type": "number", "minimum": 0, "maximum": 100}
+            "status": {
+              "const": "native"
+            },
+            "covered": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
           }
         },
         {
-          "not": {"required": ["reason_code"]},
-          "required": ["derivation"],
+          "not": {
+            "required": [
+              "reason_code"
+            ]
+          },
+          "required": [
+            "derivation"
+          ],
           "properties": {
-            "status": {"const": "derived"},
-            "covered": {"type": "integer", "minimum": 0},
-            "total": {"type": "integer", "minimum": 0},
-            "percent": {"type": "number", "minimum": 0, "maximum": 100}
+            "status": {
+              "const": "derived"
+            },
+            "covered": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
           }
         },
         {
-          "not": {"required": ["derivation"]},
-          "required": ["reason_code"],
+          "not": {
+            "required": [
+              "derivation"
+            ]
+          },
+          "required": [
+            "reason_code"
+          ],
           "properties": {
-            "status": {"enum": ["experimental", "unsupported"]},
-            "covered": {"type": "null"},
-            "total": {"type": "null"},
-            "percent": {"type": "null"}
+            "status": {
+              "enum": [
+                "experimental",
+                "unsupported"
+              ]
+            },
+            "covered": {
+              "type": "null"
+            },
+            "total": {
+              "type": "null"
+            },
+            "percent": {
+              "type": "null"
+            }
           }
         },
         {
-          "not": {"anyOf": [{"required": ["derivation"]}, {"required": ["reason_code"]}]},
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "derivation"
+                ]
+              },
+              {
+                "required": [
+                  "reason_code"
+                ]
+              }
+            ]
+          },
           "properties": {
-            "status": {"const": "missing"},
-            "covered": {"type": "null"},
-            "total": {"type": "null"},
-            "percent": {"type": "null"}
+            "status": {
+              "const": "missing"
+            },
+            "covered": {
+              "type": "null"
+            },
+            "total": {
+              "type": "null"
+            },
+            "percent": {
+              "type": "null"
+            }
           }
         }
       ]
@@ -263,22 +513,54 @@
     "metrics": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lines", "statements", "branches", "functions"],
+      "required": [
+        "lines",
+        "statements",
+        "branches",
+        "functions"
+      ],
       "properties": {
-        "lines": {"$ref": "#/$defs/metric"},
-        "statements": {"$ref": "#/$defs/metric"},
-        "branches": {"$ref": "#/$defs/metric"},
-        "functions": {"$ref": "#/$defs/metric"}
+        "lines": {
+          "$ref": "#/$defs/metric"
+        },
+        "statements": {
+          "$ref": "#/$defs/metric"
+        },
+        "branches": {
+          "$ref": "#/$defs/metric"
+        },
+        "functions": {
+          "$ref": "#/$defs/metric"
+        }
       }
     },
     "component": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "metrics", "errors"],
+      "required": [
+        "status",
+        "metrics",
+        "errors"
+      ],
       "properties": {
-        "status": {"enum": ["passed", "failed", "missing", "not_applicable"]},
-        "metrics": {"$ref": "#/$defs/metrics"},
-        "errors": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "missing",
+            "not_applicable"
+          ]
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
     "components": {
@@ -296,83 +578,201 @@
         "rust-crypto",
         "infrastructure",
         "workflows",
-        "scripts"
+        "scripts",
+        "node-actions"
       ],
       "properties": {
-        "python": {"$ref": "#/$defs/component"},
-        "frontend": {"$ref": "#/$defs/component"},
-        "go-gateway": {"$ref": "#/$defs/component"},
-        "go-ws-hub": {"$ref": "#/$defs/component"},
-        "go-file-processor": {"$ref": "#/$defs/component"},
-        "go-shared": {"$ref": "#/$defs/component"},
-        "rust-native": {"$ref": "#/$defs/component"},
-        "rust-wasm-sanitizer": {"$ref": "#/$defs/component"},
-        "rust-crypto": {"$ref": "#/$defs/component"},
-        "infrastructure": {"$ref": "#/$defs/component"},
-        "workflows": {"$ref": "#/$defs/component"},
-        "scripts": {"$ref": "#/$defs/component"}
+        "python": {
+          "$ref": "#/$defs/component"
+        },
+        "frontend": {
+          "$ref": "#/$defs/component"
+        },
+        "go-gateway": {
+          "$ref": "#/$defs/component"
+        },
+        "go-ws-hub": {
+          "$ref": "#/$defs/component"
+        },
+        "go-file-processor": {
+          "$ref": "#/$defs/component"
+        },
+        "go-shared": {
+          "$ref": "#/$defs/component"
+        },
+        "rust-native": {
+          "$ref": "#/$defs/component"
+        },
+        "rust-wasm-sanitizer": {
+          "$ref": "#/$defs/component"
+        },
+        "rust-crypto": {
+          "$ref": "#/$defs/component"
+        },
+        "infrastructure": {
+          "$ref": "#/$defs/component"
+        },
+        "workflows": {
+          "$ref": "#/$defs/component"
+        },
+        "scripts": {
+          "$ref": "#/$defs/component"
+        },
+        "node-actions": {
+          "$ref": "#/$defs/component"
+        }
       }
     },
     "tier0File": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "component", "metrics"],
+      "required": [
+        "path",
+        "component",
+        "metrics"
+      ],
       "properties": {
-        "path": {"$ref": "#/$defs/repositoryPath"},
-        "component": {"$ref": "#/$defs/componentName"},
-        "metrics": {"$ref": "#/$defs/metrics"}
+        "path": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "component": {
+          "$ref": "#/$defs/componentName"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
       }
     },
     "metricSummary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["applicable_files", "not_applicable_files"],
+      "required": [
+        "applicable_files",
+        "not_applicable_files"
+      ],
       "properties": {
-        "applicable_files": {"type": "integer", "minimum": 0},
-        "not_applicable_files": {"type": "integer", "minimum": 0}
+        "applicable_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_applicable_files": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "metricSummaries": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lines", "statements", "branches", "functions"],
+      "required": [
+        "lines",
+        "statements",
+        "branches",
+        "functions"
+      ],
       "properties": {
-        "lines": {"$ref": "#/$defs/metricSummary"},
-        "statements": {"$ref": "#/$defs/metricSummary"},
-        "branches": {"$ref": "#/$defs/metricSummary"},
-        "functions": {"$ref": "#/$defs/metricSummary"}
+        "lines": {
+          "$ref": "#/$defs/metricSummary"
+        },
+        "statements": {
+          "$ref": "#/$defs/metricSummary"
+        },
+        "branches": {
+          "$ref": "#/$defs/metricSummary"
+        },
+        "functions": {
+          "$ref": "#/$defs/metricSummary"
+        }
       }
     },
     "tier0": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "rules", "coverage", "metric_summary", "files", "errors"],
+      "required": [
+        "status",
+        "rules",
+        "coverage",
+        "metric_summary",
+        "files",
+        "errors"
+      ],
       "properties": {
-        "status": {"enum": ["ready", "failed"]},
-        "rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "coverage": {"$ref": "#/$defs/metrics"},
-        "metric_summary": {"$ref": "#/$defs/metricSummaries"},
-        "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/tier0File"}},
-        "errors": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        "status": {
+          "enum": [
+            "ready",
+            "failed"
+          ]
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "coverage": {
+          "$ref": "#/$defs/metrics"
+        },
+        "metric_summary": {
+          "$ref": "#/$defs/metricSummaries"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/tier0File"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
     "missingReport": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["component", "path", "reason_code"],
+      "required": [
+        "component",
+        "path",
+        "reason_code"
+      ],
       "properties": {
-        "component": {"$ref": "#/$defs/componentName"},
-        "path": {"$ref": "#/$defs/repositoryPath"},
-        "reason_code": {"type": "string", "minLength": 1}
+        "component": {
+          "$ref": "#/$defs/componentName"
+        },
+        "path": {
+          "$ref": "#/$defs/repositoryPath"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "validation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["valid", "errors"],
+      "required": [
+        "valid",
+        "errors"
+      ],
       "properties": {
-        "valid": {"type": "boolean"},
-        "errors": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        "valid": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     }
   }

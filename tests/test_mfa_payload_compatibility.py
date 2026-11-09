@@ -3,26 +3,12 @@
 from __future__ import annotations
 
 import json
-import sys
+import re
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 from app.models.auth import ChallengeState
 from app.schemas.schemas import MfaChallengeOut
-
-_MIGRATION_SPEC = spec_from_file_location(
-    "mfa_challenge_state_migration",
-    Path(__file__).parents[1]
-    / "alembic"
-    / "versions"
-    / "202603130001_add_mfa_challenge_state_enum.py",
-)
-if _MIGRATION_SPEC is None or _MIGRATION_SPEC.loader is None:
-    raise RuntimeError("Could not load MFA challenge state migration")
-_MFA_MIGRATION = module_from_spec(_MIGRATION_SPEC)
-sys.modules[_MIGRATION_SPEC.name] = _MFA_MIGRATION
-_MIGRATION_SPEC.loader.exec_module(_MFA_MIGRATION)
-
 
 _BASE_PAYLOAD = {
     "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -62,7 +48,23 @@ def test_current_payload_round_trips_every_historic_enum_value() -> None:
 
 
 def test_migration_enum_and_runtime_enum_stay_in_lockstep() -> None:
-    """Prevent a future enum migration value from being omitted in Python."""
-    migration_values = set(_MFA_MIGRATION._ENUM_VALUES)
-
-    assert {state.value for state in ChallengeState} == migration_values
+    """Keep the baseline's database enum and current runtime enum in lockstep."""
+    spec = spec_from_file_location(
+        "mvp_baseline_mfa_enum_contract",
+        Path(__file__).parents[1]
+        / "alembic"
+        / "versions"
+        / "202611020000_mvp_baseline.py",
+    )
+    assert spec is not None and spec.loader is not None
+    baseline = module_from_spec(spec)
+    spec.loader.exec_module(baseline)
+    enum_statements = [
+        statement
+        for statement in baseline._TYPES
+        if statement.startswith("CREATE TYPE public.challenge_state_enum AS ENUM (")
+    ]
+    assert len(enum_statements) == 1
+    migration_values = re.findall(r"'([^']*)'", enum_statements[0])
+    assert migration_values == ["pending", "consumed", "locked", "expired"]
+    assert {state.value for state in ChallengeState} == set(migration_values)

@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -74,6 +76,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # MOD-08: Install Syft for Go-aware SBOM generation.
       # Syft understands go.mod / go.sum and emits accurate component lists.
@@ -81,11 +85,13 @@ jobs:
         uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
 
       - name: Generate SPDX-JSON SBOM for ${{ matrix.service }}
+        env:
+          SERVICE: ${{ matrix.service }}
         run: |
-          syft dir:services/${{ matrix.service }} \
-            --output spdx-json=sbom-${{ matrix.service }}.spdx.json \
+          syft "dir:services/${SERVICE}" \
+            --output "spdx-json=sbom-${SERVICE}.spdx.json" \
             --scope all-layers
-          echo "Generated SBOM for ${{ matrix.service }}"
+          echo "Generated SBOM for ${SERVICE}"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

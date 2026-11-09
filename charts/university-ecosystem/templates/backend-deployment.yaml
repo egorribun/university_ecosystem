@@ -1,3 +1,5 @@
+{{- $internalJWKSURL := printf "https://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+{{- $fileProcessorUsesInternalMTLS := and .Values.fileProcessor.enabled (or (not .Values.fileProcessor.config.jwksURL) (eq .Values.fileProcessor.config.jwksURL $internalJWKSURL)) -}}
 {{- $connectionSecret := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
 {{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
 {{- if has $rateLimitURIKey (list .Values.connections.databaseURLKey .Values.connections.redisBackendURLKey .Values.connections.redisGatewayURLKey .Values.connections.redisRevocationURLKey .Values.connections.natsURLKey .Values.connections.natsAuthTokenKey .Values.connections.kedaPostgresqlURLKey .Values.connections.backupDatabaseURLKey) -}}
@@ -43,6 +45,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "university-ecosystem.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
@@ -85,6 +88,25 @@ spec:
         - name: backend
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          # Preserve the image's tini ENTRYPOINT and Gunicorn options while
+          # binding the same port declared by the Service and health probes.
+          args:
+            - gunicorn
+            - app.main:app
+            - --worker-class
+            - app.server.spiffe_worker.BackendWorker
+            - --workers
+            - "2"
+            - --bind
+            - {{ printf "0.0.0.0:%v" .Values.backend.service.port | quote }}
+            - --graceful-timeout
+            - "30"
+            - --timeout
+            - "60"
+            - --keep-alive
+            - "5"
+            - --error-logfile
+            - "-"
           # RZ-03: container-level hardening — drop all Linux capabilities, block privilege
           # escalation, and mount root filesystem read-only (writable dirs via emptyDir below).
           securityContext:
@@ -98,11 +120,15 @@ spec:
               protocol: TCP
           env:
             {{- range $key, $value := .Values.backend.env }}
-            {{- if and (not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "RATE_LIMIT_STORAGE_BACKEND" "RATE_LIMIT_STORAGE_URI" "RATE_LIMIT_STORAGE_URI_FILE" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_AUDIENCE" "JWT_ISSUER" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "INTERNAL_AUTH_TOKEN" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "CWV_MANUAL_TESTER_USER_IDS" "CWV_RUM_ENABLED" "CWV_RELEASE_SHA" "CWV_FRONTEND_IMAGE_DIGEST" "CWV_DEPLOYMENT_RUN_ID" "CWV_DEPLOYMENT_RUN_ATTEMPT" "CWV_DEPLOYMENT_URL" "CWV_DEPLOYED_AT" "CWV_ALLOWED_ORIGINS" "CWV_EXPORT_OIDC_ENABLED" "CWV_EXPORT_OIDC_REPOSITORY" "CWV_EXPORT_OIDC_WORKFLOW_REF" "CWV_EXPORT_OIDC_SUBJECT" "MFA_TOTP_ENCRYPTION_KEYS" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "STORAGE_BACKEND" "STORAGE_S3_BUCKET" "STORAGE_S3_REGION" "STORAGE_S3_ACCESS_KEY_ID" "STORAGE_S3_SECRET_ACCESS_KEY" "STORAGE_S3_ENDPOINT_URL" "STORAGE_S3_BASE_URL" "MINIO_SECURE" "ELASTICSEARCH_URL" "APP_BASE_URL" "FRONTEND_ORIGIN" "FRONTEND_ORIGINS" "CWV_RUM_SIGNING_SECRET_FILE" "CWV_MANUAL_TESTER_USER_IDS_FILE" "DATABASE_URL_FILE" "CACHE_REDIS_URL_FILE" "REVOCATION_REDIS_URL_FILE" "NATS_URL_FILE" "NATS_AUTH_TOKEN_FILE" "SECRET_KEY_FILE" "INTERNAL_HMAC_SECRET_FILE" "WS_HUB_INTERNAL_SECRET_FILE" "INTERNAL_AUTH_TOKEN_FILE" "CSRF_HMAC_SECRET_FILE" "SPOTIFY_TOKEN_SECRET_FILE" "ELASTICSEARCH_PASSWORD_FILE" "SPICEDB_PRESHARED_KEY_FILE" "AUDIT_LOG_SECRET_FILE" "TOKEN_HMAC_SECRET_FILE" "IDEMPOTENCY_HMAC_SECRET_FILE" "MFA_TOTP_ENCRYPTION_KEYS_FILE" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE" "MFA_EMAIL_OTP_HMAC_KEYS_FILE" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID_FILE" "MFA_EMAIL_DELIVERY_KEKS_FILE" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID_FILE" "MFA_TRUSTED_DEVICE_HMAC_KEYS_FILE" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID_FILE" "STORAGE_S3_ACCESS_KEY_ID_FILE" "STORAGE_S3_SECRET_ACCESS_KEY_FILE"))) (not (has (upper $key) (list "RATE_LIMIT_STORAGE_BACKEND" "RATE_LIMIT_STORAGE_URI" "RATE_LIMIT_STORAGE_URI_FILE"))) }}
+            {{- if and (ne (upper $key) "HOME") (not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "RATE_LIMIT_STORAGE_BACKEND" "RATE_LIMIT_STORAGE_URI" "RATE_LIMIT_STORAGE_URI_FILE" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "TRUSTED_PROXIES" "ACCESS_TOKEN_EXPIRE_MINUTES" "SECRET_KEY" "ALGORITHM" "JWT_AUDIENCE" "JWT_ISSUER" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "INTERNAL_AUTH_TOKEN" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "CWV_MANUAL_TESTER_USER_IDS" "CWV_RUM_ENABLED" "CWV_RELEASE_SHA" "CWV_FRONTEND_IMAGE_DIGEST" "CWV_DEPLOYMENT_RUN_ID" "CWV_DEPLOYMENT_RUN_ATTEMPT" "CWV_DEPLOYMENT_URL" "CWV_DEPLOYED_AT" "CWV_ALLOWED_ORIGINS" "CWV_EXPORT_OIDC_ENABLED" "CWV_EXPORT_OIDC_REPOSITORY" "CWV_EXPORT_OIDC_WORKFLOW_REF" "CWV_EXPORT_OIDC_SUBJECT" "MFA_TOTP_ENCRYPTION_KEYS" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "STORAGE_BACKEND" "STORAGE_S3_BUCKET" "STORAGE_S3_REGION" "STORAGE_S3_ACCESS_KEY_ID" "STORAGE_S3_SECRET_ACCESS_KEY" "STORAGE_S3_ENDPOINT_URL" "STORAGE_S3_BASE_URL" "MINIO_SECURE" "ELASTICSEARCH_URL" "APP_BASE_URL" "FRONTEND_ORIGIN" "FRONTEND_ORIGINS" "CWV_RUM_SIGNING_SECRET_FILE" "CWV_MANUAL_TESTER_USER_IDS_FILE" "DATABASE_URL_FILE" "CACHE_REDIS_URL_FILE" "REVOCATION_REDIS_URL_FILE" "NATS_URL_FILE" "NATS_AUTH_TOKEN_FILE" "SECRET_KEY_FILE" "INTERNAL_HMAC_SECRET_FILE" "WS_HUB_INTERNAL_SECRET_FILE" "INTERNAL_AUTH_TOKEN_FILE" "CSRF_HMAC_SECRET_FILE" "SPOTIFY_TOKEN_SECRET_FILE" "ELASTICSEARCH_PASSWORD_FILE" "SPICEDB_PRESHARED_KEY_FILE" "AUDIT_LOG_SECRET_FILE" "TOKEN_HMAC_SECRET_FILE" "IDEMPOTENCY_HMAC_SECRET_FILE" "MFA_TOTP_ENCRYPTION_KEYS_FILE" "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE" "MFA_EMAIL_OTP_HMAC_KEYS_FILE" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID_FILE" "MFA_EMAIL_DELIVERY_KEKS_FILE" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID_FILE" "MFA_TRUSTED_DEVICE_HMAC_KEYS_FILE" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID_FILE" "STORAGE_S3_ACCESS_KEY_ID_FILE" "STORAGE_S3_SECRET_ACCESS_KEY_FILE"))) (not (has (upper $key) (list "RATE_LIMIT_STORAGE_BACKEND" "RATE_LIMIT_STORAGE_URI" "RATE_LIMIT_STORAGE_URI_FILE" "INTERNAL_HTTP_MTLS_ENABLED" "INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID" "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS" "SPIFFE_ENDPOINT_SOCKET"))) }}
             - name: {{ $key }}
               value: {{ tpl $value $ | quote }}
             {{- end }}
             {{- end }}
+            # Gunicorn's control socket defaults under $HOME/.gunicorn. Keep it
+            # on the existing writable /tmp emptyDir when the image root is read-only.
+            - name: HOME
+              value: /tmp
             # Domain-separated by the backend before envelope signing. Reuses
             # the existing high-entropy root without adding secret material to
             # Helm values or workflow logs.
@@ -152,6 +178,15 @@ spec:
               value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey) | quote }}
             - name: ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
+            # AUD-164: the API keys rate limits on the forwarded client address only for
+            # these gateway peers. validate-config.yaml makes the list mandatory in
+            # staging and production.
+            - name: TRUSTED_PROXIES
+              value: {{ join "," .Values.backend.config.trustedProxies | quote }}
+            # Pinned explicitly so ws-hub's revocation replay window can be checked
+            # against the lifetime that this release actually issues.
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              value: {{ .Values.backend.config.accessTokenExpireMinutes | quote }}
             - name: SECRET_KEY_FILE
               value: {{ printf "/run/secrets/%s/%s" $applicationSecret "jwt-secret" | quote }}
             - name: ALGORITHM
@@ -216,29 +251,65 @@ spec:
               value: {{ .Values.otel.sampler | quote }}
             - name: OTEL_TRACES_SAMPLER_ARG
               value: {{ .Values.otel.samplerArg | quote }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            # ADR-052: worker-local SDK sources, never static certificate mounts.
+            - name: INTERNAL_HTTP_MTLS_ENABLED
+              value: "true"
+            - name: INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
+            - name: INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS
+              {{- $clients := list .Values.internalHttpMTLS.backendSpiffeID .Values.internalHttpMTLS.gatewaySpiffeID }}
+              {{- if .Values.wsHub.enabled }}
+              {{- $clients = append $clients .Values.internalHttpMTLS.wsHubSpiffeID }}
+              {{- end }}
+              {{- if $fileProcessorUsesInternalMTLS }}
+              {{- $clients = append $clients .Values.internalHttpMTLS.fileProcessorSpiffeID }}
+              {{- end }}
+              value: {{ join "," $clients | quote }}
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: {{ printf "unix://%s/agent.sock" .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+            {{- end }}
           # TD-04 (audit Wave 12): explicit probe timing prevents premature liveness kills
           # on slow startup. startupProbe gives up to 150s (30×5s) before handing off.
+          # With mTLS the kubelet cannot present a client certificate, so probes run inside
+          # the pod with the pod's own SVID against the same health paths.
           startupProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready", "--port", "{{ .Values.backend.service.port }}"]
+            timeoutSeconds: 5
+            {{- else }}
             httpGet:
               path: /health/ready
               port: http
+            {{- end }}
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/live", "--port", "{{ .Values.backend.service.port }}"]
+            {{- else }}
             httpGet:
               path: /health/live
               port: http
+            {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready", "--port", "{{ .Values.backend.service.port }}"]
+            {{- else }}
             httpGet:
               path: /health/ready
               port: http
+            {{- end }}
             initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: {{ ternary 5 3 .Values.internalHttpMTLS.enabled }}
             failureThreshold: 3
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
@@ -251,6 +322,11 @@ spec:
             - name: app-cache
               mountPath: /app/cache
             {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 12 }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
@@ -260,3 +336,9 @@ spec:
           emptyDir:
             sizeLimit: 256Mi
         {{- include "university-ecosystem.secretVolumes" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 8 }}
+        {{- if .Values.internalHttpMTLS.enabled }}
+        - name: spiffe-workload-api
+          csi:
+            driver: {{ .Values.internalHttpMTLS.workloadAPI.csiDriver | quote }}
+            readOnly: true
+        {{- end }}

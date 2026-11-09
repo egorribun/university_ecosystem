@@ -1,8 +1,11 @@
 import asyncio
 import re
-from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
-from typing import Any
+import sys
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError as SAOperationalError
@@ -26,6 +29,16 @@ PARTITIONED_TABLES = [
     ("notification_deliveries", "attempted_at"),
     ("data_access_logs", "created_at"),
 ]
+
+# Audit leaves must never be directly DML-able by the runtime role. The grant is
+# withheld in the same transaction that creates each leaf, and every attached
+# leaf is swept after each privileged maintenance run.
+_AUDIT_PARTITION_TABLE = "data_access_logs"
+_RUNTIME_ROLE = "ue_app"
+
+
+class PartitionMaintenanceError(RuntimeError):
+    """Privileged partition maintenance could not complete its creation or isolation."""
 
 
 def _normalise_partition_timestamp(value: object) -> datetime | None:
@@ -113,26 +126,301 @@ async def _lock_partition_ddl(conn: Any, table: str) -> None:
     )
 
 
-async def ensure_partitions_exist() -> None:
+async def _has_partition_ddl_authority(conn: Any) -> bool:
+    """Whether this login may create tables in the current schema.
+
+    The bootstrap guard keeps CREATE on schema public away from ue_app and
+    ue_worker, so partition DDL can only run under the migrator login.
+    """
+
+    result = await conn.execute(
+        text(
+            "SELECT pg_catalog.has_schema_privilege("
+            "current_user, pg_catalog.current_schema(), 'CREATE')"
+        )
+    )
+    return bool(result.scalar_one())
+
+
+async def _role_exists(conn: Any, role_name: str) -> bool:
+    result = await conn.execute(
+        text(
+            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles "
+            "WHERE rolname = :role_name)"
+        ),
+        {"role_name": role_name},
+    )
+    return bool(result.scalar_one())
+
+
+async def _revoke_runtime_access(conn: Any, relation_sql: str) -> None:
+    """Remove the runtime role's direct grants on one audit leaf.
+
+    Default privileges grant ue_app DML on every table the migrator creates,
+    and a statement that names a leaf is checked against that leaf's own grant.
+    The caller owns the transaction, so this REVOKE commits with the CREATE.
+    """
+
+    if not await _role_exists(conn, _RUNTIME_ROLE):
+        return
+    await conn.exec_driver_sql(f"REVOKE ALL ON {relation_sql} FROM {_RUNTIME_ROLE}")
+
+
+async def _isolate_audit_partitions(conn: Any) -> None:
+    """Revoke runtime grants from every attached audit leaf, however it was created."""
+
+    preparer = conn.dialect.identifier_preparer
+    result = await conn.execute(
+        text(
+            """
+            SELECT child_ns.nspname AS child_schema, child.relname AS partition_name
+            FROM pg_catalog.pg_inherits AS inheritance
+            JOIN pg_catalog.pg_class AS parent ON parent.oid = inheritance.inhparent
+            JOIN pg_catalog.pg_namespace AS parent_ns ON parent_ns.oid = parent.relnamespace
+            JOIN pg_catalog.pg_class AS child ON child.oid = inheritance.inhrelid
+            JOIN pg_catalog.pg_namespace AS child_ns ON child_ns.oid = child.relnamespace
+            WHERE parent.relname = :table_name
+              AND parent_ns.nspname = pg_catalog.current_schema()
+            """
+        ),
+        {"table_name": _AUDIT_PARTITION_TABLE},
+    )
+    rows = result.all()
+    for row in rows:
+        relation = (
+            f"{preparer.quote_identifier(row.child_schema)}."
+            f"{preparer.quote_identifier(row.partition_name)}"
+        )
+        await _revoke_runtime_access(conn, relation)
+    if rows:
+        await conn.commit()
+
+
+@dataclass(frozen=True, slots=True)
+class _PartitionCandidate:
+    parent_oid: int
+    parent_schema: str
+    child_oid: int
+    child_schema: str
+    partition_name: str
+    partition_bound: str
+
+
+@asynccontextmanager
+async def _bounded_partition_statement(conn: Any) -> AsyncIterator[None]:
+    """Bound catalog/DDL waits without changing the caller's timeout or transaction."""
+    async with conn.begin_nested():
+        timeout_result = await conn.execute(
+            text(
+                "SELECT setting FROM pg_catalog.pg_settings "
+                "WHERE name = 'statement_timeout'"
+            )
+        )
+        previous_timeout_ms = int(timeout_result.scalar_one())
+        bounded_timeout_ms = min(previous_timeout_ms or 5000, 5000)
+        await conn.execute(
+            text("SELECT pg_catalog.set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{bounded_timeout_ms}ms"},
+        )
+        yield
+        await conn.execute(
+            text("SELECT pg_catalog.set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{previous_timeout_ms}ms"},
+        )
+
+
+async def _list_prunable_partitions(
+    conn: Any,
+    table: str,
+    partition_key: str,
+    *,
+    candidate: _PartitionCandidate | None = None,
+) -> list[_PartitionCandidate]:
+    """List leaf partitions attached to the expected parent in this schema."""
+    parameters: dict[str, Any] = {
+        "table_name": table,
+        "partition_key": partition_key,
+        "parent_oid": candidate.parent_oid if candidate is not None else None,
+        "child_oid": candidate.child_oid if candidate is not None else None,
+    }
+    async with _bounded_partition_statement(conn):
+        result = await conn.execute(
+            text(
+                """
+            SELECT parent.oid AS parent_oid, parent_ns.nspname AS parent_schema,
+                   child.oid AS child_oid, child_ns.nspname AS child_schema,
+                   child.relname AS partition_name,
+                   pg_catalog.pg_get_expr(child.relpartbound, child.oid) AS partition_bound
+            FROM pg_catalog.pg_inherits AS inheritance
+            JOIN pg_catalog.pg_class AS parent ON parent.oid = inheritance.inhparent
+            JOIN pg_catalog.pg_namespace AS parent_ns ON parent_ns.oid = parent.relnamespace
+            JOIN pg_catalog.pg_class AS child ON child.oid = inheritance.inhrelid
+            JOIN pg_catalog.pg_namespace AS child_ns ON child_ns.oid = child.relnamespace
+            JOIN pg_catalog.pg_partitioned_table AS partitioning ON partitioning.partrelid = parent.oid
+            JOIN pg_catalog.pg_attribute AS partition_column
+              ON partition_column.attrelid = parent.oid
+             AND partition_column.attnum = partitioning.partattrs[0]
+            WHERE parent.relname = :table_name
+              AND parent_ns.nspname = pg_catalog.current_schema()
+              AND child_ns.nspname = parent_ns.nspname
+              AND parent.relkind = 'p' AND child.relkind = 'r' AND child.relispartition
+              AND partitioning.partstrat = 'r' AND partitioning.partnatts = 1
+              AND partition_column.attname = :partition_key
+              AND partition_column.atttypid = CAST('pg_catalog.timestamptz' AS pg_catalog.regtype)
+              AND (CAST(:parent_oid AS pg_catalog.oid) IS NULL OR parent.oid = CAST(:parent_oid AS pg_catalog.oid))
+              AND (CAST(:child_oid AS pg_catalog.oid) IS NULL OR child.oid = CAST(:child_oid AS pg_catalog.oid))
+                """
+            ),
+            parameters,
+        )
+        rows = result.all()
+    return [
+        _PartitionCandidate(
+            parent_oid=row.parent_oid,
+            parent_schema=row.parent_schema,
+            child_oid=row.child_oid,
+            child_schema=row.child_schema,
+            partition_name=row.partition_name,
+            partition_bound=row.partition_bound,
+        )
+        for row in rows
+    ]
+
+
+def _expired_partition_has_matching_bounds(
+    table: str, candidate: _PartitionCandidate, retention_days: int
+) -> bool:
+    """Refuse to infer data retention from a name that disagrees with its bounds."""
+    match = re.fullmatch(
+        rf"{re.escape(table)}_(?:y([0-9]{{4}})m([0-9]{{2}})|([0-9]{{4}})_([0-9]{{2}}))",
+        candidate.partition_name,
+    )
+    if match is None or retention_days <= 0:
+        return False
+    # Each alternative contains both year and month; the successful match
+    # guarantees exactly one pair of capturing groups is populated.
+    year = int(cast(str, match.group(1) or match.group(3)))
+    month = int(cast(str, match.group(2) or match.group(4)))
+    try:
+        start = datetime(year, month, 1, tzinfo=UTC)
+        end = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=UTC)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    except (OverflowError, ValueError):
+        return False
+    return end < cutoff and _partition_bound_matches(
+        candidate.partition_bound, start.isoformat(), end.isoformat()
+    )
+
+
+async def _prune_expired_partition(
+    conn: Any,
+    table: str,
+    partition_key: str,
+    retention_days: int,
+    rust: Any,
+    candidate: _PartitionCandidate,
+) -> bool:
+    """Drop only a still-attached, expired monthly leaf; caller owns the transaction."""
+    if not _expired_partition_has_matching_bounds(table, candidate, retention_days):
+        return False
+    if not rust.is_partition_expired(candidate.partition_name, table, retention_days):
+        return False
+    if not _SAFE_IDENTIFIER_RE.fullmatch(table) or len(candidate.partition_name) > 63:
+        return False
+
+    preparer = conn.dialect.identifier_preparer
+    parent = (
+        f"{preparer.quote_identifier(candidate.parent_schema)}."
+        f"{preparer.quote_identifier(table)}"
+    )
+    child = (
+        f"{preparer.quote_identifier(candidate.child_schema)}."
+        f"{preparer.quote_identifier(candidate.partition_name)}"
+    )
+    try:
+        # The savepoint lets a missing relation or NOWAIT conflict fail safely
+        # without rolling back a transaction owned by the caller.
+        async with _bounded_partition_statement(conn):
+            isolation_result = await conn.execute(
+                text("SELECT pg_catalog.current_setting('transaction_isolation')")
+            )
+            isolation = isolation_result.scalar_one()
+            if not isinstance(isolation, str) or isolation.lower() not in {
+                "read committed",
+                "read uncommitted",
+            }:
+                # A fixed MVCC snapshot could re-read obsolete catalog bounds
+                # even after the current relation has been locked.
+                return False
+            lock = await conn.execute(
+                text(
+                    "SELECT pg_catalog.pg_try_advisory_xact_lock("
+                    "pg_catalog.hashtext(:table_name))"
+                ),
+                {"table_name": table},
+            )
+            if not lock.scalar_one():
+                return False
+            await conn.exec_driver_sql(
+                f"LOCK TABLE ONLY {parent} IN ACCESS EXCLUSIVE MODE NOWAIT"
+            )
+            await conn.exec_driver_sql(
+                f"LOCK TABLE ONLY {child} IN ACCESS EXCLUSIVE MODE NOWAIT"
+            )
+            current = await _list_prunable_partitions(
+                conn, table, partition_key, candidate=candidate
+            )
+            valid = current == [candidate] and _expired_partition_has_matching_bounds(
+                table, candidate, retention_days
+            )
+            if valid:
+                await conn.exec_driver_sql(f"DROP TABLE {child}")
+    except (OSError, ConnectionError, SQLAlchemyError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Could not safely prune partition %s (%s)",
+            candidate.partition_name,
+            type(exc).__name__,
+        )
+        return False
+    if valid:
+        logger.info("Pruned old partition %s", candidate.partition_name)
+    return valid
+
+
+async def ensure_partitions_exist(*, strict: bool = False) -> bool:
     """
     Ensures that PostgreSQL partitions exist for the current and next few months,
-    and prunes old partitions based on retention settings.
+    prunes old partitions based on retention settings, and revokes the runtime
+    role's direct grants on every audit leaf.
+
+    Returns False, without any DDL, when this login cannot create tables: the
+    runtime role is refused and the migrator maintenance step does the work.
+    With ``strict``, a failed partition creation raises PartitionMaintenanceError
+    after isolation has run, instead of being logged and skipped.
     """
     from app.core.config import settings
 
     async with engine.connect() as conn:
         if conn.dialect.name != "postgresql":
             logger.debug("Partition management skipped: not a PostgreSQL database")
-            return
+            return True
+        if not await _has_partition_ddl_authority(conn):
+            logger.info(
+                "Partition management skipped: this database role cannot create "
+                "tables; the migrator maintenance step owns partition DDL"
+            )
+            return False
+
+        failed_creations = 0
 
         # 1a. Ensure DEFAULT partition exists for notification tables.
-        # Migration 148642dd1207 creates these tables with postgresql_partition_by
+        # The MVP baseline creates these tables with postgresql_partition_by
         # but no DEFAULT partition; without one, rows whose date falls outside
         # `partition_warmup_months` (e.g. older test data) fail with
         # "no partition of relation X found for row". Self-heal here so the fix
-        # also covers production DBs that already ran the buggy migration.
+        # also covers DBs whose partitions were created without a DEFAULT.
         # Note: data_access_logs intentionally has no DEFAULT partition
-        # (migration 202603280001 explicitly drops it as an "autogenerate artefact").
+        # (the squashed chain dropped it as an "autogenerate artefact").
         _DEFAULT_PARTITION_TABLES = ("notifications", "notification_deliveries")
         for table in _DEFAULT_PARTITION_TABLES:
             if not _SAFE_IDENTIFIER_RE.match(table):
@@ -158,6 +446,7 @@ async def ensure_partitions_exist() -> None:
                 SAProgrammingError,
             ) as e:
                 await conn.rollback()
+                failed_creations += 1
                 logger.error("Failed to ensure default partition for %s: %s", table, e)
 
         # 1b. Ensure future partitions exist
@@ -223,6 +512,10 @@ async def ensure_partitions_exist() -> None:
                         f"PARTITION OF {safe_table} "
                         f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
                     )
+                    if table == _AUDIT_PARTITION_TABLE:
+                        # Same transaction as the CREATE: no committed leaf exists
+                        # while ue_app holds the default-privilege grants.
+                        await _revoke_runtime_access(conn, safe_partition)
                     await conn.commit()
                 except (
                     OSError,
@@ -233,6 +526,7 @@ async def ensure_partitions_exist() -> None:
                     ImportError,
                 ) as e:
                     await conn.rollback()
+                    failed_creations += 1
                     # RZ-20-04 + RZ-33-03: Broadened — DDL errors, rust_ext import,
                     # and asyncpg interface errors.
                     logger.error(
@@ -242,49 +536,50 @@ async def ensure_partitions_exist() -> None:
         # 2. Prune old partitions
         retention_days = settings.partition_retention_days
         if retention_days > 0:
-            for table, _ in PARTITIONED_TABLES:
-                result = await conn.execute(
-                    text(
-                        """
-                    SELECT child.relname AS partition_name
-                    FROM pg_inherits
-                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
-                    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-                    WHERE parent.relname = :table_name
-                """
-                    ),
-                    {"table_name": table},
-                )
-                partitions = result.scalars().all()
+            for table, partition_key in PARTITIONED_TABLES:
+                try:
+                    partitions = await _list_prunable_partitions(
+                        conn, table, partition_key
+                    )
+                    await conn.commit()
+                except (
+                    OSError,
+                    ConnectionError,
+                    SQLAlchemyError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    await conn.rollback()
+                    logger.warning(
+                        "Could not inspect partitions for %s (%s)",
+                        table,
+                        type(exc).__name__,
+                    )
+                    continue
+                for candidate in partitions:
+                    try:
+                        await _prune_expired_partition(
+                            conn,
+                            table,
+                            partition_key,
+                            retention_days,
+                            rust_ext,
+                            candidate,
+                        )
+                        # Release parent/child locks before examining the next candidate.
+                        await conn.commit()
+                    except (OSError, ConnectionError, SQLAlchemyError):
+                        await conn.rollback()
+                        raise
 
-                for p_name in partitions:
-                    if rust_ext.is_partition_expired(p_name, table, retention_days):
-                        # RZ-20-05: Validate partition name from pg_class before DDL.
-                        if not _SAFE_IDENTIFIER_RE.match(p_name):
-                            logger.error(
-                                "Partition name %r from pg_class failed validation — "
-                                "skipping DROP to prevent DDL injection",
-                                p_name,
-                            )
-                            continue
-                        try:
-                            logger.info(
-                                "Pruning old partition %s", p_name
-                            )  # LOW-W19: lazy logging
-                            preparer = conn.dialect.identifier_preparer
-                            safe_p_name = preparer.quote(p_name)
-                            await conn.exec_driver_sql(f"DROP TABLE {safe_p_name}")
-                            await conn.commit()
-                        except (
-                            OSError,
-                            ConnectionError,
-                            SAOperationalError,
-                            SAProgrammingError,
-                        ) as e:
-                            # RZ-20-04 + RZ-33-03: Broadened — DDL errors include SA exceptions.
-                            logger.error(
-                                "Failed to prune partition %s: %s", p_name, e
-                            )  # LOW-W19: lazy logging
+        # 3. Isolate audit leaves that predate this code, such as baseline leaves
+        # that were created while ue_app still held the default-privilege grants.
+        await _isolate_audit_partitions(conn)
+        if strict and failed_creations:
+            raise PartitionMaintenanceError(
+                f"{failed_creations} partition creation(s) failed"
+            )
+        return True
 
 
 async def start_partition_management_scheduler(
@@ -323,3 +618,34 @@ async def start_partition_management_scheduler(
         await registry.shutdown(timeout=10.0)
 
     return stop
+
+
+async def run_maintenance() -> int:
+    """Create, prune and isolate partitions; return the process exit status.
+
+    Run by the migrations service as ``python -m app.services.partition_manager``
+    immediately after ``alembic upgrade head``, under the migrator login. Any
+    other login is refused without DDL, and any failure exits non-zero so the
+    deployment stops instead of leaving partitions unmanaged.
+    """
+    try:
+        if not await ensure_partitions_exist(strict=True):
+            logger.error("Partition maintenance refused: run it as the migrator role")
+            return 1
+        logger.info("Partition maintenance completed")
+        return 0
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: domain exception conversion
+        # Every maintenance failure maps to exit status 1. Only the class name is
+        # logged: avoid error text, which may contain SQL or connection details.
+        logger.error("Partition maintenance failed (%s)", type(exc).__name__)
+        return 1
+    finally:
+        await engine.dispose()
+
+
+def main() -> int:
+    return asyncio.run(run_maintenance())
+
+
+if __name__ == "__main__":
+    sys.exit(main())

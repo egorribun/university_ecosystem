@@ -42,7 +42,7 @@ export function ContentSummary({
       {/* AI Summary Badge + Text */}
       <div className="glass-layer-surface rounded-xl p-4">
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full bg-brand/(--opacity-subtle) px-2.5 py-1 text-xs font-bold text-brand">
+          <div className="flex items-center gap-1.5 rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] px-2.5 py-1 text-xs font-bold text-brand">
             <Sparkles className="h-3 w-3" aria-hidden="true" />
             {t("common:ai.summaryBadge")}
           </div>

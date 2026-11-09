@@ -14,7 +14,7 @@ import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 
 const iconBtnClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-xl matte-chip text-(--text-secondary) transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-xl matte-chip text-(--text-secondary) transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
 
 interface NewsDetailHeaderProps {
   displayTitle: string
@@ -112,7 +112,8 @@ export function NewsDetailHeader({
           }
           className={cn(
             "transition-colors duration-fast",
-            isLiked && "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
+            isLiked &&
+              "border-(--error-text)/[calc(var(--opacity-dim)*100%)] bg-(--error-text)/[calc(var(--opacity-subtle)*100%)]"
           )}
           aria-label={t("common:aria.like")}
           aria-pressed={isLiked}
@@ -137,7 +138,8 @@ export function NewsDetailHeader({
           }
           className={cn(
             "transition-colors duration-fast",
-            bookmarked && "border-brand/(--opacity-dim) bg-brand/(--opacity-subtle)"
+            bookmarked &&
+              "border-brand/[calc(var(--opacity-dim)*100%)] bg-brand/[calc(var(--opacity-subtle)*100%)]"
           )}
           aria-label={bookmarked ? t("news:actions.removeBookmark") : t("news:actions.bookmark")}
         >
@@ -148,7 +150,7 @@ export function NewsDetailHeader({
         {isAdmin && (
           <>
             <span
-              className="h-6 w-px bg-glass-border/(--opacity-soft) mx-1 hidden sm:block"
+              className="h-6 w-px bg-glass-border/[calc(var(--opacity-soft)*100%)] mx-1 hidden sm:block"
               aria-hidden="true"
             />
             <button

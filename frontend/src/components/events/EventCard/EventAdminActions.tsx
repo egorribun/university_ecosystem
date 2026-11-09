@@ -131,7 +131,7 @@ export function EventAdminActions({
             <button
               type="button"
               role="menuitem"
-              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/[calc(var(--opacity-heavy)*100%)]"
               onClick={() => {
                 closeMenu()
                 onEdit()
@@ -143,7 +143,7 @@ export function EventAdminActions({
             <button
               type="button"
               role="menuitem"
-              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/[calc(var(--opacity-heavy)*100%)]"
               onClick={() => {
                 closeMenu()
                 onDelete()

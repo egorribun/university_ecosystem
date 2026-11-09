@@ -14,7 +14,7 @@ libfuzzer-sys = "0.4"
 path = ".."
 
 [workspace]
-members = [".", "fuzz_targets/*"]
+members = ["."]
 
 [[bin]]
 name = "fuzz_sanitize_rich_text"

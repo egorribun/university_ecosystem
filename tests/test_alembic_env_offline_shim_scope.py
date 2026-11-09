@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import textwrap
 from io import StringIO
 from pathlib import Path
@@ -56,22 +57,41 @@ def _restore_patch_identity(identity: tuple[object, object]) -> None:
     sa.inspect = identity[1]
 
 
+@pytest.mark.parametrize("target_source", ["plain", "ini", "connection"])
 def test_online_upgrade_does_not_leave_offline_shims_installed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_source: str
 ) -> None:
     monkeypatch.syspath_prepend(str(ROOT))
     database_url = "sqlite://"
-    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ENV_FILE_PATH", "")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    for name in tuple(os.environ):
+        if name.casefold() in {"database_url", "database_url_file", "secret_key"}:
+            monkeypatch.delenv(name)
+    monkeypatch.setenv(
+        "SECRET_KEY_FILE", str(tmp_path / "runtime-secret-must-not-be-read")
+    )
+    if target_source == "plain":
+        monkeypatch.setenv("DATABASE_URL", database_url)
     script_dir = _make_script(tmp_path, upgrade_body="op.execute(sa.text('SELECT 1'))")
     original = _patch_identity()
     application_logger = logging.getLogger("app.auth")
     previous_disabled = application_logger.disabled
     application_logger.disabled = False
     try:
-        command.upgrade(
-            _make_config(script_dir, database_url=database_url),
-            "head",
+        config = _make_config(
+            script_dir, database_url=database_url if target_source == "ini" else ""
         )
+        if target_source == "connection":
+            engine = sa.create_engine(database_url)
+            try:
+                with engine.connect() as connection:
+                    config.attributes["connection"] = connection
+                    command.upgrade(config, "head")
+            finally:
+                engine.dispose()
+        else:
+            command.upgrade(config, "head")
         after_upgrade = _patch_identity()
         logger_disabled_after_upgrade = application_logger.disabled
     finally:

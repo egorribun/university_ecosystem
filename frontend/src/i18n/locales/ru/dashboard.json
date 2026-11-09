@@ -16,13 +16,11 @@
     "openFullSchedule": "Открыть полное расписание",
     "viewAllNews": "Посмотреть все новости",
     "newsList": "Лента новостей",
-    "newsItem": "Новость: {{title}}",
     "storiesList": "Истории",
     "storyItem": "История: {{title}}",
     "viewAllEvents": "Посмотреть все события",
     "eventsToday": "События сегодня",
-    "eventsWeek": "События на этой неделе",
-    "eventItem": "Событие: {{title}}"
+    "eventsWeek": "События на этой неделе"
   },
   "weather": {
     "label": "Погода",

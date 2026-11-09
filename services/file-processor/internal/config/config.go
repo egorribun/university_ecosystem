@@ -90,6 +90,9 @@ type Config struct {
 	SpiffeTrustDomain      string   `mapstructure:"spiffe_trust_domain"`
 	SpiffeMyID             string   `mapstructure:"spiffe_my_id"`
 	AllowedClientSpiffeIDs []string `mapstructure:"allowed_client_spiffe_ids"`
+	// HTTP identity is independent of the gRPC listener and its health probes.
+	InternalHTTPMTLSEnabled bool   `mapstructure:"internal_http_mtls_enabled"`
+	BackendSpiffeID         string `mapstructure:"backend_spiffe_id"`
 
 	GRPCTLSCertFile  string `mapstructure:"grpc_tls_cert_file"`
 	GRPCTLSKeyFile   string `mapstructure:"grpc_tls_key_file"`
@@ -141,6 +144,8 @@ func configureViper() {
 	viper.SetDefault("minio_secret_key", "minioadmin")
 	viper.SetDefault("minio_secure", false)
 	viper.SetDefault("spiffe_enabled", false)
+	viper.SetDefault("internal_http_mtls_enabled", false)
+	viper.SetDefault("backend_spiffe_id", "")
 	viper.SetDefault("environment", "development")
 	viper.SetDefault("jwt_audience", "university-ecosystem-api")
 	viper.SetDefault("jwt_issuer", "university-ecosystem")
@@ -177,6 +182,8 @@ func bindConfigEnvironment() error {
 		"jwt_audience":                 "JWT_AUDIENCE",
 		"jwt_issuer":                   "JWT_ISSUER",
 		"jwks_url":                     "JWKS_URL",
+		"internal_http_mtls_enabled":   "INTERNAL_HTTP_MTLS_ENABLED",
+		"backend_spiffe_id":            "BACKEND_SPIFFE_ID",
 		"jwks_refresh_interval":        "JWKS_REFRESH_INTERVAL",
 		"jwt_active_kid":               "JWT_ACTIVE_KID",
 		"revocation_redis_url":         "REVOCATION_REDIS_URL",
@@ -206,6 +213,9 @@ func bindConfigEnvironment() error {
 
 func validateConfig(cfg *Config) error {
 	if err := validateJWKSConfig(cfg); err != nil {
+		return err
+	}
+	if err := ValidateInternalHTTPMTLS(cfg); err != nil {
 		return err
 	}
 	if cfg.MinioAccessKey == "" || cfg.MinioSecretKey == "" {

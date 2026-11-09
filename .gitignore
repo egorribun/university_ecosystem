@@ -92,6 +92,8 @@ web_modules/
 .secrets/
 !.secrets/*.example
 !.secrets/README.md
+# The five-minute Temporal namespace administrator profile is local-only.
+.temporal-bootstrap/
 .cache
 .parcel-cache
 .next
@@ -163,6 +165,9 @@ coverage.json
 .hypothesis/
 .pytest_cache/
 .pytest_tmp/
+# Root-local pytest runs use unique private basetemp directories. These contain
+# generated test artifacts and should not appear as untracked source files.
+/.pytest_tmp_*/
 .tmp/
 opencode.json
 cover/
@@ -453,9 +458,15 @@ artifacts/
 .agents/**/__pycache__/
 .agents/**/.gate_state.json
 .agents/hooks/.gate_state.json.lock
+.agents/hooks/..gate_state.json.initialized
 .agents/hooks/..gate_state.json.*.tmp
 .agents/**/progress.md
 .agents/**/BRIEFING*.md
 .agents/**/DISPATCH.md
 .agents/**/handoff.md
 .agents/sentinel/
+
+# Exact root-local pytest temp test roots; allow pytest's numbered basetemp to advance.
+# Literal private-use separators scope each rule to the two observed generated tests.
+/CTemppytest-of-egorribunpytest-[0-9]*test_generated_gRPC_material_h0/
+/CTemppytest-of-egorribunpytest-[0-9]*test_generated_revocation_conn0/

@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-update-after-debugger
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: "250m"
+          memory: "256Mi"
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]

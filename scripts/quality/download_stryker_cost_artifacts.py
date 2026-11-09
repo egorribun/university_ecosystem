@@ -207,7 +207,7 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
     # redirect policy is separately restricted to trusted HTTPS CDN hosts and
     # covered by the transport tests below.
     tls_context = ssl.create_default_context()
-    # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected -- explicit verified TLS context; redirect policy is host allowlisted and covered by tests
+    # Explicit verified TLS context; redirect policy is host allowlisted and covered by tests
     connection = HTTPSConnection(
         parsed.hostname,
         port=port or 443,

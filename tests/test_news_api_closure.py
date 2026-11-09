@@ -690,8 +690,9 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
     cache = _cache()
     vector = AsyncMock()
     vector.get_embedding.return_value = [0.1, 0.2]
+    vector.search_similar.return_value = []
     service = AsyncMock()
-    response = Response()
+    request = _request()
 
     with (
         patch.object(news_api, "get_cache", return_value=cache),
@@ -702,11 +703,28 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
             return_value="v1",
         ),
     ):
-        etag = news_api.format_etag("semantic:v1:query:5:0.7:en")
+        first_response = Response()
+        await call_injected(
+            handler,
+            request=request,
+            response=first_response,
+            query="query",
+            limit=5,
+            min_score=0.7,
+            if_none_match=None,
+            _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
+        )
+        etag = first_response.headers["ETag"]
+
         result = await call_injected(
             handler,
-            request=_request(),
-            response=response,
+            request=request,
+            response=Response(),
             query="query",
             limit=5,
             min_score=0.7,
@@ -721,7 +739,9 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
 
     assert isinstance(result, Response)
     assert result.status_code == 304
-    vector.get_embedding.assert_awaited_once_with("query")
+    assert result.headers["ETag"] == etag
+    assert vector.get_embedding.await_count == 2
+    vector.get_embedding.assert_awaited_with("query")
 
 
 async def test_semantic_search_etag_is_locale_specific_and_reuses_same_locale() -> None:

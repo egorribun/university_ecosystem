@@ -15,8 +15,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import BackgroundTasks, HTTPException, Request, Response
-from sqlalchemy import create_engine, select, text, update
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import select, update
 
 import app.core.config as config
 from app.api.auth import login as login_api
@@ -24,18 +23,31 @@ from app.api.auth import mfa as mfa_api
 from app.auth.mfa.email_otp import build_configured_email_otp_service
 from app.auth.schemas import EmailOtpResendIn, MfaVerifyIn
 from app.core.events import EventBus
+from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
 from app.models import MfaChallenge, MfaEmailDelivery, StoredEvent, User
 from app.services import event_handlers
 from app.workers import outbox as outbox_module
+from tests.fixtures import owned_baseline_postgres as owned
 from tests.integration.test_mfa_email_otp_postgres import (
-    _postgres_acceptance_urls,
-    _upgrade,
+    _mfa_database,
+)
+from tests.integration.test_mfa_email_otp_postgres import (
+    mfa_watchdog as mfa_watchdog,
 )
 
-pytestmark = pytest.mark.skipif(
-    not (os.getenv("MFA_TEST_MAILPIT_API") and os.getenv("MFA_TEST_SMTP_PORT")),
-    reason="requires an explicit local-only Mailpit SMTP/API sink",
-)
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
+owned_baseline_server = owned.owned_baseline_server
+
+pytestmark = [
+    pytest.mark.timeout(300, method="signal", func_only=False),
+    pytest.mark.skipif(
+        not (os.getenv("MFA_TEST_MAILPIT_API") and os.getenv("MFA_TEST_SMTP_PORT")),
+        reason="requires an explicit local-only Mailpit SMTP/API sink",
+    ),
+]
 
 
 class _LocalLimiter:
@@ -50,7 +62,10 @@ def _sink_coordinates() -> tuple[str, int]:
     if (
         parsed.scheme != "http"
         or parsed.hostname != "127.0.0.1"
+        or parsed.username is not None
+        or parsed.password is not None
         or parsed.port is None
+        or not 0 < parsed.port < 65536
         or parsed.path
         or parsed.query
         or parsed.fragment
@@ -87,7 +102,13 @@ def _mailpit_messages(api_url: str, recipient: str) -> list[dict[str, object]]:
         listing = client.get(f"{api_url}/api/v1/messages")
         listing.raise_for_status()
         messages: list[dict[str, object]] = []
+        # This explicit opt-in loopback sink is not owned by this test. Read
+        # details only for its unique recipient; never delete any inbox content.
         for summary in listing.json()["messages"]:
+            if not any(
+                address.get("Address") == recipient for address in summary["To"]
+            ):
+                continue
             message_id = quote(str(summary["ID"]), safe="")
             detail = client.get(f"{api_url}/api/v1/message/{message_id}")
             detail.raise_for_status()
@@ -120,6 +141,7 @@ def _mail_code(message: dict[str, object]) -> str:
 @pytest.mark.asyncio
 async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     api_url, smtp_port = _sink_coordinates()
     recipient = f"mfa-acceptance-{uuid4().hex}@example.test"
@@ -149,41 +171,33 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
         complete_step_up=AsyncMock(return_value=completed),
         publish_completed_step_up=AsyncMock(),
     )
-    request = _request(session_id)
+    http_request = _request(session_id)
     monkeypatch.setattr(
         login_api,
         "_load_optional_active_session",
-        AsyncMock(return_value=request.state.active_session),
+        AsyncMock(return_value=http_request.state.active_session),
     )
 
-    with _postgres_acceptance_urls() as (async_url, sync_url):
-        _upgrade(sync_url, "head")
-        sync_engine = create_engine(sync_url)
-        try:
-            with sync_engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "INSERT INTO users (id,email,hashed_password,role,is_active) "
-                        "VALUES (:id,:email,:password,'student',true)"
-                    ),
-                    {
-                        "id": user_id,
-                        "email": recipient,
-                        "password": "not-used-in-acceptance",  # pragma: allowlist secret
-                    },
-                )
-        finally:
-            sync_engine.dispose()
-
-        engine = create_async_engine(async_url)
-        sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with _mfa_database(
+        request, user_id=user_id, email=recipient, verified=False
+    ) as (engine, sessions):
         monkeypatch.setattr(outbox_module, "async_session", sessions)
         monkeypatch.setattr(event_handlers, "async_session", sessions)
         bus = EventBus()
-        bus.subscribe(
-            "auth.mfa_email.requested",
-            event_handlers.handle_mfa_email_delivery_requested,
-        )
+
+        async def deliver_in_restored_scope(event) -> None:
+            # MFA's existing durable contract uses empty metadata. The outbox
+            # must restore empty authority, not inherit this request's tenant.
+            assert tenant_id_ctx.get() == ""
+            assert bypass_rls_ctx.get() is False
+            async with sessions() as observer:
+                assert (
+                    await observer.scalar(select(User.id).where(User.id == user_id))
+                    is None
+                )
+            await event_handlers.handle_mfa_email_delivery_requested(event)
+
+        bus.subscribe("auth.mfa_email.requested", deliver_in_restored_scope)
         monkeypatch.setattr(outbox_module, "event_bus", bus)
         worker = outbox_module.OutboxWorker(batch_size=1, max_retries=3)
         try:
@@ -191,13 +205,14 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
                 user = await db.get(User, user_id)
                 assert user is not None
                 initial = await mfa_api.start_email_verification.__dishka_orig_func__(
-                    request, db, login_service, user
+                    http_request, db, login_service, user
                 )
             assert initial.method == "email_otp"
             assert initial.delivery_hint != recipient
             assert await worker.process_batch() == 1
             async with sessions() as db:
                 event = (await db.execute(select(StoredEvent))).scalar_one()
+                assert event.metadata_ == {}
                 delivery = (await db.execute(select(MfaEmailDelivery))).scalar_one()
                 assert event.processed_at is None
                 assert event.error_count == 1
@@ -211,6 +226,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
             initial_mailpit_id = messages[0]["_mailpit_id"]
             async with sessions() as db:
                 event = (await db.execute(select(StoredEvent))).scalar_one()
+                assert event.metadata_ == {}
                 delivery = (await db.execute(select(MfaEmailDelivery))).scalar_one()
                 assert event.processed_at is not None
                 assert delivery.status == "sent"
@@ -228,7 +244,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
                 rotated = (
                     await login_api.resend_email_mfa_challenge.__dishka_orig_func__(
                         EmailOtpResendIn(challenge_token=initial.challenge_token),
-                        request,
+                        http_request,
                         login_service,
                         db,
                     )
@@ -254,7 +270,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
                             code=initial_code,
                         ),
                         Response(),
-                        request,
+                        http_request,
                         BackgroundTasks(),
                         login_service,
                         db,
@@ -269,7 +285,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
                         code=new_code,
                     ),
                     Response(),
-                    request,
+                    http_request,
                     BackgroundTasks(),
                     login_service,
                     db,

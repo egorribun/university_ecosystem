@@ -84,6 +84,9 @@ class SessionService:
         3. JWT encoding.
         4. Redis session backend registration.
         """
+        from app.core.tenant import require_mvp_tenant
+
+        tenant_id = await require_mvp_tenant(self.db)
         user_id = self._normalize_sub(sub)
         now = datetime.now(UTC)
         minutes = expires_delta_minutes or settings.access_token_expire_minutes
@@ -114,7 +117,10 @@ class SessionService:
             ]
             for key in fields:
                 if val := metadata.get(key):
-                    session_data[key] = str(val)
+                    value = str(val)
+                    if key == "user_agent":
+                        value = value[:512]
+                    session_data[key] = value
 
             session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
             if val := metadata.get("mfa_completed_at"):
@@ -134,7 +140,7 @@ class SessionService:
         # We perform a dummy lock-fetch of the user record to take the row lock.
         # This lock is held until the current transaction commits.
         lock_stmt = (
-            select(User.id, User.mfa_epoch, User.is_active)
+            select(User.id, User.mfa_epoch, User.is_active, User.tenant_id)
             .where(User.id == user_id)
             .with_for_update()
         )
@@ -147,6 +153,15 @@ class SessionService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="credentials_invalid",
             )
+        token_claims = extra_claims
+        if tenant_id is not None:
+            if locked_user[3] != tenant_id:
+                from fastapi import HTTPException, status
+
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "credentials_invalid")
+            # The row lock binds issuance to durable membership, not a DTO,
+            # client header, or caller-supplied extra claim.
+            token_claims = {**(extra_claims or {}), "tenant_id": str(locked_user[3])}
         current_mfa_epoch = int(locked_user[1] or 0)
 
         # Never mint a session from a stale login/MFA DTO.  Password resets and
@@ -184,7 +199,7 @@ class SessionService:
         await self.db.commit()
 
         # 4. Mint JWT (RZ-002: Stable access token creation)
-        token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)
+        token = self._mint_jwt(user_id, jti, now, expires_at, token_claims)
 
         # 5. Register in Redis backend (durable sync outside database lock)
         await self._sync_to_redis(session, user_id, jti, expires_at, bg_tasks)

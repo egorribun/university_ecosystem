@@ -82,4 +82,22 @@ describe("stories API wrappers", () => {
       body: { file },
     })
   })
+
+  it("classifies an empty cover response without losing the diagnostic message", async () => {
+    const file = new File(["cover"], "cover.png", { type: "image/png" })
+    generated.uploadStoryCoverApiV1StoriesUploadCoverPost.mockResolvedValueOnce({ data: undefined })
+
+    await expect(uploadStoryCover(file)).rejects.toMatchObject({
+      name: "StoryCoverUploadError",
+      message: "Upload failed",
+    })
+  })
+
+  it("preserves a rejected server error from cover upload", async () => {
+    const file = new File(["cover"], "cover.png", { type: "image/png" })
+    const serverError = { isAxiosError: true, response: { data: { detail: "cover rejected" } } }
+    generated.uploadStoryCoverApiV1StoriesUploadCoverPost.mockRejectedValueOnce(serverError)
+
+    await expect(uploadStoryCover(file)).rejects.toBe(serverError)
+  })
 })

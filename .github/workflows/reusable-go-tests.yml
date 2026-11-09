@@ -135,7 +135,7 @@ jobs:
             local value="$1"
             local label="$2"
             if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-              echo "::error::Invalid ${label} percentage: ${value:-<empty>}."
+              echo "::error::Invalid ${label} percentage: ${value:-"<empty>"}."
               return 2
             fi
           }
@@ -249,6 +249,7 @@ jobs:
         shell: bash
         env:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
           # Sanitize path without invoking a shell-escaped single-quote
@@ -259,7 +260,7 @@ jobs:
           # the same run id and can otherwise leave a previous attempt's
           # report selectable by a broad consumer. Include the attempt in the
           # canonical name so every retry has a distinct producer identity.
-          echo "name=go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          echo "name=go-coverage-$SANITIZED-attempt-${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Write Go coverage provenance
         shell: bash
@@ -486,7 +487,6 @@ jobs:
           set -euo pipefail
           # Use the maintained Avito fork; the pinned pseudo-version is
           # reproducible and avoids the old Go 1.26 go/types panic.
-          # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
           GOBIN=/usr/local/bin go install github.com/avito-tech/go-mutesting/cmd/go-mutesting@v0.0.0-20261002081621-9ce5f731e321
 
       - name: Run bounded Go mutation diagnostic

@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { createElement } from "react"
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -35,8 +36,7 @@ const {
   mockPrefetchEventsListQuery: vi.fn(),
   mockUseMediaQuery: vi.fn(() => true),
   mockUseTranslation: vi.fn(() => ({
-    t: (key: string, options?: { title?: string }) =>
-      key === "dashboard:aria.eventItem" && options?.title ? `${key}:${options.title}` : key,
+    t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   })),
   reducedMotion: { value: true },
@@ -368,7 +368,7 @@ describe("EventsCard", () => {
 
       const todayToggle = screen.getByRole("button", { name: "dashboard:scope.today" })
       const scopeGroup = todayToggle.parentElement!
-      expect(scopeGroup).toHaveStyle({ background: "var(--dash-btn-bg)" })
+      expectInlineBackground(scopeGroup, "var(--dash-btn-bg)")
       expect(todayToggle).toHaveClass("rounded-md", "bg-brand", "shadow-sm")
       expect(screen.getByRole("button", { name: "dashboard:scope.week" })).toHaveClass(
         "rounded-md",
@@ -382,14 +382,8 @@ describe("EventsCard", () => {
       )
       const eventButtons = within(todayList).getAllByRole("button")
       expect(eventButtons).toHaveLength(2)
-      expect(eventButtons[0]).toHaveAttribute(
-        "aria-label",
-        "dashboard:aria.eventItem:Morning event"
-      )
-      expect(eventButtons[1]).toHaveAttribute(
-        "aria-label",
-        "dashboard:aria.eventItem:No-location event"
-      )
+      expect(eventButtons[0]).toHaveAccessibleName("Morning event")
+      expect(eventButtons[1]).toHaveAccessibleName("No-location event")
       expect(eventButtons[0]).toHaveClass(
         "group",
         "list-item-blue",
@@ -455,7 +449,9 @@ describe("EventsCard", () => {
     expect(
       screen.getByText("dashboard:events.heading").closest("[data-refetching]")
     ).toHaveAttribute("data-refetching", "true")
-    const event = screen.getAllByRole("button", { name: /dashboard:aria\.eventItem:/ })[0]!
+    const event = within(
+      screen.getByRole("list", { name: "dashboard:aria.eventsToday" })
+    ).getAllByRole("button")[0]!
     expect(event).toBeInTheDocument()
     await user.click(event)
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "5" } })
@@ -493,13 +489,13 @@ describe("EventsCard", () => {
       const todayList = screen.getByRole("list", { name: "dashboard:aria.eventsToday" })
       const items = within(todayList).getAllByRole("button")
       expect(items).toHaveLength(6)
-      expect(items.map((item) => item.getAttribute("aria-label"))).toEqual([
-        "dashboard:aria.eventItem:Today 8",
-        "dashboard:aria.eventItem:Today 7",
-        "dashboard:aria.eventItem:Today 6",
-        "dashboard:aria.eventItem:Today 5",
-        "dashboard:aria.eventItem:Today 4",
-        "dashboard:aria.eventItem:Today 3",
+      expect(items.map((item) => item.querySelector("span.line-clamp-2")?.textContent)).toEqual([
+        "Today 8",
+        "Today 7",
+        "Today 6",
+        "Today 5",
+        "Today 4",
+        "Today 3",
       ])
       expect(within(todayList).getByText("Today 8")).toBeInTheDocument()
       expect(within(todayList).getByText("Today 3")).toBeInTheDocument()
@@ -878,13 +874,11 @@ describe("EventsCard", () => {
         const eventLabels = () => {
           const list = screen.getByRole("list", { name: listName })
           const buttons = within(list).getAllByRole("button")
-          return buttons.map((button) => button.getAttribute("aria-label"))
+          return buttons.map((button) => button.querySelector("span.line-clamp-2")?.textContent)
         }
 
         expect(eventLabels()).toEqual(
-          scope === "today"
-            ? ["dashboard:aria.eventItem:Old campus day"]
-            : ["dashboard:aria.eventItem:Old campus day", "dashboard:aria.eventItem:New campus day"]
+          scope === "today" ? ["Old campus day"] : ["Old campus day", "New campus day"]
         )
 
         act(() => {
@@ -895,12 +889,7 @@ describe("EventsCard", () => {
         expect(eventsState.current.data).toBe(events)
         expect(campusZone.current).toBe("Europe/Istanbul")
         expect(eventLabels()).toEqual(
-          scope === "today"
-            ? ["dashboard:aria.eventItem:New campus day"]
-            : [
-                "dashboard:aria.eventItem:New campus day",
-                "dashboard:aria.eventItem:Entering week edge",
-              ]
+          scope === "today" ? ["New campus day"] : ["New campus day", "Entering week edge"]
         )
         expect(mockPrefetchDashboardEvents).not.toHaveBeenCalled()
         expect(mockPrefetchEventsListQuery).not.toHaveBeenCalled()

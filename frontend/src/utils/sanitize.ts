@@ -1,6 +1,7 @@
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
 import { logWarning } from "@/app/logger"
 import { htmlToPlainText } from "@/utils/htmlText"
+import { ensureWasmSanitizerInitialized } from "@/utils/wasmSanitizer"
 
 import { sanitize_rich_text, strip_html } from "wasm-sanitizer"
 
@@ -38,6 +39,7 @@ export const sanitizeNewsHtml = async (
   const source = dirty ?? ""
 
   if (typeof window !== "undefined") {
+    if (!(await ensureWasmSanitizerInitialized())) return htmlToPlainText(source)
     const windowInstance = window as TrustedTypesWindow
     const policy = await createPolicy(windowInstance)
     if (policy) {
@@ -58,6 +60,9 @@ export const sanitizeNewsHtml = async (
 
 export const sanitizeNewsText = async (dirty: string | null | undefined): Promise<string> => {
   const source = dirty ?? ""
+  if (typeof window !== "undefined" && !(await ensureWasmSanitizerInitialized())) {
+    return htmlToPlainText(source)
+  }
   try {
     return strip_html(source)
   } catch {

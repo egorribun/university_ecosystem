@@ -10,6 +10,7 @@
 
 # CI/CD workflow changes affect the entire security posture of the project.
 .github/workflows/ @egorribun
+/.github/scripts/ @egorribun
 
 # Scanner policy, ignore lists and dependency allowlists directly influence
 # required security checks. Keep both the policy files and this ownership
@@ -21,6 +22,7 @@
 /.checkov.yml @egorribun
 /.semgrep.yml @egorribun
 /.semgrepignore @egorribun
+/.pre-commit-config.yaml @egorribun
 /.trivyignore @egorribun
 /.trivyignore.yaml @egorribun
 .zap/rules.tsv @egorribun
@@ -31,6 +33,11 @@ security/trivy-*.yaml @egorribun
 # Semgrep suppression entries are security policy, not a generic lint
 # configuration.  Keep ledger changes under the same owner review boundary.
 security/semgrep-suppression-policy.json @egorribun
+scripts/quality/select_semgrep_rules.py @egorribun
+scripts/quality/semgrep_dispositions_gate.py @egorribun
+scripts/quality/run_semgrep_gate.py @egorribun
+scripts/quality/helm_rendered_target_overlay.py @egorribun
+scripts/quality/helm_semgrep_profile_registry.json @egorribun
 
 # Performance decision tools affect required merge contexts; changes need the
 # same owner review as the workflows that invoke them.
@@ -38,6 +45,13 @@ scripts/quality/check_go_benchmark_budget.py @egorribun
 scripts/quality/compare_paired_benchmarks.py @egorribun
 scripts/quality/capture_isolated_benchmarks.py @egorribun
 containers/quality/Dockerfile.performance-rust @egorribun
+
+# DAST and Scorecard gate scripts are executable security policy inputs.
+scripts/quality/dast_privacy.py @egorribun
+scripts/quality/nuclei_findings_gate.py @egorribun
+scripts/quality/zap_findings_gate.py @egorribun
+scripts/quality/sqlmap_scan_gate.py @egorribun
+scripts/quality/scorecard_floors_gate.py @egorribun
 
 # Infrastructure secrets and compose files contain credentials and network config.
 docker-compose*.yml @egorribun

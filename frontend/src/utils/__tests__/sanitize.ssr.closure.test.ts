@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("wasm-sanitizer", () => ({
+  default: vi.fn(async () => undefined),
   sanitize_rich_text: vi.fn((source: string) => `[server]${source}`),
   strip_html: vi.fn((source: string) => source),
 }))

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "owner_decision": "2026-11-04: gate per key check, not on the aggregate score",
+  "source": {
+    "workflow": ".github/workflows/scorecard.yml",
+    "workflow_run_id": 41410082985,
+    "measurement": "Binary-Artifacts, Pinned-Dependencies, SAST and Vulnerabilities were read from the pre-filter SARIF of the recorded run. Dangerous-Workflow and Token-Permissions had no SARIF result; each uses the conservative maximum floor of 10, but the historical score is not established by that absence."
+  },
+  "gated_checks": {
+    "Dangerous-Workflow": 10,
+    "Token-Permissions": 10,
+    "Pinned-Dependencies": 9,
+    "Vulnerabilities": 0,
+    "Binary-Artifacts": 8,
+    "SAST": 9
+  },
+  "published_only_checks": [
+    "Branch-Protection",
+    "CII-Best-Practices",
+    "Code-Review",
+    "Contributors",
+    "Packaging",
+    "Signed-Releases"
+  ]
+}

@@ -158,7 +158,7 @@ export function MobileMenu({
             whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
             transition={prefersReducedMotion ? { duration: 0 } : springSoft}
             onClick={onClose}
-            className="flex size-11 items-center justify-center rounded-xl border-none bg-transparent text-(--text-secondary) transition-[transform,opacity,background-color,color] duration-200 hover:bg-(--bg-surface-hover)/(--opacity-soft) hover:text-(--text-primary) cursor-pointer"
+            className="flex size-11 items-center justify-center rounded-xl border-none bg-transparent text-(--text-secondary) transition-[transform,opacity,background-color,color] duration-200 hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)] hover:text-(--text-primary) cursor-pointer"
             aria-label={t("navigation:aria.closeMenu")}
           >
             <X size={20} />

@@ -12,22 +12,24 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
 type empiricalSlowServer struct {
 	pb.UnimplementedFileProcessingServiceServer
-	delay time.Duration
+	entered chan<- struct{}
+	release <-chan struct{}
 }
 
-func (s *empiricalSlowServer) ProcessFile(ctx context.Context, _ *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
+func (s *empiricalSlowServer) ProcessFile(_ context.Context, _ *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
 	select {
-	case <-time.After(s.delay):
-		return &pb.ProcessFileResponse{Success: true}, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case s.entered <- struct{}{}:
+	default:
 	}
+	<-s.release
+	return &pb.ProcessFileResponse{Success: true}, nil
 }
 
 // TestEmpirical_GRPCDefaultTimeoutConfig verifies RZ-31-05:
@@ -64,8 +66,11 @@ func TestEmpirical_GRPCDefaultTimeoutConfig(t *testing.T) {
 			}
 		})
 
-		srv := grpc.NewServer()
-		pb.RegisterFileProcessingServiceServer(srv, &empiricalSlowServer{delay: 500 * time.Millisecond})
+		entered := make(chan struct{}, 1)
+		release := make(chan struct{})
+		defer close(release)
+		srv := grpc.NewServer(grpc.WaitForHandlers(true))
+		pb.RegisterFileProcessingServiceServer(srv, &empiricalSlowServer{entered: entered, release: release})
 		go func() {
 			if serveErr := srv.Serve(lis); serveErr != nil {
 				t.Logf("gRPC test server stopped: %v", serveErr)
@@ -83,22 +88,54 @@ func TestEmpirical_GRPCDefaultTimeoutConfig(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
+		conn.Connect()
+		readyCtx, cancelReady := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelReady()
+		for state := conn.GetState(); state != connectivity.Ready; state = conn.GetState() {
+			if !conn.WaitForStateChange(readyCtx, state) {
+				t.Fatalf("gRPC connection did not become READY before timeout test: state=%s final_state=%s wait_error=%v", state, conn.GetState(), readyCtx.Err())
+			}
+		}
+		cancelReady()
+		require.Equal(t, connectivity.Ready, conn.GetState(), "gRPC connection must be READY before measuring the RPC timeout")
+
 		client := pb.NewFileProcessingServiceClient(conn)
 
 		start := time.Now()
-		// Execute call with context.Background() — NO explicit deadline set on context!
-		_, callErr := client.ProcessFile(context.Background(), &pb.ProcessFileRequest{
-			Id:        "empirical-test",
-			Type:      "test",
-			SourceKey: "src",
-			DestKey:   "dst",
-		})
+		callErrCh := make(chan error, 1)
+		go func() {
+			_, callErr := client.ProcessFile(context.Background(), &pb.ProcessFileRequest{
+				Id:        "empirical-test",
+				Type:      "test",
+				SourceKey: "src",
+				DestKey:   "dst",
+			})
+			callErrCh <- callErr
+		}()
+
+		timeoutGuard := time.NewTimer(400 * time.Millisecond)
+		defer timeoutGuard.Stop()
+		var callErr error
+		select {
+		case callErr = <-callErrCh:
+		case <-timeoutGuard.C:
+			t.Fatalf("RPC did not return within 400ms: elapsed=%s", time.Since(start))
+		}
+		select {
+		case <-entered:
+		default:
+			st, statusOK := status.FromError(callErr)
+			if statusOK {
+				t.Fatalf("RPC returned before the test server entered: code=%s message=%q elapsed=%s err=%v", st.Code(), st.Message(), time.Since(start), callErr)
+			}
+			t.Fatalf("RPC returned before the test server entered: err=%v elapsed=%s", callErr, time.Since(start))
+		}
 		elapsed := time.Since(start)
 
-		require.Error(t, callErr, "ProcessFile must fail when server delay exceeds service config default timeout")
+		require.Error(t, callErr, "ProcessFile must fail when server response is held beyond the service config timeout; elapsed=%s err=%v", elapsed, callErr)
 		st, ok := status.FromError(callErr)
-		require.True(t, ok, "Error must be gRPC status")
-		assert.Equal(t, codes.DeadlineExceeded, st.Code(), "Status code must be DeadlineExceeded")
-		assert.Less(t, elapsed, 400*time.Millisecond, "Client call must return within timeout period, not full 500ms server sleep")
+		require.True(t, ok, "Error must be gRPC status: err=%v", callErr)
+		assert.Equal(t, codes.DeadlineExceeded, st.Code(), "Status code must be DeadlineExceeded: code=%s message=%q elapsed=%s err=%v", st.Code(), st.Message(), elapsed, callErr)
+		assert.Less(t, elapsed, 400*time.Millisecond, "Client call must return before the test server gate is released during cleanup")
 	})
 }

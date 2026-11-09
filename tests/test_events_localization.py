@@ -238,7 +238,7 @@ async def test_events_etag_and_not_modified(
     assert detail_ru.status_code == status.HTTP_200_OK
     assert detail_ru.headers.get("Content-Language") == "ru"
     assert detail_ru.json()["title"] == "Test event"
-    assert len(await detail_cache_client.keys(detail_pattern)) == 1
+    assert await detail_cache_client.keys(detail_pattern) == []
 
     detail_ru_alias = await async_client.get(
         f"/events/{event.id}?locale=ru-ru",
@@ -247,7 +247,16 @@ async def test_events_etag_and_not_modified(
     assert detail_ru_alias.status_code == status.HTTP_200_OK
     assert detail_ru_alias.headers.get("Content-Language") == "ru"
     assert detail_ru_alias.headers.get("ETag") == detail_ru.headers.get("ETag")
-    assert len(await detail_cache_client.keys(detail_pattern)) == 1
+    assert await detail_cache_client.keys(detail_pattern) == []
+
+    detail_not_modified = await async_client.get(
+        f"/events/{event.id}?lang=ru",
+        headers={**base_headers, "If-None-Match": detail_ru.headers["ETag"]},
+    )
+    assert detail_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+    assert detail_not_modified.headers["Content-Language"] == "ru"
+    assert detail_not_modified.headers["Cache-Control"] == "private, no-store"
+    assert await detail_cache_client.keys(detail_pattern) == []
 
     list_response = await async_client.get("/events", headers=base_headers)
     assert list_response.status_code == status.HTTP_200_OK

@@ -17,8 +17,10 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+import app.models as models
 
 pytestmark = pytest.mark.integration
 
@@ -42,7 +44,9 @@ def _register_payload(email: str, password: str = "Integration#1") -> dict:  # n
 # ---------------------------------------------------------------------------
 
 
-async def test_user_create_and_retrieve_roundtrip(async_client: AsyncClient) -> None:
+async def test_user_create_and_retrieve_roundtrip(
+    async_client: AsyncClient, db_session: AsyncSession
+) -> None:
     """Verify full create→retrieve round-trip through all layers.
 
     WHY: Ensures the registration handler, service, repository, and DB columns
@@ -57,17 +61,21 @@ async def test_user_create_and_retrieve_roundtrip(async_client: AsyncClient) -> 
     assert resp.status_code in {200, 201}, resp.text
 
     body = resp.json()
-    assert "id" in body or "user" in body or "email" in body, (
-        f"Unexpected registration response shape: {body}"
+    assert body == {"status": "ok"}
+    stored_user = await db_session.scalar(
+        select(models.User).where(models.User.email == email)
     )
+    assert stored_user is not None
+    assert stored_user.email == email
 
 
-async def test_duplicate_email_is_rejected(async_client: AsyncClient) -> None:
-    """Second registration with the same email must return 409 / 400 — not 500.
+async def test_duplicate_email_is_private(
+    async_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Second registration returns the same public response as the first.
 
     WHY: Validates that the UNIQUE constraint on users.email is correctly
-    surfaced by the service layer as a domain error rather than an unhandled
-    DB exception.
+    handled without exposing whether an account exists.
     """
     email = _unique_email("dup")
     payload = _register_payload(email)
@@ -76,8 +84,15 @@ async def test_duplicate_email_is_rejected(async_client: AsyncClient) -> None:
     assert first.status_code in {200, 201}, first.text
 
     second = await async_client.post("/auth/register", json=payload)
-    assert second.status_code in {400, 409, 422}, (
-        f"Expected 4xx for duplicate email, got {second.status_code}: {second.text}"
+    assert second.status_code == first.status_code
+    assert second.json() == first.json() == {"status": "ok"}
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(models.User)
+            .where(models.User.email == email)
+        )
+        == 1
     )
 
 

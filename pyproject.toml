@@ -2,6 +2,8 @@
 name = "university-ecosystem"
 version = "1.0.0"
 description = "University Ecosystem Platform"
+license = "MIT"
+license-files = ["LICENSE"]
 # MOD-21-08 (audit 2026-03-25 Wave 21): Standardised on Python 3.14.
 # Python 3.14 benefits: deferred annotation evaluation (PEP 649), improved error
 # messages, faster startup, template strings (PEP 750), free-threading (PEP 703).
@@ -77,6 +79,8 @@ dependencies = [
   "rich>=15.0.0,<16",                                  # app/cli renders tables directly
   "redis>=7.4.0,<9",  # FIX-41-03: redis 5.x recursion bug w/ Py3.14 (>=7.4.0). W210: cap <9 (resolved stays 7.4.0; aligns MOD-W5-03 gate across uv edges)
   "sentry-sdk[opentelemetry]>=2.57.0,<3",
+  "spiffe==0.3.2,<0.4",  # ADR-052: real Workload API SDK; eligible seven-day cooldown
+  "uvicorn-worker==0.4.0,<0.5",  # Nondeprecated Gunicorn ASGI worker adapter
   "sqlalchemy[asyncio]>=2.0.54,<2.1",
   "starlette>=1.0.0,<2.0",                             # MOD-W10-01: upper bound
   "strawberry-graphql[fastapi]>=0.314.3,<0.328.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
@@ -132,6 +136,12 @@ exclude = [
 # TD-W15-01 (audit 2026-03-23 Wave 15): Strict mypy for app/repositories/.
 # This is the DB boundary — most critical layer for type safety.
 # Start with full strict; disable_error_code list should only shrink over time.
+# The worker package has annotations but no py.typed marker. Analyze those
+# exact upstream modules instead of ignoring their imports or subclassing Any.
+[[tool.mypy.overrides]]
+module = ["uvicorn_worker", "uvicorn_worker._workers"]
+follow_untyped_imports = true
+
 [[tool.mypy.overrides]]
 module = "app.repositories.*"
 disallow_untyped_defs = true
@@ -366,6 +376,7 @@ ci-precommit-runner = [
   "pre-commit==4.6.2",
 ]
 dev = [
+  "types-gunicorn==26.2.0.20261008,<27",  # Typed custom Gunicorn worker base
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
   # Starlette 1.x moved TestClient to the httpx2 API.  Keeping this explicit
@@ -399,7 +410,7 @@ dev = [
   "types-aiofiles>=25.1.0.20260409",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.
-  "virtualenv>=21.14.9",
+  "virtualenv>=21.14.13",
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
@@ -446,21 +457,20 @@ members = ["native/rust_ext"]
 # setup-uv action reads this exact requirement before downloading the binary.
 required-version = "==0.12.23"
 exclude-newer = "7 days"
-# Owner-approved exact security exceptions; global seven-day cooldown remains.
-# Remove Pillow after 2026-10-23T22:18:10Z; certifi after 2026-10-27T02:24:17Z.
-# Remove virtualenv after 2026-10-24T16:09:43Z.
-exclude-newer-package = { certifi = "2026-10-20T02:24:17Z", pillow = "2026-10-16T22:18:10Z", virtualenv = "2026-10-17T16:09:43Z" }
+
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
     "sys_platform == 'darwin'",
 ]
-# Security floors and exact owner-approved emergency constraints:
+# Durable security floors:
 # transitive entries bound resolution without pretending app code imports them.
 constraint-dependencies = [
-    "certifi==2026.10.19",  # GHSA-6q48-6c7w-9gw2; bounded emergency release
-    "pillow==13.0.0",  # Nine October advisories; bounded emergency release
-    "virtualenv==21.14.9",  # GHSA-c978-59m8-c77v; bounded emergency release
+    "pyasn1>=0.6.5,<0.7",  # CVE-2026-119194/-119195/-119196/-119197 security floor
+    "certifi>=2026.10.19",  # GHSA-6q48-6c7w-9gw2; durable security floor
+    "brotli>=1.2.1,<2",  # durable floor for the fixed Brotli decoder
+    "filelock>=4.2.1,<5",  # GHSA-v4x8-3wr5-3wq8 patched floor
+    "msgpack>=1.2.3,<2",  # GHSA-j586-36cw-2gc2 patched floor
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
     "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs
 ]
@@ -775,3 +785,4 @@ pytest_add_cli_args = [
     # Lifespan tests check database readiness using alembic.ini which mutmut doesn't copy.
     "--ignore=tests/test_lifespan.py",
 ]
+

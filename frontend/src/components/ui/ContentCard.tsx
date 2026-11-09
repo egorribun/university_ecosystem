@@ -196,7 +196,7 @@ const Meta = forwardRef<HTMLDivElement, MetaProps>(({ children, className, ...pr
   <div
     ref={ref}
     className={cn(
-      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-(--text-secondary)/(--opacity-hover)",
+      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-(--text-secondary)/[calc(var(--opacity-hover)*100%)]",
       className
     )}
     {...props}

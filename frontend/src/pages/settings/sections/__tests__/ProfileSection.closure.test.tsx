@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { LazyMotion, domAnimation } from "framer-motion"
@@ -73,9 +74,7 @@ describe("ProfileSection closure", () => {
     )
 
     expect(screen.getByAltText("avatar")).toBeInTheDocument()
-    expect(screen.getByTestId("settings-cover-preview")).toHaveStyle({
-      background: "var(--bg-surface-hover)",
-    })
+    expectInlineBackground(screen.getByTestId("settings-cover-preview"), "var(--bg-surface-hover)")
 
     await user.click(
       screen.getByRole("button", { name: /settings:account\.profile\.extra\.title/ })

@@ -7,7 +7,7 @@ test("mock API supports credentialed service-host requests", async ({ page }) =>
   await page.goto("/login")
 
   const result = await page.evaluate(async () => {
-    const response = await fetch("http://api/v1/news?limit=1", { credentials: "include" }) // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- intentional local mock service-host test
+    const response = await fetch("http://api/v1/news?limit=1", { credentials: "include" }) // intentional local mock service-host test
     return { ok: response.ok, status: response.status, body: await response.json() }
   })
 
@@ -23,7 +23,7 @@ test("mock API provides a stable WebSocket for authenticated pages", async ({ pa
   const opened = await page.evaluate(
     () =>
       new Promise<boolean>((resolve) => {
-        const socket = new WebSocket("ws://api/ws/chat?ticket=mock-ws-ticket") // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- intentional local mock service-host test
+        const socket = new WebSocket("ws://api/ws/chat?ticket=mock-ws-ticket") // intentional local mock service-host test
         const finish = (value: boolean) => {
           clearTimeout(timeout)
           socket.close()

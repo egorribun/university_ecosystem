@@ -1,4 +1,4 @@
-{{- $jwksEndpoint := printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+{{- $jwksEndpoint := printf "%s://%s:%v/.well-known/jwks.json" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
 {{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") -}}
 {{- $jwksEndpoint = printf "%s/.well-known/jwks.json" (trimSuffix "/" (required "global.jwtIssuer must be set" .Values.global.jwtIssuer)) -}}
 {{- end -}}
@@ -15,6 +15,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "university-ecosystem.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
@@ -89,8 +90,10 @@ spec:
               value: {{ printf "/run/secrets/%s/jwt-secret" $applicationSecretName | quote }}
             - name: JWT_AUDIENCE
               value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
+            - name: JWT_ISSUER
+              value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: BACKEND_URL
-              value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:8000"
+              value: {{ printf "%s://%s:%v" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: FILE_PROCESSOR_ADDR
               value: "{{ include "university-ecosystem.componentName" (dict "root" . "component" "file-processor") }}:50051"
             - name: REDIS_URL_FILE
@@ -112,6 +115,20 @@ spec:
               value: {{ .Values.internalGrpcMTLS.serverName | quote }}
             - name: GRPC_CLIENT_IDENTITY_URI
               value: {{ .Values.internalGrpcMTLS.gatewayIdentityURI | quote }}
+            {{- end }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            # AUD-373: backend hops use SPIFFE mTLS. INTERNAL_HTTP_MTLS_ENABLED is separate
+            # from SPIFFE_ENABLED so the file-processor gRPC transport keeps its certificate contract.
+            - name: INTERNAL_HTTP_MTLS_ENABLED
+              value: "true"
+            - name: BACKEND_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: {{ printf "unix://%s/agent.sock" .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+            - name: SPIFFE_TRUST_DOMAIN
+              value: {{ .Values.internalHttpMTLS.trustDomain | quote }}
+            - name: SPIFFE_MY_ID
+              value: {{ .Values.internalHttpMTLS.gatewaySpiffeID | quote }}
             {{- end }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.gateway.config.otelEndpoint | quote }}
@@ -162,6 +179,11 @@ spec:
               mountPath: /run/secrets/internal-grpc-mtls
               readOnly: true
           {{- end }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+              readOnly: true
+            {{- end }}
       volumes:
         {{- include "university-ecosystem.secretVolumes" (dict "secrets" $gatewaySecrets) | nindent 8 }}
         {{- if .Values.internalGrpcMTLS.enabled }}
@@ -177,3 +199,9 @@ spec:
               - key: {{ .Values.internalGrpcMTLS.gatewayClient.caKey | quote }}
                 path: ca.crt
       {{- end }}
+        {{- if .Values.internalHttpMTLS.enabled }}
+        - name: spiffe-workload-api
+          csi:
+            driver: {{ .Values.internalHttpMTLS.workloadAPI.csiDriver | quote }}
+            readOnly: true
+        {{- end }}

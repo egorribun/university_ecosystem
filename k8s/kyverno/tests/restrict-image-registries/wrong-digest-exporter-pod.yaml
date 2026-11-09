@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-digest-exporter-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: dependency
+      image: docker.io/oliver006/redis_exporter@sha256:0000000000000000000000000000000000000000000000000000000000000000

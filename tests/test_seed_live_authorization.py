@@ -6,6 +6,7 @@ The in-memory channel exercises protobuf requests, not a real SpiceDB server.
 from __future__ import annotations
 
 import importlib
+import json
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,10 +21,13 @@ from authzed.api.v1 import (
     ZedToken,
 )
 
-from scripts import live_stand, seed_admin_data, seed_target
+from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
+from scripts import live_stand, seed_admin_data, seed_target, seed_tenant
+from scripts.seed_identity import owned_seed_tenant_id
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "ue-live-0123456789abcdef"
+OTHER_OWNED_PROJECT = "ue-live-fedcba9876543210"
 
 
 class AuthorizationChannel:
@@ -107,6 +111,32 @@ class AuthorizationChannel:
         pytest.fail("authorization bootstrap must not enumerate or import grants")
 
 
+@pytest.fixture(autouse=True)
+def owner_issued_stand_record(monkeypatch, tmp_path):
+    """The owned-stand gate requires the owner-issued record for PROJECT (AUD-313)."""
+    record = tmp_path / "owned-stand.json"
+    record.write_text(
+        json.dumps(
+            {"schema_version": 1, "project_name": PROJECT, "database_host": "postgres"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record)
+    escaped_path = (
+        str(record)
+        .replace("\\", r"\134")
+        .replace(" ", r"\040")
+        .replace("\t", r"\011")
+        .replace("\n", r"\012")
+    )
+    monkeypatch.setattr(
+        seed_target,
+        "_read_mountinfo_text",
+        lambda: f"42 1 8:1 /source {escaped_path} ro,relatime - ext4 /dev/root rw",
+    )
+    return record
+
+
 @pytest.fixture
 def seed_module(monkeypatch):
     script = ROOT / "scripts" / "seed_live_authorization.py"
@@ -129,6 +159,11 @@ def seed_module(monkeypatch):
             spicedb_endpoint="spicedb:50051",
             spicedb_preshared_key="synthetic-test-token",
         ),
+    )
+    monkeypatch.setattr(
+        seed_tenant,
+        "settings",
+        SimpleNamespace(mvp_tenant_id=owned_seed_tenant_id(PROJECT)),
     )
     return module
 
@@ -316,6 +351,7 @@ async def test_empty_canonical_schema_fails_before_any_connection(
 @pytest.fixture
 def stand_seed_runner(monkeypatch, tmp_path):
     worktree = tmp_path / "stand"
+    worktree.mkdir()
     source_root = tmp_path / "checkout"
     owner = live_stand.StandOwner(
         repository=str(source_root),
@@ -398,3 +434,80 @@ def test_authorization_subprocess_failure_aborts_live_seed(
         live_stand._seed_locked(
             "synthetic-test-password", owner=stand_seed_runner.owner
         )
+
+
+@pytest.mark.parametrize(
+    "configured", [None, owned_seed_tenant_id(OTHER_OWNED_PROJECT)]
+)
+async def test_tenant_configuration_fails_before_connections(
+    seed_module, monkeypatch, configured
+):
+    seed_tenant.settings.mvp_tenant_id = configured
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid tenant configuration reached a connection")
+
+    monkeypatch.setattr(seed_module, "init_database", forbidden)
+    monkeypatch.setattr(seed_module.grpc, "insecure_channel", forbidden)
+    with pytest.raises(RuntimeError, match="MVP_TENANT_ID"):
+        await seed_module.main()
+
+
+@pytest.mark.parametrize("query_fails", [False, True])
+async def test_authorization_query_uses_owned_tenant_and_restores_context(
+    seed_module, monkeypatch, query_fails
+):
+    expected = str(owned_seed_tenant_id(PROJECT))
+    events = []
+
+    def assert_scope():
+        assert tenant_id_ctx.get() == expected
+        assert bypass_rls_ctx.get() is False
+
+    class Database:
+        async def scalar(self, statement):
+            assert_scope()
+            events.append("query")
+            if query_fails:
+                raise RuntimeError("injected query failure")
+            return SimpleNamespace(
+                id="seed-admin", role=seed_module.UserRole.ADMIN, is_active=True
+            )
+
+    @asynccontextmanager
+    async def session():
+        assert_scope()
+        events.append("open")
+        try:
+            yield Database()
+        finally:
+            assert_scope()
+            events.append("close")
+
+    async def write_in_thread(function, admin_id, schema):
+        assert tenant_id_ctx.get() == "outer-tenant"
+        assert bypass_rls_ctx.get() is True
+        assert function is seed_module._write_authorization
+        assert admin_id == "seed-admin"
+        assert schema
+        events.append("authorization")
+
+    monkeypatch.setattr(seed_module, "init_database", lambda: None)
+    monkeypatch.setattr(seed_module, "async_session", session)
+    monkeypatch.setattr(seed_module.asyncio, "to_thread", write_in_thread)
+    tenant_token = tenant_id_ctx.set("outer-tenant")
+    bypass_token = bypass_rls_ctx.set(True)
+    try:
+        if query_fails:
+            with pytest.raises(RuntimeError, match="injected query failure"):
+                await seed_module.main()
+        else:
+            await seed_module.main()
+        assert tenant_id_ctx.get() == "outer-tenant"
+        assert bypass_rls_ctx.get() is True
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+    assert events == ["open", "query", "close"] + (
+        [] if query_fails else ["authorization"]
+    )

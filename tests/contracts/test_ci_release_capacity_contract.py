@@ -8,9 +8,14 @@ handled correctly or that the logical mutation inventory was not reduced.
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -71,20 +76,91 @@ def test_ci_success_is_an_always_on_fail_closed_finalizer() -> None:
         "coverage-policy-gate",
     } <= required_needs
 
-    for producer in required_needs - {"coverage-policy-gate", "codecov-upload"}:
-        assert f'"{producer}|${{{{ needs.{producer}.result }}}}"' in gate
+    event_gated = {"codecov-upload", "live-realtime-visual"}
+    assert event_gated <= required_needs
+    for producer in required_needs - {"coverage-policy-gate", *event_gated}:
+        assert f"'{producer}|${{{{ needs.{producer}.result }}}}'" in gate
     assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
     assert "coverage_expected_result=success" in gate
     assert "performance_expected_result" not in gate
     assert 'if [[ "$result" != "$expected_result" ]]' in gate
     assert '"$result" == "success" || "$result" == "skipped"' not in gate
     assert 'assert_event_result "codecov-upload"' in gate
+    assert (
+        'if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]; then\n'
+        '  assert_event_result "live-realtime-visual" '
+        "'${{ needs.live-realtime-visual.result }}' \"success\"\n"
+        "else\n"
+        '  assert_event_result "live-realtime-visual" '
+        "'${{ needs.live-realtime-visual.result }}' \"skipped\"\n"
+        "fi"
+    ) in gate
 
     summary = _check_step(
         finalizer, "Report integration and migration quality results"
     )["run"]
     assert "advisory" not in summary.lower()
     assert "required" in summary.lower()
+
+
+@pytest.mark.parametrize(
+    ("event", "base_ref", "live_result", "expected_success"),
+    [
+        ("pull_request", "main", "success", True),
+        ("pull_request", "main", "failure", False),
+        ("pull_request", "main", "skipped", False),
+        ("pull_request", "main", "cancelled", False),
+        ("pull_request", "main", "", False),
+        ("pull_request", "other", "skipped", True),
+        ("pull_request", "other", "success", False),
+        ("pull_request", "other", "failure", False),
+        ("push", "", "skipped", True),
+        ("push", "", "success", False),
+        ("push", "", "cancelled", False),
+    ],
+)
+def test_ci_success_enforces_live_result_for_each_event(
+    event: str, base_ref: str, live_result: str, expected_success: bool
+) -> None:
+    step = _check_step(_workflow(CI)["jobs"]["ci-success"], "Check all jobs passed")
+    result_values = {
+        "live-realtime-visual": live_result,
+        "codecov-upload": "success" if event == "push" else "skipped",
+    }
+    script = re.sub(
+        r"\$\{\{\s*needs\.([a-z0-9-]+)\.result\s*\}\}",
+        lambda match: result_values.get(match.group(1), "success"),
+        step["run"],
+    )
+    assert "${{" not in script
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    shell = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert shell is not None, "Bash is required to execute the CI finalizer"
+    environment = os.environ.copy()
+    environment.pop("BASH_ENV", None)
+    environment.update(
+        {
+            "EVENT_NAME": event,
+            "EVENT_REF": "refs/heads/main" if event == "push" else "refs/pull/1/merge",
+            "BASE_REF": base_ref,
+        }
+    )
+    for name in step["env"]:
+        if name.endswith("_RESULT"):
+            environment[name] = "success"
+    result = subprocess.run(  # noqa: S603 - fixed Bash and the repository finalizer
+        [shell, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert (result.returncode == 0) is expected_success
+    if not expected_success:
+        assert "Event-gated CI job 'live-realtime-visual'" in result.stdout
 
 
 def test_full_browser_matrix_is_nightly_and_live_core_smoke_remains_on_pr() -> None:
@@ -321,10 +397,10 @@ def test_security_and_type_qualification_remain_blocking_after_mutation_migratio
 
     finalizer = _check_step(ci_jobs["ci-success"], "Check all jobs passed")["run"]
     assert (
-        '"pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"'
+        "'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'"
         in finalizer
     )
-    assert '"security-audit|${{ needs.security-audit.result }}"' in finalizer
+    assert "'security-audit|${{ needs.security-audit.result }}'" in finalizer
     assert not any(
         "mutation" in need or "stryker" in need
         for need in ci_jobs["ci-success"]["needs"]
@@ -339,7 +415,8 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
 
     jobs = workflow["jobs"]
     assert jobs["vuln-gate"]["if"] == (
-        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+        "${{ always() && github.ref == 'refs/heads/main' "
+        "&& github.event_name != 'pull_request' }}"
     )
     pr_gate = jobs["vuln-gate-pr"]
     assert pr_gate["name"] == "Vulnerability gate (CRITICAL/HIGH)"
@@ -385,8 +462,12 @@ def test_privileged_sbom_jobs_are_bound_to_the_protected_main_ref() -> None:
     expected_guard = (
         "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
     )
-    for job_name in ("sbom-python", "sbom-go", "sbom-rust", "vuln-gate"):
+    for job_name in ("sbom-python", "sbom-go", "sbom-rust"):
         assert workflow["jobs"][job_name]["if"] == expected_guard
+    assert workflow["jobs"]["vuln-gate"]["if"] == (
+        "${{ always() && github.ref == 'refs/heads/main' "
+        "&& github.event_name != 'pull_request' }}"
+    )
 
 
 def test_release_policy_declares_a_pr_event_without_removing_push_policy() -> None:

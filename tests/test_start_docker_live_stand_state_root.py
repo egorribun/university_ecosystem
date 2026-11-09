@@ -20,6 +20,9 @@ from pathlib import Path
 
 import pytest
 
+from scripts.seed_identity import owned_seed_tenant_id
+from tests.test_start_docker_live_owner_key import _git
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -86,6 +89,41 @@ def _fixture_project(tmp_path: Path) -> tuple[Path, Path]:
     return project, tmp_path / "temp" / "ue-live-acceptance" / "run-36854541120"
 
 
+def _committed_bootstrap_source(project: Path) -> str:
+    """Commit the real launcher inputs in the isolated fixture repository."""
+    bootstrap_paths = (
+        "scripts/temporal/bootstrap-functions.ps1",
+        "scripts/temporal/namespace-init.sh",
+    )
+    for relative in bootstrap_paths:
+        target = project / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target)
+    paths = (
+        "start-docker.ps1",
+        "docker-compose.full.yml",
+        "docker-compose.live.yml",
+        "infrastructure/Caddyfile",
+        "services/temporal/config.yaml",
+        "services/temporal/entrypoint.sh",
+        *bootstrap_paths,
+    )
+    with pytest.MonkeyPatch.context() as git_environment:
+        git_environment.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        git_environment.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+            git_environment.delenv(name, raising=False)
+        _git("init", "--quiet", cwd=project)
+        _git("config", "core.autocrlf", "false", cwd=project)
+        _git("config", "user.name", "Contract Fixture", cwd=project)
+        _git("config", "user.email", "contract-fixture@example.invalid", cwd=project)
+        _git("add", "--", *paths, cwd=project)
+        _git("commit", "--quiet", "-m", "fixture", cwd=project)
+        source_sha = _git("rev-parse", "HEAD", cwd=project)
+    assert re.fullmatch(r"[0-9a-f]{40}", source_sha)
+    return source_sha
+
+
 def _vapid_pair() -> tuple[str, str]:
     # The launcher validates key shape and the uncompressed P-256 public point.
     private = bytes.fromhex("01" * 32)
@@ -97,7 +135,7 @@ def _vapid_pair() -> tuple[str, str]:
 
 
 def _owner_marker(
-    project: Path, state_root: Path, *, version: int = 7
+    project: Path, state_root: Path, *, version: int = 7, source_sha: str = "a" * 40
 ) -> dict[str, object]:
     port_names = CURRENT_PORT_NAMES if version == 11 else PORT_NAMES
     payload: dict[str, object] = {
@@ -111,7 +149,7 @@ def _owner_marker(
         "daemon_fingerprint": "d" * 64,
         "compose_resource_fingerprint": None,
         "resume_compose_resource_fingerprint": None,
-        "source_sha": "a" * 40,
+        "source_sha": source_sha,
     }
     if version == 11:
         payload.update(
@@ -194,7 +232,12 @@ def _secure_state_tree(state_root: Path) -> None:
 
 
 def _live_environment(
-    state_root: Path, public: str, private: str, *, current_schema: bool = False
+    state_root: Path,
+    public: str,
+    private: str,
+    *,
+    current_schema: bool = False,
+    source_sha: str = "a" * 40,
 ) -> dict[str, str]:
     env = os.environ.copy()
     temp_root = state_root.parents[1]
@@ -205,18 +248,40 @@ def _live_environment(
     # -NoProfile still uses the .NET startup cache on Unix.
     env["XDG_CACHE_HOME"] = str(temp_root / ".powershell-cache")
     env["COMPOSE_PROJECT_NAME"] = "ue-live-36854541120abcd1"
+    # Bind this fixture project, not an unrelated ambient CI/developer tenant.
+    env["MVP_TENANT_ID"] = str(owned_seed_tenant_id(env["COMPOSE_PROJECT_NAME"]))
     port_names = CURRENT_PORT_NAMES if current_schema else PORT_NAMES
     ports = {name: 32000 + index for index, name in enumerate(port_names)}
     env["LIVE_BASE_URL"] = f"http://localhost:{ports['CADDY_HTTP']}"
     env["LIVE_VAPID_PUBLIC_KEY"] = public
     env["LIVE_VAPID_PRIVATE_KEY"] = private
-    env["LIVE_STAND_SOURCE_SHA"] = "a" * 40
+    env["LIVE_STAND_SOURCE_SHA"] = source_sha
     for name, port in ports.items():
         if name == "MAILPIT":
             env["LIVE_MAILPIT_PORT"] = str(port)
         else:
             env[f"LIVE_HOST_PORT_{name}"] = str(port)
     return env
+
+
+@pytest.mark.parametrize("ambient_project", [None, "ci-admin-smoke"])
+def test_live_environment_binds_fixture_tenant_without_mutating_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ambient_project: str | None
+) -> None:
+    if ambient_project is None:
+        monkeypatch.delenv("MVP_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("MVP_TENANT_ID", str(owned_seed_tenant_id(ambient_project)))
+    parent_environment = os.environ.copy()
+    state_root = tmp_path / "temp" / "ue-live-acceptance" / "run-36854541120"
+
+    environment = _live_environment(state_root, "public", "private")
+
+    assert environment["MVP_TENANT_ID"] == str(
+        owned_seed_tenant_id(environment["COMPOSE_PROJECT_NAME"])
+    )
+    assert environment["MVP_TENANT_ID"] != parent_environment.get("MVP_TENANT_ID")
+    assert os.environ == parent_environment
 
 
 def _run_prepare(
@@ -471,6 +536,7 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
     monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
     parent_environment = os.environ.copy()
     project, state_root = _fixture_project(tmp_path)
+    source_sha = _committed_bootstrap_source(project)
     state_root.mkdir(parents=True)
     secrets_root = state_root / ".secrets"
     secrets_root.mkdir()
@@ -482,12 +548,13 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
         json.dumps({"public": public, "private": private}), encoding="utf-8"
     )
     (secrets_root / "live-stand.json").write_text(
-        json.dumps(_owner_marker(project, state_root)), encoding="utf-8"
+        json.dumps(_owner_marker(project, state_root, source_sha=source_sha)),
+        encoding="utf-8",
     )
     state_overlay = state_root / "docker-compose.live-state.yml"
     state_overlay.write_text("services: {}\n", encoding="utf-8")
     _secure_state_tree(state_root)
-    env = _live_environment(state_root, public, private)
+    env = _live_environment(state_root, public, private, source_sha=source_sha)
 
     result = _run_prepare(project, state_root, env)
 
@@ -868,6 +935,7 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
     parent_environment = os.environ.copy()
     project, _ = _fixture_project(tmp_path)
+    source_sha = _committed_bootstrap_source(project)
     state_root = (
         tmp_path
         / "temp"
@@ -885,7 +953,7 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     live_stand.REPO_ROOT = project
     live_stand.WORKTREE = state_root
     live_stand.IN_PLACE_MODE = True
-    live_stand.SOURCE_SHA = "a" * 40
+    live_stand.SOURCE_SHA = source_sha
     live_stand.docker_daemon_fingerprint = lambda: "d" * 64
     live_stand._ensure_private_state_directory(state_root, protect_new_windows=True)
     owner = live_stand.create_stand_owner(
@@ -1000,6 +1068,7 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
     monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
     parent_environment = os.environ.copy()
     project, state_root = _fixture_project(tmp_path)
+    source_sha = _committed_bootstrap_source(project)
     state_root.mkdir(parents=True)
     secrets_root = state_root / ".secrets"
     secrets_root.mkdir()
@@ -1011,7 +1080,8 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
         json.dumps({"public": public, "private": private}), encoding="utf-8"
     )
     (secrets_root / "live-stand.json").write_text(
-        json.dumps(_owner_marker(project, state_root)), encoding="utf-8"
+        json.dumps(_owner_marker(project, state_root, source_sha=source_sha)),
+        encoding="utf-8",
     )
     (state_root / "docker-compose.live-state.yml").write_text(
         "services: {}\n", encoding="utf-8"
@@ -1041,7 +1111,7 @@ def test_launcher_rejects_compose_without_override_support_before_env_writes(
             encoding="utf-8",
         )
         fake_docker.chmod(0o700)
-    env = _live_environment(state_root, public, private)
+    env = _live_environment(state_root, public, private, source_sha=source_sha)
     env["PATH"] = os.pathsep.join((str(fake_bin), env.get("PATH", "")))
     env["LIVE_STAND_DOCKER_LOG"] = str(command_log)
 

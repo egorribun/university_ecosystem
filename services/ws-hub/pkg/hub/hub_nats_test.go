@@ -74,7 +74,7 @@ func newNatsTestHub(auth RoomAuthClient, secret string, broadcastCap int) *Hub {
 		ClientMsgRateBurst:  10,
 		InternalSecret:      secret,
 	}
-	h := trackTestHub(NewHub(nil, logger, auth, cfg, nil))
+	h := trackTestHub(mustNewFixtureHub(nil, logger, auth, cfg, nil))
 	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
 	h.subscribeCacheInvalidations = func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
 		return nil, nil
@@ -296,20 +296,24 @@ func TestHandleCacheInvalidation_InvalidIdentifiersAreTermed(t *testing.T) {
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	cases := []struct {
-		name string
-		data invalidationData
+		name    string
+		subject string
+		data    invalidationData
 	}{
 		{
-			name: "malformed user id",
-			data: invalidationData{RoomID: room, Timestamp: 1234, UserID: "not-a-uuid"},
+			name:    "malformed user id",
+			subject: "cache.invalidate",
+			data:    invalidationData{RoomID: room, Timestamp: 1234, UserID: "not-a-uuid"},
 		},
 		{
-			name: "malformed room id",
-			data: invalidationData{RoomID: "not-a-uuid", Timestamp: 1234, UserID: user},
+			name:    "malformed room id",
+			subject: "cache.invalidate",
+			data:    invalidationData{RoomID: "not-a-uuid", Timestamp: 1234, UserID: user},
 		},
 		{
-			name: "room eviction requires a room id",
-			data: invalidationData{EvictRoom: true, Timestamp: 1234, UserID: user},
+			name:    "room eviction requires a room id",
+			subject: "cache.revoke",
+			data:    invalidationData{EvictRoom: true, Timestamp: 1234, UserID: user},
 		},
 	}
 
@@ -335,7 +339,7 @@ func TestHandleCacheInvalidation_InvalidIdentifiersAreTermed(t *testing.T) {
 			auth := &recordingAuthClient{}
 			h := newNatsTestHub(auth, "internal-secret", 10)
 			h.handleCacheInvalidation(context.Background())(&nats.Msg{
-				Subject: "cache.invalidate",
+				Subject: tc.subject,
 				Data:    signedInvalidationPayload(t, "internal-secret", tc.data),
 			})
 
@@ -347,15 +351,26 @@ func TestHandleCacheInvalidation_InvalidIdentifiersAreTermed(t *testing.T) {
 }
 
 func TestHandleCacheInvalidation_ValidSignatureWithoutAuthClient(t *testing.T) {
+	oldAck, oldTerm := jetStreamAckFunc, jetStreamTermFunc
+	t.Cleanup(func() { jetStreamAckFunc, jetStreamTermFunc = oldAck, oldTerm })
+	ackCalls, termCalls := 0, 0
+	jetStreamAckFunc = func(*nats.Msg) error { ackCalls++; return nil }
+	jetStreamTermFunc = func(*nats.Msg) error { termCalls++; return nil }
+
 	h := newNatsTestHub(nil, "internal-secret", 10) // pragma: allowlist secret
-	h.handleCacheInvalidation(context.Background())(&nats.Msg{
+	msg := &nats.Msg{
 		Subject: "cache.invalidate",
 		Data: signedInvalidationPayload(t, "internal-secret", invalidationData{
 			RoomID:    "22222222-2222-2222-2222-222222222222",
 			Timestamp: 1234,
 			UserID:    "11111111-1111-1111-1111-111111111111",
 		}),
+	}
+	require.NotPanics(t, func() {
+		h.handleCacheInvalidation(context.Background())(msg)
 	})
+	assert.Equal(t, 1, ackCalls, "a valid signed message is acknowledged even without an auth client")
+	assert.Zero(t, termCalls, "a valid message is not terminated")
 }
 
 func TestHandleCacheInvalidationAcceptsPythonEvictionSignature(t *testing.T) {
@@ -364,7 +379,7 @@ func TestHandleCacheInvalidationAcceptsPythonEvictionSignature(t *testing.T) {
 	const payload = `{"data":{"evict_room":true,"room_id":"22222222-2222-2222-2222-222222222222","timestamp":1234,"user_id":"11111111-1111-1111-1111-111111111111"},"signature":"478e2845bae80bce3435d37b1087b0e32b32087db6c702a4ad2aaa58a6bdfdc1"}`
 
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: "cache.revoke",
 		Data:    []byte(payload),
 	})
 
@@ -393,7 +408,7 @@ func TestHandleCacheInvalidation_EvictsOnlyRemovedUsersRoom(t *testing.T) {
 		UserID:    removedUser,
 	})
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: "cache.revoke",
 		Data:    payload,
 	})
 
@@ -428,7 +443,7 @@ func TestHandleCacheInvalidation_ReplayedEvictionKeepsReaddedMember(t *testing.T
 		UserID:    user,
 	})
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: "cache.revoke",
 		Data:    payload,
 	})
 
@@ -473,7 +488,7 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 	})
 
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: "cache.revoke",
 		Data:    payload,
 	})
 
@@ -488,7 +503,7 @@ func TestHandleCacheInvalidation_RefreshFailureNaksWithoutAck(t *testing.T) {
 	assert.True(t, authorizeRoomJoinForTest(h, context.Background(), user, room), "a later join must re-check authority instead of remaining blocked if the NATS event expired")
 	assert.False(t, h.isRoomRevocationPending(user, room))
 	h.handleCacheInvalidation(context.Background())(&nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: "cache.revoke",
 		Data:    payload,
 	})
 	assert.Equal(t, 1, ackCalls, "a confirmed refresh should acknowledge the durable event")
@@ -949,7 +964,9 @@ func TestRunLoop_GlobalBroadcastEvictsFullClient(t *testing.T) {
 func TestStop_IsIdempotent(t *testing.T) {
 	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
 	h.Stop()
-	h.Stop() // second call must be a no-op (stopOnce)
+	assert.True(t, h.stopped.Load(), "first stop closes hub admission")
+	require.NotPanics(t, h.Stop, "second call must be safe under stopOnce")
+	assert.True(t, h.stopped.Load(), "idempotent stop leaves hub stopped")
 }
 
 func TestHasJWKSCache_FalseWithoutSetup(t *testing.T) {

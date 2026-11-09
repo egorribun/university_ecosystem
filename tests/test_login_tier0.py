@@ -164,7 +164,7 @@ async def test_csrf_cookie_endpoint_returns_initialization_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_register_returns_created_user_id() -> None:
+async def test_register_returns_generic_success_without_created_user_identity() -> None:
     from app.api.auth.login import register
 
     new_user = SimpleNamespace(id=uuid4())
@@ -172,11 +172,12 @@ async def test_register_returns_created_user_id() -> None:
     compliance_service.register_user.return_value = new_user
     request = _request_with_services(compliance_service=compliance_service)
 
+    payload = MagicMock()
     with patch("app.api.auth.login.resolve_locale", return_value="en"):
-        result = await register(user=MagicMock(), request=request)
+        result = await register(user=payload, request=request)
 
-    assert result == {"status": "ok", "id": new_user.id}
-    compliance_service.register_user.assert_awaited_once()
+    assert result == {"status": "ok"}
+    compliance_service.register_user.assert_awaited_once_with(payload)
 
 
 @pytest.mark.asyncio

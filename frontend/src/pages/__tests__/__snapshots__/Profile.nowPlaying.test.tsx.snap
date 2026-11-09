@@ -14,7 +14,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
     tabindex="0"
   >
     <div
-      class="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
+      class="absolute inset-0 z-base bg-linear-to-t from-black/[calc(var(--opacity-hover)*100%)] via-black/[calc(var(--opacity-dim)*100%)] to-transparent pointer-events-none"
     />
     <div
       class="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium"
@@ -45,7 +45,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
       </p>
       <span
         aria-hidden="true"
-        class="inline-flex self-start px-2 py-0.5 text-label-xs font-bold uppercase bg-(--bg-surface-hover)/(--opacity-hover) text-(--text-secondary) rounded-full border border-glass-border"
+        class="inline-flex self-start px-2 py-0.5 text-label-xs font-bold uppercase bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] text-(--text-secondary) rounded-full border border-glass-border"
       >
         Paused
       </span>
@@ -53,7 +53,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
         class="flex items-center gap-2 w-full mt-0.5"
       >
         <div
-          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/(--opacity-hover) rounded-full overflow-hidden relative"
+          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] rounded-full overflow-hidden relative"
         >
           <div
             aria-label="Track progress"
@@ -93,7 +93,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
     tabindex="0"
   >
     <div
-      class="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
+      class="absolute inset-0 z-base bg-linear-to-t from-black/[calc(var(--opacity-hover)*100%)] via-black/[calc(var(--opacity-dim)*100%)] to-transparent pointer-events-none"
     />
     <div
       class="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium"
@@ -126,7 +126,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
         class="flex items-center gap-2 w-full mt-0.5"
       >
         <div
-          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/(--opacity-hover) rounded-full overflow-hidden relative"
+          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] rounded-full overflow-hidden relative"
         >
           <div
             aria-label="Track progress"

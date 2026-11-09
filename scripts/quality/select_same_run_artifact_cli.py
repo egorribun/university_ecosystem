@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NoReturn, TypeIs, cast
 
@@ -99,6 +99,9 @@ class SelectionArguments:
     # Keep the checkout SHA for local source and artifact-name binding, and
     # accept the separately trusted REST identity when the event supplies it.
     run_head_sha: str | None = None
+    producer_attempt: str | None = None
+    shard_index: str | None = None
+    shard_count: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +173,17 @@ def _require_decimal(value: object, field: str) -> int:
     return int(text)
 
 
+def _require_safe_decimal(
+    value: object, field: str, *, allow_zero: bool = False
+) -> int:
+    if allow_zero and value == "0":
+        return 0
+    number = _require_decimal(value, field)
+    if number > _MAX_JSON_SAFE_INTEGER:
+        raise SameRunArtifactError(f"{field} exceeds the safe integer range")
+    return number
+
+
 def _require_token(value: object) -> str:
     token = _require_text(value, "GH_TOKEN")
     if len(token) > _MAX_TOKEN_LENGTH or any(
@@ -221,7 +235,7 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
             if remaining <= 0:
                 raise SameRunArtifactError("GitHub API selection deadline exceeded")
             timeout = min(20.0, remaining)
-        http_request = urllib.request.Request(  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
+        http_request = urllib.request.Request(  # noqa: S310  # URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
             url,
             method="GET",
             headers=dict(request.headers),
@@ -279,6 +293,36 @@ def _validate_arguments(arguments: SelectionArguments) -> None:
         raise SameRunArtifactError("attempt_policy is invalid")
     if not isinstance(arguments.allow_empty, bool):
         raise SameRunArtifactError("allow_empty must be a boolean")
+    exact_fields = (
+        arguments.producer_attempt,
+        arguments.shard_index,
+        arguments.shard_count,
+    )
+    if any(value is not None for value in exact_fields):
+        if any(value is None for value in exact_fields):
+            raise SameRunArtifactError("exact shard identity must be supplied together")
+        if (
+            arguments.artifact_prefix != "nightly-frontend-mutation-shard-"
+            or arguments.artifact_suffix != ""
+            or arguments.artifact_name_layout != "run-id-attempt"
+            or arguments.attempt_policy != "current-or-earlier"
+        ):
+            raise SameRunArtifactError("exact shard naming contract is invalid")
+        producer_attempt = _require_safe_decimal(
+            arguments.producer_attempt, "producer_attempt"
+        )
+        shard_index = _require_safe_decimal(
+            arguments.shard_index, "shard_index", allow_zero=True
+        )
+        shard_count = _require_safe_decimal(arguments.shard_count, "shard_count")
+        if producer_attempt > _require_decimal(
+            arguments.consumer_run_attempt, "consumer_run_attempt"
+        ):
+            raise SameRunArtifactError(
+                "exact shard producer attempt is from the future"
+            )
+        if not 2 <= shard_count <= 256 or shard_index >= shard_count:
+            raise SameRunArtifactError("exact shard index or count is out of range")
 
 
 def _json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -440,9 +484,61 @@ def _candidate_from_artifact(
     return artifact_id, name, attempt, digest
 
 
+def _select_exact_shard_candidate(
+    artifacts: Sequence[Mapping[str, object]], arguments: SelectionArguments
+) -> SelectionResult | None:
+    target = (
+        _require_safe_decimal(arguments.producer_attempt, "producer_attempt"),
+        _require_safe_decimal(arguments.shard_index, "shard_index", allow_zero=True),
+    )
+    shard_count = _require_safe_decimal(arguments.shard_count, "shard_count")
+    pattern = re.compile(
+        rf"{re.escape(arguments.artifact_prefix)}{re.escape(arguments.run_id)}-"
+        r"([1-9][0-9]*)-(0|[1-9][0-9]*)$"
+    )
+    identities: set[tuple[int, int]] = set()
+    artifact_ids: set[int] = set()
+    selected: SelectionResult | None = None
+    for artifact in artifacts:
+        name = _require_text(_required(artifact, "name"), "artifact.name")
+        if not name.startswith(arguments.artifact_prefix):
+            continue
+        match = pattern.fullmatch(name)
+        if match is None:
+            raise SameRunArtifactError("artifact has foreign or malformed provenance")
+        producer_attempt = _require_safe_decimal(
+            match.group(1), "artifact.producer_attempt"
+        )
+        shard_index = _require_safe_decimal(
+            match.group(2), "artifact.shard_index", allow_zero=True
+        )
+        if shard_index >= shard_count:
+            raise SameRunArtifactError("artifact shard index is out of range")
+        # The validated exact mode uses current-or-earlier and this prefix matched,
+        # so the shared metadata validator cannot return an excluded candidate.
+        artifact_id, artifact_name, _, digest = cast(
+            tuple[int, str, int, str],
+            _candidate_from_artifact(
+                artifact, replace(arguments, artifact_suffix=match.group(2))
+            ),
+        )
+        identity = (producer_attempt, shard_index)
+        if identity in identities or artifact_id in artifact_ids:
+            raise SameRunArtifactError("artifact candidates are duplicated")
+        identities.add(identity)
+        artifact_ids.add(artifact_id)
+        if identity == target:
+            selected = SelectionResult(
+                True, artifact_id, artifact_name, producer_attempt, digest
+            )
+    return selected
+
+
 def _select_candidate(
     artifacts: Sequence[Mapping[str, object]], arguments: SelectionArguments
 ) -> SelectionResult | None:
+    if arguments.producer_attempt is not None:
+        return _select_exact_shard_candidate(artifacts, arguments)
     candidates: dict[int, tuple[int, str, str]] = {}
     artifact_ids: set[int] = set()
     for artifact in artifacts:
@@ -746,6 +842,9 @@ def parse_arguments(argv: Sequence[str] | None = None) -> SelectionArguments:
     parser.add_argument(
         "--attempt-policy", choices=("earlier", "current-or-earlier"), required=True
     )
+    parser.add_argument("--producer-attempt")
+    parser.add_argument("--shard-index")
+    parser.add_argument("--shard-count")
     parser.add_argument("--allow-empty", action="store_true")
     namespace = parser.parse_args(argv)
     return SelectionArguments(
@@ -761,6 +860,9 @@ def parse_arguments(argv: Sequence[str] | None = None) -> SelectionArguments:
         attempt_policy=namespace.attempt_policy,
         allow_empty=namespace.allow_empty,
         artifact_name_layout=namespace.artifact_name_layout,
+        producer_attempt=namespace.producer_attempt,
+        shard_index=namespace.shard_index,
+        shard_count=namespace.shard_count,
     )
 
 

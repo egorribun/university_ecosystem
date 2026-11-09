@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import type { StoryItem } from "@/types/Story"
@@ -8,6 +8,7 @@ type ViewerProps = {
   onPrev: () => void
   onPause: () => void
   onResume: () => void
+  progress?: number
 }
 
 type ListProps = {
@@ -80,6 +81,8 @@ describe("DashboardStories defensive closure", () => {
       mocks.viewerProps?.onPause()
       mocks.viewerProps?.onResume()
     })
+    expect(screen.getByTestId("story-viewer")).toBeInTheDocument()
+    const progressBeforeHide = mocks.viewerProps?.progress
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -87,6 +90,8 @@ describe("DashboardStories defensive closure", () => {
     })
     act(() => document.dispatchEvent(new Event("visibilitychange")))
     act(() => mocks.viewerProps?.onResume())
+    expect(mocks.viewerProps?.progress).toBe(progressBeforeHide)
+    expect(typeof mocks.viewerProps?.progress).toBe("number")
     now.mockRestore()
   })
 })

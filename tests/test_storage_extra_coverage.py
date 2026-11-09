@@ -68,16 +68,31 @@ async def test_static_fs_storage_extract_relative_path_empty(tmp_path):
 @pytest.mark.asyncio
 async def test_static_fs_storage_unlink_error(tmp_path):
     storage = StaticFSStorage(base_dir=tmp_path)
-    with patch.object(Path, "unlink", side_effect=OSError("Permission denied")):
-        # Should swallow OSError and log warning without crashing
-        storage._unlink_ignore_missing(Path("somefile.txt"))
+    target = tmp_path / "somefile.txt"
+    target.write_bytes(b"data")
+    with (
+        patch.object(
+            Path, "unlink", autospec=True, side_effect=OSError("Permission denied")
+        ) as unlink,
+        patch("app.services.storage.logger") as logger,
+    ):
+        storage._unlink_ignore_missing(target)
+
+    unlink.assert_called_once_with(target)
+    logger.warning.assert_called_once_with("static_delete_failed")
+    assert target.read_bytes() == b"data"
 
 
 @pytest.mark.asyncio
 async def test_static_fs_storage_delete_empty(tmp_path):
     storage = StaticFSStorage(base_dir=tmp_path)
-    # Should return early
-    await storage.delete_file("")
+    existing = tmp_path / "existing.txt"
+    existing.write_bytes(b"data")
+    with patch.object(Path, "unlink", autospec=True) as unlink:
+        await storage.delete_file("")
+
+    unlink.assert_not_called()
+    assert existing.read_bytes() == b"data"
 
 
 @pytest.mark.asyncio
@@ -137,9 +152,10 @@ async def test_s3_storage_extract_key_edge_cases():
 
 @pytest.mark.asyncio
 async def test_s3_storage_delete_empty_key():
-    s3 = S3Storage(bucket="test")
-    # Should return early
+    mock_client = AsyncMock()
+    s3 = S3Storage(bucket="test", client=mock_client)
     await s3.delete_file("")
+    mock_client.delete_object.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -147,8 +163,11 @@ async def test_s3_storage_delete_file_error():
     mock_client = AsyncMock()
     mock_client.delete_object = AsyncMock(side_effect=OSError("Deletion failed"))
     s3 = S3Storage(bucket="test", client=mock_client)
-    # Deletion failures are caught and logged, not raised
-    await s3.delete_file("https://test.s3.amazonaws.com/key.txt")
+    with patch("app.services.storage.logger") as logger:
+        await s3.delete_file("https://test.s3.amazonaws.com/key.txt")
+
+    mock_client.delete_object.assert_awaited_once_with(Bucket="test", Key="key.txt")
+    logger.warning.assert_called_once_with("s3_delete_failed")
 
 
 @pytest.mark.asyncio

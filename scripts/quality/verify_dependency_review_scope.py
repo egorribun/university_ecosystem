@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import stat
 import subprocess
 import time
 from collections import Counter
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -40,18 +42,35 @@ EXPECTED_MODULES = {
     "services/file-processor/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/gateway/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/ws-hub/go.mod": {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
+    },
+    # Locked edge-proxy graph (AUD-482). v1.46.0 is the otlptracegrpc version
+    # selected by upstream caddy v2.11.7 itself, so it is the intended pin here
+    # and is not the v1.47.0 used by the three service modules above.
+    "services/caddy/go.mod": {
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.46.0",
+        "github.com/klauspost/compress": "v1.20.2",
+        "howett.net/plist": "v1.0.1",
     },
 }
+
+# Dependency Review license identifications observed for the reviewed rows.
+# OTLP_CADDY_LICENSE is the upstream composite reported for the caddy graph.
+# PLIST_LICENSE is the exact GitHub composite for howett.net/plist v1.0.1.
+# Its upstream LICENSE file
+# combines BSD-2-Clause-Views (FreeBSD-style text) with the Go-license
+# BSD-3-Clause clause. See ADR-047 note 2026-11-03 (owner-approved).
+OTLP_CADDY_LICENSE = "Apache-2.0 AND BSD-3-Clause"
+PLIST_LICENSE = "BSD-2-Clause-Views AND BSD-3-Clause"
 
 
 def _identity(
@@ -102,20 +121,38 @@ EXPECTED_ROWS = {
     _identity(
         "services/file-processor/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/gateway/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/ws-hub/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
+    ),
+    _identity(
+        "services/caddy/go.mod",
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+        "1.46.0",
+        OTLP_CADDY_LICENSE,
+    ),
+    _identity(
+        "services/caddy/go.mod",
+        "github.com/klauspost/compress",
+        "1.20.2",
+        KLAUSPOST_LICENSE,
+    ),
+    _identity(
+        "services/caddy/go.mod",
+        "howett.net/plist",
+        "1.0.1",
+        PLIST_LICENSE,
     ),
 }
 TARGET_NAMES = {row[3] for row in EXPECTED_ROWS}
@@ -137,9 +174,329 @@ PURL_ADDITIONS = Counter(
         "pkg:golang/go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin": 1,
         "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": 1,
         "pkg:golang/github.com/klauspost/compress": 1,
+        # Name-only: the action ignores PURL versions, so every howett.net/plist
+        # row is checked against the exact caddy row above (fail-closed).
+        "pkg:golang/howett.net/plist": 1,
     }
 )
 PURL_REMOVALS = Counter({"pkg:golang/github.com/klauspost/compress@1.20.1": 1})
+
+# AUD-479 bounded GHSA exceptions (owner decision 2026-11-02). The pinned
+# Dependency Review action can only allow an advisory globally (allow-ghsas),
+# so each allowed GHSA is recorded here with its owner, expiry and exact scope.
+# The verifier fails any occurrence outside that manifest, package and version,
+# and fails on or after `expires` (valid through 2027-01-09).
+GHSA_EXCEPTIONS: tuple[dict[str, Any], ...] = (
+    {
+        "ghsa": "GHSA-mgcc-cww5-fp2q",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": (
+            "Go JOSE DoS when parsing JWKs that contain RSA keys (high). "
+            "go-jose/v3 v3.0.5 has no patched release and is pulled into every "
+            "Caddy HTTP build via caddyhttp -> caddytls -> caddypki -> smallstep "
+            "-> go.step.sm/crypto/jose."
+        ),
+        "reachability": (
+            "The advisory is triggered by parsing attacker-supplied JWKs that "
+            "contain RSA keys. Whether a deployed Caddy configuration reaches that "
+            "parser was not established by this change. Re-evaluate when a patched "
+            "go-jose/v3 release or a Caddy release without go-jose/v3 is available."
+        ),
+    },
+    {
+        "ghsa": "GHSA-4w3g-jfj2-cw2q",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": "Panic when decrypting untrusted CBC-HMAC ciphertext. No patched v3 release exists.",
+        "reachability": (
+            "Caddy retains go-jose/v3 through its upstream dependency graph. "
+            "Deployed reachability is not established; the owner accepted only "
+            "this exact manifest, package, version and advisory until the "
+            "unchanged expiry. Re-evaluate upstream removal or a patched v3 release."
+        ),
+    },
+    {
+        "ghsa": "GHSA-vvm8-gf78-28g4",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": "Stack exhaustion when parsing deeply nested untrusted JSON. No patched v3 release exists.",
+        "reachability": (
+            "Caddy retains go-jose/v3 through its upstream dependency graph. "
+            "Deployed reachability is not established; the owner accepted only "
+            "this exact manifest, package, version and advisory until the "
+            "unchanged expiry. Re-evaluate upstream removal or a patched v3 release."
+        ),
+    },
+)
+_GHSA_ID_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}")
+_GHSA_EXCEPTION_FIELDS = frozenset(
+    {
+        "ghsa",
+        "owner",
+        "expires",
+        "manifest",
+        "ecosystem",
+        "name",
+        "version",
+        "reason",
+        "reachability",
+    }
+)
+_GHSA_EXCEPTION_TEXT_FIELDS = (
+    "owner",
+    "manifest",
+    "ecosystem",
+    "name",
+    "version",
+    "reason",
+    "reachability",
+)
+
+# Owner decision 2026-11-05 (egorribun): CI-only license exception for the GitHub
+# Action trufflesecurity/trufflehog. Its immutable LICENSE is AGPL-3.0, while the
+# action's unmodified comparison output has license=null. The PURL allowance
+# matches every version, so both preflight and the row guard bind it to the
+# separately approved pin, never to an arbitrary future workflow pin.
+TRUFFLEHOG_ACTION_NAME = "trufflesecurity/trufflehog"
+TRUFFLEHOG_MANIFEST = ".github/workflows/trufflehog.yml"
+TRUFFLEHOG_ECOSYSTEM = "actions"
+TRUFFLEHOG_LICENSE = "AGPL-3.0"
+TRUFFLEHOG_PURL = f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_PURL_TYPE = "githubactions"
+TRUFFLEHOG_PURL_NAMESPACE, _, TRUFFLEHOG_PURL_NAME = TRUFFLEHOG_ACTION_NAME.partition(
+    "/"
+)
+TRUFFLEHOG_LICENSE_SOURCE = "https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE"
+TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
+    "owner": "egorribun",
+    "decided": date(2026, 11, 5),
+    "expires": date(2027, 1, 10),
+    "purl": TRUFFLEHOG_PURL,
+    "manifest": TRUFFLEHOG_MANIFEST,
+    "ecosystem": TRUFFLEHOG_ECOSYSTEM,
+    "name": TRUFFLEHOG_ACTION_NAME,
+    "version": TRUFFLEHOG_LICENSE_SOURCE.split("/")[-2],
+    "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+    "license": TRUFFLEHOG_LICENSE,
+    "license_source": TRUFFLEHOG_LICENSE_SOURCE,
+    "reason": (
+        "CI-only GitHub Action (trufflehog, AGPL-3.0) used for secret scanning inside "
+        "CI. It is not distributed with the product."
+    ),
+}
+
+_DIAGNOSTIC_PURL_MAX_CHARS = 512
+_DIAGNOSTIC_PURL_COMPONENTS = frozenset(
+    {
+        "actions",
+        "github",
+        "githubactions",
+        "trufflehog",
+        "trufflesecurity",
+    }
+)
+_DIAGNOSTIC_PURL_TYPES = frozenset(
+    {
+        "alpm",
+        "apk",
+        "cargo",
+        "composer",
+        "conan",
+        "conda",
+        "cran",
+        "deb",
+        "docker",
+        "gem",
+        "generic",
+        "github",
+        "githubactions",
+        "golang",
+        "hackage",
+        "hex",
+        "maven",
+        "npm",
+        "nuget",
+        "oci",
+        "pypi",
+        "rpm",
+        "swift",
+    }
+)
+
+
+def _diagnostic_component(value: str, *, known: frozenset[str]) -> str | dict[str, Any]:
+    normalized = value.lower()
+    if normalized in known:
+        return normalized
+    if not value or len(value) > 80 or not value.isascii() or not value.isprintable():
+        return "<redacted>"
+    return {
+        "length": len(value),
+        "sha256": hashlib.sha256(normalized.encode("ascii")).hexdigest(),
+    }
+
+
+def _diagnostic_string_hash(value: Any) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 160
+        or not value.isascii()
+        or not value.isprintable()
+    ):
+        return None
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def _trufflehog_purl_diagnostic(package_url: Any, pin: str | None) -> dict[str, Any]:
+    """Expose bounded PURL structure and hashes, never raw unknown components."""
+    result: dict[str, Any] = {
+        "parsed": False,
+        "package_type": "<redacted>",
+        "namespace": "<redacted>",
+        "name": "<redacted>",
+        "matches_reviewed_package_name": False,
+        "version_present": False,
+        "version_sha256": None,
+        "version_matches_workflow_pin": False,
+    }
+    if (
+        not isinstance(package_url, str)
+        or len(package_url) > _DIAGNOSTIC_PURL_MAX_CHARS
+        or not package_url.isascii()
+        or not package_url.isprintable()
+        or not package_url.startswith("pkg:")
+    ):
+        return result
+
+    purl_path = package_url[4:].split("?", 1)[0].split("#", 1)[0]
+    raw_type, separator, raw_path = purl_path.partition("/")
+    if not separator or not raw_type or not raw_path:
+        return result
+    if "@" in raw_path:
+        raw_name_path, raw_version = raw_path.split("@", 1)
+    else:
+        raw_name_path, raw_version = raw_path, None
+    try:
+        package_type = unquote(raw_type, errors="strict").lower()
+        name_path = unquote(raw_name_path, errors="strict")
+        version = (
+            unquote(raw_version, errors="strict") if raw_version is not None else None
+        )
+    except UnicodeDecodeError:
+        return result
+    if not package_type or not name_path:
+        return result
+
+    parts = name_path.split("/")
+    if any(not part for part in parts):
+        return result
+    namespace = "/".join(parts[:-1])
+    name = parts[-1]
+    result.update(
+        {
+            "parsed": True,
+            "package_type": _diagnostic_component(
+                package_type, known=_DIAGNOSTIC_PURL_TYPES
+            ),
+            "namespace": _diagnostic_component(
+                namespace, known=_DIAGNOSTIC_PURL_COMPONENTS
+            )
+            if namespace
+            else "",
+            "name": _diagnostic_component(name, known=_DIAGNOSTIC_PURL_COMPONENTS),
+            "matches_reviewed_package_name": (
+                package_type == TRUFFLEHOG_PURL_TYPE
+                and namespace.lower() == TRUFFLEHOG_PURL_NAMESPACE
+                and name.lower() == TRUFFLEHOG_PURL_NAME
+            ),
+            "version_present": bool(version),
+            "version_sha256": _diagnostic_string_hash(version),
+            "version_matches_workflow_pin": isinstance(pin, str) and version == pin,
+        }
+    )
+    return result
+
+
+def _as_of(today: date | None) -> date:
+    return datetime.now(UTC).date() if today is None else today
+
+
+def _validated_ghsa_exceptions(exceptions: Any) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for record in exceptions:
+        if not isinstance(record, dict) or set(record) != _GHSA_EXCEPTION_FIELDS:
+            raise ValueError(
+                "GHSA exception record is incomplete or has unknown fields"
+            )
+        ghsa = record["ghsa"]
+        if not isinstance(ghsa, str) or _GHSA_ID_PATTERN.fullmatch(ghsa) is None:
+            raise ValueError("GHSA exception record has an invalid advisory id")
+        if type(record["expires"]) is not date:
+            raise ValueError("GHSA exception record needs a calendar expiry date")
+        for field in _GHSA_EXCEPTION_TEXT_FIELDS:
+            value = record[field]
+            if not isinstance(value, str) or not value.strip() or "*" in value:
+                raise ValueError(f"GHSA exception record has an invalid {field}")
+        if ghsa in records:
+            raise ValueError("duplicate GHSA exception record")
+        records[ghsa] = record
+    return records
+
+
+def verify_ghsa_exception_rows(
+    rows: list[dict[str, Any]],
+    today: date | None = None,
+    exceptions: Any = GHSA_EXCEPTIONS,
+) -> int:
+    """Fail closed on any use of a recorded GHSA exception outside its scope."""
+    records = _validated_ghsa_exceptions(exceptions)
+    as_of = _as_of(today)
+    matched = 0
+    for row in rows:
+        if row.get("change_type") == "removed":
+            continue
+        for vulnerability in row.get("vulnerabilities") or []:
+            if not isinstance(vulnerability, dict):
+                raise ValueError("dependency row has an invalid vulnerability entry")
+            ghsa = vulnerability.get("advisory_ghsa_id")
+            record = records.get(ghsa) if isinstance(ghsa, str) else None
+            if record is None:
+                continue
+            scope = (
+                row.get("manifest"),
+                row.get("ecosystem"),
+                row.get("name"),
+                row.get("version"),
+            )
+            reviewed = (
+                record["manifest"],
+                record["ecosystem"],
+                record["name"],
+                record["version"],
+            )
+            if scope != reviewed:
+                raise ValueError(
+                    "GHSA exception is used outside its reviewed manifest, "
+                    "package and version"
+                )
+            if as_of >= record["expires"]:
+                raise ValueError("GHSA exception expired; renew or remove it")
+            matched += 1
+    return matched
 
 
 def _action_row(row: Any) -> tuple[str, ...]:
@@ -176,26 +533,75 @@ def _action_row(row: Any) -> tuple[str, ...]:
     return tuple(row[field] for field in FIELDS)
 
 
-def _target_package_url(package_url: str) -> bool:
-    """Match target PURLs by canonical type/name, ignoring version and qualifiers."""
+def _purl_type_and_name(package_url: str) -> tuple[str, str] | None:
+    """Return the canonical (type, name) of a PURL, ignoring version and qualifiers."""
     if not package_url.lower().startswith("pkg:"):
-        return False
+        return None
     purl_path = package_url[4:].split("?", 1)[0].split("#", 1)[0]
     package_type, separator, name_and_version = purl_path.partition("/")
     if not separator:
-        return False
+        return None
     raw_name = name_and_version.split("@", 1)[0]
     try:
         canonical_type = unquote(package_type, errors="strict").lower()
         canonical_name = unquote(raw_name, errors="strict")
     except UnicodeDecodeError:
+        return None
+    return canonical_type, canonical_name
+
+
+def _target_package_url(package_url: str) -> bool:
+    """Match target PURLs by canonical type/name, ignoring version and qualifiers."""
+    canonical = _purl_type_and_name(package_url)
+    if canonical is None:
         return False
+    canonical_type, canonical_name = canonical
     return canonical_type == TARGET_PURL_TYPE and canonical_name in TARGET_NAMES
+
+
+def _is_trufflehog_row(identity: tuple[str, ...]) -> bool:
+    """Detect upstream PURL aliases for rejection, not exception acceptance."""
+    name = identity[3]
+    package_url = identity[5]
+    canonical = _purl_type_and_name(package_url)
+    return name.lower() == TRUFFLEHOG_ACTION_NAME or (
+        canonical is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
+    )
+
+
+def _trufflehog_identity(pin: str) -> tuple[str, ...]:
+    return (
+        "added",
+        TRUFFLEHOG_MANIFEST,
+        TRUFFLEHOG_ECOSYSTEM,
+        TRUFFLEHOG_ACTION_NAME,
+        pin,
+        f"{TRUFFLEHOG_PURL}@{pin}",
+        None,
+    )
+
+
+def read_trufflehog_pin(root: Path) -> str:
+    """Read the single immutable pin of the CI-only trufflehog action from its workflow."""
+    try:
+        text = (root / TRUFFLEHOG_MANIFEST).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise ValueError("trufflehog workflow is missing or unreadable") from error
+    references = re.findall(rf"{re.escape(TRUFFLEHOG_ACTION_NAME)}@(\S*)", text)
+    if len(references) != 1 or not re.fullmatch(r"[0-9a-f]{40}", references[0]):
+        raise ValueError(
+            "trufflehog workflow must pin its action to exactly one 40-hex commit"
+        )
+    return references[0]
 
 
 def verify_dependency_changes(
     payload: str | list[dict[str, Any]] | None,
     required_rows: set[tuple[str, ...]] | None = None,
+    trufflehog_pin: str | None = None,
+    today: date | None = None,
 ) -> int:
     if payload is None or payload == "":
         raise ValueError("Dependency Review dependency-changes output is missing")
@@ -219,6 +625,30 @@ def verify_dependency_changes(
         change_type, _manifest, _ecosystem, name, _version, _purl, license_id = identity
         if change_type == "removed":
             continue
+        if _is_trufflehog_row(identity):
+            if trufflehog_pin is None:
+                raise ValueError(
+                    "trufflehog dependency row requires the reviewed workflow pin"
+                )
+            if (
+                trufflehog_pin != TRUFFLEHOG_EXCEPTION["version"]
+                or identity != _trufflehog_identity(trufflehog_pin)
+                or raw_row["source_repository_url"]
+                != TRUFFLEHOG_EXCEPTION["source_repository_url"]
+            ):
+                raise ValueError(
+                    "trufflehog exception is used outside its reviewed row"
+                )
+            if _as_of(today) >= TRUFFLEHOG_EXCEPTION["expires"]:
+                raise ValueError("trufflehog exception expired; renew or remove it")
+            accepted[identity] += 1
+            if accepted[identity] > 1:
+                raise ValueError("duplicate exact dependency exception identity")
+            continue
+        if license_id == TRUFFLEHOG_LICENSE:
+            raise ValueError(
+                "AGPL-3.0 dependency identity is outside the reviewed exception"
+            )
         if (
             name not in TARGET_NAMES
             and license_id != LICENSE_REF
@@ -238,6 +668,210 @@ def verify_dependency_changes(
             "Dependency Review output omitted a changed reviewed dependency row"
         )
     return sum(accepted.values())
+
+
+def format_dependency_identity_diagnostics(
+    rows: Any, *, trufflehog_pin: str | None = None
+) -> str:
+    """Render bounded evidence only; never alter a dependency decision."""
+    # This display vocabulary is not a license or vulnerability exception.
+    # Unknown values stay redacted instead of being normalized or accepted.
+    trusted_pin_available = (
+        isinstance(trufflehog_pin, str)
+        and re.fullmatch(r"[0-9a-f]{40}", trufflehog_pin) is not None
+    )
+    targets = {
+        "trufflesecurity/trufflehog": (
+            ".github/workflows/trufflehog.yml",
+            "actions",
+            "",
+            "githubactions",
+        ),
+        "howett.net/plist": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.0.1",
+            "golang",
+        ),
+        "github.com/klauspost/compress": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.20.2",
+            "golang",
+        ),
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.46.0",
+            "golang",
+        ),
+    }
+    displayed_licenses = frozenset(
+        {
+            "AGPL-3.0",
+            PLIST_LICENSE,
+            "Apache-2.0",
+            LICENSE_REF,
+            KLAUSPOST_LICENSE,
+            OTLP_CADDY_LICENSE,
+        }
+    )
+    selected: dict[str, list[tuple[tuple[bool, bool, bool, str], dict[str, Any]]]] = {
+        name: [] for name in targets
+    }
+    truncated = False
+    candidates = rows if isinstance(rows, list) else []
+    for row in candidates:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        if not isinstance(name, str) or name not in targets:
+            continue
+        manifest, ecosystem, version, purl_type = targets[name]
+        displayed = {
+            "change_type": frozenset({"added", "removed"}),
+            "manifest": frozenset({manifest}),
+            "ecosystem": frozenset({ecosystem}),
+            "name": frozenset({name}),
+            "version": frozenset({version}) if version else frozenset(),
+            "package_url": (
+                frozenset({f"pkg:{purl_type}/{name}@{version}"})
+                if version
+                else frozenset()
+            ),
+            "license": displayed_licenses,
+        }
+        identity: dict[str, Any] = {}
+        for field in FIELDS:
+            value = row.get(field, "<redacted>")
+            if field == "license" and field in row and value is None:
+                identity[field] = None
+            elif (
+                name == "trufflesecurity/trufflehog"
+                and field == "package_url"
+                and isinstance(row.get("version"), str)
+                and re.fullmatch(r"[0-9a-f]{40}", row["version"])
+                and value == f"pkg:github/{name}@{row['version']}"
+            ):
+                # Self-consistency only, not a trusted pin or an exception.
+                identity[field] = "<matches-40-hex-version>"
+            elif (
+                isinstance(value, str)
+                and len(value) <= 160
+                and value.isascii()
+                and value.isprintable()
+                and value in displayed[field]
+            ):
+                identity[field] = value
+            else:
+                identity[field] = "<redacted>"
+        if (
+            trusted_pin_available
+            and name == TRUFFLEHOG_ACTION_NAME
+            and row.get("change_type") == "added"
+            and row.get("manifest") == TRUFFLEHOG_MANIFEST
+            and row.get("ecosystem") == TRUFFLEHOG_ECOSYSTEM
+        ):
+            # Evidence only: compare raw fields without exposing or normalizing
+            # them. In particular, a null license remains null and still fails.
+            identity.update(
+                version_matches_workflow_pin=row.get("version") == trufflehog_pin,
+                package_url_empty=row.get("package_url") == "",
+                package_url_matches_expected=(
+                    row.get("package_url") == f"{TRUFFLEHOG_PURL}@{trufflehog_pin}"
+                ),
+                source_repository_matches_expected=(
+                    row.get("source_repository_url")
+                    == "https://github.com/trufflesecurity/trufflehog"
+                ),
+            )
+            if (
+                identity["version_matches_workflow_pin"]
+                and identity["source_repository_matches_expected"]
+            ):
+                # The pinned upstream README documents the githubactions type.
+                # Probe that exact format only; this does not change acceptance.
+                identity["package_url_matches_githubactions_pin"] = (
+                    row.get("package_url")
+                    == f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}@{trufflehog_pin}"
+                )
+        if (
+            trusted_pin_available
+            and name == TRUFFLEHOG_ACTION_NAME
+            and row.get("change_type") == "added"
+            and row.get("manifest") == TRUFFLEHOG_MANIFEST
+            and row.get("ecosystem") == TRUFFLEHOG_ECOSYSTEM
+        ):
+            identity["purl_structure"] = _trufflehog_purl_diagnostic(
+                row.get("package_url"), trufflehog_pin
+            )
+            identity["row_version_evidence"] = {
+                "sha256": _diagnostic_string_hash(row.get("version")),
+            }
+        # Fingerprint only a bounded unknown license on an otherwise exact
+        # reviewed Caddy identity. Never log its raw value or use this evidence
+        # in acceptance decisions. Non-license mismatches remain redacted.
+        license_value = row.get("license")
+        exact_target = any(
+            all(
+                row.get(field) == expected[index]
+                for index, field in enumerate(FIELDS[:-1])
+            )
+            for expected in EXPECTED_ROWS
+        )
+        if (
+            exact_target
+            and row.get("manifest") == "services/caddy/go.mod"
+            and identity["license"] == "<redacted>"
+            and isinstance(license_value, str)
+            and 0 < len(license_value) <= 160
+            and license_value.isascii()
+            and license_value.isprintable()
+        ):
+            identity["license_sha256"] = hashlib.sha256(
+                license_value.encode("ascii")
+            ).hexdigest()
+        encoded_identity = json.dumps(
+            identity, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+        matches_version = (
+            row.get("version") == version
+            if version
+            else identity["package_url"] == "<matches-40-hex-version>"
+        )
+        if trusted_pin_available and name == TRUFFLEHOG_ACTION_NAME:
+            matches_version = identity.get("version_matches_workflow_pin", False)
+        priority = (
+            row.get("manifest") != manifest,
+            not matches_version,
+            row.get("change_type") != "added",
+            encoded_identity,
+        )
+        bucket = selected[name]
+        bucket.append((priority, identity))
+        bucket.sort(key=lambda entry: entry[0])
+        if len(bucket) > 2:
+            bucket.pop()
+            truncated = True
+    payload = {
+        "diagnostic": "dependency-review-identities-v1",
+        "rows": [
+            identity
+            for name in sorted(selected)
+            for _priority, identity in selected[name]
+        ],
+        "truncated": truncated,
+    }
+    encoded = json.dumps(
+        payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    if len(encoded) > 4096:
+        payload["rows"] = []
+        payload["truncated"] = True
+        encoded = json.dumps(
+            payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+    return encoded
 
 
 def _reject_nonstandard_json_constant(_value: str) -> None:
@@ -809,9 +1443,52 @@ def expected_rows_for_delta(
     }
 
 
+def _base_manifest_exists(root: Path, base_sha: str, manifest: str) -> bool:
+    """Return whether a known manifest exists at the protected base commit.
+
+    `git ls-tree` fails on an unknown commit, so a missing commit is an error
+    rather than a silently absent manifest.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha) or manifest not in EXPECTED_MODULES:
+        raise ValueError(
+            "protected-base lookup requires an immutable SHA and known manifest"
+        )
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise ValueError("Git executable is unavailable")
+    result = subprocess.run(  # noqa: S603 - resolved Git, validated SHA and fixed manifest path; no shell.
+        [
+            git_executable,
+            "ls-tree",
+            "--full-tree",
+            "--name-only",
+            base_sha,
+            "--",
+            manifest,
+        ],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode:
+        raise ValueError(f"cannot read protected-base tree for: {manifest}")
+    try:
+        listed = result.stdout.decode("utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        raise ValueError("protected-base tree output is not UTF-8") from error
+    return listed == [manifest]
+
+
 def _base_pins(root: Path, base_sha: str) -> dict[tuple[str, str], str | None]:
     base = {}
     for manifest, expected in EXPECTED_MODULES.items():
+        if not _base_manifest_exists(root, base_sha, manifest):
+            # A manifest added by this change has no base pins, so every pinned
+            # module in it must appear as a changed reviewed row.
+            for module in expected:
+                base[(manifest, module)] = None
+            continue
         text = _git_show(root, base_sha, manifest)
         if _has_tracked_replace(text, set(expected)):
             raise ValueError(f"protected base replaces a tracked module in {manifest}")
@@ -826,6 +1503,16 @@ def _base_pins(root: Path, base_sha: str) -> dict[tuple[str, str], str | None]:
 
 
 def _parse_config(text: str) -> tuple[dict[str, str], dict[str, list[str]]]:
+    # Parse only the simple, explicit policy format used by this repository.
+    # YAML has aliases, flow collections, quoted keys and duplicate-key forms
+    # that a line-oriented reader must not silently reinterpret as empty lists.
+    scalar_keys = {
+        "fail-on-severity",
+        "vulnerability-check",
+        "license-check",
+        "comment-summary-in-pr",
+    }
+    list_keys = {"allow-licenses", "allow-dependencies-licenses", "allow-ghsas"}
     scalars: dict[str, str] = {}
     sections: dict[str, list[str]] = {}
     active = None
@@ -834,36 +1521,76 @@ def _parse_config(text: str) -> tuple[dict[str, str], dict[str, list[str]]]:
         if not line or line.startswith("#"):
             continue
         if raw[:1].isspace():
-            if active is not None and line.startswith("- "):
-                value = line[2:].strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-                    value = value[1:-1]
-                sections[active].append(value)
+            if active is None or not raw.startswith("  - "):
+                raise ValueError("unsupported dependency review YAML nesting")
+            value = raw[4:].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+                valid = re.fullmatch(r"[A-Za-z0-9@%:/._+~ -]+", value) is not None
+            else:
+                valid = re.fullmatch(
+                    r"(?:0BSD|[A-Za-z][A-Za-z0-9.+/-]*(?: [A-Za-z0-9.+/-]+)*)",
+                    value,
+                ) is not None and value.lower() not in {
+                    "y",
+                    "n",
+                    "yes",
+                    "no",
+                    "true",
+                    "false",
+                    "on",
+                    "off",
+                    "null",
+                }
+            if not valid:
+                raise ValueError("unsupported dependency review YAML list value")
+            sections[active].append(value)
             continue
         if ":" not in raw:
             raise ValueError("unrecognized dependency review YAML line")
         key, value = raw.split(":", 1)
         key, value = key.strip(), value.strip()
         active = None
-        if value:
+        if key not in scalar_keys | list_keys or key in scalars or key in sections:
+            raise ValueError("unsupported or duplicate dependency review YAML key")
+        if key in scalar_keys:
+            if not re.fullmatch(r"[A-Za-z0-9-]+", value):
+                raise ValueError("unsupported dependency review YAML scalar")
             scalars[key] = value
         else:
+            if value not in {"", "[]"}:
+                raise ValueError("unsupported dependency review YAML list format")
             sections[key] = []
-            active = key
+            active = key if not value else None
     return scalars, sections
 
 
-def verify_policy_scope(current_text: str) -> None:
+def verify_policy_scope(
+    current_text: str, today: date | None = None, exceptions: Any = GHSA_EXCEPTIONS
+) -> None:
     scalars, sections = _parse_config(current_text)
     if (
         scalars.get("license-check") != "true"
         or scalars.get("vulnerability-check") != "true"
     ):
         raise ValueError("license-check and vulnerability-check must remain enabled")
+    records = _validated_ghsa_exceptions(exceptions)
+    as_of = _as_of(today)
+    for ghsa in sections.get("allow-ghsas", []):
+        record = records.get(ghsa)
+        if record is None:
+            raise ValueError(
+                "global GHSA allowlist entry lacks a bounded owner, expiry and "
+                "scope exception"
+            )
+        if as_of >= record["expires"]:
+            raise ValueError("GHSA allowlist exception expired; renew or remove it")
     if LICENSE_REF in sections.get("allow-licenses", []):
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
         )
+    if TRUFFLEHOG_LICENSE in sections.get("allow-licenses", []):
+        raise ValueError("AGPL-3.0 must not enter global allow-licenses")
     purls = Counter(sections.get("allow-dependencies-licenses", []))
     for purl, count in PURL_ADDITIONS.items():
         if purls[purl] != count:
@@ -872,6 +1599,22 @@ def verify_policy_scope(current_text: str) -> None:
         if any(item.startswith(f"pkg:golang/{name}@") for item in purls):
             raise ValueError(
                 "a versioned target PURL cannot define the version boundary"
+            )
+    trufflehog_entries = [
+        item
+        for item in purls
+        if (canonical := _purl_type_and_name(item)) is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
+    ]
+    if trufflehog_entries:
+        if trufflehog_entries != [TRUFFLEHOG_PURL] or purls[TRUFFLEHOG_PURL] != 1:
+            raise ValueError(
+                "the trufflehog PURL must be the exact unversioned entry, once"
+            )
+        if _as_of(today) >= TRUFFLEHOG_EXCEPTION["expires"]:
+            raise ValueError(
+                "trufflehog allowlist exception expired; renew or remove it"
             )
 
 
@@ -888,31 +1631,46 @@ def verify_policy_delta(base_text: str, current_text: str) -> None:
             "dependency review scalar policy changed outside the reviewed exception"
         )
     for key in (set(base_sections) | set(current_sections)) - {
-        "allow-dependencies-licenses"
+        "allow-dependencies-licenses",
+        "allow-ghsas",
     }:
         if base_sections.get(key, []) != current_sections.get(key, []):
             raise ValueError(
                 f"dependency review policy list changed unexpectedly: {key}"
             )
+    old_ghsas = Counter(base_sections.get("allow-ghsas", []))
+    new_ghsas = Counter(current_sections.get("allow-ghsas", []))
+    recorded = _validated_ghsa_exceptions(GHSA_EXCEPTIONS)
+    if any(ghsa not in recorded for ghsa in new_ghsas - old_ghsas):
+        raise ValueError("GHSA allowlist additions are prohibited")
     old = Counter(base_sections.get("allow-dependencies-licenses", []))
     new = Counter(current_sections.get("allow-dependencies-licenses", []))
-    if (new - old) - PURL_ADDITIONS:
+    allowed_additions = Counter(PURL_ADDITIONS) + Counter({TRUFFLEHOG_PURL: 1})
+    if (new - old) - allowed_additions:
         raise ValueError("dependency PURL additions exceed the exact reviewed set")
     for purl, count in PURL_ADDITIONS.items():
         if new[purl] != count:
             raise ValueError("an exact package-name PURL is missing or duplicated")
+    if new[TRUFFLEHOG_PURL] > 1:
+        raise ValueError("the trufflehog PURL must appear at most once")
     if LICENSE_REF in current_sections.get("allow-licenses", []):
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
         )
+    if TRUFFLEHOG_LICENSE in current_sections.get("allow-licenses", []):
+        raise ValueError("AGPL-3.0 must not enter global allow-licenses")
 
 
-def preflight(root: Path, base_sha: str) -> set[tuple[str, ...]]:
+def preflight(
+    root: Path, base_sha: str, today: date | None = None
+) -> set[tuple[str, ...]]:
     if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         raise ValueError("BASE_SHA must be an immutable 40-character commit SHA")
     current = verify_current_pins(root)
     current_config = (root / CONFIG_PATH).read_text(encoding="utf-8")
-    verify_policy_scope(current_config)
+    verify_policy_scope(current_config, today=today)
+    if read_trufflehog_pin(root) != TRUFFLEHOG_EXCEPTION["version"]:
+        raise ValueError("trufflehog workflow differs from the reviewed action pin")
     verify_policy_delta(_git_show(root, base_sha, CONFIG_PATH), current_config)
     return expected_rows_for_delta(_base_pins(root, base_sha), current)
 
@@ -950,8 +1708,23 @@ def main() -> int:
     if args.changes_file is None:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
-    accepted = verify_dependency_changes(changes, required)
-    print(f"verified comparison schema and exact license rows; accepted={accepted}")
+    try:
+        trufflehog_pin = read_trufflehog_pin(args.root)
+    except ValueError:
+        # Preserve the original diagnostic-before-pin-failure behavior.
+        print(format_dependency_identity_diagnostics(changes))
+        raise
+    print(
+        format_dependency_identity_diagnostics(changes, trufflehog_pin=trufflehog_pin)
+    )
+    accepted = verify_dependency_changes(
+        changes, required, trufflehog_pin=trufflehog_pin
+    )
+    ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
+    print(
+        "verified comparison schema and exact license rows; "
+        f"accepted={accepted} ghsa_exceptions_used={ghsa_exceptions_used}"
+    )
     return 0
 
 

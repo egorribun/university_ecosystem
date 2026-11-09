@@ -12,11 +12,14 @@ from app.models.events import Event
 from app.models.news import News
 from app.models.schedule import Group, Schedule
 from app.models.stories import Story
+from app.models.tenant import Tenant
 from app.models.users import User
-from scripts import seed_demo_data
+from scripts import seed_demo_data, seed_tenant
+from scripts.seed_identity import owned_seed_tenant_id
 from tests.helpers.synthetic_credentials import make_test_marker
 
 _STATE_FIELDS = {
+    Tenant: ("id", "name", "slug", "domain", "is_active", "created_at"),
     User: ("id", "email", "role", "hashed_password", "group_id", "demo_seed_key"),
     News: ("id", "title", "title_en", "content", "content_en", "author_id"),
     Story: (
@@ -66,7 +69,7 @@ def _state(row: object) -> tuple[object, ...]:
 
 async def _ids_by_table(db: AsyncSession) -> dict[str, tuple[str, ...]]:
     result: dict[str, tuple[str, ...]] = {}
-    for model in (User, Group, News, Story, Event, Schedule):
+    for model in (Tenant, User, Group, News, Story, Event, Schedule):
         rows = (await db.scalars(select(model))).all()
         result[model.__tablename__] = tuple(sorted(str(row.id) for row in rows))
     return result
@@ -89,6 +92,10 @@ async def test_full_demo_seed_rerun_preserves_owned_markers_and_foreign_rows(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    project = "ue-live-0123456789abcdef"
+    tenant_identity = owned_seed_tenant_id(project)
+    monkeypatch.setattr(seed_tenant.settings, "mvp_tenant_id", tenant_identity)
+
     foreign_hash_marker = make_test_marker(length=19)
     foreign_owner = User.create(
         email="unrelated-owner@example.test",
@@ -168,7 +175,7 @@ async def test_full_demo_seed_rerun_preserves_owned_markers_and_foreign_rows(
         yield db_session
 
     monkeypatch.setattr(
-        seed_demo_data, "require_owned_live_stand_target", lambda: "synthetic-test"
+        seed_demo_data, "require_owned_live_stand_target", lambda: project
     )
     monkeypatch.setattr(seed_demo_data, "init_database", lambda: None)
     monkeypatch.setattr(seed_demo_data, "async_session", use_test_session)
@@ -178,11 +185,21 @@ async def test_full_demo_seed_rerun_preserves_owned_markers_and_foreign_rows(
     first_ids = await _ids_by_table(db_session)
     first_markers = await _ownership_markers(db_session)
     first_foreign_state = tuple(_state(row) for row in foreign_rows)
+    tenant = await db_session.get(Tenant, tenant_identity)
+    assert tenant is not None
+    assert tenant.slug == project
+    assert tenant.name == f"Owned seed tenant: {project}"
+    assert tenant.domain is None
+    assert tenant.is_active
+    first_tenant_state = _state(tenant)
+    assert first_ids["tenants"] == (str(tenant_identity),)
     assert first_foreign_state == foreign_state
 
     await seed_demo_data.main()
 
     assert await _ids_by_table(db_session) == first_ids
+    await db_session.refresh(tenant)
+    assert _state(tenant) == first_tenant_state
     assert await _ownership_markers(db_session) == first_markers
     assert tuple(_state(row) for row in foreign_rows) == first_foreign_state
 

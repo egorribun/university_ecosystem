@@ -67,7 +67,7 @@ const feeds = [
     key: newsListQueryKey({ language: "en" }),
     prefetch: (client: QueryClient) => prefetchNewsListQuery(client, { language: "en" }),
     response: { items: [article], has_more: false, next_cursor: null } satisfies PaginatedNews,
-    expectedPage: page(article),
+    expectedPage: page({ ...article, likes_count: 0, comments_count: 0 }),
   },
 ]
 

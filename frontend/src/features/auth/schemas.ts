@@ -6,7 +6,7 @@ export const loginSchema = v.object({
     v.minLength(1, "auth:messages.emailRequired"),
     v.email("auth:messages.invalidEmail")
   ),
-  password: v.pipe(v.string(), v.minLength(1, "Password is required")),
+  password: v.pipe(v.string(), v.minLength(1, "auth:messages.passwordRequired")),
   rememberEmail: v.optional(v.boolean()),
   trustDevice: v.optional(v.boolean()),
 })
@@ -15,15 +15,15 @@ export type LoginValues = v.InferInput<typeof loginSchema>
 
 export const registerSchema = v.pipe(
   v.object({
-    full_name: v.pipe(v.string(), v.minLength(2, "Name must be at least 2 characters")),
-    email: v.pipe(v.string(), v.email("Invalid email address")),
+    full_name: v.pipe(v.string(), v.minLength(2, "auth:validation.nameMinLength")),
+    email: v.pipe(v.string(), v.email("auth:validation.emailInvalid")),
     role: v.picklist(["student", "teacher", "admin"]),
     invite_code: v.optional(v.string()),
-    password: v.pipe(v.string(), v.minLength(8, "Password must be at least 8 characters")),
-    confirmPassword: v.pipe(v.string(), v.minLength(1, "Please confirm your password")),
+    password: v.pipe(v.string(), v.minLength(8, "auth:validation.passwordMinLength")),
+    confirmPassword: v.pipe(v.string(), v.minLength(1, "auth:validation.confirmPasswordRequired")),
   }),
   v.forward(
-    v.check((data) => data.password === data.confirmPassword, "Passwords do not match"),
+    v.check((data) => data.password === data.confirmPassword, "auth:validation.passwordsMismatch"),
     ["confirmPassword"]
   ),
   v.forward(
@@ -32,7 +32,7 @@ export const registerSchema = v.pipe(
         return false
       }
       return true
-    }, "Invite code is required for this role"),
+    }, "auth:validation.inviteCodeRequired"),
     ["invite_code"]
   )
 )
@@ -47,11 +47,11 @@ export type ResetPasswordValues = v.InferInput<typeof resetPasswordSchema>
 
 export const newPasswordSchema = v.pipe(
   v.object({
-    password: v.pipe(v.string(), v.minLength(8, "Password must be at least 8 characters")),
-    confirmPassword: v.pipe(v.string(), v.minLength(1, "Please confirm your password")),
+    password: v.pipe(v.string(), v.minLength(8, "auth:validation.passwordMinLength")),
+    confirmPassword: v.pipe(v.string(), v.minLength(1, "auth:validation.confirmPasswordRequired")),
   }),
   v.forward(
-    v.check((data) => data.password === data.confirmPassword, "Passwords do not match"),
+    v.check((data) => data.password === data.confirmPassword, "auth:validation.passwordsMismatch"),
     ["confirmPassword"]
   )
 )

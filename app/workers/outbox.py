@@ -6,6 +6,7 @@ import tempfile
 import time
 import traceback
 import uuid
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -20,19 +21,27 @@ import asyncpg
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy.orm import aliased
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.events import (
+    ChatParticipantCacheInvalidation,
     ChatParticipantRemoved,
     DurableEventDeferred,
     EventMetadata,
     event_bus,
 )
+from app.core.tenant import bypass_rls_ctx, canonical_tenant_id, tenant_id_ctx
 from app.models.domain_events import StoredEvent
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# Per-task signal for run_forever; keeps overlapping process_batch calls isolated.
+_OUTBOX_BATCH_RETRY_PENDING: ContextVar[bool] = ContextVar(
+    "outbox_batch_retry_pending", default=False
+)
 
 # ── MOD-04 (audit 2026-03-14): Prometheus metrics for outbox observability ─────
 # Module-level singletons; Prometheus scrapes /metrics on each poll cycle.
@@ -129,11 +138,17 @@ class OutboxWorker:
         try:
             while self._is_running:
                 try:
-                    processed = await self.process_batch()
+                    outcome_token = _OUTBOX_BATCH_RETRY_PENDING.set(False)
+                    try:
+                        processed = await self.process_batch()
+                        retry_pending = _OUTBOX_BATCH_RETRY_PENDING.get()
+                    finally:
+                        _OUTBOX_BATCH_RETRY_PENDING.reset(outcome_token)
 
-                    # Wait for next notification or timeout
-                    # We always wait if we processed all pending events or if none were found
-                    if processed < self.batch_size:
+                    # A resolved short batch may have successors newly eligible
+                    # after its commit, so drain again immediately. Wait after an
+                    # empty/locked poll or any retryable/deferred row to bound retries.
+                    if processed == 0 or retry_pending:
                         try:
                             await asyncio.wait_for(
                                 self._wakeup_event.wait(), timeout=self.poll_interval
@@ -214,25 +229,31 @@ class OutboxWorker:
         self._wakeup_event.set()
 
     async def process_batch(self) -> int:
+        # Keep the public integer result unchanged. The task-local marker carries
+        # retry state to run_forever without sharing outcome state between callers.
+        _OUTBOX_BATCH_RETRY_PENDING.set(False)
         with tracer.start_as_current_span("outbox.process_batch") as span:
             async with async_session() as db:
-                # DEBT-01: Use DISTINCT ON (aggregate_id_uuid) on PostgreSQL to
-                # guarantee per-aggregate causal ordering when running multiple
-                # workers with skip_locked=True.  Each worker picks at most one
-                # pending event per aggregate (the one with the lowest
-                # sequence_number / created_at), so events for the same aggregate
-                # are never processed out of order by parallel workers.
-                # Falls back to the simple created_at ordering for SQLite (CI).
+                critical_chat_events = (
+                    ChatParticipantRemoved.EVENT_TYPE,
+                    ChatParticipantCacheInvalidation.EVENT_TYPE,
+                )
+                # Only the earliest pending row visible in this poll snapshot is
+                # eligible for its aggregate. A locked predecessor remains visible
+                # to the predecessor check, so SKIP LOCKED cannot expose its next
+                # committed successor to another worker. Writers that commit a
+                # lower-order row after this query snapshot need separate
+                # serialization; this check does not lock aggregate-key gaps.
                 membership_retry = and_(
                     StoredEvent.processed_at.is_(None),
-                    StoredEvent.event_type == ChatParticipantRemoved.EVENT_TYPE,
+                    StoredEvent.event_type.in_(critical_chat_events),
                     StoredEvent.error_count > 0,
                 )
                 normal_pending = and_(
                     StoredEvent.processed_at.is_(None),
                     StoredEvent.error_count < self.max_retries,
                     or_(
-                        StoredEvent.event_type != ChatParticipantRemoved.EVENT_TYPE,
+                        StoredEvent.event_type.not_in(critical_chat_events),
                         StoredEvent.error_count == 0,
                     ),
                 )
@@ -288,12 +309,70 @@ class OutboxWorker:
                     if self.batch_size == 1
                     else select(StoredEvent)
                 )
+                # Aggregate identity is the non-null (type, textual ID) pair;
+                # StoredEvent has no separate tenant key. Compare the complete
+                # persisted order key without requiring contiguous sequence IDs.
+                prior = aliased(StoredEvent)
+                same_sequence = or_(
+                    prior.sequence_number == StoredEvent.sequence_number,
+                    and_(
+                        prior.sequence_number.is_(None),
+                        StoredEvent.sequence_number.is_(None),
+                    ),
+                )
+                prior_order_key_is_less = or_(
+                    and_(
+                        prior.sequence_number.is_not(None),
+                        StoredEvent.sequence_number.is_(None),
+                    ),
+                    and_(
+                        prior.sequence_number.is_not(None),
+                        StoredEvent.sequence_number.is_not(None),
+                        prior.sequence_number < StoredEvent.sequence_number,
+                    ),
+                    and_(
+                        same_sequence,
+                        or_(
+                            prior.created_at < StoredEvent.created_at,
+                            and_(
+                                prior.created_at == StoredEvent.created_at,
+                                prior.id < StoredEvent.id,
+                            ),
+                        ),
+                    ),
+                )
+                has_pending_predecessor = (
+                    select(prior.id)
+                    .where(
+                        prior.aggregate_type == StoredEvent.aggregate_type,
+                        prior.aggregate_id == StoredEvent.aggregate_id,
+                        prior.processed_at.is_(None),
+                        prior_order_key_is_less,
+                    )
+                    .exists()
+                )
+                retry_age_order = []
+                if self.batch_size == 1:
+                    # A singleton retry slot must serve the oldest durable retry;
+                    # aggregate-ID ordering alone can starve an older retry when
+                    # new membership failures keep arriving on other aggregates.
+                    retry_age_order = [
+                        case((membership_retry, StoredEvent.created_at), else_=None)
+                        .asc()
+                        .nulls_last(),
+                        case((membership_retry, StoredEvent.id), else_=None)
+                        .asc()
+                        .nulls_last(),
+                    ]
                 stmt = (
                     stmt.where(or_(membership_retry, normal_pending))
+                    .where(~has_pending_predecessor)
                     .order_by(
                         sort_priority,
-                        StoredEvent.aggregate_id_uuid,
-                        StoredEvent.sequence_number,
+                        *retry_age_order,
+                        StoredEvent.aggregate_type,
+                        StoredEvent.aggregate_id,
+                        StoredEvent.sequence_number.asc().nulls_last(),
                         StoredEvent.created_at,
                         StoredEvent.id,
                     )
@@ -309,9 +388,7 @@ class OutboxWorker:
                     events = result.scalars().all()
 
                 if self.batch_size == 1 and events:
-                    selected_membership = (
-                        events[0].event_type == ChatParticipantRemoved.EVENT_TYPE
-                    )
+                    selected_membership = events[0].event_type in critical_chat_events
                     selected_retry = selected_membership and events[0].error_count > 0
                     if selected_retry:
                         self._prefer_membership_retry_next = False
@@ -355,6 +432,7 @@ class OutboxWorker:
                         # A live external delivery lease is not a failed send.
                         # Keep the row pending without burning the DLQ budget;
                         # the normal poll will retry after the lease expires.
+                        _OUTBOX_BATCH_RETRY_PENDING.set(True)
                         deferred_count += 1
                     except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
@@ -363,9 +441,7 @@ class OutboxWorker:
                         )
                         # Store first 500 chars of error for audit trail
                         se.last_error = last_error[:500]
-                        retry_until_published = (
-                            se.event_type == ChatParticipantRemoved.EVENT_TYPE
-                        )
+                        retry_until_published = se.event_type in critical_chat_events
                         # MOD-08: Move to DLQ after max_retries instead of
                         # silently abandoning the event. Membership revocation
                         # is security-critical: keep it pending until its durable
@@ -381,6 +457,7 @@ class OutboxWorker:
                                 event_type=se.event_type, status="dead_lettered"
                             ).inc()
                         else:
+                            _OUTBOX_BATCH_RETRY_PENDING.set(True)
                             logger.error(
                                 "Failed to process outbox event",
                                 exc_info=True,
@@ -490,26 +567,37 @@ class OutboxWorker:
         import dataclasses
 
         # 1. Reconstruct using known dataclass fields only
-        known_fields = {f.name for f in dataclasses.fields(event_cls)}
+        known_fields = {
+            f.name for f in dataclasses.fields(event_cls) if f.name != "metadata"
+        }
         safe_payload = {k: v for k, v in se.payload.items() if k in known_fields}
+        stored_metadata = se.metadata_ or {}
+        tenant_id = ""
+        if "tenant_id" in stored_metadata:
+            try:
+                tenant_id = canonical_tenant_id(stored_metadata["tenant_id"])
+            except ValueError:
+                raise PermanentOutboxError("Invalid outbox tenant metadata") from None
 
+        # Legacy absence uses empty scope, never the caller's ambient tenant.
+        # Bypass is an in-process privilege, not transferable event authority.
+        tenant_token = tenant_id_ctx.set(tenant_id)
+        bypass_token = bypass_rls_ctx.set(False)
         try:
             event = event_cls(**safe_payload)
 
-            # 2. Restore metadata if present
+            # 2. Restore only persisted metadata, never ordinary payload metadata.
             # Manually-created StoredEvent rows may have no event_id metadata.
             # Anchor their domain identity to the persisted row so every retry
             # reaches idempotent handlers with the same event_id.
             event.event_id = str(
-                (se.metadata_ or {}).get("event_id")
-                or safe_payload.get("event_id")
-                or se.id
+                stored_metadata.get("event_id") or safe_payload.get("event_id") or se.id
             )
-            if se.metadata_:
-                event.metadata = EventMetadata(
-                    correlation_id=se.metadata_.get("correlation_id"),
-                    user_id=se.metadata_.get("user_id"),
-                )
+            event.metadata = EventMetadata(
+                correlation_id=stored_metadata.get("correlation_id"),
+                user_id=stored_metadata.get("user_id"),
+                tenant_id=tenant_id or None,
+            )
 
             with tracer.start_as_current_span("outbox.dispatch_event") as span:
                 span.set_attribute("outbox.event_type", se.event_type)
@@ -529,6 +617,9 @@ class OutboxWorker:
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             raise
+        finally:
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
 
 
 async def _wait_for_signals(stop_event: asyncio.Event) -> None:

@@ -35,9 +35,9 @@ export function MobileDrawerQuickActions({
             title={action.label}
             className={cn(
               "flex flex-col items-center justify-center gap-1 rounded-xl py-3 px-1",
-              "border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle)",
+              "border border-(--glass-border) bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
               "text-(--text-primary) text-[11px] font-medium leading-tight",
-              "transition-[transform,opacity,background-color] hover:bg-(--bg-surface-hover)/(--opacity-dim)",
+              "transition-[transform,opacity,background-color] hover:bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]",
               prefersReducedMotion ? "duration-0" : "duration-200",
               "cursor-pointer",
               !prefersReducedMotion && "active:scale-[0.97]"

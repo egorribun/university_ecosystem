@@ -1,12 +1,14 @@
 """Evidence-validating coordinator for one owner-scoped NATS acceptance run.
 
-The future adapter authenticates signed ownership and bounds every nested
-operation. These projections are evidence, not authentication substitutes.
-No runtime adapter or command invokes this coordinator yet.
+The owned NATS outage CLI (scripts/owned_nats_outage_cli.py) calls
+run_owned_outage with the verified transport adapters. Those adapters
+authenticate signed ownership and bound every nested operation. These
+projections are evidence, not authentication substitutes.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -132,10 +134,169 @@ class ChatRowsEvidence:
     participants: tuple[ChatParticipantRow, ...]
 
 
+class SendPhase(StrEnum):
+    """Closed send-boundary failure tokens; never transport or response text."""
+
+    TIMEOUT = "timeout"
+    CONNECT_ERROR = "connect_error"
+    BODY_MISMATCH = "body_mismatch"
+    NOT_READY = "not_ready"
+
+
+class BackendFailureCategory(StrEnum):
+    DATABASE = "database"
+    RESPONSE_VALIDATION = "response_validation"
+    # Allowlisted non-database unhandled failure; UNKNOWN means no evidence.
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
+class BackendFailureKind(StrEnum):
+    MISSING_GREENLET = "missing_greenlet"
+    INTEGRITY = "integrity"
+    OPERATIONAL = "operational"
+    PROGRAMMING = "programming"
+    NO_RESULT = "no_result"
+    MULTIPLE_RESULTS = "multiple_results"
+    INVALID_REQUEST = "invalid_request"
+    STATEMENT = "statement"
+    DATABASE = "database"
+    RESPONSE_VALIDATION = "response_validation"
+    RUNTIME_ERROR = "runtime_error"
+    PYDANTIC_VALIDATION = "pydantic_validation"
+    REDIS = "redis"
+    DRIVER = "driver"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
+_DATABASE_KINDS = frozenset(
+    {
+        BackendFailureKind.MISSING_GREENLET,
+        BackendFailureKind.INTEGRITY,
+        BackendFailureKind.OPERATIONAL,
+        BackendFailureKind.PROGRAMMING,
+        BackendFailureKind.NO_RESULT,
+        BackendFailureKind.MULTIPLE_RESULTS,
+        BackendFailureKind.INVALID_REQUEST,
+        BackendFailureKind.STATEMENT,
+        BackendFailureKind.DATABASE,
+    }
+)
+_OTHER_KINDS = frozenset(
+    {
+        BackendFailureKind.RUNTIME_ERROR,
+        BackendFailureKind.PYDANTIC_VALIDATION,
+        BackendFailureKind.REDIS,
+        BackendFailureKind.DRIVER,
+        BackendFailureKind.OTHER,
+    }
+)
+
+
+class BackendCaptureStage(StrEnum):
+    """Last bounded diagnostic boundary, never an inferred backend cause."""
+
+    DEADLINE_RESERVE = "deadline_reserve"
+    REQUEST_ID = "request_id"
+    OWNER_BEFORE = "owner_before"
+    RUNTIME_BEFORE = "runtime_before"
+    LOG_PREPARE = "log_prepare"
+    LOG_PROCESS = "log_process"
+    RUNTIME_AFTER = "runtime_after"
+    PROJECTION_FRAMING = "projection_framing"
+    PROJECTION_INVALID = "projection_invalid"
+    # No diagnostic record of the event was present in the captured window.
+    PROJECTION_ABSENT = "projection_absent"
+    # Diagnostic records were present, but none carried this request id.
+    PROJECTION_UNMATCHED = "projection_unmatched"
+    PROJECTION_AMBIGUOUS = "projection_ambiguous"
+    OWNER_AFTER = "owner_after"
+
+
+class BackendCaptureRecorder:
+    """Internal finite checkpoint without raw process or request material."""
+
+    __slots__ = ("_stage",)
+
+    def __init__(self) -> None:
+        self._stage = BackendCaptureStage.DEADLINE_RESERVE
+
+    @property
+    def stage(self) -> BackendCaptureStage:
+        return self._stage
+
+    def record(self, stage: BackendCaptureStage) -> None:
+        if type(stage) is not BackendCaptureStage:
+            raise TypeError("invalid backend capture stage")
+        self._stage = stage
+
+
+@dataclass(frozen=True)
+class BackendFailureDiagnostic:
+    """Finite projection only; never contains private correlation or log data."""
+
+    category: BackendFailureCategory
+    kind: BackendFailureKind
+    sqlstate: str = "UNKNOWN"
+    capture_stage: BackendCaptureStage | None = field(
+        default=None, compare=False, repr=False
+    )
+
+
+def valid_backend_diagnostic(value: object) -> bool:
+    if (
+        type(value) is BackendFailureDiagnostic
+        and getattr(value, "capture_stage", None) is not None
+    ):
+        return (
+            type(value.capture_stage) is BackendCaptureStage
+            and value.category is BackendFailureCategory.UNKNOWN
+            and value.kind is BackendFailureKind.UNKNOWN
+            and type(value.sqlstate) is str
+            and value.sqlstate == "UNKNOWN"
+        )
+    return (
+        type(value) is BackendFailureDiagnostic
+        and type(getattr(value, "category", None)) is BackendFailureCategory
+        and type(getattr(value, "kind", None)) is BackendFailureKind
+        and (
+            (
+                value.category is BackendFailureCategory.DATABASE
+                and value.kind in _DATABASE_KINDS
+            )
+            or (
+                value.category is BackendFailureCategory.RESPONSE_VALIDATION
+                and value.kind is BackendFailureKind.RESPONSE_VALIDATION
+            )
+            or (
+                value.category is BackendFailureCategory.OTHER
+                and value.kind in _OTHER_KINDS
+            )
+            or (
+                value.category is BackendFailureCategory.UNKNOWN
+                and value.kind is BackendFailureKind.UNKNOWN
+            )
+        )
+        and type(getattr(value, "sqlstate", None)) is str
+        and (
+            value.sqlstate == "UNKNOWN"
+            or (
+                value.category is BackendFailureCategory.DATABASE
+                and re.fullmatch(r"[0-9A-Z]{5}", value.sqlstate) is not None
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class MessagePostEvidence:
     status_code: int | None
     message: MessageEvidence | None
+    phase: SendPhase | None = None
+    backend_diagnostic: BackendFailureDiagnostic | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 @dataclass(frozen=True)
@@ -157,10 +318,31 @@ class BrokerMessageEvidence:
     envelope: object
 
 
+class BrokerProbePhase(StrEnum):
+    """Finite broker-probe boundaries; never private process or wire data."""
+
+    PRECHECK = "precheck"
+    RENDER = "render"
+    RUNTIME = "runtime"
+    RUNTIME_SNAPSHOT = "runtime_snapshot"
+    RUNTIME_CONFIG = "runtime_config"
+    RUNTIME_CONFIG_REQUEST = "runtime_config_request"
+    RUNTIME_CONFIG_PROCESS = "runtime_config_process"
+    RUNTIME_CONFIG_DECODE = "runtime_config_decode"
+    RUNTIME_CONFIG_REVALIDATION = "runtime_config_revalidation"
+    RUNTIME_RESTORED_STATE = "runtime_restored_state"
+    PRIVATE_EXEC = "private_exec"
+    DECODE = "decode"
+    POSTCHECK = "postcheck"
+
+
 @dataclass(frozen=True)
 class BrokerErrorEvidence:
     status: int | None
     error_code: int | None
+    failure_phase: BrokerProbePhase | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 type BrokerEvidence = BrokerMessageEvidence | BrokerErrorEvidence
@@ -201,6 +383,9 @@ class OutageCheckpoint(StrEnum):
     CREATE_DM_ONCE = "create_dm_once"
     READ_DM = "read_dm"
     PENDING_COUNT = "pending_count"
+    BROKER_PROBE = "broker_probe"
+    BROKER_RECEIPT = "broker_receipt"
+    SEND_MESSAGE = "send_message"
     COORDINATOR_EXCEPTION = "coordinator_exception"
 
 
@@ -251,7 +436,15 @@ class OutageResult:
     outcome: OutageOutcome
     stage: OutageStage
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
+    send_phase: SendPhase | None = field(default=None, compare=False, repr=False)
+    send_http_status: int | None = field(default=None, compare=False, repr=False)
+    backend_diagnostic: BackendFailureDiagnostic | None = field(
+        default=None, compare=False, repr=False
+    )
     runtime_diagnostic: RuntimeObservationPhase | None = field(
+        default=None, compare=False, repr=False
+    )
+    broker_diagnostic: BrokerProbePhase | None = field(
         default=None, compare=False, repr=False
     )
 
@@ -556,6 +749,19 @@ class _Context:
     chat_id: str
 
 
+def _send_post_failure(
+    response: MessagePostEvidence,
+) -> tuple[SendPhase | None, int | None]:
+    """Name the POST boundary failure; a clean 200 with a message names nothing."""
+    if response.phase is not None:
+        return response.phase, None
+    if type(response.status_code) is int and response.status_code != 200:
+        return None, response.status_code
+    if response.status_code != 200 or response.message is None:
+        return SendPhase.BODY_MISMATCH, None
+    return None, None
+
+
 class _Coordinator:
     def __init__(self, ports: OutagePorts, clock: Clock, sleep: Sleep) -> None:
         self.ports = ports
@@ -565,6 +771,10 @@ class _Coordinator:
         self.stage = OutageStage.PREFLIGHT
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
         self.runtime_diagnostic: RuntimeObservationPhase | None = None
+        self.broker_diagnostic: BrokerProbePhase | None = None
+        self.send_phase: SendPhase | None = None
+        self.send_http_status: int | None = None
+        self.backend_diagnostic: BackendFailureDiagnostic | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -740,17 +950,31 @@ class _Coordinator:
     def _send_and_observe(self, context: _Context) -> tuple[MessageEvidence, str, int]:
         self.stage = OutageStage.SEND
         content = "owned NATS acceptance probe"
-        response = _call(
-            self.primary, self.ports.send_message_once, context.chat_id, content
-        )
-        _require(
-            type(response.status_code) is int
-            and response.status_code == 200
-            and response.message is not None
-        )
+        self.checkpoint = OutageCheckpoint.SEND_MESSAGE
+        try:
+            response = _call(
+                self.primary, self.ports.send_message_once, context.chat_id, content
+            )
+        except _EvidenceFailure:
+            self.send_phase = SendPhase.TIMEOUT
+            raise
+        except Exception:
+            self.send_phase = SendPhase.NOT_READY
+            raise
+        self.send_phase, self.send_http_status = _send_post_failure(response)
+        if self.send_http_status == 500 and valid_backend_diagnostic(
+            response.backend_diagnostic
+        ):
+            self.backend_diagnostic = response.backend_diagnostic
         message = response.message
+        _require(
+            self.send_phase is None
+            and self.send_http_status is None
+            and message is not None
+        )
         if message is None:
             raise _EvidenceFailure
+        self.checkpoint = None
         rows = _call(
             self.primary,
             self.ports.read_correlation,
@@ -810,6 +1034,8 @@ class _Coordinator:
         self.stage = OutageStage.BROKER
         receipt = self.primary.child(45)
         while True:
+            self.checkpoint = OutageCheckpoint.BROKER_PROBE
+            self.broker_diagnostic = None
             evidence = _call(
                 receipt,
                 self.ports.broker_last_message,
@@ -818,6 +1044,8 @@ class _Coordinator:
                 f"chat.{context.chat_id}",
             )
             if isinstance(evidence, BrokerMessageEvidence):
+                self.broker_diagnostic = None
+                self.checkpoint = OutageCheckpoint.BROKER_RECEIPT
                 _require(
                     validate_broker_receipt(
                         message,
@@ -827,12 +1055,18 @@ class _Coordinator:
                     )
                     is BrokerVerdict.VALID
                 )
+                self.checkpoint = None
                 return
+            if isinstance(evidence, BrokerErrorEvidence):
+                phase = evidence.failure_phase
+                if type(phase) is BrokerProbePhase:
+                    self.broker_diagnostic = phase
             _require(
                 isinstance(evidence, BrokerErrorEvidence)
                 and classify_broker_error(evidence.status, evidence.error_code)
                 is BrokerVerdict.MISSING
             )
+            self.broker_diagnostic = None
             self._wait(receipt)
 
     def run(self) -> OutageResult:
@@ -875,6 +1109,7 @@ class _Coordinator:
                     self.stage = previous_stage
             _live(self.primary)
             self._delivery(context, message, event_id, retry_count)
+            self.checkpoint = None
             self.stage = OutageStage.FINAL_REVALIDATION
             self._complete_inventory(context, self.primary)
             accepted = True
@@ -902,14 +1137,27 @@ class _Coordinator:
                         self.checkpoint = None
         if accepted:
             return OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
+        send_failure = (
+            self.stage is OutageStage.SEND
+            and self.checkpoint is OutageCheckpoint.SEND_MESSAGE
+        )
         return OutageResult(
             OutageOutcome.FAILED,
             self.stage,
             self.checkpoint,
+            send_phase=self.send_phase if send_failure else None,
+            send_http_status=self.send_http_status if send_failure else None,
+            backend_diagnostic=self.backend_diagnostic if send_failure else None,
             runtime_diagnostic=(
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT
                 and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                else None
+            ),
+            broker_diagnostic=(
+                self.broker_diagnostic
+                if self.stage is OutageStage.BROKER
+                and self.checkpoint is OutageCheckpoint.BROKER_PROBE
                 else None
             ),
         )

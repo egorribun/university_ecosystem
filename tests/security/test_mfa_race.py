@@ -1,100 +1,161 @@
-import asyncio
+"""AUD-426: one MFA challenge is consumed once under real PostgreSQL contention.
 
+The requests travel over a real loopback TCP socket: the application runs under
+a uvicorn server started inside the test loop, and every request is an HTTP
+request from an ``httpx`` client, so each one is parsed by the server and opens
+its own database session.  Single use is enforced by the PostgreSQL row locks
+taken in ``consume_challenge`` (the User row, then the challenge row) and by the
+post-lock re-read of the challenge.  No Python-level ``asyncio.Lock`` serialises
+the requests.  SQLite has no ``SELECT ... FOR UPDATE``, so these tests are
+opt-in and run only when DATABASE_URL names PostgreSQL.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from collections.abc import AsyncIterator
+
+import httpx
 import pyotp
 import pytest
+import pytest_asyncio
+import uvicorn
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import app.models as models
+from tests.fixtures.auth.auth_fixtures import create_access_token
+from tests.fixtures.infrastructure.infrastructure import _configure_csrf_client
+
+_DATABASE_URL = os.getenv("DATABASE_URL", "")
+CONCURRENT_REQUESTS = 10
+_SERVER_START_TIMEOUT_SECONDS = 10.0
+
+pytestmark = [
+    pytest.mark.security,
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not _DATABASE_URL.startswith("postgresql"),
+        reason="AUD-426 requires a PostgreSQL DATABASE_URL (row-lock contention)",
+    ),
+]
 
 
-@pytest.mark.security
-@pytest.mark.asyncio
+@pytest_asyncio.fixture
+async def live_client(app) -> AsyncIterator[httpx.AsyncClient]:
+    """HTTP client for the application served on a real loopback socket."""
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=0,
+        lifespan="off",
+        access_log=False,
+        log_level="warning",
+    )
+    server = uvicorn.Server(config)
+    serving = asyncio.create_task(server.serve())
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _SERVER_START_TIMEOUT_SECONDS
+        while not server.started:
+            if serving.done() or loop.time() > deadline:
+                raise RuntimeError("uvicorn did not start for the AUD-426 race test")
+            await asyncio.sleep(0.01)
+        sockets = server.servers[0].sockets
+        port = sockets[0].getsockname()[1]
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{port}/api/v1",
+            follow_redirects=True,
+            timeout=httpx.Timeout(30.0),
+        ) as client:
+            await _configure_csrf_client(client, "/auth/csrf-cookie")
+            yield client
+    finally:
+        server.should_exit = True
+        await serving
+
+
+async def _consumed_step_up_challenges(
+    db_session: AsyncSession, user_id: object
+) -> int:
+    rows = (
+        (
+            await db_session.execute(
+                select(models.MfaChallenge).where(
+                    models.MfaChallenge.user_id == user_id,
+                    models.MfaChallenge.flow == "step_up",
+                    models.MfaChallenge.consumed_at.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return len(rows)
+
+
 async def test_mfa_challenge_race_condition(
-    async_client, user_with_totp, mfa_challenge_factory, monkeypatch
-):
-    """
-    Test that concurrent MFA verification attempts for the same challenge
-    result in only one success due to row-level locking.
-    """
-    # 1. Setup: Create a real TOTP secret and a challenge
+    async_client: httpx.AsyncClient,
+    live_client: httpx.AsyncClient,
+    user_with_totp,
+    mfa_challenge_factory,
+) -> None:
+    """Concurrent verification of one login challenge yields exactly one success."""
+    # The factory binds the challenge to the pre-auth cookie and user agent of
+    # the ASGI client; the live socket client must present the same identity.
     challenge = await mfa_challenge_factory(user_with_totp)
-    totp = pyotp.TOTP(user_with_totp._totp_secret)
-    valid_code = totp.now()
+    live_client.headers["user-agent"] = async_client.headers["user-agent"]
+    live_client.cookies.set(
+        "mfa_pre_auth_v1", async_client.cookies["mfa_pre_auth_v1"], path="/"
+    )
+    payload = {
+        "challenge_token": challenge.token,
+        "code": pyotp.TOTP(user_with_totp._totp_secret).now(),
+        "method": "totp",
+    }
 
-    # 2. Simulate row-level locking for SQLite (which doesn't support SELECT FOR UPDATE)
-    # We wrap consume_challenge with an asyncio lock to ensure fetch-verify-commit atomicity
-    from app.auth import mfa as mfa_module
+    results = await asyncio.gather(
+        *(
+            live_client.post("/auth/mfa/verify", json=payload)
+            for _ in range(CONCURRENT_REQUESTS)
+        )
+    )
 
-    real_consume_challenge = mfa_module.consume_challenge
-    lock = asyncio.Lock()
-
-    async def mocked_consume_challenge(*args, **kwargs):
-        async with lock:
-            # Add a tiny delay to ensure concurrent tasks actually contend for the lock
-            await asyncio.sleep(0.05)
-            return await real_consume_challenge(*args, **kwargs)
-
-    monkeypatch.setattr("app.auth.mfa.consume_challenge", mocked_consume_challenge)
-
-    # 3. Execution: Send 10 concurrent requests
-    async def send_request():
-        payload = {
-            "challenge_token": challenge.token,
-            "code": valid_code,
-            "method": "totp",
-        }
-        # Use the correct API path relative to base_url /api/v1
-        return await async_client.post("/auth/mfa/verify", json=payload)
-
-    tasks = [send_request() for _ in range(10)]
-    results = await asyncio.gather(*tasks)
-
-    # 4. Verification
-    successes = sum(1 for r in results if r.status_code == 200)
-    failures = sum(1 for r in results if r.status_code == 400)
-
-    # Assert that exactly one request succeeded and the rest were rejected as already consumed
-    assert successes == 1, f"Expected exactly 1 success, got {successes}"
-    assert failures == 9, f"Expected exactly 9 failures, got {failures}"
+    statuses = [response.status_code for response in results]
+    assert statuses.count(200) == 1, statuses
+    assert statuses.count(400) == CONCURRENT_REQUESTS - 1, statuses
 
 
-@pytest.mark.security
-@pytest.mark.asyncio
 async def test_mfa_step_up_challenge_verification_race(
-    async_client, user_with_totp, mfa_challenge_factory, monkeypatch
-):
-    """
-    Test that concurrent step-up challenge verification requests
-    result in only one success and prevent race conditions.
-    """
-    challenge = await mfa_challenge_factory(user_with_totp)
-    totp = pyotp.TOTP(user_with_totp._totp_secret)
-    valid_code = totp.now()
+    live_client: httpx.AsyncClient,
+    user_with_totp,
+    db_session: AsyncSession,
+) -> None:
+    """Concurrent HTTP verification of one step-up challenge consumes it once."""
+    access_token, _session = await create_access_token(
+        str(user_with_totp.id), db_session
+    )
+    headers = {"Authorization": f"Bearer {access_token}"}
+    started = await live_client.post("/auth/mfa/step-up", headers=headers)
+    assert started.status_code == 202, started.text
+    totp_entry = next(
+        method for method in started.json()["methods"] if method["method"] == "totp"
+    )
+    payload = {
+        "challenge_token": totp_entry["challenge_token"],
+        "code": pyotp.TOTP(user_with_totp._totp_secret).now(),
+        "method": "totp",
+    }
 
-    from app.auth import mfa as mfa_module
+    results = await asyncio.gather(
+        *(
+            live_client.post("/auth/mfa/verify", json=payload, headers=headers)
+            for _ in range(CONCURRENT_REQUESTS)
+        )
+    )
 
-    real_consume_challenge = mfa_module.consume_challenge
-    lock = asyncio.Lock()
-
-    async def mocked_consume_challenge(*args, **kwargs):
-        async with lock:
-            await asyncio.sleep(0.02)
-            return await real_consume_challenge(*args, **kwargs)
-
-    monkeypatch.setattr("app.auth.mfa.consume_challenge", mocked_consume_challenge)
-
-    async def send_request():
-        payload = {
-            "challenge_token": challenge.token,
-            "code": valid_code,
-            "method": "totp",
-        }
-        return await async_client.post("/auth/mfa/verify", json=payload)
-
-    # Trigger multiple concurrent requests to simulate a race condition
-    tasks = [send_request() for _ in range(5)]
-    results = await asyncio.gather(*tasks)
-
-    successes = sum(1 for r in results if r.status_code == 200)
-    failures = sum(1 for r in results if r.status_code == 400)
-
-    # Assert that at most one verification request succeeded (it might be 0 if the code expired, or 1)
-    assert successes <= 1
-    assert successes + failures == 5
+    statuses = [response.status_code for response in results]
+    assert statuses.count(200) == 1, statuses
+    assert statuses.count(400) == CONCURRENT_REQUESTS - 1, statuses
+    assert await _consumed_step_up_challenges(db_session, user_with_totp.id) == 1

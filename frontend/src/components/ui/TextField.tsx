@@ -134,7 +134,9 @@ export const TextField = React.forwardRef<
             role={error ? "alert" : undefined}
             className={cn(
               "px-1 text-xs font-medium leading-tight",
-              error ? "text-(--error-text)" : "text-(--text-tertiary)/(--opacity-strong)"
+              error
+                ? "text-(--error-text)"
+                : "text-(--text-tertiary)/[calc(var(--opacity-strong)*100%)]"
             )}
           >
             {helperText}

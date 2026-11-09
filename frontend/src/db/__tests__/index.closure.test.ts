@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { addRxPlugin, createRxDatabase, getRxStorageDexie, wrappedValidateAjvStorage } = vi.hoisted(
-  () => ({
+const { addRxPlugin, createRxDatabase, getRxStorageDexie, wrappedValidateZSchemaStorage } =
+  vi.hoisted(() => ({
     addRxPlugin: vi.fn(),
     createRxDatabase: vi.fn(),
     getRxStorageDexie: vi.fn(() => "dexie-storage"),
-    wrappedValidateAjvStorage: vi.fn(({ storage }: { storage: unknown }) => ({
+    wrappedValidateZSchemaStorage: vi.fn(({ storage }: { storage: unknown }) => ({
       storage,
     })),
-  })
-)
+  }))
 
 vi.mock("rxdb", () => ({
   addRxPlugin,
@@ -17,7 +16,7 @@ vi.mock("rxdb", () => ({
 }))
 vi.mock("rxdb/plugins/dev-mode", () => ({ RxDBDevModePlugin: "dev-mode-plugin" }))
 vi.mock("rxdb/plugins/storage-dexie", () => ({ getRxStorageDexie }))
-vi.mock("rxdb/plugins/validate-ajv", () => ({ wrappedValidateAjvStorage }))
+vi.mock("rxdb/plugins/validate-z-schema", () => ({ wrappedValidateZSchemaStorage }))
 
 let getDatabase: typeof import("../index").getDatabase
 let resetDatabaseForTesting: typeof import("../index").resetDatabaseForTesting
@@ -102,7 +101,7 @@ describe("RxDB database lifecycle", () => {
       storage: { storage: "dexie-storage" },
     })
     expect(getRxStorageDexie).toHaveBeenCalledOnce()
-    expect(wrappedValidateAjvStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
+    expect(wrappedValidateZSchemaStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
     expect(database.addCollections).toHaveBeenCalledOnce()
     expect(database.addCollections).toHaveBeenCalledWith({
       schedule: expect.objectContaining({ schema: expect.any(Object) }),
@@ -232,6 +231,108 @@ describe("AUD-102 production initialization recovery", () => {
       creation.reject(originalError)
       await Promise.allSettled([creation.promise])
       await failedCallers
+      await calls.settle()
+    }
+  })
+
+  it("does not clear a newer cached creation when an idle reset races with creation rejection", async () => {
+    createRxDatabase.mockReset()
+    const firstCreation = deferredDatabaseOperation<ReturnType<typeof makeDatabase>>()
+    const retryCreation = deferredDatabaseOperation<ReturnType<typeof makeDatabase>>()
+    const originalError = new Error("stale database creation failed")
+    const replacement = makeDatabase()
+    const calls = trackDatabaseCalls()
+    createRxDatabase
+      .mockReturnValueOnce(firstCreation.promise)
+      .mockReturnValueOnce(retryCreation.promise)
+      .mockResolvedValue(replacement)
+
+    // The empty-cache reset awaits a null sentinel. Start an older creation
+    // before it resumes, then a newer one after the reset releases the cache.
+    const idleReset = resetDatabaseForTesting()
+    const initialCallers = Promise.allSettled([calls.request(), calls.request()])
+
+    try {
+      await idleReset
+      const retryCallers = [calls.request(), calls.request()]
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+
+      firstCreation.reject(originalError)
+      expectOriginalInitializationError(await initialCallers, originalError)
+
+      retryCreation.resolve(replacement)
+      const recovered = await Promise.all(retryCallers)
+      expect(recovered[0]).toBe(replacement)
+      expect(recovered[1]).toBe(replacement)
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+      await expect(calls.request()).resolves.toBe(replacement)
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+    } finally {
+      firstCreation.reject(originalError)
+      retryCreation.resolve(replacement)
+      await idleReset
+      await initialCallers
+      await calls.settle()
+    }
+  })
+
+  it("keeps a newer cached creation when an older collection failure finishes closing", async () => {
+    createRxDatabase.mockReset()
+    const firstCreation = deferredDatabaseOperation<ReturnType<typeof makeDatabase>>()
+    const retryCreation = deferredDatabaseOperation<ReturnType<typeof makeDatabase>>()
+    const closeStarted = deferredDatabaseOperation<void>()
+    const closeRelease = deferredDatabaseOperation<boolean>()
+    const originalError = new Error("stale collection registration failed")
+    const replacement = makeDatabase()
+    const remove = vi.fn()
+    const close = vi.fn(async () => {
+      closeStarted.resolve(undefined)
+      await closeRelease.promise
+    })
+    const failedDatabase = makeDatabase({
+      addCollections: vi.fn().mockRejectedValue(originalError),
+      close,
+      remove,
+    })
+    const calls = trackDatabaseCalls()
+    createRxDatabase
+      .mockReturnValueOnce(firstCreation.promise)
+      .mockReturnValueOnce(retryCreation.promise)
+      .mockResolvedValue(replacement)
+
+    // The reset's null sentinel lets a new initialization start while the
+    // stale attempt is still pending, exercising the identity guard on settle.
+    const idleReset = resetDatabaseForTesting()
+    const initialCallers = Promise.allSettled([calls.request(), calls.request()])
+
+    try {
+      await idleReset
+      const retryCallers = [calls.request(), calls.request()]
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+
+      firstCreation.resolve(failedDatabase)
+      await closeStarted.promise
+      retryCreation.resolve(replacement)
+      const recovered = await Promise.all(retryCallers)
+      expect(recovered[0]).toBe(replacement)
+      expect(recovered[1]).toBe(replacement)
+
+      closeRelease.resolve(true)
+      expectOriginalInitializationError(await initialCallers, originalError)
+      expect(failedDatabase.addCollections).toHaveBeenCalledOnce()
+      expect(close).toHaveBeenCalledOnce()
+      expect(remove).not.toHaveBeenCalled()
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+      await expect(calls.request()).resolves.toBe(replacement)
+      expect(createRxDatabase).toHaveBeenCalledTimes(2)
+    } finally {
+      closeRelease.resolve(true)
+      closeStarted.resolve(undefined)
+      firstCreation.resolve(failedDatabase)
+      retryCreation.resolve(replacement)
+      await Promise.all([closeStarted.promise, closeRelease.promise])
+      await idleReset
+      await initialCallers
       await calls.settle()
     }
   })

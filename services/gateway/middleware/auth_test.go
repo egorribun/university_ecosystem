@@ -31,6 +31,9 @@ func createValidToken(secret string, claims Claims) string {
 	if len(claims.Audience) == 0 {
 		claims.Audience = jwt.ClaimStrings{DefaultJWTAudience}
 	}
+	if claims.Issuer == "" {
+		claims.Issuer = DefaultJWTIssuer
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
@@ -51,6 +54,7 @@ func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
 	assert.NotNil(t, middleware)
 	assert.Equal(t, []byte(testSecret), middleware.secret)
 	assert.Equal(t, DefaultJWTAudience, middleware.audience)
+	assert.Equal(t, DefaultJWTIssuer, middleware.issuer)
 }
 
 func TestValidate_EnforcesExpectedAudience(t *testing.T) {
@@ -59,6 +63,7 @@ func TestValidate_EnforcesExpectedAudience(t *testing.T) {
 
 	baseClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ID:        "audience-jti",
@@ -99,6 +104,7 @@ func TestOptional_MismatchedAudienceRemainsUnauthenticated(t *testing.T) {
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			Audience:  jwt.ClaimStrings{"another-service"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -393,6 +399,7 @@ func TestValidate_AcceptsRS256Token(t *testing.T) {
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			Audience:  jwt.ClaimStrings{DefaultJWTAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

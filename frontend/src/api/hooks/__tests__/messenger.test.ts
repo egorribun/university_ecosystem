@@ -16,8 +16,9 @@
  * shapes from useMessengerController.ts (line 69 + 75 + 82) so the
  * factory refactor preserves React Query cache continuity.
  */
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { chatApi } from "@/api/chat"
 import {
   chatQueryKey,
   chatQueryOptions,
@@ -28,6 +29,10 @@ import {
   reactorsQueryKey,
   reactorsQueryOptions,
 } from "@/api/hooks/messenger"
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe("chatsQueryKey", () => {
   it("returns the canonical ['chats'] tuple matching pre-W180 inline key", () => {
@@ -63,6 +68,19 @@ describe("chatsQueryOptions", () => {
   it("queryFn is callable (function shape; not invoked here — would hit network)", () => {
     const opts = chatsQueryOptions()
     expect(typeof opts.queryFn).toBe("function")
+  })
+
+  it("queryFn without a consuming client fetches only the first page through chatApi", async () => {
+    const page = { items: [], has_more: false, next_cursor: null }
+    const getChats = vi.spyOn(chatApi, "getChats").mockResolvedValue(page)
+    const signal = new AbortController().signal
+    const opts = chatsQueryOptions()
+
+    await expect(
+      (opts.queryFn as (ctx: { signal: AbortSignal }) => Promise<unknown>)({ signal })
+    ).resolves.toBe(page)
+
+    expect(getChats).toHaveBeenCalledExactlyOnceWith(undefined, 20, signal)
   })
 })
 

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@tanstack/react-router")
 import { StrictMode, useState } from "react"
 import type { ComponentProps, ReactNode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -19,7 +20,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tanstack/react-router")>()
+  const actual = await importOriginal<_MockedModuleType1>()
 
   return {
     ...actual,

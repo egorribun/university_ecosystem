@@ -102,14 +102,174 @@ def test_inventory_classifies_route_ownership_deterministically(tmp_path: Path) 
         ("app.api.routes:canonical_route:POST:/canonical", "canonical_dishka"),
         ("app.api.routes:legacy_route:POST:/legacy", "approved_legacy"),
         ("app.api.routes:public_route:GET:/public", "public_no_db"),
-        ("app.api.routes:websocket_worker:WEBSOCKET:/socket", "worker_internal"),
+        ("app.api.routes:websocket_worker:WEBSOCKET:/socket", "websocket_session"),
     ]
     assert first["summary"] == {
         "approved_legacy": 1,
         "canonical_dishka": 1,
         "public_no_db": 1,
-        "worker_internal": 2,
+        "websocket_session": 1,
+        "worker_internal": 1,
     }
+
+
+def test_component_annotated_session_is_a_dishka_owner(tmp_path: Path) -> None:
+    app = _fixture_app(tmp_path)
+    _write(
+        app / "api" / "component_routes.py",
+        """
+from typing import Annotated as A
+import dishka as d
+from dishka.entities.key import FromComponent as FC
+import unrelated
+import typing_extensions as tx
+from fastapi import APIRouter, Depends
+from app.core.database import get_db
+
+router = APIRouter()
+
+@router.get("/component")
+async def component(db: A[AsyncDatabaseSession, "tag", d.FromComponent("read")]):
+    return db
+
+@router.get("/mixed-component")
+async def mixed_component(
+    db: A[AsyncDatabaseSession, d.FromComponent("read")],
+    legacy=Depends(get_db),
+):
+    return db, legacy
+
+@router.get("/non-session")
+async def non_session(audit: A[AuditService, d.FromComponent("default")]):
+    return audit
+
+@router.get("/unrelated")
+async def unrelated_marker(db: A[AsyncDatabaseSession, unrelated.FromComponent("read")]):
+    return db
+
+@router.get("/unrelated-annotation")
+async def unrelated_annotation(db: unrelated.Annotated[AsyncDatabaseSession, d.FromComponent("read")]):
+    return db
+
+@router.get("/nested")
+async def nested(db: list[tx.Annotated[list[AsyncDatabaseSession], FC("read")]]):
+    return db
+""",
+    )
+
+    routes = {route["id"]: route for route in build_inventory(app)["routes"]}
+
+    component = routes["app.api.component_routes:component:GET:/component"]
+    assert component["ownership"] == "canonical_dishka"
+    assert component["dishka_signals"] == [
+        "Annotated[AsyncDatabaseSession, d.FromComponent('read')]"
+    ]
+    mixed = routes["app.api.component_routes:mixed_component:GET:/mixed-component"]
+    assert mixed["ownership"] == "mixed"
+    assert mixed["legacy_dependencies"] == ["app.core.database.get_db"]
+    non_session = routes["app.api.component_routes:non_session:GET:/non-session"]
+    assert non_session["ownership"] == "public_no_db"
+    assert non_session["dishka_signals"] == [
+        "Annotated[AuditService, d.FromComponent('default')]"
+    ]
+    unrelated = routes["app.api.component_routes:unrelated_marker:GET:/unrelated"]
+    assert unrelated["ownership"] == "public_no_db"
+    assert unrelated["dishka_signals"] == []
+    unrelated_annotation = routes[
+        "app.api.component_routes:unrelated_annotation:GET:/unrelated-annotation"
+    ]
+    assert unrelated_annotation["ownership"] == "public_no_db"
+    assert unrelated_annotation["dishka_signals"] == []
+    nested = routes["app.api.component_routes:nested:GET:/nested"]
+    assert nested["ownership"] == "canonical_dishka"
+    assert nested["dishka_signals"] == [
+        "Annotated[list[AsyncDatabaseSession], FC('read')]"
+    ]
+
+    ledger = tmp_path / "component-ledger.json"
+    ledger.write_text(json.dumps(build_inventory(app)), encoding="utf-8")
+    assert check_inventory(app, ledger) == [
+        "mixed route dependency ownership is forbidden: "
+        "app.api.component_routes:mixed_component:GET:/mixed-component"
+    ]
+
+
+def test_real_schedule_ics_reports_component_session_ownership() -> None:
+    routes = {
+        route["id"]: route for route in build_inventory(REPO_ROOT / "app")["routes"]
+    }
+
+    ics = routes["app.routers.schedule:download_schedule_ics:GET:/ics"]
+    assert ics["ownership"] == "canonical_dishka"
+    assert ics["dishka_signals"] == [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
+        "Annotated[ScheduleService, FromComponent(READ_COMPONENT)]",
+        "inject",
+    ]
+
+
+def test_check_rejects_unreviewed_component_injection(tmp_path: Path) -> None:
+    app = _fixture_app(tmp_path)
+    path = app / "api" / "component.py"
+    _write(
+        path,
+        """
+from typing import Annotated
+from dishka import FromComponent
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.get("/records")
+async def records(db: Annotated[AsyncDatabaseSession, "public"]):
+    return db
+""",
+    )
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text(json.dumps(build_inventory(app)), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"public"', 'FromComponent("read")'),
+        encoding="utf-8",
+    )
+
+    violations = check_inventory(app, ledger)
+
+    assert (
+        "route dependency inventory drift: changed app.api.component:records:GET:/records"
+        in violations
+    )
+    assert any(
+        "route dependency inventory summary drift" in item for item in violations
+    )
+
+
+def test_check_rejects_changed_component_selector(tmp_path: Path) -> None:
+    app = _fixture_app(tmp_path)
+    path = app / "api" / "component.py"
+    _write(
+        path,
+        """
+from typing import Annotated
+from dishka import FromComponent
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.get("/records")
+async def records(db: Annotated[AsyncDatabaseSession, FromComponent("read")]):
+    return db
+""",
+    )
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text(json.dumps(build_inventory(app)), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            'FromComponent("read")', 'FromComponent("other")'
+        ),
+        encoding="utf-8",
+    )
+
+    assert check_inventory(app, ledger) == [
+        "route dependency inventory drift: changed app.api.component:records:GET:/records"
+    ]
 
 
 def test_check_rejects_new_legacy_route_without_ledger_update(tmp_path: Path) -> None:
@@ -143,9 +303,9 @@ def test_check_rejects_summary_drift_even_when_routes_match(tmp_path: Path) -> N
     assert violations == [
         "route dependency inventory summary drift: "
         "expected {'approved_legacy': 1, 'canonical_dishka': 1, "
-        "'public_no_db': 1, 'worker_internal': 2}, "
+        "'public_no_db': 1, 'websocket_session': 1, 'worker_internal': 1}, "
         "found {'approved_legacy': 0, 'canonical_dishka': 1, "
-        "'public_no_db': 1, 'worker_internal': 2}",
+        "'public_no_db': 1, 'websocket_session': 1, 'worker_internal': 1}",
     ]
 
 
@@ -179,6 +339,56 @@ async def mixed_route(
     assert violations == [
         "mixed route dependency ownership is forbidden: "
         "app.api.routes:mixed_route:POST:/mixed"
+    ]
+
+
+def _websocket_app(root: Path) -> Path:
+    app = root / "app"
+    _write(app / "__init__.py", "")
+    _write(app / "api" / "__init__.py", "")
+    _write(app / "api" / "internal" / "__init__.py", "")
+    _write(
+        app / "api" / "chat_ws.py",
+        """
+from fastapi import APIRouter, WebSocket
+from dishka.integrations.fastapi import FromDishka, inject
+
+router = APIRouter()
+
+class ChatService:
+    pass
+
+@router.websocket("/chat")
+@inject
+async def websocket_chat(websocket: WebSocket, service: FromDishka[ChatService]):
+    return service
+""",
+    )
+    _write(
+        app / "api" / "internal" / "ws.py",
+        """
+from fastapi import APIRouter, WebSocket
+
+router = APIRouter()
+
+@router.websocket("/internal")
+async def internal_socket(websocket: WebSocket):
+    return websocket
+""",
+    )
+    return app
+
+
+def test_websocket_routes_take_their_dependency_owner_or_internal_module(
+    tmp_path: Path,
+) -> None:
+    app = _websocket_app(tmp_path)
+
+    inventory = build_inventory(app)
+
+    assert [(route["id"], route["ownership"]) for route in inventory["routes"]] == [
+        ("app.api.chat_ws:websocket_chat:WEBSOCKET:/chat", "canonical_dishka"),
+        ("app.api.internal.ws:internal_socket:WEBSOCKET:/internal", "worker_internal"),
     ]
 
 

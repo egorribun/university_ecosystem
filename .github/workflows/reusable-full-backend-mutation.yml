@@ -142,16 +142,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -169,16 +170,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -302,11 +311,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -315,17 +325,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -402,7 +420,7 @@ jobs:
           echo "Selected retry-safe full mutmut generation base: $selection"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -420,16 +438,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -495,11 +521,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -508,17 +535,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -595,7 +630,7 @@ jobs:
           echo "Selected retry-safe full mutmut generation base: $selection"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -613,16 +648,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -669,6 +712,7 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_NAMESPACE: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}
         run: |
           set -euo pipefail
           expected=8
@@ -678,7 +722,7 @@ jobs:
             exit 1
           fi
           for shard in $(seq 0 7); do
-            test -s "mutmut-stats/${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+            test -s "mutmut-stats/${ARTIFACT_NAMESPACE}-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
           done
 
       - name: Merge full mutmut stats shards
@@ -778,11 +822,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -791,17 +836,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -878,7 +931,7 @@ jobs:
           echo "Selected retry-safe full mutmut generation base: $selection"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -896,16 +949,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -954,20 +1015,22 @@ jobs:
 
       - name: Plan and run exact full mutation shard
         id: run_full_mutmut
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: |
           find app -type f -name '*.py' | sort -u > /tmp/all_py.txt
           test -s /tmp/all_py.txt
           uv run python scripts/plan_mutmut_shards.py \
             --reuse-generated-universe \
             --changed-files /tmp/all_py.txt \
-            --shard-id "${{ matrix.shard }}" \
+            --shard-id "${SHARD_ID}" \
             --num-shards 128 \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
             --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output /tmp/mutmut-shard.txt
-          printf -v preflight_shard_file 'shard-%02d.txt' "${{ matrix.shard }}"
+          printf -v preflight_shard_file 'shard-%02d.txt' "${SHARD_ID}"
           test -s "mutants/mutmut-full-plan/$preflight_shard_file"
           if ! cmp --silent \
             "mutants/mutmut-full-plan/$preflight_shard_file" \
@@ -977,10 +1040,10 @@ jobs:
           fi
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
-            echo "No mutants assigned to full mutation shard ${{ matrix.shard }}/128."
+            echo "No mutants assigned to full mutation shard ${SHARD_ID}/128."
             exit 1
           fi
-          echo "Mutating full shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          echo "Mutating full shard ${SHARD_ID}/128: ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -1273,15 +1336,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1300,6 +1364,7 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_NAMESPACE: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}
         run: |
           set -euo pipefail
           expected=128
@@ -1309,7 +1374,7 @@ jobs:
             exit 1
           fi
           for shard in $(seq 1 128); do
-            test -s "mutmut-shards/${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
+            test -s "mutmut-shards/${ARTIFACT_NAMESPACE}-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
           done
 
       - name: Merge and gate full mutation evidence

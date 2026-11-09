@@ -107,7 +107,63 @@ test("live TOTP enrollment, login, recovery use, and replay rejection stay secre
 
   requireMatch(/newContext\(/u, "login and replay attempts use isolated browser contexts")
   requireMatch(/deleteOwnedAccount\(/u, "cleanup deletes only the account created by this test")
-  requireMatch(/createdUserId/u, "cleanup is bound to the ID returned by this registration")
+  requireMatch(
+    /createdUserId = await readOwnedResetUserId\(page\.request, ownedSessionOrigin\(\), account, 5_000\)/u,
+    "cleanup identity comes from the authenticated exact owned account"
+  )
+  requireMatch(
+    /createOwnedResetAccount\(testInfo\.project\.name, randomUUID\(\)\)/u,
+    "the account uses the existing finite owned identity convention"
+  )
+  requireMatch(
+    /v\.strictObject\(\{ status: v\.literal\("ok"\) \}\)/u,
+    "registration preserves the anti-enumeration receipt"
+  )
+  requireMatch(
+    /if \(!v\.safeParse\(RegistrationReceipt, registrationBody\)\.success\)/u,
+    "a changed registration receipt fails closed"
+  )
+  requireMatch(
+    /findOwnedResetUserId\(page\.request, ownedSessionOrigin\(\), account, 5_000\)/u,
+    "cleanup resolves only the exact owned account even if initial login fails"
+  )
+  requireMatch(
+    /knownUserId !== null && userId !== knownUserId/u,
+    "cleanup rejects an identity mismatch"
+  )
+  requireMatch(
+    /if \(registrationAttempted\)/u,
+    "attempted registration triggers exact owned cleanup"
+  )
+  assert.equal(
+    /registrationBody\.id/u.test(spec),
+    false,
+    "registration does not disclose account IDs"
+  )
+  const attemptIndex = spec.indexOf("registrationAttempted = true")
+  const registrationClickIndex = spec.indexOf("registerButton.click()", attemptIndex)
+  assert.ok(
+    attemptIndex >= 0 && registrationClickIndex > attemptIndex,
+    "uncertain registration outcomes retain exact owned cleanup authority"
+  )
+  const receiptIndex = spec.indexOf("const registrationBody: unknown")
+  const dashboardIndex = spec.indexOf(
+    "await expect(page).toHaveURL(/\\/dashboard$/u)",
+    receiptIndex
+  )
+  const identityIndex = spec.indexOf("createdUserId = await readOwnedResetUserId", receiptIndex)
+  assert.ok(
+    receiptIndex >= 0 && dashboardIndex > receiptIndex && identityIndex > dashboardIndex,
+    "owned identity acquisition follows authenticated navigation"
+  )
+  requireMatch(
+    /for \(const context of ownedContexts\) \{\s*try \{\s*await context\.close\(\)\s*\} catch \{\s*cleanupFailed = true\s*\}\s*\}\s*if \(registrationAttempted\) \{\s*try \{\s*await deleteOwnedAccount\(browser, account, createdUserId\)/u,
+    "a rejected context close cannot prevent exact owned account cleanup"
+  )
+  requireMatch(
+    /if \(testFailed\) throw testFailure\s*if \(cleanupFailed\) throw new Error/u,
+    "cleanup failures do not replace the primary test failure"
+  )
   requireMatch(/stubBreachedPasswordLookup/u, "password checks stay inside the live stand")
   assert.equal(
     /console\.(?:log|info|warn|error)\s*\(/u.test(spec),

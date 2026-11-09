@@ -36,6 +36,8 @@ jobs:
     needs: verify-default-branch-dispatch
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      SCAN_RATE_LIMIT_CEILING: "100000/minute"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,12 +45,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -69,40 +71,154 @@ jobs:
 
       - name: Start FastAPI Backend in Background
         env:
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENVIRONMENT: testing
-          SECRET_KEY: "sqlmap-ci-placeholder-key" # pragma: allowlist secret
+          AUTO_CREATE_SCHEMA: "true"
+          CACHE_ENABLED: "false"
+          OTEL_SDK_DISABLED: "true"
+          # The limiter stays enabled. Every anonymous budget gets a disposable
+          # scan-only ceiling so probe volume is never mistaken for a rate-limit
+          # verdict (429 still fails the gate). Source: app/core/config/mixins/
+          # rate_limit_settings.py, every rate_limit_* field except enabled,
+          # headers and storage.
+          RATE_LIMIT_DEFAULT: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_SENSITIVE: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_LOGIN: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_REGISTER: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_PASSWORD_RESET: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_AUTH_MFA: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_USERS_ME: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_USERS_AVATAR: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_NEWS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_EVENTS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_CHAT: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_STORIES: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_INTERACTIONS: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_UPLOAD: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_WEBSOCKET: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_STATIC: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_GRAPHQL: ${{ env.SCAN_RATE_LIMIT_CEILING }}
         run: |
-          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          openapi_document="$(mktemp)"
-          # Wait for a successful, nonempty OpenAPI response from the app's real route.
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-output sqlmap-openapi-output
+          printf '%s\n' "$GITHUB_SHA" > sqlmap-output/source-sha.txt
+          export DATABASE_URL="sqlite+aiosqlite:///$RUNNER_TEMP/sqlmap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.db"
+          SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          export SECRET_KEY
+          echo "::add-mask::$SECRET_KEY"
+          export SQLMAP_QUERY_EVIDENCE="$GITHUB_WORKSPACE/sqlmap-output/db-query-evidence.log"
+
+          # Create the disposable schema using the same SQLite adaptation as
+          # the repository's test harness, then seed two distinguishable rows.
+          uv run python - <<'PY'
+          import asyncio
+          from sqlalchemy.dialects.postgresql import JSONB
+          from sqlalchemy.ext.asyncio import AsyncSession
+          from sqlalchemy.ext.compiler import compiles
+
+          @compiles(JSONB, "sqlite")
+          def compile_jsonb_sqlite(element, compiler, **kwargs):
+              return "TEXT"
+
+          import app.main
+          from app.core.database import engine
+          from app.core.lifespan import _handle_schema_and_extensions
+          from app.models import News
+
+          async def seed():
+              await _handle_schema_and_extensions()
+              async with AsyncSession(engine) as session:
+                  session.add_all([
+                      News(title="SQLMap seed one", content="First scan article"),
+                      News(title="SQLMap seed two", content="Second scan article"),
+                  ])
+                  await session.commit()
+              await engine.dispose()
+
+          asyncio.run(seed())
+          PY
+
+          export AUTO_CREATE_SCHEMA=false
+          # Count executed news SELECTs without recording query values or secrets.
+          uv run python - <<'PY' > "$RUNNER_TEMP/sqlmap-backend.log" 2>&1 &
+          import os
+          from sqlalchemy import event
+          import uvicorn
+          from app.core.database import engine
+          from app.core.middleware.request_id import request_id_ctx
+          from app.main import app
+
+          @event.listens_for(engine.sync_engine, "after_cursor_execute")
+          def record_news_query(connection, cursor, statement, parameters, context, executemany):
+              normalized = statement.upper()
+              if normalized.lstrip().startswith("SELECT") and "FROM NEWS" in normalized:
+                  marker = "SQLMAP SELECT news" if request_id_ctx.get() == "sqlmap-aud-381" else "SELECT news"
+                  with open(os.environ["SQLMAP_QUERY_EVIDENCE"], "a", encoding="utf-8") as evidence:
+                      evidence.write(marker + "\n")
+
+          uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+          PY
+          echo "$!" > "$RUNNER_TEMP/sqlmap-backend.pid"
+
+          # Fetch the backend's source schema before deriving the admitted scope.
           for i in {1..30}; do
             if curl --fail --silent --show-error \
-              --output "$openapi_document" \
-              "http://127.0.0.1:8000/api/openapi.json" && test -s "$openapi_document"; then
+              --output sqlmap-output/source-openapi.json \
+              "http://127.0.0.1:8000/api/openapi.json" && test -s sqlmap-output/source-openapi.json; then
               echo "Server and OpenAPI document are ready."
               break
             fi
-            echo "Waiting for server..."
+            echo "Waiting for server (attempt ${i}/30)..."
             sleep 1
           done
-          if ! test -s "$openapi_document"; then
+          if ! test -s sqlmap-output/source-openapi.json; then
             echo "::error::FastAPI OpenAPI document did not become ready within 30 seconds."
             exit 1
           fi
+          python3 scripts/quality/sqlmap_scan_gate.py scope-openapi \
+            sqlmap-output/source-openapi.json sqlmap-output/scoped-openapi.json
+          python3 scripts/quality/sqlmap_scan_gate.py scope-full-openapi \
+            sqlmap-output/source-openapi.json sqlmap-openapi-output/scoped-openapi.json
 
+          # Prove that anonymous requests execute the seeded query, with cache
+          # disabled, and that the admitted limit changes the real result set.
+          for limit in 1 2; do
+            curl --fail --silent --show-error \
+              --output "sqlmap-output/readiness-limit-${limit}.json" \
+              "http://127.0.0.1:8000/api/v1/news?limit=${limit}"
+          done
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          one = json.loads(Path("sqlmap-output/readiness-limit-1.json").read_text())
+          two = json.loads(Path("sqlmap-output/readiness-limit-2.json").read_text())
+          if len(one["items"]) != 1 or len(two["items"]) != 2:
+              raise SystemExit("Seeded news pagination did not return the expected rows")
+          if not one["has_more"] or two["has_more"]:
+              raise SystemExit("Seeded news pagination returned inconsistent page state")
+          PY
+          test -s "$SQLMAP_QUERY_EVIDENCE"
+          # Only queries issued after readiness count as scan execution proof.
+          : > "$SQLMAP_QUERY_EVIDENCE"
+
+      # The news proof runs first: the full-document scan writes to the same
+      # disposable database and can change the seed rows the proof relies on.
       - name: Run SQLMap Scan on API
+        id: sqlmap-news-scan
+        continue-on-error: true
         run: |
-          # --batch: non-interactive mode
-          # The OpenAPI document already enumerates the complete route set;
-          # recrawling it only multiplies requests without increasing coverage.
-          # Exclude time-based probes from this PR smoke gate: the disposable
-          # app deliberately rate-limits repeated requests and those probes
-          # can consume the entire job envelope without improving the
-          # boolean/error/union injection signal.
-          # --risk=1 --level=1: lightweight scan for CI speed
-          uv run sqlmap --openapi="http://127.0.0.1:8000/api/openapi.json" \
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-output
+          # Keep query evidence specific to this anonymous /api/v1/news scan.
+          : > sqlmap-output/db-query-evidence.log
+          # --scope admits only the seeded news-list operation for this proof.
+          uv run sqlmap --openapi="sqlmap-output/scoped-openapi.json" \
             --openapi-base="http://127.0.0.1:8000" \
+            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
+            --ignore-redirects \
+            --answers='refresh=N' \
+            --scope='^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)' \
             --batch \
             --crawl=0 \
             --technique=BEU \
@@ -111,4 +227,130 @@ jobs:
             --threads=2 \
             --timeout=5 \
             --retries=0 \
-            --flush-session
+            --output-dir=sqlmap-output \
+            --results-file=sqlmap-output/results.csv \
+            --flush-session \
+            > sqlmap-output/scan-console.log 2>&1
+
+      # Both gates require SQLMap's post-loop CSV marker, one ending banner,
+      # exact target counts and no injection, timeout or incomplete-target evidence.
+      - name: Gate SQLMap seeded news proof scan
+        id: sqlmap-news-gate
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-news-scan.outcome }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/sqlmap_scan_gate.py gate-news \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --output-dir sqlmap-output \
+            --console-log sqlmap-output/scan-console.log \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      # The full-document scan's requests also append to the query evidence file.
+      # Keep the news proof's evidence so the receipt counts only news queries.
+      - name: Snapshot news query evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f sqlmap-output/db-query-evidence.log; then
+            cp sqlmap-output/db-query-evidence.log "$RUNNER_TEMP/news-query-evidence.log"
+          fi
+
+      - name: Run SQLMap scan for every anonymous OpenAPI operation
+        id: sqlmap-openapi-scan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-openapi-output
+          # The scope builder retains every HTTP operation and pins its origin
+          # to the disposable local backend. No Authorization header is sent.
+          # Keep the original complete-surface BEU scan settings from c3693dbed.
+          # 401/403 are the anonymous answer for protected operations, 404 and
+          # 405 the answer for absent or method-restricted ones, and 422 the
+          # answer to probe values that fail request validation. sqlmap would
+          # otherwise abort the target on these; the gate still checks every
+          # target has a negative result.
+          uv run sqlmap --openapi="sqlmap-openapi-output/scoped-openapi.json" \
+            --openapi-base="http://127.0.0.1:8000" \
+            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
+            --ignore-redirects \
+            --ignore-code=401,403,404,405,422 \
+            --answers='refresh=N' \
+            --scope='^http://127[.]0[.]0[.]1:8000/' \
+            --batch \
+            --crawl=0 \
+            --technique=BEU \
+            --risk=1 \
+            --level=1 \
+            --threads=2 \
+            --timeout=5 \
+            --retries=0 \
+            --output-dir=sqlmap-openapi-output \
+            --results-file=sqlmap-openapi-output/results.csv \
+            --flush-session \
+            > sqlmap-openapi-output/scan-console.log 2>&1
+
+      - name: Restore news query evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/news-query-evidence.log"; then
+            cp "$RUNNER_TEMP/news-query-evidence.log" sqlmap-output/db-query-evidence.log
+          fi
+
+      - name: Gate SQLMap complete OpenAPI scan
+        id: sqlmap-openapi-gate
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/sqlmap_scan_gate.py gate-openapi \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --output-dir sqlmap-openapi-output \
+            --console-log sqlmap-openapi-output/scan-console.log \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized SQLMap evidence receipt
+        if: ${{ always() }}
+        env:
+          NEWS_SCAN_OUTCOME: ${{ steps.sqlmap-news-scan.outcome }}
+          NEWS_GATE_OUTCOME: ${{ steps.sqlmap-news-gate.outcome }}
+          OPENAPI_SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
+          OPENAPI_GATE_OUTCOME: ${{ steps.sqlmap-openapi-gate.outcome }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/quality/sqlmap_scan_gate.py publish-evidence \
+            sqlmap-output "$NEWS_SCAN_OUTCOME" "$NEWS_GATE_OUTCOME" "$SOURCE_SHA" \
+            sqlmap-evidence/receipt.json \
+            --openapi-output-dir sqlmap-openapi-output \
+            --openapi-scan-outcome "$OPENAPI_SCAN_OUTCOME" \
+            --openapi-gate-outcome "$OPENAPI_GATE_OUTCOME"
+
+      - name: Upload SQLMap reports and evidence receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            sqlmap-output/
+            sqlmap-openapi-output/
+            sqlmap-evidence/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Stop disposable backend
+        if: ${{ always() }}
+        run: |
+          if test -f "$RUNNER_TEMP/sqlmap-backend.pid"; then
+            backend_pid="$(cat "$RUNNER_TEMP/sqlmap-backend.pid")"
+            if kill -0 "$backend_pid" 2>/dev/null; then
+              kill "$backend_pid"
+            fi
+          fi

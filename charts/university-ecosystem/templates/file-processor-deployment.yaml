@@ -1,4 +1,7 @@
 {{- if .Values.fileProcessor.enabled }}
+{{- $internalJWKSURL := printf "%s://%s:%v/.well-known/jwks.json" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+{{- $jwksURL := default $internalJWKSURL .Values.fileProcessor.config.jwksURL -}}
+{{- $jwksUsesInternalMTLS := and .Values.internalHttpMTLS.enabled (eq $jwksURL $internalJWKSURL) -}}
 {{- $applicationSecretName := include "university-ecosystem.applicationSecretName" . -}}
 {{- $connectionsSecretName := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
 {{- $fileProcessorConnectionKeys := list (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) -}}
@@ -94,7 +97,19 @@ spec:
             - name: FP_JWT_ISSUER
               value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: FP_JWKS_URL
-              value: {{ default (printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port) .Values.fileProcessor.config.jwksURL | quote }}
+              value: {{ $jwksURL | quote }}
+            {{- if $jwksUsesInternalMTLS }}
+            - name: FP_INTERNAL_HTTP_MTLS_ENABLED
+              value: "true"
+            - name: FP_BACKEND_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
+            - name: FP_SPIFFE_ENDPOINT_SOCKET
+              value: {{ printf "unix://%s/agent.sock" .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+            - name: FP_SPIFFE_TRUST_DOMAIN
+              value: {{ .Values.internalHttpMTLS.trustDomain | quote }}
+            - name: FP_SPIFFE_MY_ID
+              value: {{ .Values.internalHttpMTLS.fileProcessorSpiffeID | quote }}
+            {{- end }}
             - name: FP_JWKS_REFRESH_INTERVAL
               value: {{ .Values.fileProcessor.config.jwksRefreshInterval | quote }}
             - name: FP_JWT_ACTIVE_KID
@@ -156,6 +171,11 @@ spec:
           resources:
             {{- toYaml .Values.fileProcessor.resources | nindent 12 }}
           volumeMounts:
+            {{- if $jwksUsesInternalMTLS }}
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" $fileProcessorSecrets) | nindent 12 }}
             {{- if .Values.internalGrpcMTLS.enabled }}
             - name: internal-grpc-mtls-server
@@ -163,6 +183,12 @@ spec:
               readOnly: true
             {{- end }}
       volumes:
+        {{- if $jwksUsesInternalMTLS }}
+        - name: spiffe-workload-api
+          csi:
+            driver: {{ .Values.internalHttpMTLS.workloadAPI.csiDriver | quote }}
+            readOnly: true
+        {{- end }}
         {{- include "university-ecosystem.secretVolumes" (dict "secrets" $fileProcessorSecrets) | nindent 8 }}
         {{- if .Values.internalGrpcMTLS.enabled }}
         - name: internal-grpc-mtls-server

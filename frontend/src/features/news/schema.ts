@@ -7,33 +7,29 @@ export const newsFormSchema = v.object({
   title: v.pipe(
     v.string(),
     v.trim(),
-    v.minLength(1, "Title is required"),
-    v.maxLength(100, "Title must be less than 100 characters")
+    v.minLength(1, "news:form.validation.titleRequired"),
+    v.maxLength(100, "news:form.validation.titleMaxLength")
   ),
   content: v.pipe(
     v.string(),
     v.trim(),
-    v.minLength(1, "Content is required"),
-    v.maxLength(3000, "Content must be less than 3000 characters")
+    v.minLength(1, "news:form.validation.contentRequired"),
+    v.maxLength(3000, "news:form.validation.contentMaxLength")
   ),
   title_en: v.optional(
-    v.pipe(v.string(), v.trim(), v.maxLength(100, "Title (EN) must be less than 100 characters"))
+    v.pipe(v.string(), v.trim(), v.maxLength(100, "news:form.validation.titleEnMaxLength"))
   ),
   content_en: v.optional(
-    v.pipe(
-      v.string(),
-      v.trim(),
-      v.maxLength(3000, "Content (EN) must be less than 3000 characters")
-    )
+    v.pipe(v.string(), v.trim(), v.maxLength(3000, "news:form.validation.contentEnMaxLength"))
   ),
   image: v.nullable(
     v.optional(
       v.pipe(
         v.instance(File),
-        v.check((file) => file.size <= MAX_IMAGE_UPLOAD_BYTES, "Max image size is 5MB."),
+        v.check((file) => file.size <= MAX_IMAGE_UPLOAD_BYTES, "news:form.validation.imageMaxSize"),
         v.check(
           (file) => ACCEPTED_IMAGE_TYPES.includes(file.type),
-          "Only .jpg, .jpeg, .png and .webp formats are supported."
+          "news:form.validation.imageFormats"
         )
       )
     )

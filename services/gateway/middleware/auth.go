@@ -4,6 +4,7 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -20,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -38,6 +40,7 @@ var errRevocationStoreUnavailable = errors.New("session revocation store unavail
 const (
 	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
 	DefaultJWTAudience            = "university-ecosystem-api"
+	DefaultJWTIssuer              = "university-ecosystem"
 	defaultJWKSRefreshInterval    = 5 * time.Minute
 	minJWKSRefreshInterval        = time.Second
 	maxJWKSRefreshInterval        = 24 * time.Hour
@@ -121,6 +124,7 @@ type rsaKeySnapshot struct {
 type JWTMiddleware struct {
 	secret   []byte
 	audience string
+	issuer   string
 	// jwksConfigured records that the deployment selected JWKS-backed RS256
 	// verification, even before the first successful refresh.  It must be set
 	// synchronously when the refresher starts so a transient JWKS outage cannot
@@ -130,6 +134,9 @@ type JWTMiddleware struct {
 	jwksConfigured atomic.Bool
 	// jwksFreshnessLimit bounds last-known-good key trust during endpoint outages.
 	jwksFreshnessLimit atomic.Int64
+	// jwksTLSConfig carries the SPIFFE client identity for same-origin internal
+	// JWKS fetches (AUD-373). It is installed before the refresher goroutine starts.
+	jwksTLSConfig *tls.Config
 	// jwksSnapshot is the authoritative, coherent keys-plus-freshness publication.
 	jwksSnapshot atomic.Pointer[rsaKeySnapshot]
 	// rsaKeys is a compatibility mirror for existing observability/test callers.
@@ -276,9 +283,53 @@ func rsaKeySetsEqual(left, right rsaKeySet) bool {
 }
 
 // NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings.
+// The default issuer matches the backend's local JWT_ISSUER setting.
 // rsaPublicKeyPEM is optional; when non-empty, RS256 tokens are accepted using
 // the given PEM-encoded RSA public key alongside HS256 tokens.
 func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audiences ...string) *JWTMiddleware {
+	audience := DefaultJWTAudience
+	if len(audiences) > 1 {
+		panic("gateway: at most one JWT audience may be configured")
+	}
+	if len(audiences) == 1 {
+		audience = strings.TrimSpace(audiences[0])
+		if audience == "" {
+			panic("gateway: JWT audience must not be blank")
+		}
+	}
+
+	return NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM, redisClient, config, audience, DefaultJWTIssuer)
+}
+
+// isJWTIssuerStripWhitespace matches the fixed whitespace set used by Python str.strip.
+func isJWTIssuerStripWhitespace(r rune) bool {
+	return r >= '\u0009' && r <= '\u000d' ||
+		r >= '\u001c' && r <= '\u0020' ||
+		r == '\u0085' || r == '\u00a0' || r == '\u1680' ||
+		r >= '\u2000' && r <= '\u200a' ||
+		r == '\u2028' || r == '\u2029' || r == '\u202f' ||
+		r == '\u205f' || r == '\u3000'
+}
+
+func trimJWTIssuerWhitespace(issuer string) string {
+	return strings.TrimFunc(issuer, isJWTIssuerStripWhitespace)
+}
+
+// NewJWTMiddlewareWithConfigAndIssuer creates a JWT middleware bound to the
+// audience and issuer explicitly supplied by gateway configuration.
+func NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audience, issuer string) *JWTMiddleware {
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		panic("gateway: JWT audience must not be blank")
+	}
+	issuer = trimJWTIssuerWhitespace(issuer)
+	if issuer == "" {
+		panic("gateway: JWT issuer must not be blank")
+	}
+	if utf8.RuneCountInString(issuer) > 512 || strings.IndexFunc(issuer, func(r rune) bool { return r < 0x20 }) >= 0 {
+		panic("gateway: JWT issuer contains invalid characters")
+	}
+
 	metricsRegistered.Do(func() {
 		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects, l1ProbRefreshes)
 	})
@@ -293,20 +344,10 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 		panic(fmt.Sprintf("gateway: invalid L1 cache configuration: %v", err))
 	}
 
-	audience := DefaultJWTAudience
-	if len(audiences) > 1 {
-		panic("gateway: at most one JWT audience may be configured")
-	}
-	if len(audiences) == 1 {
-		audience = strings.TrimSpace(audiences[0])
-		if audience == "" {
-			panic("gateway: JWT audience must not be blank")
-		}
-	}
-
 	m := &JWTMiddleware{
 		secret:   []byte(secret),
 		audience: audience,
+		issuer:   issuer,
 		redis:    redisClient,
 		l1cache:  cache,
 		l1TTL:    config.TTL, // PERF-31-02: store TTL for XFetch calculation
@@ -348,6 +389,42 @@ var (
 	jwksMetricsOnce sync.Once
 )
 
+// SetJWKSTLSConfig installs the client TLS configuration used when fetching
+// JWKS from the internal backend origin. Call it before StartJWKSRefresher.
+func (m *JWTMiddleware) SetJWKSTLSConfig(tlsConfig *tls.Config) {
+	m.jwksTLSConfig = tlsConfig
+}
+
+// JWKSTLSConfig returns the client TLS configuration used for JWKS fetches, or nil
+// when ordinary certificate verification applies.
+func (m *JWTMiddleware) JWKSTLSConfig() *tls.Config {
+	return m.jwksTLSConfig
+}
+
+// newJWKSHTTPClient returns the client for JWKS refreshes. Only the configured
+// SPIFFE client TLS config changes the transport; public endpoints keep defaults.
+func (m *JWTMiddleware) newJWKSHTTPClient() *http.Client {
+	client := &http.Client{Timeout: 10 * time.Second}
+	// Clone returns nil when no SPIFFE client TLS config was installed, which
+	// keeps public endpoints on the default transport.
+	if clientTLS := m.jwksTLSConfig.Clone(); clientTLS != nil {
+		// JWKS is low-volume: reauthenticate every refresh against the live
+		// SPIFFE bundle instead of retaining a connection or resumed session.
+		clientTLS.ClientSessionCache = nil
+		client.Transport = &http.Transport{
+			TLSClientConfig:     clientTLS,
+			TLSHandshakeTimeout: 5 * time.Second,
+			DisableKeepAlives:   true,
+		}
+		// Never redirect an internal trust-root fetch to another origin or
+		// downgrade it to plaintext, even if the backend returns a redirect.
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return client
+}
+
 // StartJWKSRefresher starts a background goroutine that periodically fetches
 // the JWKS from endpoint and atomically publishes its keys and freshness time.
 // The caller must cancel ctx to stop the goroutine on shutdown.
@@ -365,7 +442,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
 	})
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := m.newJWKSHTTPClient()
 
 	minRetryInterval := 2 * time.Second
 	if interval < minRetryInterval {
@@ -1027,6 +1104,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 			jwt.WithAudience(m.audience),
+			jwt.WithIssuer(m.issuer),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 
@@ -1084,8 +1162,8 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 		// Tenant identity is accepted only from signed claims. A client-supplied
 		// X-Tenant-ID is a routing hint, not authenticated membership, and must
 		// never be promoted into signed gateway identity headers. The current
-		// Python login issuer emits no tenant claim until authoritative membership
-		// resolution exists, so production tenant context is intentionally empty.
+		// Python MVP issuer binds this claim to the locked users.tenant_id for
+		// its operator-configured organization; the backend enforces that binding.
 		tenantID := claims.TenantID
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
@@ -1144,6 +1222,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 			jwt.WithAudience(m.audience),
+			jwt.WithIssuer(m.issuer),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 

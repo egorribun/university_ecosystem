@@ -11,11 +11,12 @@ import {
   open,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises"
-import { rmSync } from "node:fs"
+import { constants, rmSync } from "node:fs"
 import os from "node:os"
 import { createRequire } from "node:module"
 import path from "node:path"
@@ -3249,8 +3250,9 @@ function preflightArtifactMetadata({
 
 function preflightArtifactExecution(env = process.env) {
   const mode = env.STRYKER_PREFLIGHT_MODE ?? "execute"
-  if (!["execute", "generate", "replan", "validate"].includes(mode)) {
-    throw new Error("STRYKER_PREFLIGHT_MODE must be execute, generate, replan, or validate")
+  const cachedValidation = mode === "validate-cached" || mode === "verify-cached"
+  if (!["execute", "generate", "replan", "validate"].includes(mode) && !cachedValidation) {
+    throw new Error("STRYKER_PREFLIGHT_MODE is not a supported canonical mode")
   }
   const rawArtifact = env.STRYKER_PREFLIGHT_ARTIFACT
   if (rawArtifact !== undefined && rawArtifact !== "required") {
@@ -3259,10 +3261,10 @@ function preflightArtifactExecution(env = process.env) {
   if ((mode === "generate" || mode === "replan") && rawArtifact !== undefined) {
     throw new Error("Stryker preflight planning cannot consume a preflight artifact")
   }
-  if (mode === "validate" && rawArtifact !== "required") {
+  if ((mode === "validate" || cachedValidation) && rawArtifact !== "required") {
     throw new Error("Stryker preflight validation requires an immutable artifact")
   }
-  return { mode, artifactRequired: rawArtifact === "required" }
+  return { mode, artifactRequired: rawArtifact === "required", cachedValidation }
 }
 
 function preflightCandidateAttemptFromDirectory(directoryName, workflow) {
@@ -4160,6 +4162,265 @@ function externalAggregateRoot() {
   return resolved
 }
 
+async function readCachedShardPair(candidateRoot, shardId) {
+  const root = path.resolve(candidateRoot)
+  if ((await realpath(root)) !== root) {
+    throw new Error("Cached Stryker shard root must not traverse a link")
+  }
+  const rootStats = await lstat(root)
+  const entries = await readdir(root, { withFileTypes: true })
+  if (
+    !rootStats.isDirectory() ||
+    entries.length !== 1 ||
+    entries[0].name !== shardId ||
+    !entries[0].isDirectory() ||
+    entries[0].isSymbolicLink()
+  ) {
+    throw new Error("Cached Stryker shard directory is not canonical")
+  }
+  const directory = path.join(root, shardId)
+  const files = await readdir(directory, { withFileTypes: true })
+  const expected = ["SHARD_EVIDENCE.json", "mutation.json"]
+  if (
+    files.length !== 2 ||
+    files.some((file) => !expected.includes(file.name) || !file.isFile() || file.isSymbolicLink())
+  ) {
+    throw new Error("Cached Stryker shard must contain exactly its two producer files")
+  }
+  const result = {}
+  for (const name of expected) {
+    const filePath = path.join(directory, name)
+    const before = await lstat(filePath)
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) {
+      throw new Error("Cached Stryker producer file must be regular and unlinked")
+    }
+    const file = await open(filePath, "r")
+    try {
+      const opened = await file.stat()
+      if (opened.dev !== before.dev || opened.ino !== before.ino || opened.nlink !== 1) {
+        throw new Error("Cached Stryker producer file changed before reading")
+      }
+      const bytes = await file.readFile()
+      const after = await file.stat()
+      const current = await lstat(filePath)
+      if (
+        !current.isFile() ||
+        current.isSymbolicLink() ||
+        current.nlink !== 1 ||
+        [after, current].some(
+          (value) =>
+            value.dev !== before.dev ||
+            value.ino !== before.ino ||
+            value.size !== before.size ||
+            value.mtimeMs !== before.mtimeMs ||
+            value.ctimeMs !== before.ctimeMs
+        ) ||
+        (await realpath(directory)) !== directory
+      ) {
+        throw new Error("Cached Stryker producer file changed while reading")
+      }
+      result[name] = bytes.toString("utf8")
+      if (!Buffer.from(result[name], "utf8").equals(bytes)) {
+        throw new Error("Cached Stryker producer file must contain canonical UTF-8")
+      }
+    } finally {
+      await file.close()
+    }
+  }
+  const finalRoot = await readdir(root, { withFileTypes: true })
+  const finalFiles = await readdir(directory, { withFileTypes: true })
+  if (
+    finalRoot.length !== 1 ||
+    finalRoot[0].name !== shardId ||
+    !finalRoot[0].isDirectory() ||
+    finalRoot[0].isSymbolicLink() ||
+    finalFiles.length !== 2 ||
+    finalFiles.some(
+      (entry) => !expected.includes(entry.name) || !entry.isFile() || entry.isSymbolicLink()
+    )
+  ) {
+    throw new Error("Cached Stryker producer directory changed while reading")
+  }
+  return { evidenceText: result["SHARD_EVIDENCE.json"], reportText: result["mutation.json"] }
+}
+
+export async function validateCachedShardPublication({
+  candidateRoot,
+  shardPlan,
+  shardIndex,
+  before,
+  preflightDigest,
+  workflowRunId,
+  workflowRunAttempt,
+}) {
+  const consumerAttempt = parseWorkflowRunAttempt(workflowRunAttempt)
+  if (
+    typeof candidateRoot !== "string" ||
+    candidateRoot === "" ||
+    !Array.isArray(shardPlan) ||
+    shardPlan.length < 2 ||
+    shardPlan.length > 256 ||
+    !Number.isInteger(shardIndex) ||
+    shardIndex < 0 ||
+    shardIndex >= shardPlan.length ||
+    consumerAttempt === undefined ||
+    typeof workflowRunId !== "string" ||
+    !/^[1-9]\d*$/u.test(workflowRunId)
+  ) {
+    throw new Error("Cached Stryker shard consumer identity is invalid")
+  }
+  if (
+    shardPlan.some(
+      (shard, index) =>
+        shard?.id !== `shard-${String(index).padStart(3, "0")}` ||
+        !Array.isArray(shard.files) ||
+        shard.files.length === 0 ||
+        shard.files.some((file) => typeof file !== "string" || file === "") ||
+        new Set(shard.files).size !== shard.files.length ||
+        !Number.isSafeInteger(shard.mutantCount) ||
+        shard.mutantCount < 1
+    )
+  ) {
+    throw new Error("Cached Stryker shard plan is not canonical")
+  }
+  const expected = shardPlan[shardIndex]
+  if (!/^shard-\d{3}$/u.test(expected?.id ?? "")) {
+    throw new Error("Cached Stryker shard plan is not canonical")
+  }
+  const { evidenceText, reportText } = await readCachedShardPair(candidateRoot, expected.id)
+  const evidence = JSON.parse(evidenceText)
+  const producerAttempt = parseWorkflowRunAttempt(evidence?.workflowRunAttempt)
+  if (
+    !isRecord(evidence) ||
+    evidence.schemaVersion !== "1.0" ||
+    typeof evidence.runId !== "string" ||
+    evidence.runId === "" ||
+    evidence.shardId !== expected.id ||
+    evidence.shardIndex !== shardIndex ||
+    evidence.shardCount !== shardPlan.length ||
+    evidence.revision !== before.revision ||
+    evidence.sourceHeadSha !== before.sourceHeadSha ||
+    evidence.baseSha !== before.baseSha ||
+    evidence.baseRef !== before.baseRef ||
+    evidence.evidenceDigest !== before.evidenceDigest ||
+    evidence.preflightDigest !== preflightDigest ||
+    evidence.workflowRunId !== workflowRunId ||
+    producerAttempt === undefined ||
+    producerAttempt > consumerAttempt ||
+    JSON.stringify(evidence.files) !== JSON.stringify(expected.files) ||
+    evidence.mutantCount !== expected.mutantCount ||
+    evidence.reportSha256 !== sha256(reportText)
+  ) {
+    throw new Error("Cached Stryker shard producer evidence is stale or malformed")
+  }
+  if (evidence.windowsProcessHost !== undefined) {
+    assertWindowsProcessHostEvidence(evidence.windowsProcessHost)
+  }
+  normalizeStrykerRuntimeReport(JSON.parse(reportText))
+  return {
+    artifactName: `nightly-frontend-mutation-shard-${workflowRunId}-${producerAttempt}-${shardIndex}`,
+    producerAttempt,
+    shardId: expected.id,
+    evidenceText,
+    reportText,
+  }
+}
+
+export async function verifyCachedShardPublication(options, publishedRoot) {
+  const cached = await validateCachedShardPublication(options)
+  const published = await validateCachedShardPublication({
+    ...options,
+    candidateRoot: publishedRoot,
+  })
+  if (
+    published.artifactName !== cached.artifactName ||
+    published.evidenceText !== cached.evidenceText ||
+    published.reportText !== cached.reportText
+  ) {
+    throw new Error("Published Stryker shard differs from its cached producer")
+  }
+  return cached
+}
+
+export async function appendCachedShardOutputs(outputPath, publication) {
+  const name = publication?.artifactName
+  const producerAttempt = publication?.producerAttempt
+  const identity =
+    typeof name === "string"
+      ? /^nightly-frontend-mutation-shard-([1-9]\d*)-([1-9]\d*)-(0|[1-9]\d*)$/u.exec(name)
+      : null
+  if (
+    !Number.isSafeInteger(producerAttempt) ||
+    producerAttempt < 1 ||
+    !identity ||
+    identity[2] !== String(producerAttempt) ||
+    Number(identity[3]) >= 256
+  ) {
+    throw new Error("Cached Stryker output identity is invalid")
+  }
+  if (typeof outputPath !== "string" || !path.isAbsolute(outputPath)) {
+    throw new Error("Cached Stryker shard requires an absolute GitHub output path")
+  }
+  if ((await realpath(outputPath)) !== path.resolve(outputPath)) {
+    throw new Error("Cached Stryker output path must not traverse a link")
+  }
+  const metadata = await lstat(outputPath)
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1) {
+    throw new Error("Cached Stryker output path must be an unlinked regular file")
+  }
+  // No O_CREAT: disappearing or replaced output files must not be recreated.
+  const file = await open(outputPath, constants.O_RDWR | constants.O_APPEND | constants.O_NOFOLLOW)
+  try {
+    const opened = await file.stat()
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      opened.dev !== metadata.dev ||
+      opened.ino !== metadata.ino ||
+      opened.size !== metadata.size ||
+      opened.mtimeMs !== metadata.mtimeMs ||
+      opened.ctimeMs !== metadata.ctimeMs
+    ) {
+      throw new Error("Cached Stryker output file changed before append")
+    }
+    if (opened.size > 0) {
+      const last = Buffer.alloc(1)
+      const { bytesRead } = await file.read(last, 0, 1, opened.size - 1)
+      if (bytesRead !== 1 || last[0] !== 10) {
+        throw new Error("Cached Stryker output contains an incomplete prior record")
+      }
+    }
+    const current = await lstat(outputPath)
+    if (
+      !current.isFile() ||
+      current.isSymbolicLink() ||
+      current.nlink !== 1 ||
+      current.dev !== opened.dev ||
+      current.ino !== opened.ino ||
+      current.size !== opened.size ||
+      (await realpath(outputPath)) !== path.resolve(outputPath)
+    ) {
+      throw new Error("Cached Stryker output path changed before append")
+    }
+    const output = `producer_attempt=${producerAttempt}\nartifact_name=${name}\n`
+    await file.appendFile(output)
+    const final = await lstat(outputPath)
+    if (
+      !final.isFile() ||
+      final.isSymbolicLink() ||
+      final.nlink !== 1 ||
+      final.dev !== opened.dev ||
+      final.ino !== opened.ino ||
+      final.size !== opened.size + Buffer.byteLength(output) ||
+      (await realpath(outputPath)) !== path.resolve(outputPath)
+    ) {
+      throw new Error("Cached Stryker output path changed during append")
+    }
+  } finally {
+    await file.close()
+  }
+}
+
 export async function loadExternalShardResults({
   aggregateRoot,
   shardPlan,
@@ -4274,7 +4535,11 @@ async function main() {
     throwIfCancellationRequested(cancellation.signal)
     lock = await acquireRunLock(runPaths.lockPath, runId)
     throwIfCancellationRequested(cancellation.signal)
-    if (artifactExecution.mode !== "validate" && artifactExecution.mode !== "replan") {
+    if (
+      artifactExecution.mode !== "validate" &&
+      artifactExecution.mode !== "replan" &&
+      !artifactExecution.cachedValidation
+    ) {
       await cleanupCanonicalArtifacts(runPaths.outputRoot)
     }
     throwIfCancellationRequested(cancellation.signal)
@@ -4329,8 +4594,14 @@ async function main() {
         throw new Error("Stryker preflight planning requires exactly a canonical shard count")
       }
     }
-    if (artifactExecution.mode === "validate" && aggregateRoot) {
+    if (
+      (artifactExecution.mode === "validate" || artifactExecution.cachedValidation) &&
+      aggregateRoot
+    ) {
       throw new Error("Stryker preflight validation cannot replace aggregate verification")
+    }
+    if (artifactExecution.cachedValidation && externalShardIndex === undefined) {
+      throw new Error("Cached Stryker validation requires exactly one canonical shard")
     }
 
     const toolchain = await readToolchain()
@@ -4492,6 +4763,30 @@ async function main() {
       process.stdout.write(
         `Validated immutable frontend Stryker preflight (${preflightDigest}) for ${shardPlan.length} logical shards\n`
       )
+      return
+    }
+
+    if (artifactExecution.cachedValidation) {
+      const options = {
+        candidateRoot: path.join(runPaths.outputRoot, "shards"),
+        shardPlan,
+        shardIndex: externalShardIndex,
+        before,
+        preflightDigest,
+        workflowRunId: process.env.GITHUB_RUN_ID,
+        workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      }
+      const publication =
+        artifactExecution.mode === "verify-cached"
+          ? await verifyCachedShardPublication(
+              options,
+              path.join(runPaths.outputRoot, "cached-publication")
+            )
+          : await validateCachedShardPublication(options)
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      if (artifactExecution.mode === "validate-cached") {
+        await appendCachedShardOutputs(process.env.GITHUB_OUTPUT, publication)
+      }
       return
     }
 

@@ -18,7 +18,7 @@ const iconButtonClass =
   "border border-glass-border-subtle bg-glass-elevated text-(--primary-main) shadow-surface transition hover:bg-surface focus-ring-premium"
 
 const menuPanelClass =
-  "absolute right-0 top-12 z-dropdown min-w-(--min-w-field) overflow-hidden rounded-lg border border-glass-border-subtle bg-input-mix/(--opacity-heavy) shadow-surface-strong backdrop-blur-xl"
+  "absolute right-0 top-12 z-dropdown min-w-(--min-w-field) overflow-hidden rounded-lg border border-glass-border-subtle bg-input-mix/[calc(var(--opacity-heavy)*100%)] shadow-surface-strong backdrop-blur-xl"
 
 export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, isDisabled, id }) => {
   const { t } = useTranslation(["news", "common"])

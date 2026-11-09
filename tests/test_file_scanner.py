@@ -119,21 +119,46 @@ from app.services.file_scanner import (
 )
 
 
+@pytest.fixture(autouse=True)
+async def _isolate_clamav_breaker():
+    """The ClamAV breaker is a process-wide singleton; earlier failures must not leak.
+
+    Scanner-failure tests in this module record failures against the real
+    breaker. Without a reset, three of them open it for the recovery window and
+    later tests see "circuit breaker open" instead of their own assertion.
+    """
+    await _clamav_circuit_breaker.reset()
+    yield
+    await _clamav_circuit_breaker.reset()
+
+
 @pytest.mark.anyio
 async def test_scan_for_malware_disabled():
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan,
+    ):
         mock_settings.event_file_scanner_enabled = False
-        # Should return early without scanning
-        await scan_for_malware(b"some-data")
+        assert (await scan_for_malware(b"some-data")) is None
+    scan.assert_not_awaited()
 
 
 @pytest.mark.anyio
 async def test_scan_for_malware_empty():
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan,
+    ):
         mock_settings.event_file_scanner_enabled = True
         mock_settings.event_file_scanner_max_size_mb = 5.0
-        # Empty bytes should return early
-        await scan_for_malware(b"")
+        assert (await scan_for_malware(b"")) is None
+    scan.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -431,20 +456,23 @@ async def test_scan_for_malware_unsupported_backend():
 
 
 @pytest.mark.anyio
-async def test_scan_for_malware_allow_on_unavailable_in_production():
+async def test_scan_for_malware_ignores_retired_flag_in_production():
     with patch("app.services.file_scanner.settings") as mock_settings:
         mock_settings.event_file_scanner_enabled = True
+        mock_settings.event_file_scanner_backend = "clamd"
         mock_settings.event_file_scanner_allow_on_unavailable = True
         mock_settings.environment = "production"
-        with pytest.raises(
-            RuntimeError,
-            match="EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE must not be True in production",
+        with patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            side_effect=FileScannerUnavailableError("clamd down"),
         ):
-            await scan_for_malware(b"data")
+            with pytest.raises(HTTPException) as exc_info:
+                await scan_for_malware(b"data")
+            assert exc_info.value.status_code == 503
 
 
 @pytest.mark.anyio
-async def test_scan_for_malware_cb_open_allow_on_unavailable():
+async def test_scan_for_malware_cb_open_ignores_retired_flag():
     from app.core.circuit_breaker import CircuitBreakerOpenError
 
     with patch("app.services.file_scanner.settings") as mock_settings:
@@ -459,8 +487,9 @@ async def test_scan_for_malware_cb_open_allow_on_unavailable():
             "clamav", remaining_seconds=10.0, failure_count=3
         )
         with patch("app.services.file_scanner._clamav_circuit_breaker", mock_cb):
-            # With allow_on_unavailable = True, this should return None (allowing the upload)
-            await scan_for_malware(b"data")
+            with pytest.raises(HTTPException) as exc_info:
+                await scan_for_malware(b"data")
+            assert exc_info.value.status_code == 503
 
 
 @pytest.mark.anyio

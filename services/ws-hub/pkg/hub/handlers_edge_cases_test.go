@@ -3,6 +3,8 @@ package hub
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,6 +15,38 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
+
+func TestUpgradeWebSocket_RejectsDisallowedOriginBeforeUpgrade(t *testing.T) {
+	SetAllowedOrigins([]string{"https://allowed.example"})
+	t.Cleanup(func() { SetAllowedOrigins(nil) })
+
+	rejected := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	rejected.Header.Set("Origin", "https://attacker.example")
+	recorder := httptest.NewRecorder()
+	conn, err := upgradeWebSocket(recorder, rejected)
+	assert.Nil(t, conn)
+	assert.ErrorIs(t, err, errUpgradeOriginRejected)
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+
+	// An allowed origin with a valid handshake passes the gate and reaches
+	// gorilla. The recorder cannot be hijacked, so the upgrade fails after the
+	// origin check, and the failure must not be the origin rejection.
+	allowed := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	allowed.Header.Set("Origin", "https://allowed.example")
+	allowed.Header.Set("Connection", "Upgrade")
+	allowed.Header.Set("Upgrade", "websocket")
+	allowed.Header.Set("Sec-WebSocket-Version", "13")
+	nonce := make([]byte, 16)
+	_, err = rand.Read(nonce)
+	require.NoError(t, err)
+	allowed.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(nonce))
+	allowedRecorder := httptest.NewRecorder()
+	conn, err = upgradeWebSocket(allowedRecorder, allowed)
+	assert.Nil(t, conn)
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, errUpgradeOriginRejected)
+	assert.NotEqual(t, http.StatusForbidden, allowedRecorder.Code)
+}
 
 func TestUpgradeOriginChecks_AllowOnlyExplicitOrigins(t *testing.T) {
 	h := setupTestHub()

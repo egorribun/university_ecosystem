@@ -72,7 +72,12 @@ services:
       # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
       # /app/.secrets/jwt_rs256.pem. The CI job generates the key + chmod 644
       # so the non-root backend user can read it (else: Permission denied).
-      - ./.secrets:/app/.secrets:ro
+      - type: bind
+        source: ./.secrets/jwt_rs256.pem
+        target: /app/.secrets/jwt_rs256.pem
+        read_only: true
+        bind:
+          create_host_path: false
     # ROUND-14: override the base HEALTHCHECK so the backend container is reliably
     # HEALTHY -> the chaos suite's setup `docker compose up -d` (a service_healthy
     # dependency) stops failing exit 1 ("backend-1 is unhealthy") and the 5 chaos

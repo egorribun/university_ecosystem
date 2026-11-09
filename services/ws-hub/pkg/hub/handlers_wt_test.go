@@ -27,7 +27,7 @@ func newWTTestHub() *Hub {
 		ClientMsgRateLimit:  10,
 		ClientMsgRateBurst:  20,
 	}
-	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	return trackTestHub(mustNewFixtureHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 func hubWithWTTicketRedis(t *testing.T, payload string) *Hub {
@@ -68,7 +68,7 @@ func TestHandleWebTransport_ValidationErrors(t *testing.T) {
 		req := httptest.NewRequest("GET", "/wt?ticket="+validWTTicket, nil)
 		req.RemoteAddr = "10.0.0.1:1234"
 
-		for i := 0; i < 100; i++ {
+		for i := 0; i <= config.DefaultWSUpgradeRatePerMinute; i++ {
 			h.UpgradeLimiter.Allow("10.0.0.1")
 		}
 

@@ -29,6 +29,7 @@
  *     subsequent cursor pages bypass the ETag layer because their
  *     payloads are unique by cursor.
  */
+import * as v from "valibot"
 import {
   useInfiniteQuery,
   useQueryClient,
@@ -41,7 +42,8 @@ import { useEffect, useMemo, useSyncExternalStore } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import { fetchAnonymousNewsPage } from "@/api/client"
-import { fetchAnonymousNewsItem, fetchNewsItem, type NewsItem } from "@/api/news"
+import { fetchAnonymousNewsItem, fetchNewsItem, parseNewsList, type NewsItem } from "@/api/news"
+import { ensureValidResponse } from "@/api/validation"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 import { getConfirmedUserId } from "@/stores/authIdentity"
@@ -119,22 +121,44 @@ export const anonymousNewsListQueryKey = (filters: NewsListFilters) => {
   return ["news", "anonymous-list", normalized] as AnonymousNewsListQueryKey
 }
 
+const paginatedNewsResponseSchema = v.object({
+  items: v.unknown(),
+  has_more: v.boolean(),
+  next_cursor: v.optional(v.nullable(v.string())),
+})
+
+const parsePaginatedNewsResponse = (
+  payload: unknown,
+  fallbackLimit: number
+): PaginatedResponse<NewsItem> => {
+  const page = ensureValidResponse(paginatedNewsResponseSchema, payload, "GET /api/v1/news")
+  const items = parseNewsList(page.items)
+
+  return {
+    items,
+    total: items.length,
+    limit: fallbackLimit,
+    cursor: null,
+    next_cursor: page.next_cursor ?? null,
+    has_more: page.has_more,
+  }
+}
 const ensurePaginatedResponse = (
   payload: PaginatedResponse<NewsItem> | null | undefined,
   fallbackLimit: number
-): PaginatedResponse<NewsItem> => {
-  if (!payload) {
-    return {
-      items: [],
-      total: 0,
-      limit: fallbackLimit,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    }
+): PaginatedResponse<NewsItem> | null => {
+  if (!payload) return null
+
+  const rawItems = Array.isArray(payload.items) ? payload.items : null
+  if (!rawItems) return null
+
+  let items: NewsItem[]
+  try {
+    items = parseNewsList(rawItems)
+  } catch {
+    return null
   }
 
-  const items = Array.isArray(payload.items) ? payload.items : []
   const total = typeof payload.total === "number" ? payload.total : items.length
   const limit = typeof payload.limit === "number" ? payload.limit : fallbackLimit
 
@@ -155,10 +179,18 @@ const readPersistedNewsPage = (
 ): PaginatedResponse<NewsItem> | null => {
   if (typeof window === "undefined" || !owner || getCurrentConfirmedUserId() !== owner) return null
   // Never adopt the legacy shared entry: its is_liked values have no owner.
-  const items = new StorageItem<NewsItem[]>(
+  const persistedItems = new StorageItem<unknown>(
     `news:list:account:${encodeURIComponent(owner)}:${language}`
   ).get()
-  if (!Array.isArray(items) || items.length === 0) return null
+  if (!Array.isArray(persistedItems) || persistedItems.length === 0) return null
+
+  let items: NewsItem[]
+  try {
+    items = parseNewsList(persistedItems)
+  } catch {
+    // localStorage is an untrusted cache; malformed snapshots are not offline data.
+    return null
+  }
   return {
     items,
     total: items.length,
@@ -224,10 +256,18 @@ const createNewsListQueryFn =
     normalized: NormalizedNewsListFilters,
     queryKey: NewsListQueryKey,
     owner: string | null,
-    anonymous = false
+    anonymous = false,
+    capturedSessionEpoch = typeof window === "undefined" ? null : getSessionEpoch()
   ) =>
-  async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+  async (queryContext: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const { pageParam } = queryContext
     if (anonymous) {
+      const assertUnchangedLocalEpoch = () => {
+        if (capturedSessionEpoch !== null && getSessionEpoch() !== capturedSessionEpoch) {
+          throw new DOMException("Session changed", "AbortError")
+        }
+      }
+      assertUnchangedLocalEpoch()
       // Anonymous reads cover both an unconfirmed account and a stale session
       // generation observed from another tab. The transport omits cookies and
       // avoids Axios even if a successor account cookie exists.
@@ -238,15 +278,14 @@ const createNewsListQueryFn =
         language: normalized.language,
         limit: normalized.limit,
         cursor: pageParam,
-        signal,
+        signal: hasStaleBrowserSessionBinding() ? undefined : queryContext.signal,
       })
+      assertUnchangedLocalEpoch()
       if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
-      return ensurePaginatedResponse(
-        (await response.json()) as PaginatedResponse<NewsItem>,
-        normalized.limit
-      )
+      return parsePaginatedNewsResponse(response.data, normalized.limit)
     }
 
+    const { signal } = queryContext
     const currentEpoch = captureSessionEpoch()
     const ownsSession = () =>
       typeof window === "undefined" ||
@@ -281,13 +320,16 @@ const createNewsListQueryFn =
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<NewsItem>, string | null>>(queryKey)
-      return ensurePaginatedResponse(
-        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit, owner),
-        normalized.limit
-      )
+      const cachedPage = ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+      if (cachedPage) return cachedPage
+
+      const persistedPage = readPersistedNewsPage(normalized.language, normalized.limit, owner)
+      const fallbackPage = ensurePaginatedResponse(persistedPage, normalized.limit)
+      if (fallbackPage) return fallbackPage
+      throw new Error("News response was not modified without an available cached page")
     }
 
-    return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
+    return parsePaginatedNewsResponse(response.data, normalized.limit)
   }
 
 type UseNewsListQueryOptions = PrivateListControls<
@@ -441,7 +483,18 @@ export const useNewsListQuery = (
     // arrives. Do not expose its previously warm list through this observer.
     select: (data) => {
       if (!anonymous && !isCurrentSession()) return { pages: [], pageParams: [] }
-      return data
+      const fallbackData = persistedPage
+        ? { pages: [persistedPage], pageParams: [null] }
+        : { pages: [], pageParams: [] }
+      if (!Array.isArray(data.pages)) return fallbackData
+
+      const pages: PaginatedResponse<NewsItem>[] = []
+      for (const page of data.pages) {
+        const normalizedPage = ensurePaginatedResponse(page, normalized.limit)
+        if (!normalizedPage) return fallbackData
+        pages.push(normalizedPage)
+      }
+      return { ...data, pages }
     },
   })
 

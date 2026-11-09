@@ -76,9 +76,10 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all duration-base",
             "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
-            "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
+            "hover:border-brand/[calc(var(--opacity-medium)*100%)] hover:bg-glass-tint1",
             "peer-focus-visible:shadow-focus",
-            isSelected && "border-brand bg-brand/(--opacity-subtle) shadow-glow-primary",
+            isSelected &&
+              "border-brand bg-brand/[calc(var(--opacity-subtle)*100%)] shadow-glow-primary",
             className
           )}
         >

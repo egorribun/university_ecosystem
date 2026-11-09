@@ -583,7 +583,7 @@ describe("useChatWebSocket", () => {
     unmount()
   })
 
-  it("applies a reaction_changed frame to the cache", async () => {
+  it("applies peer and actor reactions without double-counting an actor replay", async () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage({ reactions: [] })]))
     const { socket, unmount } = await mountAndOpen(
@@ -611,11 +611,19 @@ describe("useChatWebSocket", () => {
         emoji: "👍",
         action: "added",
       })
+      socket.receive({
+        type: "reaction_changed",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        user_id: USER_A,
+        emoji: "👍",
+        action: "added",
+      })
     })
     expect(
       queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])?.items[0]
-        ?.reactions?.[0]?.count
-    ).toBe(1)
+        ?.reactions?.[0]
+    ).toMatchObject({ emoji: "👍", count: 2, reacted_by_me: true })
     unmount()
   })
 
@@ -1210,7 +1218,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
   })
 
   it("handles a typing timeout that races with cleanup", async () => {
-    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    const { socket, unmount, result } = await mountAndOpen({ enabled: true })
 
     vi.useFakeTimers()
     act(() =>
@@ -1221,11 +1229,17 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
         user_name: "Racer",
       })
     )
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([
+      { userId: "00000000-0000-4000-8000-000000000099", userName: "Racer" },
+    ])
 
+    // Cleanup's own clearTimeout is suppressed, so the pending typing timeout still fires.
     const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
     act(() => socket.close(1000))
     act(() => vi.advanceTimersByTime(3_000))
     clearTimeoutSpy.mockRestore()
+
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
     unmount()
   })
 

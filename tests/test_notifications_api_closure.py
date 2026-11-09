@@ -665,3 +665,77 @@ async def test_check_schedule_uses_scalar_one_legacy_count_fallback() -> None:
 
     assert result is expected
     create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_postgres_missing_column_fallback_recovers_transaction() -> None:
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy.dialects import postgresql
+
+    class PostgresLikeSession:
+        def __init__(self) -> None:
+            self.transaction_failed = False
+            self.execute_calls = 0
+            self.run_sync_calls = 0
+            self.savepoints = 0
+
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        @asynccontextmanager
+        async def begin_nested(self):
+            self.savepoints += 1
+            try:
+                yield
+            except SQLAlchemyError:
+                # PostgreSQL clears the failed statement state when its savepoint
+                # rolls back, allowing schema inspection and the compatibility query.
+                self.transaction_failed = False
+                raise
+
+        async def run_sync(self, callback):
+            if self.transaction_failed:
+                raise SQLAlchemyError("current transaction is aborted")
+            self.run_sync_calls += 1
+            return callback(SimpleNamespace(bind=object()))
+
+        async def execute(self, statement):
+            self.execute_calls += 1
+            sql = str(statement.compile(dialect=postgresql.dialect()))
+            if self.execute_calls == 1:
+                assert "notifications.title_en" in sql
+                self.transaction_failed = True
+                raise SQLAlchemyError("column notifications.title_en does not exist")
+            if self.transaction_failed:
+                raise SQLAlchemyError("current transaction is aborted")
+            assert "notifications.title_en" not in sql
+            result = MagicMock()
+            result.mappings.return_value.all.return_value = [
+                {"id": 1, "title": "Legacy title", "body": "Legacy body"}
+            ]
+            return result
+
+    db = PostgresLikeSession()
+    available = {
+        "id",
+        "user_id",
+        "title",
+        "body",
+        "type",
+        "url",
+        "created_at",
+        "read",
+        "read_at",
+    }
+    inspector = SimpleNamespace(
+        get_columns=lambda table: [{"name": name} for name in available]
+    )
+
+    with patch.object(api, "inspect", return_value=inspector):
+        rows, columns = await api._fetch_notification_rows(db, uuid.uuid4(), 5, None)
+
+    assert rows == [{"id": 1, "title": "Legacy title", "body": "Legacy body"}]
+    assert columns == available
+    assert db.execute_calls == 2
+    assert db.run_sync_calls == 1
+    assert db.savepoints == 1

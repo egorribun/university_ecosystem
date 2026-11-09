@@ -11,6 +11,262 @@ import {
   assertNoLiveE2EOutputOverride,
   resolveLiveE2EOutputDirectory,
 } from "./live-e2e-output-dir.mjs"
+import {
+  liveAuditCaseIds,
+  selectLiveAuditCases,
+  selectLiveAuditCasesFromEnvironment,
+} from "./live-audit-case-selection.mjs"
+
+test("live audit case selection maps exact files, titles, and projects", () => {
+  const selection = selectLiveAuditCases([
+    "aud154-realtime",
+    "aud454-membership-revocation",
+    "aud375-service-worker",
+    "aud321-rate-limit-ux",
+  ])
+  assert.deepEqual(selection.files, [
+    "tests/e2e-live/messenger-realtime.live.spec.ts",
+    "tests/e2e-live/messenger-membership-revocation.live.spec.ts",
+    "tests/e2e/audit375-service-worker.spec.ts",
+    "tests/e2e/rate-limit-ux.spec.ts",
+  ])
+  assert.deepEqual(selection.projects, ["desktop"])
+  assert.deepEqual(
+    selection.grep.map(({ source }) => source),
+    [
+      "a message is delivered, edited, and tombstoned in the other authenticated session",
+      "a removed member loses detail, history, reactor, attachment, send, and live access",
+      "AUD-375 real service-worker replay",
+      "Rate limit UX",
+    ]
+  )
+  assert.deepEqual(liveAuditCaseIds, [
+    "aud154-realtime",
+    "aud454-membership-revocation",
+    "aud375-service-worker",
+    "aud321-rate-limit-ux",
+    "aud432-login-lockout",
+    "aud432-registration",
+    "aud501-hidden-clock",
+  ])
+})
+
+test("live audit selection rejects raw paths, raw grep, empty, unknown, and duplicate IDs", () => {
+  for (const invalid of [
+    [],
+    ["aud164"],
+    ["aud154-realtime", "aud154-realtime"],
+    ["../tests/e2e-live/secret.spec.ts"],
+    [".*"],
+  ]) {
+    assert.throws(() => selectLiveAuditCases(invalid), TypeError)
+  }
+  assert.throws(() => selectLiveAuditCasesFromEnvironment(""), TypeError)
+  assert.throws(
+    () => selectLiveAuditCasesFromEnvironment("aud154-realtime,../unreviewed.spec.ts"),
+    TypeError
+  )
+  assert.throws(
+    () => selectLiveAuditCasesFromEnvironment("aud154-realtime,aud154-realtime"),
+    TypeError
+  )
+  assert.throws(() => selectLiveAuditCasesFromEnvironment("x".repeat(513)), TypeError)
+  assert.equal(selectLiveAuditCasesFromEnvironment(undefined), undefined)
+})
+
+test("AUD-432 lockout and registration retain desktop and mobile projects", () => {
+  assert.deepEqual(selectLiveAuditCases(["aud432-login-lockout"]).projects, ["desktop", "mobile"])
+  assert.deepEqual(selectLiveAuditCases(["aud432-registration"]).projects, ["desktop", "mobile"])
+})
+
+test("AUD-501 selects only the seeded story clock case on desktop and mobile", () => {
+  const selection = selectLiveAuditCases(["aud501-hidden-clock"])
+  assert.deepEqual(selection.files, ["tests/e2e-live/story-viewer-keyboard.live.spec.ts"])
+  assert.deepEqual(selection.projects, ["desktop", "mobile"])
+  assert.deepEqual(
+    selection.grep.map(({ source }) => source),
+    ["a seeded story preserves elapsed playback across a clock-controlled hidden tab"]
+  )
+})
+
+test("project-scoped selection rejects cases assigned to the other project", () => {
+  const desktop = selectLiveAuditCases(["aud154-realtime", "aud432-registration"], "desktop")
+  const mobile = selectLiveAuditCases(["aud432-registration", "aud501-hidden-clock"], "mobile")
+  assert.deepEqual(desktop.projects, ["desktop"])
+  assert.deepEqual(mobile.projects, ["mobile"])
+  assert.throws(() => selectLiveAuditCases(["aud154-realtime"], "mobile"), TypeError)
+  assert.throws(() => selectLiveAuditCases(["aud154-realtime"], "backend"), TypeError)
+})
+
+test("audit Playwright config discovers only the closed case map's exact files", async () => {
+  const config = await readFile(
+    new URL("../playwright.live-audit.config.ts", import.meta.url),
+    "utf8"
+  )
+  assert.match(config, /process\.env\.LIVE_AUDIT_CASE_IDS/u)
+  assert.match(config, /process\.env\.LIVE_AUDIT_PROJECT/u)
+  assert.match(config, /testMatch:\s*exactTestFiles/u)
+  assert.match(config, /grep:\s*selection\.grep/u)
+  assert.doesNotMatch(config, /new RegExp/u)
+  assert.match(config, /projects:\s*selectedProjects/u)
+  assert.doesNotMatch(config, /\*\*\/e2e-live|\.\*\.live/u)
+})
+
+test("audit Playwright collection binds the seven cases to exact files and projects", async (t) => {
+  const frontendRoot = await realpath(fileURLToPath(new URL("../", import.meta.url)))
+  const require = createRequire(import.meta.url)
+  const cli = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js")
+  const ownedRoot = await mkdtemp(path.join(tmpdir(), "ue-live-playwright-audit-selection-"))
+  t.after(() => rm(ownedRoot, { recursive: true, force: true }))
+
+  const outputDirectory = path.join(ownedRoot, "playwright-output")
+  const npmUserConfig = path.join(ownedRoot, "npm-userconfig")
+  const npmGlobalConfig = path.join(ownedRoot, "npm-globalconfig")
+  await mkdir(outputDirectory)
+  await writeFile(
+    path.join(ownedRoot, ".ue-live-e2e-output-owner"),
+    "ue-live-playwright-output-v1\n",
+    { flag: "wx" }
+  )
+  for (const configPath of [npmUserConfig, npmGlobalConfig]) {
+    await writeFile(configPath, "", { flag: "wx" })
+  }
+
+  const expectedRows = {
+    desktop: [
+      [
+        "e2e/audit375-service-worker.spec.ts",
+        "an abandoned worker's lease blocks its successor until forced expiry, then the successor drains the row",
+      ],
+      [
+        "e2e/audit375-service-worker.spec.ts",
+        "forwards the cookie proof and deletes a terminal 403 while two active workers contend",
+      ],
+      [
+        "e2e/rate-limit-ux.spec.ts",
+        "a persistent 429 shows a load error and manual retry recovers",
+      ],
+      [
+        "e2e/rate-limit-ux.spec.ts",
+        "retries a 429 after Retry-After and renders the successful response",
+      ],
+      [
+        "e2e-live/auth-login-lockout.live.spec.ts",
+        "synthetic account reaches account lockout after the configured failed-login threshold",
+      ],
+      [
+        "e2e-live/messenger-membership-revocation.live.spec.ts",
+        "a removed member loses detail, history, reactor, attachment, send, and live access",
+      ],
+      [
+        "e2e-live/messenger-realtime.live.spec.ts",
+        "a message is delivered, edited, and tombstoned in the other authenticated session",
+      ],
+      [
+        "e2e-live/register-double-submit.live.spec.ts",
+        "rapid double submit on a 360px registration form creates one account",
+      ],
+      [
+        "e2e-live/story-viewer-keyboard.live.spec.ts",
+        "a seeded story preserves elapsed playback across a clock-controlled hidden tab",
+      ],
+    ],
+    mobile: [
+      [
+        "e2e-live/auth-login-lockout.live.spec.ts",
+        "synthetic account reaches account lockout after the configured failed-login threshold",
+      ],
+      [
+        "e2e-live/register-double-submit.live.spec.ts",
+        "rapid double submit on a 360px registration form creates one account",
+      ],
+      [
+        "e2e-live/story-viewer-keyboard.live.spec.ts",
+        "a seeded story preserves elapsed playback across a clock-controlled hidden tab",
+      ],
+    ],
+  }
+
+  const projectCases = {
+    desktop: liveAuditCaseIds,
+    mobile: ["aud432-login-lockout", "aud432-registration", "aud501-hidden-clock"],
+  }
+  for (const project of ["desktop", "mobile"]) {
+    const environment = {
+      CI: "true",
+      HOME: ownedRoot,
+      PATH: path.dirname(process.execPath),
+      TMPDIR: tmpdir(),
+      TMP: tmpdir(),
+      TEMP: tmpdir(),
+      LIVE_AUDIT_CASE_IDS: projectCases[project].join(","),
+      LIVE_AUDIT_PROJECT: project,
+      LIVE_BASE_URL: "http://localhost:20000",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:20001",
+      TEST_PASSWORD: `${randomBytes(32).toString("base64url")}!Aa0`,
+      LIVE_E2E_OUTPUT_DIR: outputDirectory,
+      PLAYWRIGHT_TEST_OUTPUT_DIR: outputDirectory,
+      NPM_CONFIG_USERCONFIG: npmUserConfig,
+      NPM_CONFIG_GLOBALCONFIG: npmGlobalConfig,
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+    }
+    if (process.platform === "win32") {
+      assert.equal(typeof process.env.SYSTEMROOT, "string")
+      environment.SYSTEMROOT = process.env.SYSTEMROOT
+    }
+
+    const collected = spawnSync(
+      process.execPath,
+      [cli, "test", "--list", "--reporter=json", "--config=playwright.live-audit.config.ts"],
+      {
+        cwd: frontendRoot,
+        env: environment,
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+        timeout: 60_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    )
+    assert.equal(collected.error, undefined, `Playwright ${project} collection must start`)
+    assert.equal(collected.signal, null, `Playwright ${project} collection must finish bounded`)
+    assert.equal(
+      collected.status,
+      0,
+      `Playwright ${project} collection must succeed: ${collected.stderr}`
+    )
+    const report = JSON.parse(collected.stdout)
+    assert.deepEqual(report.errors, [])
+    assert.equal(path.resolve(report.config.rootDir), path.join(frontendRoot, "tests"))
+    assert.deepEqual(
+      report.config.projects.map(({ name }) => name),
+      [project]
+    )
+
+    const rows = []
+    const pending = [...report.suites]
+    while (pending.length > 0) {
+      const suite = pending.pop()
+      assert.ok(suite.suites === undefined || Array.isArray(suite.suites))
+      assert.ok(Array.isArray(suite.specs))
+      pending.push(...(suite.suites ?? []))
+      for (const spec of suite.specs) {
+        assert.equal(typeof spec.file, "string")
+        for (const instance of spec.tests) {
+          assert.equal(instance.projectName, project)
+          rows.push([spec.file.replaceAll("\\", "/"), spec.title])
+        }
+      }
+    }
+    const normalizeRows = (values) =>
+      values.toSorted(([leftFile, leftTitle], [rightFile, rightTitle]) =>
+        `${leftFile}\0${leftTitle}`.localeCompare(`${rightFile}\0${rightTitle}`)
+      )
+    assert.deepEqual(normalizeRows(rows), normalizeRows(expectedRows[project]))
+  }
+})
 
 test("live admin fixture requires a runtime password and has no static admin fallback", async () => {
   const fixture = await readFile(new URL("../tests/e2e-live/fixtures.ts", import.meta.url), "utf8")
@@ -235,7 +491,7 @@ test("live Playwright collection has a closed source inventory", async (t) => {
     const testPackage = JSON.parse(
       await readFile(require.resolve("@playwright/test/package.json"), "utf8")
     )
-    requireCollection(playwrightPackage.version === "1.63.0" && testPackage.version === "1.63.0")
+    requireCollection(playwrightPackage.version === "1.64.1" && testPackage.version === "1.64.1")
     const cli = path.join(path.dirname(packagePath), "cli.js")
 
     phase = "inventory"
@@ -243,21 +499,52 @@ test("live Playwright collection has a closed source inventory", async (t) => {
       path.join(frontendRoot, "..", "scripts", "live_stand.py"),
       "utf8"
     )
-    const inventory = launcher.match(
+    const evidence = await readFile(
+      path.join(frontendRoot, "..", "scripts", "live_stand_playwright_evidence.py"),
+      "utf8"
+    )
+    requireCollection(
+      /^from scripts\.live_stand_playwright_evidence import \(\s+_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES as _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES,\s*\)$/mu.test(
+        launcher
+      )
+    )
+    requireCollection(
+      /^from scripts\.live_stand_playwright_evidence import \(\s+_PLAYWRIGHT_FULL_COLLECTION_COUNT as _PLAYWRIGHT_FULL_COLLECTION_COUNT,\s*\)$/mu.test(
+        launcher
+      )
+    )
+    const inventory = evidence.match(
       /^_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = \(\n([\s\S]*?)^\)/mu
     )
     requireCollection(inventory !== null)
+    const declarations = new Set()
     const reviewed = new Set()
+    const auditCaseSources = new Set()
+    const expectedAuditCaseSources = new Set([
+      "tests/e2e/audit375-service-worker.spec.ts",
+      "tests/e2e/rate-limit-ux.spec.ts",
+    ])
     for (const line of inventory[1].trimEnd().split("\n")) {
-      const entry = line.match(/^ {4}"(tests\/e2e-live\/[a-z0-9-]+\.live\.spec\.ts)",$/u)
+      const entry = line.match(/^ {4}"(tests\/[^"]+)",$/u)
       requireCollection(entry !== null)
-      requireCollection(!reviewed.has(entry[1]))
-      reviewed.add(entry[1])
+      requireCollection(!declarations.has(entry[1]))
+      if (/^tests\/e2e-live\/[a-z0-9-]+\.live\.spec\.ts$/u.test(entry[1])) {
+        // Existing live-suite sources remain tied to tracked live spec files.
+        reviewed.add(entry[1])
+      } else {
+        requireCollection(expectedAuditCaseSources.has(entry[1]))
+        auditCaseSources.add(entry[1])
+      }
+      declarations.add(entry[1])
     }
     requireCollection(reviewed.size > 0 && reviewed.size <= 256)
+    requireCollection(
+      auditCaseSources.size === expectedAuditCaseSources.size &&
+        [...expectedAuditCaseSources].every((source) => auditCaseSources.has(source))
+    )
 
     const expectedCount = Number(
-      launcher.match(/^_PLAYWRIGHT_FULL_COLLECTION_COUNT = ([1-9][0-9]*)$/mu)?.[1]
+      evidence.match(/^_PLAYWRIGHT_FULL_COLLECTION_COUNT = ([1-9][0-9]*)$/mu)?.[1]
     )
     requireCollection(Number.isSafeInteger(expectedCount) && expectedCount > 0)
     requireCollection(expectedCount <= 10_000)

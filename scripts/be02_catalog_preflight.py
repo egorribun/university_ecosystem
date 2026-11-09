@@ -1,20 +1,15 @@
-"""Read-only BE-02 catalog preflight for a deployed PostgreSQL DDL phase.
+"""Retired BE-02 phase preflight entrypoint and read-only inspection helpers.
 
-The selected Alembic phase validates its target columns before DDL. This
-command runs the same migration-owned catalog checks inside a READ ONLY
-transaction and without taking table locks, so operators can inspect catalog
-drift before a release window. It never writes. The database URL is read from
-``DATABASE_URL`` (or ``--database-url-env``), never from command arguments.
+ADR-051 replaced phases 1/3/4 with a fresh-only irreversible MVP baseline.
+The CLI refuses retired operations; it does not inspect or migrate a database.
+The explicit-module inspection helpers remain available to existing callers.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import json
-import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -28,8 +23,16 @@ MIGRATION_PATHS = {
     4: ROOT / "alembic/versions/202609250001_phase_semantic_defaults.py",
 }
 MIGRATION_PATH = MIGRATION_PATHS[4]
+_RETIRED_PHASE = (
+    "BE-02 phases 1, 3, and 4 were retired by ADR-051: the fresh-only MVP "
+    "baseline 202611020000 has no pre-squash upgrade path. "
+    "See docs/adr/ADR-051-mvp-migration-baseline-squash.md and run "
+    "scripts/quality/audit_model_defaults.py for the current source inventory. "
+    "That inventory is not deployed-catalog proof; BE-02 remains open pending "
+    "current-baseline PostgreSQL catalog verification."
+)
 _UNSUPPORTED_PHASE = (
-    "BE-02 preflight supports DDL phases 1, 3, and 4; "
+    "Historical BE-02 DDL phases were 1, 3, and 4 (now retired); "
     "phase 2 is Python-only and has no catalog DDL"
 )
 
@@ -43,18 +46,11 @@ class ColumnResult:
 
 
 def load_migration(phase: int = 4) -> ModuleType:
-    """Import the reviewed migration so the preflight cannot drift from it."""
+    """Reject retired migration loading without importing historical source."""
 
     if isinstance(phase, bool) or phase not in MIGRATION_PATHS:
         raise ValueError(_UNSUPPORTED_PHASE)
-    path = MIGRATION_PATHS[phase]
-    spec = importlib.util.spec_from_file_location(f"be02_phase_{phase}", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load BE-02 migration from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.__dict__["BE02_PHASE"] = phase
-    return module
+    raise RuntimeError(_RETIRED_PHASE)
 
 
 def sync_url(url: str) -> str:
@@ -173,23 +169,22 @@ def main(argv: list[str] | None = None) -> int:
         choices=tuple(MIGRATION_PATHS),
         default=4,
         help=(
-            "BE-02 DDL phase to inspect; phase 2 is Python-only and has no "
-            "catalog DDL (default: 4)"
+            "retired historical phase option retained for compatibility only; "
+            "no phase is executed; phase 2 is Python-only and has no catalog "
+            "DDL (default: 4)"
         ),
     )
     parser.add_argument(
         "--database-url-env",
         default="DATABASE_URL",
-        help="environment variable holding the target database URL",
+        help=(
+            "historical compatibility option only; the named environment "
+            "variable is not read and no database URL is used"
+        ),
     )
-    args = parser.parse_args(argv)
-    url = os.environ.get(args.database_url_env, "").strip()
-    if not url:
-        print(f"{args.database_url_env} is not set", file=sys.stderr)
-        return 2
-    results = run(url, load_migration(args.phase))
-    print(json.dumps([asdict(result) for result in results], indent=2))
-    return 1 if any(result.status == "blocked" for result in results) else 0
+    parser.parse_args(argv)
+    print(_RETIRED_PHASE, file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

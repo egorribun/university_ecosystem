@@ -1,0 +1,17 @@
+{
+  "name": "@university-ecosystem/minimatch-3-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Call-compatible minimatch 3 function export over the patched minimatch 11 engine, for eslint-plugin-react and eslint-plugin-jsx-a11y only",
+  "main": "index.cjs",
+  "files": [
+    "index.cjs"
+  ],
+  "license": "ISC",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "minimatch": "11.0.2"
+  }
+}

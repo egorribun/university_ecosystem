@@ -279,12 +279,14 @@ class NewsService:
         user_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
+        cursor: tuple[datetime, uuid.UUID] | None = None,
     ) -> NewsInteractionsDTO:
         return await self.repo.get_interactions(
             news_id,
             user_id,
             limit=limit,
             offset=offset,
+            cursor=cursor,
         )
 
     def serialize_news(

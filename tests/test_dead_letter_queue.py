@@ -113,6 +113,7 @@ async def test_add_failed_job_duplicate(dlq, mock_session):
     """Test duplicate job is skipped."""
     existing_job = MagicMock()
     existing_job.status = JobStatus.PENDING.value
+    existing_job.error_message = None
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_job
     mock_session.execute.return_value = mock_result
@@ -158,10 +159,15 @@ async def test_mark_job_completed(dlq, mock_session):
     job = MagicMock()
     job.status = JobStatus.RETRYING
     job.job_type = "email"
+    job_hash = compute_job_hash("email", {})
+    job.job_hash = job_hash
+    job.retry_count = 2
 
     await dlq.mark_job_completed(job)
 
     assert job.status == JobStatus.COMPLETED
+    assert job.job_hash == job_hash
+    assert job.retry_count == 2
     mock_session.flush.assert_called_once()
     mock_session.commit.assert_not_called()
 

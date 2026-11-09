@@ -19,6 +19,11 @@ from scripts import owned_nats_http_adapter as http_adapter
 from scripts import owned_nats_process as process
 from scripts.owned_nats_coordinator import (
     AdmissionEvidence,
+    BackendCaptureRecorder,
+    BackendCaptureStage,
+    BackendFailureCategory,
+    BackendFailureDiagnostic,
+    BackendFailureKind,
     BrokerEvidence,
     ChatCreateEvidence,
     ChatRowsEvidence,
@@ -31,6 +36,7 @@ from scripts.owned_nats_coordinator import (
     RuntimeObservationPhase,
 )
 from scripts.owned_nats_docker import ComposeConfigPins, DockerReadPins
+from scripts.owned_nats_failure_diagnostic import capture_backend_failure
 from scripts.owned_nats_outage import (
     ContainerSnapshot,
     Deadline,
@@ -748,7 +754,7 @@ class OwnedNatsTransportPort:
         *,
         deadline: Deadline,
     ) -> MessagePostEvidence:
-        return cast(
+        response = cast(
             MessagePostEvidence,
             self._delegate(
                 self._http,
@@ -758,6 +764,57 @@ class OwnedNatsTransportPort:
                 deadline=deadline,
             ),
         )
+        if type(response) is MessagePostEvidence and response.status_code == 500:
+            diagnostic = self._capture_send_failure(deadline)
+            return replace(response, backend_diagnostic=diagnostic)
+        return response
+
+    def _capture_send_failure(
+        self, deadline: Deadline
+    ) -> BackendFailureDiagnostic | None:
+        # Leave the primary operation a reserve: diagnostics never gain a fresh
+        # deadline or borrow the coordinator's restoration/cleanup budget.
+        recorder = BackendCaptureRecorder()
+
+        def unavailable() -> BackendFailureDiagnostic:
+            return BackendFailureDiagnostic(
+                BackendFailureCategory.UNKNOWN,
+                BackendFailureKind.UNKNOWN,
+                capture_stage=recorder.stage,
+            )
+
+        try:
+            budget = deadline.timeout_for(6.0)
+            if budget.seconds is None or budget.seconds <= 1.0:
+                return unavailable()
+            bounded = deadline.child(budget.seconds - 1.0)
+            recorder.record(BackendCaptureStage.REQUEST_ID)
+            request_id = self._http._send_request_id
+            if request_id is None:
+                return unavailable()
+            recorder.record(BackendCaptureStage.OWNER_BEFORE)
+            owner = self._owner_port.read_signed_owner(deadline=bounded)
+            diagnostic = capture_backend_failure(
+                owner,
+                self._docker_pins,
+                self._compose_pins,
+                request_id,
+                deadline=bounded,
+                recorder=recorder,
+            )
+            capture_stage = recorder.stage
+            recorder.record(BackendCaptureStage.OWNER_AFTER)
+            if self._owner_port.read_signed_owner(deadline=bounded) != owner:
+                return unavailable()
+            if diagnostic is None:
+                recorder.record(capture_stage)
+                return unavailable()
+            return diagnostic
+        except (OSError, RuntimeError, AttributeError, TypeError, ValueError):
+            # Closed diagnostic failure cannot replace the already observed500.
+            return unavailable()
+        finally:
+            self._http._send_request_id = None
 
     def read_correlation(
         self,

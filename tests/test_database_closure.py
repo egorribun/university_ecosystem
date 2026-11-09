@@ -25,15 +25,28 @@ def test_adapt_datetime_and_sqlite_connection_configuration():
 
 def test_sqlite_connection_wrapper_handles_registration_failure():
     class _RawConnection:
+        def __init__(self):
+            self.registrations = []
+
         def create_function(self, *args):
+            self.registrations.append(args)
             raise RuntimeError("registration unavailable")
 
     class _ConnectionWrapper:
-        def __init__(self):
-            self.dbapi_connection = SimpleNamespace(_conn=_RawConnection())
+        def __init__(self, raw_connection):
+            self.dbapi_connection = SimpleNamespace(_conn=raw_connection)
 
-    database_module.set_sqlite_pragma(_ConnectionWrapper(), None)
-    database_module.set_sqlite_pragma(object(), None)
+    raw_connection = _RawConnection()
+    assert (
+        database_module.set_sqlite_pragma(_ConnectionWrapper(raw_connection), None)
+    ) is None
+    assert len(raw_connection.registrations) == 1
+    name, arity, callback = raw_connection.registrations[0]
+    assert (name, arity) == ("pg_sleep", 1)
+    assert callable(callback)
+
+    # A non-SQLite wrapper without the expected connection attributes is ignored.
+    assert (database_module.set_sqlite_pragma(object(), None)) is None
 
 
 def test_pool_metrics_snapshot_and_peak_property():

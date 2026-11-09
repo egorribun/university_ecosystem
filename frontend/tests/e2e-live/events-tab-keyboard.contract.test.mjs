@@ -57,7 +57,7 @@ test("live Events tabs prove the real keyboard and accessible selection contract
   assert.match(russianEvents, /"my": "Мои события"/u)
   assert.match(
     fixtures,
-    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*ROLES\[role\]\.password,\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
+    /export async function loginAs\(\s*page: Page,\s*role: Role,\s*cleanupDeadlineAtMs\?: number,\s*maximumOperationTimeoutMs = LIVE_OWNED_CLEANUP_OPERATION_TIMEOUT_MS\s*\): Promise<void> \{\s*await loginWith\(\s*page,\s*ROLES\[role\]\.email,\s*loginPasswordForRole\(role\),\s*cleanupDeadlineAtMs,\s*maximumOperationTimeoutMs\s*\)/u
   )
   assert.match(fixtures, /student:\s*\{/u)
 

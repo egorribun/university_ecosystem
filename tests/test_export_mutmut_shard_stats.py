@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -465,3 +467,302 @@ def test_build_shard_stats_rejects_glob_patterns() -> None:
             [("app.module.mutant__mutmut_1", 1)],
             _STATUS_BY_EXIT_CODE,
         )
+
+
+def _export_args(tmp_path: Path, selected_file: Path, output: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        selected_file=selected_file,
+        all=False,
+        output=output,
+        verify_exact_execution=None,
+        prepare_exact_execution=None,
+        finalize_incomplete_execution=None,
+        mutation_exit_code=None,
+        tee_exit_code=None,
+        failure_exit_code=None,
+        failure_reason=None,
+        execution_proof=tmp_path / "execution-proof.json",
+        execution_evidence_dir=tmp_path / "evidence",
+    )
+
+
+def test_failed_export_removes_only_current_stats_and_preserves_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    selected_file.write_text("app.module.killed__mutmut_1\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.parent.mkdir()
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    historical_report = tmp_path / "history" / "mutmut-cicd-stats.json"
+    historical_report.parent.mkdir()
+    historical_report.write_text('{"killed": 17}\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    monkeypatch.setattr(
+        shard_stats,
+        "_load_mutmut_cli",
+        lambda: (_ for _ in ()).throw(ValueError("mutmut metadata unavailable")),
+    )
+
+    with pytest.raises(SystemExit, match="unable to export trustworthy mutmut stats"):
+        shard_stats.main()
+
+    assert not output.exists()
+    assert historical_report.read_text(encoding="utf-8") == '{"killed": 17}\n'
+
+
+def test_atomic_stats_publish_failure_leaves_no_current_or_temp_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    mutant_name = "app.module.killed__mutmut_1"
+    selected_file.write_text(f"{mutant_name}\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.parent.mkdir()
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    historical_report = tmp_path / "history" / "mutmut-cicd-stats.json"
+    historical_report.parent.mkdir()
+    historical_report.write_text('{"killed": 17}\n', encoding="utf-8")
+    mutation = _MutationData({mutant_name: 1})
+    fake_mutmut = _FakeMutmut([(mutation, mutant_name, 1)], [])
+
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    monkeypatch.setattr(shard_stats, "_load_mutmut_cli", lambda: fake_mutmut)
+
+    def fail_replace(source: Path, destination: Path) -> None:
+        raise OSError("simulated atomic publish failure")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(SystemExit, match="unable to write trustworthy mutmut stats"):
+        shard_stats.main()
+
+    assert not output.exists()
+    assert historical_report.read_text(encoding="utf-8") == '{"killed": 17}\n'
+    assert list(output.parent.glob(f".{output.name}.*.tmp")) == []
+
+
+def test_reported_symlink_output_is_removed_without_touching_other_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.parent.mkdir()
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    historical_report = tmp_path / "history" / "mutmut-cicd-stats.json"
+    historical_report.parent.mkdir()
+    historical_report.write_text('{"killed": 17}\n', encoding="utf-8")
+    original_lstat = Path.lstat
+
+    def report_output_as_symlink(path: Path) -> os.stat_result | SimpleNamespace:
+        if path == output:
+            return SimpleNamespace(st_mode=stat.S_IFLNK)
+        return original_lstat(path)
+
+    # Simulate symlink metadata without relying on platform link privileges.
+    monkeypatch.setattr(Path, "lstat", report_output_as_symlink)
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        shard_stats._invalidate_stats_output(output)
+
+    assert not output.exists()
+    assert historical_report.read_text(encoding="utf-8") == '{"killed": 17}\n'
+
+
+def test_output_inspection_failure_stops_export_before_mutmut_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    selected_file.write_text("app.module.killed__mutmut_1\n", encoding="utf-8")
+    output = tmp_path / "mutmut-cicd-stats.json"
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    original_lstat = Path.lstat
+
+    def refuse_output_inspection(path: Path) -> os.stat_result:
+        if path == output:
+            raise PermissionError("simulated output inspection refusal")
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", refuse_output_inspection)
+    mutmut_was_loaded = False
+
+    def fail_if_loaded() -> _FakeMutmut:
+        nonlocal mutmut_was_loaded
+        mutmut_was_loaded = True
+        return _FakeMutmut([], [])
+
+    monkeypatch.setattr(shard_stats, "_load_mutmut_cli", fail_if_loaded)
+
+    with pytest.raises(SystemExit, match="unable to prepare trustworthy mutmut stats"):
+        shard_stats.main()
+
+    assert mutmut_was_loaded is False
+    assert output.read_text(encoding="utf-8") == '{"killed": 99}\n'
+
+
+def test_nonregular_current_output_is_preserved_and_export_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    selected_file.write_text("app.module.killed__mutmut_1\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.mkdir(parents=True)
+    sentinel = output / "keep.json"
+    sentinel.write_text('{"killed": 17}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+
+    with pytest.raises(SystemExit, match="stats output must be a regular file"):
+        shard_stats.main()
+
+    assert output.is_dir()
+    assert sentinel.read_text(encoding="utf-8") == '{"killed": 17}\n'
+
+
+def test_current_output_removal_refusal_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    selected_file.write_text("app.module.killed__mutmut_1\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.parent.mkdir()
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    original_unlink = Path.unlink
+
+    def refuse_current_output(path: Path, *, missing_ok: bool = False) -> None:
+        if path == output:
+            raise PermissionError("simulated output removal refusal")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse_current_output)
+
+    with pytest.raises(SystemExit, match="unable to remove stats output"):
+        shard_stats.main()
+
+    assert output.read_text(encoding="utf-8") == '{"killed": 99}\n'
+
+
+def test_temp_creation_failure_has_no_current_or_temporary_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    mutant_name = "app.module.killed__mutmut_1"
+    selected_file.write_text(f"{mutant_name}\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    mutation = _MutationData({mutant_name: 1})
+    fake_mutmut = _FakeMutmut([(mutation, mutant_name, 1)], [])
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    monkeypatch.setattr(shard_stats, "_load_mutmut_cli", lambda: fake_mutmut)
+
+    def fail_temp_creation(**kwargs: object) -> None:
+        raise PermissionError("simulated temporary-file creation refusal")
+
+    monkeypatch.setattr(shard_stats.tempfile, "NamedTemporaryFile", fail_temp_creation)
+
+    with pytest.raises(SystemExit, match="unable to write trustworthy mutmut stats"):
+        shard_stats.main()
+
+    assert not output.exists()
+    assert list(output.parent.glob(f".{output.name}.*.tmp")) == []
+
+
+def test_temp_cleanup_failure_keeps_publish_error_visible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    original_unlink = Path.unlink
+    publish_error = OSError("simulated atomic publish failure")
+    cleanup_attempts: list[Path] = []
+
+    def fail_replace(source: Path, destination: Path) -> None:
+        raise publish_error
+
+    def refuse_temp_cleanup(path: Path, *, missing_ok: bool = False) -> None:
+        if path.parent == output.parent and path.name.startswith(f".{output.name}."):
+            cleanup_attempts.append(path)
+            raise PermissionError("simulated temporary-file cleanup refusal")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", refuse_temp_cleanup)
+
+    with pytest.raises(ValueError, match="simulated atomic publish failure") as raised:
+        shard_stats._write_stats_json_atomically(output, {"killed": 1})
+
+    assert len(cleanup_attempts) == 1
+    assert cleanup_attempts[0].exists()
+    assert raised.value.__cause__ is publish_error
+    assert any(
+        "simulated temporary-file cleanup refusal" in note
+        for note in publish_error.__notes__
+    )
+
+
+def test_successful_export_atomically_replaces_current_stats_and_preserves_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    selected_file = tmp_path / "selected.txt"
+    mutant_name = "app.module.killed__mutmut_1"
+    selected_file.write_text(f"{mutant_name}\n", encoding="utf-8")
+    output = tmp_path / "mutants" / "mutmut-cicd-stats.json"
+    output.parent.mkdir()
+    output.write_text('{"killed": 99}\n', encoding="utf-8")
+    historical_report = tmp_path / "history" / "mutmut-cicd-stats.json"
+    historical_report.parent.mkdir()
+    historical_report.write_text('{"killed": 17}\n', encoding="utf-8")
+    mutation = _MutationData({mutant_name: 1})
+    fake_mutmut = _FakeMutmut([(mutation, mutant_name, 1)], [])
+    monkeypatch.setattr(
+        shard_stats,
+        "_parse_args",
+        lambda: _export_args(tmp_path, selected_file, output),
+    )
+    monkeypatch.setattr(shard_stats, "_load_mutmut_cli", lambda: fake_mutmut)
+    original_replace = os.replace
+    published_pairs: list[tuple[Path, Path]] = []
+
+    def record_atomic_publish(source: Path, destination: Path) -> None:
+        published_pairs.append((source, destination))
+        original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", record_atomic_publish)
+
+    shard_stats.main()
+
+    stats = json.loads(output.read_text(encoding="utf-8"))
+    assert stats["killed"] == 1
+    assert stats["total"] == 1
+    assert len(published_pairs) == 1
+    assert published_pairs[0][1] == output
+    assert published_pairs[0][0].parent == output.parent
+    assert not published_pairs[0][0].exists()
+    assert list(output.parent.glob(f".{output.name}.*.tmp")) == []
+    assert historical_report.read_text(encoding="utf-8") == '{"killed": 17}\n'
+    assert (
+        "Exported exact mutmut shard evidence for 1 mutants" in capsys.readouterr().out
+    )

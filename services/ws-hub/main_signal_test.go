@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
 
 func TestRunServer_ShutsDownOnInjectedSignal(t *testing.T) {
@@ -18,7 +17,7 @@ func TestRunServer_ShutsDownOnInjectedSignal(t *testing.T) {
 		WebTransportPort: "0",
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil)
 
 	done := make(chan error, 1)
 	go func() {

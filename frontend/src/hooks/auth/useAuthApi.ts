@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef } from "react"
 import {
+  beginBrowserSessionTransition,
   captureSessionEpoch,
-  getBrowserSessionGeneration,
-  getSessionEpoch,
-  hasFailedBrowserSessionRotation,
-  hasStaleBrowserSessionBinding,
-  rotateBrowserSession,
+  type BrowserSessionTransitionOperation,
 } from "@/stores/sessionEpoch"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -111,10 +108,23 @@ export const useAuthApi = (
   const { t } = useTranslation("auth")
   const queryClient = useQueryClient()
   const mounted = useRef(true)
+  const authTransitionAttemptRef = useRef(0)
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
+    }
+  }, [])
+
+  const beginAuthTransition = useCallback((operation: BrowserSessionTransitionOperation) => {
+    const localAttempt = ++authTransitionAttemptRef.current
+    const transition = beginBrowserSessionTransition(operation)
+    return {
+      status: transition.status,
+      isCurrent: () =>
+        mounted.current &&
+        authTransitionAttemptRef.current === localAttempt &&
+        transition.isCurrent(),
     }
   }, [])
 
@@ -161,9 +171,9 @@ export const useAuthApi = (
       trustDevice = false
     ): Promise<PendingMfaState | null> => {
       if (authOperation) return null
-      rotateBrowserSession()
-      const currentSession = captureSessionEpoch()
-      const ownsSession = () => mounted.current && currentSession()
+      const transition = beginAuthTransition("login")
+      if (transition.status === "denied") throw new Error(t("login.sessionChanged"))
+      const ownsSession = transition.isCurrent
       setAuthOperation(true)
       let result: PendingMfaState | null = null
       try {
@@ -199,7 +209,7 @@ export const useAuthApi = (
           }
 
           updateSessionSigningKey(extractSigningKey(data))
-          // RED-02 (audit Wave 11): increment epoch AFTER new signing key is registered.
+          // RED-02 (audit Wave 11): increment epoch AFTER replacing or clearing the session key.
           // Any HMAC computations that started under the previous session see the epoch
           // change and discard their results, preventing cross-session data leakage.
           incrementSessionEpoch()
@@ -235,6 +245,7 @@ export const useAuthApi = (
     },
     [
       authOperation,
+      beginAuthTransition,
       prefetchDashboardData,
       setAuthOperation,
       setUser,
@@ -246,20 +257,9 @@ export const useAuthApi = (
 
   const logout = useCallback(
     async ({ serverRevocationConfirmed = false }: LogoutOptions = {}) => {
-      // A failed generation write leaves an otherwise-current session unbound.
-      // Retain logout ownership only if the known pre-rotation generation remains
-      // unchanged in the same epoch and no stale cross-tab binding was observed.
-      const generationBeforeRotation = getBrowserSessionGeneration()
-      rotateBrowserSession()
-      const rotationEpoch = getSessionEpoch()
-      const currentSession = captureSessionEpoch()
-      const ownsSession = () =>
-        currentSession() ||
-        (generationBeforeRotation !== null &&
-          getSessionEpoch() === rotationEpoch &&
-          hasFailedBrowserSessionRotation() &&
-          !hasStaleBrowserSessionBinding() &&
-          getBrowserSessionGeneration() === generationBeforeRotation)
+      const transition = beginAuthTransition("logout")
+      if (transition.status === "denied") return
+      const ownsSession = transition.isCurrent
       try {
         if (user) {
           // Keep the browser subscription so it can be recovered on the next
@@ -292,7 +292,7 @@ export const useAuthApi = (
         if (mounted.current && ownsSession()) handleUnauthorized()
       }
     },
-    [handleUnauthorized, user]
+    [beginAuthTransition, handleUnauthorized, user]
   )
 
   const submitMfaChallenge = useCallback(
@@ -301,9 +301,11 @@ export const useAuthApi = (
       // Step-up elevates the existing session. Rotating its lifetime would
       // invalidate the settings action waiting to retry after verification.
       const authenticatedStepUp = user !== null && pendingMfa?.reason !== "login"
-      if (!authenticatedStepUp) rotateBrowserSession()
-      const currentSession = captureSessionEpoch()
-      const ownsSession = () => mounted.current && currentSession()
+      const transition = authenticatedStepUp ? null : beginAuthTransition("unauthenticated-mfa")
+      if (transition?.status === "denied") throw new Error(t("login.sessionChanged"))
+      const currentSession = authenticatedStepUp ? captureSessionEpoch() : null
+      const ownsSession = () =>
+        mounted.current && (transition ? transition.isCurrent() : currentSession?.() === true)
       if (!ownsSession()) return
       let accepted = false
       setAuthOperation(true)
@@ -327,7 +329,7 @@ export const useAuthApi = (
           accepted = true
           if (!authenticatedStepUp) {
             updateSessionSigningKey(extractSigningKey(data))
-            incrementSessionEpoch() // RED-02 Wave 11: epoch bump after MFA login
+            incrementSessionEpoch() // RED-02 Wave 11: bump after replacing or clearing the session key
             clearLogoutNotice()
           }
           setUser(data.user)
@@ -358,6 +360,7 @@ export const useAuthApi = (
     },
     [
       authOperation,
+      beginAuthTransition,
       pendingMfa?.reason,
       user,
       prefetchDashboardData,

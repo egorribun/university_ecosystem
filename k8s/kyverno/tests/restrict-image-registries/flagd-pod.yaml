@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: flagd-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: flagd
+      image: ghcr.io/open-feature/flagd:v0.17.0@sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df

@@ -49,14 +49,18 @@ class TestValidatePasswordHibp:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "ABC12:0\nDEF34:0\n"
+        mock_response.text = f"{'0' * 35}:0\n{'1' * 35}:0\n"
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
 
         with patch("app.auth.security._get_hibp_client", return_value=mock_client):
             # Should not raise
-            await validate_password_hibp("SafePassword123!")
+            await validate_password_hibp(uuid.uuid4().hex)
+
+        mock_client.get.assert_awaited_once()
+        requested_url = mock_client.get.await_args.args[0]
+        assert len(requested_url.rsplit("/", 1)[-1]) == 5
 
     @pytest.mark.asyncio
     async def test_password_compromised(self):
@@ -71,7 +75,7 @@ class TestValidatePasswordHibp:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = f"{suffix}:1500\nOTHER:0\n"
+        mock_response.text = f"{suffix}:1500\n"
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -108,6 +112,8 @@ class TestValidatePasswordHibp:
             # Should not raise in fail-open mode
             await validate_password_hibp("test")
 
+        mock_client.get.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_non_200_fail_open(self, monkeypatch):
         from app.auth.security import validate_password_hibp
@@ -123,6 +129,8 @@ class TestValidatePasswordHibp:
 
         with patch("app.auth.security._get_hibp_client", return_value=mock_client):
             await validate_password_hibp("test")
+
+        mock_client.get.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_non_200_fail_closed(self, monkeypatch):
@@ -161,6 +169,8 @@ class TestCloseHibpClient:
 
         sec._hibp_client = None
         await sec.close_hibp_client()  # noop
+
+        assert sec._hibp_client is None
 
 
 class TestCalculateLookupHash:
@@ -282,12 +292,16 @@ class TestEnforceChallengeRateLimit:
     async def test_within_limit(self):
         from app.auth.mfa.challenge import _enforce_challenge_rate_limit
 
-        with patch("app.auth.mfa.challenge.enforce_rate_limit", new_callable=AsyncMock):
+        with patch(
+            "app.auth.mfa.challenge.enforce_rate_limit", new_callable=AsyncMock
+        ) as enforce:
             # Should not raise
             await _enforce_challenge_rate_limit(
                 user_id=uuid.uuid4(),
                 challenge_type="totp-auth",
             )
+
+        enforce.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(self):
@@ -313,10 +327,15 @@ class TestEnforceChallengeRateLimit:
         from app.core.config import settings
 
         monkeypatch.setattr(settings, "mfa_challenge_max_attempts", 0)
-        # Should return immediately
-        await _enforce_challenge_rate_limit(
-            user_id=uuid.uuid4(), challenge_type="totp-auth"
-        )
+        with patch(
+            "app.auth.mfa.challenge.enforce_rate_limit", new_callable=AsyncMock
+        ) as enforce:
+            # Should return immediately
+            await _enforce_challenge_rate_limit(
+                user_id=uuid.uuid4(), challenge_type="totp-auth"
+            )
+
+        enforce.assert_not_awaited()
 
 
 class TestLockChallenge:
@@ -348,6 +367,9 @@ class TestEnsureChallengeNotLocked:
             db, None, method="totp", limit=5, locale="en"
         )
 
+        db.execute.assert_not_awaited()
+        db.flush.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_none_limit_noop(self):
         from app.auth.mfa.challenge import _ensure_challenge_not_locked
@@ -359,20 +381,35 @@ class TestEnsureChallengeNotLocked:
             db, challenge, method="totp", limit=None, locale="en"
         )
 
+        db.execute.assert_not_awaited()
+        db.flush.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_under_limit_noop(self):
         from app.auth.mfa.challenge import _ensure_challenge_not_locked
+        from app.models.auth import ChallengeState
 
         db = AsyncMock()
         challenge = MagicMock()
         challenge.attempt_count = 2
-        await _ensure_challenge_not_locked(
+        challenge.consumed_at = None
+        challenge.state = ChallengeState.PENDING
+        result = await _ensure_challenge_not_locked(
             db, challenge, method="totp", limit=5, locale="en"
         )
 
+        assert result is None
+        assert challenge.attempt_count == 2
+        assert challenge.consumed_at is None
+        assert challenge.state == ChallengeState.PENDING
+        db.flush.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_at_limit_locks(self):
+        from fastapi import HTTPException
+
         from app.auth.mfa.challenge import _ensure_challenge_not_locked
+        from app.models.auth import ChallengeState
 
         db = AsyncMock()
         challenge = MagicMock()
@@ -380,11 +417,19 @@ class TestEnsureChallengeNotLocked:
         challenge.user_id = uuid.uuid4()
         challenge.id = uuid.uuid4()
         challenge.consumed_at = None
+        challenge.state = ChallengeState.PENDING
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(HTTPException) as caught:
             await _ensure_challenge_not_locked(
                 db, challenge, method="totp", limit=5, locale="en"
             )
+
+        assert caught.value.status_code == 429
+        assert challenge.state == ChallengeState.LOCKED
+        assert challenge.consumed_at is not None
+        assert challenge.locked_at == challenge.consumed_at
+        db.execute.assert_not_awaited()
+        db.flush.assert_awaited_once()
 
 
 class TestRegisterFailedAttempt:
@@ -394,6 +439,9 @@ class TestRegisterFailedAttempt:
 
         db = AsyncMock()
         await _register_failed_attempt(db, None, method="totp", limit=5, locale="en")
+
+        db.execute.assert_not_awaited()
+        db.flush.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_increments_attempt(self):
@@ -429,6 +477,9 @@ class TestRegisterFailedAttempt:
         await _register_failed_attempt(
             db, challenge, method="totp", limit=5, locale="en"
         )
+
+        db.execute.assert_awaited_once()
+        db.flush.assert_awaited_once()
 
 
 # ===========================================================================

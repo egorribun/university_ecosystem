@@ -115,7 +115,7 @@ func startNATSContainer(t *testing.T) *nats.Conn {
 	}
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "CACHE_INVALIDATIONS",
-		Subjects:  []string{"cache.invalidate"},
+		Subjects:  []string{"cache.invalidate", "cache.revoke"},
 		Storage:   nats.MemoryStorage,
 		Retention: nats.LimitsPolicy,
 	})
@@ -140,7 +140,7 @@ func newIntegrationHub(t *testing.T, nc *nats.Conn, broadcastBuf int, maxClients
 		ClientMsgRateLimit:  100,
 		ClientMsgRateBurst:  100,
 	}
-	return trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	return trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 // startRedisContainer spins up pinned Redis 7.4.11-alpine and returns a connected
@@ -193,7 +193,7 @@ func newIntegrationHubWithRedis(t *testing.T, nc *nats.Conn, rdb *redis.Client, 
 		ClientMsgRateBurst:  100,
 		SendBufferSize:      16,
 	}
-	return trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, rdb))
+	return trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, rdb))
 }
 
 // TestIntegration_NATSChatMessageDelivery verifies the full pipeline:
@@ -347,12 +347,12 @@ func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
 	// Build payload that exceeds 60 KB after json.Marshal. The inner text is
 	// 70 KB of 'a'; total marshaled JSON is ~70.1 KB — well past the threshold.
 	bigText := strings.Repeat("a", 70*1024)
-	payload := Message{
-		Type:    "chat.message",
-		Room:    "big-room",
-		Payload: json.RawMessage(fmt.Sprintf(`{"text":%q}`, bigText)),
-	}
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(map[string]any{
+		"type":     "chat.message",
+		"room":     "big-room",
+		"audience": []string{"00000000-0000-4000-8000-000000000001"},
+		"payload":  json.RawMessage(fmt.Sprintf(`{"chat_id":"big-room","text":%q}`, bigText)),
+	})
 	require.NoError(t, err)
 	require.Greater(t, len(body), 60*1024,
 		"test setup: marshaled payload must exceed 60 KB to trigger drop branch")
@@ -372,12 +372,12 @@ func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
 	afterOversized := testutil.ToFloat64(BroadcastDropsTotal)
 
 	// Sanity: a small message must NOT trigger the drop branch.
-	smallPayload := Message{
-		Type:    "chat.message",
-		Room:    "small",
-		Payload: json.RawMessage(`{"text":"ok"}`),
-	}
-	sBody, err := json.Marshal(smallPayload)
+	sBody, err := json.Marshal(map[string]any{
+		"type":     "chat.message",
+		"room":     "small",
+		"audience": []string{"00000000-0000-4000-8000-000000000001"},
+		"payload":  json.RawMessage(`{"chat_id":"small","text":"ok"}`),
+	})
 	require.NoError(t, err)
 	require.NoError(t, nc.Publish("chat.small", sBody))
 	require.NoError(t, nc.Flush())
@@ -407,7 +407,7 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 		ClientMsgRateLimit:  10,
 		ClientMsgRateBurst:  10,
 	}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -677,7 +677,7 @@ func TestIntegration_NATSCacheInvalidation(t *testing.T) {
 	}
 
 	auth := &integrationRecordingAuthClient{}
-	h := trackTestHub(NewHub(nc, logger, auth, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, auth, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

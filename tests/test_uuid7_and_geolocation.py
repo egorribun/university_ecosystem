@@ -202,7 +202,7 @@ class TestGeolocationServiceClose:
     def test_close_no_reader(self):
         service = GeolocationService.__new__(GeolocationService)
         service.reader = None
-        service.close()  # should not raise
+        assert (service.close()) is None  # should not raise
 
     def test_close_with_reader(self):
         service = GeolocationService.__new__(GeolocationService)
@@ -266,7 +266,8 @@ class TestShutdownGeolocationService:
         original = geo_mod._geolocation_service_instance
         geo_mod._geolocation_service_instance = None
         try:
-            shutdown_geolocation_service()  # should not raise
+            assert (shutdown_geolocation_service()) is None  # should not raise
+            assert geo_mod._geolocation_service_instance is None
         finally:
             geo_mod._geolocation_service_instance = original
 

@@ -47,7 +47,7 @@ class TestSSRFBlocklist:
         # Exercise the real address classifier without depending on live DNS.
         public_answer = [(2, 1, 6, "", ("93.184.216.34", 443))]
         with patch("app.core.ssrf.socket.getaddrinfo", return_value=public_answer):
-            validate_url_not_internal(url)
+            assert (validate_url_not_internal(url)) is None
 
     def test_rejects_empty_hostname(self) -> None:
         with pytest.raises(ValueError, match="no hostname"):
@@ -83,7 +83,9 @@ class TestSSRFBlocklist:
             validate_public_https_url(url)
 
     def test_push_endpoint_accepts_provider_hostname(self) -> None:
-        validate_public_https_url("https://push.example.com/wpush/v2/token")
+        assert (
+            validate_public_https_url("https://push.example.com/wpush/v2/token")
+        ) is None
 
     @pytest.mark.parametrize(
         "url",
@@ -167,7 +169,7 @@ class TestAsyncSSRFValidation:
 
     @pytest.mark.asyncio
     async def test_allows_public_ips(self) -> None:
-        await validate_url_not_internal_async("http://93.184.216.34/")
+        assert (await validate_url_not_internal_async("http://93.184.216.34/")) is None
 
     @pytest.mark.asyncio
     async def test_dns_failure_is_fail_closed(self) -> None:

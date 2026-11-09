@@ -21,14 +21,14 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
   текущим сертификатом. Ручная сертификация в `cwv-field-certification.yml` и
   production-only certificate guard остаются для будущих внешних развёртываний;
   они не являются предусловием выпуска `v1.0.0`.
-- Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
-- Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
+- В production браузерный трафик к frontend, API и asset-маршрутам должен идти через HTTPS, чтобы браузер не блокировал mixed content при загрузке `/static` и `/storage`. Поддерживаемый локальный full-Compose стек намеренно открывает приложение на том же origin по `http://localhost` через Caddy на порту 80; это HTTP-исключение только для локальной разработки.
+- Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Для однопроцессного режима разработки и тестирования задайте `RATE_LIMIT_STORAGE_BACKEND=memory` и `RATE_LIMIT_STORAGE_URI=memory://`. В staging и production обязательны `RATE_LIMIT_STORAGE_BACKEND=redis` и корректный Redis URI; режим memory отклоняется при валидации настроек.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами:
-  - Создайте Compose-секреты `secret_key`, `database_url`, `nats_auth_token` и `mfa_totp_encryption_keys`.
-  - Пути к файлам передайте через `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE` и `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Подготовьте все файловые секреты из секции `secrets:` в `docker-compose.prod.yml`: там приведён полный список обязательных `*_SOURCE_FILE`.
+  - Разделяйте три подключения: `DATABASE_URL_SOURCE_FILE` передаёт backend/outbox логин `ue_app`, `NOTIFICATIONS_DATABASE_URL_SOURCE_FILE` передаёт notifications логин `ue_worker`, а `MIGRATION_DATABASE_URL_SOURCE_FILE` передаёт логин `ue_migrator` только миграциям. Файлы `UE_APP_DB_PASSWORD_SOURCE_FILE`, `UE_WORKER_DB_PASSWORD_SOURCE_FILE` и `UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE` должны содержать пароли соответствующих URL: в строках подключения применяйте URL-encoding пароля, а в файлах паролей ролей сохраняйте исходное значение. Bootstrap также требует отдельные `UE_SPICEDB_DB_PASSWORD_SOURCE_FILE` и `UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE`.
   - Несекретный `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` задайте напрямую. Кольцо TOTP и ID получает backend и миграция; не-auth workers остаются без них.
-  - Путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Путь к файлу bootstrap-пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Runtime URL используют `pgbouncer:5432`, а migration URL напрямую `postgres:5432`, без transaction pooler. Не передавайте runtime-сервисам учётные данные мигратора или bootstrap.
   - Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
 - Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). Кольцо TOTP — ключ application Secret для backend и migration Job. Активный key ID является прямым несекретным значением chart. Оба не-auth worker не получают эти настройки. В production обязательно задайте `applicationSecrets.existingSecret`. Этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
 
@@ -136,35 +136,57 @@ Workflow проверяет эти права до мутаций и прину�
 
 - Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Prometheus-метрики выключены по умолчанию в `docker-compose.yml`. Чтобы их включить, установите `ENABLE_METRICS_ENDPOINT=true` **и** задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend теперь падает на старте — или возвращает `503` во время запроса — если метрики включены без учётных данных, за исключением случаев, когда allowlist ограничен петлевыми адресами (`127.0.0.1`, `::1`, `localhost`).
-- Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
+- Заголовок `Cross-Origin-Resource-Policy` включён по умолчанию (`ENABLE_CORP=true`); для отключения установите `ENABLE_CORP=false`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
 
 ## Миграции базы данных
 
-- Перед первым запуском новой версии выполните `alembic upgrade head`:
+- Текущий baseline `202611020000` требует новую пустую PostgreSQL-базу в
+  состоянии quiescent. Во время инициализации не допускайте записи приложения,
+  работы других миграторов или параллельного изменения схемы. До DDL проверка
+  отклоняет дополнительные несистемные схемы и существующие объекты в `public`,
+  включая объекты заранее установленных extensions. Допускается штатный пустой
+  журнал версий Alembic; проверка не подтверждает структуру произвольной
+  существующей relation с именем `alembic_version`. Старая цепочка revisions
+  удалена; для базы на этой цепочке поддерживаемого upgrade нет.
+  Не выполняйте stamp существующей базы
+  на новый baseline. См. [ADR-051](adr/ADR-051-mvp-migration-baseline-squash.md).
+- Запускайте Alembic в выделенном окружении мигратора, а не с runtime-логином
+  приложения:
 
   ```bash
-  cd .
-  # DATABASE_URL должен быть заранее передан процессу менеджером секретов.
-  test -n "${DATABASE_URL:?DATABASE_URL is required}"
+  # Передайте подключение ue_migrator через менеджер секретов.
+  # Используйте DATABASE_URL_FILE либо DATABASE_URL, если файл не настроен.
   alembic upgrade head
   ```
 
-- Alembic берёт строку подключения из `alembic.ini`. Если требуется другой
-  адрес, задайте его через переменную окружения `DATABASE_URL` (используйте то же
-  значение, что и для приложения).
-- В docker compose добавлен одноразовый сервис `migrations`, который выполняет
-  `alembic upgrade head` до запуска API и воркера. При необходимости повторите
-  миграции вручную:
+- `DATABASE_URL_FILE` имеет приоритет; ошибка настроенного файла завершает
+  запуск без fallback. Иначе Alembic использует действующий `DATABASE_URL`
+  из environment/dotenv. Явно заданный `sqlalchemy.url` в `alembic.ini`
+  используется только при отсутствии действующего настроенного URL; в
+  репозиторном ini нет примерного адреса.
+- Одноразовый Compose-сервис `migrations` получает `MIGRATION_DATABASE_URL`
+  (production override использует отдельный secret file), выполняет upgrade
+  и обслуживание партиций до запуска API/воркеров. Для ручного повтора
+  используйте этот сервис с теми же Compose-файлами и настройками окружения,
+  что и сам стенд:
 
   ```bash
-  docker compose run --rm backend alembic upgrade head
+  # Базовый Compose-стенд:
+  docker compose run --rm migrations
+  # Production-стенд:
+  docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml run --rm migrations
   ```
 
+  Не запускайте миграции в `backend`: его логин `ue_app` имеет runtime DML
+  права, но не владеет схемой.
+
 - Helm выполняет тот же переход автоматически блокирующим hook Job
-  `pre-install,pre-upgrade`. Secret `connections.existingSecret` должен уже
-  существовать до `helm install`; при ошибке миграции rollout приложения не
-  начинается. Отключайте `migrations.enabled` только если миграциями управляет
-  отдельный проверенный deployment pipeline.
+  `pre-install,pre-upgrade`. Secret `connections.existingSecret` должен
+  существовать до `helm install`; ключ `connections.migrationDatabaseURLKey`
+  (по умолчанию `migration-database-url`) должен содержать отдельное подключение
+  мигратора, а не runtime `database-url`. При ошибке миграции rollout приложения
+  не начинается. Отключайте `migrations.enabled` только если миграциями
+  управляет отдельный проверенный deployment pipeline.
 - Резервное копирование в Helm включается через `backup.enabled=true`: init
   container создаёт custom-format `pg_dump`, после чего `rclone`
   (`backup.s3ClientImage`) загружает файл в настроенный bucket. Нужны `backup-database-url` в connection
@@ -173,7 +195,7 @@ Workflow проверяет эти права до мутаций и прину�
 ### Пул соединений базы данных
 
 - В production средах используйте пул SQLAlchemy: задайте `DATABASE_POOL_SIZE` (основной размер пула), `DATABASE_MAX_OVERFLOW` (дополнительные соединения поверх пула), `DATABASE_POOL_TIMEOUT` (секунды ожидания свободного соединения) и `DATABASE_POOL_RECYCLE` (период принудительного закрытия соединений, секунды). `_CPU_COUNT` — число CPU, определённое приложением. Значения по умолчанию — `_CPU_COUNT * 2 + 1`, `_CPU_COUNT * 4`, `30` и `540` соответственно. Эти значения относятся к одному процессу; общий бюджет соединений должен учитывать процессы и реплики.
-- Для dev/test окружений приложение автоматически переключается на `NullPool`, чтобы каждое соединение открывалось заново; параметры пула при этом игнорируются. Это избавляет от блокировок SQLite и полезно при локальной разработке.
+- Для SQLite используется `NullPool`: каждое соединение открывается заново, а настройки размера пула, дополнительных соединений, времени ожидания и периода переоткрытия игнорируются. PostgreSQL использует настроенный пул SQLAlchemy и в development/testing, и в production; учитывайте эти процессы в общем бюджете соединений.
 - Перед деплоем на PostgreSQL или другой продакшн-базе подберите значения в пределах возможностей СУБД. Например, для сервера с ограничением в 20 подключений можно выставить `DATABASE_POOL_SIZE=5` и `DATABASE_MAX_OVERFLOW=5`, оставив запас для фоновых задач и внешних инструментов.
 
 ### Поиск по событиям
@@ -302,7 +324,6 @@ Provisioning production-ключей, dry run и применение на по�
 пока остаются незавершёнными. Изменение исходного кода не означает, что данные
 production уже были перешифрованы.
 
-
 ### Spotify токены
 
 - Backend шифрует Spotify access/refresh токены с помощью Fernet. Перед включением интеграции задайте `SPOTIFY_TOKEN_SECRET` — это base64-строка из `Fernet.generate_key()`.
@@ -314,84 +335,19 @@ print(Fernet.generate_key().decode())
 PY
 ```
 
-- Для ротации передайте список Fernet-ключей из защищённого хранилища через переменную окружения: новый ключ укажите первым, старый оставьте вторым. Не вставляйте материал ключей в команды или документацию. После деплоя выполните скрипт ниже, чтобы перешифровать уже сохранённые значения и убрать зависимость от старого ключа, затем удалите старый ключ из хранилища и перезапустите сервисы.
-
-```bash
-python - <<'PY'
-import asyncio
-from sqlalchemy import text
-
-from app.core.database import async_session
-from app.utils.encryption import rotate_encrypted_string
-
-
-async def main() -> None:
-    async with async_session() as session:
-        rows = await session.execute(
-            text(
-                "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
-            )
-        )
-        for row in rows.all():
-            await session.execute(
-                text(
-                    "UPDATE users SET spotify_access_token = :access, "
-                    "spotify_refresh_token = :refresh WHERE id = :user_id"
-                ),
-                {
-                    "user_id": row.id,
-                    "access": rotate_encrypted_string(row.spotify_access_token),
-                    "refresh": rotate_encrypted_string(row.spotify_refresh_token),
-                },
-            )
-        await session.commit()
-
-
-asyncio.run(main())
-PY
-```
+- Для существующих токенов `SPOTIFY_TOKEN_SECRET` принимает список Fernet-ключей через запятую: первый шифрует новые значения, при расшифровке проверяется каждый перечисленный ключ. Поддерживаемой команды массовой миграции Spotify-токенов нет. Не удаляйте ключ, необходимый для чтения ciphertext, до завершения проверенной миграции и последующей проверки; храните ключи в защищённом хранилище.
 
 ### Подпись аудит-логов
 
 - `AUDIT_LOG_SECRET` используется для подписи записей журнала аудита (HMAC-SHA256) и должен отличаться от `SECRET_KEY`.
-- Для ротации передайте `AUDIT_LOG_SECRET` из защищённого хранилища как список ключей через запятую: новый первым, старый вторым. После деплоя переподпишите существующие записи, затем удалите старый ключ из хранилища и перезапустите сервисы.
-
-```bash
-python - <<'PY'
-import asyncio
-
-from sqlalchemy import select
-
-from app.core.database import async_session
-from app.models.logs import DataAccessLog
-from app.services.audit_service import SecureAuditService
-
-
-async def main() -> None:
-    service = SecureAuditService()
-    async with async_session() as session:
-        result = await session.execute(
-            select(DataAccessLog).where(DataAccessLog.signature.isnot(None))
-        )
-        updated = 0
-        for log in result.scalars().all():
-            if service.resign_log(log):
-                updated += 1
-        if updated:
-            await session.commit()
-        print(f"Resigned {updated} audit logs.")
-
-
-asyncio.run(main())
-PY
-```
+- `AUDIT_LOG_SECRET` принимает список ключей через запятую: первый подписывает новые записи, настроенные ключи проверяют существующие поддерживаемые подписи. Поддерживаемой миграции одновременно для аудит-логов и цепочек `StoredEvent` нет. Не удаляйте ключ, необходимый для сохранённых записей, до проверенной миграции и подтверждения каждой затронутой записи; не возвращайте скомпрометированный исторический ключ в serving configuration. Требования к инвентаризации и ограничения legacy-подписей описаны в [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md).
 
 ## Docker image
 
-- `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
+- `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ использует закреплённую по digest ссылку `node:24.21.0-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
-- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; поддерживаемая точка входа с хоста — Caddy на портах `80`/`443`, который проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
+- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; Compose публикует Caddy на хостовых портах `80` и `443`. Локальный full-Compose Caddyfile обслуживает приложение на `:80` без HTTPS redirect; в production браузерный трафик должен идти через HTTPS. Caddy проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
 
 ```bash
 # пример локальной сборки
@@ -493,7 +449,7 @@ ingress proxy не требуются.
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
+- Отдельный воркер по умолчанию слушает `127.0.0.1:9101` для `/healthz` и `/metrics`. Адрес задаётся через `NOTIFICATIONS_WORKER_METRICS_HOST`, порт — через `NOTIFICATIONS_WORKER_METRICS_PORT`; порт `0` отключает listener. `docker-compose.yml` слушает внутри контейнера и публикует доступ на хосте через `127.0.0.1:9102`; `docker-compose.full.yml` не публикует порт воркера на хосте.
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
 - Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
@@ -501,12 +457,12 @@ ingress proxy не требуются.
 
 API запускает один почасовой планировщик (`app/core/lifespan.py::_periodic_scheduler_loop`; стартовый джиттер 0–60 с разносит нагрузку при rolling deploy). Периодичность задана в коде и не настраивается для отдельных задач:
 
-| Периодичность | Задачи |
-|---|---|
-| каждый час | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи, продуктовые gauge (активные пользователи, MFA) |
-| каждые 6 часов | истёкшие и отозванные сессии |
-| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения) |
+| Периодичность         | Задачи                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| каждый час            | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи, продуктовые gauge (активные пользователи, MFA) |
+| каждые 6 часов        | истёкшие и отозванные сессии                                                                                                          |
+| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения)                               |
 
 Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
 
-Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.
+Успешный logout и операции отзыва сессий помечают существующие строки сессий полем `revoked_at`, а не удаляют их сразу. `/auth/sessions` отфильтровывает отозванные строки. Плановая или ручная очистка сессий удаляет истёкшие или отозванные строки; наличие отозванной строки само по себе не означает, что отзыв не сработал.

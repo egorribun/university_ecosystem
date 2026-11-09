@@ -146,42 +146,40 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	room := "multi-replica-" + strings.ToLower(namespace)
 	addOwnedMemoryStream(t, js, chatStream, "chat."+room)
 	addOwnedMemoryStream(t, js, notificationStream, "notifications."+strings.ToLower(namespace))
-	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate")
+	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate", "cache.revoke")
 
 	cfg := &config.Config{
-		MaxClients:               10,
-		BroadcastBufferSize:      10,
-		BroadcastWorkers:         1,
-		ClientMsgRateLimit:       10,
-		ClientMsgRateBurst:       10,
-		EnableJetStream:          true,
-		NatsStreamChat:           chatStream,
-		NatsStreamNotifications:  notificationStream,
-		NatsDurableChat:          "integration-chat-" + namespace,
-		NatsDurableNotifications: "integration-notifications-" + namespace,
-		InternalSecret:           "integration-replay-signing-secret",
+		MaxClients:              10,
+		BroadcastBufferSize:     10,
+		BroadcastWorkers:        1,
+		ClientMsgRateLimit:      10,
+		ClientMsgRateBurst:      10,
+		EnableJetStream:         true,
+		NatsStreamChat:          chatStream,
+		NatsStreamNotifications: notificationStream,
+		InternalSecret:          "integration-replay-signing-secret",
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	cacheAuthClients := []*recordingAuthClient{{}, {}}
 	hubs := []*Hub{
-		trackTestHub(NewHub(nc, logger, cacheAuthClients[0], cfg, nil)),
-		trackTestHub(NewHub(nc, logger, cacheAuthClients[1], cfg, nil)),
+		trackTestHub(mustNewTestHub(t, nc, logger, cacheAuthClients[0], cfg, nil)),
+		trackTestHub(mustNewTestHub(t, nc, logger, cacheAuthClients[1], cfg, nil)),
 	}
 	for _, h := range hubs {
 		t.Cleanup(h.Stop)
 		require.NoError(t, h.SubscribeToNATS(ctx))
-		require.Len(t, h.subs, 5, "chat, notifications, cache, control, and JWKS subscriptions")
+		require.Len(t, h.subs, 6, "chat, notifications, pure cache, room revocation, control, and JWKS subscriptions")
 		require.True(t, h.chatReplayAvailable.Load())
 	}
 	coreModeCfg := *cfg
 	coreModeCfg.EnableJetStream = false
 	coreModeAuth := &recordingAuthClient{}
-	coreModeHub := trackTestHub(NewHub(nc, logger, coreModeAuth, &coreModeCfg, nil))
+	coreModeHub := trackTestHub(mustNewTestHub(t, nc, logger, coreModeAuth, &coreModeCfg, nil))
 	t.Cleanup(coreModeHub.Stop)
 	require.NoError(t, coreModeHub.SubscribeToNATS(ctx))
-	require.Len(t, coreModeHub.subs, 5)
+	require.Len(t, coreModeHub.subs, 6)
 	require.False(t, coreModeHub.chatReplayAvailable.Load())
 
 	payload := []byte(fmt.Sprintf(
@@ -197,29 +195,44 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 
 	const revocationUser = "11111111-1111-1111-1111-111111111111"
 	const revocationRoom = "22222222-2222-2222-2222-222222222222"
-	invalidation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
+	const pureUser = "33333333-3333-3333-3333-333333333333"
+	const pureRoom = "44444444-4444-4444-4444-444444444444"
+
+	// A pure invalidation is live-only: running replicas apply it, but a replica that
+	// starts later must not replay it. Only the room revocation is replayed.
+	pureInvalidation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
+		RoomID:    pureRoom,
+		Timestamp: 5677,
+		UserID:    pureUser,
+	})
+	_, err = js.Publish("cache.invalidate", pureInvalidation)
+	require.NoError(t, err)
+	revocation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
 		EvictRoom: true,
 		RoomID:    revocationRoom,
 		Timestamp: 5678,
 		UserID:    revocationUser,
 	})
-	_, err = js.Publish("cache.invalidate", invalidation)
+	_, err = js.Publish("cache.revoke", revocation)
 	require.NoError(t, err)
 	for _, auth := range append(cacheAuthClients, coreModeAuth) {
 		require.Eventually(t, func() bool {
-			return len(auth.calls()) == 1
+			return len(auth.calls()) == 2
 		}, 2*time.Second, 10*time.Millisecond,
-			"each hub replica must receive the persisted membership revocation")
+			"each hub replica must receive the pure invalidation and the persisted membership revocation")
+		require.ElementsMatch(t, [][2]string{{pureUser, pureRoom}, {revocationUser, revocationRoom}}, auth.calls())
 	}
 
 	lateAuth := &recordingAuthClient{}
-	lateHub := trackTestHub(NewHub(nc, logger, lateAuth, cfg, nil))
+	lateHub := trackTestHub(mustNewTestHub(t, nc, logger, lateAuth, cfg, nil))
 	t.Cleanup(lateHub.Stop)
 	require.NoError(t, lateHub.SubscribeToNATS(ctx))
 	require.Eventually(t, func() bool {
 		return len(lateAuth.calls()) == 1
 	}, 2*time.Second, 10*time.Millisecond,
 		"a replica that starts after publication must replay the stored revocation")
+	require.Equal(t, [][2]string{{revocationUser, revocationRoom}}, lateAuth.calls(),
+		"pure invalidations are live-only and must not be replayed to a late replica")
 }
 
 func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
@@ -247,6 +260,7 @@ func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
 }
 
 func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
+	const replayUserID = "00000000-0000-4000-8000-000000000001"
 	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
@@ -264,7 +278,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 		InternalSecret:      "integration-replay-signing-secret",
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	h := trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
 	t.Cleanup(h.Stop)
 	streamInfo, err := js.StreamInfo(chatStream)
 	require.NoError(t, err)
@@ -275,7 +289,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 			Subject: "chat." + room,
 			Header:  nats.Header{},
 			Data: []byte(fmt.Sprintf(
-				`{"type":"new_message","room":%q,"payload":{"index":%s}}`, room, strconv.Itoa(index),
+				`{"type":"new_message","room":%q,"audience":[%q],"payload":{"index":%s}}`, room, replayUserID, strconv.Itoa(index),
 			)),
 		}
 		message.Header.Set("Nats-Msg-Id", id)
@@ -285,7 +299,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 
 	client := &Client{
 		ID:     "replay-client",
-		UserID: "replay-user",
+		UserID: replayUserID,
 		Hub:    h,
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),

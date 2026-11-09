@@ -45,16 +45,23 @@ type Client struct {
 	// sessionGate serializes a revocation with an in-flight authorized action.
 	// It is never acquired while Hub.mu is held: DisconnectSession snapshots
 	// clients first, releases Hub.mu, and only then calls RevokeSession.
-	sessionGate         sync.RWMutex
-	sessionRevoked      atomic.Bool
-	sessionCheckMu      sync.Mutex
-	sessionCheckedUntil time.Time
-	writeMu             sync.Mutex
-	transportCloseOnce  sync.Once
-	replayMu            sync.Mutex
-	replays             map[string]*roomReplayState
-	replayJoinLimiter   *rate.Limiter
-	closeOnce           sync.Once
+	sessionGate           sync.RWMutex
+	sessionRevoked        atomic.Bool
+	sessionCheckMu        sync.Mutex
+	sessionCheckedUntil   time.Time
+	writeMu               sync.Mutex
+	transportCloseStateMu sync.Mutex
+	transportCloseStarted bool
+	// A deferred plain close must fulfill this request so read cleanup can close
+	// a client even if shutdown already removed it from the Hub snapshot.
+	controlCloseRequested bool
+	controlCloseCode      int
+	controlCloseReason    string
+	transportCloseOnce    sync.Once
+	replayMu              sync.Mutex
+	replays               map[string]*roomReplayState
+	replayJoinLimiter     *rate.Limiter
+	closeOnce             sync.Once
 	// registrationWG bridges Run-loop admission and synchronous shutdown fallback.
 	// registrationStarted is one-shot; registrationAdmitted tracks gauge ownership.
 	registrationWG       sync.WaitGroup
@@ -312,7 +319,7 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 		return true
 	}
 	if c.rejectRateLimitedMessage() {
-		return true
+		return ctx.Err() == nil && (c.ctx == nil || c.ctx.Err() == nil)
 	}
 
 	var msg Message
@@ -341,7 +348,7 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 		c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
 		return false
 	}
-	return true
+	return ctx.Err() == nil && (c.ctx == nil || c.ctx.Err() == nil)
 }
 
 func (c *Client) authorizeAndHandleIncomingMessage(ctx context.Context, msg Message, data []byte) error {
@@ -388,12 +395,48 @@ func (c *Client) handleIncomingMessage(ctx context.Context, msg Message, data []
 		c.handleJoin(ctx, msg)
 	case "leave":
 		c.handleLeave(msg)
+	case "heartbeat_ping":
+		c.handleHeartbeatPing(data)
 	default:
 		// RZ-27-05: Log unknown message types for protocol drift detection.
 		UnknownMsgTypeTotal.Inc()
 		c.Hub.Logger.WarnContext(ctx, "Unknown message type",
 			"client_id", c.ID, "type", msg.Type)
 	}
+}
+
+func (c *Client) handleHeartbeatPing(data []byte) {
+	var request struct {
+		Nonce string `json:"nonce"`
+	}
+	if err := json.Unmarshal(data, &request); err != nil || !isValidHeartbeatNonce(request.Nonce) {
+		_ = safeSend(c.Send, []byte(`{"type":"error","code":"invalid_heartbeat_nonce","detail":"heartbeat nonce must be 32 lowercase hexadecimal characters"}`))
+		return
+	}
+
+	// The validator restricts this value to 32 ASCII lowercase hex bytes, so
+	// it cannot contain JSON quotes, escapes, or control characters. Directly
+	// composing this fixed frame is safe and keeps the pong size bounded.
+	const pongPrefix = `{"type":"heartbeat_pong","nonce":"`
+	const pongSuffix = `"}`
+	frame := make([]byte, 0, len(pongPrefix)+len(request.Nonce)+len(pongSuffix))
+	frame = append(frame, pongPrefix...)
+	frame = append(frame, request.Nonce...)
+	frame = append(frame, pongSuffix...)
+	_ = safeSend(c.Send, frame)
+}
+
+func isValidHeartbeatNonce(nonce string) bool {
+	if len(nonce) != 32 {
+		return false
+	}
+	for index := 0; index < len(nonce); index++ {
+		character := nonce[index]
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 type joinPayload struct {
@@ -433,14 +476,16 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 }
 
 type roomJoinDecision struct {
-	resumeToken   string
-	legacyCursor  bool
-	replayEnabled bool
-	replayLimited bool
-	replaySeq     uint64
-	replayCtx     context.Context
-	replayState   *roomReplayState
-	tokenErr      error
+	resumeToken       string
+	legacyCursor      bool
+	replayEnabled     bool
+	replayLimited     bool
+	replayUnavailable bool
+	reconnectOnReject bool
+	replaySeq         uint64
+	replayCtx         context.Context
+	replayState       *roomReplayState
+	tokenErr          error
 }
 
 func (c *Client) handleJoin(ctx context.Context, msg Message) {
@@ -448,10 +493,17 @@ func (c *Client) handleJoin(ctx context.Context, msg Message) {
 		return
 	}
 	decision := &roomJoinDecision{}
-	authorized := c.authorizeRoomJoin(ctx, msg.Room, func() bool {
+	authorized, retryConnection := c.authorizeRoomJoinWithStatus(ctx, msg.Room, func() bool {
 		return c.prepareAuthorizedRoomJoin(ctx, msg, decision)
 	})
 	if !authorized {
+		if retryConnection && c.roomJoinContextActive(ctx) {
+			// A still-open socket would never resend this join on recovery. Let
+			// ReadPump perform unregister after the retryable close is delivered.
+			c.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "room admission temporarily unavailable")
+			c.cancelConnection()
+			return
+		}
 		c.rejectUnauthorizedRoomJoin(ctx, msg.Room)
 		return
 	}
@@ -464,7 +516,7 @@ func (c *Client) prepareAuthorizedRoomJoin(
 	decision *roomJoinDecision,
 ) bool {
 	parseRoomJoinPayload(msg.Payload, decision)
-	if decision.resumeToken == "" || !c.Hub.chatReplayAvailable.Load() {
+	if decision.resumeToken == "" {
 		c.cancelRoomReplay(msg.Room)
 		return true
 	}
@@ -474,14 +526,27 @@ func (c *Client) prepareAuthorizedRoomJoin(
 		c.UserID,
 		msg.Room,
 	)
+	if !c.Hub.chatReplayAvailable.Load() {
+		if decision.tokenErr == nil {
+			decision.replayUnavailable = true
+			decision.reconnectOnReject = c.cancelJoinedReplayForRetry(msg.Room)
+			c.cancelRoomReplay(msg.Room)
+			return false
+		}
+		c.cancelRoomReplay(msg.Room)
+	}
 	if decision.tokenErr != nil {
 		return true
 	}
 	if !c.allowReplayJoin(msg.Room) {
 		decision.replayLimited = true
-		return true
+		decision.reconnectOnReject = c.cancelJoinedReplayForRetry(msg.Room)
+		if decision.reconnectOnReject {
+			c.cancelRoomReplay(msg.Room)
+		}
+		return false
 	}
-	decision.replayCtx, decision.replayState = c.prepareRoomReplay(ctx, msg.Room)
+	decision.replayCtx, decision.replayState = c.prepareRoomReplayLocked(ctx, msg.Room)
 	return false
 }
 
@@ -511,12 +576,24 @@ func (c *Client) finishAuthorizedRoomJoin(
 	msg Message,
 	decision *roomJoinDecision,
 ) {
+	if decision.reconnectOnReject {
+		// Cancellation happened while the room admission lock was held, so
+		// later queued frames cannot advance the rejected cursor. Close only
+		// after releasing that lock; closeTransport waits for the writer.
+		c.closeTransport("Failed to close session after replay rejection")
+		return
+	}
+	if decision.replayUnavailable {
+		c.sendReplayJoinError(msg.Room, replayUnavailableCode, replayUnavailableDetail)
+		return
+	}
 	if decision.replayEnabled {
 		if decision.tokenErr != nil {
 			c.sendReplayJoinError(msg.Room, "invalid_resume_token", "resume token is invalid or expired")
 			return
 		}
 		if decision.replayLimited {
+			c.sendReplayJoinError(msg.Room, replayRateLimitedCode, replayRateLimitedDetail)
 			return
 		}
 		if decision.replayState != nil {
@@ -529,6 +606,52 @@ func (c *Client) finishAuthorizedRoomJoin(
 	}
 }
 
+// cancelJoinedReplayForRetry prevents later queued frames from advancing past
+// a rejected cursor. ReadPump owns unregistering after the caller closes the
+// transport outside the room lock.
+func (c *Client) cancelJoinedReplayForRetry(room string) bool {
+	if !c.isInRoom(room) {
+		return false
+	}
+	c.cancelConnection()
+	return true
+}
+
+type roomAuthorizationGeneration interface {
+	authorizationCacheGeneration() uint64
+	withAuthorizationCacheGeneration(uint64, func()) bool
+}
+
+type roomJoinAdmission struct {
+	tracked    bool
+	reconnects uint64
+	cache      roomAuthorizationGeneration
+	generation uint64
+}
+
+// roomJoinAdmissionSnapshot applies the admission barrier to existing transports.
+func (c *Client) roomJoinAdmissionSnapshot() (roomJoinAdmission, bool) {
+	admission := roomJoinAdmission{tracked: c.Hub.authCacheTracked.Load()}
+	if admission.tracked {
+		admission.reconnects = c.Hub.natsReconnects()
+	}
+	if !c.roomJoinAdmissionCurrent(admission) {
+		return admission, false
+	}
+	if cache, ok := c.Hub.authClient.(roomAuthorizationGeneration); ok {
+		admission.cache = cache
+		admission.generation = cache.authorizationCacheGeneration()
+	}
+	return admission, c.roomJoinAdmissionCurrent(admission)
+}
+
+func (c *Client) roomJoinAdmissionCurrent(admission roomJoinAdmission) bool {
+	if c.Hub.authCacheTracked.Load() != admission.tracked || c.Hub.AdmissionClosed() {
+		return false
+	}
+	return !admission.tracked || c.Hub.natsReconnects() == admission.reconnects
+}
+
 // authorizeRoomJoin runs backend authorization outside the keyed mutex. A
 // revocation epoch check prevents a stale backend response from committing a
 // membership after an invalidation; invalidated joins retry only after the
@@ -536,23 +659,37 @@ func (c *Client) finishAuthorizedRoomJoin(
 // after the authorization result is current and may decline membership for a
 // replay that will join after catch-up.
 func (c *Client) authorizeRoomJoin(ctx context.Context, room string, commitMembership func() bool) bool {
+	authorized, _ := c.authorizeRoomJoinWithStatus(ctx, room, commitMembership)
+	return authorized
+}
+
+func (c *Client) authorizeRoomJoinWithStatus(
+	ctx context.Context,
+	room string,
+	commitMembership func() bool,
+) (authorized, retryConnection bool) {
 	for {
 		if !c.roomJoinContextActive(ctx) {
-			return false
+			return false, false
+		}
+		admission, admitted := c.roomJoinAdmissionSnapshot()
+		if !admitted {
+			return false, true
 		}
 		lock, epoch, pending, ready, retry := c.roomJoinSnapshot(ctx, room)
 		if retry {
 			continue
 		}
 		if !ready || lock == nil {
-			return false
+			return false, false
 		}
 		allowed, refreshed := c.Hub.authorizeRoomJoin(ctx, c.UserID, room, pending)
-		finished, retry := c.finishRoomJoinAuthorization(
+		finished, retry, unavailable := c.finishRoomJoinAuthorization(
 			ctx,
 			room,
 			lock,
 			epoch,
+			admission,
 			allowed,
 			refreshed,
 			commitMembership,
@@ -560,7 +697,7 @@ func (c *Client) authorizeRoomJoin(ctx context.Context, room string, commitMembe
 		if retry {
 			continue
 		}
-		return finished
+		return finished, unavailable
 	}
 }
 
@@ -606,39 +743,61 @@ func (c *Client) finishRoomJoinAuthorization(
 	room string,
 	lock *roomMembershipLock,
 	epoch *roomMembershipEpoch,
+	admission roomJoinAdmission,
 	allowed bool,
 	refreshed bool,
 	commitMembership func() bool,
-) (finished bool, retry bool) {
+) (finished bool, retry bool, unavailable bool) {
 	lock.Lock()
 	entry := lock.entry
 	if entry.revocationEpoch != epoch || entry.revocations > 0 || entry.mutationPending || entry.drainFailedClosed.Load() {
 		lock.Unlock()
-		return false, true
+		return false, true, false
 	}
-	if refreshed {
-		c.Hub.clearRoomRevocationPending(c.UserID, room)
+	unavailable = true
+	commit := func() {
+		// Holding Hub.mu through the final admission check and membership
+		// publication prevents a blocked join from using an earlier check.
+		c.Hub.mu.Lock()
+		defer c.Hub.mu.Unlock()
+		if !c.roomJoinAdmissionCurrent(admission) {
+			return
+		}
+		unavailable = false
+		if refreshed {
+			c.Hub.clearRoomRevocationPending(c.UserID, room)
+		}
+		if !allowed || !c.roomJoinContextActive(ctx) {
+			return
+		}
+		if commitMembership() {
+			c.joinRoomLocked(room)
+		}
+		finished = true
 	}
-	if !allowed || !c.roomJoinContextActive(ctx) {
-		lock.Unlock()
-		return false, false
-	}
-	if commitMembership() {
-		c.JoinRoom(room)
+	if admission.cache != nil {
+		admission.cache.withAuthorizationCacheGeneration(admission.generation, commit)
+	} else {
+		commit()
 	}
 	lock.Unlock()
-	return true, false
+	return finished, false, unavailable
 }
 func (c *Client) sendReplayJoinError(room, code, detail string) {
 	frame, err := json.Marshal(map[string]string{
 		"type": "error", "room": room, "code": code, "detail": detail,
 	})
-	if err == nil {
-		_ = safeSend(c.Send, frame)
+	if err != nil || !safeSend(c.Send, frame) {
+		// The client cannot retry a rejected replay it never hears about. Close
+		// the transport so its existing reconnect path retains the signed cursor.
+		// ReadPump owns the subsequent unregister; waiting on the Hub here could
+		// deadlock while the caller holds the session action gate.
+		c.cancelConnection()
+		c.closeTransport("Failed to close session after replay rejection")
 	}
 }
 
-func (c *Client) allowReplayJoin(room string) bool {
+func (c *Client) allowReplayJoin(_ string) bool {
 	c.replayMu.Lock()
 	if c.replayJoinLimiter == nil {
 		c.replayJoinLimiter = newReplayJoinLimiterFunc()
@@ -649,7 +808,6 @@ func (c *Client) allowReplayJoin(room string) bool {
 		return true
 	}
 	ReplayJoinRateLimitedTotal.Inc()
-	c.sendReplayJoinError(room, "replay_join_rate_limited", "replay join rate limit exceeded")
 	return false
 }
 
@@ -662,6 +820,13 @@ func (c *Client) startRoomReplay(ctx context.Context, room string, lastSeq uint6
 // network work. Join authorization calls it while the keyed epoch is current,
 // then launches runRoomReplay only after releasing the membership mutex.
 func (c *Client) prepareRoomReplay(ctx context.Context, room string) (context.Context, *roomReplayState) {
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
+	return c.prepareRoomReplayLocked(ctx, room)
+}
+
+// prepareRoomReplayLocked installs replay and membership while Hub.mu is held.
+func (c *Client) prepareRoomReplayLocked(ctx context.Context, room string) (context.Context, *roomReplayState) {
 	replayCtx, cancelReplay := context.WithCancel(ctx)
 	state := &roomReplayState{
 		ctx:      replayCtx,
@@ -680,7 +845,7 @@ func (c *Client) prepareRoomReplay(ctx context.Context, room string) (context.Co
 
 	// Membership is established only after the replay barrier exists. Live
 	// messages are then buffered by enqueueRoomBroadcast until replay drains.
-	c.JoinRoom(room)
+	c.joinRoomLocked(room)
 	return replayCtx, state
 }
 
@@ -722,7 +887,15 @@ func (c *Client) runRoomReplay(
 	}) {
 		stopStateCancellation()
 		cancelReplay()
-		c.removeRoomReplay(room, state)
+		// Admission is refused only after Stop seals the hub, so this replay can
+		// never run. The membership committed for the join would keep delivering
+		// live frames past the skipped range, so a state that still owns the room
+		// closes with the shutdown retry contract. A superseded state is answered
+		// by its successor instead.
+		if c.removeRoomReplay(room, state) {
+			c.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+			c.cancelConnection()
+		}
 	}
 }
 
@@ -874,6 +1047,22 @@ func (c *Client) deliverOfflineMessage(
 	if !validateReplayChatBinding(msg.Subject, room, raw) {
 		return c.terminateOfflineMessage(ctx, msg, nil, nil)
 	}
+	audienceUserIDs, audiencePresent, audienceErr := decodeChatAudience(msg.Data)
+	if audienceErr != nil {
+		return c.handleInvalidOfflineMessage(ctx, room, msg, stream, sequence, metadataErr, audienceErr, maxSequence)
+	}
+	if !audiencePresent {
+		refreshRequired := missingAudienceReplayCheckpointNeedsRefresh(raw)
+		return c.deliverOfflineAudienceCheckpoint(
+			ctx, room, msg, stream, sequence, maxSequence, refreshRequired,
+		)
+	}
+	delete(raw, "audience")
+	if _, allowed := audienceUserIDs[c.UserID]; !allowed {
+		return c.deliverOfflineAudienceCheckpoint(
+			ctx, room, msg, stream, sequence, maxSequence, false,
+		)
+	}
 	return c.deliverValidOfflineMessage(ctx, room, msg, raw, stream, sequence, maxSequence)
 }
 
@@ -926,7 +1115,9 @@ func (c *Client) handleInvalidOfflineMessage(
 	decodeErr error,
 	maxSequence *uint64,
 ) bool {
-	checkpoint, err := c.invalidOfflineMessageCheckpoint(room, msg.Subject, stream, sequence)
+	checkpoint, err := c.invalidOfflineMessageCheckpoint(
+		room, msg.Subject, stream, sequence, false,
+	)
 	if err != nil {
 		return false
 	}
@@ -944,7 +1135,47 @@ func (c *Client) handleInvalidOfflineMessage(
 	return true
 }
 
-func (c *Client) invalidOfflineMessageCheckpoint(room, subject, stream string, sequence uint64) ([]byte, error) {
+func (c *Client) deliverOfflineAudienceCheckpoint(
+	ctx context.Context,
+	room string,
+	msg *nats.Msg,
+	stream string,
+	sequence uint64,
+	maxSequence *uint64,
+	refreshRequired bool,
+) bool {
+	checkpoint, err := c.invalidOfflineMessageCheckpoint(
+		room, msg.Subject, stream, sequence, refreshRequired,
+	)
+	if err != nil {
+		return false
+	}
+	if len(checkpoint) == 0 {
+		return c.terminateOfflineMessage(ctx, msg, nil, nil)
+	}
+	if !c.sendReplayWithRetry(ctx, checkpoint) {
+		c.nakOfflineReplay(ctx, msg)
+		return false
+	}
+	*maxSequence = max(*maxSequence, sequence)
+	if err := ackOfflineMessageFunc(msg); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+		c.Hub.Logger.DebugContext(ctx, "Failed to ack audience-filtered NATS replay message", "err", err)
+	}
+	return true
+}
+
+func missingAudienceReplayCheckpointNeedsRefresh(raw map[string]any) bool {
+	envelopeType, _ := raw["type"].(string)
+	payload, _ := raw["payload"].(map[string]any)
+	payloadType, _ := payload["type"].(string)
+	return shouldRefreshMissingAudienceCheckpoint(envelopeType, payloadType)
+}
+
+func (c *Client) invalidOfflineMessageCheckpoint(
+	room, subject, stream string,
+	sequence uint64,
+	refreshRequired bool,
+) ([]byte, error) {
 	if sequence == 0 || room == "" {
 		return nil, nil
 	}
@@ -955,16 +1186,20 @@ func (c *Client) invalidOfflineMessageCheckpoint(room, subject, stream string, s
 	if err != nil {
 		return nil, err
 	}
+	checkpointPayload := map[string]any{
+		"type":    "replay_checkpoint",
+		"chat_id": room,
+	}
+	if refreshRequired {
+		checkpointPayload["refresh_required"] = true
+	}
 	return hubJSONMarshalFunc(map[string]any{
 		"type":         "replay_checkpoint",
 		"room":         room,
 		"seq":          sequence,
 		"resume_token": resumeToken,
 		"replayed":     true,
-		"payload": map[string]any{
-			"type":    "replay_checkpoint",
-			"chat_id": room,
-		},
+		"payload":      checkpointPayload,
 	})
 }
 
@@ -1037,6 +1272,10 @@ func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 const (
 	roomAccessRevokedCode   = "room_access_revoked"
 	roomAccessRevokedDetail = "Access to this chat was revoked"
+	replayUnavailableCode   = "replay_unavailable"
+	replayUnavailableDetail = "chat history replay is temporarily unavailable"
+	replayRateLimitedCode   = "replay_join_rate_limited"
+	replayRateLimitedDetail = "replay join rate limit exceeded"
 )
 
 func isRoomAccessRevokedNotice(data []byte, room string) bool {
@@ -1049,6 +1288,21 @@ func isRoomAccessRevokedNotice(data []byte, room string) bool {
 	return err == nil && bytes.Equal(data, expected)
 }
 
+func isReplayJoinRejection(data []byte, room string) bool {
+	for _, rejection := range []struct{ code, detail string }{
+		{replayUnavailableCode, replayUnavailableDetail},
+		{replayRateLimitedCode, replayRateLimitedDetail},
+	} {
+		expected, err := json.Marshal(map[string]string{
+			"type": "error", "room": room, "code": rejection.code, "detail": rejection.detail,
+		})
+		if err == nil && bytes.Equal(data, expected) {
+			return true
+		}
+	}
+	return false
+}
+
 func queuedFrameRoom(data []byte) (string, bool) {
 	var frame struct {
 		Type string `json:"type"`
@@ -1057,7 +1311,7 @@ func queuedFrameRoom(data []byte) (string, bool) {
 	if err := json.Unmarshal(data, &frame); err != nil || frame.Room == "" {
 		return "", false
 	}
-	if frame.Type == "error" && isRoomAccessRevokedNotice(data, frame.Room) {
+	if frame.Type == "error" && (isRoomAccessRevokedNotice(data, frame.Room) || isReplayJoinRejection(data, frame.Room)) {
 		return "", false
 	}
 	return frame.Room, true
@@ -1247,10 +1501,12 @@ func (c *Client) handleLeave(msg Message) {
 
 // allowedMessageTypes is the client-to-hub command catalog. Chat mutations,
 // read receipts, and typing are backend-owned; clients may only join or leave
-// rooms. This prevents an untrusted payload from impersonating a server event.
+// rooms and send a validated local heartbeat ping. This prevents an untrusted
+// payload from impersonating a server event.
 var allowedMessageTypes = map[string]bool{
-	"join":  true,
-	"leave": true,
+	"join":           true,
+	"leave":          true,
+	"heartbeat_ping": true,
 }
 
 func isAllowedMessageType(t string) bool {
@@ -1294,8 +1550,10 @@ func (c *Client) rejectRateLimitedMessage() bool {
 		return false
 	}
 	IncomingDropsTotal.Inc()
-	if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
-		_ = safeSend(c.Send, notice)
+	if !safeSend(c.Send, []byte(`{"type":"rate_limit_exceeded"}`)) {
+		// A dropped command cannot be retried if its rejection is also lost.
+		c.cancelConnection()
+		c.closeTransport("Failed to close session after rate-limit rejection")
 	}
 	return true
 }
@@ -1416,6 +1674,11 @@ func (c *Client) tryWriteQueuedMessage(
 	if wait != nil {
 		return wait, nil
 	}
+	// Replay rejection cancels the session under this room admission lock.
+	// Authorization before waiting for the permit cannot observe that change.
+	if c.ctx != nil && c.ctx.Err() != nil {
+		return nil, errSessionInactive
+	}
 	return nil, c.writeQueuedFrame(msg, ok, room, roomScoped)
 }
 
@@ -1465,7 +1728,14 @@ func (c *Client) JoinRoom(room string) {
 
 	c.Hub.mu.Lock()
 	defer c.Hub.mu.Unlock()
+	c.joinRoomLocked(room)
+}
 
+// joinRoomLocked adds membership while Hub.mu is held.
+func (c *Client) joinRoomLocked(room string) {
+	if room == "" {
+		return
+	}
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
@@ -1512,9 +1782,12 @@ func (c *Client) leaveRoomLocked(room string) {
 // Disconnect sends a WebSocket close control frame with the specified close code and reason,
 // then enqueues the client into Hub.Unregister for clean channel/room teardown.
 func (c *Client) Disconnect(closeCode int, reason string) {
+	// Write the requested close frame before canceling any transport work.
+	// Otherwise a writer or replay cleanup can consume transportCloseOnce with
+	// a plain close and hide the requested policy/shutdown code.
+	c.closeTransportWithControlFrame(closeCode, reason)
 	c.cancelConnection()
 	c.cancelAllRoomReplays()
-	c.closeTransportWithControlFrame(closeCode, reason)
 
 	if c.Hub != nil {
 		c.Hub.unregisterClient(c.ctx, c)
@@ -1527,7 +1800,27 @@ func (c *Client) cancelConnection() {
 	}
 }
 
+func (c *Client) reserveControlFrameClose(closeCode int, reason string) {
+	c.transportCloseStateMu.Lock()
+	if !c.transportCloseStarted && !c.controlCloseRequested {
+		c.controlCloseRequested = true
+		c.controlCloseCode = closeCode
+		c.controlCloseReason = reason
+	}
+	c.transportCloseStateMu.Unlock()
+}
+
 func (c *Client) closeTransportWithControlFrame(closeCode int, reason string) {
+	c.transportCloseStateMu.Lock()
+	if !c.controlCloseRequested {
+		c.controlCloseRequested = true
+		c.controlCloseCode = closeCode
+		c.controlCloseReason = reason
+	}
+	c.transportCloseStarted = true
+	closeCode = c.controlCloseCode
+	reason = c.controlCloseReason
+	c.transportCloseStateMu.Unlock()
 	c.transportCloseOnce.Do(func() {
 		c.writeMu.Lock()
 		defer c.writeMu.Unlock()
@@ -1549,6 +1842,16 @@ func (c *Client) closeTransportWithControlFrame(closeCode int, reason string) {
 }
 
 func (c *Client) closeTransport(logMessage string) {
+	c.transportCloseStateMu.Lock()
+	if c.controlCloseRequested {
+		closeCode := c.controlCloseCode
+		reason := c.controlCloseReason
+		c.transportCloseStateMu.Unlock()
+		c.closeTransportWithControlFrame(closeCode, reason)
+		return
+	}
+	c.transportCloseStarted = true
+	c.transportCloseStateMu.Unlock()
 	c.transportCloseOnce.Do(func() {
 		c.writeMu.Lock()
 		defer c.writeMu.Unlock()

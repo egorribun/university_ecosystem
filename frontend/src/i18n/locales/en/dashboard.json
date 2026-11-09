@@ -16,13 +16,11 @@
     "openFullSchedule": "Open the full schedule",
     "viewAllNews": "See all news",
     "newsList": "News feed",
-    "newsItem": "News item: {{title}}",
     "storiesList": "Stories",
     "storyItem": "Story: {{title}}",
     "viewAllEvents": "See all events",
     "eventsToday": "Events happening today",
-    "eventsWeek": "Events this week",
-    "eventItem": "Event: {{title}}"
+    "eventsWeek": "Events this week"
   },
   "weather": {
     "label": "Weather",

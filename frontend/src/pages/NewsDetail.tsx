@@ -43,12 +43,20 @@ import { estimateReadingTime } from "@/utils/readingTime"
 import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { setNewsHeroId } from "@/utils/newsTransition"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
+
+type NewsSnackbarSeverity = "success" | "error"
+type NewsSnackbarNotice = { message: string; severity: NewsSnackbarSeverity }
 
 /* ══════════════════════════════════════════════════════════
    NEWS DETAIL PAGE — Orchestrator
    ══════════════════════════════════════════════════════════ */
 export default function NewsDetail() {
   const { id = "" } = useParams({ strict: false })
+  return <NewsDetailArticle key={id} id={id} />
+}
+
+function NewsDetailArticle({ id }: { id: string }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { anonymous } = useAnonymousReadMode()
@@ -87,7 +95,9 @@ export default function NewsDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [snackbar, setSnackbar] = useState("")
+  const [snackbar, setSnackbar] = useState<NewsSnackbarNotice | null>(null)
+  const showSnackbar = (message: string, severity: NewsSnackbarSeverity) =>
+    setSnackbar({ message, severity })
 
   /* ── Query ── */
   // Wave 129 SW5 — uses the shared `newsDetailQueryOptions` factory so the
@@ -114,7 +124,8 @@ export default function NewsDetail() {
   } = useShare({
     title: query.data?.title || "",
     url: articleUrl,
-    onNotify: (msg) => setSnackbar(msg),
+    onNotify: (msg) =>
+      showSnackbar(msg, msg === t("news:notifications.shareError") ? "error" : "success"),
     translations: {
       shareSuccess: t("news:notifications.shareSuccess"),
       shareError: t("news:notifications.shareError"),
@@ -128,13 +139,17 @@ export default function NewsDetail() {
 
   const {
     interactions,
-    toggleLike,
+    commentsStatus,
+    isRetryingComments,
+    retryComments,
+    toggleLikeAsync,
     addComment,
     isCommenting,
-    updateComment,
-    deleteComment,
+    updateCommentAsync,
+    deleteCommentAsync,
     hasMoreComments,
     isLoadingMoreComments,
+    isLoadingMoreCommentsError,
     loadMoreComments,
   } = useNewsInteraction(id, {
     anonymousRead: anonymous,
@@ -147,8 +162,8 @@ export default function NewsDetail() {
         }
       : undefined,
   })
-  const isLiked = interactions?.is_liked ?? false
-  const likesCount = interactions?.likes_count ?? 0
+  const isLiked = interactions?.is_liked ?? (anonymous ? false : (query.data?.is_liked ?? false))
+  const likesCount = interactions?.likes_count ?? query.data?.likes_count ?? 0
   const comments = interactions?.comments ?? []
 
   /* ── Store hero ID for back-navigation view transition ── */
@@ -159,7 +174,7 @@ export default function NewsDetail() {
   /* ── Side-effects ── */
   useEffect(() => {
     if (!snackbar) return
-    const timer = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
+    const timer = window.setTimeout(() => setSnackbar(null), TIMEOUTS.TOAST_SHORT)
     return () => window.clearTimeout(timer)
   }, [snackbar])
 
@@ -195,7 +210,7 @@ export default function NewsDetail() {
     setDeleting(true)
     try {
       await telemetryContext.run(() => deleteNews(query.data.id))
-      setSnackbar(t("news:notifications.deleted"))
+      showSnackbar(t("news:notifications.deleted"), "success")
       queryClient.removeQueries({ queryKey: ["news", id] })
       await telemetryContext.run(() =>
         queryClient.invalidateQueries({ queryKey: ["news", "list"] })
@@ -203,7 +218,7 @@ export default function NewsDetail() {
       if (window.history.length > 1) window.history.back()
       else void navigate({ to: "/news" })
     } catch {
-      setSnackbar(t("news:notifications.deleteError"))
+      showSnackbar(t("news:notifications.deleteError"), "error")
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
@@ -333,7 +348,17 @@ export default function NewsDetail() {
               onShare={() => {
                 void handleShare()
               }}
-              onToggleLike={() => toggleLike()}
+              onToggleLike={() => {
+                const ownsSession = captureSessionEpoch()
+                void (async () => {
+                  try {
+                    await toggleLikeAsync()
+                  } catch {
+                    if (ownsSession())
+                      showSnackbar(t("news:notifications.interactionError"), "error")
+                  }
+                })()
+              }}
               onToggleBookmark={handleToggleBookmark}
               onEditOpen={() => setEditOpen(true)}
               onDeleteOpen={() => setConfirmDeleteOpen(true)}
@@ -343,18 +368,30 @@ export default function NewsDetail() {
             <NewsDetailBody content={content} />
 
             <NewsComments
+              key={user?.id ?? "anonymous"}
               comments={comments}
+              commentsCount={interactions?.comments_count ?? query.data.comments_count}
+              loadState={{
+                status: commentsStatus,
+                retry: retryComments,
+                isRetrying: isRetryingComments,
+              }}
               user={user}
               isCommenting={isCommenting}
               addComment={addComment}
-              updateComment={updateComment}
-              deleteComment={deleteComment}
+              updateComment={updateCommentAsync}
+              deleteComment={deleteCommentAsync}
               t={t}
               getMoscowDate={getMoscowDate}
             />
 
             {hasMoreComments && (
-              <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-3">
+                {isLoadingMoreCommentsError && (
+                  <p role="alert" className="text-sm text-(--error-text)">
+                    {t("news:states.commentsPageLoadError")}
+                  </p>
+                )}
                 <Button
                   variant="glass"
                   onClick={loadMoreComments}
@@ -400,11 +437,11 @@ export default function NewsDetail() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShareDialogOpen(false)}
-                  className="group flex items-center gap-3 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) px-4 py-3 transition hover:border-glass-border hover:shadow-sm"
+                  className="group flex items-center gap-3 rounded-xl glass-layer-surface border border-glass-border/[calc(var(--opacity-soft)*100%)] px-4 py-3 transition hover:border-glass-border hover:shadow-sm"
                 >
                   <span
                     className={cn(
-                      "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-hover) shadow-sm transition group-hover:scale-105",
+                      "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)] shadow-sm transition group-hover:scale-105",
                       option.accent
                     )}
                   >
@@ -440,8 +477,8 @@ export default function NewsDetail() {
         newsId={id}
         language={language}
         initialData={editInitialData}
-        onSuccess={(msg) => setSnackbar(msg)}
-        onError={(msg) => setSnackbar(msg)}
+        onSuccess={(msg) => showSnackbar(msg, "success")}
+        onError={(msg) => showSnackbar(msg, "error")}
       />
 
       {/* ═══ CONFIRM DELETE ═══ */}
@@ -460,14 +497,14 @@ export default function NewsDetail() {
       {/* ═══ SNACKBAR ═══ */}
       {snackbar && (
         <Snackbar
-          open={!!snackbar}
+          open
           autoHideDuration={2400}
-          onClose={() => setSnackbar("")}
+          onClose={() => setSnackbar(null)}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           className="z-navbar"
         >
-          <Alert severity="success" onClose={() => setSnackbar("")}>
-            {snackbar}
+          <Alert severity={snackbar.severity} onClose={() => setSnackbar(null)}>
+            {snackbar.message}
           </Alert>
         </Snackbar>
       )}

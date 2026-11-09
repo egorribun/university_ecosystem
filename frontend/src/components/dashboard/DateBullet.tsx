@@ -7,11 +7,12 @@ import { formatCampusDate } from "@/utils/campusTimezone"
 interface DateBulletProps {
   date?: string
   locale: string
+  descriptionId?: string
   /** Compact mode for event lists (slightly smaller) */
   size?: "default" | "compact"
 }
 
-export function DateBullet({ date, locale, size }: DateBulletProps) {
+export function DateBullet({ date, locale, size, descriptionId }: DateBulletProps) {
   const { t } = useTranslation("common")
   const timeZone = useCampusTimezone()
   const d = date ? new Date(date) : null
@@ -37,10 +38,14 @@ export function DateBullet({ date, locale, size }: DateBulletProps) {
   const isCompact = size === "compact"
   const outerSize = isCompact ? "h-10 w-10 min-h-10 min-w-10" : "h-12 w-12 min-h-12 min-w-12"
 
+  // The localized "Published on" phrase is kept for dated rows; an unknown date is stated plainly.
+  const description = hasCampusDate ? t("ariaDatePublished", { date: full }) : fallback
+
   return (
-    <Tooltip content={full}>
+    <Tooltip content={description} id={descriptionId} descriptionOnly>
+      {/* The abbreviated digits are decorative; the description states the full date. */}
       <span
-        aria-label={t("ariaDatePublished", { date: full })}
+        aria-hidden="true"
         className={cn(
           "relative flex flex-col items-center justify-center rounded-full",
           outerSize,
@@ -66,7 +71,7 @@ export function DateBullet({ date, locale, size }: DateBulletProps) {
         {/* Month abbreviation */}
         <span
           className={cn(
-            "relative z-[1] font-bold uppercase text-brand/(--opacity-strong)",
+            "relative z-[1] font-bold uppercase text-brand/[calc(var(--opacity-strong)*100%)]",
             isCompact ? "text-[0.5rem]" : "text-[0.6rem]",
             "leading-tight"
           )}

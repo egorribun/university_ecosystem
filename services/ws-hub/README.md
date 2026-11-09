@@ -28,6 +28,13 @@ delimiter. The first-party browser client currently uses WebSocket.
 
 ## Session lifetime
 
+A room join refused because admission is temporarily unavailable closes the
+connection with WebSocket close code `1013` or WebTransport session close code
+`1013`, with a retry reason. Clients can obtain a new ticket, reconnect, and
+rejoin after admission recovers. An ordinary WebTransport close remains code
+`0`. The admission decision reflects the final local connection-state check
+before membership is published; a remote disconnect can occur afterward.
+
 Upgrade tickets contain exactly `user_id:jti:expires_at_unix_seconds`. The
 expiry is the authenticated session's immutable cutoff, not the ticket TTL or
 a sliding cache timeout. Both transports retain it and refuse new action or outbound-frame

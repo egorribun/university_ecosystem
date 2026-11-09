@@ -267,7 +267,9 @@ def test_cleanup_no_op_when_nothing_initialized():
     webpush_mod._Session = None
 
     try:
-        cleanup()  # should not raise
+        assert (cleanup()) is None  # should not raise
+        assert webpush_mod._sync_engine is None
+        assert webpush_mod._Session is None
     finally:
         webpush_mod._sync_engine = original_engine
         webpush_mod._Session = original_session

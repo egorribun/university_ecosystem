@@ -13,6 +13,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from zxcvbn import zxcvbn
 
 import app.auth.security as sec
 from app.auth.security import (
@@ -100,10 +101,14 @@ def test_password_policy_missing_classes(monkeypatch) -> None:
     monkeypatch.setattr(settings, "password_require_digit", True)
     monkeypatch.setattr(settings, "password_require_lowercase", False)
     monkeypatch.setattr(settings, "password_require_special", False)
+    candidate = "abcdefghijkl"
+    assert len(candidate) == 12
+    assert candidate.isalpha() and candidate.islower()
 
     with pytest.raises(ValueError) as exc:
-        get_password_hash_sync("abcdefgh", validate_policy=True, locale="en")
+        get_password_hash_sync(candidate, validate_policy=True, locale="en")
     assert "uppercase letters" in str(exc.value)
+    assert "digits" in str(exc.value)
 
 
 def test_password_policy_min_classes(monkeypatch) -> None:
@@ -114,34 +119,48 @@ def test_password_policy_min_classes(monkeypatch) -> None:
     monkeypatch.setattr(settings, "password_require_special", False)
     monkeypatch.setattr(settings, "password_min_character_classes", 3)
 
-    # Password only has 2 classes: lowercase and digits (no upper, no symbol)
+    # Exactly two classes, with enough length and strength for both branches.
+    candidate = "qv9nt2hkm8r3"
+    assert len(candidate) == 12
+    assert candidate.isalnum()
+    assert any(char.islower() for char in candidate)
+    assert any(char.isdigit() for char in candidate)
+    assert not any(char.isupper() for char in candidate)
+    assert zxcvbn(candidate)["score"] >= settings.password_zxcvbn_min_score
     with pytest.raises(ValueError) as exc:
-        get_password_hash_sync("abcdefgh123", validate_policy=True, locale="en")
+        get_password_hash_sync(candidate, validate_policy=True, locale="en")
     assert "categories" in str(exc.value)
 
     # 2. min_classes is 0 (takes False branch of min_classes > 0)
     monkeypatch.setattr(settings, "password_min_character_classes", 0)
-    hashed = get_password_hash_sync("abcdefgh123", validate_policy=True, locale="en")
+    hashed = get_password_hash_sync(candidate, validate_policy=True, locale="en")
     assert hashed.startswith("$argon2id$")
 
 
 def test_password_policy_zxcvbn_score(monkeypatch) -> None:
     monkeypatch.setattr(settings, "password_zxcvbn_min_score", 3)
 
-    # 1. Trivial password with sufficient length and characters but weak zxcvbn score
+    # Length and all four classes pass; only the strength rule rejects this value.
+    candidate = "Password1234!"
+    assert 12 <= len(candidate) <= 200
+    assert any(char.isupper() for char in candidate)
+    assert any(char.islower() for char in candidate)
+    assert any(char.isdigit() for char in candidate)
+    assert any(not char.isalnum() for char in candidate)
+    assert zxcvbn(candidate)["score"] == 1
     with pytest.raises(ValueError) as exc:
-        get_password_hash_sync("abc123XYZ!!", validate_policy=True, locale="en")
+        get_password_hash_sync(candidate, validate_policy=True, locale="en")
     assert "weak" in str(exc.value)
 
     # 2. Strong password that passes zxcvbn checks (takes False branch of score < min_score)
-    hashed = get_password_hash_sync(
-        "Tr0ub4dor&3!Xy7Mn-Qp", validate_policy=True, locale="en"
-    )
+    strong = "Tr0ub4dor&3!Xy7Mn-Qp"
+    assert zxcvbn(strong)["score"] >= settings.password_zxcvbn_min_score
+    hashed = get_password_hash_sync(strong, validate_policy=True, locale="en")
     assert hashed.startswith("$argon2id$")
 
     # 3. min_score is 0 (takes False branch of min_score > 0)
     monkeypatch.setattr(settings, "password_zxcvbn_min_score", 0)
-    hashed2 = get_password_hash_sync("abc123XYZ!!", validate_policy=True, locale="en")
+    hashed2 = get_password_hash_sync(candidate, validate_policy=True, locale="en")
     assert hashed2.startswith("$argon2id$")
 
 
@@ -296,8 +315,9 @@ def test_decode_token_branches(monkeypatch) -> None:
         .decode("utf-8")
     )
 
+    valid_payload = {**payload, "iss": settings.jwt_issuer}
     rs256_token = jwt.encode(
-        payload, private_pem, algorithm="RS256", headers={"kid": "rskey"}
+        valid_payload, private_pem, algorithm="RS256", headers={"kid": "rskey"}
     )
 
     monkeypatch.setattr(settings, "algorithm", "RS256")
@@ -331,14 +351,14 @@ def test_decode_token_branches(monkeypatch) -> None:
 async def test_validate_password_hibp_real_flow_and_errors() -> None:
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.text = "ABC12:0\nDEF34:0\n"
+    mock_resp.text = f"{'0' * 35}:0\n{'1' * 35}:0\n"
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.get = AsyncMock(return_value=mock_resp)
     mock_client.aclose = AsyncMock()
 
     with patch("app.auth.security.httpx.AsyncClient", return_value=mock_client):
-        await validate_password_hibp("SafePassword123!")
+        await validate_password_hibp(os.urandom(32).hex())
         assert sec._hibp_client is mock_client
 
         client = await sec._get_hibp_client()
@@ -367,10 +387,16 @@ async def test_validate_password_hibp_real_flow_and_errors() -> None:
 
     from app.auth.security import _calculate_lookup_hash
 
-    sha1 = _calculate_lookup_hash("pass")
+    candidate = os.urandom(32).hex()
+    sha1 = _calculate_lookup_hash(candidate)
     suffix = sha1[5:]
     mock_resp.text = f"{suffix}:INVALID_COUNT\n"
 
     mock_client.get = AsyncMock(return_value=mock_resp)
-    with patch("app.auth.security.httpx.AsyncClient", return_value=mock_client):
-        await validate_password_hibp("pass")
+    with (
+        patch("app.auth.security.httpx.AsyncClient", return_value=mock_client),
+        patch.object(settings, "password_hibp_fail_open", False),
+        patch("app.auth.security.translate", return_value="unavailable"),
+        pytest.raises(ValueError, match="unavailable"),
+    ):
+        await validate_password_hibp(candidate)

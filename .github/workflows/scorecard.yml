@@ -28,8 +28,6 @@ jobs:
     permissions:
       # Required for publishing SARIF results to the Security tab
       security-events: write
-      # Required for OIDC token exchange with Scorecard API
-      id-token: write
       # Scorecard reads repository contents
       contents: read
       # Required for actions/checkout
@@ -43,6 +41,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify trusted main source
+        id: trusted_source
         env:
           EVENT_SHA: ${{ github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -65,59 +64,101 @@ jobs:
             exit 1
           fi
 
-      - name: Run OpenSSF Scorecard
+      - name: Run OpenSSF Scorecard (native JSON for the floor gate)
+        id: scorecard-json
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: scorecard-results.json
+          results_format: json
+          # Publication is disabled: the public Scorecard API only accepts
+          # workflows whose Scorecard job contains `uses:` steps exclusively.
+          # The SARIF run below is what reaches Code Scanning.
+          publish_results: false
+
+      - name: Run OpenSSF Scorecard (SARIF for Code Scanning)
+        id: scorecard-sarif
+        if: ${{ always() && steps.trusted_source.outcome == 'success' }}
         uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
         with:
           results_file: scorecard-results.sarif
           results_format: sarif
-          # Disabled because this job post-processes SARIF with a `run:` step.
-          # The public Scorecard API only accepts workflows whose Scorecard job
-          # contains `uses:` steps exclusively; Code Scanning still receives the
-          # filtered SARIF via github/codeql-action/upload-sarif below.
           publish_results: false
 
-      - name: Normalize Scorecard SARIF ownership
-        run: sudo chown "$USER:$USER" scorecard-results.sarif
-
-      - name: Filter policy-only Scorecard SARIF findings
-        shell: python
+      - name: Normalize Scorecard result ownership
+        if: ${{ always() }}
+        shell: bash
         run: |
-          import json
-          from pathlib import Path
+          set -euo pipefail
+          for report in scorecard-results.json scorecard-results.sarif; do
+            if [[ -f "$report" ]]; then
+              sudo chown "$USER:$USER" "$report"
+            fi
+          done
 
-          sarif_path = Path("scorecard-results.sarif")
-          sarif = json.loads(sarif_path.read_text(encoding="utf-8"))
-          suppressed_rule_ids = {
-              # These are repository policy or operations signals. Keep them in
-              # the published Scorecard result, but do not duplicate them as
-              # source-code alerts where they cannot be remediated by a diff.
-              "BranchProtectionID",
-              "CIIBestPracticesID",
-              "CITestsID",
-              "CodeReviewID",
-              "PinnedDependenciesID",
-              "SASTID",
-              "TokenPermissionsID",
-              # Dependency CVEs are uploaded by Trivy with package context.
-              "VulnerabilitiesID",
-          }
+      - name: Verify Scorecard report source
+        id: report_source
+        if: ${{ always() && steps.trusted_source.outcome == 'success' && steps.scorecard-sarif.outcome == 'success' }}
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          SCORECARD_RESULT_OUTCOME: ${{ steps.scorecard-json.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EVENT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Scorecard event commit is invalid."
+            exit 1
+          fi
+          # Each action scans remote main separately. Protected main disallows
+          # force pushes; unchanged pre- and post-scan tips bind both scans to
+          # the event commit provided that branch protection is not bypassed.
+          git fetch --no-tags --depth=1 origin refs/heads/main
+          report_sha="$(git rev-parse 'FETCH_HEAD^{commit}')"
+          if [[ "$report_sha" != "$EVENT_SHA" ]]; then
+            echo "::error::Protected main changed while Scorecard was scanning."
+            exit 1
+          fi
+          if [[ "$SCORECARD_RESULT_OUTCOME" == "success" ]]; then
+            python3 scripts/quality/scorecard_floors_gate.py \
+              quality/scorecard-floors.json scorecard-results.json \
+              --expected-commit "$EVENT_SHA" --validate-source-only
+          fi
 
-          for run in sarif.get("runs", []):
-              tool = run.get("tool", {}).get("driver", {})
-              tool["rules"] = [
-                  rule
-                  for rule in tool.get("rules", [])
-                  if rule.get("id") not in suppressed_rule_ids
-              ]
-              run["results"] = [
-                  result
-                  for result in run.get("results", [])
-                  if result.get("ruleId") not in suppressed_rule_ids
-              ]
-
-          sarif_path.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
-
+      # AUD-381: every check is published to Code Scanning before the floor gate
+      # runs. The filter that previously removed policy checks from the upload
+      # is removed, so gated checks are visible in the Security tab too.
       - name: Upload SARIF results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        if: ${{ always() && steps.scorecard-sarif.outcome == 'success' && steps.report_source.outcome == 'success' }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: scorecard-results.sarif
+
+      # AUD-381: gate per key check on the score floors recorded in
+      # quality/scorecard-floors.json, not on the aggregate score. Checks that
+      # the repository cannot change are published and never gated.
+      - name: Gate Scorecard key-check floors
+        shell: bash
+        env:
+          SCORECARD_RESULT_OUTCOME: ${{ steps.scorecard-json.outcome }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$SCORECARD_RESULT_OUTCOME" != "success" ]]; then
+            echo "::error::Scorecard JSON run did not succeed; the scan result is unknown." >&2
+            exit 1
+          fi
+          python3 scripts/quality/scorecard_floors_gate.py \
+            quality/scorecard-floors.json \
+            scorecard-results.json \
+            --expected-commit "$EVENT_SHA" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Scorecard reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scorecard-results-${{ github.run_id }}
+          path: |
+            scorecard-results.json
+            scorecard-results.sarif
+          if-no-files-found: error
+          retention-days: 90

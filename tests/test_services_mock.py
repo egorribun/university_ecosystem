@@ -12,10 +12,10 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -55,8 +55,6 @@ async def test_ws_hub_client_invalidate_cache_success() -> None:
 async def test_ws_hub_client_invalidate_cache_nats_error_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    import logging
-
     from app.services.ws_hub_client import WsHubClient
 
     mock_broker = AsyncMock()
@@ -169,11 +167,11 @@ async def test_deliver_push_successful_delivery() -> None:
         patch(
             "app.services.push_service._deliver_to_subscription",
             new=AsyncMock(return_value=expected_result),
-        ),
+        ) as deliver,
         patch(
             "app.services.notifications.prepare_push_payload_for_user",
             return_value={"title": "test"},
-        ),
+        ) as prepare,
     ):
         results = await deliver_push_to_subscriptions(
             subscriptions=[mock_sub],
@@ -181,8 +179,9 @@ async def test_deliver_push_successful_delivery() -> None:
             topic=None,
         )
 
-    # results may be list of WebPushResult or empty depending on mocking
-    assert isinstance(results, list)
+    assert results == [expected_result]
+    prepare.assert_called_once_with({"title": "test"}, None)
+    deliver.assert_awaited_once_with(mock_sub, {"title": "test"})
 
 
 @pytest.mark.asyncio
@@ -193,9 +192,6 @@ async def test_deliver_push_handles_exception_result() -> None:
     mock_sub = MagicMock()
     mock_sub.user = None
 
-    async def raise_exc(sub: Any) -> None:
-        raise ConnectionError("push failed")
-
     with (
         patch(
             "app.services.push_service.subscription_supports_topic",
@@ -204,7 +200,7 @@ async def test_deliver_push_handles_exception_result() -> None:
         patch(
             "app.services.push_service._deliver_to_subscription",
             new=AsyncMock(side_effect=ConnectionError("push failed")),
-        ),
+        ) as deliver,
     ):
         results = await deliver_push_to_subscriptions(
             subscriptions=[mock_sub],
@@ -213,10 +209,13 @@ async def test_deliver_push_handles_exception_result() -> None:
             concurrency=1,
         )
 
-    # Should handle the exception and return an error result
-    assert isinstance(results, list)
-    if results:
-        assert results[0].status == "error"
+    assert len(results) == 1
+    assert results[0].subscription_id == uuid.UUID(int=0)
+    assert results[0].user_id == uuid.UUID(int=0)
+    assert results[0].endpoint == "unknown"
+    assert results[0].status == "error"
+    assert results[0].error == "push failed"
+    deliver.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +224,7 @@ async def test_deliver_push_handles_exception_result() -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_all_events() -> None:
+async def test_log_all_events(caplog: pytest.LogCaptureFixture) -> None:
     from app.core.events import DomainEvent
     from app.services.event_handlers import log_all_events
 
@@ -234,56 +233,70 @@ async def test_log_all_events() -> None:
     mock_event.event_type = "test.event"
     mock_event.event_id = str(uuid.uuid4())
 
-    # Should log without raising
-    await log_all_events(mock_event)
+    with caplog.at_level(logging.INFO, logger="app.services.event_handlers"):
+        await log_all_events(mock_event)
+
+    assert f"Domain event: test.event (id={mock_event.event_id})" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_user_created() -> None:
+async def test_handle_user_created(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_user_created
 
     mock_event = MagicMock()
     mock_event.user_id = 42
     mock_event.email = "test@example.com"
 
-    await handle_user_created(mock_event)  # should not raise
+    with caplog.at_level(logging.INFO, logger="app.services.event_handlers"):
+        await handle_user_created(mock_event)
+
+    assert "New user registered: user_id=42" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_user_logged_in_with_ip() -> None:
+async def test_handle_user_logged_in_with_ip(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_user_logged_in
 
     mock_event = MagicMock()
     mock_event.user_id = 1
     mock_event.ip_address = "127.0.0.1"
 
-    await handle_user_logged_in(mock_event)
+    with caplog.at_level(logging.DEBUG, logger="app.services.event_handlers"):
+        await handle_user_logged_in(mock_event)
+
+    assert "User login: user_id=1, ip=127.0.0.1" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_user_logged_in_no_ip() -> None:
+async def test_handle_user_logged_in_no_ip(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_user_logged_in
 
     mock_event = MagicMock()
     mock_event.user_id = 1
     mock_event.ip_address = None
 
-    await handle_user_logged_in(mock_event)
+    with caplog.at_level(logging.DEBUG, logger="app.services.event_handlers"):
+        await handle_user_logged_in(mock_event)
+
+    assert "User login: user_id=1, ip=unknown" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_mfa_enabled() -> None:
+async def test_handle_mfa_enabled(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_mfa_enabled
 
     mock_event = MagicMock()
     mock_event.user_id = 5
     mock_event.method = "totp"
 
-    await handle_mfa_enabled(mock_event)
+    with caplog.at_level(logging.INFO, logger="app.services.event_handlers"):
+        await handle_mfa_enabled(mock_event)
+
+    assert "MFA enabled: user_id=5, method=totp" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_event_created() -> None:
+async def test_handle_event_created(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_event_created
 
     mock_event = MagicMock()
@@ -291,22 +304,28 @@ async def test_handle_event_created() -> None:
     mock_event.organizer_id = 1
     mock_event.title = "Lecture 1"
 
-    await handle_event_created(mock_event)
+    with caplog.at_level(logging.INFO, logger="app.services.event_handlers"):
+        await handle_event_created(mock_event)
+
+    assert "Event created: event_id=100, organizer=1, title=Lecture 1" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_event_registration() -> None:
+async def test_handle_event_registration(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_event_registration
 
     mock_event = MagicMock()
     mock_event.event_id_entity = 100
     mock_event.user_id = 42
 
-    await handle_event_registration(mock_event)
+    with caplog.at_level(logging.DEBUG, logger="app.services.event_handlers"):
+        await handle_event_registration(mock_event)
+
+    assert "Event registration: event_id=100, user_id=42" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_handle_notification_sent() -> None:
+async def test_handle_notification_sent(caplog: pytest.LogCaptureFixture) -> None:
     from app.services.event_handlers import handle_notification_sent
 
     mock_event = MagicMock()
@@ -314,18 +333,34 @@ async def test_handle_notification_sent() -> None:
     mock_event.user_id = 3
     mock_event.notification_type = "news"
 
-    await handle_notification_sent(mock_event)
+    with caplog.at_level(logging.DEBUG, logger="app.services.event_handlers"):
+        await handle_notification_sent(mock_event)
+
+    assert (
+        f"Notification sent: notification_id={mock_event.notification_id}, "
+        "user_id=3, type=news"
+    ) in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_handle_notifications_requested_empty() -> None:
-    from app.services.event_handlers import handle_notifications_requested
+    from app.services import event_handlers
 
     mock_event = MagicMock()
     mock_event.notification_ids = []
     mock_event.channel = "push"
 
-    await handle_notifications_requested(mock_event)  # returns early
+    with (
+        patch.object(event_handlers, "async_session") as session,
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(),
+        ) as redeliver,
+    ):
+        await event_handlers.handle_notifications_requested(mock_event)
+
+    session.assert_not_called()
+    redeliver.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -378,13 +413,22 @@ async def test_handle_chat_deleted() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_attachment_cleanup_empty_urls() -> None:
-    from app.services.event_handlers import handle_attachment_cleanup_requested
+    from app.services import event_handlers
 
     mock_event = MagicMock()
     mock_event.attachment_urls = []
     mock_event.chat_id = uuid.uuid4()
 
-    await handle_attachment_cleanup_requested(mock_event)  # returns early
+    with (
+        patch.object(event_handlers, "async_session") as session,
+        patch(
+            "app.services.chat.attachment_service.ChatAttachmentService"
+        ) as attachment_service,
+    ):
+        await event_handlers.handle_attachment_cleanup_requested(mock_event)
+
+    session.assert_not_called()
+    attachment_service.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -425,15 +469,15 @@ async def test_configure_event_handlers() -> None:
 
 @pytest.mark.asyncio
 async def test_generate_event_embedding_not_found() -> None:
+    from app import models
     from app.services.event_handlers import generate_event_embedding
 
     mock_event = MagicMock()
-    mock_event.event_id_entity = 999
+    mock_event.event_id_entity = uuid.uuid4()
 
     mock_db = AsyncMock()
     mock_db.get = AsyncMock(return_value=None)  # event not found
-    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
-    mock_db.__aexit__ = AsyncMock(return_value=None)
+    mock_vector_svc = AsyncMock()
 
     mock_session_ctx = MagicMock()
     mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
@@ -443,20 +487,30 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
+        patch(
+            "app.services.event_handlers.VectorService", return_value=mock_vector_svc
+        ) as vector_service,
     ):
-        await generate_event_embedding(mock_event)  # returns early when not found
+        await generate_event_embedding(mock_event)
+
+    vector_service.assert_called_once_with(db=mock_db)
+    mock_db.get.assert_awaited_once_with(models.Event, mock_event.event_id_entity)
+    mock_vector_svc.get_embedding.assert_not_awaited()
+    mock_db.commit.assert_not_awaited()
+    mock_vector_svc.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_generate_news_embedding_not_found() -> None:
+    from app import models
     from app.services.event_handlers import generate_news_embedding
 
     mock_event = MagicMock()
-    mock_event.news_id = 999
+    mock_event.news_id = uuid.uuid4()
 
     mock_db = AsyncMock()
     mock_db.get = AsyncMock(return_value=None)
+    mock_vector_svc = AsyncMock()
 
     mock_session_ctx = MagicMock()
     mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
@@ -466,9 +520,17 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch("app.services.event_handlers.VectorService", return_value=AsyncMock()),
+        patch(
+            "app.services.event_handlers.VectorService", return_value=mock_vector_svc
+        ) as vector_service,
     ):
         await generate_news_embedding(mock_event)
+
+    vector_service.assert_called_once_with(db=mock_db)
+    mock_db.get.assert_awaited_once_with(models.News, mock_event.news_id)
+    mock_vector_svc.get_embedding.assert_not_awaited()
+    mock_db.commit.assert_not_awaited()
+    mock_vector_svc.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -785,15 +847,24 @@ async def test_fraud_detection_record_event_high_severity() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fraud_detection_record_event_redis_error() -> None:
+async def test_fraud_detection_record_event_redis_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     from app.services.fraud_detection_service import FraudDetectionService
 
     mock_redis = AsyncMock()
     mock_redis.xadd = AsyncMock(side_effect=ConnectionError("Redis down"))
+    event_data = {"action": "x", "user_id": "123", "severity": "high"}
 
     svc = FraudDetectionService(redis_client=mock_redis)
-    # Should not raise
-    await svc.record_event({"action": "x"})
+    with caplog.at_level(logging.ERROR, logger="app.services.fraud_detection_service"):
+        await svc.record_event(event_data)
+
+    mock_redis.xadd.assert_awaited_once_with(
+        "security:suspicious_events", event_data, maxlen=50000, approximate=True
+    )
+    mock_redis.pipeline.assert_not_called()
+    assert "FraudDetectionService: failed to record event to Redis" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -996,15 +1067,22 @@ def test_update_user_attributes_profile_fields() -> None:
 
 
 def test_update_user_attributes_creates_profile_if_none() -> None:
+    from app import models
     from app.services.user.logic import update_user_attributes
 
     mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
     mock_user.profile = None
     mock_user.preferences = None
     mock_user.education_path = None
 
     update_user_attributes(mock_user, {"full_name": "Jane"})
-    # profile should be created
+
+    assert isinstance(mock_user.profile, models.UserProfile)
+    assert mock_user.profile.user_id == mock_user.id
+    assert mock_user.profile.full_name == "Jane"
+    assert mock_user.preferences is None
+    assert mock_user.education_path is None
 
 
 def test_update_user_attributes_preferences_fields() -> None:
@@ -1064,6 +1142,7 @@ def test_update_user_attributes_direct_field() -> None:
 
 
 def test_update_user_attributes_creates_education_if_none() -> None:
+    from app import models
     from app.services.user.logic import update_user_attributes
 
     mock_user = MagicMock()
@@ -1073,4 +1152,7 @@ def test_update_user_attributes_creates_education_if_none() -> None:
     mock_user.id = uuid.uuid4()
 
     update_user_attributes(mock_user, {"institute": "Oxford"})
-    # education_path should be created (patched model)
+
+    assert isinstance(mock_user.education_path, models.EducationPath)
+    assert mock_user.education_path.user_id == mock_user.id
+    assert mock_user.education_path.institute == "Oxford"

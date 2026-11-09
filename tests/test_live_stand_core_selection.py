@@ -79,6 +79,7 @@ EXPECTED_CORE_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -108,7 +109,7 @@ def core_compose_project() -> dict[str, Any]:
         "gateway": ("redis", "revocation-redis"),
         "imgproxy": (),
         "mailpit": (),
-        "migrations": ("postgres",),
+        "migrations": ("postgres", "postgres-roles-init", "revocation-redis"),
         "minio": (),
         "minio-init": ("minio",),
         "nats": (),
@@ -116,6 +117,7 @@ def core_compose_project() -> dict[str, Any]:
         "outbox-worker": ("backend", "nats", "postgres", "redis"),
         "postgres": (),
         "postgres-databases-init": ("postgres",),
+        "postgres-roles-init": ("postgres",),
         "redis": (),
         "revocation-redis": (),
         "spicedb": ("postgres", "spicedb-migrate"),
@@ -169,6 +171,29 @@ def test_core_selection_is_exact_sorted_dependency_closure_without_unrelated_ser
     assert selected == EXPECTED_CORE_SERVICES
     assert "unrelated-admin-tool" not in selected
     assert core_compose_project == before
+
+
+@pytest.mark.parametrize("mutation", ["missing", "unreachable", "extra_dependency"])
+def test_core_selection_requires_exact_owned_role_bootstrap(
+    core_compose_project: dict[str, Any], mutation: str
+) -> None:
+    services = core_compose_project["services"]
+    if mutation == "missing":
+        del services["postgres-roles-init"]
+        message = "unknown service"
+    elif mutation == "unreachable":
+        del services["migrations"]["depends_on"]["postgres-roles-init"]
+        message = "differs from reviewed services"
+    else:
+        services["postgres-roles-init"]["depends_on"]["unrelated-admin-tool"] = {
+            "condition": "service_started"
+        }
+        message = "differs from reviewed services"
+
+    with pytest.raises(live_stand.StandError, match=message):
+        live_stand.resolve_live_service_selection(
+            core_compose_project, live_stand.LIVE_STACK_CORE
+        )
 
 
 def test_core_selection_rejects_unknown_stack(

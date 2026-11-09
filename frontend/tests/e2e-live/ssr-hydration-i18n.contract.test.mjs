@@ -1,139 +1,143 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
-import { URL } from "node:url"
+import process from "node:process"
+import { fileURLToPath, URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
+import sharp from "sharp"
+import { createServer } from "vite"
+import { applyNodeCspToHtmlResponse } from "../../scripts/server-csp.mjs"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
+import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
+import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
-const seoMetadataUrl = new URL("./seo-metadata.mjs", import.meta.url)
-const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
-const authRouteUrl = new URL("../../src/routes/_auth.tsx", import.meta.url)
-const dashboardRouteUrl = new URL("../../src/routes/_auth/dashboard.tsx", import.meta.url)
-const newsRouteUrl = new URL("../../src/routes/_auth/news.index.tsx", import.meta.url)
-const rootRouteUrl = new URL("../../src/routes/__root.tsx", import.meta.url)
-const seoComponentUrl = new URL("../../src/components/ui/SEO.tsx", import.meta.url)
-const serverUrl = new URL("../../src/server.ts", import.meta.url)
-const ssrThemeUrl = new URL("../../src/ssrTheme.ts", import.meta.url)
-const hydrationUrl = new URL("../../src/app/hydration.ts", import.meta.url)
-
-test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys", async () => {
-  assert.equal(existsSync(specUrl), true, "the authenticated SSR/i18n live scenario must exist")
-
-  const [
-    spec,
-    config,
-    authRoute,
-    dashboardRoute,
-    newsRoute,
-    rootRoute,
-    seoComponent,
-    server,
-    ssrTheme,
-    hydration,
-  ] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(configUrl, "utf8"),
-    readFile(authRouteUrl, "utf8"),
-    readFile(dashboardRouteUrl, "utf8"),
-    readFile(newsRouteUrl, "utf8"),
-    readFile(rootRouteUrl, "utf8"),
-    readFile(seoComponentUrl, "utf8"),
-    readFile(serverUrl, "utf8"),
-    readFile(ssrThemeUrl, "utf8"),
-    readFile(hydrationUrl, "utf8"),
-  ])
-
-  assert.match(config, /name:\s*["']desktop["']/u)
-  assert.match(config, /name:\s*["']mobile["']/u)
-  assert.match(config, /trace:\s*["']off["']/u)
-  assert.match(config, /screenshot:\s*["']off["']/u)
-  assert.match(config, /video:\s*["']off["']/u)
-  assert.match(authRoute, /ssr:\s*true/u)
-  assert.match(dashboardRoute, /createFileRoute\(["']\/_auth\/dashboard["']\)/u)
-  assert.match(dashboardRoute, /ssr:\s*true/u)
-  assert.match(newsRoute, /createFileRoute\(["']\/_auth\/news\//u)
-  assert.match(newsRoute, /prefetchNewsListQuery/u)
-  assert.match(server, /extractLangFromRequest\(request\)/u)
-  assert.match(ssrTheme, /parseCookie\(header,\s*["']ue:language["']\)/u)
-  assert.match(rootRoute, /lang=\{lang\}/u)
-  assert.match(rootRoute, /data-ssr-auth=\{ssrAuthMarker\}/u)
-  assert.match(rootRoute, /export function ActivityRootSeoFallback/u)
-  assert.match(rootRoute, /<SeoReadinessProvider>/u)
-  assert.match(seoComponent, /useLayoutEffect\(\(\)\s*=>\s*\{/u)
-  assert.match(seoComponent, /unregister\(instanceId\)/u)
-  assert.match(hydration, /window\.__APP_HYDRATED\s*=\s*true/u)
-
-  assert.match(spec, /loginAs\(page,\s*["']student["']\)/u)
-  assert.match(spec, /page\.goto\(["']\/dashboard["']/u)
-  assert.match(spec, /name:\s*["']ue:language["']/u)
-  assert.match(spec, /window\.localStorage\.setItem\(["']ue:language["']/u)
-  assert.match(spec, /window\.__APP_HYDRATED\s*===\s*true/u)
-  assert.match(spec, /data-ssr-auth/u)
-  assert.match(spec, /serverLanguage/u)
-  assert.match(spec, /hydrationDiagnostics/u)
-  assert.match(spec, /rawTranslationKeys\.server/u)
-  assert.match(spec, /rawTranslationKeys\.client/u)
-  assert.match(spec, /new JSDOM\(markup\)/u)
-  assert.match(
-    spec,
-    /page\.evaluate\(\s*\(\)\s*=> document\.querySelector\("#root"\)\?\.outerHTML/u
-  )
-  assert.doesNotMatch(spec, /new DOMParser\(\)|page\.evaluate\(\s*\(markup\)/u)
-  assert.match(
-    spec,
-    /querySelectorAll<HTMLElement>\([\s\S]*?aria-label[\s\S]*?aria-description[\s\S]*?alt/u
-  )
-  assert.match(spec, /a\[href="\/news"\]:visible/u)
-  assert.match(spec, /await newsLink\.click\(\)/u)
-  assert.match(spec, /toHaveURL\(\/\\\/news\$\/u\)/u)
-  assert.match(spec, /University news/u)
-  assert.match(spec, /Новости университета/u)
-  assert.match(spec, /const newsResponse = await page\.reload\(/u)
-  assert.match(spec, /newsResponse\?\.status\(\)\)\.toBe\(200\)/u)
-  assert.match(spec, /newsResponse\?\.headers\(\)\["content-type"\][\s\S]*?text\/html/u)
-  assert.match(spec, /newsServerLanguage[\s\S]*?\.toBe\(language\)/u)
-  assert.match(spec, /newsRawTranslationKeys\.server/u)
-  assert.match(spec, /newsRawTranslationKeys\.client/u)
-  assert.match(spec, /spaTranslationKeys\.client/u)
-  assert.match(spec, /Russian dashboard SSR hydrates and preserves i18n across News navigation/u)
-  assert.match(spec, /English dashboard SSR hydrates and preserves i18n across News navigation/u)
-  assert.match(spec, /a public route retains one localized root metadata fallback/u)
-  assert.match(spec, /assertSingleRootClientHead\(page,\s*["']en["']\)/u)
-  assert.match(spec, /expectedRootHeadSnapshot\(language\)/u)
-  assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
-  assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
-})
-
-test("live acceptance verifies each finite route title against its requested locale on SSR and client", async () => {
-  const [spec, dashboardPage, newsPage, seoMetadata] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(new URL("../../src/pages/Dashboard.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../../src/pages/News.tsx", import.meta.url), "utf8"),
-    readFile(seoMetadataUrl, "utf8"),
-  ])
-  assert.match(dashboardPage, /t\(["']dashboard:pageTitle["']\)/u)
-  assert.match(newsPage, /t\(["']news:pageTitle["']\)/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/en\/dashboard\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/ru\/dashboard\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/en\/news\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/ru\/news\.json["']/u)
-  assert.match(spec, /expectedDocumentTitle\(language,\s*["']dashboard["']\)/u)
-  assert.match(spec, /expectedDocumentTitle\(language,\s*["']news["']\)/u)
-  assert.match(spec, /readDocumentTitle\(serverMarkup/u)
-  assert.match(spec, /readDocumentTitle\(newsServerMarkup/u)
-  assert.match(spec, /page\.title\(\)/u)
-  assert.match(spec, /PAGE_TITLE_CATALOGS\[landmark\]\[language\]/u)
-  assert.doesNotMatch(spec, /Object\.values\(PAGE_TITLE_CATALOGS\[landmark\]\)/u)
-  assert.match(spec, /extractSeoMetadata\(markup\)/u)
-  assert.match(seoMetadata, /export function matchesRequestedCatalogTitle/u)
-})
-
+const ssrDocumentSpecUrl = new URL("./production/ssr-document-render.spec.ts", import.meta.url)
 const dashboardCatalogUrls = {
   en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
   ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
 }
+const newsCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/news.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/news.json", import.meta.url),
+}
+const commonCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/common.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/common.json", import.meta.url),
+}
+
+// AUD-432 (full SSR): the rendered documents are executed by the production-server spec
+// (tests/e2e-live/production/ssr-document-render.spec.ts). This contract executes the same policy code and the
+// same locale probes on real catalog text, so no assertion depends on the spec or renderer text.
+
+test("live acceptance projects record no traces, screenshots or video, and the executed SSR spec exists", async () => {
+  assert.equal(existsSync(specUrl), true, "the authenticated SSR/i18n live scenario must exist")
+  assert.equal(
+    existsSync(ssrDocumentSpecUrl),
+    true,
+    "the executed production-server document render must exist"
+  )
+  const { default: liveConfig } = await import("../../playwright.live.config.ts")
+  const projects = Object.fromEntries(liveConfig.projects.map((project) => [project.name, project]))
+  assert.ok(projects.desktop && projects.mobile, "desktop and mobile live projects must exist")
+  for (const name of ["desktop", "mobile"]) {
+    const use = { ...liveConfig.use, ...projects[name].use }
+    assert.equal(use.trace, "off", `${name} must not record traces`)
+    assert.equal(use.screenshot, "off", `${name} must not capture screenshots`)
+    assert.equal(use.video, "off", `${name} must not record video`)
+  }
+  // Policy guards with no behavioural equivalent without the live stack: the live acceptance
+  // must reach the real stack (no route, websocket or request mocking) and must not leave
+  // console diagnostics that could carry account data.
+  // The production document suite's no-skip guarantee is checked on Playwright's own
+  // collected status in the production-suite test below, not by scanning its source.
+  const spec = await readFile(specUrl, "utf8")
+  assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
+  assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
+})
+
+test("the SSR CSP composition executes on an HTML response and binds the nonce", () => {
+  const nonce = "AAAAAAAAAAAAAAAAAAAAAA=="
+  const html = applyNodeCspToHtmlResponse(
+    new globalThis.Response("<!doctype html><html></html>", {
+      headers: { "content-type": "text/html; charset=utf-8", etag: '"stale"' },
+    }),
+    nonce
+  )
+  assert.ok(html.headers.get("content-security-policy")?.includes(`'nonce-${nonce}'`))
+  assert.ok(html.headers.get("content-security-policy-report-only")?.includes(`'nonce-${nonce}'`))
+  assert.equal(html.headers.get("cache-control"), "no-store, private, max-age=0")
+  assert.equal(html.headers.get("etag"), null)
+  assert.equal(html.headers.get("last-modified"), null)
+
+  const json = applyNodeCspToHtmlResponse(
+    new globalThis.Response("{}", {
+      headers: { "content-type": "application/json" },
+    }),
+    nonce
+  )
+  assert.equal(json.headers.get("content-security-policy"), null)
+})
+
+test("executable locale probes accept the requested catalog text and reject the other locale", async () => {
+  const [enDashboard, ruDashboard, enNews, ruNews, enCommon, ruCommon] = await Promise.all([
+    readJson(dashboardCatalogUrls.en),
+    readJson(dashboardCatalogUrls.ru),
+    readJson(newsCatalogUrls.en),
+    readJson(newsCatalogUrls.ru),
+    readJson(commonCatalogUrls.en),
+    readJson(commonCatalogUrls.ru),
+  ])
+  const catalogs = {
+    dashboard: { en: enDashboard, ru: ruDashboard },
+    news: { en: enNews, ru: ruNews },
+    common: { en: enCommon, ru: ruCommon },
+  }
+  const skipMarkup = (text) =>
+    `<div id="root"><a class="skip-link" href="#main-content">${text}</a></div>`
+  const placeholderMarkup = (text) =>
+    `<div id="root"><div class="news-theme"><header><input placeholder="${text}" aria-label="${text}"></header></div></div>`
+
+  for (const language of ["en", "ru"]) {
+    const other = language === "en" ? "ru" : "en"
+    const requested = catalogs.common[language].skipToMain
+    const fallback = catalogs.common[other].skipToMain
+    assert.notEqual(requested, fallback, "the locales must differ to prove the probe")
+    assert.equal(matchesMainSkipLinkLocale(skipMarkup(requested), requested), true)
+    assert.equal(matchesMainSkipLinkLocale(skipMarkup(fallback), requested), false)
+
+    const newsText = catalogs.news[language].search.placeholder
+    assert.equal(matchesNewsSearchLocale(placeholderMarkup(newsText), newsText), true)
+    assert.equal(
+      matchesNewsSearchLocale(placeholderMarkup(catalogs.news[other].search.placeholder), newsText),
+      false
+    )
+
+    for (const landmark of ["dashboard", "news"]) {
+      const title = catalogs[landmark][language].pageTitle
+      const titles = {
+        en: { pageTitle: catalogs[landmark].en.pageTitle },
+        ru: { pageTitle: catalogs[landmark].ru.pageTitle },
+      }
+      assert.equal(
+        matchesRequestedCatalogTitle(language, titles, `${title} | University Ecosystem`),
+        true,
+        `${landmark} title must match ${language}`
+      )
+      assert.equal(
+        matchesRequestedCatalogTitle(
+          language,
+          titles,
+          `${catalogs[landmark][other].pageTitle} | University Ecosystem`
+        ),
+        false,
+        `${landmark} fallback title must not match ${language}`
+      )
+    }
+  }
+})
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
@@ -251,11 +255,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     <meta property="og:type" content="website">
     <meta property="og:title" content="University Ecosystem">
     <meta property="og:description" content="University services">
-    <meta property="og:image" content="/og-image.png">
+    <meta property="og:image" content="/icon-512.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="University Ecosystem">
     <meta name="twitter:description" content="University services">
-    <meta name="twitter:image" content="/og-image.png">
+    <meta name="twitter:image" content="/icon-512.png">
   </head></html>`
 
   assert.deepEqual(extractSeoMetadata(markup), {
@@ -267,11 +271,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     ogType: "website",
     ogTitle: "University Ecosystem",
     ogDescription: "University services",
-    ogImage: "/og-image.png",
+    ogImage: "/icon-512.png",
     twitterCard: "summary_large_image",
     twitterTitle: "University Ecosystem",
     twitterDescription: "University services",
-    twitterImage: "/og-image.png",
+    twitterImage: "/icon-512.png",
     seoMetaCounts: {
       'meta[name="title"]': 0,
       'meta[name="description"]': 1,
@@ -285,4 +289,113 @@ test("shared SEO metadata extraction preserves values and counts for a root head
       'meta[name="twitter:image"]': 1,
     },
   })
+})
+
+test("static shell social images reference a decodable public PNG", async () => {
+  const markup = await readFile(new URL("../../index.html", import.meta.url), "utf8")
+  const metadata = extractSeoMetadata(markup)
+
+  assert.equal(metadata.ogImage, "/icon-512.png")
+  assert.equal(metadata.twitterImage, "/icon-512.png")
+  assert.equal(metadata.seoMetaCounts['meta[property="og:image"]'], 1)
+  assert.equal(metadata.seoMetaCounts['meta[name="twitter:image"]'], 1)
+
+  const imageBytes = await readFile(new URL("../../public/icon-512.png", import.meta.url))
+  const image = sharp(imageBytes)
+  const { format, width, height } = await image.metadata()
+  assert.deepEqual({ format, width, height }, { format: "png", width: 512, height: 512 })
+  assert.ok((await image.raw().toBuffer()).length > 0)
+})
+
+test("SSR locale probe catches ordinary fallback that raw-key scanning misses", async () => {
+  const [enNews, ruNews] = await Promise.all([
+    readJson(newsCatalogUrls.en),
+    readJson(newsCatalogUrls.ru),
+  ])
+  // Load the application's actual TypeScript/JSON graph with Vite, as SSR does.
+  // A source match for a fallback variable cannot establish how it is configured.
+  const vite = await createServer({
+    root: fileURLToPath(new URL("../../", import.meta.url)),
+    configFile: false,
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    appType: "custom",
+  })
+  try {
+    const { createI18nInstance } = await vite.ssrLoadModule("/src/i18n/config.ts")
+    const fallbackInstance = createI18nInstance("en")
+    assert.equal(fallbackInstance.t("news:search.placeholder"), enNews.search.placeholder)
+    assert.notEqual(enNews.search.placeholder, ruNews.search.placeholder)
+
+    // The resource store is isolated before removing a key, so this negative
+    // cannot mutate shared app catalogs or leak into other tests.
+    fallbackInstance.store.data = globalThis.structuredClone(fallbackInstance.store.data)
+    delete fallbackInstance.store.data.en.news.search.placeholder
+    const fallbackPlaceholder = fallbackInstance.t("news:search.placeholder")
+    assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
+    assert.equal(fallbackPlaceholder.includes(":"), false)
+    const fallbackMarkup = `<div id="root"><div class="news-theme"><header><input placeholder="${fallbackPlaceholder}" aria-label="${fallbackPlaceholder}"></header></div></div>`
+    assert.equal(matchesNewsSearchLocale(fallbackMarkup, ruNews.search.placeholder), true)
+    assert.equal(matchesNewsSearchLocale(fallbackMarkup, enNews.search.placeholder), false)
+  } finally {
+    await vite.close()
+  }
+})
+
+test("production document suite is collected without skips and rejects preview or unmanaged servers", () => {
+  const cwd = fileURLToPath(new URL("../../", import.meta.url))
+  const cli = fileURLToPath(new URL("../../node_modules/@playwright/test/cli.js", import.meta.url))
+  const collect = (production, unmanaged) =>
+    spawnSync(
+      process.execPath,
+      [
+        cli,
+        "test",
+        "--config=playwright.ssr.config.ts",
+        "--project=chromium",
+        "--list",
+        "--reporter=json",
+      ],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          PRODUCTION_SERVER_E2E: production,
+          SKIP_WEBSERVER: unmanaged,
+        },
+        encoding: "utf8",
+        timeout: 30_000,
+      }
+    )
+  const preview = collect("false", "false")
+  assert.notEqual(preview.status, 0)
+  assert.match(preview.stderr + preview.stdout, /require PRODUCTION_SERVER_E2E=true/u)
+  const unmanaged = collect("true", "true")
+  assert.notEqual(unmanaged.status, 0)
+  assert.match(unmanaged.stderr + unmanaged.stdout, /require the managed production server/u)
+  const production = collect("true", "false")
+  assert.equal(production.error, undefined)
+  assert.equal(production.status, 0)
+  // Behaviour: Playwright's collected status for every production SSR test. A test.skip or
+  // test.fixme becomes a non-"passed" expectedStatus here, so no source scan is needed.
+  const report = JSON.parse(production.stdout)
+  const collected = []
+  const walk = (suite, file) => {
+    for (const spec of suite.specs ?? []) {
+      for (const test of spec.tests) {
+        collected.push({ file, status: test.expectedStatus, annotations: test.annotations })
+      }
+    }
+    for (const child of suite.suites ?? []) walk(child, file)
+  }
+  for (const suite of report.suites) walk(suite, suite.file)
+  assert.equal(collected.length, 7, "the production SSR suite must collect exactly seven tests")
+  assert.deepEqual(
+    new Set(collected.map((test) => test.file)),
+    new Set(["ssr-document-render.spec.ts", "ssr-csp-browser-negative.spec.ts"])
+  )
+  for (const test of collected) {
+    assert.equal(test.status, "passed", "every production SSR test must be collected to run")
+    assert.deepEqual(test.annotations, [], "production SSR tests must carry no skip annotations")
+  }
 })

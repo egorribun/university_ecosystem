@@ -356,6 +356,56 @@ describe("mutation dispatch and observer reuse", () => {
     expect(onError).toHaveBeenCalledTimes(2)
     unsubscribe()
   })
+
+  it.each([false, true])(
+    "retires callbacks across a storage A-to-B-to-A transition (cache removed=%s)",
+    async (removePending) => {
+      account("A")
+      const queryClient = createQueryClient()
+      const response = deferred()
+      const started = deferred()
+      const onSuccess = vi.fn()
+      const onSettled = vi.fn()
+      const perCall = vi.fn()
+      const observer = new MutationObserver(queryClient, {
+        mutationFn: () => {
+          started.resolve()
+          return response.promise
+        },
+        onSuccess,
+        onSettled,
+      })
+      const unsubscribe = observer.subscribe(() => undefined)
+      const pending = observer.mutate(undefined, { onSuccess: perCall })
+      await started.promise
+      const key = "ecosystem.session.generation.v1"
+      const original = localStorage.getItem(key)
+      const remote = JSON.stringify({ nonce: "temporary-remote-session", hash: null })
+      try {
+        if (removePending) queryClient.getMutationCache().clear()
+        localStorage.setItem(key, remote)
+        window.dispatchEvent(
+          new StorageEvent("storage", { key, oldValue: original, newValue: remote })
+        )
+        if (original === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, original)
+        window.dispatchEvent(
+          new StorageEvent("storage", { key, oldValue: remote, newValue: original })
+        )
+        response.resolve()
+        await pending
+        expect(onSuccess).not.toHaveBeenCalled()
+        expect(onSettled).not.toHaveBeenCalled()
+        expect(perCall).not.toHaveBeenCalled()
+      } finally {
+        response.resolve()
+        unsubscribe()
+        queryClient.clear()
+        if (original === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, original)
+      }
+    }
+  )
 })
 
 it("binds a replayed observer event even when its mutation registration predates the session cache", async () => {

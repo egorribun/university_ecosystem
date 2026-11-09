@@ -7,13 +7,13 @@ prevents persistence; the upload still receives its original rejection.
 
 ## Configuration
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `STORAGE_QUARANTINE_QUOTA_BYTES` | `1073741824` | Maximum charged payload bytes per storage scope |
-| `STORAGE_QUARANTINE_RETENTION_DAYS` | `7` | Retention after an acknowledged stored write |
-| `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | `300` | API-process cleanup interval |
-| `STORAGE_QUARANTINE_INVENTORY_PAGE_SIZE` | `100` | Bounded bootstrap page size |
-| `STORAGE_QUARANTINE_SCOPE_ID` | Empty | Shared scope override for storage aliases |
+| Variable                                    | Default      | Purpose                                         |
+| ------------------------------------------- | ------------ | ----------------------------------------------- |
+| `STORAGE_QUARANTINE_QUOTA_BYTES`            | `1073741824` | Maximum charged payload bytes per storage scope |
+| `STORAGE_QUARANTINE_RETENTION_DAYS`         | `7`          | Retention after an acknowledged stored write    |
+| `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | `300`        | API-process cleanup interval                    |
+| `STORAGE_QUARANTINE_INVENTORY_PAGE_SIZE`    | `100`        | Bounded bootstrap page size                     |
+| `STORAGE_QUARANTINE_SCOPE_ID`               | Empty        | Shared scope override for storage aliases       |
 
 Use the same scope override for all writers addressing one physical store
 through different filesystem paths or S3 endpoint aliases. The override is
@@ -42,12 +42,22 @@ states refuse persistence. Historical object versions are outside this quota.
 
 ## Deployment boundary
 
-Drain old application writers before introducing ledger-backed writers. Apply
-migration `202610200001` through the ordinary PostgreSQL migration flow before
-starting the new API processes. Its declared irreversible boundary preserves
-charges for objects that may still exist; schema downgrade across that boundary
-is refused. A rollback must preserve the ledger and keep pre-ledger writers
-fenced. This runbook authorizes no production cutover or manual database edit.
+The quarantine ledger is included in baseline `202611020000`; the historical
+`202610200001` revision is no longer available. Initialize a fresh, empty,
+quiescent PostgreSQL database through the dedicated `migrations` service before
+starting API processes. Keep application writers and other migrators/schema
+changes stopped. Extra non-system namespaces and existing objects in `public`,
+including objects owned by preinstalled extensions, are rejected. Normal empty
+Alembic version bookkeeping is allowed; an arbitrary preexisting
+`alembic_version` relation is not validated by this exception. Follow the
+[deployment guide](../DEPLOY.en.md#database-migrations).
+There is no upgrade path from a pre-squash database; do not stamp it to the
+baseline. See [ADR-051](../adr/ADR-051-mvp-migration-baseline-squash.md).
+
+Downgrade below the baseline is refused. Any rollback or recovery must preserve
+the quarantine ledger and fence pre-ledger writers, so objects that may still
+exist remain charged. This runbook authorizes no production cutover or manual
+database edit.
 
 The filesystem backend requires a trusted application/deployment write boundary
 on the static volume. Existing path and symlink checks do not provide atomic

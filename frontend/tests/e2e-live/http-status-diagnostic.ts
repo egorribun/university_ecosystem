@@ -1,6 +1,5 @@
-// Bound both projects x twenty-six checks x two attempts (CI retries once).
+// Keep the existing hard output bound as the closed check set grows.
 const emittedRecords = new Set<string>()
-const MAX_RECORDS = 104
 const emittedRetryRecords = new Set<string>()
 const emittedRateLimitRecords = new Set<string>()
 // Bound retry decisions across both projects and all E2E retries.
@@ -17,6 +16,10 @@ export type LiveRateLimitRetryDecision =
   "retry" | "declined-header" | "declined-deadline" | "not-retried"
 
 export type LiveHttpStatusCheck =
+  | "student-users-denied"
+  | "teacher-users-denied"
+  | "student-feature-flags-denied"
+  | "teacher-feature-flags-denied"
   | "admin-users"
   | "admin-feature-flags"
   | "admin-feature-flags-ui"
@@ -44,7 +47,14 @@ export type LiveHttpStatusCheck =
   | "email-mfa-login-resend-early"
   | "email-mfa-login-accept"
 
+const LIVE_HTTP_STATUS_PROJECTS = 2 // desktop and mobile
+// A check reports at most one status per attempt, so two attempts bound its records.
+const LIVE_HTTP_STATUS_ATTEMPTS = 2
 const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
+  "student-users-denied",
+  "teacher-users-denied",
+  "student-feature-flags-denied",
+  "teacher-feature-flags-denied",
   "admin-users",
   "admin-feature-flags",
   "admin-feature-flags-ui",
@@ -72,6 +82,9 @@ const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "email-mfa-login-resend-early",
   "email-mfa-login-accept",
 ])
+// Derived from the closed check set: projects x checks x attempts (2 x 30 x 2 = 120).
+const MAX_RECORDS =
+  LIVE_HTTP_STATUS_PROJECTS * LIVE_HTTP_STATUS_CHECKS.size * LIVE_HTTP_STATUS_ATTEMPTS
 
 export function reportLiveHttpStatus(
   project: string,

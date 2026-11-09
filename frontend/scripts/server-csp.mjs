@@ -10,6 +10,7 @@ const DEFAULT_CONNECT_SOURCES = Object.freeze([
   "'self'",
   "https://*.push.apple.com",
   "https://*.push.services.mozilla.com",
+  "https://api.open-meteo.com",
   "https://api.spotify.com",
   "https://fcm.googleapis.com",
   "https://fcmregistrations.googleapis.com",
@@ -33,7 +34,7 @@ export function buildNodeCspHeaders(nonce) {
   const policyDirectives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ` +
-      "https://accounts.google.com 'report-sample'",
+      "https://accounts.google.com 'report-sample' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: https: blob:",
     `connect-src ${connectSources}`,

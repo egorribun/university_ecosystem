@@ -159,9 +159,16 @@ contract.
 - `cwv-manual-tester-user-ids`, `minio-access-key`, `minio-secret-key`, and
   `temporal-api-key`.
 
-`university-connections` must contain `database-url`, `redis-backend-url`,
-`redis-gateway-url`, `rate-limit-storage-uri`, `redis-revocation-url`, `nats-url`, and
-`nats-auth-token`. `redis-credentials` must contain `redis-password`.
+`university-connections` must contain `database-url`, `migration-database-url`,
+`redis-backend-url`, `redis-gateway-url`, `rate-limit-storage-uri`, `redis-revocation-url`,
+`nats-url`, and `nats-auth-token`. `redis-credentials` must contain `redis-password`.
+
+`database-url` is the runtime `ue_app` login (`NOSUPERUSER NOBYPASSRLS`, DML grants
+only, no `ue_rls_bypass` membership) used by the backend and outbox worker, so the
+tenant row-level-security policies apply to every request. `migration-database-url`
+is the schema-owner `ue_migrator` login. Only the migration Job projects it, and the
+chart fails rendering when the two keys are equal. The chart does not create these
+roles; provision them with the same grants as `infrastructure/postgres-roles/`.
 
 The backend rate limiter is explicitly configured to use Redis through the
 `rate-limit-storage-uri` key (or the key selected by
@@ -205,6 +212,14 @@ MinIO to another S3 provider, follow
 and retain the old data until inventory, private-access, URL, and
 backup-restore gates pass.
 
+When `fileProcessor.config.minioEndpoint` names an endpoint outside the release
+namespace, the chart requires owner-verified TCP/443 CIDRs in
+`networkPolicy.fileProcessorHTTPSEgress.egressCIDRs` and refuses to render
+without them (AUD-189). The in-cluster MinIO service must use port 9000. The
+same rule applies to `networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs` when
+`backend.config.elasticsearchURL` is external. CIDR prefixes must be /8 to /32
+for IPv4 and /16 to /128 for IPv6.
+
 JWT consumers share one explicit contract. The backend signs RS256 tokens with
 the audience from `gateway.config.jwtAudience` and the canonical issuer from
 `global.jwtIssuer`; the file processor receives the same values as
@@ -241,6 +256,19 @@ NATS chart mounts the existing `data` claim at `/data`; values therefore set
 `config.jetstream.merge.store_dir: /data/jetstream`. This keeps the
 JetStream files at their existing path on the retained PVC. The chart uses an
 existing Secret so the token never enters Helm release state.
+
+Internal backend HTTP (AUD-373) uses SPIFFE/SPIRE mTLS behind
+`internalHttpMTLS.enabled`. The flag is off by default. `global.environment=production`
+refuses to render unless it is `true`; staging stays opt-in. When enabled, the
+values file must supply `internalHttpMTLS.trustDomain` and the four canonical
+workload SPIFFE IDs in that trust domain. The gateway, ws-hub and file-processor
+then call the backend over `https://` with their SVIDs, and the backend admits only
+the exact client IDs. The public `/static` and `/.well-known` routes move from the
+backend Service to the gateway, which relays them over mTLS. Any other public route
+that still targets the backend makes the render fail. The gateway exempts anonymous
+GET/HEAD reads under `/static/` from its per-IP limiter, as the backend does.
+Closing AUD-373 still needs a SPIRE staging run (SVID issuance and rotation, mTLS
+handshake on each hop, and probe behaviour); render and unit proof do not replace it.
 
 The internal gateway-to-file-processor gRPC boundary uses conventional mTLS.
 `university-internal-grpc-gateway-client`,

@@ -87,6 +87,9 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     if gateway_jwks_cidr is not None:
         # Reserved TEST-NET fixture only; never use as a deployment CIDR.
         overrides["networkPolicy.gatewayJWKS.egressCIDRs[0]"] = gateway_jwks_cidr
+    # The staging fixture renders external MinIO and Elasticsearch endpoints, which
+    # require owner-declared TCP 443 CIDRs (AUD-189). Reserved TEST-NET-1 fixture
+    # only; never use as a deployment CIDR.
     args: list[str] = []
     for key, value in overrides.items():
         args.extend(("--set-string", f"{key}={value}"))
@@ -95,9 +98,17 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     for key, peers in (
         ("gateway.config.trustedProxies", ["192.0.2.11/32", "2001:db8::11"]),
         ("wsHub.config.trustedProxies", ["198.51.100.12/32", "2001:db8::12"]),
+        ("backend.config.trustedProxies", ["192.0.2.13/32", "2001:db8::13"]),
     ):
         encoded_peers = json.dumps(peers, separators=(",", ":"))
         args.extend(("--set-json", f"{key}={encoded_peers}"))
+    # --set-json, not --set-string: Helm applies string list indexes after JSON
+    # overrides, which would make these fixture CIDRs impossible to replace.
+    for key in (
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs",
+        "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs",
+    ):
+        args.extend(("--set-json", f"{key}={json.dumps(['192.0.2.0/24'])}"))
     args.extend(("--set", "cwv.deploymentRunID=123"))
     args.extend(("--set", "cwv.deploymentRunAttempt=1"))
     return args
@@ -128,6 +139,7 @@ def _render_staging(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        timeout=60,
     )
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
 
@@ -224,7 +236,15 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
     assert any(
         rule.get("to")
         == [
-            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+            {
+                "podSelector": {
+                    "matchLabels": {
+                        "app.kubernetes.io/name": "university-ecosystem",
+                        "app.kubernetes.io/instance": "jwks-transport-contract",
+                        "app.kubernetes.io/component": "backend",
+                    }
+                }
+            }
         ]
         and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
         for rule in gateway_policy["spec"]["egress"]
@@ -281,7 +301,15 @@ def test_development_gateway_uses_internal_jwks_without_external_cidrs() -> None
     assert any(
         rule.get("to")
         == [
-            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+            {
+                "podSelector": {
+                    "matchLabels": {
+                        "app.kubernetes.io/name": "university-ecosystem",
+                        "app.kubernetes.io/instance": "jwks-internal-contract",
+                        "app.kubernetes.io/component": "backend",
+                    }
+                }
+            }
         ]
         and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
         for rule in policy["spec"]["egress"]
@@ -472,6 +500,9 @@ def _existing_secret_command(environment: str, *extra: str) -> list[str]:
             "ingress.issuer.kind=ClusterIssuer",
             "--set-string",
             "ingress.issuer.name=letsencrypt-prod",
+            # AUD-373: production requires SPIFFE mTLS on internal backend hops.
+            "--set",
+            "internalHttpMTLS.enabled=true",
         ]
     return [
         _helm(),
@@ -957,8 +988,9 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
-    # The MFA active key ID is checked before the marker scan; supply it so the
-    # render reaches the unresolved-marker rejection this test asserts.
+    # The MFA active key ID and backend proxy peers precede the marker scan.
+    # Supply only these prerequisites; keep every REQUIRED_ marker unresolved.
+    # Reserved TEST-NET peer is fixture-only, never deployment topology.
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
@@ -970,6 +1002,8 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
             str(STAGING_VALUES),
             "--set",
             f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
+            "--set-json",
+            'backend.config.trustedProxies=["192.0.2.13/32"]',
         ],
         check=False,
         capture_output=True,
@@ -999,6 +1033,80 @@ def test_backend_receives_public_frontend_origin_from_ingress() -> None:
     assert env["APP_BASE_URL"] == origin
     assert env["FRONTEND_ORIGIN"] == origin
     assert env["FRONTEND_ORIGINS"] == origin
+
+
+def test_backend_renders_trust_lifetime_and_idempotency_secret_wiring() -> None:
+    resources = _render_staging(release_name="backend-trust-contract")
+    backend = _component_resource(resources, "Deployment", "backend")
+    container = backend["spec"]["template"]["spec"]["containers"][0]
+    env = {item["name"]: item.get("value") for item in container["env"]}
+
+    # Reserved TEST-NET/documentation fixtures from _resolved_staging_args only.
+    assert env["TRUSTED_PROXIES"] == "192.0.2.13/32,2001:db8::13"
+    assert env["ACCESS_TOKEN_EXPIRE_MINUTES"] == "60"
+    assert env["IDEMPOTENCY_HMAC_SECRET_FILE"].endswith("/idempotency-hmac-secret")
+
+
+@pytest.mark.parametrize(
+    ("replay_window_seconds", "access_token_minutes", "expected_message"),
+    [
+        pytest.param(
+            1800,
+            60,
+            "wsHub.config.revocationReplayWindowSeconds (1800) must be at least "
+            "backend.config.accessTokenExpireMinutes * 60 (3600)",
+            id="window-below-default-lifetime",
+        ),
+        pytest.param(
+            3600,
+            120,
+            "wsHub.config.revocationReplayWindowSeconds (3600) must be at least "
+            "backend.config.accessTokenExpireMinutes * 60 (7200)",
+            id="window-below-extended-lifetime",
+        ),
+    ],
+)
+def test_ws_hub_replay_window_must_cover_the_access_token_lifetime(
+    replay_window_seconds: int, access_token_minutes: int, expected_message: str
+) -> None:
+    # A shorter replay window lets a late-starting ws-hub replica miss a room
+    # revocation while the revoked access token is still valid.
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        _render_staging(
+            "--set",
+            f"wsHub.config.revocationReplayWindowSeconds={replay_window_seconds}",
+            "--set",
+            f"backend.config.accessTokenExpireMinutes={access_token_minutes}",
+            release_name="ws-hub-replay-window-reject",
+        )
+
+    output = (failure.value.stderr or "") + (failure.value.stdout or "")
+    assert expected_message in output
+
+
+def test_ws_hub_replay_window_follows_a_longer_access_token_lifetime() -> None:
+    resources = _render_staging(
+        "--set",
+        "wsHub.config.revocationReplayWindowSeconds=7200",
+        "--set",
+        "backend.config.accessTokenExpireMinutes=120",
+        release_name="ws-hub-replay-window-accept",
+    )
+
+    ws_hub_env = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "ws-hub")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    backend_env = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "backend")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    assert ws_hub_env["WS_REVOCATION_REPLAY_WINDOW_SECONDS"] == "7200"
+    assert backend_env["ACCESS_TOKEN_EXPIRE_MINUTES"] == "120"
 
 
 def test_validate_config_pins_frontend_origin_to_the_ingress_host() -> None:
@@ -1225,7 +1333,7 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
         (
             "--set-string",
             "global.imageTag=mutable-tag",
-            "global.imageTag must be the exact 40- or 64-character lowercase Git SHA",
+            "global.imageTag must be the exact 40-character lowercase Git SHA",
         ),
         (
             "--set-string",
@@ -1997,11 +2105,16 @@ def test_ws_hub_env_uses_only_explicit_values_and_secret_files() -> None:
         "ENABLE_JETSTREAM",
         "NATS_STREAM_CHAT",
         "NATS_STREAM_NOTIFICATIONS",
-        "NATS_DURABLE_CHAT",
-        "NATS_DURABLE_NOTIFICATIONS",
+        "WS_REVOCATION_REPLAY_WINDOW_SECONDS",
     ):
         assert required in env
         assert "value" in env[required]
+    # ws-hub owns only the ephemeral and stream-wide consumers (AUD-478), so no
+    # durable consumer name is rendered for it.
+    assert "NATS_DURABLE_CHAT" not in env
+    assert "NATS_DURABLE_NOTIFICATIONS" not in env
+    # The replay window covers the 60-minute access-token lifetime the chart pins.
+    assert env["WS_REVOCATION_REPLAY_WINDOW_SECONDS"]["value"] == "3600"
 
 
 def test_ingress_routes_ws_ticket_to_gateway_and_chat_to_ws_hub() -> None:
@@ -2035,14 +2148,30 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
         for rule in policy["spec"]["ingress"]
         for port in rule.get("ports", [])
     }
-    assert ingress_ports == {8081}
+    assert ingress_ports == {8081, 9108}
+    # Prometheus may reach only the scrape-only metrics port (AUD-438); the
+    # public WebSocket port is never admitted from the monitoring namespace.
+    monitoring_ports = {
+        port["port"]
+        for rule in policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if source.get("namespaceSelector", {}).get("matchLabels")
+        == {"kubernetes.io/metadata.name": "monitoring"}
+        for port in rule.get("ports", [])
+    }
+    assert monitoring_ports == {9108}
     backend_policy = _component_resource(resources, "NetworkPolicy", "backend")
     backend_sources = [
         source.get("podSelector", {}).get("matchLabels", {})
         for rule in backend_policy["spec"]["ingress"]
         for source in rule.get("from", [])
     ]
-    assert {"app.kubernetes.io/component": "ws-hub"} in backend_sources
+    # The ws-hub peer is release-scoped; the release is university-ecosystem here.
+    assert {
+        "app.kubernetes.io/name": "university-ecosystem",
+        "app.kubernetes.io/instance": "university-ecosystem",
+        "app.kubernetes.io/component": "ws-hub",
+    } in backend_sources
 
 
 def test_migration_hook_can_reach_only_its_dedicated_revocation_store() -> None:
@@ -2682,6 +2811,10 @@ def test_release_rejects_mutable_password_init_image_without_backend_binding() -
         ("wsHub.autoscaling.minReplicas=1", "wsHub.autoscaling.minReplicas"),
         ("wsHub.autoscaling.enabled=false", "wsHub.autoscaling.enabled=true"),
         ("wsHub.service.port=8082", "wsHub.service.port"),
+        (
+            "wsHub.metrics.port=8081",
+            "wsHub.metrics.port must differ from wsHub.service.port",
+        ),
         ("wsHub.config.allowedOrigins={}", "allowedOrigins"),
         ("wsHub.config.allowedOrigins={http://insecure.example}", "https://"),
     ],
@@ -2689,7 +2822,11 @@ def test_release_rejects_mutable_password_init_image_without_backend_binding() -
 def test_release_rejects_incomplete_ws_hub_contract(
     override: str, message: str
 ) -> None:
-    flag = "--set" if override.endswith(("false", "=1", "=8082")) else "--set-string"
+    flag = (
+        "--set"
+        if override.endswith(("false", "=1", "=8081", "=8082"))
+        else "--set-string"
+    )
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         _existing_secret_command("staging", flag, override),
         check=False,
@@ -2699,6 +2836,19 @@ def test_release_rejects_incomplete_ws_hub_contract(
     )
     assert result.returncode != 0
     assert message in result.stderr
+
+
+def test_ws_hub_rejects_same_metrics_port_without_schema_validation() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--skip-schema-validation",
+            "--set",
+            "wsHub.metrics.port=8081",
+        )
+
+    assert (
+        "wsHub.metrics.port must differ from wsHub.service.port" in error.value.stderr
+    )
 
 
 def test_staging_uses_namespaced_issuer_and_production_cluster_issuer() -> None:
@@ -2717,6 +2867,8 @@ def test_staging_uses_namespaced_issuer_and_production_cluster_issuer() -> None:
         "ingress.issuer.kind=ClusterIssuer",
         "--set-string",
         "ingress.issuer.name=letsencrypt-prod",
+        "--set",
+        "internalHttpMTLS.enabled=true",
         release_name="university-ecosystem",
     )
     production_ingress = next(
@@ -2969,9 +3121,19 @@ def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dep
         and rule.get("ports") == [{"protocol": "TCP", "port": 6379}]
         for rule in processor_policy["spec"]["egress"]
     )
-    assert any(
-        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    # AUD-189: the file-processor has no public TCP 443 destination. Staging
+    # declares an external MinIO, so its only 443 rule targets the declared
+    # TEST-NET CIDR and never 0.0.0.0/0.
+    https_rules = [
+        rule
         for rule in processor_policy["spec"]["egress"]
+        if {"protocol": "TCP", "port": 443} in rule.get("ports", [])
+    ]
+    assert [rule.get("to") for rule in https_rules] == [
+        [{"ipBlock": {"cidr": "192.0.2.0/24"}}]
+    ]
+    assert all(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}] for rule in https_rules
     )
     assert any(
         {("UDP", 53), ("TCP", 53)}
@@ -3028,12 +3190,15 @@ def test_file_processor_jwks_policies_are_scoped_to_each_release() -> None:
     assert policy_selectors[0][1] != policy_selectors[1][1]
 
 
-def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
+def test_external_https_jwks_override_allows_only_declared_443_cidrs() -> None:
     release_name = "jwks-external-contract"
     jwks_url = "https://issuer.example.invalid/.well-known/jwks.json"
+    declared_cidr = "192.0.2.0/24"  # Documentation range, not a deployed issuer.
     resources = _render_staging(
         "--set-string",
         f"fileProcessor.config.jwksURL={jwks_url}",
+        "--set-json",
+        f"networkPolicy.fileProcessorHTTPSEgress.egressCIDRs={json.dumps([declared_cidr])}",
         release_name=release_name,
     )
     processor = _component_resource(resources, "Deployment", "file-processor")
@@ -3074,10 +3239,33 @@ def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
         )
         for rule in backend_policy["spec"]["ingress"]
     )
-    assert any(
-        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    assert [
+        rule
         for rule in processor_policy["spec"]["egress"]
-    )
+        if rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    ] == [
+        {
+            "to": [{"ipBlock": {"cidr": declared_cidr}}],
+            "ports": [{"protocol": "TCP", "port": 443}],
+        }
+    ]
+
+
+def test_external_https_jwks_override_without_declared_cidrs_fails_closed() -> None:
+    # In-cluster MinIO and no declared CIDRs isolate the external JWKS guard.
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--set-string",
+            "fileProcessor.config.jwksURL=https://issuer.example.invalid/.well-known/jwks.json",
+            "--set-string",
+            "fileProcessor.config.minioEndpoint=minio:9000",
+            "--set-json",
+            "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=[]",
+            release_name="jwks-external-undeclared-contract",
+        )
+
+    assert "fileProcessorHTTPSEgress.egressCIDRs" in error.value.stderr
+    assert "external HTTPS fileProcessor.config.jwksURL" in error.value.stderr
 
 
 _SERVICE_COMPONENTS = (

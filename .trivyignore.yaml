@@ -1,43 +1,192 @@
 misconfigurations:
-  # Accepted SPIRE node-attestation architecture. These checks are also kept
-  # in .trivyignore for scanners that still use the plain ignore format.
+  # AUD-245 (owner decision 2026-11-04): each KSV exception is scoped to the
+  # exact manifests it was observed on, with a reason and an expiry. Trivy
+  # ignore files match file paths only, so a new manifest that triggers the same
+  # rule is not suppressed. Rules that no longer fire are removed (ADR-047 addendum).
   - id: KSV-0012
+    paths:
+      - k8s/spire/spire-agent.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires host-network, host-PID,
-      hostPath-backed sockets, and the associated node privileges.
+      SPIRE node attestation requires host-network, host-PID, hostPath-backed
+      sockets, and the associated node privileges in the node-agent DaemonSet.
   - id: KSV-0104
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+      - k8s/kyverno/tests/require-seccomp-profile/bad.yaml
+      - k8s/kyverno/tests/restrict-image-registries/canonical-release-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/lookalike-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-registry-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/staging-dependencies-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/tagged-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unknown-first-party-image-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ephemeralcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-initcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-exporter-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-nats-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-repository-redis-pod.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented host-mounted
-      SPIFFE Workload API sockets.
+      Kyverno negative-test fixture intentionally violates this rule to verify
+      policy enforcement; no other manifest is covered.
   - id: KSV-0023
+    paths:
+      - k8s/spire/spire-agent.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented privileged
-      node-agent execution model.
+      SPIRE node attestation requires the documented privileged node-agent
+      execution model in the node-agent DaemonSet.
   - id: KSV-0001
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+      - k8s/kyverno/tests/disallow-privilege-escalation/bad.yaml
+      - k8s/kyverno/tests/restrict-image-registries/canonical-release-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/lookalike-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-registry-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/staging-dependencies-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/tagged-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unknown-first-party-image-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ephemeralcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-initcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-exporter-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-nats-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-repository-redis-pod.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented node-agent
-      filesystem access.
+      Kyverno negative-test fixture intentionally violates this rule to verify
+      policy enforcement; no other manifest is covered.
   - id: KSV-0118
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+      - k8s/kyverno/tests/restrict-image-registries/canonical-release-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/lookalike-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-registry-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/staging-dependencies-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/tagged-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unknown-first-party-image-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ephemeralcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-initcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-exporter-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-nats-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-repository-redis-pod.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented host
-      networking and node-level execution model.
+      Kyverno negative-test fixture intentionally violates this rule to verify
+      policy enforcement; no other manifest is covered.
   - id: KSV-0014
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+      - k8s/kyverno/tests/require-readonly-root-filesystem/bad.yaml
+      - k8s/kyverno/tests/restrict-image-registries/canonical-release-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/lookalike-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/placeholder-registry-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/staging-dependencies-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/tagged-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unknown-first-party-image-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-flagd-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/unpinned-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ephemeralcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-ghcr-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/untrusted-initcontainer-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-exporter-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-nats-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-digest-redis-pod.yaml
+      - k8s/kyverno/tests/restrict-image-registries/wrong-repository-redis-pod.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented root
-      filesystem access.
+      Kyverno negative-test fixture intentionally violates this rule to verify
+      policy enforcement; no other manifest is covered.
   - id: KSV-0047
+    paths:
+      - k8s/spire/spire-rbac.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented node proxy
-      privileges.
-  - id: KSV-0017
-    statement: >-
-      SPIRE node and workload attestation requires the documented node-agent
-      capability set.
+      SPIRE node proxy privileges required by the documented SPIRE RBAC
+      grants; no other manifest is covered.
   - id: KSV-0009
+    paths:
+      - k8s/spire/spire-agent.yaml
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+      - k8s/kyverno/tests/ephemeral-container-subresource/resources.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented node-agent
-      security context.
+      SPIRE node-agent security context required by the documented node
+      attestation (k8s/spire/spire-agent.yaml), and Kyverno negative-test
+      fixtures that intentionally violate this rule to verify policy
+      enforcement. No other manifest is covered.
   - id: KSV-0010
+    paths:
+      - k8s/spire/spire-agent.yaml
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+    expired_at: 2027-01-10
     statement: >-
-      SPIRE node and workload attestation requires the documented node-agent
-      security context.
+      SPIRE node-agent security context required by the documented node
+      attestation (k8s/spire/spire-agent.yaml), and Kyverno negative-test
+      fixtures that intentionally violate this rule to verify policy
+      enforcement. No other manifest is covered.
+  - id: KSV-0008
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+    expired_at: 2027-01-10
+    statement: >-
+      Kyverno negative-test fixture intentionally triggers a host-access
+      violation to verify policy enforcement.
+  - id: KSV-0024
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+    expired_at: 2027-01-10
+    statement: >-
+      Kyverno negative-test fixture intentionally triggers a host-access
+      violation to verify policy enforcement.
+
+# AUD-480: unfixed Trivy filesystem findings are reported by the pull-request
+# gate (ignore-unfixed is disabled for that scan). Only the owner-approved
+# go-jose/v3 exception is accepted here, scoped to its single manifest and to
+# the same expiry as scripts/quality/verify_dependency_review_scope.py. The
+# finding has no patched release; it is pulled in through services/caddy only.
+vulnerabilities:
+  - id: CVE-2026-116587
+    paths:
+      - services/caddy/go.mod
+    expired_at: 2027-01-10
+    statement: >-
+      GHSA-mgcc-cww5-fp2q in github.com/go-jose/go-jose/v3 v3.0.5 has no patched
+      release and is reachable only through the isolated Caddy build graph.
+      Owner-approved exception (expiry 2027-01-10); re-evaluate when a patched
+      go-jose/v3 or a Caddy build without it is available.
+  - id: CVE-2026-116585
+    paths:
+      - services/caddy/go.mod
+    expired_at: 2027-01-10
+    statement: >-
+      GHSA-4w3g-jfj2-cw2q in github.com/go-jose/go-jose/v3 v3.0.5 (same
+      owner-approved go-jose/v3 exception, expiry 2027-01-10, Caddy build graph
+      only; MEDIUM, reported by Trivy outside the CRITICAL/HIGH gate).
+  - id: CVE-2026-116586
+    paths:
+      - services/caddy/go.mod
+    expired_at: 2027-01-10
+    statement: >-
+      GHSA-vvm8-gf78-28g4 in github.com/go-jose/go-jose/v3 v3.0.5 (same
+      owner-approved go-jose/v3 exception, expiry 2027-01-10, Caddy build graph
+      only; MEDIUM, reported by Trivy outside the CRITICAL/HIGH gate).

@@ -179,7 +179,7 @@ export function ScheduleMobileView({
                 className={cn(
                   "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
                   isActive ? "text-[var(--sched-on-accent)]" : "sched-badge-matte",
-                  isToday && !isActive && "ring-1 ring-brand/(--opacity-dim)"
+                  isToday && !isActive && "ring-1 ring-brand/[calc(var(--opacity-dim)*100%)]"
                 )}
                 onClick={() => scrollToDay(i)}
               >

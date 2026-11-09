@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties } from "react"
+import { memo, useId, useMemo, useState, type CSSProperties } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -61,6 +61,7 @@ const EventsCardContent = memo(function EventsCardContent({
 }: EventsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
+  const dateDescriptionId = useId()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
   const timeZone = useCampusTimezone()
@@ -218,6 +219,8 @@ const EventsCardContent = memo(function EventsCardContent({
             <AnimatePresence mode="popLayout" initial={false}>
               {scopedEvents.map((e, idx) => {
                 const eventKey = `${eventsScope}-${e.id}`
+                const eventDescriptionId = `${dateDescriptionId}-${encodeURIComponent(eventKey)}`
+                const eventMetaId = `${eventDescriptionId}-meta`
                 return (
                   <m.li
                     key={eventKey}
@@ -238,15 +241,25 @@ const EventsCardContent = memo(function EventsCardContent({
                         "active:scale-(--scale-active)"
                       )}
                       onClick={() => navigate({ to: "/events/$id", params: { id: String(e.id) } })}
-                      aria-label={t("dashboard:aria.eventItem", { title: e.title })}
+                      aria-describedby={`${eventDescriptionId} ${eventMetaId}`}
                       style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
-                      <DateBullet date={e.starts_at!} locale={language} size="compact" />
+                      <DateBullet
+                        date={e.starts_at!}
+                        locale={language}
+                        size="compact"
+                        descriptionId={eventDescriptionId}
+                      />
                       <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                         <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                           {e.title}
                         </span>
-                        <span className="flex flex-wrap items-center gap-2">
+                        {/* The title alone names the row; time and place are its description. */}
+                        <span
+                          id={eventMetaId}
+                          aria-hidden="true"
+                          className="flex flex-wrap items-center gap-2"
+                        >
                           {!isNaN(e.d.getTime()) && timeZone && (
                             <span className="font-mono text-sm font-medium text-brand">
                               {formatCampusDate(
@@ -261,6 +274,7 @@ const EventsCardContent = memo(function EventsCardContent({
                               )}
                             </span>
                           )}
+                          {/* Flex gaps are not text: a space keeps the time and location apart for the description. */}{" "}
                           {!!e.location && (
                             <Badge
                               size="sm"
@@ -273,7 +287,7 @@ const EventsCardContent = memo(function EventsCardContent({
                       </span>
                       <span
                         aria-hidden="true"
-                        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)"
+                        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:border-brand/[calc(var(--opacity-soft)*100%)]"
                       >
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>

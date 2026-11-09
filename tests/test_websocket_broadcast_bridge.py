@@ -14,12 +14,19 @@ Contracts:
 
 from __future__ import annotations
 
+import re
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import orjson
 import pytest
 
 from app.api.ws.connection_manager import ConnectionManager
+from app.core.config import Settings
+
+ROOT = Path(__file__).resolve().parents[1]
+_HUB_CANONICAL_UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
 @pytest.mark.asyncio
@@ -34,9 +41,7 @@ async def test_broadcast_to_chat_mirrors_frame_to_nats() -> None:
     }
 
     with (
-        patch.object(
-            cm, "_get_chat_participants_cached", new=AsyncMock(return_value=[])
-        ),
+        patch.object(cm, "_get_chat_participants", new=AsyncMock(return_value=[])),
         patch("app.core.nats_broker.broker.publish_core", new=AsyncMock()) as mock_pub,
     ):
         sent = await cm.broadcast_to_chat(chat_id, frame)
@@ -52,6 +57,41 @@ async def test_broadcast_to_chat_mirrors_frame_to_nats() -> None:
 
 
 @pytest.mark.asyncio
+async def test_broadcast_to_chat_publishes_the_roster_as_hub_audience() -> None:
+    """ws-hub drops the event body without an exact, canonical audience."""
+    cm = ConnectionManager()
+    chat_id = uuid.uuid4()
+    sender = uuid.uuid4()
+    receiver = uuid.uuid4()
+
+    with (
+        patch.object(
+            cm,
+            "_get_chat_participants",
+            new=AsyncMock(return_value=[sender, receiver, receiver]),
+        ),
+        patch.object(cm, "send_to_user", new=AsyncMock(return_value=0)),
+        patch("app.core.nats_broker.broker.publish_core", new=AsyncMock()) as mock_pub,
+    ):
+        await cm.broadcast_to_chat(chat_id, {"type": "read"}, exclude_user_id=sender)
+
+    wire = orjson.loads(orjson.dumps(mock_pub.call_args.args[1], default=str))
+    audience = wire["audience"]
+    # The excluded sender stays listed so their other sessions receive the frame.
+    assert audience == sorted({str(sender), str(receiver)})
+    # decodeChatAudience rejects duplicates and anything but lower-case UUIDs.
+    assert all(_HUB_CANONICAL_UUID.fullmatch(member) for member in audience)
+
+
+def test_group_size_bound_fits_the_hub_audience_limit() -> None:
+    """A larger roster would be rejected by ws-hub as a malformed audience."""
+    source = (ROOT / "services/ws-hub/pkg/hub/audience.go").read_text(encoding="utf-8")
+    match = re.search(r"^const maxChatAudienceMembers = (\d+)$", source, re.MULTILINE)
+    assert match is not None
+    assert Settings.model_fields["chat_group_max_members"].default <= int(match[1])
+
+
+@pytest.mark.asyncio
 async def test_broadcast_to_chat_mirror_failure_does_not_break_return() -> None:
     """A raising publish_core must not propagate — the return value is intact."""
     cm = ConnectionManager()
@@ -64,9 +104,7 @@ async def test_broadcast_to_chat_mirror_failure_does_not_break_return() -> None:
     }
 
     with (
-        patch.object(
-            cm, "_get_chat_participants_cached", new=AsyncMock(return_value=[])
-        ),
+        patch.object(cm, "_get_chat_participants", new=AsyncMock(return_value=[])),
         patch(
             "app.core.nats_broker.broker.publish_core",
             new=AsyncMock(side_effect=ConnectionError("nats down")),

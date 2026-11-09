@@ -198,6 +198,7 @@ export const ChatWindow = memo(function ChatWindow({
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
   // affordance toggles it; selecting an emoji or clicking outside / Escape closes.
   const [reactionPickerForId, setReactionPickerForId] = useState<string | null>(null)
+  const reactionPickerTriggerRef = useRef<HTMLButtonElement | null>(null)
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
   // disorienting motion for reduced-motion users.
@@ -317,7 +318,12 @@ export const ChatWindow = memo(function ChatWindow({
       setReactionPickerForId(null)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setReactionPickerForId(null)
+      if (event.key === "Escape") {
+        setReactionPickerForId(null)
+        if (reactionPickerTriggerRef.current?.isConnected) {
+          reactionPickerTriggerRef.current.focus()
+        }
+      }
     }
     document.addEventListener("mousedown", onMouseDown)
     document.addEventListener("keydown", onKeyDown)
@@ -531,7 +537,7 @@ export const ChatWindow = memo(function ChatWindow({
               whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
               whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
               onClick={onClearSearch}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/[calc(var(--opacity-soft)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
             >
               <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
               <span>{t("messenger:noMessages.searchEmpty.clearSearch")}</span>
@@ -614,7 +620,7 @@ export const ChatWindow = memo(function ChatWindow({
                     W184 SW1 stays intact). */}
                 {message.showDateDivider && message.dateLabel ? (
                   <div className="flex justify-center py-2">
-                    <span className="rounded-full bg-(--bg-surface-raised)/(--opacity-medium) px-3 py-1 text-micro font-semibold uppercase tracking-wide text-(--text-secondary)">
+                    <span className="rounded-full bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] px-3 py-1 text-micro font-semibold uppercase tracking-wide text-(--text-secondary)">
                       {message.dateLabel}
                     </span>
                   </div>
@@ -641,7 +647,7 @@ export const ChatWindow = memo(function ChatWindow({
                         srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={message.senderName || ""}
-                        className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
+                        className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/[calc(var(--opacity-faint)*100%)] dark:ring-white/[calc(var(--opacity-faint)*100%)]"
                       />
                     )}
                   </div>
@@ -713,7 +719,7 @@ export const ChatWindow = memo(function ChatWindow({
                           rows={2}
                           // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
-                          className="w-full resize-none rounded-lg bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                          className="w-full resize-none rounded-lg bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                         />
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button
@@ -751,12 +757,11 @@ export const ChatWindow = memo(function ChatWindow({
                           reply chip below. */}
                         {message.forwardedFromName ? (
                           <div
-                            className={cn(
-                              "mb-1.5 flex items-center gap-1 text-micro font-semibold italic",
+                            className={
                               message.isMe
-                                ? "text-[var(--text-inverse)] opacity-medium"
-                                : "text-(--brand-main)"
-                            )}
+                                ? "mb-1.5 flex items-center gap-1 text-micro font-semibold italic text-[color:var(--text-inverse)]"
+                                : "mb-1.5 flex items-center gap-1 text-micro font-semibold italic text-(--brand-main)"
+                            }
                           >
                             <Forward
                               className="size-3 shrink-0"
@@ -802,10 +807,10 @@ export const ChatWindow = memo(function ChatWindow({
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={cn(
-                                      "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
+                                      "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/[calc(var(--opacity-faint)*100%)]",
                                       message.isMe
                                         ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
-                                        : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                                        : "bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                                     )}
                                   >
                                     <div
@@ -822,7 +827,13 @@ export const ChatWindow = memo(function ChatWindow({
                                       <p className="truncate text-sm font-bold">
                                         {attachment.name}
                                       </p>
-                                      <p className="text-micro opacity-medium font-medium">
+                                      <p
+                                        className={
+                                          message.isMe
+                                            ? "text-micro font-medium text-[color:var(--text-inverse)]"
+                                            : "text-micro font-medium opacity-medium"
+                                        }
+                                      >
                                         {(attachment.size / 1024).toFixed(1)} KB
                                       </p>
                                     </div>
@@ -845,15 +856,16 @@ export const ChatWindow = memo(function ChatWindow({
                             className={cn(
                               "mb-2 rounded-lg border-l-2 px-2.5 py-1.5",
                               message.isMe
-                                ? "border-(--text-inverse)/(--opacity-medium) bg-(--text-inverse)/(--opacity-faint)"
-                                : "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-faint)"
+                                ? "border-(--text-inverse)/[calc(var(--opacity-medium)*100%)] bg-(--text-inverse)/[calc(var(--opacity-faint)*100%)]"
+                                : "border-(--color-violet-500)/[calc(var(--opacity-medium)*100%)] bg-(--color-violet-500)/[calc(var(--opacity-faint)*100%)]"
                             )}
                           >
                             <p
-                              className={cn(
-                                "text-micro font-semibold",
-                                message.isMe ? "text-[var(--text-inverse)]" : "text-(--brand-main)"
-                              )}
+                              className={
+                                message.isMe
+                                  ? "text-micro font-semibold text-[color:var(--text-inverse)]"
+                                  : "text-micro font-semibold text-(--brand-main)"
+                              }
                             >
                               {message.replyTo.isMe
                                 ? t("messenger:replyTo.you")
@@ -865,7 +877,7 @@ export const ChatWindow = memo(function ChatWindow({
                                 "line-clamp-2 text-sm leading-snug",
                                 message.replyTo.deletedAt && "italic",
                                 message.isMe
-                                  ? "text-[var(--text-inverse)] opacity-medium"
+                                  ? "text-[color:var(--text-inverse)]"
                                   : "text-(--text-secondary)"
                               )}
                             >
@@ -880,12 +892,11 @@ export const ChatWindow = memo(function ChatWindow({
                         </p>
                         <div className="mt-(--space-1) flex items-center justify-between gap-2">
                           {/* Wave 205 SW6 — own-message edit/delete affordance. Always
-                          rendered + reachable (touch + keyboard + mouse), subtle by
-                          default (opacity-medium → full on hover/focus). Icons sit on
-                          the violet sent bubble so they use text-inverse. The icon
-                          remains size-4 while the button exposes the shared 44px hit
-                          area contract. A right-context-menu / hover-reveal UX is out
-                          of W205 scope. */}
+                          rendered + reachable (touch + keyboard + mouse). Sent action
+                          icons use opacity-hover (0.8) to maintain 3:1 contrast;
+                          received reply/forward controls keep opacity-medium. Hover
+                          and focus bring controls to full opacity. The icon remains
+                          size-4 within the shared 44px hit area. */}
                           {onStartReply || onForward || message.isMe ? (
                             <div className="flex items-center gap-0.5">
                               {/* Wave 207 — reply affordance on ALL bubbles (not just
@@ -900,10 +911,10 @@ export const ChatWindow = memo(function ChatWindow({
                                   onClick={() => onStartReply(message.id)}
                                   aria-label={t("messenger:reply")}
                                   className={cn(
-                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
-                                      ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
-                                      : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
+                                      ? "opacity-hover text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
+                                      : "opacity-medium text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
                                   )}
                                 >
                                   <Reply className="size-4" strokeWidth={2} aria-hidden="true" />
@@ -920,10 +931,10 @@ export const ChatWindow = memo(function ChatWindow({
                                   onClick={() => onForward(message.id)}
                                   aria-label={t("messenger:forward")}
                                   className={cn(
-                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
-                                      ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
-                                      : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
+                                      ? "opacity-hover text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
+                                      : "opacity-medium text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
                                   )}
                                 >
                                   <Forward className="size-4" strokeWidth={2} aria-hidden="true" />
@@ -935,7 +946,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => handleEditMessage(message.id, message.text)}
                                     aria-label={t("messenger:editMessage")}
-                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-hover transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -943,7 +954,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => handleDeleteMessage(message.id)}
                                     aria-label={t("messenger:deleteMessage")}
-                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-hover transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -953,7 +964,12 @@ export const ChatWindow = memo(function ChatWindow({
                           ) : (
                             <span aria-hidden="true" />
                           )}
-                          <div className="flex items-center gap-1.5 opacity-hover">
+                          <div
+                            className={cn(
+                              "flex items-center gap-1.5",
+                              !message.isMe && "opacity-hover"
+                            )}
+                          >
                             {/* Wave 205 SW6 — "(edited)" label when the message was edited
                             (and not deleted). lowercase + muted; full edit timestamp in
                             the title tooltip. */}
@@ -969,7 +985,7 @@ export const ChatWindow = memo(function ChatWindow({
                                 }
                                 style={{
                                   color: message.isMe
-                                    ? "var(--primary-subtle)"
+                                    ? "var(--text-inverse)"
                                     : "var(--text-secondary)",
                                 }}
                               >
@@ -980,7 +996,7 @@ export const ChatWindow = memo(function ChatWindow({
                               className="text-micro font-bold uppercase tracking-wider"
                               style={{
                                 color: message.isMe
-                                  ? "var(--primary-subtle)"
+                                  ? "var(--text-inverse)"
                                   : "var(--text-secondary)",
                               }}
                             >
@@ -988,7 +1004,7 @@ export const ChatWindow = memo(function ChatWindow({
                             </span>
                             {message.isMe && (
                               <span
-                                className="flex items-center opacity-hover"
+                                className="flex items-center"
                                 role="img"
                                 aria-label={
                                   message.status === "read"
@@ -996,17 +1012,8 @@ export const ChatWindow = memo(function ChatWindow({
                                     : t("messenger:aria.messageSent")
                                 }
                               >
-                                {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
-                            (theme-aware; same W175 SW2 pattern. text-inverse is
-                            white in light, slate-950 in dark. On the violet
-                            sent-bubble bg, white in light = 9.9:1 contrast,
-                            slate-950 in dark = 9.9:1 contrast on violet-500.
-                            Both pass WCAG AA 4.5:1 with comfortable margin.)
-                            Wave 183 SW6 — added role=img + aria-label on
-                            wrapper span so screen readers announce "Sent" /
-                            "Read by recipient" instead of skipping the icon
-                            entirely (previous aria-hidden default on lucide
-                            icons meant SR users had no message-status feedback). */}
+                                {/* The sent bubble pins --text-inverse to white. Full-opacity
+                            status icons keep the sent/read indicators legible in both themes. */}
                                 {message.status === "read" ? (
                                   <CheckCheck
                                     className="w-3 h-3 text-[var(--text-inverse)]"
@@ -1014,7 +1021,7 @@ export const ChatWindow = memo(function ChatWindow({
                                   />
                                 ) : (
                                   <Check
-                                    className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
+                                    className="w-3 h-3 text-[var(--text-inverse)]"
                                     aria-hidden="true"
                                   />
                                 )}
@@ -1054,11 +1061,12 @@ export const ChatWindow = memo(function ChatWindow({
                           <button
                             type="button"
                             data-reaction-ui
-                            onClick={() =>
+                            onClick={(event) => {
+                              reactionPickerTriggerRef.current = event.currentTarget
                               setReactionPickerForId((prev) =>
                                 prev === message.id ? null : message.id
                               )
-                            }
+                            }}
                             aria-label={t("messenger:reactions.add")}
                             aria-expanded={reactionPickerForId === message.id}
                             className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
@@ -1085,6 +1093,9 @@ export const ChatWindow = memo(function ChatWindow({
                             onClick={() => {
                               handleToggleReaction(message.id, emoji)
                               setReactionPickerForId(null)
+                              if (reactionPickerTriggerRef.current?.isConnected) {
+                                reactionPickerTriggerRef.current.focus()
+                              }
                             }}
                             aria-label={t("messenger:reactions.react", { emoji })}
                             className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"

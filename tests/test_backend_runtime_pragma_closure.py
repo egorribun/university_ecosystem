@@ -90,19 +90,29 @@ async def test_cache_metrics_records_failure_without_optional_health_gauge() -> 
 
 
 def test_system_metrics_tolerates_independent_cpu_and_gpu_failures() -> None:
+    cpu_metric = MagicMock()
     with (
-        patch.object(metrics, "_CPU_LOAD", MagicMock()),
+        patch.object(metrics, "_CPU_LOAD", cpu_metric),
         patch.object(metrics, "_GPU_LOAD", None),
         patch.object(metrics.psutil, "cpu_percent", side_effect=OSError("cpu")),
+        patch.object(metrics.logger, "debug") as debug,
     ):
-        metrics._record_system_metrics()
+        assert (metrics._record_system_metrics()) is None
 
+    cpu_metric.set.assert_not_called()
+    debug.assert_called_once_with("Failed to collect CPU metrics", exc_info=True)
+
+    gpu_metric = MagicMock()
     with (
         patch.object(metrics, "_CPU_LOAD", None),
-        patch.object(metrics, "_GPU_LOAD", MagicMock()),
+        patch.object(metrics, "_GPU_LOAD", gpu_metric),
         patch.object(metrics, "_load_gputil", side_effect=RuntimeError("gpu")),
+        patch.object(metrics.logger, "debug") as debug,
     ):
-        metrics._record_system_metrics()
+        assert (metrics._record_system_metrics()) is None
+
+    gpu_metric.labels.assert_not_called()
+    debug.assert_called_once_with("Failed to collect GPU metrics", exc_info=True)
 
 
 def test_notification_metrics_registry_tolerates_observability_import_failure() -> None:
@@ -114,11 +124,19 @@ def test_notification_metrics_registry_tolerates_observability_import_failure() 
             raise ImportError("observability unavailable")
         return original_import(name, *args, **kwargs)
 
+    registry = MagicMock()
     with (
-        patch.object(metrics, "REGISTRY", MagicMock()),
+        patch.object(metrics, "REGISTRY", registry),
+        patch("app.core.observability.get_notification_queue_metrics") as get_metrics,
+        patch(
+            "app.core.observability.reinitialize_notification_queue_metrics"
+        ) as reinitialize,
         patch.object(builtins, "__import__", guarded_import),
     ):
-        metrics._ensure_notification_queue_metrics_registry()
+        assert (metrics._ensure_notification_queue_metrics_registry()) is None
+
+    get_metrics.assert_not_called()
+    reinitialize.assert_not_called()
 
 
 def test_notification_metrics_registry_tolerates_queue_import_failure() -> None:

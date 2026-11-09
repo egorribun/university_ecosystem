@@ -51,6 +51,10 @@ def run_launcher(
         shutil.copyfile(ROOT / "start-docker.ps1", script_root / "start-docker.ps1")
         for overlay in ROOT.glob("docker-compose.*.yml"):
             shutil.copyfile(overlay, script_root / overlay.name)
+        shutil.copytree(
+            ROOT / "scripts" / "temporal",
+            script_root / "scripts" / "temporal",
+        )
     script = script_root / "start-docker.ps1"
     if attestation is not None:
         attestation_path = script_root / ATTESTATION

@@ -71,7 +71,10 @@ class InfrastructureProvider(Provider):
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncIterator[AsyncDatabaseSession]:
+        from app.core.tenant import require_mvp_tenant
+
         async with session_factory() as session:
+            await require_mvp_tenant(session)
             yield session
 
     @provide(scope=Scope.APP)

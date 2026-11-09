@@ -118,7 +118,11 @@ describe("RelatedEvents", () => {
       "hover:-translate-y-1"
     )
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
-    expect(link.querySelector("svg")).toHaveClass("h-8", "w-8", "text-brand/(--opacity-medium)")
+    expect(link.querySelector("svg")).toHaveClass(
+      "h-8",
+      "w-8",
+      "text-brand/[calc(var(--opacity-medium)*100%)]"
+    )
     expect(screen.getByRole("heading", { level: 3 })).toBeEmptyDOMElement()
     expect(
       [...link.querySelectorAll("span")].filter((span) => span.className.includes("text-[11px]"))

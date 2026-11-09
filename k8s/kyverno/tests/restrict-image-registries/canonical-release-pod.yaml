@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: canonical-release-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: backend
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+    - name: frontend
+      image: ghcr.io/egorribun/university_ecosystem/frontend:v1.0.0
+    - name: gateway
+      image: ghcr.io/egorribun/university_ecosystem/gateway:v1.0.0
+    - name: ws-hub
+      image: ghcr.io/egorribun/university_ecosystem/ws-hub:v1.0.0
+    - name: file-processor
+      image: ghcr.io/egorribun/university_ecosystem/file-processor:v1.0.0

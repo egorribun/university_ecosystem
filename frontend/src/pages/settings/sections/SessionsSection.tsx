@@ -105,7 +105,7 @@ export function SessionsSection({
                         "text-sm wrap-break-word transition-colors",
                         session.is_current ? "font-semibold" : "font-medium",
                         isRevoked
-                          ? "text-text-primary/(--opacity-strong)"
+                          ? "text-text-primary/[calc(var(--opacity-strong)*100%)]"
                           : "text-(--text-secondary)"
                       )}
                     >

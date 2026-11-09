@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGER_DESCRIPTIONS = {
     "Update the SQLMap workflow exact PyPI version pin": 1,
     "Update the govulncheck go install release pin": 3,
-    "Update the osv-scanner go install release pin": 1,
+    "Update the osv-scanner release binary version and checksum together": 2,
     "Update the cargo-audit standalone Cargo CLI version": 3,
     "Update the golangci-lint CLI input to its SHA-pinned action": 2,
     "Update tested Helm 4.2 CLI inputs to azure/setup-helm": 8,
@@ -118,9 +120,16 @@ def test_renovate_custom_managers_are_narrow_and_cooldown_bound() -> None:
     for description, expected_matches in MANAGER_DESCRIPTIONS.items():
         manager = by_description[description]
         assert manager["customType"] == "regex"
-        assert manager["datasourceTemplate"] in {"pypi", "github-releases", "crate"}
+        if (
+            description
+            == "Update the osv-scanner release binary version and checksum together"
+        ):
+            assert manager["datasourceTemplate"] == "github-release-attachments"
+            assert "autoReplaceStringTemplate" not in manager
+        else:
+            assert manager["datasourceTemplate"] in {"pypi", "github-releases", "crate"}
+            assert manager["autoReplaceStringTemplate"].count("{{{newValue}}}") == 1
         assert manager["versioningTemplate"] in {"pep440", "semver", "cargo"}
-        assert manager["autoReplaceStringTemplate"].count("{{{newValue}}}") == 1
         patterns = [
             _compile_renovate_regex(value) for value in manager["managerFilePatterns"]
         ]
@@ -264,3 +273,180 @@ def test_manual_tool_and_checksum_routes_have_live_contracts() -> None:
     )
     assert ghcr_images
     assert all("@sha256:" in image for image in ghcr_images)
+
+
+def _osv_release_pairs(
+    workflow_text: str, matcher: re.Pattern[str]
+) -> list[re.Match[str]]:
+    matches = list(matcher.finditer(workflow_text))
+    assert len(matches) == 2
+    workflow = yaml.safe_load(workflow_text)
+    expected = (
+        ("sbom-go", "Install osv-scanner"),
+        ("vuln-gate-pr", "Install osv-scanner (pull request inventory)"),
+    )
+    installer_pairs = []
+    for job_id, step_name in expected:
+        installers = [
+            step
+            for step in workflow["jobs"][job_id]["steps"]
+            if step.get("name") == step_name
+        ]
+        assert len(installers) == 1
+        step_matches = list(matcher.finditer(installers[0]["run"]))
+        assert len(step_matches) == 1
+        installer_pairs.append(step_matches[0].groupdict())
+    assert [match.groupdict() for match in matches] == installer_pairs
+    pairs = {(pair["currentValue"], pair["currentDigest"]) for pair in installer_pairs}
+    assert len(pairs) == 1
+    return matches
+
+
+def test_osv_release_manager_tracks_two_identical_version_checksum_pairs() -> None:
+    renovate = json.loads(_text("renovate.json"))
+    managers = [
+        manager
+        for manager in renovate["customManagers"]
+        if manager.get("packageNameTemplate") == "google/osv-scanner"
+    ]
+    assert len(managers) == 1
+    manager = managers[0]
+    assert manager["datasourceTemplate"] == "github-release-attachments"
+    assert manager["versioningTemplate"] == "semver"
+    assert "autoReplaceStringTemplate" not in manager
+    assert manager["managerFilePatterns"] == [r"/^\.github/workflows/sbom\.yml$/"]
+
+    matcher = _python_regex(manager["matchStrings"][0])
+    matches = _osv_release_pairs(_text(".github/workflows/sbom.yml"), matcher)
+    for matched in matches:
+        assert matched.group("currentValue") == "v2.6.0"
+        assert re.fullmatch(r"[0-9a-f]{64}", matched.group("currentDigest"))
+
+
+def test_osv_release_manager_can_reextract_a_paired_replacement() -> None:
+    renovate = json.loads(_text("renovate.json"))
+    manager = next(
+        manager
+        for manager in renovate["customManagers"]
+        if manager.get("packageNameTemplate") == "google/osv-scanner"
+    )
+    matcher = _python_regex(manager["matchStrings"][0])
+    workflow_text = _text(".github/workflows/sbom.yml")
+    matches = _osv_release_pairs(workflow_text, matcher)
+    current_version = matches[0].group("currentValue")
+    current_digest = matches[0].group("currentDigest")
+    next_version = "v9.8.7"
+    next_digest = hashlib.sha256(b"synthetic future release").hexdigest()
+
+    def replace_pair(original: re.Match[str]) -> str:
+        return (
+            original.group(0)
+            .replace(current_version, next_version, 1)
+            .replace(current_digest, next_digest, 1)
+        )
+
+    updated = matcher.sub(replace_pair, workflow_text)
+    rematched = _osv_release_pairs(updated, matcher)
+    assert len(rematched) == len(matches) == 2
+    for matched in rematched:
+        assert matched.group("currentValue") == next_version
+        assert matched.group("currentDigest") == next_digest
+
+
+def _serialize_osv_workflow_fixture(workflow: dict) -> str:
+    """Preserve literal run bytes without changing the raw Renovate matcher."""
+
+    class LiteralRunDumper(yaml.SafeDumper):
+        pass
+
+    def represent_string(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+        style = "|" if "\n" in value else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+    LiteralRunDumper.add_representer(str, represent_string)
+    serialized = yaml.dump(
+        workflow,
+        Dumper=LiteralRunDumper,
+        sort_keys=False,
+        width=4096,
+    )
+    assert yaml.safe_load(serialized) == workflow
+    return serialized
+
+
+def test_osv_fixture_serialization_preserves_run_bytes_without_global_changes() -> None:
+    run = 'printf "%s\\n" "quoted value"\n'
+    workflow = {"jobs": {"fixture": {"steps": [{"run": run}]}}}
+    original_representer = yaml.SafeDumper.yaml_representers[str]
+    original_serialized = yaml.safe_dump(workflow, sort_keys=False, width=4096)
+
+    serialized = _serialize_osv_workflow_fixture(workflow)
+
+    assert yaml.safe_load(serialized)["jobs"]["fixture"]["steps"][0]["run"] == run
+    assert "run: |\n" in serialized
+    assert 'printf "%s\\n" "quoted value"' in serialized
+    assert yaml.SafeDumper.yaml_representers[str] is original_representer
+    assert yaml.safe_dump(workflow, sort_keys=False, width=4096) == original_serialized
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing-main",
+        "missing-pr",
+        "duplicate-main",
+        "extra-job",
+        "version-drift",
+        "digest-drift",
+        "malformed-version",
+        "malformed-digest",
+    ),
+)
+def test_osv_release_pair_inventory_rejects_missing_extra_or_drift(
+    mutation: str,
+) -> None:
+    renovate = json.loads(_text("renovate.json"))
+    manager = next(
+        manager
+        for manager in renovate["customManagers"]
+        if manager.get("packageNameTemplate") == "google/osv-scanner"
+    )
+    matcher = _python_regex(manager["matchStrings"][0])
+    workflow = yaml.safe_load(_text(".github/workflows/sbom.yml"))
+    # Preserve the producer run strings as literal YAML; the serialized positive
+    # must pass before any rejected mutation can satisfy its negative oracle.
+    _osv_release_pairs(_serialize_osv_workflow_fixture(workflow), matcher)
+    main_steps = workflow["jobs"]["sbom-go"]["steps"]
+    pr_steps = workflow["jobs"]["vuln-gate-pr"]["steps"]
+    main_install = next(
+        step for step in main_steps if step.get("name") == "Install osv-scanner"
+    )
+    pr_install = next(
+        step
+        for step in pr_steps
+        if step.get("name") == "Install osv-scanner (pull request inventory)"
+    )
+    original = matcher.search(pr_install["run"])
+    assert original is not None
+    if mutation == "missing-main":
+        main_steps.remove(main_install)
+    elif mutation == "missing-pr":
+        pr_steps.remove(pr_install)
+    elif mutation == "duplicate-main":
+        main_steps.append(dict(main_install))
+    elif mutation == "extra-job":
+        workflow["jobs"]["unreviewed-producer"] = {"steps": [dict(main_install)]}
+    else:
+        field = "currentValue" if "version" in mutation else "currentDigest"
+        old_value = original.group(field)
+        if mutation == "version-drift":
+            new_value = "v9.8.7"
+        elif mutation == "digest-drift":
+            new_value = hashlib.sha256(b"synthetic different release").hexdigest()
+        else:
+            new_value = "invalid"
+        assert new_value != old_value
+        pr_install["run"] = pr_install["run"].replace(old_value, new_value, 1)
+
+    with pytest.raises(AssertionError):
+        _osv_release_pairs(_serialize_osv_workflow_fixture(workflow), matcher)

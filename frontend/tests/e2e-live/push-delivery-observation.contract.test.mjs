@@ -74,6 +74,8 @@ test("failure observation is armed around the unchanged native poll and runs dur
   assert.match(helper, /navigator\.serviceWorker\.getRegistration\(\)/u)
   assert.match(helper, /registration\.getNotifications\(\)/u)
   assert.match(helper, /Notification\.permission/u)
+  assert.match(helper, /if \(typeof Notification === "undefined"\) return "unsupported"/u)
+  assert.match(helper, /if \(capturedPermission === null\) return null/u)
   assert.match(helper, /navigator\.serviceWorker\.controller !== null/u)
   assert.match(helper, /registration\.pushManager\.getSubscription\(\)/u)
   assert.match(helper, /matches = notificationsResult\.value\.some[\s\S]*?\? 1\s*:\s*0/u)
@@ -88,11 +90,15 @@ test("failure observation is armed around the unchanged native poll and runs dur
 test("push observation emits only bounded closed browser state and never the notification identity", () => {
   const privateId = "private-notification-identity"
   const output = reportInChild(
-    "const page = { evaluate: async (probe, options) => {\n" +
+    "let evaluations = 0;\n" +
+      "const page = { evaluate: async (probe, options) => {\n" +
+      "  evaluations += 1;\n" +
+      "  if (evaluations === 1) return 'granted';\n" +
       "  if (typeof probe !== 'function' || !options || options.expectedTag !== " +
       JSON.stringify(privateId) +
-      " || options.budgetMs !== 1200) throw new Error('private-probe-failure');\n" +
-      "  return { permission: 'granted', ready: 'resolved', state: 'activated', " +
+      " || options.budgetMs !== 1200 || options.permission !== 'granted') " +
+      "throw new Error('private-probe-failure');\n" +
+      "  return { permission: options.permission, ready: 'resolved', state: 'activated', " +
       "controller: true, subscription: true, matches: 0 };\n" +
       "} };\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', " +
@@ -110,11 +116,13 @@ test("push observation emits only bounded closed browser state and never the not
 test("push observation snapshots accessor values once before formatting", () => {
   const output = reportInChild(
     "let permissionReads = 0;\n" +
+      "let evaluations = 0;\n" +
       "const changing = { get permission() { permissionReads += 1; " +
       "return permissionReads === 1 ? 'granted' : 'private-value'; }, " +
       "ready: 'resolved', state: 'activated', controller: true, " +
       "subscription: true, matches: 1 };\n" +
-      "const page = { evaluate: async () => changing };\n" +
+      "const page = { evaluate: async () => { evaluations += 1; " +
+      "return evaluations === 1 ? 'granted' : changing; } };\n" +
       "await reportLivePushDeliveryObservation(page, 'mobile', 'private-id');\n"
   )
   assert.equal(
@@ -131,8 +139,10 @@ test("push observation rejects invalid domains and private values without coerci
       "const privateValue = { toString() { throw new Error('private-value'); } };\n" +
       "await reportLivePushDeliveryObservation(page, 'private-project', 'private-id');\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', privateValue);\n" +
-      "const invalidPage = { evaluate: async () => ({ permission: privateValue, " +
-      "ready: 'resolved', state: 'activated', controller: true, subscription: true, matches: 2 }) };\n" +
+      "let invalidEvaluations = 0;\n" +
+      "const invalidPage = { evaluate: async () => { invalidEvaluations += 1; " +
+      "return invalidEvaluations === 1 ? 'granted' : ({ permission: privateValue, " +
+      "ready: 'resolved', state: 'activated', controller: true, subscription: true, matches: 2 }); } };\n" +
       "await reportLivePushDeliveryObservation(invalidPage, 'mobile', 'private-id');\n"
   )
   assert.equal(output, "")
@@ -142,8 +152,11 @@ test("push observation rejects invalid domains and private values without coerci
 test("push observation deduplicates and caps output at four records", () => {
   const output = reportInChild(
     "const permissions = ['default', 'granted', 'denied', 'unsupported', 'default'];\n" +
-      "const page = { evaluate: async (_probe, options) => ({ permission: options.expectedTag, " +
-      "ready: 'timeout', state: 'missing', controller: false, subscription: false, matches: 0 }) };\n" +
+      "let evaluations = 0;\n" +
+      "const page = { evaluate: async (_probe, options) => { evaluations += 1; " +
+      "if (evaluations % 2 === 1) return permissions[(evaluations - 1) / 2]; " +
+      "return { permission: options.permission, ready: 'timeout', state: 'missing', " +
+      "controller: false, subscription: false, matches: 0 }; } };\n" +
       "for (const permission of permissions) await reportLivePushDeliveryObservation(page, 'mobile', permission);\n"
   )
   assert.equal(
@@ -157,25 +170,65 @@ test("push observation deduplicates and caps output at four records", () => {
   )
 })
 
-test("push observation safely reports only fallback enums when browser evaluation rejects", () => {
+test("push observation omits a record when permission cannot be captured", () => {
   const output = reportInChild(
     "const page = { evaluate: async () => { throw new Error('private URL and token'); } };\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n"
   )
-  assert.equal(
-    output,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported ready=timeout " +
-      "state=error controller=0 subscription=0 matches=0\n"
-  )
-  assert.doesNotMatch(output, /private|token/u)
+  assert.equal(output, "")
+  assert.doesNotMatch(output, /private|token|unsupported/u)
 })
 
-test("a stdout failure cannot replace the push delivery assertion", () => {
+test("push observation reports unsupported when Notification is absent", () => {
   const output = reportInChild(
-    "const page = { evaluate: async () => ({ permission: 'denied', ready: 'error', " +
-      "state: 'error', controller: false, subscription: false, matches: 0 }) };\n" +
-      "process.stdout.write = () => { throw new Error('private-write-error'); };\n" +
+    "const { runInNewContext } = await import('node:vm');\n" +
+      "const page = { evaluate: async (probe, options) => runInNewContext(" +
+      "'(' + probe.toString() + ')(' + JSON.stringify(options) + ')', { navigator: {} }) };\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n"
+  )
+  assert.equal(
+    output,
+    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported ready=error " +
+      "state=missing controller=0 subscription=0 matches=0\n"
+  )
+})
+
+test("push observation preserves captured permission when host capture times out", () => {
+  const output = reportInChild(
+    "const originalSetTimeout = globalThis.setTimeout;\n" +
+      "const originalClearTimeout = globalThis.clearTimeout;\n" +
+      "globalThis.setTimeout = (callback, delay, ...args) => {\n" +
+      "  if (delay !== 1600) return originalSetTimeout(callback, delay, ...args);\n" +
+      "  queueMicrotask(() => queueMicrotask(() => callback(...args)));\n" +
+      "  return 601;\n" +
+      "};\n" +
+      "globalThis.clearTimeout = (timer) => { if (timer !== 601) originalClearTimeout(timer); };\n" +
+      "let evaluations = 0;\n" +
+      "const page = { evaluate: async () => { evaluations += 1; " +
+      "if (evaluations === 1) return 'denied'; return new Promise(() => {}); } };\n" +
+      "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n" +
+      "globalThis.setTimeout = originalSetTimeout; globalThis.clearTimeout = originalClearTimeout;\n"
+  )
+  assert.equal(
+    output,
+    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied ready=timeout " +
+      "state=error controller=0 subscription=0 matches=0\n"
+  )
+})
+
+test("a stdout write failure is contained after a valid observation", () => {
+  const output = reportInChild(
+    "let evaluations = 0;\n" +
+      "let writeAttempts = 0;\n" +
+      "const page = { evaluate: async () => { evaluations += 1; " +
+      "if (evaluations === 1) return 'denied'; " +
+      "return { permission: 'denied', ready: 'error', state: 'error', " +
+      "controller: false, subscription: false, matches: 0 }; } };\n" +
+      "process.stdout.write = () => { writeAttempts += 1; " +
+      "throw new Error('private-write-error'); };\n" +
+      "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n" +
+      "if (evaluations !== 2 || writeAttempts !== 1) " +
+      "throw new Error('valid observation did not reach the stdout write');\n"
   )
   assert.equal(output, "")
 })

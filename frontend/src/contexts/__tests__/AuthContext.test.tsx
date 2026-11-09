@@ -113,44 +113,70 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
-  it.each(["failed logout", "session expiry"])(
-    "purges worker identity on %s",
-    async (transition) => {
-      const postMessage = vi.fn()
-      Object.defineProperty(navigator, "serviceWorker", {
-        configurable: true,
-        value: { controller: { postMessage } },
-      })
-      const { queryClient, wrapper } = setup()
-      const { result, unmount } = renderHook(() => useAuth(), { wrapper })
-      await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
-      postMessage.mockClear()
-      if (transition === "failed logout") {
-        vi.mocked(api.post).mockRejectedValueOnce(new Error("network unavailable"))
-        vi.spyOn(logger, "logError").mockImplementation(() => undefined)
-        const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
-        await act(() => result.current.logout())
-        // Logout cleanup separately records its profile-cache clear. This is not
-        // a malformed fixture; keep the complete list exact so extra warnings fail.
-        expect(warningSpy.mock.calls).toEqual([
-          ["Server logout could not be confirmed; local cleanup will continue"],
-          ["profile_cache.cleared", { reason: "parse_error" }],
-        ])
+  it.each([
+    "failed logout",
+    "session expiry with cached profile",
+    "session expiry without cached profile",
+  ])("purges worker identity on %s", async (transition) => {
+    const postMessage = vi.fn()
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { controller: { postMessage } },
+    })
+    const { queryClient, wrapper } = setup()
+    const { result, unmount } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    postMessage.mockClear()
+    if (transition === "failed logout") {
+      vi.mocked(api.post).mockRejectedValueOnce(new Error("network unavailable"))
+      vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+      const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+      await act(() => result.current.logout())
+      // Logout cleanup separately records its profile-cache clear. This is not
+      // a malformed fixture; keep the complete list exact so extra warnings fail.
+      expect(warningSpy.mock.calls).toEqual([
+        ["Server logout could not be confirmed; local cleanup will continue"],
+        ["profile_cache.cleared", { reason: "parse_error" }],
+      ])
+    } else {
+      const hasCachedProfile = transition === "session expiry with cached profile"
+      if (hasCachedProfile) {
+        primeCachedProfile("Test User")
       } else {
-        vi.mocked(api.get).mockRejectedValueOnce({ isAxiosError: true, response: { status: 401 } })
-        await act(() => result.current.refresh())
+        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
       }
-      await waitFor(() => expect(result.current.user).toBeNull())
-      expect(postMessage).toHaveBeenCalledWith({
-        type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+
+      const getMock = vi.mocked(api.get)
+      const originalGet = getMock.getMockImplementation()
+      if (!originalGet) throw new Error("Expected the AuthProvider GET mock to be installed")
+      const expiredProfileRequests: Array<{ headers: unknown }> = []
+      getMock.mockImplementation((url, config) => {
+        if (url === "/users/me") {
+          expiredProfileRequests.push({ headers: config?.headers })
+          return Promise.reject({ isAxiosError: true, response: { status: 401 } })
+        }
+        return originalGet(url, config)
       })
-      expect(postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ sessionHash: expect.any(String) })
-      )
-      unmount()
-      queryClient.clear()
+
+      await act(() => result.current.refresh())
+      expect(expiredProfileRequests).toHaveLength(hasCachedProfile ? 2 : 1)
+      if (hasCachedProfile) {
+        expect(expiredProfileRequests[0]?.headers).toEqual(
+          expect.objectContaining({ "X-Profile-Cache-Envelope": expect.any(String) })
+        )
+        expect(expiredProfileRequests[1]?.headers).toBeUndefined()
+      }
     }
-  )
+    await waitFor(() => expect(result.current.user).toBeNull())
+    expect(postMessage).toHaveBeenCalledWith({
+      type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+    })
+    expect(postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sessionHash: expect.any(String) })
+    )
+    unmount()
+    queryClient.clear()
+  })
 
   it("removes cached profile information on logout", async () => {
     localStorage.setItem("token", "token-456")
@@ -290,7 +316,7 @@ const buildMockSigningKey = () =>
 
 const mockSigningKey = buildMockSigningKey()
 
-const primeCachedProfile = () => {
+const primeCachedProfile = (fullName = testUser.full_name) => {
   const { schemaVersion, sessionKeyStorageKey, versionKey } = deriveCacheMetadata()
   const originalGetItem = Storage.prototype.getItem
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
@@ -303,7 +329,7 @@ const primeCachedProfile = () => {
 
   const snapshot = {
     id: testUser.id,
-    full_name: testUser.full_name,
+    full_name: fullName,
     avatar_url: testUser.avatar_url,
   }
 

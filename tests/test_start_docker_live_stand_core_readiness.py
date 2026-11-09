@@ -37,6 +37,7 @@ CORE_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -257,6 +258,47 @@ ConvertTo-Json -InputObject $result -Depth 4 -Compress
 """
 
 
+_READINESS_STAGE_PREFIX = "CONTRACT_STAGE:"
+_READINESS_TIMEOUT_SCAN_LIMIT = 4096
+_READINESS_TIMEOUT_PHASES = frozenset(
+    {
+        "source-parse",
+        "function-search",
+        "source-function-loading",
+        "core-exclusions",
+        "waiting-anchor",
+        "readiness-binding",
+        "core-guard",
+        "core-inventory",
+        "core-loop",
+        "full-loop",
+        "legacy-core-loop",
+        "build-start-binding",
+        "selection-guard",
+        "serialize-result",
+    }
+)
+
+
+def _last_readiness_timeout_phase(stderr: bytes | bytearray | str | None) -> str:
+    if isinstance(stderr, (bytes, bytearray)):
+        tail = bytes(stderr[-_READINESS_TIMEOUT_SCAN_LIMIT:]).decode(
+            "ascii", errors="replace"
+        )
+    elif isinstance(stderr, str):
+        tail = stderr[-_READINESS_TIMEOUT_SCAN_LIMIT:]
+    else:
+        return "unknown"
+
+    for line in reversed(tail.splitlines()):
+        if not line.startswith(_READINESS_STAGE_PREFIX):
+            continue
+        phase = line[len(_READINESS_STAGE_PREFIX) :]
+        if phase in _READINESS_TIMEOUT_PHASES:
+            return phase
+    return "unknown"
+
+
 _POWERSHELL_RUNNER = r"""
 param(
     [Parameter(Mandatory=$true)][string]$SourcePath,
@@ -264,6 +306,7 @@ param(
     [Parameter(Mandatory=$true)][string]$ExpectedCoreJson
 )
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:source-parse")
 $tokens = $null
 $parseErrors = $null
 $sourceAst = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -272,6 +315,7 @@ $sourceAst = [System.Management.Automation.Language.Parser]::ParseFile(
 if ($parseErrors.Count -gt 0) { throw "readiness_source_parse_failed" }
 
 function Get-UniqueFunctionText([string]$Name) {
+    [Console]::Error.WriteLine("CONTRACT_STAGE:function-search")
     $matches = @($sourceAst.FindAll({
         param($node)
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
@@ -323,7 +367,9 @@ function Get-MapSummary([System.Collections.IDictionary]$Map) {
     }
 }
 
-Invoke-Expression (Get-UniqueFunctionText "Get-LocalServiceUrl")
+$localServiceUrlText = Get-UniqueFunctionText "Get-LocalServiceUrl"
+[Console]::Error.WriteLine("CONTRACT_STAGE:source-function-loading")
+Invoke-Expression $localServiceUrlText
 [Environment]::SetEnvironmentVariable("LIVE_MAILPIT_PORT", "43123", "Process")
 [Environment]::SetEnvironmentVariable("LIVE_HOST_PORT_MAILPIT", $null, "Process")
 function Write-Status([string]$Message) { }
@@ -345,9 +391,12 @@ foreach ($functionName in @(
     "Get-LiveAcceptanceCoreReadinessInventory",
     "Get-StartupReadinessInventory"
 )) {
-    Invoke-Expression (Get-UniqueFunctionText $functionName)
+    $functionText = Get-UniqueFunctionText $functionName
+    [Console]::Error.WriteLine("CONTRACT_STAGE:source-function-loading")
+    Invoke-Expression $functionText
 }
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:core-exclusions")
 $sourceAssignments = $sourceAst.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
@@ -357,6 +406,7 @@ $sourceAssignments = $sourceAst.FindAll({
 if (@($sourceAssignments).Count -ne 1) { throw "legacy_core_exclusions_binding_failed" }
 Invoke-Expression $sourceAssignments[0].Extent.Text
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:waiting-anchor")
 $waiting = $sourceAst.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.CommandAst] -and
@@ -365,6 +415,7 @@ $waiting = $sourceAst.FindAll({
 }, $true) | Select-Object -First 1
 if ($null -eq $waiting) { throw "health_loop_anchor_missing" }
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:readiness-binding")
 $fullAssignment = Get-UniqueAssignment "fullReadiness" $waiting.Extent.EndOffset
 $serviceAssignments = Get-OrderedAssignment "services" $fullAssignment.Extent.EndOffset
 $coreLoopAssignment = $serviceAssignments | Where-Object {
@@ -377,6 +428,7 @@ if ($null -eq $coreLoopAssignment -or $null -eq $legacyLoopAssignment) {
     throw "health_loop_assignment_binding_failed"
 }
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:core-guard")
 $coreGuard = $sourceAst.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.IfStatementAst] -and
@@ -384,26 +436,31 @@ $coreGuard = $sourceAst.FindAll({
 }, $true) | Sort-Object { $_.Extent.Text.Length } -Descending | Select-Object -First 1
 if ($null -eq $coreGuard) { throw "core_readiness_guard_missing" }
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:core-inventory")
 $coreReadiness = Get-LiveAcceptanceCoreReadinessInventory
 $mailpitUrl = [string]$coreReadiness.mailpit.url
 Invoke-Expression $coreGuard.Extent.Text
 Invoke-Expression $fullAssignment.Extent.Text
+[Console]::Error.WriteLine("CONTRACT_STAGE:core-loop")
 $script:LiveAcceptanceCore = $true
 $Core = $false
 Invoke-Expression $coreLoopAssignment.Extent.Text
 $coreSummary = Get-MapSummary $services
 
 Invoke-Expression $fullAssignment.Extent.Text
+[Console]::Error.WriteLine("CONTRACT_STAGE:full-loop")
 $script:LiveAcceptanceCore = $false
 $Core = $false
 Invoke-Expression $legacyLoopAssignment.Extent.Text
 $fullSummary = Get-MapSummary $services
 
 Invoke-Expression $fullAssignment.Extent.Text
+[Console]::Error.WriteLine("CONTRACT_STAGE:legacy-core-loop")
 $Core = $true
 Invoke-Expression $legacyLoopAssignment.Extent.Text
 $legacyCoreSummary = Get-MapSummary $services
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:build-start-binding")
 $buildBlock = $sourceAst.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.IfStatementAst] -and
@@ -443,6 +500,7 @@ function docker {
     [void]$script:dockerCalls.Add([string]::Join(" ", [string[]]$args))
     $global:LASTEXITCODE = 0
 }
+[Console]::Error.WriteLine("CONTRACT_STAGE:selection-guard")
 $selectionError = $null
 try {
     Assert-LiveAcceptanceSelection -ComposeModel $composeModel | Out-Null
@@ -457,6 +515,7 @@ if ($selectionError -cne "Caller live service selection differs from resolved Co
 }
 if ($script:dockerCalls.Count -ne 0) { throw "selection_mismatch_reached_build_or_up" }
 
+[Console]::Error.WriteLine("CONTRACT_STAGE:serialize-result")
 $result = [pscustomobject]@{
     core = $coreSummary
     mailpitUrl = $mailpitUrl
@@ -532,25 +591,32 @@ def _run_powershell_readiness_contract(tmp_path: Path) -> dict[str, object]:
     assert POWERSHELL is not None
     runner = tmp_path / "readiness-contract.ps1"
     runner.write_text(_POWERSHELL_RUNNER, encoding="utf-8")
-    result = subprocess.run(  # noqa: S603 - fixed pwsh executable and test-owned files
-        [
-            POWERSHELL,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(runner),
-            "-SourcePath",
-            str(LAUNCHER),
-            "-ExpectedRootsJson",
-            json.dumps(CORE_ROOTS),
-            "-ExpectedCoreJson",
-            json.dumps(CORE_SERVICES),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=20,
-    )
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed pwsh executable and test-owned files
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(runner),
+                "-SourcePath",
+                str(LAUNCHER),
+                "-ExpectedRootsJson",
+                json.dumps(CORE_ROOTS),
+                "-ExpectedCoreJson",
+                json.dumps(CORE_SERVICES),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired as error:
+        phase = _last_readiness_timeout_phase(error.stderr)
+        pytest.fail(
+            f"powershell_live_readiness_contract_timed_out: phase={phase}",
+            pytrace=False,
+        )
     assert result.returncode == 0, "powershell_live_readiness_contract_failed"
     return json.loads(result.stdout)
 
@@ -564,12 +630,13 @@ def test_live_readiness_loop_uses_core_and_preserves_full_inventories(
     core = result["core"]
     assert isinstance(core, dict)
     assert sorted(set(core["services"])) == list(CORE_SERVICES)
-    assert core["probeCount"] == 24
+    assert core["probeCount"] == 25
     assert core["services"].count("caddy") == 2
     assert sorted(core["jobs"]) == [
         "migrations",
         "minio-init",
         "postgres-databases-init",
+        "postgres-roles-init",
         "spicedb-migrate",
     ]
     assert result["mailpitUrl"] == "http://127.0.0.1:43123/api/v1/info"
@@ -604,3 +671,66 @@ def test_trusted_proxy_refresh_wait_is_bounded() -> None:
 
     assert source.count(refresh_command) == 1
     assert "up -d --no-deps @refreshServices" not in source
+
+
+@pytest.mark.parametrize(
+    ("stderr", "expected_phase"),
+    [
+        pytest.param(
+            (
+                b"CONTRACT_STAGE:core-inventory\n"
+                b"private-path private-field=private-value\n"
+                b"CONTRACT_STAGE:../untrusted-phase\n"
+            ),
+            "core-inventory",
+            id="last-allowlisted-phase-only",
+        ),
+        pytest.param(
+            "CONTRACT_STAGE:../../private-path\nprivate-field=private-value",
+            "unknown",
+            id="unrecognized-phase-is-unknown",
+        ),
+        pytest.param(
+            b"CONTRACT_STAGE:core-\xffloop",
+            "unknown",
+            id="malformed-encoded-phase-is-unknown",
+        ),
+    ],
+)
+def test_readiness_timeout_diagnostic_only_exposes_finite_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stderr: bytes | str,
+    expected_phase: str,
+) -> None:
+    monkeypatch.setitem(globals(), "POWERSHELL", "private-pwsh-marker")
+
+    def timeout_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs["timeout"] == 20
+        assert command[0] == "private-pwsh-marker"
+        assert command[command.index("-ExpectedRootsJson") + 1] == json.dumps(
+            CORE_ROOTS
+        )
+        assert command[command.index("-ExpectedCoreJson") + 1] == json.dumps(
+            CORE_SERVICES
+        )
+        raise subprocess.TimeoutExpired(
+            cmd=["private-command-path", "private-command-value"],
+            timeout=20,
+            output=b"CONTRACT_STAGE:selection-guard\nstdout-private-value",
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(subprocess, "run", timeout_run)
+    with pytest.raises(pytest.fail.Exception) as failure:
+        _run_powershell_readiness_contract(tmp_path)
+
+    assert str(failure.value) == (
+        f"powershell_live_readiness_contract_timed_out: phase={expected_phase}"
+    )
+    assert "private-path" not in str(failure.value)
+    assert "private-value" not in str(failure.value)
+    assert "stdout-private-value" not in str(failure.value)
+    assert "private-command" not in str(failure.value)

@@ -36,6 +36,7 @@ _IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _READER_ROLE = "migration_password_preflight_reader"
 _EMPTY_MESSAGE = "No active legacy bcrypt accounts found."
 _REMAINING_MESSAGE = "Legacy bcrypt accounts remain: 1"
+_DENIED_MESSAGE = "Legacy inventory authority could not be verified."
 
 
 class GateFailure(RuntimeError):
@@ -225,16 +226,26 @@ async def _run_gate(admin_url: URL, image_id: str) -> None:
             role = (
                 await connection.execute(
                     text(
-                        "SELECT rolsuper, rolbypassrls FROM pg_roles "
+                        "SELECT rolsuper, rolbypassrls, rolinherit FROM pg_roles "
                         "WHERE rolname = :role"
                     ),
                     {"role": _READER_ROLE},
                 )
             ).one()
-            if role.rolsuper or role.rolbypassrls:
+            if role.rolsuper or role.rolbypassrls or role.rolinherit:
                 raise GateFailure(
                     "preflight reader role has elevated PostgreSQL privileges"
                 )
+
+        _assert_cli_result(
+            _run_cli(image_id, reader_url, secret_key),
+            exit_code=2,
+            stdout=_DENIED_MESSAGE,
+        )
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("GRANT ue_rls_bypass TO migration_password_preflight_reader")
+            )
 
         _assert_cli_result(
             _run_cli(image_id, reader_url, secret_key),

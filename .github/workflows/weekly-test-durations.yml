@@ -51,15 +51,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -68,12 +69,14 @@ jobs:
         run: uv sync --frozen
 
       - name: Run the measurable test suite
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: >-
           uv run pytest tests/ --no-cov
           --ignore=tests/performance
           --ignore=tests/chaos
           --ignore=tests/test_schemathesis_api.py
-          --shard-id=${{ matrix.shard }}
+          --shard-id="${SHARD_ID}"
           --num-shards=4
           --junitxml=pytest-report.xml
 
@@ -105,6 +108,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: main
           fetch-depth: 0
 
@@ -132,12 +136,12 @@ jobs:
           fi
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -174,7 +178,13 @@ jobs:
       - name: Open update pull request
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::GitHub token is required for the trusted duration refresh."
+            exit 1
+          fi
           if git diff --quiet -- quality/test-durations.json; then
             echo "Historical duration map is already current."
             exit 0
@@ -185,7 +195,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add quality/test-durations.json
           git commit -m "chore(quality): refresh pytest duration map"
-          git push --set-upstream origin "$branch"
+          git -c credential.helper= \
+            -c 'credential.https://github.com.helper=!gh auth git-credential' \
+            push --set-upstream origin "$branch"
           gh pr create \
             --base main \
             --head "$branch" \

@@ -1,17 +1,7 @@
-"""WebSocket message schema contract tests.
+"""Check backend frame production and the frontend's declared type catalog.
 
-Verifies that the Python backend sends WS messages in the format that the
-frontend ``parseWsMessage()`` (Valibot discriminated union) expects.
-
-Cross-service invariant:
-  Python ``connection_manager.py`` + ``dispatcher.py`` → ws frames →
-  Frontend ``wsMessage.ts`` parseWsMessage() Valibot validation.
-
-Any new message type added in Python MUST be added to the frontend Valibot schema,
-and vice versa. These tests catch schema drift at CI time.
-
-The authoritative schema is the TypeScript Valibot definition in:
-  ``frontend/src/api/schemas/wsMessage.ts``
+The captured JSON frames can be replayed by a frontend parser test. This Python
+suite reads the frontend schema source but does not execute its Valibot parser.
 """
 
 from __future__ import annotations
@@ -33,14 +23,48 @@ FRONTEND_WS_HOOK = REPOSITORY_ROOT / "frontend/src/hooks/useChatWebSocket.ts"
 WS_HUB_CLIENT_SOURCE = REPOSITORY_ROOT / "services/ws-hub/pkg/hub/client.go"
 
 
-def _frontend_server_message_types() -> frozenset[str]:
-    """Read the discriminated-union catalog from the Valibot source.
+def _frontend_object_schema_body(source: str, schema_name: str) -> str:
+    """Return one Valibot object schema body by its TypeScript identifier."""
+    declaration = re.search(
+        rf"^(?:export\s+)?const\s+{re.escape(schema_name)}\s*=\s*"
+        r"v\.object\(\{(?P<body>.*?)(?=^(?:export\s+)?const\s+|\Z)",
+        source,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    assert declaration is not None, f"Valibot object schema {schema_name} is missing"
+    return declaration.group("body")
 
-    Keeping this derived from the runtime schema prevents the contract test from
-    becoming a second, stale registry whenever a frame is added or removed.
+
+def _frontend_schema_type(source: str, schema_name: str) -> str:
+    """Read the literal discriminator from one named Valibot object schema."""
+    body = _frontend_object_schema_body(source, schema_name)
+    type_field = re.search(
+        r"\btype\s*:\s*v\.literal\(\s*['\"]([a-z_]+)['\"]\s*\)",
+        body,
+    )
+    assert type_field is not None, f"Schema {schema_name} must declare a literal type"
+    return type_field.group(1)
+
+
+def _frontend_server_message_types() -> frozenset[str]:
+    """Read only the schemas referenced by the server-to-client union.
+
+    Client-side schemas live in the same TypeScript file, but are not incoming
+    server frames and must not be inferred as members of this discriminated union.
     """
     source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
-    return frozenset(re.findall(r"v\.literal\([\"']([a-z_]+)[\"']\)", source))
+    server_union = re.search(
+        r"export const WsServerMessageSchema = v\.variant\(\s*['\"]type['\"]"
+        r"\s*,\s*\[(?P<schemas>.*?)\]\s*\)",
+        source,
+        flags=re.DOTALL,
+    )
+    assert server_union is not None, "Frontend server message union is missing"
+    schema_names = re.findall(
+        r"\b([A-Za-z][A-Za-z0-9]*Schema)\b", server_union.group("schemas")
+    )
+    assert schema_names, "Frontend server message union must list schemas"
+    return frozenset(_frontend_schema_type(source, name) for name in schema_names)
 
 
 def _ws_hub_client_message_types() -> frozenset[str]:
@@ -123,100 +147,165 @@ REQUIRED_MESSENGER_EVENTS = frozenset(
     }
 )
 
-# Required fields per message type (mirrors Valibot schema field requirements)
-WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
-    "pong": {"type"},
-    "error": {"type"},  # detail is optional
-    "new_message": {"type", "chat_id", "message"},
-    "typing": {"type", "chat_id", "user_id", "user_name"},
-    "read": {"type", "chat_id", "user_id", "read_at"},
-    "online_list": {"type", "users"},
-    "presence": {"type", "user_id", "active", "last_seen"},
-    "message_edited": {"type", "chat_id", "message_id", "content", "edited_at"},
-    "message_deleted": {"type", "chat_id", "message_id", "deleted_at"},
-    "reaction_changed": {"type", "chat_id", "message_id", "user_id", "emoji", "action"},
-    "replay_checkpoint": {"type", "chat_id"},
-    "rate_limit_exceeded": {"type"},
-}
 
+@pytest.mark.asyncio
+async def test_backend_emitters_capture_real_ws_frames(
+    monkeypatch: pytest.MonkeyPatch, pact_output_dir: Path
+) -> None:
+    """Capture actual backend emitters; DB and socket delivery are test seams.
 
-# ---------------------------------------------------------------------------
-# Tests: Message type coverage
-# ---------------------------------------------------------------------------
+    The output is JSON-ready for a frontend parser contract. This test alone
+    does not execute the TypeScript consumer or a live WebSocket transport.
+    """
+    import json
+    from contextlib import asynccontextmanager
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
 
+    from fastapi.encoders import jsonable_encoder
 
-def test_pong_message_format():
-    """Backend pong response must have exactly ``{"type": "pong"}``."""
-    msg = {"type": "pong"}
-    assert msg["type"] == "pong"
-    # pong has no other required fields
-    assert set(msg.keys()) <= {"type"}, "Pong message should only have 'type' field"
+    import app.api.ws.dispatcher as dispatcher_module
+    import app.api.ws.presence as presence_module
+    import app.services.chat.command_service as command_module
+    import app.services.chat.notification_service as notification_module
+    from app.api.ws.connection_manager import ConnectionManager
 
+    user = SimpleNamespace(
+        id=uuid.uuid4(),
+        profile=SimpleNamespace(full_name="Alice"),
+        email="alice@example.org",
+    )
+    chat_id = uuid.uuid4()
+    timestamp = datetime(2030, 1, 2, tzinfo=UTC)
+    socket = SimpleNamespace(send_json=AsyncMock())
+    manager = SimpleNamespace(
+        broadcast_presence=AsyncMock(), broadcast_to_chat=AsyncMock()
+    )
+    dispatcher = dispatcher_module.MessageDispatcher(manager)
 
-def test_typing_message_format():
-    """Typing messages must include chat_id, user_id, user_name."""
-    msg = {
-        "type": "typing",
-        "chat_id": str(uuid.uuid4()),
-        "user_id": str(uuid.uuid4()),
-        "user_name": "Alice",
-    }
-    required = WS_MESSAGE_REQUIRED_FIELDS["typing"]
-    missing = required - set(msg.keys())
-    assert not missing, f"Typing message missing required fields: {missing}"
+    await dispatcher.dispatch(socket, user, None, {"type": "ping"})
+    await dispatcher.dispatch(
+        socket, user, None, {"type": "heartbeat_ping", "nonce": "a" * 32}
+    )
+    await dispatcher.dispatch(
+        socket, user, None, {"type": "heartbeat_ping", "nonce": "invalid"}
+    )
+    pong, heartbeat_pong, error = [
+        call.args[0] for call in socket.send_json.await_args_list
+    ]
+    assert pong == {"type": "pong"}
+    assert heartbeat_pong == {"type": "heartbeat_pong", "nonce": "a" * 32}
+    assert error["type"] == "error" and error["message"] == "Invalid heartbeat nonce"
 
+    repo = SimpleNamespace(
+        check_participant=AsyncMock(return_value=True),
+        get_chat_type=AsyncMock(return_value="dm"),
+        mark_messages_read=AsyncMock(return_value=(timestamp, 1)),
+    )
+    session = SimpleNamespace(commit=AsyncMock())
 
-def test_read_message_format():
-    """Read receipts are chat-level and carry read_at, not message_id."""
-    msg = {
-        "type": "read",
-        "chat_id": str(uuid.uuid4()),
-        "user_id": str(uuid.uuid4()),
-        "read_at": "2026-03-23T12:00:00+00:00",
-    }
-    required = WS_MESSAGE_REQUIRED_FIELDS["read"]
-    missing = required - set(msg.keys())
-    assert not missing, f"Read message missing required fields: {missing}"
-    assert "message_id" not in msg, "Read receipts are chat-level, not per-message"
+    @asynccontextmanager
+    async def db_session():
+        yield session
 
+    monkeypatch.setattr(dispatcher_module, "async_session", db_session)
+    monkeypatch.setattr(dispatcher_module, "ChatRepository", lambda _: repo)
+    await dispatcher.dispatch(
+        socket, user, None, {"type": "read", "chat_id": str(chat_id)}
+    )
+    read_frame = manager.broadcast_to_chat.await_args.args[1]
+    assert read_frame["chat_id"] == str(chat_id)
+    assert read_frame["user_id"] == str(user.id)
+    assert read_frame["read_at"] == timestamp.isoformat()
+    assert "message_id" not in read_frame
 
-def test_presence_message_format():
-    """Presence messages must include user_id and active (boolean)."""
-    msg = {
-        "type": "presence",
-        "user_id": str(uuid.uuid4()),
-        "active": True,
-        "last_seen": "2026-03-23T12:00:00+00:00",
-    }
-    required = WS_MESSAGE_REQUIRED_FIELDS["presence"]
-    missing = required - set(msg.keys())
-    assert not missing, f"Presence message missing required fields: {missing}"
-    assert isinstance(msg["active"], bool), "active must be boolean"
+    typing_manager = SimpleNamespace(broadcast_to_chat=AsyncMock())
+    monkeypatch.setattr(command_module, "ws_manager", typing_manager)
+    maintenance = command_module.ChatMaintenanceService(
+        SimpleNamespace(chats=repo, session=session), None
+    )
+    await maintenance.broadcast_typing(chat_id, user, "en")
+    typing_call = typing_manager.broadcast_to_chat.await_args
+    assert typing_call.kwargs["db_session"] is session
+    assert typing_call.kwargs["exclude_user_id"] == user.id
+    typing_frame = typing_call.args[1]
+    assert typing_frame["chat_id"] == str(chat_id)
+    assert typing_frame["user_id"] == str(user.id)
+    assert typing_frame["user_name"] == "Alice"
 
+    connection_manager = ConnectionManager()
+    connection_manager.send_to_user = AsyncMock(return_value=1)
+    audience_user = uuid.uuid4()
+    monkeypatch.setattr(
+        presence_module,
+        "_get_presence_audience",
+        AsyncMock(return_value=[audience_user]),
+    )
+    assert (
+        await connection_manager.broadcast_presence(
+            user.id, True, timestamp, source="ping", publish=False
+        )
+        == 1
+    )
+    presence_frame = jsonable_encoder(
+        connection_manager.send_to_user.await_args.args[1]
+    )
+    assert presence_frame["user_id"] == str(user.id)
+    assert presence_frame["active"] is True
+    assert presence_frame["last_seen"] == timestamp.isoformat()
 
-def test_new_message_format():
-    """New message events must include chat_id and message object."""
-    msg = {
-        "type": "new_message",
-        "chat_id": str(uuid.uuid4()),
-        "message": {
-            "id": str(uuid.uuid4()),
-            "content": "Hello",
-            "sender_id": str(uuid.uuid4()),
-        },
-    }
-    required = WS_MESSAGE_REQUIRED_FIELDS["new_message"]
-    missing = required - set(msg.keys())
-    assert not missing, f"New message missing required fields: {missing}"
-    assert isinstance(msg["message"], dict), "message must be a dict"
+    message = SimpleNamespace(
+        id=uuid.uuid4(),
+        chat_id=chat_id,
+        sender_id=user.id,
+        content="Hello",
+        created_at=timestamp,
+        read_status=False,
+        read_at=None,
+        edited_at=None,
+        deleted_at=None,
+        sender=None,
+        attachments=[],
+        forwarded_from_name=None,
+    )
+    notification_manager = SimpleNamespace(broadcast_to_chat=AsyncMock())
+    monkeypatch.setattr(notification_module, "ws_manager", notification_manager)
+    monkeypatch.setattr(
+        notification_module, "build_presence_map", AsyncMock(return_value={})
+    )
+    notifications = notification_module.ChatNotificationService(object())
+    await notifications.notify_new_message(message, [user], user)
+    new_message = jsonable_encoder(
+        notification_manager.broadcast_to_chat.await_args.args[1]
+    )
+    assert new_message["chat_id"] == str(chat_id)
+    assert new_message["message"]["id"] == str(message.id)
+    assert new_message["message"]["sender_id"] == str(user.id)
+    assert new_message["message"]["content"] == "Hello"
 
-
-def test_error_message_format():
-    """Error messages must have type=error, detail is optional."""
-    msg = {"type": "error", "detail": "Rate limit exceeded"}
-    required = WS_MESSAGE_REQUIRED_FIELDS["error"]
-    missing = required - set(msg.keys())
-    assert not missing, f"Error message missing required fields: {missing}"
+    frames = [
+        pong,
+        heartbeat_pong,
+        error,
+        read_frame,
+        typing_frame,
+        presence_frame,
+        new_message,
+    ]
+    assert [frame["type"] for frame in frames] == [
+        "pong",
+        "heartbeat_pong",
+        "error",
+        "read",
+        "typing",
+        "presence",
+        "new_message",
+    ]
+    assert {frame["type"] for frame in frames} <= WS_SERVER_MESSAGE_TYPES
+    (pact_output_dir / "ws-backend-frames.json").write_text(
+        json.dumps(frames, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +329,7 @@ BACKEND_WS_PRODUCERS = (
 
 @pytest.mark.parametrize("relative_path", BACKEND_WS_PRODUCERS)
 def test_backend_ws_producers_use_frontend_catalog(relative_path: str):
-    """Every backend WS producer emits only schema-registered frame types."""
+    """Literal backend frame types must appear in the frontend catalog."""
     source_path = REPOSITORY_ROOT / relative_path
     # Parse dictionaries instead of grepping source text: endpoint docstrings
     # legitimately mention inbound commands (for example ``{"type": "ping"}`)
@@ -281,35 +370,37 @@ def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path
 
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
-    """ws-hub accepts transport commands only; REST owns read receipts."""
-    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave"})
+    """ws-hub accepts room commands and a local heartbeat, not server frames."""
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "heartbeat_ping"})
+    assert "heartbeat_pong" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
 
 
+def test_heartbeat_nonce_frames_keep_client_and_server_directions_explicit():
+    """Client ping stays outside the server union; server pong requires nonce."""
+    schema_source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
+    assert _frontend_schema_type(schema_source, "WsClientHeartbeatPingSchema") == (
+        "heartbeat_ping"
+    )
+    assert (
+        _frontend_schema_type(schema_source, "HeartbeatPongSchema") == "heartbeat_pong"
+    )
+    assert "heartbeat_ping" not in WS_SERVER_MESSAGE_TYPES
+    assert "heartbeat_pong" in WS_SERVER_MESSAGE_TYPES
+
+    nonce_field = re.compile(r"(?m)^\s*nonce:\s*HeartbeatNonceSchema,\s*$")
+    for schema_name in ("WsClientHeartbeatPingSchema", "HeartbeatPongSchema"):
+        assert nonce_field.search(
+            _frontend_object_schema_body(schema_source, schema_name)
+        )
+
+
 def test_transport_direction_is_explicitly_split():
-    """REST owns receipts/typing and ws-hub owns the control heartbeat."""
+    """REST owns receipts/typing; ws-hub accepts only local heartbeat pings."""
     assert "read" in WS_SERVER_MESSAGE_TYPES
     hook_source = FRONTEND_WS_HOOK.read_text(encoding="utf-8")
     assert not re.search(r"sendRead|type\s*:\s*['\"]read['\"]", hook_source)
     assert not re.search(
         r"JSON\.stringify\(\{\s*type\s*:\s*['\"]ping['\"]", hook_source
-    )
-
-
-# ---------------------------------------------------------------------------
-# Tests: All required fields present in schema registry
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("msg_type", sorted(WS_SERVER_MESSAGE_TYPES))
-def test_all_message_types_have_field_definitions(msg_type: str):
-    """Every known message type must have required fields defined."""
-    assert msg_type in WS_MESSAGE_REQUIRED_FIELDS, (
-        f"Message type '{msg_type}' is in WS_SERVER_MESSAGE_TYPES but has no "
-        f"entry in WS_MESSAGE_REQUIRED_FIELDS. Add it."
-    )
-    assert "type" in WS_MESSAGE_REQUIRED_FIELDS[msg_type], (
-        f"Every message type must include 'type' in its required fields. "
-        f"'{msg_type}' is missing it."
     )

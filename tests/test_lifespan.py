@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.core.lifespan import (
     _handle_schema_and_extensions,
@@ -20,6 +20,10 @@ from app.core.lifespan import (
     lifespan,
 )
 from app.workers.outbox import OutboxWorker
+
+
+class _MissingVectorError(Exception):
+    sqlstate = "0A000"
 
 
 @pytest.mark.asyncio
@@ -268,10 +272,14 @@ async def test_verify_database_readiness_reads_revision_inside_run_sync() -> Non
 
 @pytest.mark.asyncio
 async def test_handle_schema_and_extensions_disabled() -> None:
-    with patch("app.core.lifespan.settings") as mock_settings:
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+    ):
         mock_settings.auto_create_schema = False
-        # If disabled, function should return early without doing anything
         await _handle_schema_and_extensions()
+
+    mock_engine.begin.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -284,11 +292,14 @@ async def test_handle_schema_and_extensions_pgvector_fail() -> None:
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "testing"
+        mock_settings.semantic_search_enabled = False
 
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
-        # Executing extension creation raises OSError/ConnectionError
-        mock_conn.execute.side_effect = ConnectionError("extension fail")
+        mock_conn.begin_nested = MagicMock()
+        mock_conn.execute.side_effect = DBAPIError(
+            None, None, _MissingVectorError("extension fail")
+        )
 
         mock_begin_context = MagicMock()
         mock_begin_context.__aenter__.return_value = mock_conn
@@ -542,65 +553,68 @@ async def test_periodic_scheduler_loop_jitter_stop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_hours() -> None:
-    # Test cleanup task branch additions for hour 6, hour 2, and normal hour 3
-    mock_task = MagicMock()
-    mock_task.kick = AsyncMock()
+@pytest.mark.parametrize(
+    ("hour", "iterations", "extra_tasks"),
+    [
+        (6, 1, {"cleanup_sessions_task"}),
+        (
+            2,
+            2,
+            {
+                "cleanup_notifications_task",
+                "cleanup_dead_letter_jobs_task",
+                "cleanup_privacy_artifacts_task",
+            },
+        ),
+        (3, 1, set()),
+    ],
+)
+async def test_periodic_scheduler_loop_hours(
+    hour: int, iterations: int, extra_tasks: set[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.tasks import cleanups
 
-    # 1. Test hour 6
+    always = {
+        "cleanup_stories_task",
+        "cleanup_password_reset_tokens_task",
+        "cleanup_email_change_tokens_task",
+        "cleanup_mfa_challenges_task",
+        "refresh_business_gauges_task",
+    }
+    optional = {
+        "cleanup_sessions_task",
+        "cleanup_notifications_task",
+        "cleanup_dead_letter_jobs_task",
+        "cleanup_privacy_artifacts_task",
+    }
+    tasks = {name: MagicMock(kick=AsyncMock()) for name in always | optional}
+    for name, task in tasks.items():
+        monkeypatch.setattr(cleanups, name, task)
+
+    now = datetime.datetime(2026, 7, 4, hour, 0, tzinfo=datetime.UTC)
+    timeouts = []
+
+    async def elapse(awaitable, timeout=None):
+        timeouts.append(timeout)
+        awaitable.close()
+        raise TimeoutError
+
     with (
         patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
         patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
+        patch("asyncio.wait_for", elapse),
+        patch("app.core.lifespan.random.uniform", return_value=0.0),
     ):
-        mock_stop.is_set.side_effect = [False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 6, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), True]
+        mock_stop.is_set.side_effect = [False] * iterations + [True]
+        mock_datetime.now.return_value = now
+        await _periodic_scheduler_loop()
 
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_sessions_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
-
-    # 2. Test already ran this hour (skip branch)
-    with (
-        patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
-        patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
-    ):
-        # Run loop twice: first time it runs tasks, second time it skips because current_key == _last_ran
-        mock_stop.is_set.side_effect = [False, False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 2, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), TimeoutError(), True]
-
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_sessions_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_notifications_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
-
-    # 3. Test normal hour 3 (neither % 6 == 0 nor == 2)
-    with (
-        patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
-        patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
-    ):
-        mock_stop.is_set.side_effect = [False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 3, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), True]
-
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
+    assert timeouts == [0.0] + [3600] * iterations
+    for name, task in tasks.items():
+        if name in always | extra_tasks:
+            task.kick.assert_awaited_once_with()
+        else:
+            task.kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1007,7 +1021,7 @@ async def test_lifespan_edge_cases_coverage() -> None:
             with pytest.raises(RuntimeError, match="DB schema mismatch"):
                 await _verify_database_readiness()
 
-    # 5. pgvector creation failure OSError/ConnectionError in non-production (logs warning, disables semantic_search)
+    # 5. pgvector unavailable with semantic search already disabled
     with (
         patch("app.core.lifespan.settings") as mock_settings,
         patch("app.core.lifespan.engine") as mock_engine,
@@ -1015,10 +1029,14 @@ async def test_lifespan_edge_cases_coverage() -> None:
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "development"
+        mock_settings.semantic_search_enabled = False
         mock_conn = AsyncMock()
         mock_engine.begin.return_value.__aenter__.return_value = mock_conn
         mock_conn.dialect.name = "postgresql"
-        mock_conn.execute.side_effect = ConnectionError("pgvector connection failed")
+        mock_conn.begin_nested = MagicMock()
+        mock_conn.execute.side_effect = DBAPIError(
+            None, None, _MissingVectorError("extension unavailable")
+        )
 
         await _handle_schema_and_extensions()
         mock_flags.disable.assert_called_once_with("semantic_search_enabled")
@@ -1182,14 +1200,23 @@ async def test_prewarm_jwt_public_key_cache_error() -> None:
 async def test_startup_background_workers_partition_disabled() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.ensure_partitions_exist") as ensure_partitions,
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler"
+        ) as start_partition_scheduler,
     ):
         mock_settings.environment = "testing"
         mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = False
-        mock_app = MagicMock()
-        mock_app.state = MagicMock()
+        mock_app = FastAPI()
+        mock_app.state.dishka_container = AsyncMock()
 
         await _startup_background_workers(mock_app)
+
+    assert mock_app.state.background_tasks == set()
+    ensure_partitions.assert_not_awaited()
+    start_partition_scheduler.assert_not_awaited()
+    mock_app.state.dishka_container.get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1258,14 +1285,17 @@ async def test_startup_background_workers_production_env() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_immediate_exit() -> None:
-    from app.core.lifespan import _SCHEDULER_STOP
-
-    _SCHEDULER_STOP.clear()
+async def test_periodic_scheduler_loop_immediate_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler_stop = asyncio.Event()
+    monkeypatch.setattr("app.core.lifespan._SCHEDULER_STOP", scheduler_stop)
 
     orig_wait_for = asyncio.wait_for
+    timeouts = []
 
     async def mock_wait_for(fut, timeout=None):
+        timeouts.append(timeout)
         if timeout == 0.0:
             fut.close()
             raise TimeoutError()
@@ -1274,21 +1304,28 @@ async def test_periodic_scheduler_loop_immediate_exit() -> None:
     with (
         patch("random.uniform", return_value=0.0),
         patch("asyncio.wait_for", mock_wait_for),
+        patch("app.tasks.cleanups.cleanup_stories_task") as cleanup_stories,
     ):
-        _SCHEDULER_STOP.set()
+        cleanup_stories.kick = AsyncMock()
+        scheduler_stop.set()
         await _periodic_scheduler_loop()
+
+    assert timeouts == [0.0]
+    cleanup_stories.kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_all_hours() -> None:
-    from app.core.lifespan import _SCHEDULER_STOP
-
+async def test_periodic_scheduler_loop_all_hours(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _SCHEDULER_STOP = asyncio.Event()
+    monkeypatch.setattr("app.core.lifespan._SCHEDULER_STOP", _SCHEDULER_STOP)
     mock_task = MagicMock()
 
     async def mock_kick():
         _SCHEDULER_STOP.set()
 
-    mock_task.kick = mock_kick
+    mock_task.kick = AsyncMock(side_effect=mock_kick)
 
     mock_dt = MagicMock()
     mock_dt.now.return_value = datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC)
@@ -1322,8 +1359,11 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
+    mock_task.kick.assert_awaited_once_with()
+    assert _SCHEDULER_STOP.is_set()
 
     _SCHEDULER_STOP.clear()
+    mock_task.kick.reset_mock()
     with (
         patch("random.uniform", return_value=0.0),
         patch("asyncio.wait_for", mock_wait_for),
@@ -1339,6 +1379,8 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
+    mock_task.kick.assert_awaited_once_with()
+    assert _SCHEDULER_STOP.is_set()
 
 
 @pytest.mark.asyncio
@@ -1399,6 +1441,52 @@ async def test_lifespan_warm_cache_testing() -> None:
         async with lifespan(app):
             pass
         mock_warm.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_startup_skips_partition_scheduler_without_ddl_authority() -> None:
+    """A runtime login that cannot create tables starts no partition scheduler."""
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    mock_nats = AsyncMock()
+    mock_nats.is_connected = False
+
+    async def container_get_mock(svc_type):
+        from app.core.nats_broker import NatsTaskBroker
+
+        if svc_type == NatsTaskBroker:
+            return mock_nats
+        return MagicMock()
+
+    app.state.dishka_container.get.side_effect = container_get_mock
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch(
+            "app.core.lifespan.ensure_partitions_exist",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_ensure,
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler",
+            new_callable=AsyncMock,
+        ) as mock_scheduler,
+    ):
+        mock_settings.environment = "production"
+        mock_settings.embedded_outbox_worker_enabled = False
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
+        mock_settings.partition_management_enabled = True
+        mock_settings.app_process_role = "worker"
+
+        await _startup_background_workers(app)
+
+        mock_ensure.assert_awaited_once_with()
+        assert not hasattr(app.state, "partition_stopper")
+        mock_scheduler.assert_not_called()
+
+        for task in app.state.background_tasks:
+            task.cancel()
+        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
 
 
 @pytest.mark.asyncio

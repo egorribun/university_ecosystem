@@ -54,7 +54,9 @@ class _PostgresBranchSession:
         return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
 
 
-async def _exercise_two_member_identity_contract() -> None:
+async def _exercise_two_member_identity_contract() -> tuple[
+    UUID | None, list[dict[str, Any]]
+]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
         async with engine.begin() as connection:
@@ -79,13 +81,13 @@ async def _exercise_two_member_identity_contract() -> None:
                 cast(AsyncSession, observed), _CHAT_ID
             )
 
-        if member_id != _FIRST_MEMBER:
-            raise AssertionError("rls_identity_selects_one_ordered_member")
-        if observed.config_calls != [{"uid": str(_FIRST_MEMBER)}]:
-            raise AssertionError("rls_identity_sets_transaction_local_member")
+        return member_id, list(observed.config_calls)
     finally:
         await engine.dispose()
 
 
 def test_message_rls_identity_uses_one_ordered_live_member() -> None:
-    asyncio.run(_exercise_two_member_identity_contract())
+    member_id, config_calls = asyncio.run(_exercise_two_member_identity_contract())
+
+    assert member_id == _FIRST_MEMBER
+    assert config_calls == [{"uid": str(_FIRST_MEMBER)}]

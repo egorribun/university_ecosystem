@@ -1,4 +1,5 @@
 import { storePendingMutation, type PendingMutationRecord } from "@/sw/offline"
+import { currentReplaySessionNonce } from "@/sw/replayCredentialResponder"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 export async function enqueueOfflineMutation(mutation: {
@@ -17,6 +18,8 @@ export async function enqueueOfflineMutation(mutation: {
     payload: mutation.payload,
     headers: mutation.headers,
     category: mutation.category ?? "general",
+    // Bind to the verified session now; an unverifiable session leaves the record held.
+    sessionNonce: currentReplaySessionNonce(),
   }
 
   await storePendingMutation(record)

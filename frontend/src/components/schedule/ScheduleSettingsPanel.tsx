@@ -25,7 +25,7 @@ interface ScheduleSettingsPanelProps {
   onClose: () => void
   weekdayLabels: string[]
   /** Parity selector */
-  currentParity: "odd" | "even"
+  currentParity: "odd" | "even" | null
   setCurrentParity: (p: "odd" | "even") => void
   /** Export grid ref */
   gridRef?: React.RefObject<HTMLElement | null>
@@ -109,7 +109,7 @@ export function ScheduleSettingsPanel({
                   type="button"
                   onClick={handleClose}
                   aria-label={t("common:buttons.close")}
-                  className="flex h-8 w-8 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+                  className="flex h-8 w-8 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <CloseIcon size={16} aria-hidden="true" />
                 </button>
@@ -177,12 +177,18 @@ export function ScheduleSettingsPanel({
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-secondary">
                   {t("schedule:parity.label")}
                 </h3>
+                {currentParity === null && (
+                  <p role="status" className="mb-2 text-sm text-text-secondary">
+                    {t("schedule:parity.all")}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   {(["odd", "even"] as const).map((p) => (
                     <button
                       key={p}
                       type="button"
                       onClick={() => setCurrentParity(p)}
+                      aria-pressed={currentParity === p}
                       className={cn(
                         "relative flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-fast overflow-hidden",
                         currentParity === p
@@ -240,7 +246,7 @@ export function ScheduleSettingsPanel({
                         className={cn(
                           "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all duration-fast",
                           isHidden
-                            ? "opacity-50 text-text-secondary bg-surface/(--opacity-dim)"
+                            ? "opacity-50 text-text-secondary bg-surface/[calc(var(--opacity-dim)*100%)]"
                             : "sched-settings-btn text-text-primary"
                         )}
                         aria-pressed={!isHidden}
@@ -270,7 +276,7 @@ export function ScheduleSettingsPanel({
                 </h3>
                 <div className="sched-settings-group overflow-hidden rounded-xl">
                   {/* Compact mode */}
-                  <label className="flex cursor-pointer items-center justify-between px-4 py-3.5 transition-colors hover:bg-surface-elevated/(--opacity-dim)">
+                  <label className="flex cursor-pointer items-center justify-between px-4 py-3.5 transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)]">
                     <span className="text-sm font-medium text-text-primary">
                       {t("schedule:settings.compactMode")}
                     </span>
@@ -282,7 +288,7 @@ export function ScheduleSettingsPanel({
                     />
                   </label>
                   {/* Show past lessons */}
-                  <label className="flex cursor-pointer items-center justify-between px-4 py-3.5 transition-colors hover:bg-surface-elevated/(--opacity-dim)">
+                  <label className="flex cursor-pointer items-center justify-between px-4 py-3.5 transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)]">
                     <span className="text-sm font-medium text-text-primary">
                       {t("schedule:settings.showPast")}
                     </span>

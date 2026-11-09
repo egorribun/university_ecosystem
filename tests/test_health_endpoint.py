@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException, status
 
 from app.api import health
+from app.deps.cache import MemoryCache, RedisCache, TieredCache
 from app.services.storage import StaticFSStorage, StorageBackend
 from app.utils import migrations
 
@@ -50,9 +51,10 @@ class _FailingSession:
 
 
 def _assert_latency_present(data: dict, key: str) -> None:
-    assert key in data
-    assert isinstance(data[key], int | float)
-    assert 0 <= data[key] < 60_000
+    assert key not in data
+    internal_payload = health._health_cache["payload"]
+    assert isinstance(internal_payload[key], int | float)
+    assert 0 <= internal_payload[key] < 60_000
 
 
 @pytest.fixture(autouse=True)
@@ -131,6 +133,33 @@ async def test_healthcheck_cache_failure(async_client, monkeypatch):
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["cache"] == "error"
     _assert_latency_present(data, "cache_latency_ms")
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_tiered_cache_reports_shared_layer_failure(
+    async_client, monkeypatch
+):
+    redis_client = SimpleNamespace(
+        set=AsyncMock(side_effect=ConnectionError("redis unavailable")),
+        get=AsyncMock(side_effect=ConnectionError("redis unavailable")),
+        delete=AsyncMock(side_effect=ConnectionError("redis unavailable")),
+    )
+    shared_cache = RedisCache(url="redis://health-test", default_ttl=5)
+    monkeypatch.setattr(shared_cache, "_client", redis_client)
+    monkeypatch.setattr(
+        health,
+        "get_cache",
+        lambda: TieredCache(MemoryCache(), shared_cache),
+    )
+
+    response = await async_client.get("http://testserver/healthz")
+    data = response.json()
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert data["cache"] == "error"
+    redis_client.set.assert_awaited_once()
+    redis_client.get.assert_awaited_once()
+    redis_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -215,6 +244,71 @@ async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_healthcheck_storage_probe_recovers_errors_and_caps_success_cache(
+    async_client, monkeypatch
+):
+    monkeypatch.setattr(health.settings, "health_storage_probe_enabled", True)
+    monkeypatch.setattr(
+        health.settings, "health_storage_probe_min_interval_seconds", 3600.0
+    )
+
+    class _Clock:
+        now = 100.0
+
+    clock = _Clock()
+    monkeypatch.setattr(
+        health,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now, perf_counter=lambda: clock.now),
+    )
+    outcomes = iter(("error", "ok", "error"))
+    probed_statuses: list[str] = []
+
+    async def _storage_probe(_backend):
+        result = next(outcomes)
+        probed_statuses.append(result)
+        return result
+
+    monkeypatch.setattr(health, "_get_storage_backend", lambda: object())
+    monkeypatch.setattr(health, "_write_delete_storage_probe", _storage_probe)
+
+    first = await async_client.get("http://testserver/healthz")
+    assert first.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert first.json()["storage"] == "error"
+    assert probed_statuses == ["error"]
+
+    clock.now = 104.999
+    before_error_expiry = await async_client.get("http://testserver/healthz")
+    assert before_error_expiry.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert before_error_expiry.json()["storage"] == "error"
+    assert probed_statuses == ["error"]
+
+    clock.now = 105.0
+    after_error_expiry = await async_client.get("http://testserver/healthz")
+    assert after_error_expiry.status_code == status.HTTP_200_OK
+    assert after_error_expiry.json()["storage"] == "ok"
+    assert probed_statuses == ["error", "ok"]
+
+    clock.now = 160.0
+    before_success_expiry = await async_client.get("http://testserver/healthz")
+    assert before_success_expiry.status_code == status.HTTP_200_OK
+    assert before_success_expiry.json()["storage"] == "ok"
+    assert probed_statuses == ["error", "ok"]
+
+    clock.now = 164.999
+    before_outer_cache_expiry = await async_client.get("http://testserver/healthz")
+    assert before_outer_cache_expiry.status_code == status.HTTP_200_OK
+    assert before_outer_cache_expiry.json()["storage"] == "ok"
+    assert probed_statuses == ["error", "ok"]
+
+    clock.now = 165.0
+    after_success_expiry = await async_client.get("http://testserver/healthz")
+    assert after_success_expiry.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert after_success_expiry.json()["storage"] == "error"
+    assert probed_statuses == ["error", "ok", "error"]
+
+
+@pytest.mark.asyncio
 async def test_healthcheck_notification_queue_failure(async_client, monkeypatch):
     async def _failing_queue_check(conn):
         raise RuntimeError("queue unavailable")
@@ -239,7 +333,7 @@ async def test_healthcheck_notification_queue_missing_table(async_client, monkey
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_reports_migration_versions_on_drift(
+async def test_healthcheck_detects_migration_drift_without_exposing_versions(
     async_client, monkeypatch
 ):
     async def _mock_migrations_are_current(
@@ -257,8 +351,10 @@ async def test_healthcheck_reports_migration_versions_on_drift(
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["db"] == "error"
     assert data["db_migrations"] == "error"
-    assert data["db_migrations_current"] == ["current"]
-    assert data["db_migrations_expected"] == ["expected"]
+    assert "db_migrations_current" not in data
+    assert "db_migrations_expected" not in data
+    assert health._health_cache["payload"]["db_migrations_current"] == ["current"]
+    assert health._health_cache["payload"]["db_migrations_expected"] == ["expected"]
     _assert_latency_present(data, "db_latency_ms")
 
 

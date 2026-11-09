@@ -25,7 +25,9 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"JWKS_URL", "WS_SEND_BUFFER_SIZE", "WS_BROADCAST_BUFFER_SIZE",
 		"WS_BROADCAST_WORKERS", "WS_HUB_INTERNAL_SECRET", "INTERNAL_AUTH_TOKEN", "WS_HUB_MAX_CLIENTS",
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
-		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB",
+		"WS_REVOCATION_REPLAY_WINDOW_SECONDS",
+		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB", "WS_HUB_METRICS_ADDR",
+		"WS_UPGRADE_RATE_PER_MINUTE",
 	}
 	// Clear env at test start (each Unsetenv is benign if var already unset).
 	for _, env := range envVars {
@@ -36,6 +38,9 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	cfg, err := LoadConfig()
 	require.NoError(t, err)
 	require.Equal(t, "8081", cfg.Port)
+	// AUD-438: metrics are scrape-only and bind to loopback unless the
+	// deployment explicitly opts in to a pod-network listener.
+	require.Equal(t, "127.0.0.1:9108", cfg.MetricsAddr)
 	require.Equal(t, "nats://nats:4222", cfg.NatsURL)
 	require.Equal(t, "", cfg.NatsUser)
 	require.Equal(t, "", cfg.NatsPassword)
@@ -55,9 +60,11 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, "", cfg.InternalSecret)
 	require.Equal(t, 10000, cfg.MaxClients)
+	require.Equal(t, 120, cfg.WSUpgradeRatePerMinute)
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
+	require.Equal(t, 3600, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, "redis:6379", cfg.RedisURL)
 	require.Equal(t, "", cfg.RedisPassword)
 	require.Equal(t, 0, cfg.RedisDB)
@@ -84,6 +91,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "25.5")
 	t.Setenv("WS_CLIENT_MSG_BURST", "50")
 	t.Setenv("WS_TICKET_TTL_SECONDS", "30")
+	t.Setenv("WS_REVOCATION_REPLAY_WINDOW_SECONDS", "120")
 	t.Setenv("REDIS_URL", "redis-prod:6379")
 	t.Setenv("REDIS_PASSWORD", "redissecret")
 	t.Setenv("REDIS_DB", "2")
@@ -114,6 +122,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 25.5, cfg.ClientMsgRateLimit)
 	require.Equal(t, 50, cfg.ClientMsgRateBurst)
 	require.Equal(t, 30, cfg.TicketTTLSeconds)
+	require.Equal(t, 120, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, "redis-prod:6379", cfg.RedisURL)
 	require.Equal(t, "redissecret", cfg.RedisPassword)
 	require.Equal(t, 2, cfg.RedisDB)
@@ -133,6 +142,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "invalid-float")
 	t.Setenv("WS_CLIENT_MSG_BURST", "invalid-int")
 	t.Setenv("WS_TICKET_TTL_SECONDS", "invalid-int")
+	t.Setenv("WS_REVOCATION_REPLAY_WINDOW_SECONDS", "invalid-int")
 	t.Setenv("REDIS_DB", "invalid-int")
 	t.Setenv("ENABLE_JETSTREAM", "invalid-bool")
 
@@ -141,9 +151,11 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 256, cfg.SendBufferSize)
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, 10000, cfg.MaxClients)
+	require.Equal(t, 120, cfg.WSUpgradeRatePerMinute)
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
+	require.Equal(t, 3600, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, 0, cfg.RedisDB)
 	require.True(t, cfg.EnableJetStream)
 
@@ -151,4 +163,11 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	cfg, err = LoadConfig()
 	require.NoError(t, err)
 	require.False(t, cfg.EnableJetStream)
+}
+
+func TestLoadConfigReadsTheUpgradeRateOverride(t *testing.T) {
+	t.Setenv("WS_UPGRADE_RATE_PER_MINUTE", "600")
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, 600, cfg.WSUpgradeRatePerMinute)
 }

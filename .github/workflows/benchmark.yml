@@ -52,11 +52,11 @@ jobs:
           mkdir -p artifacts/performance/advisory/go
           (
             cd services/gateway
-            go test -bench=. -run=^$ ./...
+            go test -bench=. -run='^$' ./...
           ) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
           (
             cd services/ws-hub
-            go test -bench=. -run=^$ ./...
+            go test -bench=. -run='^$' ./...
           ) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
           cat \
             artifacts/performance/advisory/go/gateway-bench.txt \
@@ -88,7 +88,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -419,6 +419,11 @@ jobs:
           EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
           EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
           ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
+          CAPTURED_BASE_COMPARATOR: ${{ steps.capture_ws_hub.outputs.base_comparator }}
+          CAPTURED_PYTHON_BIN: ${{ steps.capture_ws_hub.outputs.python_bin }}
+          CAPTURED_COMPARATOR_SHA256: ${{ steps.capture_ws_hub.outputs.base_comparator_sha256 }}
+          CAPTURED_BASE_SHA: ${{ steps.capture_ws_hub.outputs.base_sha }}
+          CAPTURED_CANDIDATE_SHA: ${{ steps.capture_ws_hub.outputs.candidate_sha }}
           CAPTURE_HELPER_PATH: ${{ steps.capture_ws_hub.outputs.selected_capture_helper }}
           HELPER_ORIGIN: ${{ steps.capture_ws_hub.outputs.capture_helper_origin }}
           HELPER_COMMIT: ${{ steps.capture_ws_hub.outputs.capture_helper_commit }}
@@ -430,7 +435,8 @@ jobs:
           HELPER_SIZE_BYTES: ${{ steps.capture_ws_hub.outputs.capture_helper_size_bytes }}
         run: |
           set -euo pipefail
-          ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
+          export -n CAPTURED_BASE_COMPARATOR CAPTURED_PYTHON_BIN \
+            CAPTURED_COMPARATOR_SHA256 CAPTURED_BASE_SHA CAPTURED_CANDIDATE_SHA
           case "$EVENT_NAME" in
             pull_request)
               EXPECTED_SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
@@ -514,9 +520,9 @@ jobs:
             --argjson expected_parents "$EXPECTED_PARENTS_JSON" \
             '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and (if $event == "pull_request" then .tested_commit_parents == [$base_sha, $source_head_sha] else .source_head_sha == .tested_commit_sha end))' \
             "$ARTIFACT_ROOT/provenance.json" >/dev/null
-          BASE_COMPARATOR="${{ steps.capture_ws_hub.outputs.base_comparator }}"
-          PYTHON_BIN="${{ steps.capture_ws_hub.outputs.python_bin }}"
-          EXPECTED_COMPARATOR_SHA256="${{ steps.capture_ws_hub.outputs.base_comparator_sha256 }}"
+          BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"
+          PYTHON_BIN="$CAPTURED_PYTHON_BIN"
+          EXPECTED_COMPARATOR_SHA256="$CAPTURED_COMPARATOR_SHA256"
           if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
             echo "Python interpreter must remain an absolute executable" >&2
             exit 2
@@ -535,8 +541,8 @@ jobs:
             --base-dir "$ARTIFACT_ROOT/base" \
             --candidate-dir "$ARTIFACT_ROOT/candidate" \
             --expected-pairs 12 \
-            --base-revision "${{ steps.capture_ws_hub.outputs.base_sha }}" \
-            --candidate-revision "${{ steps.capture_ws_hub.outputs.candidate_sha }}" \
+            --base-revision "$CAPTURED_BASE_SHA" \
+            --candidate-revision "$CAPTURED_CANDIDATE_SHA" \
             --toolchain-json "$ARTIFACT_ROOT/toolchain.json" \
             --output "$ARTIFACT_ROOT/comparison.json"
 
@@ -573,7 +579,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -829,9 +835,15 @@ jobs:
           EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
           EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
           ARTIFACT_ROOT: ${{ steps.capture_rust_native.outputs.artifact_root }}
+          CAPTURED_BASE_COMPARATOR: ${{ steps.capture_rust_native.outputs.base_comparator }}
+          CAPTURED_PYTHON_BIN: ${{ steps.capture_rust_native.outputs.python_bin }}
+          CAPTURED_COMPARATOR_SHA256: ${{ steps.capture_rust_native.outputs.base_comparator_sha256 }}
+          CAPTURED_BASE_SHA: ${{ steps.capture_rust_native.outputs.base_sha }}
+          CAPTURED_CANDIDATE_SHA: ${{ steps.capture_rust_native.outputs.candidate_sha }}
         run: |
           set -euo pipefail
-          ARTIFACT_ROOT="${{ steps.capture_rust_native.outputs.artifact_root }}"
+          export -n CAPTURED_BASE_COMPARATOR CAPTURED_PYTHON_BIN \
+            CAPTURED_COMPARATOR_SHA256 CAPTURED_BASE_SHA CAPTURED_CANDIDATE_SHA
           case "$EVENT_NAME" in
             pull_request)
               EXPECTED_SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
@@ -888,10 +900,9 @@ jobs:
             --argjson expected_parents "$EXPECTED_PARENTS_JSON" \
             '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and (if $event == "pull_request" then .tested_commit_parents == [$base_sha, $source_head_sha] else .source_head_sha == .tested_commit_sha end))' \
             "$ARTIFACT_ROOT/provenance.json" >/dev/null
-          BASE_COMPARATOR="${{ steps.capture_rust_native.outputs.base_comparator }}"
-          PYTHON_BIN="${{ steps.capture_rust_native.outputs.python_bin }}"
-          EXPECTED_COMPARATOR_SHA256="${{ steps.capture_rust_native.outputs.base_comparator_sha256 }}"
-          ARTIFACT_ROOT="${{ steps.capture_rust_native.outputs.artifact_root }}"
+          BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"
+          PYTHON_BIN="$CAPTURED_PYTHON_BIN"
+          EXPECTED_COMPARATOR_SHA256="$CAPTURED_COMPARATOR_SHA256"
           if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
             echo "Python interpreter must remain an absolute executable" >&2
             exit 2
@@ -910,8 +921,8 @@ jobs:
             --base-dir "$ARTIFACT_ROOT/base" \
             --candidate-dir "$ARTIFACT_ROOT/candidate" \
             --expected-pairs 12 \
-            --base-revision "${{ steps.capture_rust_native.outputs.base_sha }}" \
-            --candidate-revision "${{ steps.capture_rust_native.outputs.candidate_sha }}" \
+            --base-revision "$CAPTURED_BASE_SHA" \
+            --candidate-revision "$CAPTURED_CANDIDATE_SHA" \
             --toolchain-json "$ARTIFACT_ROOT/toolchain.json" \
             --output "$ARTIFACT_ROOT/comparison.json"
 

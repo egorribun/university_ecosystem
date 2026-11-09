@@ -105,7 +105,9 @@ def _auth_harness(
     monkeypatch.setattr(
         auth_module,
         "settings",
-        SimpleNamespace(internal_hmac_secret=secret, environment=environment),
+        SimpleNamespace(
+            mvp_tenant_id=None, internal_hmac_secret=secret, environment=environment
+        ),
     )
 
     return SimpleNamespace(
@@ -245,3 +247,78 @@ async def test_development_without_shared_secret_keeps_configured_compatibility(
     assert result is harness.user
     harness.revocation_factory.assert_awaited_once()
     harness.redis_service.get_session.assert_awaited_once_with(session_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("claim", ["missing", "foreign"])
+async def test_operator_tenant_rejects_authenticated_wrong_gateway_claim_before_io(
+    monkeypatch: pytest.MonkeyPatch, claim: str
+) -> None:
+    tenant = uuid4()
+    user_id, session_id = str(uuid4()), "operator-tenant-proof"
+    asserted = "" if claim == "missing" else str(uuid4())
+    headers = _gateway_headers(
+        user_id,
+        session_id,
+        tenant_id=asserted,
+        signature=_independent_gateway_signature(
+            _HMAC_SECRET, user_id, session_id, asserted
+        ),
+    )
+    harness = _auth_harness(
+        monkeypatch, headers, secret=_HMAC_SECRET, environment="production"
+    )
+    auth_module.settings.mvp_tenant_id = tenant
+
+    with pytest.raises(HTTPException) as rejected:
+        await auth_module._resolve_current_user(
+            harness.request, None, harness.db, harness.redis_service
+        )
+
+    assert rejected.value.status_code == status.HTTP_401_UNAUTHORIZED
+    harness.revocation_factory.assert_not_awaited()
+    harness.redis_service.get_session.assert_not_awaited()
+    harness.db.get.assert_not_awaited()
+    harness.repository_factory.assert_not_called()
+    assert not hasattr(harness.request.state, "active_session")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored", ["configured", "foreign", "missing"])
+async def test_operator_tenant_checks_stored_user_even_with_valid_gateway_proof(
+    monkeypatch: pytest.MonkeyPatch, stored: str
+) -> None:
+    tenant = uuid4()
+    user_id, session_id = str(uuid4()), "stored-tenant-proof"
+    headers = _gateway_headers(
+        user_id,
+        session_id,
+        tenant_id=str(tenant),
+        signature=_independent_gateway_signature(
+            _HMAC_SECRET, user_id, session_id, str(tenant)
+        ),
+    )
+    harness = _auth_harness(
+        monkeypatch, headers, secret=_HMAC_SECRET, environment="production"
+    )
+    auth_module.settings.mvp_tenant_id = tenant
+    harness.user.tenant_id = (
+        tenant if stored == "configured" else uuid4() if stored == "foreign" else None
+    )
+
+    if stored == "configured":
+        result = await auth_module._resolve_current_user(
+            harness.request, None, harness.db, harness.redis_service
+        )
+        assert result is harness.user
+        assert harness.request.state.active_session.user_id == harness.user.id
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await auth_module._resolve_current_user(
+                harness.request, None, harness.db, harness.redis_service
+            )
+        assert rejected.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert not hasattr(harness.request.state, "active_session")
+    harness.revocation_factory.assert_awaited_once()
+    harness.redis_service.get_session.assert_awaited_once_with(session_id)
+    assert harness.db.get.await_count == 2

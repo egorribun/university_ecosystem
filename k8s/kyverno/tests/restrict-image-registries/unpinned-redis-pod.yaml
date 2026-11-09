@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpinned-redis-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: dependency
+      image: docker.io/redis:7.4.11-alpine

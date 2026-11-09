@@ -15,6 +15,62 @@ const focusTrapUrl = new URL("../../src/hooks/useFocusTrap.ts", import.meta.url)
 const appShellUrl = new URL("../../src/contexts/AppShellContext.tsx", import.meta.url)
 const visibilityFixtureUrl = new URL("./story-visibility-fixtures.ts", import.meta.url)
 
+function assertControlledVisibilityProof(spec, dashboardStories) {
+  const controlledStart = spec.search(
+    /storyVisibilityTest\(\s*["']a seeded story preserves elapsed playback across a clock-controlled hidden tab["']/u
+  )
+  assert.ok(controlledStart >= 0, "live acceptance includes clock-controlled visibility coverage")
+  const controlled = spec.slice(controlledStart)
+
+  assert.match(controlled, /await page\.emulateMedia\(\{ reducedMotion: ["']no-preference["'] \}\)/u)
+  assert.match(controlled, /await page\.clock\.install\(\)[\s\S]*?await loginAs\(page/u)
+  assert.match(controlled, /await page\.clock\.pauseAt\([\s\S]*?await openAtKnownProgress\(\)/u)
+  assert.match(controlled, /await page\.clock\.runFor\(VISIBLE_WARMUP_MS\)/u)
+  assert.match(controlled, /toBeGreaterThan\(15\)[\s\S]*?toBeLessThan\(25\)/u)
+  assert.match(controlled, /const backgroundPage = await openStoryBackgroundTab\(page\)/u)
+  assert.match(controlled, /await backgroundPage\.bringToFront\(\)/u)
+  assert.match(controlled, /document\.visibilityState\)[\s\S]*?toBe\(["']hidden["']\)/u)
+  assert.match(controlled, /new MutationObserver\(/u)
+  assert.match(controlled, /attributeFilter:\s*\[["']aria-valuenow["']\]/u)
+  assert.match(controlled, /observer\.takeRecords\(\)/u)
+  assert.match(
+    controlled,
+    /for \(let checkpoint = 0; checkpoint < 2; checkpoint \+= 1\)[\s\S]*?await page\.clock\.fastForward\(STORY_HIDDEN_DURATION_MS \/ 2\)[\s\S]*?expect\(await readProgress\(\)\)\.toBe\(pausedProgress\)[\s\S]*?observation\.read\(\)[\s\S]*?expect\(hiddenProgressChanges\)\.toBe\(0\)/u
+  )
+  assert.match(controlled, /observation\.disconnect\(\), progressObservation\)/u)
+  assert.match(controlled, /await progressObservation\.dispose\(\)/u)
+  assert.match(controlled, /await page\.bringToFront\(\)[\s\S]*?toBe\(["']visible["']\)/u)
+  assert.match(controlled, /await page\.clock\.runFor\(VISIBLE_RESUME_MS\)/u)
+  assert.match(controlled, /toBeGreaterThan\(pausedProgress \+ MIN_RESUMED_ADVANCE\)/u)
+  assert.match(controlled, /toBeLessThan\(pausedProgress \+ MAX_RESUMED_ADVANCE\)/u)
+  assert.match(controlled, /document\.addEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u)
+  assert.match(controlled, /document\.visibilityState === ["']hidden["']\) event\.stopImmediatePropagation\(\)/u)
+  assert.match(controlled, /await page\.clock\.fastForward\(1_000\)/u)
+  assert.match(controlled, /toBeGreaterThan\(unpausedProgress \+ 10\)/u)
+  assert.match(controlled, /document\.removeEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u)
+  assert.match(controlled, /finally \{[\s\S]*?removeBlocker\(\), removeVisibilityBlocker\)/u)
+  assert.match(controlled, /await removeVisibilityBlocker\.dispose\(\)/u)
+  assert.match(controlled, /await page\.clock\.resume\(\)/u)
+
+  const readNumber = (name, source) => {
+    const match = source.match(new RegExp(`const ${name} = ([\\d_]+)`, "u"))
+    assert.ok(match, `missing ${name}`)
+    return Number(match[1].replaceAll("_", ""))
+  }
+  const autoAdvance = readNumber("STORY_AUTO_ADVANCE_MS", dashboardStories)
+  const hiddenDuration = readNumber("STORY_HIDDEN_DURATION_MS", controlled)
+  const warmup = readNumber("VISIBLE_WARMUP_MS", controlled)
+  const resume = readNumber("VISIBLE_RESUME_MS", controlled)
+  const minimumAdvance = readNumber("MIN_RESUMED_ADVANCE", controlled)
+  const maximumAdvance = readNumber("MAX_RESUMED_ADVANCE", controlled)
+  assert.ok(hiddenDuration > autoAdvance, "hidden interval exceeds a whole story")
+  assert.ok((warmup / autoAdvance) * 100 > 15 && (warmup / autoAdvance) * 100 < 25)
+  assert.ok((resume / autoAdvance) * 100 > minimumAdvance)
+  assert.ok((resume / autoAdvance) * 100 < maximumAdvance)
+  assert.ok(minimumAdvance > 0 && maximumAdvance < 15, "resume bounds reject reset progress")
+  assert.ok((1_000 / autoAdvance) * 100 > 10, "negative control can exceed its threshold")
+}
+
 test("story viewer live acceptance checks seeded keyboard trap and focus cleanup", async () => {
   const [spec, config, seed, viewer, dashboardStories, focusTrap, appShell, visibilityFixture] =
     await Promise.all([
@@ -134,5 +190,64 @@ test("story viewer live acceptance checks seeded keyboard trap and focus cleanup
     Number(hiddenDurationMatch[1].replaceAll("_", "")) > Number(autoAdvanceMatch[1]),
     "the tab remains hidden longer than one story's auto-advance interval"
   )
+  assertControlledVisibilityProof(spec, dashboardStories)
   assert.doesNotMatch(spec, /randomUUID|freshPassword|request\.(?:post|put|patch|delete)|\.fill\(/u)
+})
+
+test("clock-controlled visibility contract rejects removed pause and resume oracles", async () => {
+  const [spec, dashboardStories] = await Promise.all([
+    readFile(specUrl, "utf8"),
+    readFile(dashboardStoriesUrl, "utf8"),
+  ])
+  const controlledStart = spec.indexOf(
+    '"a seeded story preserves elapsed playback across a clock-controlled hidden tab"'
+  )
+  assert.ok(controlledStart >= 0)
+  const prefix = spec.slice(0, controlledStart)
+  const controlled = spec.slice(controlledStart)
+  const mutations = [
+    [
+      "hidden progress equality",
+      "expect(await readProgress()).toBe(pausedProgress)",
+      "expect(await readProgress()).toBeGreaterThanOrEqual(pausedProgress)",
+    ],
+    [
+      "hidden clock advancement",
+      "await page.clock.fastForward(STORY_HIDDEN_DURATION_MS / 2)",
+      "await page.waitForTimeout(STORY_HIDDEN_DURATION_MS / 2)",
+    ],
+    [
+      "hidden progress mutation observer",
+      "expect(hiddenProgressChanges).toBe(0)",
+      "expect(hiddenProgressChanges).toBeGreaterThanOrEqual(0)",
+    ],
+    [
+      "resumed lower bound",
+      "toBeGreaterThan(pausedProgress + MIN_RESUMED_ADVANCE)",
+      "toBeGreaterThan(pausedProgress)",
+    ],
+    [
+      "resumed upper bound",
+      "toBeLessThan(pausedProgress + MAX_RESUMED_ADVANCE)",
+      "toBeLessThan(100)",
+    ],
+    [
+      "broken-pause negative control",
+      "toBeGreaterThan(unpausedProgress + 10)",
+      "toBeGreaterThan(unpausedProgress - 10)",
+    ],
+    [
+      "negative-control listener cleanup",
+      "await page.evaluate((removeBlocker) => removeBlocker(), removeVisibilityBlocker)",
+      "await removeVisibilityBlocker.dispose()",
+    ],
+  ]
+  for (const [label, before, after] of mutations) {
+    assert.ok(controlled.includes(before), `${label} mutation must change the controlled case`)
+    assert.throws(
+      () => assertControlledVisibilityProof(prefix + controlled.replace(before, after), dashboardStories),
+      { name: "AssertionError" },
+      `${label} mutation must be rejected`
+    )
+  }
 })

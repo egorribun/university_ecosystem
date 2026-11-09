@@ -507,9 +507,9 @@ describe("InstallPrompt mutation contracts", () => {
   it("keeps feedback severity styles and icons distinct", async () => {
     render(<InstallPrompt />)
     const severities = [
-      ["error", "bg-error-bg/(--opacity-dim)", "lucide-triangle-alert"],
-      ["success", "bg-success-bg/(--opacity-dim)", "lucide-circle-check"],
-      ["info", "bg-brand/(--opacity-subtle)", "lucide-circle-check"],
+      ["error", "bg-error-bg/[calc(var(--opacity-dim)*100%)]", "lucide-triangle-alert"],
+      ["success", "bg-success-bg/[calc(var(--opacity-dim)*100%)]", "lucide-circle-check"],
+      ["info", "bg-brand/[calc(var(--opacity-subtle)*100%)]", "lucide-circle-check"],
     ] as const
 
     for (const [severity, expectedClass, iconClass] of severities) {

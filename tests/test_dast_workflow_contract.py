@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 import shlex
+import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +18,7 @@ EMPTY_TARGET_ERROR = (
     "No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
 )
 TRUSTED_REF_ERROR = "DAST scans must run from the protected main ref."
+pytest_plugins = ("pytester",)
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -24,7 +29,9 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     return triggers
 
 
-def _assert_fail_closed_target_preflight(preflight_script: str) -> None:
+def _assert_fail_closed_target_preflight(
+    preflight_script: str, *, private_nuclei: bool = False
+) -> None:
     """Assert that missing targets fail before a scan can receive one."""
 
     shell_lines = [
@@ -32,13 +39,22 @@ def _assert_fail_closed_target_preflight(preflight_script: str) -> None:
         for line in preflight_script.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
-    assert shell_lines == [
-        'echo "::add-mask::$TARGET_URL"',
-        'if [ -z "$TARGET_URL" ]; then',
-        f'echo "::error::{EMPTY_TARGET_ERROR}"',
-        "exit 1",
-        "fi",
-    ]
+    if private_nuclei:
+        expected = [
+            "set -euo pipefail",
+            "python3 -m scripts.quality.dast_privacy prepare-target \\",
+            '--output "$RUNNER_TEMP/nuclei-target.txt"',
+        ]
+    else:
+        expected = [
+            'if [ -z "$TARGET_URL" ]; then',
+            f'echo "::error::{EMPTY_TARGET_ERROR}"',
+            "exit 1",
+            "fi",
+            "python3 -m scripts.quality.dast_privacy validate-target",
+            'echo "::add-mask::$TARGET_URL"',
+        ]
+    assert shell_lines == expected
 
 
 def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
@@ -68,11 +84,21 @@ def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
             for step in job["steps"]
             if step.get("uses", "").startswith("actions/checkout@")
         )
-        assert checkout["with"]["ref"] == "main"
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        expected_sparse_paths = (
+            {".github", "scripts/quality"}
+            if job_name == "nuclei"
+            else {".github/workflows/dast.yml", ".zap", "scripts/quality"}
+        )
+        assert set(checkout["with"]["sparse-checkout"].split()) == expected_sparse_paths
+        assert checkout["with"]["persist-credentials"] is False
+        assert checkout["with"]["sparse-checkout-cone-mode"] is False
+        if job_name == "zap":
+            assert ".zap" in checkout["with"]["sparse-checkout"].split()
 
 
 def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
-    """Both scanners mask and reject absent configured targets before scanning."""
+    """Both scanners reject absent targets; ZAP masks configured targets."""
 
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
     scan_steps = {
@@ -90,9 +116,214 @@ def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
             index for index, step in enumerate(steps) if step.get("name") == scan_name
         )
         assert preflight_index < scan_index
-        assert preflight["env"] == {"TARGET_URL": TARGET_EXPRESSION}
+        expected_env = (
+            {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
+            if job_name == "nuclei"
+            else {"TARGET_URL": TARGET_EXPRESSION}
+        )
+        assert preflight["env"] == expected_env
         assert preflight.get("continue-on-error", False) is False
-        _assert_fail_closed_target_preflight(preflight["run"])
+        _assert_fail_closed_target_preflight(
+            preflight["run"], private_nuclei=job_name == "nuclei"
+        )
+
+
+@pytest.mark.parametrize(
+    ("target_url", "expected_exit", "expected_events", "expected_error"),
+    [
+        (
+            "https://stage.example.test/private-area",
+            0,
+            ["VALIDATOR_CALLED", "TARGET_MASK_REGISTERED"],
+            None,
+        ),
+        (
+            "ftp://stage.example.test/private-area",
+            1,
+            ["VALIDATOR_CALLED"],
+            "DAST target must be an HTTP(S) URL",
+        ),
+        ("", 1, [], f"::error::{EMPTY_TARGET_ERROR}"),
+    ],
+)
+def test_zap_target_preflight_executes_mask_and_fail_closed_validation(
+    tmp_path: Path,
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    target_url: str,
+    expected_exit: int,
+    expected_events: list[str],
+    expected_error: str | None,
+) -> None:
+    """The real ZAP preflight validates before masking without logging its target."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["zap"]["steps"]
+        if item.get("name") == "Validate ZAP target URL"
+    )
+    monkeypatch.chdir(REPOSITORY_ROOT)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("TARGET_URL", target_url)
+    monkeypatch.setenv("TEST_GATE_PYTHON", Path(sys.executable).as_posix())
+    step_log = tmp_path / "zap-preflight-events.log"
+    monkeypatch.setenv("TEST_STEP_LOG", step_log.as_posix())
+    script = tmp_path / "zap-target-preflight.sh"
+    script.write_text(
+        "\n".join(
+            (
+                "echo() {",
+                '  case "${1-}" in',
+                '    "::add-mask::"*)',
+                '      if [ "$1" = "::add-mask::$TARGET_URL" ]; then',
+                "        printf '%s\\n' 'TARGET_MASK_REGISTERED' >> \"$TEST_STEP_LOG\"",
+                "      else",
+                "        printf '%s\\n' 'TARGET_MASK_MISMATCH' >> \"$TEST_STEP_LOG\"",
+                "      fi",
+                "      ;;",
+                '    *) builtin echo "$@" ;;',
+                "  esac",
+                "}",
+                "python3() {",
+                "  printf '%s\\n' 'VALIDATOR_CALLED' >> \"$TEST_STEP_LOG\"",
+                '  "$TEST_GATE_PYTHON" "$@" >/dev/null',
+                "}",
+                step["run"],
+            )
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the ZAP target preflight"
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        script.as_posix(),
+        timeout=20,
+    )
+
+    output = result.stdout.str() + result.stderr.str()
+    assert result.ret == expected_exit
+    observed_events = (
+        step_log.read_text(encoding="utf-8").splitlines() if step_log.exists() else []
+    )
+    assert observed_events == expected_events
+    if expected_error is not None:
+        assert expected_error in output
+    if target_url:
+        assert target_url not in output
+
+
+def test_nuclei_dispatch_target_never_appears_in_a_step_preamble() -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    preflight = next(
+        step for step in steps if step.get("name") == "Validate Nuclei target URL"
+    )
+
+    assert preflight["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
+    assert "prepare-target" in preflight["run"]
+    for step in steps:
+        preamble = json.dumps({"env": step.get("env"), "with": step.get("with")})
+        assert "inputs.target_url" not in preamble
+        assert "inputs.target_url" not in step.get("run", "")
+
+
+@pytest.mark.parametrize(
+    ("event_name", "inputs", "secret", "expected_target"),
+    [
+        (
+            "workflow_dispatch",
+            {"target_url": "https://manual.example.test/private"},
+            "https://secret.example.test",
+            "https://manual.example.test/private",
+        ),
+        (
+            "workflow_dispatch",
+            {"target_url": ""},
+            "https://secret.example.test",
+            "https://secret.example.test",
+        ),
+        (
+            "schedule",
+            None,
+            "https://secret.example.test",
+            "https://secret.example.test",
+        ),
+        (
+            "workflow_dispatch",
+            {"target_url": "https://private.example.test/path?token=hidden"},
+            "https://secret.example.test",
+            None,
+        ),
+        ("workflow_dispatch", {"target_url": ""}, "", None),
+    ],
+)
+def test_nuclei_target_preflight_executes_private_selection(
+    tmp_path: Path,
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    event_name: str,
+    inputs: object,
+    secret: str,
+    expected_target: str | None,
+) -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["nuclei"]["steps"]
+        if item.get("name") == "Validate Nuclei target URL"
+    )
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"inputs": inputs}), encoding="utf-8")
+    monkeypatch.chdir(REPOSITORY_ROOT)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.delenv("TARGET_URL", raising=False)
+    for name, value in {
+        "GITHUB_EVENT_NAME": event_name,
+        "GITHUB_EVENT_PATH": event.as_posix(),
+        "DAST_SECRET_TARGET": secret,
+        "RUNNER_TEMP": tmp_path.as_posix(),
+        "TEST_GATE_PYTHON": Path(sys.executable).as_posix(),
+    }.items():
+        monkeypatch.setenv(name, value)
+    script = tmp_path / "target-preflight.sh"
+    script.write_text(
+        'python3() { "$TEST_GATE_PYTHON" "$@"; }\n' + step["run"],
+        encoding="utf-8",
+        newline="\n",
+    )
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        script.as_posix(),
+        timeout=20,
+    )
+    handoff = tmp_path / "nuclei-target.txt"
+    assert result.ret == (0 if expected_target is not None else 1)
+    assert handoff.exists() is (expected_target is not None)
+    if expected_target is not None:
+        assert handoff.read_text(encoding="utf-8") == expected_target
+    else:
+        assert "private.example.test" not in result.stdout.str() + result.stderr.str()
 
 
 def test_nuclei_nonzero_exit_remains_terminal_after_artifact_uploads() -> None:
@@ -109,17 +340,189 @@ def test_nuclei_nonzero_exit_remains_terminal_after_artifact_uploads() -> None:
     assert "|| true" not in scan["run"]
     assert "nuclei \\" in scan["run"]
 
-    artifact_steps = [
-        (index, step)
+    uploads = {
+        step["name"]: (index, step)
         for index, step in enumerate(steps)
         if step.get("name")
-        in {"Upload results to GitHub Security", "Upload raw JSON findings"}
-    ]
-    assert len(artifact_steps) == 2
-    assert all(
-        scan_index < index and step["if"] == "always()"
-        for index, step in artifact_steps
+        in {
+            "Upload results to GitHub Security",
+            "Upload sanitized JSON findings",
+            "Upload sanitized SARIF report",
+        }
+    }
+    assert len(uploads) == 3
+    assert all(scan_index < index for index, _ in uploads.values())
+    assert uploads["Upload sanitized JSON findings"][1]["if"] == "always()"
+    assert uploads["Upload sanitized SARIF report"][1]["if"] == (
+        "${{ always() && hashFiles('nuclei-results.sarif') != '' }}"
     )
+    assert uploads["Upload results to GitHub Security"][1]["if"] == (
+        "${{ success() && hashFiles('nuclei-results.sarif') != '' }}"
+    )
+
+
+def test_nuclei_requires_sarif_for_any_findings_before_publication() -> None:
+    """A clean native export can omit SARIF; findings must have a report."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    indices = {step["name"]: index for index, step in enumerate(steps)}
+    validation = steps[indices["Validate Nuclei report evidence"]]
+
+    assert indices["Run Nuclei scan"] < indices["Validate Nuclei report evidence"]
+    assert (
+        indices["Validate Nuclei report evidence"]
+        < indices["Upload results to GitHub Security"]
+    )
+    assert validation.get("continue-on-error", False) is False
+    assert '"$RUNNER_TEMP/nuclei-results.json"' in validation["run"]
+    assert '--check-sarif "$RUNNER_TEMP/nuclei-results.sarif"' in validation["run"]
+
+
+def test_nuclei_publishes_only_sanitized_reports() -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    indices = {step["name"]: index for index, step in enumerate(steps)}
+    scan = steps[indices["Run Nuclei scan"]]
+    sanitize = steps[indices["Sanitize Nuclei reports"]]
+
+    assert '-json-export "$RUNNER_TEMP/nuclei-results.json"' in scan["run"]
+    assert '-sarif-export "$RUNNER_TEMP/nuclei-results.sarif"' in scan["run"]
+    assert '-trace-log "$RUNNER_TEMP/nuclei-trace.jsonl"' in scan["run"]
+    assert "-no-color" in scan["run"]
+    assert '>"$RUNNER_TEMP/nuclei-stdout.log"' in scan["run"]
+    assert '2>"$RUNNER_TEMP/nuclei-stderr.log"' in scan["run"]
+    assert "-omit-raw" in scan["run"]
+    assert sanitize["if"] == "${{ always() }}"
+    assert "env" not in sanitize
+    assert 'DAST_TARGET_FILE="$RUNNER_TEMP/nuclei-target.txt"' in sanitize["run"]
+    assert "python3 -m scripts.quality.dast_privacy sanitize" in sanitize["run"]
+    assert '--json-in "$RUNNER_TEMP/nuclei-results.json"' in sanitize["run"]
+    assert '--sarif-in "$RUNNER_TEMP/nuclei-results.sarif"' in sanitize["run"]
+    assert "--json-out nuclei-results.json" in sanitize["run"]
+    assert "--sarif-out nuclei-results.sarif" in sanitize["run"]
+    assert indices["Run Nuclei scan"] < indices["Sanitize Nuclei reports"]
+    assert (
+        indices["Sanitize Nuclei reports"]
+        < indices["Upload results to GitHub Security"]
+    )
+
+
+def test_nuclei_completion_is_bound_to_the_event_checkout_before_publication() -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    indices = {step["name"]: index for index, step in enumerate(steps)}
+    scan = steps[indices["Run Nuclei scan"]]
+    check = steps[indices["Validate Nuclei scan completion"]]
+
+    assert scan["id"] == "nuclei_scan"
+    assert check["if"] == "${{ always() }}"
+    assert check["env"] == {
+        "SCAN_OUTCOME": "${{ steps.nuclei_scan.outcome }}",
+    }
+    assert '"$(git rev-parse HEAD)" != "$GITHUB_SHA"' in check["run"]
+    assert "python3 -m scripts.quality.dast_privacy verify-scan" in check["run"]
+    assert 'DAST_TARGET_FILE="$RUNNER_TEMP/nuclei-target.txt"' in check["run"]
+    assert '--trace-in "$RUNNER_TEMP/nuclei-trace.jsonl"' in check["run"]
+    assert '--log-in "$RUNNER_TEMP/nuclei-stderr.log"' in check["run"]
+    assert '--summary-file "$GITHUB_STEP_SUMMARY"' in check["run"]
+    assert check.get("continue-on-error", False) is False
+    assert indices["Run Nuclei scan"] < indices["Validate Nuclei scan completion"]
+    assert (
+        indices["Validate Nuclei scan completion"]
+        < indices["Validate Nuclei report evidence"]
+        < indices["Upload results to GitHub Security"]
+    )
+    uploads = [
+        step["with"]["path"]
+        for step in steps
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+    ]
+    assert set(uploads) == {"nuclei-results.json", "nuclei-results.sarif"}
+
+
+@pytest.mark.parametrize(
+    ("outcome", "request_error", "matching_source", "expected"),
+    [
+        ("success", "none", True, 0),
+        ("success", "connection refused", True, 1),
+        ("success", "none", False, 1),
+        ("failure", "none", True, 1),
+    ],
+)
+def test_nuclei_completion_workflow_executes_the_validator(
+    tmp_path: Path,
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+    request_error: str,
+    matching_source: bool,
+    expected: int,
+) -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    check = next(
+        step
+        for step in workflow["jobs"]["nuclei"]["steps"]
+        if step.get("name") == "Validate Nuclei scan completion"
+    )
+    target = "https://stage.example.test/private-area"
+    (tmp_path / "nuclei-target.txt").write_text(target, encoding="utf-8")
+    (tmp_path / "nuclei-trace.jsonl").write_text(
+        json.dumps(
+            {
+                "template": "example.yaml",
+                "type": "http",
+                "input": f"{target}/proof",
+                "address": "stage.example.test:443",
+                "error": request_error,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "nuclei-stderr.log").write_text(
+        "[INF] Scan completed in 1s. No results found.\n", encoding="utf-8"
+    )
+    source_result = pytester.run("git", "-C", str(REPOSITORY_ROOT), "rev-parse", "HEAD")
+    assert source_result.ret == 0
+    source_sha = source_result.stdout.str().strip()
+    assert re.fullmatch(r"[0-9a-f]{40}", source_sha)
+    if not matching_source:
+        source_sha = "0" * 40 if source_sha != "0" * 40 else "1" * 40
+    monkeypatch.chdir(REPOSITORY_ROOT)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    for name, value in {
+        "SCAN_OUTCOME": outcome,
+        "GITHUB_SHA": source_sha,
+        "RUNNER_TEMP": tmp_path.as_posix(),
+        "GITHUB_STEP_SUMMARY": (tmp_path / "summary.md").as_posix(),
+        "TEST_GATE_PYTHON": Path(sys.executable).as_posix(),
+    }.items():
+        monkeypatch.setenv(name, value)
+    script = tmp_path / "actual-completion-check.sh"
+    script.write_text(
+        'python3() { "$TEST_GATE_PYTHON" "$@"; }\n' + check["run"],
+        encoding="utf-8",
+        newline="\n",
+    )
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the Nuclei completion gate"
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        script.as_posix(),
+        timeout=20,
+    )
+    assert result.ret == expected
+    assert target not in result.stdout.str() + result.stderr.str()
+    assert (tmp_path / "summary.md").exists() is (expected == 0)
 
 
 def _nuclei_scan_contract_options(command: str) -> tuple[list[str], set[str]]:
@@ -205,11 +608,11 @@ def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> 
 
     escaped_failure_exit = "\n".join(
         (
-            'echo "::add-mask::$TARGET_URL"',
             'if [ -z "$TARGET_URL" ]; then',
             f'  echo "::error::{EMPTY_TARGET_ERROR}"',
             "fi",
             "exit 1",
+            "python3 -m scripts.quality.dast_privacy validate-target",
         )
     )
 
@@ -227,14 +630,74 @@ def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None
         if step.get("name") == "ZAP Full Scan"
     )
 
+    assert zap_action.get("continue-on-error", False) is False
     assert zap_action == {
         "name": "ZAP Full Scan",
+        "id": "zap_scan",
         "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c",
         "env": {"TARGET_URL": TARGET_EXPRESSION},
         "with": {
             "target": TARGET_EXPRESSION,
             "rules_file_name": ".zap/rules.tsv",
             "cmd_options": "-a -j -T 60",
-            "artifact_name": "zap-results-${{ github.run_id }}",
+            "artifact_name": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+            "allow_issue_writing": False,
         },
     }
+
+
+def test_zap_findings_gate_runs_last_and_blocks_medium_and_high_alerts() -> None:
+    """AUD-381: the ZAP gate fails on medium+ alerts after findings are published."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["zap"]["steps"]
+    names = [step.get("name") for step in steps]
+    gate = next(
+        step
+        for step in steps
+        if step.get("name") == "Fail on medium or high ZAP findings"
+    )
+
+    assert names.count("Fail on medium or high ZAP findings") == 1
+    assert names[-1] == "Fail on medium or high ZAP findings"
+    assert gate["if"] == "${{ always() }}"
+    assert gate["shell"] == "bash"
+    assert gate.get("continue-on-error", False) is False
+    assert gate.get("id") is None
+    assert "${{" not in gate["run"]
+    assert (
+        'python3 scripts/quality/zap_findings_gate.py "$GITHUB_WORKSPACE/report_json.json"'
+        in gate["run"]
+    )
+    assert '--summary-file "$GITHUB_STEP_SUMMARY"' in gate["run"]
+    assert "set -euo pipefail" in gate["run"]
+
+
+def test_zap_gate_follows_sarif_provenance_and_both_publication_steps() -> None:
+    """Publication steps keep their conditions and run before the blocking gate."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["zap"]["steps"]
+    names = [step.get("name") for step in steps]
+    gate_index = names.index("Fail on medium or high ZAP findings")
+
+    for earlier in (
+        "ZAP Full Scan",
+        "Validate ZAP SARIF provenance",
+        "Upload ZAP SARIF to GitHub Security",
+        "Upload ZAP provenance receipt",
+    ):
+        assert names.index(earlier) < gate_index
+
+    sarif_upload = steps[names.index("Upload ZAP SARIF to GitHub Security")]
+    assert sarif_upload["if"] == (
+        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
+        "&& hashFiles('zap-results.sarif') != '' }}"
+    )
+    assert sarif_upload["with"]["category"] == "zap-dast"
+    receipt_upload = steps[names.index("Upload ZAP provenance receipt")]
+    assert receipt_upload["if"] == (
+        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
+        "&& hashFiles('zap-sarif-provenance.json') != '' }}"
+    )
+    assert receipt_upload["with"]["retention-days"] == 90

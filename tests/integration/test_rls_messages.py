@@ -28,12 +28,22 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.db.listeners import register_tenant_listeners
 from app.core.events import EventBus, MessageEdited, MessageSent
+from app.core.tenant import get_bypass_rls, set_current_tenant, tenant_id_ctx
 from app.repositories.chat_repository import ChatRepository
 from app.services import event_handlers
+from tests.fixtures.rls_runtime_role import (
+    RUNTIME_ROLE_FLAGS_QUERY,
+    runtime_role_statements,
+)
+
+# Generated per run: the runtime login is built by this module, never reused.
+_RUNTIME_PASSWORD = uuid.uuid4().hex + uuid.uuid4().hex
 
 # ---------------------------------------------------------------------------
 # Skip guard — these tests need PostgreSQL + explicit opt-in
@@ -68,28 +78,21 @@ def pg_engine():
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
-async def setup_rls_role(pg_engine):
-    """Create a temporary non-superuser role and grant necessary privileges for testing RLS."""
+async def setup_rls_role(pg_engine) -> None:
+    """Build rls_test_user as a NOSUPERUSER NOBYPASSRLS login with production DML grants.
+
+    The hosted integration database user is a superuser, which bypasses RLS, so
+    every RLS assertion in this module runs as this role.
+    """
     async with pg_engine.connect() as conn:
-        await conn.execute(
-            text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rls_test_user') THEN
-                    CREATE ROLE rls_test_user WITH LOGIN PASSWORD 'test_pass'; -- pragma: allowlist secret
-                END IF;
-            END
-            $$;
-        """)
-        )
-        await conn.execute(
-            text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_test_user")
-        )
-        await conn.execute(
-            text(
-                "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_test_user"
+        for statement in runtime_role_statements("rls_test_user", _RUNTIME_PASSWORD):
+            await conn.exec_driver_sql(statement)
+        flags = (
+            await conn.execute(
+                text(RUNTIME_ROLE_FLAGS_QUERY), {"role": "rls_test_user"}
             )
-        )
+        ).one()
+        assert tuple(flags) == (False, False, False), "runtime role must not bypass RLS"
         await conn.commit()
 
 
@@ -99,7 +102,7 @@ def non_superuser_engine():
     from urllib.parse import urlparse, urlunparse
 
     parsed = urlparse(_PG_URL)
-    netloc = f"rls_test_user:test_pass@{parsed.hostname}:{parsed.port}"
+    netloc = f"rls_test_user:{_RUNTIME_PASSWORD}@{parsed.hostname}:{parsed.port}"
     test_url = urlunparse(parsed._replace(netloc=netloc))
     engine = create_async_engine(test_url, echo=False, future=True)
     yield engine
@@ -107,25 +110,69 @@ def non_superuser_engine():
 
 
 @pytest_asyncio.fixture
-async def pg_session(non_superuser_engine) -> AsyncSession:
-    """Fresh async session using the non-superuser connection; rolled back after every test."""
-    async_session = sessionmaker(
-        non_superuser_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+async def owned_tenant_id(pg_engine):
+    """Commit only a unique tenant; all dependent rows stay rollback-scoped."""
+    tenant_id = str(uuid.uuid4())
+    try:
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)"),
+                {"id": tenant_id, "name": "RLS fixture", "slug": f"rls-{tenant_id}"},
+            )
+        yield tenant_id
+    finally:
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id}
+            )
 
 
 @pytest_asyncio.fixture
-async def admin_session(pg_engine) -> AsyncSession:
-    """Fresh async session using the superuser/admin connection; rolled back after every test."""
-    async_session = sessionmaker(pg_engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+async def pg_session(non_superuser_engine, owned_tenant_id) -> AsyncSession:
+    """Bind production tenant scope while retaining a rollback-only transaction."""
+    register_tenant_listeners()
+    token = set_current_tenant(owned_tenant_id)
+    try:
+        assert not get_bypass_rls()
+        async_session = sessionmaker(
+            non_superuser_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            async with session.begin():
+                assert (
+                    await session.scalar(
+                        text("SELECT current_setting('app.current_tenant', TRUE)")
+                    )
+                    == owned_tenant_id
+                )
+                yield session
+                await session.rollback()
+    finally:
+        tenant_id_ctx.reset(token)
+
+
+@pytest_asyncio.fixture
+async def admin_session(pg_engine, owned_tenant_id) -> AsyncSession:
+    """Bind production tenant scope while retaining a rollback-only transaction."""
+    register_tenant_listeners()
+    token = set_current_tenant(owned_tenant_id)
+    try:
+        assert not get_bypass_rls()
+        async_session = sessionmaker(
+            pg_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            async with session.begin():
+                assert (
+                    await session.scalar(
+                        text("SELECT current_setting('app.current_tenant', TRUE)")
+                    )
+                    == owned_tenant_id
+                )
+                yield session
+                await session.rollback()
+    finally:
+        tenant_id_ctx.reset(token)
 
 
 @pytest_asyncio.fixture
@@ -143,8 +190,8 @@ async def two_users_and_chat(pg_session: AsyncSession):
     for uid, email in [(user_a_id, "rls_a@test.com"), (user_b_id, "rls_b@test.com")]:
         await pg_session.execute(
             text(
-                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
-                "VALUES (:id, :email, 'x', 'student', true, false)"
+                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required, tenant_id) "
+                "VALUES (:id, :email, 'x', 'student', true, false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
             ),
             {"id": uid, "email": email},
         )
@@ -158,7 +205,8 @@ async def two_users_and_chat(pg_session: AsyncSession):
     # Insert Chat
     await pg_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": chat_id},
     )
@@ -197,8 +245,8 @@ async def test_rls_allows_sender_to_read_own_message(
 
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'hello', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'hello', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
     )
@@ -226,7 +274,8 @@ async def test_rls_blocks_non_participant_from_reading_message(
     solo_chat_id = str(uuid.uuid4())
     await pg_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": solo_chat_id},
     )
@@ -246,8 +295,8 @@ async def test_rls_blocks_non_participant_from_reading_message(
 
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'secret', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'secret', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_id, "chat_id": solo_chat_id, "sender": user_a_id},
     )
@@ -270,11 +319,11 @@ async def test_rls_with_null_user_id_returns_no_messages(
     pg_session: AsyncSession,
     two_users_and_chat,
 ):
-    """Setting app.current_user_id to an empty string returns zero message rows.
+    """A bound identity that is not a participant reads zero message rows.
 
-    This guards the case where _set_rls_user() is called with a NULL/empty
-    user_id (e.g. an anonymous or unauthenticated path that accidentally
-    reaches a query touching messages).
+    This binds a random UUID, the miscall case where a query reaches messages
+    with a user who is in no chat. The empty-string identity is a separate
+    path: test_rls_matrix_read_write covers it and asserts zero rows, not an error.
     """
     user_a_id, _, chat_id = two_users_and_chat
     msg_id = str(uuid.uuid4())
@@ -286,8 +335,8 @@ async def test_rls_with_null_user_id_returns_no_messages(
 
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'private', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'private', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
     )
@@ -322,9 +371,8 @@ async def test_message_edit_event_handler_sets_membership_identity_before_forced
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages "
-            "(id, chat_id, sender_id, content, created_at, read_status, edited_at) "
-            "VALUES (:id, :chat_id, :sender, 'committed via PG', NOW(), false, NOW())"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, edited_at, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'committed via PG', NOW(), false, NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": message_id, "chat_id": chat_id, "sender": user_a_id},
     )
@@ -369,9 +417,8 @@ async def test_message_sent_outbox_dispatch_reads_forced_rls_row_on_postgres(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages "
-            "(id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'synthetic outbox message', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'synthetic outbox message', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": message_id, "chat_id": chat_id, "sender": user_a_id},
     )
@@ -443,28 +490,36 @@ async def test_rls_superuser_context_bypasses_policy(
     # Insert user
     await admin_session.execute(
         text(
-            "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
-            "VALUES (:id, 'rls_super@test.com', 'x', 'student', true, false)"
+            "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required, tenant_id) "
+            "VALUES (:id, 'rls_super@test.com', 'x', 'student', true, false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": user_id},
     )
     # Insert Chat
     await admin_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": chat_id},
     )
     # Insert Message
     await admin_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'admin-visible', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'admin-visible', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": user_id},
     )
 
-    # No SET LOCAL — superuser/backend connection sees all rows
+    # Remove tenant scope after seeding: the administrative connection must
+    # still read its owned row without either tenant or message-user identity.
+    await admin_session.execute(
+        text("SELECT set_config('app.current_tenant', '', true)")
+    )
+    assert await admin_session.scalar(
+        text("SELECT current_setting('app.current_user_id', TRUE)")
+    ) in (None, "")
     result = await admin_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
     )
@@ -519,13 +574,11 @@ async def test_rls_blocks_writing_mismatched_sender_id(
         text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_b_id}
     )
 
-    from sqlalchemy.exc import DBAPIError
-
-    with pytest.raises(DBAPIError):
+    with pytest.raises(DBAPIError, match="row-level security policy"):
         await pg_session.execute(
             text(
-                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                "VALUES (:id, :chat_id, :sender, 'imposter', NOW(), false)"
+                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                "VALUES (:id, :chat_id, :sender, 'imposter', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
             ),
             {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
         )
@@ -551,8 +604,8 @@ async def test_rls_applies_to_professors_and_admins(
     ]:
         await pg_session.execute(
             text(
-                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
-                "VALUES (:id, :email, 'x', :role, true, false)"
+                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required, tenant_id) "
+                "VALUES (:id, :email, 'x', :role, true, false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
             ),
             {"id": uid, "email": email, "role": role},
         )
@@ -566,7 +619,8 @@ async def test_rls_applies_to_professors_and_admins(
     # Create chat with professor and admin
     await pg_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": chat_id},
     )
@@ -585,8 +639,8 @@ async def test_rls_applies_to_professors_and_admins(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'hello from professor', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'hello from professor', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": prof_id},
     )
@@ -632,8 +686,8 @@ async def test_repository_message_lookup_sets_explicit_forced_rls_identity(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'owned row', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'owned row', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": message_id, "chat_id": chat_id, "sender": user_a_id},
     )
@@ -686,8 +740,8 @@ async def test_rls_revokes_group_message_history_and_metadata_after_member_remov
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, :content, NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, :content, NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {
             "id": message_id,

@@ -51,7 +51,11 @@ concurrency:
   group: deploy-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
-permissions: read-all
+# AUD-244: least privilege. Jobs inherit read-only repository contents; only
+# the validation job reads run metadata and artifacts, and deploy declares its
+# own write scopes below.
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -65,6 +69,9 @@ jobs:
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 30
     services:
       postgres:
@@ -159,12 +166,12 @@ jobs:
             --expected-workflow-job coverage-policy-gate
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -181,19 +188,38 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
-      - name: Verify migrations can downgrade
-        # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
-        # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
-        # can silently fail in production.
+      - name: Verify MVP migration boundary
+        timeout-minutes: 10
+         # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
+         # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
+         # can silently fail in production.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_deploy  # pragma: allowlist secret
           ENVIRONMENT: testing
         run: |
-          uv run alembic upgrade head
-          uv run alembic downgrade -1
-          uv run alembic upgrade head
+          set -euo pipefail
+          # Read the applied revision, then verify upgrade-to-head is idempotent.
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          receipt_root="$(mktemp -d)"
+          trap 'rm -rf -- "$receipt_root"' EXIT
+          # The refusal/data-preservation probe owns a separate ephemeral PG17.
+          # Never point its downgrade callback at a deployed database.
+          DATABASE_URL=sqlite+aiosqlite:///:memory: \
+          MIGRATION_ROUNDTRIP_DATABASE_URL='' RUN_INTEGRATION_TESTS=1 \
+          timeout --signal=TERM --kill-after=10s 480s \
+            uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
+            --junitxml="$receipt_root/junit.xml" \
+            tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
+          uv run --frozen --no-sync python -I .github/scripts/verify_mvp_migration_boundary_receipt.py "$receipt_root/junit.xml"
 
   prepare:
     name: Prepare release metadata
@@ -656,7 +682,7 @@ jobs:
           test "$(helm version --template '{{.Version}}')" = "$HELM_VERSION"
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -814,6 +840,8 @@ jobs:
           FLAGD_HOST: ${{ vars.FLAGD_HOST }}
           OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_EGRESS_CIDRS: ${{ vars.MINIO_EGRESS_CIDRS }}
+          ELASTICSEARCH_EGRESS_CIDRS: ${{ vars.ELASTICSEARCH_EGRESS_CIDRS }}
           TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
           REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
@@ -871,6 +899,8 @@ jobs:
           FLAGD_HOST: ${{ vars.FLAGD_HOST }}
           OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_EGRESS_CIDRS: ${{ vars.MINIO_EGRESS_CIDRS }}
+          ELASTICSEARCH_EGRESS_CIDRS: ${{ vars.ELASTICSEARCH_EGRESS_CIDRS }}
           TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
           REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
@@ -1311,6 +1341,8 @@ jobs:
           FLAGD_HOST: ${{ vars.FLAGD_HOST }}
           OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_EGRESS_CIDRS: ${{ vars.MINIO_EGRESS_CIDRS }}
+          ELASTICSEARCH_EGRESS_CIDRS: ${{ vars.ELASTICSEARCH_EGRESS_CIDRS }}
           TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
           REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
@@ -1408,7 +1440,7 @@ jobs:
             | jq --raw-output --exit-status --arg key "nats-server.conf" \
                 '.data[$key] | select(type == "string" and length > 0)' \
             | base64 --decode \
-            | python3 -c '
+            | python3 -I -c '
           import sys
           config = sys.stdin.read()
           values = []
@@ -1462,24 +1494,10 @@ jobs:
             | jq --raw-output --exit-status --arg key "$revocation_redis_url_key" \
                 '.data[$key] | select(type == "string" and length > 0)' \
             | base64 --decode \
-            | python3 -c '
-          from sys import argv, stdin
-          from urllib.parse import urlsplit
-
-          expected_host = argv[1]
-          try:
-              parsed = urlsplit(stdin.read().strip())
-              valid = (
-                  parsed.scheme in {"redis", "rediss"}
-                  and parsed.hostname == expected_host
-                  and parsed.port == 6379
-                  and parsed.path == "/0"
-              )
-          except ValueError:
-              valid = False
-          raise SystemExit(0 if valid else 1)
-          ' "$revocation_redis_service_host"; then
-            echo "::error::The revocation Redis URL must target the rendered dedicated master service."
+            | python3 -I .github/scripts/verify_revocation_redis_target.py "$revocation_redis_service_host" \
+                3< <(printf '%s' "$revocation_redis_password_b64") \
+                4< <(printf '%s' "$cache_redis_password_b64"); then
+            echo "::error::The revocation Redis URL must target the rendered dedicated master service using a distinct effective credential and supported URL format."
             exit 1
           fi
 
@@ -1540,6 +1558,8 @@ jobs:
           FLAGD_HOST: ${{ vars.FLAGD_HOST }}
           OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_EGRESS_CIDRS: ${{ vars.MINIO_EGRESS_CIDRS }}
+          ELASTICSEARCH_EGRESS_CIDRS: ${{ vars.ELASTICSEARCH_EGRESS_CIDRS }}
           TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
           REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
@@ -1860,12 +1880,12 @@ jobs:
           test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1877,20 +1897,37 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
-      - name: Test database rollback
-        # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.
+      - name: Verify MVP migration boundary
+        timeout-minutes: 10
+        # ADR-051: the baseline is irreversible; this job uses its own PostgreSQL,
+        # not the staging database. Keep the historical job context stable.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_rollback  # pragma: allowlist secret
           ENVIRONMENT: testing
         run: |
-          echo "Testing migration rollback capability..."
-          uv run alembic upgrade head
-          uv run alembic downgrade -1
-          echo "✅ Rollback successful"
-          uv run alembic upgrade head
-          echo "✅ Re-upgrade successful"
+          set -euo pipefail
+          # Read the applied revision, then verify upgrade-to-head is idempotent.
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          receipt_root="$(mktemp -d)"
+          trap 'rm -rf -- "$receipt_root"' EXIT
+          # The refusal/data-preservation probe owns a separate ephemeral PG17.
+          # Never point its downgrade callback at a deployed database.
+          DATABASE_URL=sqlite+aiosqlite:///:memory: \
+          MIGRATION_ROUNDTRIP_DATABASE_URL='' RUN_INTEGRATION_TESTS=1 \
+          timeout --signal=TERM --kill-after=10s 480s \
+            uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
+            --junitxml="$receipt_root/junit.xml" \
+            tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
+          uv run --frozen --no-sync python -I .github/scripts/verify_mvp_migration_boundary_receipt.py "$receipt_root/junit.xml"
 
   notify:
     name: Notify deployment status
@@ -1914,6 +1951,6 @@ jobs:
             printf "| Environment | \`%s\` |\n" "${DEPLOY_ENVIRONMENT}"
             printf "| Version | \`%s\` |\n" "${DEPLOY_VERSION}"
             printf "| Deploy Status | \`%s\` |\n" "${DEPLOY_STATUS}"
-            printf "| Rollback Test | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
+            printf "| Baseline boundary proof (ephemeral PostgreSQL) | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
             printf "**Triggered by:** @%s\n" "${TRIGGER_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"

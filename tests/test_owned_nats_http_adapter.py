@@ -19,6 +19,7 @@ from scripts.owned_nats_coordinator import (
     MessagePostEvidence,
     OwnerEvidence,
     ParticipantEvidence,
+    SendPhase,
 )
 from scripts.owned_nats_outage import Deadline, MessageEvidence
 from scripts.owned_nats_owner_adapter import OwnerFilePins
@@ -40,6 +41,15 @@ class _MockBodyStream(httpx.AsyncByteStream):
     async def __aiter__(self):
         for offset in range(0, len(self.body), 4096):
             yield self.body[offset : offset + 4096]
+
+    async def aclose(self) -> None:
+        return
+
+
+class _TimeoutBodyStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        raise httpx.ReadTimeout("synthetic transport detail")
+        yield b""  # pragma: no cover - keeps the stream an async generator
 
     async def aclose(self) -> None:
         return
@@ -177,8 +187,34 @@ def setup_case(tmp_path: Path, request: pytest.FixtureRequest):
                 },
             )
         if path == f"/api/v1/chats/{CHAT_ID}/messages":
-            if send_mode["value"] == "timeout":
+            mode = send_mode["value"]
+            if mode == "timeout":
                 raise httpx.ReadTimeout("synthetic transport detail", request=request)
+            if mode == "connect":
+                raise httpx.ConnectError("synthetic transport detail", request=request)
+            if mode == "runtime":
+                raise RuntimeError("synthetic transport detail")
+            if mode == "redirect":
+                return httpx.Response(
+                    302, headers={"location": "https://example.invalid/"}
+                )
+            if mode in {
+                "http-500-echo",
+                "http-500-foreign-id",
+                "http-500-duplicate-id",
+            }:
+                echoed = request.headers["x-request-id"]
+                if mode == "http-500-foreign-id":
+                    echoed = "synthetic-foreign-request"
+                headers = [("x-request-id", echoed)]
+                if mode == "http-500-duplicate-id":
+                    headers.append(("x-request-id", echoed))
+                return httpx.Response(500, headers=headers)
+            if mode in {"http-401", "http-500", "http-503"}:
+                return httpx.Response(
+                    int(mode.removeprefix("http-")),
+                    json={"detail": "synthetic transport detail"},
+                )
             content = (
                 "wrong message" if send_mode["value"] == "wrong-content" else CONTENT
             )
@@ -196,6 +232,11 @@ def setup_case(tmp_path: Path, request: pytest.FixtureRequest):
         return httpx.Response(404)
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if send_mode["value"] == "body-timeout" and request.url.path == (
+            f"/api/v1/chats/{CHAT_ID}/messages"
+        ):
+            requests.append(request)
+            return httpx.Response(200, stream=_TimeoutBodyStream(), request=request)
         response = response_handler(request)
         body = response.content
         return httpx.Response(
@@ -405,14 +446,41 @@ def test_create_chat_ambiguous_failure_is_never_retried(setup_case) -> None:
     ) == 1
 
 
-def test_message_timeout_is_never_retried_and_error_is_redacted(setup_case) -> None:
+@pytest.mark.parametrize(
+    ("send_mode", "expected"),
+    [
+        ("timeout", MessagePostEvidence(None, None, SendPhase.TIMEOUT)),
+        ("body-timeout", MessagePostEvidence(None, None, SendPhase.TIMEOUT)),
+        ("connect", MessagePostEvidence(None, None, SendPhase.CONNECT_ERROR)),
+        ("runtime", MessagePostEvidence(None, None, SendPhase.NOT_READY)),
+        ("redirect", MessagePostEvidence(None, None, SendPhase.NOT_READY)),
+        ("http-401", MessagePostEvidence(401, None)),
+        ("http-503", MessagePostEvidence(503, None)),
+        ("wrong-content", MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH)),
+        ("reply", MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH)),
+    ],
+    ids=[
+        "timeout",
+        "body-timeout",
+        "connect_error",
+        "runtime-not-ready",
+        "redirect-not-ready",
+        "http_status-401",
+        "http_status-503",
+        "body_mismatch-content",
+        "body_mismatch-reply",
+    ],
+)
+def test_send_failure_reports_only_closed_phase_and_never_retries(
+    setup_case, send_mode: str, expected: MessagePostEvidence
+) -> None:
     case = setup_case
     _login(case)
     _create(case)
-    case["send_mode"]["value"] = "timeout"  # type: ignore[index]
-    with pytest.raises(http_adapter.HttpObservationNotReady) as caught:
-        _send(case)
-    assert str(caught.value) == "owner-scoped HTTP observation is not ready"
+    case["send_mode"]["value"] = send_mode  # type: ignore[index]
+    evidence = _send(case)
+    assert evidence == expected
+    assert "synthetic transport detail" not in repr(evidence)
     assert case["adapter"]._closed
     assert list(case["adapter"]._cookies.jar) == []
     with pytest.raises(http_adapter.HttpObservationNotReady):
@@ -420,7 +488,6 @@ def test_message_timeout_is_never_retried_and_error_is_redacted(setup_case) -> N
     assert [request.url.path for request in case["requests"]].count(
         f"/api/v1/chats/{CHAT_ID}/messages"
     ) == 1
-    assert "synthetic transport detail" not in str(caught.value)
 
 
 def test_credential_owner_mismatch_and_oversize_fail_before_http(setup_case) -> None:
@@ -471,8 +538,7 @@ def test_message_response_must_match_single_form_send_without_retry(
     _login(case)
     _create(case)
     case["send_mode"]["value"] = send_mode  # type: ignore[index]
-    with pytest.raises(http_adapter.HttpObservationNotReady):
-        _send(case)
+    assert _send(case).phase is SendPhase.BODY_MISMATCH
     with pytest.raises(http_adapter.HttpObservationNotReady):
         _send(case)
     assert [request.url.path for request in case["requests"]].count(
@@ -753,3 +819,67 @@ def test_slow_trickling_headers_cannot_outlive_absolute_http_deadline(
         server.shutdown()
         server.server_close()
         thread.join(timeout=1)
+
+
+@pytest.mark.parametrize("mode", ["success", "http-401", "http-503"])
+def test_only_unhandled_500_may_arrive_without_request_echo(setup_case, mode) -> None:
+    # ServerErrorMiddleware writes an unhandled 500 outside RequestIDMiddleware, so
+    # only that status may lack the echo. Any other absent echo drops correlation.
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = mode
+    _send(case)
+    assert case["adapter"]._send_request_id is None
+
+
+def test_http500_correlation_is_private_and_single_use(setup_case) -> None:
+    from uuid import UUID
+
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = "http-500"
+    response = _send(case)
+    requests = [
+        request
+        for request in case["requests"]
+        if request.url.path.endswith("/messages")
+    ]
+    assert len(requests) == 1
+    correlation = requests[0].headers["x-request-id"]
+    assert UUID(correlation).version == 4
+    assert case["adapter"]._send_request_id == correlation
+    assert correlation not in repr(response)
+    assert correlation not in repr(case["adapter"])
+    assert response.status_code == 500
+    with pytest.raises(http_adapter.HttpObservationNotReady):
+        _send(case)
+    case["adapter"].close_clients(deadline=case["deadline"])
+    assert case["adapter"]._send_request_id is None
+
+
+@pytest.mark.parametrize(
+    "mode", ["http-500-echo", "http-500-foreign-id", "http-500-duplicate-id"]
+)
+def test_mismatched_response_correlation_is_discarded_without_changing500(
+    setup_case, mode
+):
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = mode
+    response = _send(case)
+    assert response.status_code == 500
+    assert response.phase is None
+    assert (case["adapter"]._send_request_id is not None) is (mode == "http-500-echo")
+    assert (
+        len(
+            [
+                request
+                for request in case["requests"]
+                if request.url.path.endswith("/messages")
+            ]
+        )
+        == 1
+    )

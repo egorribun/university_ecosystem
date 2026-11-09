@@ -100,8 +100,8 @@ class TestAbstractBaseClasses:
             async def handle(self, command: _PingCmd) -> None:
                 await super().handle(command)
 
-        await ConcreteQueryHandler().handle(_PingQuery())
-        await ConcreteCommandHandler().handle(_PingCmd(42))
+        assert (await ConcreteQueryHandler().handle(_PingQuery())) is None
+        assert (await ConcreteCommandHandler().handle(_PingCmd(42))) is None
 
     def test_command_subclass_can_be_instantiated(self) -> None:
         """``Command`` itself is not strict-abstract — subclasses work."""

@@ -35,7 +35,7 @@ func setupEmpiricalHub(t *testing.T, rdb *goredis.Client) *Hub {
 		MaxClients:          1000,
 	}
 
-	h := NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, rdb)
+	h := mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, rdb)
 	return trackTestHub(h)
 }
 
@@ -144,7 +144,7 @@ func TestEmpirical_RateLimitingEnforcement(t *testing.T) {
 	testTicket := empiricalTicket
 
 	// Flood upgrade limiter for target IP
-	for i := 0; i < 100; i++ {
+	for i := 0; i <= config.DefaultWSUpgradeRatePerMinute; i++ {
 		h.UpgradeLimiter.Allow(targetIP)
 	}
 

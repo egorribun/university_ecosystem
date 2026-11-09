@@ -20,21 +20,39 @@ class _ComposeReset:
         self.value = value
 
 
+class _ComposeOverride:
+    """Preserve explicit replacement rather than ordinary Compose merging."""
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+
 class _ComposeLoader(yaml.SafeLoader):
     pass
 
 
-def _construct_reset(loader: _ComposeLoader, node: yaml.Node) -> _ComposeReset:
+def _construct_tagged_value(loader: _ComposeLoader, node: yaml.Node) -> Any:
     if isinstance(node, yaml.SequenceNode):
         value = loader.construct_sequence(node, deep=True)
     elif isinstance(node, yaml.MappingNode):
         value = loader.construct_mapping(node, deep=True)
+    elif node.style is not None:
+        value = loader.construct_scalar(node)
     else:
         value = yaml.safe_load(loader.construct_scalar(node))
-    return _ComposeReset(value)
+    return value
+
+
+def _construct_reset(loader: _ComposeLoader, node: yaml.Node) -> _ComposeReset:
+    return _ComposeReset(_construct_tagged_value(loader, node))
+
+
+def _construct_override(loader: _ComposeLoader, node: yaml.Node) -> _ComposeOverride:
+    return _ComposeOverride(_construct_tagged_value(loader, node))
 
 
 _ComposeLoader.add_constructor("!reset", _construct_reset)
+_ComposeLoader.add_constructor("!override", _construct_override)
 
 
 def _repo_root() -> Path:
@@ -73,6 +91,8 @@ def _merged_env_files(
     base_files = _normalized_sequence(base_service.get("env_file"))
     override_files = production_service.get("env_file")
     if isinstance(override_files, _ComposeReset):
+        return []
+    if isinstance(override_files, _ComposeOverride):
         return _normalized_sequence(override_files.value)
     if override_files is None:
         return base_files
@@ -85,8 +105,16 @@ def _merged_environment(
     base_service: dict[str, Any], production_service: dict[str, Any]
 ) -> dict[str, Any]:
     merged = dict(base_service.get("environment") or {})
-    for key, value in (production_service.get("environment") or {}).items():
+    override = production_service.get("environment")
+    if isinstance(override, _ComposeReset):
+        return {}
+    if isinstance(override, _ComposeOverride):
+        merged = {}
+        override = override.value
+    for key, value in (override or {}).items():
         if isinstance(value, _ComposeReset):
+            value = None
+        elif isinstance(value, _ComposeOverride):
             value = value.value
         if value is None:
             # Compose null and reset-null values are unset in the container.
@@ -106,7 +134,7 @@ _PRODUCTION_FILE_SECRETS = {
         "REVOCATION_REDIS_URL": "/run/secrets/revocation_redis_url",
     },
     "notifications-worker": {
-        "DATABASE_URL": "/run/secrets/database_url",
+        "DATABASE_URL": "/run/secrets/notifications_database_url",
         "SECRET_KEY": "/run/secrets/secret_key",
         "NATS_AUTH_TOKEN": "/run/secrets/nats_auth_token",
     },
@@ -116,7 +144,7 @@ _PRODUCTION_FILE_SECRETS = {
         "NATS_AUTH_TOKEN": "/run/secrets/nats_auth_token",
     },
     "migrations": {
-        "DATABASE_URL": "/run/secrets/database_url",
+        "DATABASE_URL": "/run/secrets/migration_database_url",
         "SECRET_KEY": "/run/secrets/secret_key",
     },
 }
@@ -167,3 +195,57 @@ def test_development_compose_retains_explicit_local_environment(
     # environment. These assertions inspect only key names and static YAML.
     assert {"DATABASE_URL", "SECRET_KEY", "NATS_AUTH_TOKEN"} <= set(environment)
     assert environment.get("SPICEDB_INSECURE") == "true"
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        ("", ["base.env", "replacement.env"]),
+        ("!override", ["replacement.env"]),
+        ("!reset", []),
+    ],
+)
+def test_compose_env_file_tags_preserve_merge_semantics(tmp_path, tag, expected):
+    source = tmp_path / "compose.yml"
+    source.write_text(f"env_file: {tag} [replacement.env]\n", encoding="utf-8")
+    assert _merged_env_files({"env_file": ["base.env"]}, _compose(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        ("", {"BASE": "kept", "NEW": "value"}),
+        ("!override", {"NEW": "value"}),
+        ("!reset", {}),
+    ],
+)
+def test_compose_environment_tags_preserve_merge_semantics(tmp_path, tag, expected):
+    source = tmp_path / "compose.yml"
+    source.write_text(f"environment: {tag} {{NEW: value}}\n", encoding="utf-8")
+    assert (
+        _merged_environment({"environment": {"BASE": "kept"}}, _compose(source))
+        == expected
+    )
+
+
+@pytest.mark.parametrize("tag", ["!unknown", "!!python/object:builtins.object"])
+def test_compose_loader_rejects_unsupported_tags(tmp_path, tag):
+    source = tmp_path / "compose.yml"
+    source.write_text(f"environment: {tag} {{}}\n", encoding="utf-8")
+    with pytest.raises(yaml.constructor.ConstructorError):
+        _compose(source)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("!override 'null'", "null"),
+        ("!override value", "value"),
+        ("!reset ignored", None),
+    ],
+)
+def test_compose_environment_scalar_tags(tmp_path, value, expected):
+    source = tmp_path / "compose.yml"
+    source.write_text(f"environment:\n  KEY: {value}\n", encoding="utf-8")
+    merged = _merged_environment({"environment": {"KEY": "base"}}, _compose(source))
+    assert merged == ({} if expected is None else {"KEY": expected})

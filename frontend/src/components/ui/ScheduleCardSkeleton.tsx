@@ -36,7 +36,7 @@ function ScheduleCardSkeletonInner({ items = 3, className }: ScheduleCardSkeleto
         {Array.from({ length: items }).map((_, index) => (
           <div
             key={`skeleton-${index}`}
-            className="flex items-start gap-3 rounded-lg border border-glass-border-subtle/(--opacity-medium) bg-black/(--opacity-faint) dark:bg-black/(--opacity-dim) p-3"
+            className="flex items-start gap-3 rounded-lg border border-glass-border-subtle/[calc(var(--opacity-medium)*100%)] bg-black/[calc(var(--opacity-faint)*100%)] dark:bg-black/[calc(var(--opacity-dim)*100%)] p-3"
           >
             {/* Time column */}
             <div className="flex flex-col items-center gap-1">
@@ -45,7 +45,7 @@ function ScheduleCardSkeletonInner({ items = 3, className }: ScheduleCardSkeleto
             </div>
 
             {/* Divider */}
-            <div className="h-12 w-0.5 bg-glass-border-subtle/(--opacity-medium)" />
+            <div className="h-12 w-0.5 bg-glass-border-subtle/[calc(var(--opacity-medium)*100%)]" />
 
             {/* Content */}
             <div className="flex flex-1 flex-col gap-2">

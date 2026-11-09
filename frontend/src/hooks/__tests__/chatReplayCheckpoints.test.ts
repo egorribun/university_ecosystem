@@ -207,6 +207,113 @@ describe("user registry memory", () => {
 })
 
 describe("room checkpoints", () => {
+  it("bounds escaped serialized snapshots while preserving live ordering and the active room", async () => {
+    const token = "\u0000".repeat(4096)
+    for (let index = 0; index < 4; index += 1) {
+      store.writeReplayCheckpoint(USER, `room-${index}`, index + 1, token, "room-0")
+    }
+
+    const raw = window.sessionStorage.getItem(KEY)!
+    expect(raw.length).toBeLessThanOrEqual(store.REPLAY_CHECKPOINT_STORAGE_LIMIT)
+    expect(storedEntries()).toStrictEqual([
+      ["room-0", 1, token],
+      ["room-3", 4, token],
+    ])
+    expect(store.peekReplayCheckpoint(USER, "room-1")).toStrictEqual({
+      sequence: 2,
+      resumeToken: token,
+    })
+
+    store.removeReplayCheckpoint(USER, "room-1")
+    expect(storedEntries()).toStrictEqual([
+      ["room-0", 1, token],
+      ["room-3", 4, token],
+    ])
+
+    vi.resetModules()
+    const reloaded = await import("../chatReplayCheckpoints")
+    expect(reloaded.peekReplayCheckpoint(USER, "room-0")).toStrictEqual({
+      sequence: 1,
+      resumeToken: token,
+    })
+    expect(reloaded.peekReplayCheckpoint(USER, "room-3")).toStrictEqual({
+      sequence: 4,
+      resumeToken: token,
+    })
+    expect(reloaded.peekReplayCheckpoint(USER, "room-2")).toBeUndefined()
+  })
+
+  it("bounds the UTF-8 bytes of persisted Unicode checkpoints", () => {
+    const token = "\u20ac".repeat(4096)
+    for (let index = 0; index < 6; index += 1) {
+      store.writeReplayCheckpoint(USER, `room-${index}`, index + 1, token, null)
+    }
+
+    const raw = window.sessionStorage.getItem(KEY)!
+    expect(new TextEncoder().encode(raw).byteLength).toBeLessThanOrEqual(
+      store.REPLAY_CHECKPOINT_STORAGE_LIMIT
+    )
+    expect(storedEntries()!.map((entry) => (entry as string[])[0])).toStrictEqual([
+      "room-1",
+      "room-2",
+      "room-3",
+      "room-4",
+      "room-5",
+    ])
+  })
+
+  it("ignores an invalid write rather than corrupting valid persisted checkpoints", async () => {
+    store.writeReplayCheckpoint(USER, "valid", 1, "token", null)
+    store.writeReplayCheckpoint(USER, "invalid", 2, "x".repeat(4097), null)
+
+    expect(store.peekReplayCheckpoint(USER, "invalid")).toBeUndefined()
+    vi.resetModules()
+    const reloaded = await import("../chatReplayCheckpoints")
+    expect(reloaded.peekReplayCheckpoint(USER, "valid")).toStrictEqual({
+      sequence: 1,
+      resumeToken: "token",
+    })
+  })
+
+  it.each([
+    ["peek", "token"],
+    ["peek", "sequence"],
+    ["touch", "token"],
+    ["touch", "sequence"],
+  ])(
+    "isolates %s results from %s mutations before persistence and reload",
+    async (access, field) => {
+      store.writeReplayCheckpoint(USER, "room", 9, "token-9", null)
+      store.writeReplayCheckpoint(USER, "other", 3, "token-3", null)
+      const result =
+        access === "peek"
+          ? store.peekReplayCheckpoint(USER, "room")!
+          : store.readAndTouchReplayCheckpoint(USER, "room")!
+
+      if (field === "token") result.resumeToken = "x".repeat(70_000)
+      else result.sequence = Number.NaN
+      store.readAndTouchReplayCheckpoint(USER, "room")
+
+      const raw = window.sessionStorage.getItem(KEY)!
+      expect(raw.length).toBeLessThanOrEqual(store.REPLAY_CHECKPOINT_STORAGE_LIMIT)
+      expect(store.peekReplayCheckpoint(USER, "room")).toStrictEqual({
+        sequence: 9,
+        resumeToken: "token-9",
+      })
+
+      vi.resetModules()
+      const reloaded = await import("../chatReplayCheckpoints")
+      expect(reloaded.peekReplayCheckpoint(USER, "room")).toStrictEqual({
+        sequence: 9,
+        resumeToken: "token-9",
+      })
+      expect(reloaded.peekReplayCheckpoint(USER, "other")).toStrictEqual({
+        sequence: 3,
+        resumeToken: "token-3",
+      })
+    }
+  )
+
   it("moves a read room to the most recent position", () => {
     store.writeReplayCheckpoint(USER, "a", 1, "t1", null)
     store.writeReplayCheckpoint(USER, "b", 2, "t2", null)

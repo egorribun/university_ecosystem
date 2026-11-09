@@ -136,19 +136,25 @@ async function registerSyntheticUser(page: Page, account: SyntheticAccount): Pro
   expect(registrationResponse.ok(), "the unique synthetic account registers in the live app").toBe(
     true
   )
-  const registration = (await registrationResponse.json()) as { id?: unknown }
-  if (typeof registration.id !== "string" || registration.id.length === 0) {
-    throw new Error("Synthetic messenger account registration returned no account id")
-  }
-  account.id = registration.id
+  expect(await registrationResponse.json()).toEqual({ status: "ok" })
 
   await expect(page).toHaveURL(/\/login$/u)
   await loginWith(page, account.email, account.password)
   const identityResponse = await page.request.get("/api/v1/users/me")
   expect(identityResponse.ok()).toBe(true)
-  const identity = (await identityResponse.json()) as { id: string; role: string }
-  expect(identity.id).toBe(account.id)
+  const identity = (await identityResponse.json()) as {
+    id?: unknown
+    email?: unknown
+    full_name?: unknown
+    role?: unknown
+  }
+  if (typeof identity.id !== "string" || identity.id.length === 0) {
+    throw new Error("Authenticated synthetic messenger account returned no account id")
+  }
+  expect(identity.email).toBe(account.email)
+  expect(identity.full_name).toBe(account.fullName)
   expect(identity.role).toBe("student")
+  account.id = identity.id
 }
 
 async function createDirectChat(
@@ -327,7 +333,7 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
   browser,
   page,
 }, testInfo) => {
-  test.setTimeout(150_000)
+  test.setTimeout(210_000)
   const identity = randomUUID()
   const sender: SyntheticAccount = {
     id: null,
@@ -422,7 +428,9 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
     expect(activeSession).toBeDefined()
     const previousSessionCount = receiverSocket.sessions.length
     await currentReceiverContext.setOffline(true)
-    await expect.poll(() => activeSession?.closed ?? false).toBe(true)
+    // The app closes at once, but offline the browser reports the socket closed only when
+    // its close handshake gives up, which can take up to a minute.
+    await expect.poll(() => activeSession?.closed ?? false, { timeout: 65_000 }).toBe(true)
     await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
     const offlineMessages = [

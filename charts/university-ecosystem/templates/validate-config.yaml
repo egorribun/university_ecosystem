@@ -2,6 +2,82 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- /* AUD-373 owner decision: production runs internal backend hops over SPIFFE/SPIRE mTLS. Staging stays opt-in. */ -}}
+{{- if and (eq $environment "production") (not .Values.internalHttpMTLS.enabled) -}}
+  {{- fail "internalHttpMTLS.enabled=true is required in production: internal backend HTTP carries tokens and must use SPIFFE mTLS (AUD-373)" -}}
+{{- end -}}
+{{- /* The migration Job runs DDL as the schema owner; runtime workloads must never receive that URL. */ -}}
+{{- if eq (toString .Values.connections.databaseURLKey) (toString .Values.connections.migrationDatabaseURLKey) -}}
+  {{- fail "connections.migrationDatabaseURLKey must differ from connections.databaseURLKey" -}}
+{{- end -}}
+{{- /* AUD-373: the backend listener requires client certificates, so every backend client must present an SVID.
+       A public ingress path that still targets the backend Service would reach it without one and fail. */ -}}
+{{- if .Values.internalHttpMTLS.enabled -}}
+  {{- if not .Values.internalHttpMTLS.trustDomain -}}
+    {{- fail "internalHttpMTLS.trustDomain is required when internalHttpMTLS.enabled=true" -}}
+  {{- end -}}
+  {{- $workloadIdentities := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID -}}
+  {{- if .Values.wsHub.enabled -}}
+    {{- $_ := set $workloadIdentities "wsHubSpiffeID" .Values.internalHttpMTLS.wsHubSpiffeID -}}
+  {{- end -}}
+  {{- $internalJWKSURL := printf "https://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+  {{- if and .Values.fileProcessor.enabled (or (not .Values.fileProcessor.config.jwksURL) (eq .Values.fileProcessor.config.jwksURL $internalJWKSURL)) -}}
+    {{- $_ := set $workloadIdentities "fileProcessorSpiffeID" .Values.internalHttpMTLS.fileProcessorSpiffeID -}}
+  {{- end -}}
+  {{- range $name, $spiffeID := $workloadIdentities -}}
+    {{- if not (regexMatch "^spiffe://[a-z0-9][a-z0-9.-]*(/[A-Za-z0-9._~-]+)+$" (toString $spiffeID)) -}}
+      {{- fail (printf "internalHttpMTLS.%s must be a canonical SPIFFE ID when internalHttpMTLS.enabled=true" $name) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $identities := values $workloadIdentities -}}
+  {{- if ne (len $identities) (len (uniq $identities)) -}}
+    {{- fail "internalHttpMTLS workload identities must be distinct" -}}
+  {{- end -}}
+  {{- range $identity := $identities -}}
+    {{- if not (hasPrefix (printf "spiffe://%s/" $.Values.internalHttpMTLS.trustDomain) $identity) -}}
+      {{- fail "internalHttpMTLS workload identities must belong to trustDomain" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- range $path := $host.paths -}}
+      {{- if eq (include "university-ecosystem.publicRouteService" (dict "root" $ "service" $path.service "path" $path.path)) "backend" -}}
+        {{- fail (printf "ingress path %s on host %s targets the backend Service; route it through the gateway before enabling internalHttpMTLS" $path.path $host.host) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- /* A late-starting ws-hub replica must replay every revocation that a still-valid access token could carry. */ -}}
+{{- if .Values.wsHub.enabled -}}
+  {{- if eq (int .Values.wsHub.metrics.port) (int .Values.wsHub.service.port) -}}
+    {{- fail "wsHub.metrics.port must differ from wsHub.service.port" -}}
+  {{- end -}}
+  {{- $replayWindowSeconds := int .Values.wsHub.config.revocationReplayWindowSeconds -}}
+  {{- $accessTokenSeconds := mul (int .Values.backend.config.accessTokenExpireMinutes) 60 -}}
+  {{- if lt $replayWindowSeconds $accessTokenSeconds -}}
+    {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must be at least backend.config.accessTokenExpireMinutes * 60 (%d)" $replayWindowSeconds $accessTokenSeconds) -}}
+  {{- end -}}
+  {{- /* The CACHE_INVALIDATIONS stream keeps cache.revoke messages for seven days. */ -}}
+  {{- if gt $replayWindowSeconds 604800 -}}
+    {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must not exceed the 604800-second CACHE_INVALIDATIONS stream retention" $replayWindowSeconds) -}}
+  {{- end -}}
+  {{- /* AUD-478: the durable cache-invalidation consumer contract must match ws-hub's validated range. */ -}}
+  {{- $consumer := .Values.wsHub.config.natsConsumer -}}
+  {{- if ne (toString $consumer.ackPolicy) "explicit" -}}
+    {{- fail "wsHub.config.natsConsumer.ackPolicy must be \"explicit\"" -}}
+  {{- end -}}
+  {{- $ackWait := int $consumer.ackWaitSeconds -}}
+  {{- if or (lt $ackWait 31) (gt $ackWait 600) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.ackWaitSeconds (%d) must be between 31 and 600" $ackWait) -}}
+  {{- end -}}
+  {{- $maxDeliver := int $consumer.maxDeliver -}}
+  {{- if or (lt $maxDeliver 5) (gt $maxDeliver 100) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.maxDeliver (%d) must be between 5 and 100" $maxDeliver) -}}
+  {{- end -}}
+  {{- $inactive := int $consumer.inactiveThresholdSeconds -}}
+  {{- if or (lt $inactive 60) (gt $inactive 86400) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.inactiveThresholdSeconds (%d) must be between 60 and 86400" $inactive) -}}
+  {{- end -}}
+{{- end -}}
 {{- if .Values.gatewayApi.enabled -}}
   {{- if .Values.ingress.enabled -}}
     {{- fail "gatewayApi.enabled and ingress.enabled cannot both be true; disable Ingress before validating the Gateway API preview" -}}
@@ -101,6 +177,8 @@
   {{- if not .Values.backend.config.mfaTotpActiveEncryptionKeyId -}}
     {{- fail "backend.config.mfaTotpActiveEncryptionKeyId must be set in staging/production" -}}
   {{- end -}}
+  {{- /* AUD-164: an empty list shares the API's login, register, MFA and reset buckets across clients. The helper fails closed on an empty, loopback-only, or over-broad list. */ -}}
+  {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "backend.config.trustedProxies" "proxies" .Values.backend.config.trustedProxies) -}}
   {{- if or (gt (len .Values.backend.env) 0) (gt (len .Values.outboxWorker.env) 0) -}}
     {{- fail "backend.env and outboxWorker.env must be empty in staging/production; use explicit chart configuration or Secret references so inline values do not enter Helm release state" -}}
   {{- end -}}
@@ -141,8 +219,8 @@
   {{- if not .Values.applicationSecrets.existingSecret -}}
     {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
   {{- end -}}
-  {{- if not (regexMatch "^[0-9a-f]{40}([0-9a-f]{24})?$" .Values.global.imageTag) -}}
-    {{- fail "global.imageTag must be the exact 40- or 64-character lowercase Git SHA in staging/production" -}}
+  {{- if not (regexMatch "^[0-9a-f]{40}$" .Values.global.imageTag) -}}
+    {{- fail "global.imageTag must be the exact 40-character lowercase Git SHA in staging/production" -}}
   {{- end -}}
   {{- if ne .Values.cwv.releaseSHA .Values.global.imageTag -}}
     {{- fail "cwv.releaseSHA must exactly equal global.imageTag in staging/production" -}}

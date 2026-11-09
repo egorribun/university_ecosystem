@@ -203,7 +203,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-modal flex items-start justify-center pt-[15vh] bg-overlay/(--opacity-strong) backdrop-blur-md"
+        className="fixed inset-0 z-modal flex items-start justify-center pt-[15vh] bg-overlay/[calc(var(--opacity-strong)*100%)] backdrop-blur-md"
         onClick={() => setOpen(false)}
         role="presentation"
       >
@@ -296,7 +296,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors",
                         idx === activeIndex
-                          ? "bg-brand/(--opacity-subtle) text-brand"
+                          ? "bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand"
                           : "text-text-primary hover:bg-(--bg-surface-hover)"
                       )}
                     >
@@ -304,7 +304,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
                         className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                           result.type === "news"
-                            ? "bg-brand/(--opacity-subtle) text-brand"
+                            ? "bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand"
                             : "bg-success-bg text-success-text"
                         )}
                       >

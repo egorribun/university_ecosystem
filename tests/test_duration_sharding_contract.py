@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -121,9 +123,85 @@ def test_duration_merge_keeps_executed_and_mixed_file_estimates(
         },
     )
 
+    # A file with an executed case takes its measured total, so the skipped
+    # case's bookkeeping time is included and the stale 9.0 s value is replaced.
     assert payload["durations"] == {
         "tests/test_executed.py": 2.5,
-        "tests/test_mixed_historical.py": 9.0,
-        "tests/test_mixed_new.py": 4.0,
+        "tests/test_mixed_historical.py": 1.001,
+        "tests/test_mixed_new.py": 4.001,
     }
     assert payload["default_duration_seconds"] == 2.5
+
+
+def test_duration_merge_replaces_stale_history_when_a_case_is_skipped(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "junit.xml"
+    report.write_text(
+        """<testsuite>
+          <testcase file="tests/test_verify_like.py" time="700.0" />
+          <testcase file="tests/test_verify_like.py" time="0.002"><skipped /></testcase>
+        </testsuite>""",
+        encoding="utf-8",
+    )
+
+    payload = build_duration_payload(
+        report,
+        existing={"durations": {"tests/test_verify_like.py": 13.429}},
+    )
+
+    assert payload["durations"] == {"tests/test_verify_like.py": 700.002}
+
+
+def test_planned_estimates_price_unknown_files_per_item() -> None:
+    known = [SimpleNamespace(), SimpleNamespace()]
+    unknown = [SimpleNamespace() for _ in range(5)]
+    file_to_items = {
+        "tests/test_known.py": known,  # 10 s over 2 items -> 5 s per item
+        "tests/test_unknown.py": unknown,
+    }
+
+    estimates = dict(
+        project_conftest._planned_file_durations(
+            file_to_items,
+            {"tests/test_known.py": 10.0},
+        )
+    )
+
+    assert estimates == {
+        "tests/test_known.py": 10.0,
+        "tests/test_unknown.py": 25.0,
+    }
+
+
+def test_planned_estimates_fall_back_to_one_second_per_item_without_history() -> None:
+    file_to_items = {"tests/test_unknown.py": [SimpleNamespace(), SimpleNamespace()]}
+
+    estimates = dict(project_conftest._planned_file_durations(file_to_items, {}))
+
+    assert estimates == {"tests/test_unknown.py": 2.0}
+
+
+def test_xdist_auto_worker_count_uses_logical_cpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "process_cpu_count", lambda: 4, raising=False)
+
+    assert (
+        project_conftest.pytest_xdist_auto_num_workers(config=cast(pytest.Config, None))
+        == 4
+    )
+
+
+def test_xdist_auto_worker_count_falls_back_to_affinity_then_cpu_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "process_cpu_count", lambda: None, raising=False)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1}, raising=False)
+
+    assert project_conftest._logical_cpu_budget() == 2
+
+    monkeypatch.delattr(os, "sched_getaffinity", raising=False)
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+
+    assert project_conftest._logical_cpu_budget() == 1

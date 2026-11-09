@@ -33,7 +33,7 @@ async def test_concurrent_connects_cannot_bypass_per_user_connection_limit() -> 
 
     async def connect_second() -> bool:
         second_connect_started.set()
-        return await manager.connect(second, user_id)
+        return await manager.connect(second, user_id, session_jti="session")
 
     first.accept.side_effect = hold_first_accept
     settings = SimpleNamespace(
@@ -43,7 +43,9 @@ async def test_concurrent_connects_cannot_bypass_per_user_connection_limit() -> 
     )
 
     with patch.object(module, "settings", settings):
-        first_task = asyncio.create_task(manager.connect(first, user_id))
+        first_task = asyncio.create_task(
+            manager.connect(first, user_id, session_jti="session")
+        )
         await first_accept_started.wait()
         second_task = asyncio.create_task(connect_second())
         await second_connect_started.wait()
@@ -73,6 +75,7 @@ async def test_concurrent_connects_cannot_bypass_per_user_connection_limit() -> 
 @pytest.mark.asyncio
 async def test_send_to_user_uses_real_websocket_json_boundary(
     with_uuid_message: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.api.ws.connection_manager import ConnectionManager
     from app.api.ws.serializers import serialize_message
@@ -126,7 +129,11 @@ async def test_send_to_user_uses_real_websocket_json_boundary(
         send,
     )
     manager = ConnectionManager()
-    assert await manager.connect(websocket, recipient_id)
+    monkeypatch.setattr(
+        "app.api.ws.connection_manager._resolve_user_from_ids",
+        AsyncMock(return_value=(SimpleNamespace(id=recipient_id), "session")),
+    )
+    assert await manager.connect(websocket, recipient_id, session_jti="session")
     try:
         assert await manager.send_to_user(recipient_id, payload) == 1
         wire_frames = [

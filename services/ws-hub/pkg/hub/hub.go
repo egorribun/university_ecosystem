@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,6 +50,11 @@ type Message struct {
 	From     string            `json:"from,omitempty"`
 	To       string            `json:"to,omitempty"`
 	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
+	// audience metadata is parsed only at the trusted NATS ingress. It is
+	// intentionally private so client input cannot set it and JSON output cannot
+	// expose the recipient list.
+	audienceUserIDs map[string]struct{}
+	audiencePresent bool
 	*MessageReplayMetadata
 }
 
@@ -60,6 +64,27 @@ type roomMembershipKey struct {
 }
 
 type roomMembershipEpoch struct{ marker byte }
+
+type roomRevocationPublication struct {
+	publishedAt    time.Time
+	streamSequence uint64
+}
+
+type pendingRoomRevocation struct {
+	streamSequence uint64
+	expiresAt      time.Time
+	sticky         bool
+}
+
+const (
+	pendingRoomRevocationTTL             = 125 * time.Second
+	pendingRoomRevocationCleanupInterval = 30 * time.Second
+)
+
+// defaultRevocationReplayWindow matches the backend default access-token lifetime
+// (access_token_expire_minutes=60). A replica that starts within this window after
+// a room revocation must still learn of it, because the revoked token stays usable.
+const defaultRevocationReplayWindow = time.Hour
 
 type roomMembershipLockEntry struct {
 	mu                sync.Mutex
@@ -237,11 +262,13 @@ type Hub struct {
 	// references keep each per-key barrier alive until those operations finish.
 	roomMembershipLocks roomMembershipLockRegistry
 	// pendingRoomRevocations keep joins denied after an authorization refresh
-	// fails. The signed JetStream event remains unacked until the refresh works.
+	// fails. Refresh-capable clients retain markers only through the event's
+	// publish-time grace window; clients without an authoritative refresher keep
+	// a sticky fail-closed marker until a successful refresh clears it.
 	pendingRoomRevocationsMu sync.RWMutex
-	pendingRoomRevocations   map[roomMembershipKey]struct{}
+	pendingRoomRevocations   map[roomMembershipKey]pendingRoomRevocation
 	// subscribeCacheInvalidations is a package-test seam; production leaves it
-	// nil so revocations always use the durable JetStream stream below.
+	// nil so both cache-invalidation consumers use the JetStream stream below.
 	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
 	// registrationWaitTestHook observes only the rare synchronous shutdown fallback.
 	// The bool is false before waiting and true after the registration decision.
@@ -304,13 +331,44 @@ type Hub struct {
 	dedupCache      *lru.Cache[string, time.Time]
 	streamChat      string
 	streamNotif     string
-	durableChat     string
-	durableNotif    string
 	enableJetStream bool
+	// revocationReplayWindow bounds how far back a late-starting replica replays
+	// room membership revocations from the cache.revoke subject.
+	revocationReplayWindow time.Duration
 	// chatReplayAvailable is true only when the live chat subscription itself
 	// uses JetStream. A non-nil JS context is insufficient after core fallback.
 	chatReplayAvailable   atomic.Bool
 	chatStreamIncarnation string
+	// revocationCatchingUp is set while the cache.revoke replay window is still
+	// draining. Admission and readiness fail closed until it clears (AUD-478).
+	revocationCatchingUp atomic.Bool
+	// revocationDrainedReconnects is the NATS session whose revocation consumer last reported a drained replay.
+	revocationDrainedReconnects atomic.Uint64
+	// revocationWatchdogInterval is how often an open admission barrier re-checks the
+	// replay consumer. revocationConnected overrides the connection probe in tests;
+	// nil means the connection's own state.
+	revocationWatchdogInterval time.Duration
+	revocationConnected        func(*nats.Conn) bool
+	// AUD-478 authorization-cache admission barrier. authCacheAdmissionClosed is
+	// true from startup until the local and shared authorization cache has been
+	// reset after each NATS (re)connect. authCacheTracked turns on once the NATS
+	// session is observed; observedNATSReconnects is the reconnect count that the
+	// current reset cycle covers. natsReconnectCount overrides the live count in
+	// tests. See aud478_cache_admission.go.
+	authCacheAdmissionClosed atomic.Bool
+	authCacheTracked         atomic.Bool
+	observedNATSReconnects   atomic.Uint64
+	natsReconnectCount       func(*nats.Conn) uint64
+	// reconnectTransitionHook runs between the two stores of a session transition, so
+	// tests can observe the barrier at the exact point a reconnect is recorded.
+	reconnectTransitionHook func()
+	// Durable cache-invalidation consumer contract, resolved from configuration.
+	natsAckWait           time.Duration
+	natsMaxDeliver        int
+	natsInactiveThreshold time.Duration
+	// subsMu guards subs and invalidationSub, which the reconnect path replaces.
+	subsMu          sync.Mutex
+	invalidationSub *nats.Subscription
 }
 
 const (
@@ -334,7 +392,9 @@ const (
 )
 
 var (
-	newDedupLRUFunc  = lru.New[string, time.Time]
+	newDedupLRUFunc = func(size int) (*lru.Cache[string, time.Time], error) {
+		return lru.New[string, time.Time](size)
+	}
 	newJWKSCacheFunc = jwk.NewCache
 	registerJWKSFunc = func(ctx context.Context, cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
 		return cache.Register(ctx, url, options...)
@@ -354,6 +414,11 @@ var (
 	resumeTokenNowFunc    = time.Now
 	coreNATSSubscribeFunc = func(nc *nats.Conn, subject string, handler nats.MsgHandler) (*nats.Subscription, error) {
 		return nc.Subscribe(subject, handler)
+	}
+	// revocationConsumerInfoFunc reads the cache.revoke consumer position. It is a
+	// test seam so catch-up states can be driven without a live JetStream server.
+	revocationConsumerInfoFunc = func(sub *nats.Subscription) (*nats.ConsumerInfo, error) {
+		return sub.ConsumerInfo()
 	}
 )
 
@@ -386,6 +451,57 @@ func safeTerm(msg *nats.Msg) error {
 		return nil
 	}
 	return jetStreamTermFunc(msg)
+}
+
+func (h *Hub) runNATSCallbackWithPanicRecovery(
+	ctx context.Context,
+	msg *nats.Msg,
+	callback string,
+	body func(),
+) {
+	completed := false
+	defer func() {
+		if recovered := recover(); !completed || recovered != nil {
+			h.handleNATSCallbackPanic(ctx, msg, callback)
+		}
+	}()
+
+	body()
+	completed = true
+}
+
+func natsCallbackLogIdentity(callback string) (string, string) {
+	switch callback {
+	case "chat":
+		return "chat", "chat.*"
+	case "notifications":
+		return "notifications", "notifications.*"
+	case "cache.invalidate":
+		return "cache.invalidate", "cache.invalidate"
+	case "control":
+		return "control", "ws_hub.control"
+	default:
+		return "unknown", ""
+	}
+}
+
+func (h *Hub) handleNATSCallbackPanic(ctx context.Context, msg *nats.Msg, callback string) {
+	callbackName, subject := natsCallbackLogIdentity(callback)
+	if h.Logger != nil {
+		h.Logger.ErrorContext(ctx, "Recovered panic in NATS callback",
+			"callback", callbackName, "subject", subject)
+	}
+
+	if err := safeTerm(msg); err != nil {
+		if errors.Is(err, nats.ErrMsgNotBound) || errors.Is(err, nats.ErrNotJSMessage) {
+			return
+		}
+		if h.Logger != nil {
+			h.Logger.WarnContext(ctx, "Could not TERM NATS message after callback panic; retry NAK attempted",
+				"callback", callbackName, "subject", subject)
+		}
+		safeNakWithDelay(msg, 5*time.Second)
+	}
 }
 
 func (h *Hub) issueResumeToken(userID, room, stream string, sequence uint64) (string, error) {
@@ -520,8 +636,18 @@ func validateReplayChatBinding(subject, room string, frame map[string]any) bool 
 	return exists && chatPayloadMatchesRoom(room, payload)
 }
 
-// NewHub creates a new Hub instance.
-func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) *Hub {
+// wsUpgradeRatePerMinute returns the configured per-IP upgrade budget, or the
+// default when a caller leaves it unset or configures a non-positive value.
+func wsUpgradeRatePerMinute(cfg *config.Config) int {
+	if cfg == nil || cfg.WSUpgradeRatePerMinute <= 0 {
+		return config.DefaultWSUpgradeRatePerMinute
+	}
+	return cfg.WSUpgradeRatePerMinute
+}
+
+// NewHub creates a new Hub instance. Cache construction and revocation-client
+// configuration failures are returned to the caller (AGENTS.md section 2.1).
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) (*Hub, error) {
 	bufSize := 4096
 	maxC := 10000
 	workers := 4
@@ -530,11 +656,16 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	rateBurst := 20
 	streamChat := "CHAT_EVENTS"
 	streamNotif := "NOTIFICATIONS_EVENTS"
-	durableChat := "ws-hub-chat"
-	durableNotif := "ws-hub-notifications"
 	enableJS := true
+	revocationReplayWindow := defaultRevocationReplayWindow
+	consumerSettings := config.DefaultNATSConsumerSettings()
 
 	if cfg != nil {
+		resolvedConsumer, err := resolveNATSConsumerSettings(cfg.NATSConsumer)
+		if err != nil {
+			return nil, fmt.Errorf("ws-hub: %w", err)
+		}
+		consumerSettings = resolvedConsumer
 		if cfg.BroadcastBufferSize > 0 {
 			bufSize = cfg.BroadcastBufferSize
 		}
@@ -553,18 +684,15 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		if cfg.NatsStreamNotifications != "" {
 			streamNotif = cfg.NatsStreamNotifications
 		}
-		if cfg.NatsDurableChat != "" {
-			durableChat = cfg.NatsDurableChat
-		}
-		if cfg.NatsDurableNotifications != "" {
-			durableNotif = cfg.NatsDurableNotifications
-		}
 		enableJS = cfg.EnableJetStream
+		if cfg.RevocationReplayWindowSeconds > 0 {
+			revocationReplayWindow = time.Duration(cfg.RevocationReplayWindowSeconds) * time.Second
+		}
 	}
 
 	dedupCache, err := newDedupLRUFunc(10000)
 	if err != nil {
-		panic(fmt.Sprintf("failed to initialize dedup LRU cache: %v", err))
+		return nil, fmt.Errorf("failed to initialize dedup LRU cache: %w", err)
 	}
 
 	var js nats.JetStreamContext
@@ -575,7 +703,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	}
 	revocationRedisClient := rdb
 	if len(revocationClients) > 1 {
-		panic("ws-hub: at most one revocation Redis client may be configured")
+		return nil, errors.New("ws-hub: at most one revocation Redis client may be configured")
 	}
 	if len(revocationClients) == 1 {
 		revocationRedisClient = revocationClients[0]
@@ -590,7 +718,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Nats:                              nc,
 		Logger:                            logger,
 		authClient:                        authClient,
-		UpgradeLimiter:                    NewWSUpgradeRateLimiter(10, 60),
+		UpgradeLimiter:                    NewWSUpgradeRateLimiter(wsUpgradeRatePerMinute(cfg), 60),
 		webTransportServer:                &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
 		jwksCache:                         nil, // Initialised via SetupJWKS()
 		maxClients:                        maxC,
@@ -606,12 +734,15 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		dedupCache:                        dedupCache,
 		streamChat:                        streamChat,
 		streamNotif:                       streamNotif,
-		durableChat:                       durableChat,
-		durableNotif:                      durableNotif,
 		enableJetStream:                   enableJS,
+		revocationReplayWindow:            revocationReplayWindow,
+		natsAckWait:                       time.Duration(consumerSettings.AckWaitSeconds) * time.Second,
+		natsMaxDeliver:                    consumerSettings.MaxDeliver,
+		natsInactiveThreshold:             time.Duration(consumerSettings.InactiveThresholdSeconds) * time.Second,
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
-	return hub
+	hub.revocationWatchdogInterval = time.Second
+	return hub, nil
 }
 
 // SetupJWKS initialises the JWKS cache for RS256 token verification.
@@ -624,7 +755,7 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	h.closeJWKSCacheLocked(ctx)
 
 	jwksCtx, cancel := context.WithCancel(ctx)
-	jwksHTTPClient := jwk.WrapHTTPClientDefaults(&http.Client{Timeout: jwksRefreshTimeout})
+	jwksHTTPClient := jwk.WrapHTTPClientDefaults(h.newJWKSHTTPClient(jwksURL))
 	cache, err := newJWKSCacheFunc(
 		jwksCtx,
 		httprc.NewClient(
@@ -1092,20 +1223,7 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 	case msg.Type == "notification":
 		return h.collectNotificationRecipientsLocked(msg, span)
 	case msg.Room != "":
-		clients, ok := h.Rooms[msg.Room]
-		if !ok {
-			return nil
-		}
-		if span != nil && span.IsRecording() {
-			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
-		}
-		recipients := make([]recipient, len(clients))
-		i := 0
-		for c := range clients {
-			recipients[i] = recipient{client: c}
-			i++
-		}
-		return recipients
+		return h.collectRoomRecipientsLocked(msg, span)
 	case msg.To != "":
 		c, ok := h.Clients[msg.To]
 		if !ok {
@@ -1129,6 +1247,39 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 	}
 }
 
+// collectRoomRecipientsLocked requires Hub.mu to be held for reading.
+func (h *Hub) collectRoomRecipientsLocked(msg *Message, span trace.Span) []recipient {
+	clients, ok := h.Rooms[msg.Room]
+	if !ok {
+		return nil
+	}
+	if msg.audiencePresent {
+		recipients := make([]recipient, 0, min(len(clients), len(msg.audienceUserIDs)))
+		for client := range clients {
+			if client == nil {
+				continue
+			}
+			if _, allowed := msg.audienceUserIDs[client.UserID]; allowed {
+				recipients = append(recipients, recipient{client: client})
+			}
+		}
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(recipients)))
+		}
+		return recipients
+	}
+	if span != nil && span.IsRecording() {
+		span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+	}
+	recipients := make([]recipient, len(clients))
+	i := 0
+	for client := range clients {
+		recipients[i] = recipient{client: client}
+		i++
+	}
+	return recipients
+}
+
 // collectNotificationRecipientsLocked requires Hub.mu to be held for reading.
 func (h *Hub) collectNotificationRecipientsLocked(msg *Message, span trace.Span) []recipient {
 	// Notifications target authenticated users, not connection IDs. Never let a
@@ -1148,8 +1299,10 @@ func (h *Hub) collectNotificationRecipientsLocked(msg *Message, span trace.Span)
 	return recipients
 }
 
+// maxBroadcastBytes bounds one fanned-out frame (AGENTS.md section 3.2).
+const maxBroadcastBytes = 60 * 1024 // 60 KB
+
 func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span trace.Span) bool {
-	const maxBroadcastBytes = 60 * 1024 // 60 KB
 	if len(data) <= maxBroadcastBytes {
 		return false
 	}
@@ -1252,6 +1405,10 @@ func (h *Hub) scheduleClientEviction(client *Client) {
 		if runCtx != nil {
 			// Stop joins Run before closeActiveClients; only cancel here so a
 			// pending broadcast cannot serialize shutdown on this socket.
+			// Reserve the eventual 1001 close before cancellation. If ReadPump
+			// cleanup unregisters this client before the shutdown snapshot, its
+			// deferred close still fulfills the reservation.
+			client.reserveControlFrameClose(1001, "server shutting down")
 			client.cancelConnection()
 			client.cancelAllRoomReplays()
 			return
@@ -1277,9 +1434,14 @@ func (h *Hub) scheduleClientEviction(client *Client) {
 // delivery to the current chat.{room_id} pattern.  Same tightening applied to
 // "notifications.*".  Both are intentional breaking changes if any internal
 // service currently publishes multi-level subjects under these prefixes.
-//
-//nolint:cyclop
 func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
+	// AUD-478: the admission barrier starts closed. Only the cache.revoke replay
+	// watcher opens it, so every failure path below leaves admission refused.
+	h.revocationCatchingUp.Store(true)
+	// AUD-478: the authorization-cache barrier also starts closed. It opens only
+	// after the first reset below, which runs after the live invalidation consumer
+	// exists, so no event published in between is missed.
+	h.authCacheAdmissionClosed.Store(true)
 	if h.Nats == nil {
 		err := fmt.Errorf("NATS connection is not configured")
 		if h.Logger != nil {
@@ -1288,99 +1450,29 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		return err
 	}
 
-	var chatSub *nats.Subscription
-	var notifSub *nats.Subscription
-	var err error
 	h.chatReplayAvailable.Store(false)
 	h.chatStreamIncarnation = ""
-	if h.js == nil {
-		h.js, err = jetStreamContextFunc(h.Nats)
-		if err != nil {
-			return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
-		}
-	}
-
-	if h.enableJetStream {
-		if h.internalSecret == "" {
-			return fmt.Errorf("secure chat replay requires a non-empty signing secret")
-		}
-		streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
-		if infoErr != nil {
-			return fmt.Errorf("load chat stream metadata: %w", infoErr)
-		}
-		if streamInfo == nil || streamInfo.Created.IsZero() {
-			return fmt.Errorf("chat stream incarnation is unavailable")
-		}
-		incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
-		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
-			nats.DeliverNew(),
-			nats.AckExplicit(),
-			nats.ManualAck(),
-		)
-		if err != nil {
-			return fmt.Errorf("subscribe to JetStream chat events: %w", err)
-		}
-		notifSub, err = h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
-			nats.DeliverNew(),
-			nats.AckExplicit(),
-			nats.ManualAck(),
-		)
-		if err != nil {
-			cleanupErr := chatSub.Unsubscribe()
-			return fmt.Errorf("subscribe to JetStream notification events: %w", errors.Join(err, cleanupErr))
-		}
-		h.chatStreamIncarnation = incarnation
-		h.chatReplayAvailable.Store(true)
-	} else {
-		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
-		if err != nil {
-			h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
-			return err
-		}
-		notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
-	}
-	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
+	if err := h.ensureJetStreamContext(); err != nil {
 		return err
 	}
-	h.subs = append(h.subs, chatSub, notifSub)
-
-	// Membership revocations are published through the backend transactional
-	// outbox and must reach every replica after downtime. Keep this subscription
-	// durable even when Core NATS is selected for chat delivery.
-	invHandler := h.handleCacheInvalidation(appCtx)
-	invOpts := []nats.SubOpt{nats.DeliverAll(), nats.AckExplicit(), nats.ManualAck()}
-	var invSub *nats.Subscription
-	if h.subscribeCacheInvalidations != nil {
-		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
-	} else {
-		invSub, err = h.js.Subscribe("cache.invalidate", invHandler, invOpts...)
-	}
-	if err != nil {
-		h.Logger.ErrorContext(appCtx, "JetStream cache invalidation subscription failed", "err", err)
+	if err := h.subscribeChatAndNotifications(appCtx); err != nil {
 		return err
 	}
-	if invSub != nil {
-		h.subs = append(h.subs, invSub)
-	}
-
-	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
+	invSub, err := h.subscribeCacheInvalidation(appCtx)
 	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
 		return err
 	}
-	h.subs = append(h.subs, ctrlSub)
-
-	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
-	jwksSub, err := coreNATSSubscribeFunc(h.Nats, "keys.rotated", func(msg *nats.Msg) {
-		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
-		h.tryForceRefreshJWKS(appCtx)
-	})
+	h.setInvalidationSubscription(invSub)
+	revocationSub, err := h.subscribeCacheRevocation(appCtx)
 	if err != nil {
-		h.Logger.WarnContext(appCtx, "NATS keys.rotated subscription failed — falling back to on-demand refresh", "err", err)
-	} else {
-		h.subs = append(h.subs, jwksSub)
+		return err
 	}
+	if err := h.subscribeControl(appCtx); err != nil {
+		return err
+	}
+	h.subscribeKeyRotation(appCtx)
+	h.watchRevocationCatchUp(appCtx, revocationSub)
+	h.startAuthCacheAdmission(appCtx)
 
 	if h.chatReplayAvailable.Load() {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
@@ -1388,6 +1480,314 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
 	}
 	return nil
+}
+
+// ensureJetStreamContext creates the JetStream context used by the durable
+// cache-invalidation consumers when NewHub did not supply one.
+func (h *Hub) ensureJetStreamContext() error {
+	if h.js != nil {
+		return nil
+	}
+	js, err := jetStreamContextFunc(h.Nats)
+	h.js = js
+	if err != nil {
+		return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
+	}
+	return nil
+}
+
+// subscribeChatAndNotifications binds the chat and notification subjects. The
+// JetStream path is used only when enabled; the Core NATS fallback delivers the
+// same subjects without replay.
+func (h *Hub) subscribeChatAndNotifications(appCtx context.Context) error {
+	var chatSub, notifSub *nats.Subscription
+	var err error
+	if h.enableJetStream {
+		chatSub, notifSub, err = h.subscribeJetStreamChatAndNotifications(appCtx)
+	} else {
+		chatSub, notifSub, err = h.subscribeCoreChatAndNotifications(appCtx)
+	}
+	if err != nil {
+		return err
+	}
+	h.subs = append(h.subs, chatSub, notifSub)
+	return nil
+}
+
+func (h *Hub) subscribeJetStreamChatAndNotifications(appCtx context.Context) (*nats.Subscription, *nats.Subscription, error) {
+	if h.internalSecret == "" {
+		return nil, nil, fmt.Errorf("secure chat replay requires a non-empty signing secret")
+	}
+	streamInfo, err := h.js.StreamInfo(h.streamChat)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load chat stream metadata: %w", err)
+	}
+	if streamInfo == nil || streamInfo.Created.IsZero() {
+		return nil, nil, fmt.Errorf("chat stream incarnation is unavailable")
+	}
+	incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
+	// Chat and notification consumers are ephemeral and start at new messages.
+	// Each replica must receive every live event for its own sockets, so no shared
+	// durable name is used: nats.go rejects a second non-queue subscriber on one push
+	// consumer, and a per-replica durable would retain and redeliver backlog after a
+	// reconnect, duplicating what the signed resume replay already serves.
+	chatSub, err := h.js.Subscribe("chat.*", h.handleChat(appCtx),
+		nats.DeliverNew(),
+		nats.AckExplicit(),
+		nats.ManualAck(),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("subscribe to JetStream chat events: %w", err)
+	}
+	notifSub, err := h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
+		nats.DeliverNew(),
+		nats.AckExplicit(),
+		nats.ManualAck(),
+	)
+	if err != nil {
+		cleanupErr := chatSub.Unsubscribe()
+		return nil, nil, fmt.Errorf("subscribe to JetStream notification events: %w", errors.Join(err, cleanupErr))
+	}
+	h.chatStreamIncarnation = incarnation
+	h.chatReplayAvailable.Store(true)
+	return chatSub, notifSub, nil
+}
+
+func (h *Hub) subscribeCoreChatAndNotifications(appCtx context.Context) (*nats.Subscription, *nats.Subscription, error) {
+	chatSub, err := coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
+		return nil, nil, err
+	}
+	notifSub, err := coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
+		return nil, nil, err
+	}
+	return chatSub, notifSub, nil
+}
+
+// subscribeCacheInvalidation binds pure authorization-cache invalidations.
+//
+// The backend transactional outbox publishes two signed event classes on separate
+// subjects of CACHE_INVALIDATIONS: pure authorization-cache invalidations on
+// cache.invalidate and room membership revocations (evict_room) on cache.revoke.
+// Each subject has exactly one ephemeral consumer per replica, so every verified
+// event is applied once per replica.
+//
+// Pure invalidations are live-only. ws-hub replicas are stateless, so a fresh
+// replica holds no invalidation-derived state and must not replay the
+// seven-day CACHE_INVALIDATIONS retention on every start (AUD-478). Both consumers
+// remain JetStream consumers, so acknowledgements still apply even when Core NATS
+// is selected for chat delivery.
+//
+// Retention: this consumer contract does not depend on the stream's seven-day
+// retention. DeliverNew starts at the first message published after the consumer
+// exists, and the only bounded replay left is the cache.revoke window below.
+//
+// The subscription is returned unregistered. SubscribeToNATS and the reconnect path
+// register it with setInvalidationSubscription, so a consumer opened during shutdown
+// is never added to the drain list.
+func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) (*nats.Subscription, error) {
+	invHandler := h.handleCacheInvalidation(appCtx)
+	invOpts := append([]nats.SubOpt{nats.DeliverNew()}, h.invalidationConsumerOpts()...)
+	var invSub *nats.Subscription
+	var err error
+	if h.subscribeCacheInvalidations != nil {
+		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
+	} else {
+		invSub, err = h.js.Subscribe("cache.invalidate", invHandler, invOpts...)
+	}
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "JetStream cache invalidation subscription failed", "err", err)
+		return nil, err
+	}
+	return invSub, nil
+}
+
+// setInvalidationSubscription records the live pure-invalidation consumer for drain
+// on shutdown. It is the only writer of invalidationSub outside the reconnect path.
+func (h *Hub) setInvalidationSubscription(sub *nats.Subscription) {
+	h.subsMu.Lock()
+	defer h.subsMu.Unlock()
+	h.invalidationSub = sub
+	if sub != nil {
+		h.subs = append(h.subs, sub)
+	}
+}
+
+// invalidationConsumerOpts applies the configured durable contract to both
+// cache-invalidation consumers: explicit ack, the configured ack wait, max
+// deliver and inactive threshold. A zero field is omitted only for hubs that were
+// not built by NewHub; NewHub always resolves every field to a non-zero value.
+func (h *Hub) invalidationConsumerOpts() []nats.SubOpt {
+	opts := []nats.SubOpt{nats.AckExplicit(), nats.ManualAck()}
+	if h.natsAckWait > 0 {
+		opts = append(opts, nats.AckWait(h.natsAckWait))
+	}
+	if h.natsMaxDeliver != 0 {
+		opts = append(opts, nats.MaxDeliver(h.natsMaxDeliver))
+	}
+	if h.natsInactiveThreshold > 0 {
+		opts = append(opts, nats.InactiveThreshold(h.natsInactiveThreshold))
+	}
+	return opts
+}
+
+// subscribeCacheRevocation binds room revocations (evict_room) on cache.revoke.
+//
+// A room revocation must still reach a replica that starts after publication,
+// for as long as the revoked token can remain usable. This consumer therefore
+// starts at now minus the revocation replay window, which is bounded by the
+// access-token lifetime rather than by stream retention.
+func (h *Hub) subscribeCacheRevocation(appCtx context.Context) (*nats.Subscription, error) {
+	revocationHandler := h.handleCacheInvalidation(appCtx)
+	revocationOpts := append([]nats.SubOpt{
+		nats.StartTime(time.Now().Add(-h.revocationReplayWindow)),
+	}, h.invalidationConsumerOpts()...)
+	var revocationSub *nats.Subscription
+	var err error
+	if h.subscribeCacheInvalidations != nil {
+		revocationSub, err = h.subscribeCacheInvalidations(revocationHandler, revocationOpts...)
+	} else {
+		revocationSub, err = h.js.Subscribe("cache.revoke", revocationHandler, revocationOpts...)
+	}
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "JetStream room revocation subscription failed", "err", err)
+		return nil, err
+	}
+	if revocationSub != nil {
+		h.subsMu.Lock()
+		h.subs = append(h.subs, revocationSub)
+		h.subsMu.Unlock()
+	}
+	return revocationSub, nil
+}
+
+// revocationCatchUpPollInterval bounds how often the admission barrier re-reads
+// the cache.revoke consumer position while the replay is still draining.
+const revocationCatchUpPollInterval = 50 * time.Millisecond
+
+// watchRevocationCatchUp starts the watcher that opens the admission barrier. A
+// nil subscription has no replay to observe, so the barrier stays closed.
+func (h *Hub) watchRevocationCatchUp(appCtx context.Context, sub *nats.Subscription) {
+	if sub == nil {
+		return
+	}
+	StartTrackedGoroutine(func() { h.awaitRevocationCatchUp(appCtx, sub) })
+}
+
+// awaitRevocationCatchUp ties the admission barrier to the cache.revoke consumer for
+// the life of the subscription (AUD-478). The barrier closes when the NATS connection
+// is down, when the consumer position cannot be read, or when the subscription is
+// gone. It opens only when the consumer reports no undelivered and no unacknowledged
+// messages, so a replica that lost its replay stays closed until the consumer has
+// drained again. Live revocations in flight do not close an open barrier. The watcher
+// exits when the context ends or the subscription is no longer valid.
+func (h *Hub) awaitRevocationCatchUp(ctx context.Context, sub *nats.Subscription) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	lastReason := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if !sub.IsValid() {
+			h.closeRevocationAdmission(ctx, &lastReason, "the cache.revoke subscription is closed", nil)
+			return
+		}
+		timer.Reset(h.checkRevocationCatchUp(ctx, sub, &lastReason))
+	}
+}
+
+// checkRevocationCatchUp evaluates the admission barrier once and returns the delay
+// before the next evaluation.
+func (h *Hub) checkRevocationCatchUp(ctx context.Context, sub *nats.Subscription, lastReason *string) time.Duration {
+	if !h.natsConnectionUp() {
+		h.closeRevocationAdmission(ctx, lastReason, "the NATS connection is down", nil)
+		return revocationCatchUpPollInterval
+	}
+	reconnects := h.natsReconnects()
+	if h.revocationDrainedReconnects.Load() != reconnects {
+		h.revocationCatchingUp.Store(true)
+	}
+	info, err := revocationConsumerInfoFunc(sub)
+	if err != nil {
+		h.closeRevocationAdmission(ctx, lastReason, "the cache.revoke consumer position is unavailable", err)
+		return revocationCatchUpPollInterval
+	}
+	// A position requested in an earlier session cannot certify the new session.
+	if !h.natsConnectionUp() || h.natsReconnects() != reconnects {
+		h.closeRevocationAdmission(ctx, lastReason, "the NATS session changed during the cache.revoke consumer position check", nil)
+		return revocationCatchUpPollInterval
+	}
+	if info.NumPending == 0 && info.NumAckPending == 0 {
+		h.revocationDrainedReconnects.Store(reconnects)
+		*lastReason = ""
+		if h.revocationCatchingUp.Swap(false) {
+			h.Logger.InfoContext(ctx, "Room revocation replay caught up; WebSocket admission enabled")
+		}
+		return h.revocationWatchdogInterval
+	}
+	// Live revocations are in flight. An open barrier stays open, and a closed barrier
+	// stays closed until the consumer has drained.
+	if h.revocationCatchingUp.Load() {
+		return revocationCatchUpPollInterval
+	}
+	return h.revocationWatchdogInterval
+}
+
+// closeRevocationAdmission closes the admission barrier. The loss is logged when it
+// starts and whenever its reason changes, not on every poll.
+func (h *Hub) closeRevocationAdmission(ctx context.Context, lastReason *string, reason string, err error) {
+	h.revocationCatchingUp.Store(true)
+	if *lastReason == reason {
+		return
+	}
+	*lastReason = reason
+	h.Logger.WarnContext(ctx, "Room revocation replay not current; WebSocket admission closed until it drains",
+		"reason", reason, "err", err)
+}
+
+// natsConnectionUp reports whether the connection that carries the replay consumer is up.
+func (h *Hub) natsConnectionUp() bool {
+	if h.revocationConnected != nil {
+		return h.revocationConnected(h.Nats)
+	}
+	return h.Nats != nil && h.Nats.IsConnected()
+}
+
+// RevocationCatchingUp reports whether the cache.revoke replay is still draining.
+// While it reports true, WebSocket and WebTransport admission and readiness fail
+// closed (AUD-478).
+func (h *Hub) RevocationCatchingUp() bool {
+	return h.revocationCatchingUp.Load()
+}
+
+func (h *Hub) subscribeControl(appCtx context.Context) error {
+	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
+		return err
+	}
+	h.subs = append(h.subs, ctrlSub)
+	return nil
+}
+
+// subscribeKeyRotation pre-warms the JWKS cache on key rotation (RZ-21-05). Failure
+// is not fatal: the hub falls back to on-demand JWKS refresh.
+func (h *Hub) subscribeKeyRotation(appCtx context.Context) {
+	jwksSub, err := coreNATSSubscribeFunc(h.Nats, "keys.rotated", func(msg *nats.Msg) {
+		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
+		h.tryForceRefreshJWKS(appCtx)
+	})
+	if err != nil {
+		h.Logger.WarnContext(appCtx, "NATS keys.rotated subscription failed — falling back to on-demand refresh", "err", err)
+		return
+	}
+	h.subs = append(h.subs, jwksSub)
 }
 
 func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
@@ -1399,34 +1799,33 @@ func (h *Hub) handleCoreChat(appCtx context.Context) nats.MsgHandler {
 }
 
 func (h *Hub) handleChatDelivery(appCtx context.Context, requireSequence bool) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS chat callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
-
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Chat",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("chat.*"),
-			),
-		)
-		defer span.End()
-		h.processChatDelivery(msgCtx, msg, requireSequence)
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "chat", func() {
+			h.handleChatDeliveryCallback(appCtx, msg, requireSequence)
+		})
 	}
+}
+
+func (h *Hub) handleChatDeliveryCallback(appCtx context.Context, msg *nats.Msg, requireSequence bool) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Chat",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("chat.*"),
+		),
+	)
+	defer span.End()
+	h.processChatDelivery(msgCtx, msg, requireSequence)
 }
 
 func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSequence bool) {
@@ -1453,6 +1852,49 @@ func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSeq
 	if !h.applyChatSequence(ctx, msg, &wsMsg, requireSequence) {
 		return
 	}
+	audienceUserIDs, audiencePresent, audienceErr := decodeChatAudience(msg.Data)
+	if audienceErr != nil {
+		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS chat audience dropped",
+			"subject", msg.Subject, "room", wsMsg.Room, "err", audienceErr)
+		if requireSequence {
+			h.rejectUndeliverableSequencedChat(ctx, msg, &wsMsg, "invalid audience")
+		} else {
+			safeAck(msg)
+		}
+		return
+	}
+	if !audiencePresent {
+		var eventPayload struct {
+			Type string `json:"type"`
+		}
+		refreshRequired := json.Unmarshal(wsMsg.Payload, &eventPayload) == nil &&
+			shouldRefreshMissingAudienceCheckpoint(wsMsg.Type, eventPayload.Type)
+		checkpointFields := map[string]any{
+			"type":    "replay_checkpoint",
+			"chat_id": wsMsg.Room,
+		}
+		if refreshRequired {
+			checkpointFields["refresh_required"] = true
+		}
+		checkpointPayload, err := hubJSONMarshalFunc(checkpointFields)
+		if err != nil {
+			h.Logger.WarnContext(ctx, "ws-hub: failed to build missing-audience checkpoint",
+				"subject", msg.Subject, "room", wsMsg.Room, "err", err)
+			if requireSequence {
+				h.rejectUndeliverableSequencedChat(ctx, msg, &wsMsg, "checkpoint marshal failed")
+			} else {
+				safeAck(msg)
+			}
+			return
+		}
+		// Do not trust room-wide delivery of an old producer's full payload.
+		// Preserve the outer routing fields and sequence while replacing only
+		// the browser-visible event body with an event-free checkpoint/control
+		// frame. refresh_required only asks the client to recover persisted state.
+		wsMsg.Payload = checkpointPayload
+	}
+	wsMsg.audienceUserIDs = audienceUserIDs
+	wsMsg.audiencePresent = audiencePresent
 	h.enqueueChatDelivery(ctx, msg, &wsMsg, msgID, requireSequence)
 }
 
@@ -1496,6 +1938,32 @@ func (h *Hub) terminateChatMessage(ctx context.Context, msg *nats.Msg, reason st
 	}
 }
 
+// sequencedChatUndeliverableReason reports why a sequenced chat message cannot
+// be fanned out. Broadcast drops such messages after the JetStream ACK, which
+// would leave a silent gap in the client's replay sequence (AUD-477).
+func sequencedChatUndeliverableReason(wsMsg *Message) string {
+	data, err := hubJSONMarshalFunc(wsMsg)
+	if err != nil {
+		return "marshal failed"
+	}
+	if len(data) > maxBroadcastBytes {
+		return "oversized"
+	}
+	return ""
+}
+
+// rejectUndeliverableSequencedChat terminates the message instead of
+// acknowledging it, then resynchronizes the room: connected clients reconnect
+// and resume from their last delivered sequence instead of continuing past the
+// gap. Termination stops JetStream from redelivering a poison message forever.
+func (h *Hub) rejectUndeliverableSequencedChat(ctx context.Context, msg *nats.Msg, wsMsg *Message, reason string) {
+	BroadcastDropsTotal.Inc()
+	h.Logger.WarnContext(ctx, "ws-hub: sequenced chat message cannot be broadcast; resynchronizing room",
+		"subject", msg.Subject, "room", wsMsg.Room, "sequence", wsMsg.replaySequence(), "reason", reason)
+	h.failRoomClients(wsMsg.Room)
+	h.terminateChatMessage(ctx, msg, reason)
+}
+
 func (h *Hub) enqueueChatDelivery(
 	ctx context.Context,
 	msg *nats.Msg,
@@ -1503,6 +1971,12 @@ func (h *Hub) enqueueChatDelivery(
 	msgID string,
 	requireSequence bool,
 ) {
+	if requireSequence && wsMsg.replaySequence() > 0 {
+		if reason := sequencedChatUndeliverableReason(wsMsg); reason != "" {
+			h.rejectUndeliverableSequencedChat(ctx, msg, wsMsg, reason)
+			return
+		}
+	}
 	select {
 	case h.Broadcast <- wsMsg:
 		if msgID != "" && h.dedupCache != nil {
@@ -1529,61 +2003,60 @@ func notificationUserIDFromSubject(subject string) (string, bool) {
 }
 
 func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS notifications callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "notifications", func() {
+			h.handleNotificationsCallback(appCtx, msg)
+		})
+	}
+}
 
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
+func (h *Hub) handleNotificationsCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
 
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Notifications",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("notifications.*"),
-			),
-		)
-		defer span.End()
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Notifications",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("notifications.*"),
+		),
+	)
+	defer span.End()
 
-		msgID := ""
-		if msg.Header != nil {
-			msgID = msg.Header.Get("Nats-Msg-Id")
-		}
-		if msgID != "" && h.dedupCache != nil {
-			if _, ok := h.dedupCache.Get(msgID); ok {
-				JetStreamDedupHitsTotal.Inc()
-				safeAck(msg)
-				return
-			}
-		}
-
-		wsMsg, valid := h.decodeNotification(msgCtx, msg)
-		if !valid {
-			return
-		}
-		select {
-		case h.Broadcast <- wsMsg:
-			if msgID != "" && h.dedupCache != nil {
-				h.dedupCache.Add(msgID, time.Now())
-			}
+	msgID := ""
+	if msg.Header != nil {
+		msgID = msg.Header.Get("Nats-Msg-Id")
+	}
+	if msgID != "" && h.dedupCache != nil {
+		if _, ok := h.dedupCache.Get(msgID); ok {
+			JetStreamDedupHitsTotal.Inc()
 			safeAck(msg)
-		default:
-			BroadcastDropsTotal.Inc()
-			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
-				"subject", msg.Subject)
-			safeNakWithDelay(msg, 5*time.Second)
+			return
 		}
+	}
+
+	wsMsg, valid := h.decodeNotification(msgCtx, msg)
+	if !valid {
+		return
+	}
+	select {
+	case h.Broadcast <- wsMsg:
+		if msgID != "" && h.dedupCache != nil {
+			h.dedupCache.Add(msgID, time.Now())
+		}
+		safeAck(msg)
+	default:
+		BroadcastDropsTotal.Inc()
+		h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
+			"subject", msg.Subject)
+		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
 
@@ -1616,38 +2089,38 @@ type cacheInvalidationPayload struct {
 	Signature string `json:"signature"`
 }
 
+// handleCacheInvalidation returns the consumer callback for the cache-invalidation
+// subjects. Both subjects share this handler: the verified payload decides how an
+// event is applied, and the subject decides only its replay policy.
 func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer h.recoverCacheInvalidationPanic(appCtx, msg)
-
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("cache.invalidate"),
-			),
-		)
-		defer span.End()
-
-		h.processCacheInvalidationMessage(msgCtx, msg, span)
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "cache.invalidate", func() {
+			h.handleCacheInvalidationCallback(appCtx, msg)
+		})
 	}
 }
 
-func (h *Hub) recoverCacheInvalidationPanic(ctx context.Context, msg *nats.Msg) {
-	if recovered := recover(); recovered != nil {
-		h.Logger.ErrorContext(ctx, "NATS cache.invalidate callback panic recovered",
-			"panic", recovered, "subject", msg.Subject)
+func (h *Hub) handleCacheInvalidationCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
 	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String(msg.Subject),
+		),
+	)
+	defer span.End()
+
+	h.processCacheInvalidationMessage(msgCtx, msg, span)
 }
 
 func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg, span trace.Span) {
@@ -1658,10 +2131,28 @@ func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg
 	if !h.verifyCacheInvalidationSignature(ctx, msg, payload) {
 		return
 	}
+	h.checkCacheInvalidationSubject(ctx, msg, payload)
 	if !h.applyCacheInvalidation(ctx, msg, span, payload) {
 		return
 	}
 	safeAck(msg)
+}
+
+// checkCacheInvalidationSubject enforces the publisher contract after verification:
+// room revocations (evict_room) travel on cache.revoke and pure invalidations on
+// cache.invalidate. A mismatch is logged as a contract violation, but the verified
+// event is still applied. Dropping a revocation would leave a removed member
+// connected, and applying a misrouted pure invalidation only forces a re-check.
+func (h *Hub) checkCacheInvalidationSubject(ctx context.Context, msg *nats.Msg, payload cacheInvalidationPayload) {
+	expected := "cache.invalidate"
+	if payload.Data.EvictRoom {
+		expected = "cache.revoke"
+	}
+	if msg.Subject == expected {
+		return
+	}
+	h.Logger.ErrorContext(ctx, "ws-hub: cache invalidation contract violation; applying verified event",
+		"subject", msg.Subject, "expected_subject", expected, "evict_room", payload.Data.EvictRoom)
 }
 
 func (h *Hub) decodeCacheInvalidationMessage(
@@ -1724,7 +2215,21 @@ func (h *Hub) rejectCacheInvalidation(ctx context.Context, msg *nats.Msg) {
 	if err := safeTerm(msg); err != nil &&
 		!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
 		h.Logger.WarnContext(ctx, "Failed to terminate invalid cache invalidation", "err", err)
+		safeNakWithDelay(msg, 5*time.Second)
 	}
+}
+
+func roomRevocationPublicationFromMessage(msg *nats.Msg) roomRevocationPublication {
+	if msg != nil {
+		if metadata, err := msg.Metadata(); err == nil &&
+			metadata.Sequence.Stream > 0 && !metadata.Timestamp.IsZero() {
+			return roomRevocationPublication{
+				publishedAt:    metadata.Timestamp,
+				streamSequence: metadata.Sequence.Stream,
+			}
+		}
+	}
+	return roomRevocationPublication{publishedAt: time.Now()}
 }
 
 func (h *Hub) applyCacheInvalidation(
@@ -1734,15 +2239,22 @@ func (h *Hub) applyCacheInvalidation(
 	payload cacheInvalidationPayload,
 ) bool {
 	if payload.Data.EvictRoom {
-		if err := h.evictRoomMembership(ctx, payload.Data.UserID, payload.Data.RoomID); err != nil {
+		publication := roomRevocationPublicationFromMessage(msg)
+		if err := h.evictRoomMembershipAt(ctx, payload.Data.UserID, payload.Data.RoomID, publication); err != nil {
 			h.Logger.ErrorContext(ctx, "Room membership revocation could not be confirmed; retrying",
 				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
 			span.RecordError(err)
 			safeNakWithDelay(msg, 5*time.Second)
 			return false
 		}
-	} else if h.authClient != nil {
+	} else if h.authClient != nil && !runAuthorizationCallback(func() {
 		h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+	}) {
+		err := errors.New("authorization cache invalidation panicked")
+		h.Logger.ErrorContext(ctx, "Cache invalidation failed; retrying", "err", err)
+		span.RecordError(err)
+		safeNakWithDelay(msg, 5*time.Second)
+		return false
 	}
 	return true
 }
@@ -1754,17 +2266,27 @@ func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
 const roomMembershipWriteDrainTimeout = 10 * time.Second
 
 func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
+	return h.evictRoomMembershipAt(ctx, userID, roomID,
+		roomRevocationPublication{publishedAt: time.Now()})
+}
+
+func (h *Hub) evictRoomMembershipAt(
+	ctx context.Context,
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+) error {
 	lock, epoch, drained, err := h.beginRoomMembershipRevocation(ctx, userID, roomID)
 	if err != nil {
 		return err
 	}
 	defer lock.release()
 
-	if err := h.drainRoomMembershipWrites(ctx, lock, epoch, userID, roomID, drained); err != nil {
+	if err := h.drainRoomMembershipWrites(ctx, lock, epoch, userID, roomID, drained, publication); err != nil {
 		return err
 	}
 	allowed, authErr, canRefresh := h.refreshRoomAuthorizationForRevocation(ctx, userID, roomID)
-	h.finishRoomMembershipRevocation(lock, epoch, userID, roomID, allowed, authErr)
+	h.finishRoomMembershipRevocationAt(lock, epoch, userID, roomID, allowed, authErr, canRefresh, publication)
 	if authErr != nil {
 		if !canRefresh {
 			return authErr
@@ -1812,6 +2334,7 @@ func (h *Hub) drainRoomMembershipWrites(
 	userID string,
 	roomID string,
 	drained <-chan struct{},
+	publication roomRevocationPublication,
 ) error {
 	if drained == nil {
 		return nil
@@ -1823,7 +2346,7 @@ func (h *Hub) drainRoomMembershipWrites(
 		return nil
 	case <-drainCtx.Done():
 		drainErr := drainCtx.Err()
-		h.failClosedRoomMembershipDrain(lock, epoch, userID, roomID)
+		h.failClosedRoomMembershipDrainAt(lock, epoch, userID, roomID, publication)
 		return fmt.Errorf("wait for in-flight room writes: %w", drainErr)
 	}
 }
@@ -1834,13 +2357,29 @@ func (h *Hub) failClosedRoomMembershipDrain(
 	userID string,
 	roomID string,
 ) {
+	h.failClosedRoomMembershipDrainAt(
+		lock,
+		epoch,
+		userID,
+		roomID,
+		roomRevocationPublication{publishedAt: time.Now()},
+	)
+}
+
+func (h *Hub) failClosedRoomMembershipDrainAt(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+) {
 	lock.Lock()
 	entry := lock.entry
 	current := entry.revocationEpoch == epoch
 	if current {
 		entry.drainFailedClosed.Store(true)
 		entry.mutationPending = true
-		h.markRoomRevocationPending(userID, roomID)
+		h.markRoomRevocationPending(userID, roomID, publication, !h.roomAuthorizationRefresherAvailable())
 	}
 	lock.unlockRetained()
 	if current {
@@ -1861,6 +2400,18 @@ func (h *Hub) failClosedRoomMembershipDrain(
 	lock.unlockRetained()
 }
 
+// runAuthorizationCallback confines recovery to external authorization calls.
+// A panic is an unconfirmed operation, not proof that the NATS event is poison.
+func runAuthorizationCallback(callback func()) (completed bool) {
+	defer func() {
+		if recover() != nil {
+			completed = false
+		}
+	}()
+	callback()
+	return true
+}
+
 func (h *Hub) refreshRoomAuthorizationForRevocation(
 	ctx context.Context,
 	userID string,
@@ -1873,8 +2424,17 @@ func (h *Hub) refreshRoomAuthorizationForRevocation(
 	if err := ctx.Err(); err != nil {
 		return false, err, true
 	}
-	allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	if !runAuthorizationCallback(func() {
+		allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	}) {
+		return false, errors.New("room authorization refresh panicked"), true
+	}
 	return allowed, authErr, true
+}
+
+func (h *Hub) roomAuthorizationRefresherAvailable() bool {
+	_, ok := h.authClient.(RoomAuthorizationRefresher)
+	return ok
 }
 
 func (h *Hub) finishRoomMembershipRevocation(
@@ -1885,13 +2445,35 @@ func (h *Hub) finishRoomMembershipRevocation(
 	allowed bool,
 	authErr error,
 ) {
+	h.finishRoomMembershipRevocationAt(
+		lock,
+		epoch,
+		userID,
+		roomID,
+		allowed,
+		authErr,
+		h.roomAuthorizationRefresherAvailable(),
+		roomRevocationPublication{publishedAt: time.Now()},
+	)
+}
+
+func (h *Hub) finishRoomMembershipRevocationAt(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	allowed bool,
+	authErr error,
+	canRefresh bool,
+	publication roomRevocationPublication,
+) {
 	lock.Lock()
 	entry := lock.entry
 	current := entry.revocationEpoch == epoch
 	removeMembership := current && (authErr != nil || !allowed)
 	if current {
 		if authErr != nil {
-			h.markRoomRevocationPending(userID, roomID)
+			h.markRoomRevocationPending(userID, roomID, publication, !canRefresh)
 		} else {
 			h.clearRoomRevocationPending(userID, roomID)
 		}
@@ -1946,13 +2528,56 @@ func (h *Hub) removeRoomMemberWithoutWriteLock(userID, roomID string) {
 	}
 }
 
-func (h *Hub) markRoomRevocationPending(userID, roomID string) {
+func (h *Hub) markRoomRevocationPending(
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+	sticky bool,
+) {
+	now := time.Now()
+	if publication.publishedAt.IsZero() {
+		publication.publishedAt = now
+	}
+	marker := pendingRoomRevocation{
+		streamSequence: publication.streamSequence,
+		expiresAt:      publication.publishedAt.Add(pendingRoomRevocationTTL),
+		sticky:         sticky,
+	}
+	if sticky {
+		marker.expiresAt = time.Time{}
+	}
+
+	key := roomMembershipKey{userID: userID, roomID: roomID}
 	h.pendingRoomRevocationsMu.Lock()
 	defer h.pendingRoomRevocationsMu.Unlock()
+	h.pruneExpiredRoomRevocationsLocked(now)
 	if h.pendingRoomRevocations == nil {
-		h.pendingRoomRevocations = make(map[roomMembershipKey]struct{})
+		h.pendingRoomRevocations = make(map[roomMembershipKey]pendingRoomRevocation)
 	}
-	h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}] = struct{}{}
+
+	current, exists := h.pendingRoomRevocations[key]
+	if exists {
+		if current.sticky {
+			return
+		}
+		if sticky {
+			h.pendingRoomRevocations[key] = marker
+			return
+		}
+		if publication.streamSequence == 0 || publication.streamSequence <= current.streamSequence {
+			return
+		}
+		if !marker.expiresAt.After(now) {
+			return
+		}
+		if marker.expiresAt.Before(current.expiresAt) {
+			marker.expiresAt = current.expiresAt
+		}
+	}
+	if !sticky && !marker.expiresAt.After(now) {
+		return
+	}
+	h.pendingRoomRevocations[key] = marker
 }
 
 func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
@@ -1962,10 +2587,36 @@ func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
 }
 
 func (h *Hub) isRoomRevocationPending(userID, roomID string) bool {
-	h.pendingRoomRevocationsMu.RLock()
-	defer h.pendingRoomRevocationsMu.RUnlock()
-	_, pending := h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}]
-	return pending
+	key := roomMembershipKey{userID: userID, roomID: roomID}
+	now := time.Now()
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	marker, pending := h.pendingRoomRevocations[key]
+	if !pending {
+		return false
+	}
+	if !marker.sticky && !now.Before(marker.expiresAt) {
+		delete(h.pendingRoomRevocations, key)
+		return false
+	}
+	return true
+}
+
+func (h *Hub) pruneExpiredRoomRevocations(now time.Time) int {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	return h.pruneExpiredRoomRevocationsLocked(now)
+}
+
+func (h *Hub) pruneExpiredRoomRevocationsLocked(now time.Time) int {
+	removed := 0
+	for key, marker := range h.pendingRoomRevocations {
+		if !marker.sticky && !now.Before(marker.expiresAt) {
+			delete(h.pendingRoomRevocations, key)
+			removed++
+		}
+	}
+	return removed
 }
 
 type controlPayload struct {
@@ -1979,84 +2630,83 @@ type controlPayload struct {
 }
 
 func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS control callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "control", func() {
+			h.handleControlMessageCallback(appCtx, msg)
+		})
+	}
+}
 
-		select {
-		case <-appCtx.Done():
-			return
-		default:
+func (h *Hub) handleControlMessageCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("ws_hub.control"),
+		),
+	)
+	defer span.End()
+
+	var payload controlPayload
+	if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
+		h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
+			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+		return
+	}
+
+	if h.internalSecret == "" {
+		h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
+			"user_id", payload.Data.UserID)
+		return
+	}
+
+	dataBytes, err := hubJSONMarshalFunc(payload.Data)
+	if err != nil {
+		h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
+		return
+	}
+
+	hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+	if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
+		h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
+		return
+	}
+	expectedSigBytes := hFunc.Sum(nil)
+
+	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+		h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
+			"action", payload.Data.Action, "user_id", payload.Data.UserID)
+		return
+	}
+
+	h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
+		"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
+
+	if h.authClient != nil {
+		h.authClient.Invalidate(payload.Data.UserID, "")
+	}
+
+	if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
+		reason := payload.Data.Reason
+		if reason == "" || reason == "access_revoked" {
+			reason = "Access Revoked"
 		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("ws_hub.control"),
-			),
-		)
-		defer span.End()
-
-		var payload controlPayload
-		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
-			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
-				"subject", msg.Subject, "size", len(msg.Data), "err", err)
-			return
-		}
-
-		if h.internalSecret == "" {
-			h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
-				"user_id", payload.Data.UserID)
-			return
-		}
-
-		dataBytes, err := hubJSONMarshalFunc(payload.Data)
-		if err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
-			return
-		}
-
-		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
-			return
-		}
-		expectedSigBytes := hFunc.Sum(nil)
-
-		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
-		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-			h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
-				"action", payload.Data.Action, "user_id", payload.Data.UserID)
-			return
-		}
-
-		h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
-			"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
-
-		if h.authClient != nil {
-			h.authClient.Invalidate(payload.Data.UserID, "")
-		}
-
-		if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
-			reason := payload.Data.Reason
-			if reason == "" || reason == "access_revoked" {
-				reason = "Access Revoked"
-			}
-			//nolint:contextcheck
-			h.DisconnectUser(payload.Data.UserID, 4401, reason)
-			SessionsRevokedTotal.Inc()
-		} else {
-			h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
-		}
+		//nolint:contextcheck
+		h.DisconnectUser(payload.Data.UserID, 4401, reason)
+		SessionsRevokedTotal.Inc()
+	} else {
+		h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
 	}
 }
 
@@ -2085,9 +2735,10 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
 		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
 
-	cancelClientWork(targets)
-	closeClientTransportsInParallel(targets, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(targets, closeCode, reason, func(client *Client) {
 		client.closeTransportWithControlFrame(closeCode, reason)
+	}, func() {
+		cancelClientWork(targets)
 	})
 	for _, client := range targets {
 		h.unregisterClient(client.ctx, client)
@@ -2127,9 +2778,10 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 		client.sessionRevoked.Store(true)
 		client.sessionGate.Unlock()
 	}
-	cancelClientWork(targets)
-	closeClientTransportsInParallel(targets, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(targets, closeCode, reason, func(client *Client) {
 		client.closeTransportWithControlFrame(closeCode, reason)
+	}, func() {
+		cancelClientWork(targets)
 	})
 	for _, client := range targets {
 		h.unregisterClient(ctx, client)
@@ -2168,10 +2820,14 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 		}
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		revocationTicker := time.NewTicker(min(interval, pendingRoomRevocationCleanupInterval))
+		defer revocationTicker.Stop()
 		for {
 			select {
 			case <-cleanupCtx.Done():
 				return
+			case <-revocationTicker.C:
+				h.pruneExpiredRoomRevocations(time.Now())
 			case <-ticker.C:
 				h.mu.RLock()
 				active := make(map[string]struct{}, len(h.Clients))
@@ -2231,7 +2887,10 @@ func (h *Hub) stop(ctx context.Context) {
 		// WaitGroup entry is registered while lifecycleMu is held, before Stop
 		// can set stopped and begin this join.
 		h.sessionRevocationWG.Wait()
-		for _, sub := range h.subs {
+		h.subsMu.Lock()
+		subs := append([]*nats.Subscription(nil), h.subs...)
+		h.subsMu.Unlock()
+		for _, sub := range subs {
 			if err := sub.Drain(); err != nil {
 				h.Logger.WarnContext(ctx, "NATS subscription drain error", "err", err)
 			}
@@ -2252,9 +2911,10 @@ func (h *Hub) closeActiveClients(ctx context.Context) {
 		clients = append(clients, client)
 	}
 	h.mu.RUnlock()
-	cancelClientWork(clients)
-	closeClientTransportsInParallel(clients, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(clients, 1001, "server shutting down", func(client *Client) {
 		client.closeTransportWithControlFrame(1001, "server shutting down")
+	}, func() {
+		cancelClientWork(clients)
 	})
 	for _, client := range clients {
 		h.handleUnregister(ctx, client)
@@ -2273,8 +2933,48 @@ const maxParallelClientCloses = 16
 // closeClientTransportsInParallel bounds helper goroutines while preventing one
 // socket holding writeMu from serializing the rest of a teardown fanout.
 func closeClientTransportsInParallel(clients []*Client, closeClient func(*Client)) {
+	closeClientTransportsInParallelCore(clients, 0, "", closeClient, false, nil)
+}
+
+// closeClientTransportsInParallelWithAfterDispatch reserves each control close
+// before starting bounded workers. It runs afterDispatch after all work is
+// queued, but before joining workers, so cancellation cannot let a WritePump's
+// deferred plain close consume the requested control-frame close.
+func closeClientTransportsInParallelWithAfterDispatch(
+	clients []*Client,
+	closeCode int,
+	reason string,
+	closeClient func(*Client),
+	afterDispatch func(),
+) {
+	closeClientTransportsInParallelCore(clients, closeCode, reason, closeClient, true, afterDispatch)
+}
+
+func closeClientTransportsInParallelCore(
+	clients []*Client,
+	closeCode int,
+	reason string,
+	closeClient func(*Client),
+	reserveControlFrame bool,
+	afterDispatch func(),
+) {
+	if reserveControlFrame {
+		for _, client := range clients {
+			client.reserveControlFrameClose(closeCode, reason)
+		}
+	}
+
 	workerCount := min(len(clients), maxParallelClientCloses)
-	jobs := make(chan *Client)
+	if workerCount == 0 {
+		if afterDispatch != nil {
+			afterDispatch()
+		}
+		return
+	}
+
+	// Buffer the bounded fanout so a set of writeMu-blocked workers cannot
+	// prevent cancellation from running after the close requests are queued.
+	jobs := make(chan *Client, len(clients))
 	var workers sync.WaitGroup
 	for worker := 0; worker < workerCount; worker++ {
 		workers.Add(1)
@@ -2288,6 +2988,9 @@ func closeClientTransportsInParallel(clients []*Client, closeClient func(*Client
 		jobs <- client
 	}
 	close(jobs)
+	if afterDispatch != nil {
+		afterDispatch()
+	}
 	workers.Wait()
 }
 

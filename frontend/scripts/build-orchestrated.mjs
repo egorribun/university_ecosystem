@@ -141,6 +141,16 @@ const parseMemoryLimit = (rawValue, fallback) => {
   return Number.isFinite(parsed) && parsed >= 256 ? parsed : fallback
 }
 
+function parseBuildMaxWaitMs(rawValue) {
+  if (rawValue === undefined || rawValue === "") return 360_000
+
+  const milliseconds = Number(rawValue)
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 1 || milliseconds > 2_147_483_647) {
+    throw new Error("BUILD_MAX_WAIT_MS must be an integer from 1 to 2147483647 milliseconds")
+  }
+  return milliseconds
+}
+
 const readProcessRssBytes = (pid) => {
   if (!pid) return Promise.resolve(null)
 
@@ -228,7 +238,42 @@ async function step2_syncTokens() {
   await run("node", ["./scripts/sync-tokens.mjs"])
 }
 
-async function step3_viteBuild() {
+// Mirror Node v24.22.1 ParseNodeOptionsEnvVar, not shell tokenization:
+// only ASCII spaces split arguments; double quotes group and backslashes
+// escape the next character only inside double quotes. Never rewrite the input.
+function parseInheritedNodeOptions(value) {
+  const tokens = []
+  let inQuotes = false
+  let startToken = true
+  for (let index = 0; index < value.length; index += 1) {
+    let character = value[index]
+    if (character === "\\" && inQuotes) {
+      if (index + 1 === value.length) return null
+      index += 1
+      character = value[index]
+    } else if (character === " " && !inQuotes) {
+      startToken = true
+      continue
+    } else if (character === '"') {
+      inQuotes = !inQuotes
+      continue
+    }
+    if (startToken) {
+      tokens.push(character)
+      startToken = false
+    } else {
+      tokens[tokens.length - 1] += character
+    }
+  }
+  return inQuotes ? null : tokens
+}
+
+function hasInheritedNodeOption(tokens, optionName) {
+  return tokens.some((token) => token.split("=", 1)[0].replaceAll("_", "-") === optionName)
+}
+
+export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MAX_WAIT_MS) {
+  const MAX_WAIT_MS = parseBuildMaxWaitMs(configuredMaxWaitMs)
   console.log("== Step 3: vite build (BUILD_SKIP_PWA=true) + kill-after-artifacts ==")
 
   // Spawn `vite build` as a subprocess. Watch for both spa-mode artifacts
@@ -270,7 +315,16 @@ async function step3_viteBuild() {
   const maxRssMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_RSS_MB, 1536)
   const maxOldSpaceMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB, 1536)
   const inheritedNodeOptions = process.env.NODE_OPTIONS ?? ""
-  const hasOldSpaceLimit = /(?:^|\s)--max-old-space-size(?:=|\s)/.test(inheritedNodeOptions)
+  const inheritedNodeOptionTokens = parseInheritedNodeOptions(inheritedNodeOptions)
+  const hasOldSpaceLimit =
+    inheritedNodeOptionTokens !== null &&
+    hasInheritedNodeOption(inheritedNodeOptionTokens, "--max-old-space-size")
+  // A one-megabyte young generation measured about 150 MB below V8's default
+  // peak RSS on the production graph, with no change to the emitted chunks.
+  // An inherited --max-semi-space-size keeps operator control.
+  const hasSemiSpaceLimit =
+    inheritedNodeOptionTokens !== null &&
+    hasInheritedNodeOption(inheritedNodeOptionTokens, "--max-semi-space-size")
 
   // FRONTEND_REACT_DEV_MODE propagates a client-only diagnostic mode.
   // When set locally, vite.config.mts adds react-dom/client →
@@ -281,14 +335,24 @@ async function step3_viteBuild() {
   // override here).
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
   const rolldownWorkerThreads = process.env.ROLLDOWN_WORKER_THREADS?.trim() || "4"
+  // Rayon's global pool otherwise sizes itself to the host's logical CPU count,
+  // so the client render's working-set peak followed the machine rather than the
+  // build. Bound it like the Tokio pool; an operator value still wins.
+  const rayonWorkerThreads = process.env.RAYON_NUM_THREADS?.trim() || "2"
 
-  const nodeOptions = [
-    inheritedNodeOptions,
-    hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
-    traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
+  // Preserve malformed quoting byte-for-byte so Node rejects it; appending
+  // defaults or the trace agent must not accidentally repair an invalid escape.
+  const nodeOptions =
+    inheritedNodeOptionTokens === null
+      ? inheritedNodeOptions
+      : [
+          inheritedNodeOptions,
+          hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
+          hasSemiSpaceLimit ? "" : "--max-semi-space-size=1",
+          traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
 
   await new Promise((resolve, reject) => {
     const env = {
@@ -301,8 +365,9 @@ async function step3_viteBuild() {
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       // See isReactDevMode above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
-      // Bound Rolldown's native Tokio pool independently of the host CPU count.
+      // Bound Rolldown's native Tokio and Rayon pools independently of the host CPU count.
       ROLLDOWN_WORKER_THREADS: rolldownWorkerThreads,
+      RAYON_NUM_THREADS: rayonWorkerThreads,
       NODE_OPTIONS: nodeOptions,
     }
 
@@ -332,8 +397,6 @@ async function step3_viteBuild() {
     let memoryProbeInFlight = false
     const POLL_INTERVAL_MS = 500
     const STABLE_DEBOUNCE_TICKS = 4 // 4 × 500ms = 2s of stability
-    const MAX_WAIT_MS = Number(process.env.BUILD_MAX_WAIT_MS || 360_000) // 6 minutes cap before giving up
-
     const startTime = Date.now()
     // Never terminate a build based on stale artifacts from a previous run.
     const FRESH_MTIME_GRACE_MS = 1500 // tolerate filesystem mtime quantization
@@ -598,13 +661,14 @@ async function step7_bundleBudget() {
 }
 
 async function main() {
+  const maxWaitMs = parseBuildMaxWaitMs(process.env.BUILD_MAX_WAIT_MS)
   console.log(`build-orchestrated.mjs (cwd=${cwd})`)
   if (sanitizedArgs.length > 0) {
     console.log(`Vite args: ${sanitizedArgs.join(" ")}`)
   }
   await step1_wasm()
   await step2_syncTokens()
-  await step3_viteBuild()
+  await step3_viteBuild(maxWaitMs)
   await step4_swBundle()
   await step5_workboxInject()
   await step6_postBuildShell()

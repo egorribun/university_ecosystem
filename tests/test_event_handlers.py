@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -19,6 +19,7 @@ from app.core.events import (
     UserLoggedIn,
 )
 from app.models import Event, Message, News, User
+from app.services import event_handlers
 from app.services.event_handlers import (
     configure_event_handlers,
     generate_event_embedding,
@@ -54,18 +55,62 @@ def _configure_message_rls_mock(db: AsyncMock) -> None:
 
 @pytest.mark.asyncio
 async def test_simple_handlers():
-    # Mostly for coverage as they only log
-    await log_all_events(UserCreated(user_id=1, email="a@b.com"))
-    await handle_user_created(UserCreated(user_id=1, email="a@b.com"))
-    await handle_user_logged_in(UserLoggedIn(user_id=1, ip_address="127.0.0.1"))
-    await handle_mfa_enabled(MfaEnabled(user_id=1, method="totp"))
-    await handle_event_created(
-        EventCreated(event_id_entity=1, organizer_id=1, title="Test")
+    user_created = UserCreated(user_id=1, email="a@b.com")
+    logged_in = UserLoggedIn(user_id=1, ip_address="127.0.0.1")
+    mfa_enabled = MfaEnabled(user_id=1, method="totp")
+    event_created = EventCreated(event_id_entity=1, organizer_id=1, title="Test")
+    registration = EventRegistration(event_id_entity=1, user_id=1)
+    notification = NotificationSent(
+        notification_id="1", user_id=1, notification_type="test"
     )
-    await handle_event_registration(EventRegistration(event_id_entity=1, user_id=1))
-    await handle_notification_sent(
-        NotificationSent(notification_id="1", user_id=1, notification_type="test")
-    )
+
+    with (
+        patch.object(event_handlers.logger, "info") as info,
+        patch.object(event_handlers.logger, "debug") as debug,
+    ):
+        assert (await log_all_events(user_created)) is None
+        assert (await handle_user_created(user_created)) is None
+        assert (await handle_user_logged_in(logged_in)) is None
+        assert (await handle_mfa_enabled(mfa_enabled)) is None
+        assert (await handle_event_created(event_created)) is None
+        assert (await handle_event_registration(registration)) is None
+        assert (await handle_notification_sent(notification)) is None
+
+    assert info.call_args_list == [
+        call(
+            "Domain event: %s (id=%s)", user_created.event_type, user_created.event_id
+        ),
+        call("New user registered: user_id=%d", user_created.user_id),
+        call(
+            "MFA enabled: user_id=%d, method=%s",
+            mfa_enabled.user_id,
+            mfa_enabled.method,
+        ),
+        call(
+            "Event created: event_id=%s, organizer=%s, title=%s",
+            event_created.event_id_entity,
+            event_created.organizer_id,
+            event_created.title,
+        ),
+    ]
+    assert debug.call_args_list == [
+        call(
+            "User login: user_id=%d, ip=%s",
+            logged_in.user_id,
+            logged_in.ip_address,
+        ),
+        call(
+            "Event registration: event_id=%d, user_id=%d",
+            registration.event_id_entity,
+            registration.user_id,
+        ),
+        call(
+            "Notification sent: notification_id=%s, user_id=%d, type=%s",
+            notification.notification_id,
+            notification.user_id,
+            notification.notification_type,
+        ),
+    ]
 
 
 @pytest.mark.asyncio
@@ -233,8 +278,16 @@ async def test_handle_chat_participant_removed_propagates_publish_failure(monkey
 
 @pytest.mark.asyncio
 async def test_handle_notifications_requested():
-    await handle_notifications_requested(NotificationsRequested(notification_ids=[]))
-    await handle_notifications_requested(NotificationsRequested(notification_ids=["1"]))
+    assert (
+        await handle_notifications_requested(
+            NotificationsRequested(notification_ids=[])
+        )
+    ) is None
+    assert (
+        await handle_notifications_requested(
+            NotificationsRequested(notification_ids=["1"])
+        )
+    ) is None
 
 
 @pytest.mark.asyncio

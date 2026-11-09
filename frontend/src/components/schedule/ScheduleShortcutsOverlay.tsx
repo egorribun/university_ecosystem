@@ -75,7 +75,7 @@ export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOve
                 type="button"
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <CloseIcon size={16} aria-hidden="true" />
               </button>

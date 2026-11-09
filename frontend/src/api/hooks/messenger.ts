@@ -44,7 +44,7 @@
  * ```ts
  * // Hook (component-side consumer — useMessengerController.ts)
  * useQuery({
- *   ...chatsQueryOptions(),
+ *   ...chatsQueryOptions(queryClient),
  *   enabled: !!user,
  * })
  *
@@ -59,7 +59,7 @@
  * })
  * ```
  */
-import type { QueryFunctionContext } from "@tanstack/react-query"
+import type { QueryClient, QueryFunctionContext } from "@tanstack/react-query"
 
 import {
   chatApi,
@@ -68,6 +68,7 @@ import {
   type MessagesListResponse,
   type Reactor,
 } from "@/api/chat"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 
 // QueryKeys — preserve pre-W180 cache identity by matching the tuples
 // already used inline in useMessengerController.ts (W161 SW2 baseline) +
@@ -108,8 +109,57 @@ const QUERY_GC_TIME_MS = 5 * 60_000
  */
 const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
 
+export const CHAT_LIST_PAGE_SIZE = 20
+
+/**
+ * Refresh only the already loaded extent, using fresh server cursors throughout.
+ * Keep the flat cache envelope shared by the shell, realtime and route callers;
+ * retaining old tail rows here would also retain conversations removed on the server.
+ */
+export async function fetchLoadedChats(
+  queryClient: QueryClient,
+  signal?: AbortSignal
+): Promise<ChatsListResponse> {
+  const current = queryClient.getQueryData<ChatsListResponse>(chatsQueryKey)
+  const loadedCount = Array.isArray(current?.items) ? current.items.length : 0
+  const pageCount = Math.max(1, Math.ceil(loadedCount / CHAT_LIST_PAGE_SIZE))
+  // Preserve the existing first-page transport contract, including the optional
+  // badge providers' fail-closed handling of malformed envelopes.
+  if (pageCount === 1) return chatApi.getChats(undefined, CHAT_LIST_PAGE_SIZE, signal)
+  const cache = queryClient.getQueryCache()
+  const query = cache.find({ queryKey: chatsQueryKey, exact: true })
+  const ownsSession = captureSessionEpoch()
+  const ownsRefresh = () =>
+    query !== undefined &&
+    cache.find({ queryKey: chatsQueryKey, exact: true }) === query &&
+    ownsSession() &&
+    !signal?.aborted
+  const items = new Map<string, Chat>()
+  const visited = new Set<string>()
+  let cursor: string | undefined
+  let page: ChatsListResponse = { items: [], has_more: false, next_cursor: null }
+  for (let index = 0; index < pageCount; index += 1) {
+    if (!ownsRefresh()) throw new Error("Chat list request was cancelled")
+    page = await chatApi.getChats(cursor, CHAT_LIST_PAGE_SIZE, signal)
+    if (!ownsRefresh()) throw new Error("Chat list request was cancelled")
+    if (!Array.isArray(page.items)) throw new Error("Chat list page is invalid")
+    for (const chat of page.items) {
+      if (!items.has(chat.id)) items.set(chat.id, chat)
+    }
+    if (!page.has_more) break
+    const next = page.next_cursor
+    if (!next || visited.has(next)) throw new Error("Chat list cursor did not advance")
+    visited.add(next)
+    cursor = next
+  }
+  return { ...page, items: [...items.values()] }
+}
+
 /**
  * Wave 180 SW3 — pure factory for the `GET /chats` query.
+ *
+ * Pass the consuming QueryClient to refresh its already loaded extent. The
+ * optional argument preserves the standalone first-page factory contract.
  *
  * Used by `useMessengerController` (line 68 pre-W180; spread + enabled
  * gate post-W180). Matches MessengerContext.tsx:66-70 which already gates
@@ -124,10 +174,12 @@ const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
  * routes intentionally do NOT call `ensureQueryData(chatsQueryOptions())`
  * in their loaders (privacy posture).
  */
-export const chatsQueryOptions = () => ({
+export const chatsQueryOptions = (queryClient?: QueryClient) => ({
   queryKey: chatsQueryKey,
   queryFn: async ({ signal }: QueryFunctionContext<ChatsQueryKey>): Promise<ChatsListResponse> => {
-    return chatApi.getChats(undefined, 20, signal)
+    return queryClient
+      ? fetchLoadedChats(queryClient, signal)
+      : chatApi.getChats(undefined, CHAT_LIST_PAGE_SIZE, signal)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,

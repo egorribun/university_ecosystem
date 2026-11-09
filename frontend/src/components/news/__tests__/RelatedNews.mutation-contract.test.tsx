@@ -105,7 +105,7 @@ describe("RelatedNews mutation contracts", () => {
       "card-matte",
       "glass-noise",
       "border",
-      "border-glass-border/(--opacity-soft)",
+      "border-glass-border/[calc(var(--opacity-soft)*100%)]",
       "transition-all",
       "duration-base",
       "hover:shadow-premium-lift",

@@ -43,6 +43,69 @@ except (ImportError, ValueError):
     )
 
 GATE_STATE_HISTORY_LIMIT = 50
+GATE_STATE_INITIALIZED_MARKER_CONTENT = b"hook-gate-state-initialized-v1\n"
+
+
+def _gate_state_initialization_marker_path(state_path: Path) -> Path:
+    """Return the local first-initialization witness paired with gate state."""
+    return state_path.with_name(f".{state_path.name}.initialized")
+
+
+def has_gate_state_initialization_marker(state_path: Path) -> bool:
+    """Return whether a valid initialization witness exists; reject corruption."""
+    marker_path = _gate_state_initialization_marker_path(state_path)
+    try:
+        marker_contents = marker_path.read_bytes()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise RuntimeError(
+            "Could not read hook gate state initialization witness."
+        ) from exc
+    if marker_contents != GATE_STATE_INITIALIZED_MARKER_CONTENT:
+        raise RuntimeError("Malformed hook gate state initialization witness.")
+    return True
+
+
+def _write_gate_state_initialization_marker_atomically(state_path: Path) -> None:
+    """Write the witness atomically while protecting only against state loss.
+
+    The protection applies when the state file is lost while this witness remains
+    readable. Removing or replacing both files is outside the guarantee. The file
+    is synced before replacement, but its parent directory is not, so power-loss
+    durability is not promised on Windows or other platforms.
+    """
+    marker_path = _gate_state_initialization_marker_path(state_path)
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{state_path.name}.initialized.",
+            suffix=".tmp",
+            dir=state_path.parent,
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as marker_file:
+            marker_file.write(GATE_STATE_INITIALIZED_MARKER_CONTENT)
+            marker_file.flush()
+            os.fsync(marker_file.fileno())
+        os.replace(temporary_path, marker_path)
+        temporary_path = None
+    except (OSError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "Could not persist hook gate state initialization witness."
+        ) from exc
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def ensure_gate_state_initialization_marker(state_path: Path) -> None:
+    """Mark a readable existing state as initialized while its lock is held."""
+    if not has_gate_state_initialization_marker(state_path):
+        _write_gate_state_initialization_marker_atomically(state_path)
 
 
 def _write_gate_state_atomically(state_path: Path, state: dict[str, Any]) -> None:
@@ -75,7 +138,25 @@ def update_gate_state(file_path: str, linter: str, passed: bool, output: str) ->
     state_path = get_gate_state_path()
     try:
         with gate_state_lock(state_path):
-            state = load_gate_state(state_path, acquire_lock=False)
+            marker_exists = has_gate_state_initialization_marker(state_path)
+            try:
+                state_path.stat()
+                state_exists = True
+            except FileNotFoundError:
+                state_exists = False
+            except OSError as exc:
+                raise RuntimeError("Could not inspect hook gate state.") from exc
+            if marker_exists and not state_exists:
+                raise RuntimeError(
+                    "Hook gate state is missing after initialization; refusing to "
+                    "reinitialize and discard prior quality results."
+                )
+
+            state = load_gate_state(
+                state_path,
+                acquire_lock=False,
+                require_existing=state_exists,
+            )
             result = {
                 "file": file_path,
                 "linter": linter,
@@ -88,6 +169,8 @@ def update_gate_state(file_path: str, linter: str, passed: bool, output: str) ->
             ][-GATE_STATE_HISTORY_LIMIT:]
             state["latest_by_file"][file_path] = result
             state["last_status"] = result
+            if not marker_exists:
+                _write_gate_state_initialization_marker_atomically(state_path)
             _write_gate_state_atomically(state_path, state)
     except RuntimeError:
         raise

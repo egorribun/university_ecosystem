@@ -22,9 +22,13 @@ const state = vi.hoisted(() => ({
   deadlineReads: [],
 }))
 
-vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
-  requireLiveAdminPassword: () => "synthetic-only-unused",
-}))
+vi.mock("../scripts/live-e2e-credentials.mjs", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    requireLiveAdminPassword: () => "synthetic-only-unused",
+  }
+})
 
 vi.mock("../scripts/live-registration-admission.mjs", () => ({
   REGISTRATION_MAX_TEST_TIMEOUT_MS: 360_000,
@@ -363,11 +367,11 @@ it("accepts the existing 150 second OTP slot but fails closed above the approved
   })
 })
 
-it("pins the private slot-deadline adapter to Playwright 1.63.0", () => {
-  expect(packageJson.devDependencies["@playwright/test"]).toBe("1.63.0")
-  expect(packageLock.packages["node_modules/@playwright/test"].version).toBe("1.63.0")
-  expect(packageLock.packages["node_modules/playwright"].version).toBe("1.63.0")
-  expect(packageLock.packages["node_modules/playwright-core"].version).toBe("1.63.0")
+it("pins the private slot-deadline adapter to Playwright 1.64.1", () => {
+  expect(packageJson.devDependencies["@playwright/test"]).toBe("1.64.1")
+  expect(packageLock.packages["node_modules/@playwright/test"].version).toBe("1.64.1")
+  expect(packageLock.packages["node_modules/playwright"].version).toBe("1.64.1")
+  expect(packageLock.packages["node_modules/playwright-core"].version).toBe("1.64.1")
 })
 
 it("logs out the exactly captured new token with the full CSRF tuple and verifies 401", async () => {

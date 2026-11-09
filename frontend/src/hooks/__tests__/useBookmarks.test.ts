@@ -479,4 +479,165 @@ describe("useBookmarks", () => {
       }
     })
   })
+
+  it("keeps bookmark changes in memory when localStorage is unavailable", async () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: undefined,
+    })
+
+    try {
+      await withBroadcastChannelUnavailable(async () => {
+        vi.resetModules()
+        const { useBookmarks: noStorageTab } = await import("../useBookmarks")
+        const { result, unmount } = renderHook(() => noStorageTab())
+        try {
+          act(() => result.current.toggleBookmark("memory-only"))
+
+          expect(result.current.isBookmarked("memory-only")).toBe(true)
+          expect(result.current.bookmarkCount).toBe(1)
+        } finally {
+          unmount()
+        }
+      })
+    } finally {
+      if (storageDescriptor) {
+        Object.defineProperty(globalThis, "localStorage", storageDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, "localStorage")
+      }
+    }
+  })
+
+  it("uses bookmarked state to break same-clock, same-actor conflicts", async () => {
+    await withTrackedBroadcastChannels(async () => {
+      vi.resetModules()
+      const tab = await import("../useBookmarks")
+      const { result, unmount } = renderHook(() => tab.useBookmarks())
+      const publisher = new BroadcastChannel(CHANNEL_NAME)
+      try {
+        act(() => {
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "true-wins",
+            bookmarked: false,
+            clock: 12,
+            actor: "same-actor",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "true-wins",
+            bookmarked: true,
+            clock: 12,
+            actor: "same-actor",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "false-loses",
+            bookmarked: true,
+            clock: 12,
+            actor: "same-actor",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "false-loses",
+            bookmarked: false,
+            clock: 12,
+            actor: "same-actor",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "true-wins",
+            bookmarked: true,
+            clock: 12,
+            actor: "same-actor",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "completion-sentinel",
+            bookmarked: false,
+            clock: 13,
+            actor: "completion-actor",
+          })
+        })
+
+        await waitFor(() => {
+          const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as {
+            items: Record<string, { actor: string; bookmarked: boolean; clock: number }>
+          }
+          expect(persisted.items["completion-sentinel"]).toEqual({
+            actor: "completion-actor",
+            bookmarked: false,
+            clock: 13,
+          })
+          expect([...result.current.bookmarks].sort()).toEqual(["false-loses", "true-wins"])
+        })
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as {
+          items: Record<string, { actor: string; bookmarked: boolean; clock: number }>
+        }
+        expect(stored.items["true-wins"]).toEqual({
+          actor: "same-actor",
+          bookmarked: true,
+          clock: 12,
+        })
+        expect(stored.items["false-loses"]).toEqual({
+          actor: "same-actor",
+          bookmarked: true,
+          clock: 12,
+        })
+      } finally {
+        publisher.close()
+        unmount()
+      }
+    })
+  })
+
+  it("ignores malformed cross-tab operations before applying valid messages", async () => {
+    await withTrackedBroadcastChannels(async () => {
+      vi.resetModules()
+      const tab = await import("../useBookmarks")
+      const { result, unmount } = renderHook(() => tab.useBookmarks())
+      const publisher = new BroadcastChannel(CHANNEL_NAME)
+      try {
+        act(() => {
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "",
+            bookmarked: true,
+            clock: 1,
+            actor: "remote-tab",
+          })
+          publisher.postMessage({
+            type: "bookmark-state",
+            id: "valid-control",
+            bookmarked: true,
+            clock: 2,
+            actor: "remote-tab",
+          })
+        })
+
+        await waitFor(() => {
+          expect(result.current.isBookmarked("valid-control")).toBe(true)
+        })
+        expect([...result.current.bookmarks]).toEqual(["valid-control"])
+        expect(readPersistedBookmarks()).toEqual(["valid-control"])
+      } finally {
+        publisher.close()
+        unmount()
+      }
+    })
+  })
+
+  it("does not persist a toggle for an invalid bookmark id", () => {
+    const { result } = renderHook(() => useBookmarks())
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+
+    act(() => result.current.toggleBookmark(""))
+
+    expect(result.current.bookmarkCount).toBe(0)
+    expect(result.current.isBookmarked("")).toBe(false)
+    expect(setItem).not.toHaveBeenCalled()
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
 })

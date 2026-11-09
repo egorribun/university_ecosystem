@@ -1,0 +1,500 @@
+{
+  "dispositions": [
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+      "companions": [
+        {
+          "path": "frontend/src/app/__tests__/telemetry.test.ts",
+          "sha256": "6283493678b64d385ba6e88a2f0ce220cc9a11ae1c22951b623441a0643f70a6"
+        },
+        {
+          "path": "frontend/src/app/observability.ts",
+          "sha256": "52cc9f3e24756db6de94a24cfd3684c49dfff5ef117e27413bed73bcc68e6cba"
+        },
+        {
+          "path": "frontend/src/main.tsx",
+          "sha256": "c52890273b4e7371ea6083f904a7e5a0aa32bad92a386ad5794c46d657689ba6"
+        },
+        {
+          "path": "frontend/src/env.d.ts",
+          "sha256": "5711b23ceedc3002de62eefd6d698563662213fc8d9ea4ca4748a8024b5a71c0"
+        }
+      ],
+      "context": {
+        "end_line": 66,
+        "sha256": "1370cc57056d623999ac8a9cdda6d77e20cdc1e6383ef5cef2e552e3d7f26ad9",
+        "start_line": 62
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "5431da802588763aac696b377b47955cc12d9d4bb519803a1fa1825e1762208b",
+      "owner": "egorribun",
+      "path": "frontend/src/app/telemetry.ts",
+      "reason": "Configured build-time origin is escaped before interpolation into an anchored trace-header propagation matcher; a private mutation control shows unescaped metacharacters admit an attacker origin."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-non-literal-require.detect-non-literal-require",
+      "companions": [
+        {
+          "path": ".github/actions/dependency-review-capture/index.cjs",
+          "sha256": "285fe6789b0ff276d216bc64aa657ea9a2326afa2365b7acacafcc11e55c18f1"
+        },
+        {
+          "path": ".github/actions/dependency-review-capture/action.yml",
+          "sha256": "6a75efdf049f0c352f42d89e27f66b0db00b0cefd7170a60fee1d5aef52a9037"
+        },
+        {
+          "path": ".github/actions/dependency-review-capture/capture.test.cjs",
+          "sha256": "46eaea74eb1eb4a02a3f1fb77dcd6a2314b8b24348d128f0a8c258a50ac77a69"
+        },
+        {
+          "path": ".github/actions/node-actions-coverage/action.yml",
+          "sha256": "b842385afe9985868a8e7edc07ac2e050b2aad1b7f33dc61d07072530ee9f019"
+        },
+        {
+          "path": ".github/workflows/dependency-review.yml",
+          "sha256": "d8da2a2f21e2ebb09695ca5c669ed30460221c76bdacdcab5bcb5b680954ded3"
+        }
+      ],
+      "context": {
+        "end_line": 189,
+        "sha256": "5547000243fa18b6010ec76bb8a236dfd5b14d3a794f085c1d3a1567e91b4a73",
+        "start_line": 185
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "52f92c2cc59eba2990e2f0365c9a3d546f2bbc2632eea0aa41e14be71627972a",
+      "owner": "egorribun",
+      "path": ".github/actions/dependency-review-capture/capture.cjs",
+      "reason": "Dynamic require receives only the runner-temporary dist/index.js returned after fixed-manifest Git blob checks of both staged source and copied bytes; source substitution is rejected before load."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-redos.detect-redos",
+      "companions": [
+        {
+          "path": "frontend/scripts/visual-smoke-contract.test.mjs",
+          "sha256": "746811ca9789b0e81c6d1e95d309819ccea59e32ab4828d87407e0af0bbf24a3"
+        }
+      ],
+      "context": {
+        "end_line": 427,
+        "sha256": "fd3d49beb9bbff46b0939d1c793abe118782fa4e7b9692abfecc2f07227ddf0a",
+        "start_line": 423
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "9477c2d4f37e6464db63cf8e696046b90e180036dba0abffd4755923dd3d6ed4",
+      "owner": "egorribun",
+      "path": "frontend/scripts/authenticated-visual-audit.mjs",
+      "reason": "Pathname is capped at 512 characters before a segment recognizer whose slash delimiters cannot occur inside repeated segments; malformed and boundary controls are covered."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-redos.detect-redos",
+      "companions": [
+        {
+          "path": "frontend/scripts/check-bundle-budget.test.mjs",
+          "sha256": "0c2ff436d8432846e728ba29e7e4a418862555d06c73106798398dc2816c16aa"
+        }
+      ],
+      "context": {
+        "end_line": 112,
+        "sha256": "d92398022cdba9fb8f0a026616f57115533686b256d0448d45d0a2f9a98d618a",
+        "start_line": 108
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "dbdec308af3257ae16eb65119149a32ef55646344b6626b8404f7691cc5cf5a2",
+      "owner": "egorribun",
+      "path": "frontend/scripts/check-bundle-budget.mjs",
+      "reason": "Bundle asset path recognizer uses slash-separated non-overlapping segments and is reached only after a 1 MiB HTML input cap; actual analyzer probe exercised long positive and near-miss paths."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-redos.detect-redos",
+      "companions": [
+        {
+          "path": "frontend/scripts/i18n-scanner.test.mjs",
+          "sha256": "f17ac9be89b38ccd677c0e6e93c41d056e0aed236b84e897d6f2fb387051a1da"
+        }
+      ],
+      "context": {
+        "end_line": 565,
+        "sha256": "2d0eb7a9fb8bdfecd87b5c15fde23bf7b4be7b6599bafa4f320306e914dd828a",
+        "start_line": 561
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "6bc306bcf15c3c9bf8b22e4d824066db0ba56d05fbce8713c29dc965fa846d60",
+      "owner": "egorribun",
+      "path": "frontend/scripts/i18n-scanner.mjs",
+      "reason": "Technical-literal matcher uses hyphen separators excluded from the repeated alphanumeric token class; actual AST scanner probe exercised long accepted and near-match literals."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "javascript.lang.security.audit.detect-redos.detect-redos",
+      "companions": [
+        {
+          "path": "scripts/tests/prepare-release-version.test.mjs",
+          "sha256": "cfe3451d270a8e78a74469d9e5249fa6869a263d1b184ef7553998a06ed69a23"
+        }
+      ],
+      "context": {
+        "end_line": 64,
+        "sha256": "489123cea606bad6dfdfee7da0949ab56787477eb1f8b8de0ccf237ebdda03be",
+        "start_line": 60
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "da28150b8458fe40dd743aaabab214405d36ee1bf2671352dadd244e245f5726",
+      "owner": "egorribun",
+      "path": "scripts/prepare-release-version.mjs",
+      "reason": "SemVer token classes are separated by delimiters and validation occurs before target file reads or writes; actual CLI path rejected a long near-match and stopped a long valid value at the PEP 440 gate."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.django.security.injection.command.subprocess-injection.subprocess-injection",
+      "companions": [
+        {
+          "path": "scripts/owned_nats_outage_cli.py",
+          "sha256": "6c038864aca8c97f0442d25c3abfb337eb9585db498f75ccb6f4424f8dfb73d5"
+        },
+        {
+          "path": "scripts/owned_nats_failure_diagnostic.py",
+          "sha256": "a85caba62fbfc797d2da59b85103d997ed4c663d78fe8e891d238f4a70cb4f53"
+        },
+        {
+          "path": "scripts/owned_nats_broker_control.py",
+          "sha256": "54d7139f8f8e3fbf4fd8be447448ec2a1b5097cbe317f40fee9946c397bc97d3"
+        },
+        {
+          "path": "scripts/owned_nats_docker.py",
+          "sha256": "61787e829d13faa9a625c55f6e02c2980863ecad7bb2566f592186be002916a2"
+        },
+        {
+          "path": "scripts/owned_nats_sql_adapter.py",
+          "sha256": "30016aaddfc5c475d3b9ac7c054edf26ea8a40539c3474865b89e81a46345514"
+        },
+        {
+          "path": "scripts/owned_nats_transport_port.py",
+          "sha256": "cb6948b7e7087c7e890d195aba44d26d1e3bc10ef4edb573fb818e43eebd943c"
+        },
+        {
+          "path": "scripts/owned_nats_runtime_adapter.py",
+          "sha256": "bd46a6bf784802712b2d9db416ccd9df2fa755ce2ae600882b353ddde31af280"
+        },
+        {
+          "path": "scripts/owned_nats_owner_adapter.py",
+          "sha256": "2f9d0d6fec15bf59a3704e6f5177c0674a9b30daf132ebb84e2bf5c7ee2049b8"
+        },
+        {
+          "path": "scripts/live_stand.py",
+          "sha256": "c2d8959a488cb77e001ad3b75afb7bf99002a91a789c67a4fa4770ed02b77c2c"
+        },
+        {
+          "path": "tests/test_owned_nats_process.py",
+          "sha256": "73374d8216df67a4e02ee5533f2aa4824b2d281573a643079518a56380f88a5b"
+        },
+        {
+          "path": "tests/test_owned_nats_docker_context_pins.py",
+          "sha256": "449037fcea28f36c7cef7fef3b5e4c01c5b585cc963efdc1ce1ebec7a604fb20"
+        },
+        {
+          "path": "tests/test_owned_nats_lease_bootstrap.py",
+          "sha256": "488f9c18b64cccdc0698c91bc34851fe6df758836bb7113520f08c6fb3d8978c"
+        },
+        {
+          "path": "tests/test_owned_nats_sql_adapter.py",
+          "sha256": "f081718f69aa600ed3fbc490140437bcc20f09feee572913e7e4f327ec055e88"
+        },
+        {
+          "path": "tests/test_owned_nats_broker_control.py",
+          "sha256": "87f209b5856821e8163de6c5531e4bbc333b5d7067ef8033d0ae31ad39276c17"
+        }
+      ],
+      "expires": "2027-01-10",
+      "line_sha256": "625777698bf380f7759a7c86a4f47dacee15f7544e5858f6d38958a5b0e74e31",
+      "owner": "egorribun",
+      "path": "scripts/owned_nats_process.py",
+      "reason": "False positive only for current trusted in-repository callers: argv is passed with shell=False and caller provenance validates fixed Git commands or sealed local Docker requests; generic API remains trusted-internal.",
+      "span_sha256": "2e263bd613cb1af50849ea69224e2a39ec2e73985f100762fe3f2cc11e0bf5e7"
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args",
+      "companions": [
+        {
+          "path": ".github/workflows/deploy.yml",
+          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+        },
+        {
+          "path": "tests/test_mfa_deploy_workflow_contract.py",
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
+        },
+        {
+          "path": "tests/test_aud382_mfa_smoke_private_files.py",
+          "sha256": "922eeb979653b17d81ac9cd371f265867cc5a7f1550dad9988d2544ad7de3c37"
+        }
+      ],
+      "context": {
+        "end_line": 51,
+        "sha256": "877b239a84c1a3e5fb1d3f99496def48b0bd44683ad1b30a5dfd677fe5c941e9",
+        "start_line": 47
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "0469bd7f5d4d2d3728d0d1cf1a05826b81ecea8e02e6d5eb8d03f13d46dfee65",
+      "owner": "egorribun",
+      "path": ".github/scripts/validate_mfa_smoke_path.py",
+      "reason": "The selected smoke path is resolved under a fixed directory, matched to deployed HEAD, and passed as one quoted argv value to fixed Git calls with shell=False."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args",
+      "companions": [
+        {
+          "path": ".github/workflows/deploy.yml",
+          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+        },
+        {
+          "path": "tests/test_mfa_deploy_workflow_contract.py",
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
+        },
+        {
+          "path": "tests/test_aud382_mfa_smoke_private_files.py",
+          "sha256": "922eeb979653b17d81ac9cd371f265867cc5a7f1550dad9988d2544ad7de3c37"
+        }
+      ],
+      "context": {
+        "end_line": 59,
+        "sha256": "805b039d9ef22c37b32d567c00fd49e5d19fc39ec06a059f41e6fc36a6d75095",
+        "start_line": 55
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "9d62e8c97a2f3d493335bdf7047b060f9dca43b57c3cb2c8ea39805702112f52",
+      "owner": "egorribun",
+      "path": ".github/scripts/validate_mfa_smoke_path.py",
+      "reason": "The revision argument is derived from the contained canonical path, uses HEAD:<repo-relative-path>, and is passed as a separate argv element to Git with shell=False."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args",
+      "companions": [
+        {
+          "path": ".github/workflows/deploy.yml",
+          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+        },
+        {
+          "path": "tests/test_mfa_deploy_workflow_contract.py",
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
+        },
+        {
+          "path": "tests/test_aud382_mfa_smoke_private_files.py",
+          "sha256": "922eeb979653b17d81ac9cd371f265867cc5a7f1550dad9988d2544ad7de3c37"
+        }
+      ],
+      "context": {
+        "end_line": 65,
+        "sha256": "b232719fde4d895733b8b35923b48807442748a090486cede5bc31da89bd65ac",
+        "start_line": 61
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "53922c160a3714e8d526eeadb2abcb7385b361ebe52e11990a4ed23b4c3cf5b7",
+      "owner": "egorribun",
+      "path": ".github/scripts/validate_mfa_smoke_path.py",
+      "reason": "The local file is hashed only after containment and HEAD/blob equality checks; the resolved path is passed as a separate argv element to Git with shell=False."
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.regex-dos.regex_dos",
+      "companions": [
+        {
+          "path": "app/core/observability.py",
+          "sha256": "8b9f652a6c6d3ea3944803c1fb02a31f590fda6737cecc8a1c5994571aae5d96"
+        },
+        {
+          "path": "app/core/otel_logging.py",
+          "sha256": "a1cbf196f8ed4c515330c4e62dbf55a83662c78c936b682cde053d02bd703136"
+        },
+        {
+          "path": "app/worker.py",
+          "sha256": "88ef2cc68d61f91111f9057a9e4daa1db5000fea072308090ba1e028c016156b"
+        },
+        {
+          "path": "tests/test_logging_redos_aud380.py",
+          "sha256": "b5bbb12718b16d188447f0df4577c674e325242f90927624956ffef348cbe6da"
+        },
+        {
+          "path": "tests/test_logging_pii_redaction_contract.py",
+          "sha256": "55ab34a0996bd47d0ad15856991fdeb3407ae8587853abe234f6daa231743c2c"
+        },
+        {
+          "path": "tests/test_otel_logging_bridge.py",
+          "sha256": "3944e2b1f2751b22176fa5b21c72be6fb55b5c224ab1517a21d4d5f54f2e1c08"
+        }
+      ],
+      "expires": "2027-01-10",
+      "line_sha256": "9a4679cd83237306f36e93c90deacc80874f78f4f0196e545e0e885b888b6d00",
+      "owner": "egorribun",
+      "path": "app/core/logging.py",
+      "reason": "Candidate false positive for catastrophic regex backtracking only. The email matcher bounds its first label and separates repeated letter-only labels with literal dots; phone quantifiers are fixed-width, UUID matching is fixed-width, and local scanning is monotonic. Current OTel logging reuses the central redactors with a fixed number of additional passes. Inputs are not length-capped, so this does not claim bounded cost for arbitrarily large log strings.",
+      "span_sha256": "eb2b2b4a95af403d2f02f8550bf60cc69119d42c65393a40dadf5d57e4f5bbdc"
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.regex-dos.regex_dos",
+      "companions": [
+        {
+          "path": "app/data/emoji/README.md",
+          "sha256": "92216f60a1504f981f13c80b522f26e2904610e9ed9e10d7a0c067143775934d"
+        },
+        {
+          "path": "app/data/emoji/emoji_18_0_qualified_sequences.txt",
+          "sha256": "56eb5190116bfec86b4bee875731e878599f76641a7217458614fef971cb6f0e"
+        },
+        {
+          "path": "app/schemas/chat.py",
+          "sha256": "bf6d9b891145e0569218c5ff5d4b3c792b3e8f1a2bf3cbda11b479404e2c3ef4"
+        },
+        {
+          "path": "tests/test_chat_reaction_emoji_validation.py",
+          "sha256": "4b45805c08c5cf66e3bb09b337168625e579d206e230508dc9b7ad1e6e57a501"
+        }
+      ],
+      "expires": "2027-01-10",
+      "line_sha256": "18f2b5e4e288541e8d4d3812d2d0d24c2a55c304bdc849aef4deaa452ddd6c00",
+      "owner": "egorribun",
+      "path": "app/data/emoji/generate.py",
+      "reason": "The row regex runs per input line only after the complete Unicode 18.0 input matches its pinned digest; the repeated hex tokens have whitespace/semicolon separators and only the verified generator invokes the parser in product code.",
+      "span_sha256": "84a367193c48a7fc576afd2be109518ae1f41a549cb7e726ba8b50ff4e0fda27"
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.audit.regex-dos.regex_dos",
+      "companions": [
+        {
+          "path": "tests/test_jsx_opening_tag_linear.py",
+          "sha256": "ea48d9dd29b445e7b90e883b97cd0a8b97c30b66b549ec04f6826cc918850a1d"
+        },
+        {
+          "path": "tests/test_quality_inventory.py",
+          "sha256": "9c6daf651cfe261361952be9917503f848fb5c8ff30c89253fd2fb3b3cbe96ee"
+        },
+        {
+          "path": "tests/test_quality_workflow_contract.py",
+          "sha256": "d78f3a811b1b05ded829b8a9a88929b494b4bfe601c0da93804a5e4cfe848f6c"
+        }
+      ],
+      "expires": "2027-01-10",
+      "line_sha256": "97f622422daf1edcde8d7645add6898a4f03a1ceea5fc8c0887985d1d25f216e",
+      "owner": "egorribun",
+      "path": "scripts/quality/check_orphans_and_anti_patterns.py",
+      "reason": "The fallback parses static repository imports, not request data; possessive horizontal-whitespace repetitions and disjoint punctuation/identifier boundaries remove overlapping backtracking. Existing adversarial/source-masking controls are recorded.",
+      "span_sha256": "2aed4c231347f8e477d31bb776f5dae5f513715c55802c046a99c470f0a82f77"
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1",
+      "companions": [
+        {
+          "path": "app/services/user/compliance_service.py",
+          "sha256": "3031a3d891a494518c2691b871bacff4ebec45350218e0bba287e56588a59a6a"
+        },
+        {
+          "path": "app/services/auth_service.py",
+          "sha256": "bc76907865fe01f395be096709d2396937c9497a1ecc592c1d8afa8a4e4feeb9"
+        },
+        {
+          "path": "app/core/config/mixins/mfa_settings.py",
+          "sha256": "c6610b73d97d6cdb87f371ac0285050328eb1e860d794d1401d3ad2670a6d6ce"
+        },
+        {
+          "path": "app/schemas/users.py",
+          "sha256": "eb17967c411175fce1105b6723fba9bfcfdd3bd92363f550663779a263734b59"
+        },
+        {
+          "path": "app/schemas/identity.py",
+          "sha256": "01c0406ec483fb1e370759d9425cf41a027d9cb824458f69b95c24cb24f4f7cd"
+        },
+        {
+          "path": "tests/test_security_tier0.py",
+          "sha256": "9ec2644b14e528752f02353452797a17caa725773f214db3b58fa482d5832d4a"
+        },
+        {
+          "path": "tests/test_auth_concurrency_extra.py",
+          "sha256": "196fb670491c5db1fc99c80b67a918d7ee8ea3422d3cc74900cacb1f7e17dc10"
+        }
+      ],
+      "expires": "2027-01-10",
+      "line_sha256": "62e1478f5697d55e9e39c2f7f81f87c705b566d7b41ebf994c77ae543a1c37a2",
+      "owner": "egorribun",
+      "path": "app/auth/security.py",
+      "reason": "SHA-1 is used solely to derive the HIBP range lookup prefix with usedforsecurity=False; only the 5-hex prefix is requested and the 35-hex suffix is compared locally before Argon2 storage/verification.",
+      "span_sha256": "f08cf78728ddb4c4097e6fbfd8e442f44a1d2955e8658c3a72d7ca5805bbb87f"
+    },
+    {
+      "approved": "2026-11-05",
+      "check_id": "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml",
+      "companions": [
+        {
+          "path": "frontend/src/components/ui/__tests__/SafeHtml.test.tsx",
+          "sha256": "b6f47feb8a67d6305eb5132c68d38838c4e9d67bf1be8f785e05f74761afbf59"
+        },
+        {
+          "path": "frontend/src/utils/trustedTypes.ts",
+          "sha256": "b06112ab37c5655b0faa7e106484d03b9f9cb20a78177b7c49f9838ba3f53197"
+        },
+        {
+          "path": "frontend/src/utils/htmlText.ts",
+          "sha256": "418e53b13c8dc7cb7af4e5ef7c83397a880bdbf5f7e2a0e4ebe7fd8f9231b0af"
+        },
+        {
+          "path": "frontend/scripts/server-csp.mjs",
+          "sha256": "c2156221068aa40bb14bbea7c80b4c8ee7c0e3b4f2650a34954263c4931e81c4"
+        },
+        {
+          "path": "frontend/WASM_SOURCE_PROVENANCE.json",
+          "sha256": "6c8da64b5f94ef033281ccd9895eaec715490ea3debfe46fbee57165850025b9"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/src/lib.rs",
+          "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/Cargo.toml",
+          "sha256": "73db9b6fe055d8662c762d7050e818cbae5e537f916c8ecad34ebaff2c29b57d"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/Cargo.lock",
+          "sha256": "b1a96416e1ca2cc18443cc516c565f31592ff286546c6c745f9761a903ba9aa5"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/pkg/package.json",
+          "sha256": "2da51c9fb435b4c999756646a862bc972a579f78b2d26550126548bfa77e7344"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/pkg/wasm_sanitizer.js",
+          "sha256": "51c27462afd5807aa11124745e71f79edf173d58466bc15f1d673fe0d5d65acd"
+        },
+        {
+          "path": "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm",
+          "sha256": "cab4051fe031b375d5a7154de071bc47eec854123b46acabc06482a1368e8605"
+        },
+        {
+          "path": "frontend/package.json",
+          "sha256": "c637a646140b9825170067f05828c37784c05779623da7f6584dd5ad1defdd56"
+        },
+        {
+          "path": "frontend/package-lock.json",
+          "sha256": "0db6a93767d7079e9cd314e80adb052b8839d0920ab505cf03afac007e497e3b"
+        }
+      ],
+      "context": {
+        "end_line": 74,
+        "sha256": "21c8feae4c46d864b50171ed250768654ec118342e853dcefdc5b010a788ebb2",
+        "start_line": 70
+      },
+      "expires": "2027-01-10",
+      "line_sha256": "f690e98db6a626b3837b0f4dec7ace7fa1fb2d0af98adff3d38cdb4cd2c2354c",
+      "owner": "egorribun",
+      "path": "frontend/src/components/ui/SafeHtml.tsx",
+      "reason": "SafeHtml sanitizes with the provenance-verified ammonia WASM before the sink and again through the existing Trusted Types app policy; sanitizer/policy failures fall back to plain text or caller fallback."
+    }
+  ]
+}

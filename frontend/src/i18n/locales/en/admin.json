@@ -29,6 +29,7 @@
     "subtitle": "Retry or purge notifications that landed in the dead-letter queue.",
     "total": "Total jobs: {{count}}",
     "empty": "No dead-lettered jobs at the moment.",
+    "paginationLimitReached": "The API offset limit means only the first {{available}} of {{total}} queue jobs can be browsed here.",
     "errors": {
       "fetch": "Failed to load the dead-letter queue.",
       "action": "Unable to update the queue."

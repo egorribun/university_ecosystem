@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -126,61 +126,111 @@ async def test_list_news_basic(news_repo, mock_db):
 
 @pytest.mark.asyncio
 async def test_list_news_cursor(news_repo, mock_db):
-    # Just verify it doesn't crash and handles cursor correctly
-    res_news = MagicMock()
-    res_news.scalars.return_value.all.return_value = []
-    mock_db.execute.return_value = res_news
+    cursor_created_at = datetime.now(UTC)
+    item_created_at = cursor_created_at - timedelta(seconds=1)
+    item_id = uuid.uuid4()
+    mock_news = MagicMock()
+    mock_news.id = item_id
+    mock_news.title = "after cursor"
+    mock_news.content = "content"
+    mock_news.created_at = item_created_at
+    mock_news.author_id = None
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.image_url = None
 
-    await news_repo.list_news(cursor=(datetime.now(UTC), uuid.uuid4()))
-    # Verification of complex where clause construction would be implicit by success
+    res_news = MagicMock()
+    res_news.scalars.return_value.all.return_value = [mock_news]
+    res_likes = MagicMock()
+    res_likes.all.return_value = [(item_id, 3)]
+    res_comments = MagicMock()
+    res_comments.all.return_value = [(item_id, 2)]
+    mock_db.execute.side_effect = [res_news, res_likes, res_comments]
+
+    result = await news_repo.list_news(
+        cursor=(cursor_created_at, uuid.uuid4()),
+    )
+
+    assert len(result) == 1
+    assert result[0].news.id == item_id
+    assert result[0].news.title == "after cursor"
+    assert result[0].likes_count == 3
+    assert result[0].comments_count == 2
+    assert result[0].is_liked is False
+    assert result[0].ranked is False
+    assert result[0].distance is None
+    assert mock_db.execute.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_list_news_search_semantic(news_repo, mock_db):
-    with (
-        patch.object(settings, "semantic_search_enabled", True),
-        patch("app.repositories.news_repository.select"),
-        patch("app.repositories.news_repository.selectinload"),
-        patch("app.repositories.news_repository.News") as mock_news,
-    ):
-        # Mock arithmetic: 1.0 - distance -> score_expr
-        mock_score_expr = MagicMock()
+    item_id = uuid.uuid4()
+    mock_news = MagicMock()
+    mock_news.id = item_id
+    mock_news.title = "semantic match"
+    mock_news.content = "content"
+    mock_news.created_at = datetime.now(UTC)
+    mock_news.author_id = None
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.image_url = None
 
-        # .label() returns expression object, not string
-        mock_labeled_expr = MagicMock()
-        mock_score_expr.label.return_value = mock_labeled_expr
+    res_news = MagicMock()
+    res_news.all.return_value = [(mock_news, 0.25)]
+    res_likes = MagicMock()
+    res_likes.all.return_value = []
+    res_comments = MagicMock()
+    res_comments.all.return_value = []
+    mock_db.execute.side_effect = [res_news, res_likes, res_comments]
 
-        # Since comparison is also used: score > 0.45
-        mock_score_expr.__gt__.return_value = True
+    with patch.object(settings, "semantic_search_enabled", True):
+        result = await news_repo.list_news(
+            search_query="test",
+            query_embedding=[0.1],
+        )
 
-        mock_distance = MagicMock()
-        mock_distance.__rsub__.return_value = mock_score_expr
-
-        mock_news.embedding.cosine_distance.return_value = mock_distance
-
-        await news_repo.list_news(search_query="test", query_embedding=[0.1])
-        # Just verify it ran
-        mock_db.execute.assert_called()
+    assert len(result) == 1
+    assert result[0].news.id == item_id
+    assert result[0].news.title == "semantic match"
+    assert result[0].ranked is True
+    assert result[0].distance == 0.25
+    assert result[0].likes_count == 0
+    assert result[0].comments_count == 0
+    assert mock_db.execute.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_list_news_search_text(news_repo, mock_db):
-    with (
-        patch.object(settings, "semantic_search_enabled", False),
-        patch("app.repositories.news_repository.select"),
-        patch("app.repositories.news_repository.selectinload"),
-        patch("app.repositories.news_repository.or_"),
-        patch("app.repositories.news_repository.and_"),
-        patch("app.repositories.news_repository.func"),
-        patch("app.repositories.news_repository.News") as mock_news,
-    ):
-        mock_result = MagicMock()
-        mock_result.all.return_value = []
-        mock_db.execute.return_value = mock_result
+    item_id = uuid.uuid4()
+    mock_news = MagicMock()
+    mock_news.id = item_id
+    mock_news.title = "text match"
+    mock_news.content = "content"
+    mock_news.created_at = datetime.now(UTC)
+    mock_news.author_id = None
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.image_url = None
 
-        mock_news.title.ilike.return_value = "expr"
+    res_news = MagicMock()
+    res_news.scalars.return_value.all.return_value = [mock_news]
+    res_likes = MagicMock()
+    res_likes.all.return_value = [(item_id, 1)]
+    res_comments = MagicMock()
+    res_comments.all.return_value = [(item_id, 4)]
+    mock_db.execute.side_effect = [res_news, res_likes, res_comments]
 
-        await news_repo.list_news(search_query="test")
+    with patch.object(settings, "semantic_search_enabled", False):
+        result = await news_repo.list_news(search_query="test")
+
+    assert len(result) == 1
+    assert result[0].news.id == item_id
+    assert result[0].news.title == "text match"
+    assert result[0].ranked is False
+    assert result[0].distance is None
+    assert result[0].likes_count == 1
+    assert result[0].comments_count == 4
+    assert mock_db.execute.call_count == 3
 
 
 @pytest.mark.asyncio

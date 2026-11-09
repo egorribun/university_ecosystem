@@ -159,7 +159,7 @@ export const StoryViewer = ({
       {/* Wave 54: div with role=presentation, not button (FIX-54-03) */}
       <div
         role="presentation"
-        className="pointer-events-auto absolute inset-0 z-base w-full h-full cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
+        className="pointer-events-auto absolute inset-0 z-base w-full h-full cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/[calc(var(--opacity-strong)*100%)]"
         onClick={onClose}
       />
       <div
@@ -262,7 +262,7 @@ export const StoryViewer = ({
                   total: stories.length,
                   title: story.title,
                 })}
-                className="h-1 flex-1 bg-white/(--opacity-soft)"
+                className="h-1 flex-1 bg-white/[calc(var(--opacity-soft)*100%)]"
                 barClassName={cn(
                   "bg-white",
                   prefersReducedMotion
@@ -281,7 +281,7 @@ export const StoryViewer = ({
             type="button"
             onClick={onClose}
             aria-label={t("stories.viewer.aria.close")}
-            className="absolute right-(--space-4) top-(--space-9) inline-flex h-(--space-11) w-(--space-11) items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong) sm:right-(--space-6)"
+            className="absolute right-(--space-4) top-(--space-9) inline-flex h-(--space-11) w-(--space-11) items-center justify-center rounded-full bg-glass-bg/[calc(var(--opacity-medium)*100%)] text-white transition-colors duration-fast ease-out hover:bg-glass-bg/[calc(var(--opacity-strong)*100%)] focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-strong)*100%)] sm:right-(--space-6)"
           >
             <X size={20} aria-hidden="true" />
           </button>
@@ -292,7 +292,7 @@ export const StoryViewer = ({
                 type="button"
                 onClick={onPrev}
                 aria-label={t("stories.viewer.aria.prev")}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/[calc(var(--opacity-medium)*100%)] text-white transition-colors duration-fast ease-out hover:bg-glass-bg/[calc(var(--opacity-strong)*100%)] focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-strong)*100%)]"
               >
                 <ChevronLeft size={20} aria-hidden="true" />
               </button>
@@ -302,7 +302,7 @@ export const StoryViewer = ({
                 type="button"
                 onClick={onNext}
                 aria-label={t("stories.viewer.aria.next")}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/[calc(var(--opacity-medium)*100%)] text-white transition-colors duration-fast ease-out hover:bg-glass-bg/[calc(var(--opacity-strong)*100%)] focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-strong)*100%)]"
               >
                 <ChevronRight size={20} aria-hidden="true" />
               </button>

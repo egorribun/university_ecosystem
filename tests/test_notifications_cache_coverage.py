@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -84,13 +84,36 @@ class TestSendResetEmail:
             mock_smtplib.SMTP_SSL.return_value.__exit__ = MagicMock(return_value=False)
             send_reset_email("user@test.com", "https://link", "Test")
 
-    def test_send_missing_config(self, monkeypatch):
+        mock_smtplib.SMTP_SSL.assert_called_once_with(
+            "smtp.example.com", 465, context=ANY, timeout=10
+        )
+        mock_smtplib.SMTP.assert_not_called()
+        mock_server.login.assert_called_once_with("user", "pass")
+        mock_server.send_message.assert_called_once()
+        sent_message = mock_server.send_message.call_args.args[0]
+        assert sent_message["To"] == "user@test.com"
+        assert sent_message["From"] == "noreply@example.com"
+
+    def test_send_missing_config(self, monkeypatch, caplog):
         from app.core.config import settings
         from app.utils.email import send_reset_email
 
         monkeypatch.setattr(settings, "smtp_host", "")
-        # Should not raise, just log warning
-        send_reset_email("user@test.com", "https://link")
+        monkeypatch.setattr(settings, "smtp_port", 0)
+        monkeypatch.setattr(settings, "smtp_user", "")
+        monkeypatch.setattr(settings, "smtp_password", "")
+        with (
+            caplog.at_level("WARNING"),
+            patch("app.utils.email.smtplib") as mock_smtplib,
+        ):
+            send_reset_email("user@test.com", "https://link")
+
+        assert any(
+            record.getMessage() == "password.reset_email.fallback"
+            for record in caplog.records
+        )
+        mock_smtplib.SMTP.assert_not_called()
+        mock_smtplib.SMTP_SSL.assert_not_called()
 
 
 # ===========================================================================
@@ -344,8 +367,16 @@ class TestCacheWarmup:
         from app.services.cache_warmup import warm_cache
 
         monkeypatch.setattr(settings, "cache_warmup_enabled", False)
-        # Should return immediately without error
-        await warm_cache()
+        with (
+            patch("app.services.cache_warmup.get_cache") as get_cache,
+            patch("app.services.cache_warmup.async_session") as async_session,
+            patch("app.services.cache_warmup.logger") as logger,
+        ):
+            await warm_cache()
+
+        logger.info.assert_called_once_with("Cache warmup disabled, skipping")
+        get_cache.assert_not_called()
+        async_session.assert_not_called()
 
 
 # ===========================================================================

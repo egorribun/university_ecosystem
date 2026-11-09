@@ -40,6 +40,7 @@ import {
   captureSessionEpoch,
   invalidateSessionEpoch,
   getBrowserSessionGeneration,
+  getSessionEpoch,
   acceptBrowserSessionGeneration,
 } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -341,16 +342,28 @@ const clearProfileCacheStorage = (
 const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   const storage = getLocalStorage()
   if (!storage) return undefined
+
+  let raw: string | null
   try {
-    const raw = storage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (!raw) return undefined
+    raw = storage.getItem(PROFILE_CACHE_STORAGE_KEY)
+  } catch {
+    try {
+      logWarning("profile_cache.storage_unavailable")
+    } catch {
+      // Diagnostics are best-effort and must not abort auth bootstrap.
+    }
+    return undefined
+  }
+  if (!raw) return undefined
+
+  try {
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") {
       clearProfileCacheStorage("parse_error")
       return undefined
     }
     return parsed as CachedProfileEnvelope
-  } catch (_e) {
+  } catch {
     clearProfileCacheStorage("parse_error")
     return undefined
   }
@@ -1196,10 +1209,13 @@ export const useProfileSync = (
           signingKey === sessionSigningKeyRef.current
         const cached = await readCachedUserAsync(signingKey, isCurrent)
         if (isCurrent() && cached) {
-          applyUserState(cached, {
-            persist: false,
-            expectedRevision: revision,
-          })
+          // An unchanged bootstrap must not retire a newer cross-tab cache read.
+          if (!areDeepEqual(cached, userStateRef.current)) {
+            applyUserState(cached, {
+              persist: false,
+              expectedRevision: revision,
+            })
+          }
           // A verified cache snapshot is safe to render immediately.  The
           // auto-fetch effect continues in the background, while this
           // transition prevents route guards from treating the restored
@@ -1346,22 +1362,54 @@ export const useProfileSync = (
     const syncFromCache = async () => {
       const key = sessionSigningKeyRef.current
       const revision = profileRevisionRef.current
+      const actionSequence = profileRevisionSequenceRef.current
+      const sessionEpoch = getSessionEpoch()
+      const generation = getBrowserSessionGeneration()
       const ownsSession = captureSessionEpoch()
+      const isLocallyCurrent = () =>
+        active &&
+        sessionEpoch === getSessionEpoch() &&
+        generation === getBrowserSessionGeneration() &&
+        actionSequence === profileRevisionSequenceRef.current &&
+        revision === profileRevisionRef.current &&
+        key === sessionSigningKeyRef.current
       const isCurrent = () =>
         active &&
         ownsSession() &&
         revision === profileRevisionRef.current &&
         key === sessionSigningKeyRef.current
-      const cached = await readCachedUserAsync(key, isCurrent)
-      if (!isCurrent()) return
-      if (!cached) {
-        // Cache deletion is a profile transition. Let the committed-state
-        // effect publish null and retire the query data at one commit point.
+      const clearCurrentProfile = () =>
         applyUserState(null, {
           ...noPersistenceOptions,
           expectedRevision: revision,
           forceCommit: true,
         })
+      const cached = await readCachedUserAsync(key, isCurrent)
+      const sessionIsCurrent = isCurrent()
+      if (!sessionIsCurrent) {
+        let storageUnavailable: boolean
+        try {
+          const storage = globalThis.localStorage
+          if (!storage) {
+            storageUnavailable = true
+          } else {
+            storage.getItem(PROFILE_CACHE_STORAGE_KEY)
+            storageUnavailable = false
+          }
+        } catch {
+          storageUnavailable = true
+        }
+        // Unavailable storage can only invalidate this still-current local owner;
+        // it can never authorize restoring a positive snapshot from the read.
+        if (!storageUnavailable || !isLocallyCurrent()) return
+        // Cache deletion is a profile transition. Let the committed-state
+        // effect publish null and retire the query data at one commit point.
+        clearCurrentProfile()
+        return
+      }
+      if (!isLocallyCurrent()) return
+      if (!cached) {
+        clearCurrentProfile()
         return
       }
 

@@ -33,13 +33,23 @@ describe("browser runtime guard", () => {
 
   it("does not synchronize the session cache from a server runtime", () => {
     const originalWindow = globalThis.window
+    const serviceWorkerContainer = {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
     vi.stubGlobal("window", { event: undefined, document: globalThis.document })
+    Object.defineProperty(globalThis.navigator, "serviceWorker", {
+      configurable: true,
+      value: serviceWorkerContainer,
+    })
 
     try {
       const view = renderHook(() => useSessionCrypto())
       view.unmount()
+      expect(serviceWorkerContainer.addEventListener).not.toHaveBeenCalled()
     } finally {
       vi.stubGlobal("window", originalWindow)
+      Reflect.deleteProperty(globalThis.navigator, "serviceWorker")
     }
   })
 })

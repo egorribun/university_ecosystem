@@ -49,8 +49,29 @@ fn pbkdf2_rejects_zero_and_oversized_parameters() {
     let salt = fixture_text(4);
     assert!(pbkdf2_derive(&password, &salt, 0, 32).is_err());
     assert!(pbkdf2_derive(&password, &salt, 1_000_001, 32).is_err());
-    assert!(pbkdf2_derive(&password, &salt, 1, 0).is_err());
-    assert!(pbkdf2_derive(&password, &salt, 1, 1_025).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1_000, 0).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1_000, 1_025).is_err());
+}
+
+#[test]
+fn pbkdf2_rejects_costs_below_the_compatibility_floor() {
+    let password = fixture_text(8);
+    let salt = fixture_text(4);
+    for iterations in [1, 2, 999] {
+        assert!(pbkdf2_derive(&password, &salt, iterations, 32).is_err());
+    }
+}
+
+#[test]
+fn pbkdf2_accepts_the_compatibility_floor() {
+    let password = fixture_text(8);
+    let salt = fixture_text(4);
+    let mut expected = [0_u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), salt.as_bytes(), 1_000, &mut expected);
+    assert_eq!(
+        pbkdf2_derive(&password, &salt, 1_000, 32).expect("valid minimum cost"),
+        hex::encode(expected)
+    );
 }
 
 #[test]
@@ -65,6 +86,26 @@ fn scrypt_rejects_non_power_of_two_cost() {
     let password = fixture_bytes(8);
     let salt = fixture_bytes(4);
     assert!(scrypt_derive(&password, &salt, 3, 8, 1, 64).is_err());
+}
+
+#[test]
+fn scrypt_rejects_degenerate_costs_below_minimum() {
+    // AUD-414: N=1 made scrypt a single-block computation; the floor is 16.
+    let password = fixture_bytes(8);
+    let salt = fixture_bytes(4);
+    for cost in [1, 2, 4, 8] {
+        assert!(
+            scrypt_derive(&password, &salt, cost, 1, 1, 16).is_err(),
+            "scrypt cost N={cost} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn scrypt_accepts_minimum_cost_at_the_floor() {
+    let password = fixture_bytes(8);
+    let salt = fixture_bytes(4);
+    assert!(scrypt_derive(&password, &salt, 16, 1, 1, 16).is_ok());
 }
 
 #[test]

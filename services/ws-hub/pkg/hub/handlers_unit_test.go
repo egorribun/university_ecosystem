@@ -238,7 +238,7 @@ func TestValidateUpgradeTicketIdentity_UsesDedicatedRevocationStore(t *testing.T
 		require.NoError(t, ticketClient.Close())
 		require.NoError(t, revocationClient.Close())
 	})
-	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, revocationClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, &config.Config{}, ticketClient, revocationClient)
 	t.Cleanup(h.Stop)
 
 	require.NoError(t, ticketStore.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI+":9999999999"))
@@ -262,7 +262,7 @@ func TestValidateUpgradeTicketIdentity_RequiresDedicatedRevocationStore(t *testi
 	ticketClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, ticketClient.Close()) })
 	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI+":9999999999"))
-	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, nil)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, &config.Config{}, ticketClient, nil)
 	t.Cleanup(h.Stop)
 
 	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)

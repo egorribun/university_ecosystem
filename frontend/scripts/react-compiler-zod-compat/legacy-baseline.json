@@ -1,0 +1,797 @@
+{
+  "evidence": {
+    "source": "https://github.com/egorribun/university_ecosystem/actions/runs/40069691438/job/120802074003",
+    "capturedAt": "2026-10-24T06:31:00Z",
+    "status": "legacy_baseline_not_fix_verification"
+  },
+  "kind": "react-compiler-legacy-baseline",
+  "schemaVersion": 1,
+  "sourceSha": "d4a21890ab514122cbf97dbe2f05d39588506506",
+  "node": "24.21.0",
+  "eslint": "10.12.0",
+  "compilerVersion": "19.1.0-rc.2",
+  "compilerIntegrity": "sha512-oKalwDGcD+RX9mf3NEO4zOoUMeLvjSvcbbEOpquzmzqEEM2MQdp7/FY/Hx9NzmUwFzH1W9SKTz5fihfMldpEYw==",
+  "compilerBundleSha256": "6a10f1053b28580a6af109b5a35db75f744ddca73f39bfa1ceceb44e3283e94c",
+  "schemaVersionInstalled": "3.25.76",
+  "schemaErrors": [
+    {
+      "name": "provider-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_type",
+          "expected": "function",
+          "received": "number",
+          "path": [],
+          "message": "Expected function, received number"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"function\",\n    \"received\": \"number\",\n    \"path\": [],\n    \"message\": \"Expected function, received number\"\n  }\n]",
+      "formatted": "Validation error: Expected function, received number"
+    },
+    {
+      "name": "record-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_type",
+          "expected": "string",
+          "received": "number",
+          "path": [
+            "value"
+          ],
+          "message": "Expected string, received number"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"number\",\n    \"path\": [\n      \"value\"\n    ],\n    \"message\": \"Expected string, received number\"\n  }\n]",
+      "formatted": "Validation error: Expected string, received number at \"value\""
+    },
+    {
+      "name": "union-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_union",
+          "unionErrors": [
+            {
+              "issues": [
+                {
+                  "received": "invalid",
+                  "code": "invalid_literal",
+                  "expected": "17",
+                  "path": [],
+                  "message": "Invalid literal value, expected \"17\""
+                }
+              ],
+              "name": "ZodError"
+            },
+            {
+              "issues": [
+                {
+                  "received": "invalid",
+                  "code": "invalid_literal",
+                  "expected": "18",
+                  "path": [],
+                  "message": "Invalid literal value, expected \"18\""
+                }
+              ],
+              "name": "ZodError"
+            }
+          ],
+          "path": [],
+          "message": "Invalid input"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_union\",\n    \"unionErrors\": [\n      {\n        \"issues\": [\n          {\n            \"received\": \"invalid\",\n            \"code\": \"invalid_literal\",\n            \"expected\": \"17\",\n            \"path\": [],\n            \"message\": \"Invalid literal value, expected \\\"17\\\"\"\n          }\n        ],\n        \"name\": \"ZodError\"\n      },\n      {\n        \"issues\": [\n          {\n            \"received\": \"invalid\",\n            \"code\": \"invalid_literal\",\n            \"expected\": \"18\",\n            \"path\": [],\n            \"message\": \"Invalid literal value, expected \\\"18\\\"\"\n          }\n        ],\n        \"name\": \"ZodError\"\n      }\n    ],\n    \"path\": [],\n    \"message\": \"Invalid input\"\n  }\n]",
+      "formatted": "Validation error: Invalid literal value, expected \"17\", or Invalid literal value, expected \"18\""
+    },
+    {
+      "name": "minimum-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "too_small",
+          "minimum": 1,
+          "type": "number",
+          "inclusive": true,
+          "exact": false,
+          "message": "at least one",
+          "path": []
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"at least one\",\n    \"path\": []\n  }\n]",
+      "formatted": "Validation error: at least one"
+    },
+    {
+      "name": "provider-argument",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_arguments",
+          "argumentsError": {
+            "issues": [
+              {
+                "code": "invalid_type",
+                "expected": "string",
+                "received": "number",
+                "path": [
+                  0
+                ],
+                "message": "Expected string, received number"
+              }
+            ],
+            "name": "ZodError"
+          },
+          "path": [],
+          "message": "Invalid function arguments"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_arguments\",\n    \"argumentsError\": {\n      \"issues\": [\n        {\n          \"code\": \"invalid_type\",\n          \"expected\": \"string\",\n          \"received\": \"number\",\n          \"path\": [\n            0\n          ],\n          \"message\": \"Expected string, received number\"\n        }\n      ],\n      \"name\": \"ZodError\"\n    },\n    \"path\": [],\n    \"message\": \"Invalid function arguments\"\n  }\n]",
+      "formatted": "Validation error: Invalid function arguments"
+    }
+  ],
+  "formatterEntrySha256": "07df867123383975508814d3e14a4e3fa4d35d1fc87e19097f652dfe389ff58b",
+  "records": [
+    {
+      "name": "valid",
+      "messages": [],
+      "suppressedMessages": []
+    },
+    {
+      "name": "conditional-hook",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Hooks must always be called in a consistent order, and may not be called conditionally. See the Rules of Hooks (https://react.dev/warnings/invalid-hook-call-warning)",
+          "line": 3,
+          "column": 5,
+          "endLine": 3,
+          "endColumn": 23
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "state-mutation",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Mutating a value returned from 'useState()', which should not be mutated. Use the setter function to update instead",
+          "line": 2,
+          "column": 85,
+          "endLine": 2,
+          "endColumn": 90
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "props-mutation",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Mutating component props or hook arguments is not allowed. Consider using a local variable instead",
+          "line": 1,
+          "column": 26,
+          "endLine": 1,
+          "endColumn": 31
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "ref-default",
+      "messages": [],
+      "suppressedMessages": []
+    },
+    {
+      "name": "ref-enabled",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Ref values (the `current` property) may not be accessed during render. (https://react.dev/reference/react/useRef)",
+          "line": 2,
+          "column": 57,
+          "endLine": 2,
+          "endColumn": 68
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "todo-default",
+      "messages": [],
+      "suppressedMessages": []
+    },
+    {
+      "name": "todo-reportable",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "(BuildHIR::lowerStatement) Handle var kinds in VariableDeclaration",
+          "line": 1,
+          "column": 22,
+          "endLine": 1,
+          "endColumn": 36
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "all-bailouts",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "[ReactCompilerBailout] (BuildHIR::lowerStatement) Handle var kinds in VariableDeclaration (@:1:21)",
+          "line": 1,
+          "column": 1,
+          "endLine": 1,
+          "endColumn": 69
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "flow-suppression",
+      "messages": [],
+      "suppressedMessages": []
+    },
+    {
+      "name": "flow-wrong-line",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Hooks must always be called in a consistent order, and may not be called conditionally. See the Rules of Hooks (https://react.dev/warnings/invalid-hook-call-warning)",
+          "line": 5,
+          "column": 5,
+          "endLine": 5,
+          "endColumn": 23
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "eslint-suppression",
+      "messages": [],
+      "suppressedMessages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Hooks must always be called in a consistent order, and may not be called conditionally. See the Rules of Hooks (https://react.dev/warnings/invalid-hook-call-warning)",
+          "line": 4,
+          "column": 5,
+          "endLine": 4,
+          "endColumn": 23,
+          "suppressions": [
+            {
+              "kind": "directive",
+              "justification": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "file-wide-unused-suppression",
+      "messages": [],
+      "suppressedMessages": []
+    },
+    {
+      "name": "provider-function-config",
+      "error": {
+        "name": "ConfigError",
+        "message": "Config (unnamed): Key \"rules\": Key \"react-compiler/react-compiler\": () => null could not be cloned."
+      }
+    },
+    {
+      "name": "provider-function-return-config",
+      "error": {
+        "name": "ConfigError",
+        "message": "Config (unnamed): Key \"rules\": Key \"react-compiler/react-compiler\": () => ({ kind: \"invalid\" }) could not be cloned."
+      }
+    },
+    {
+      "name": "provider-invalid-config",
+      "error": {
+        "name": "ReactCompilerError",
+        "message": "InvalidConfig: Error in validating environment config. This is an advanced setting and not meant to be used directly. [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"function\",\n    \"received\": \"string\",\n    \"path\": [\n      \"moduleTypeProvider\"\n    ],\n    \"message\": \"Expected function, received string\"\n  }\n]"
+      }
+    },
+    {
+      "name": "target-invalid-config",
+      "error": {
+        "name": "ReactCompilerError",
+        "message": "InvalidConfig: Not a valid target. Validation error: Invalid literal value, expected \"17\", or Invalid literal value, expected \"18\", or Invalid literal value, expected \"19\", or Expected object, received string"
+      }
+    },
+    {
+      "name": "declaration-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 21,
+          "endLine": 1,
+          "endColumn": 35,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  20,
+                  34
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "arrow-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 24,
+          "endLine": 1,
+          "endColumn": 38,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  23,
+                  37
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "expression-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 30,
+          "endLine": 1,
+          "endColumn": 44,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  29,
+                  43
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "default-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 30,
+          "endLine": 1,
+          "endColumn": 44,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  29,
+                  43
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "memo-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 47,
+          "endLine": 1,
+          "endColumn": 61,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  46,
+                  60
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "forward-ref-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 51,
+          "endLine": 1,
+          "endColumn": 65,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  50,
+                  64
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "nested-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 49,
+          "endLine": 1,
+          "endColumn": 63,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  48,
+                  62
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "ordinary-use no memo",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no memo' directive",
+          "line": 1,
+          "column": 22,
+          "endLine": 1,
+          "endColumn": 36,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  21,
+                  35
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "declaration-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 21,
+          "endLine": 1,
+          "endColumn": 37,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  20,
+                  36
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "arrow-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 24,
+          "endLine": 1,
+          "endColumn": 40,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  23,
+                  39
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "expression-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 30,
+          "endLine": 1,
+          "endColumn": 46,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  29,
+                  45
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "default-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 30,
+          "endLine": 1,
+          "endColumn": 46,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  29,
+                  45
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "memo-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 47,
+          "endLine": 1,
+          "endColumn": 63,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  46,
+                  62
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "forward-ref-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 51,
+          "endLine": 1,
+          "endColumn": 67,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  50,
+                  66
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "nested-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 49,
+          "endLine": 1,
+          "endColumn": 65,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  48,
+                  64
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "ordinary-use no forget",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Unused 'use no forget' directive",
+          "line": 1,
+          "column": 22,
+          "endLine": 1,
+          "endColumn": 38,
+          "suggestions": [
+            {
+              "desc": "Remove the directive",
+              "fix": {
+                "range": [
+                  21,
+                  37
+                ],
+                "text": ""
+              }
+            }
+          ]
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "arrow-state-mutation",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Mutating a value returned from 'useState()', which should not be mutated. Use the setter function to update instead",
+          "line": 1,
+          "column": 70,
+          "endLine": 1,
+          "endColumn": 75
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "memo-state-mutation",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Mutating a value returned from 'useState()', which should not be mutated. Use the setter function to update instead",
+          "line": 1,
+          "column": 93,
+          "endLine": 1,
+          "endColumn": 98
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "forward-ref-state-mutation",
+      "messages": [
+        {
+          "ruleId": "react-compiler/react-compiler",
+          "severity": 2,
+          "message": "Mutating a value returned from 'useState()', which should not be mutated. Use the setter function to update instead",
+          "line": 1,
+          "column": 97,
+          "endLine": 1,
+          "endColumn": 102
+        }
+      ],
+      "suppressedMessages": []
+    },
+    {
+      "name": "nested-state-mutation",
+      "messages": [],
+      "suppressedMessages": []
+    }
+  ]
+}

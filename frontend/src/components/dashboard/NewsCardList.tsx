@@ -1,4 +1,4 @@
-import { memo } from "react"
+import { memo, useId } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ArrowRight } from "lucide-react"
@@ -20,6 +20,7 @@ export const NewsCardList = memo(function NewsCardList({
 }: NewsCardListProps) {
   const { t } = useTranslation(["dashboard"])
   const navigate = useNavigate()
+  const dateDescriptionId = useId()
 
   if (loading) {
     return (
@@ -47,38 +48,46 @@ export const NewsCardList = memo(function NewsCardList({
 
   return (
     <ul className="space-y-2.5" aria-label={t("dashboard:aria.newsList")}>
-      {news.map((n, idx) => (
-        <li key={n.id} className="dash-list-item">
-          <button
-            type="button"
-            className={cn(
-              "group list-item-blue list-item-blue-hover",
-              "flex items-center gap-4 text-left sm:gap-5"
-            )}
-            onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
-            title={n.title}
-            aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-            style={{ "--stagger-i": idx } as React.CSSProperties}
-          >
-            <DateBullet date={n.created_at} locale={locale} />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
-                {n.title}
-              </span>
-              <span className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2">
-                {(n.content ?? String()).slice(0, 110)}
-                {(n.content ?? String()).length > 110 ? "…" : ""}
-              </span>
-            </div>
-            <span
-              aria-hidden="true"
-              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/(--opacity-faint) group-hover:text-brand"
+      {news.map((n, idx) => {
+        const rowId = `${dateDescriptionId}-${idx}`
+        return (
+          <li key={n.id} className="dash-list-item">
+            <button
+              type="button"
+              className={cn(
+                "group list-item-blue list-item-blue-hover",
+                "flex items-center gap-4 text-left sm:gap-5"
+              )}
+              onClick={() => navigate({ to: "/news/$id", params: { id: n.id } })}
+              title={n.title}
+              aria-describedby={n.content ? `${rowId} ${rowId}-excerpt` : rowId}
+              style={{ "--stagger-i": idx } as React.CSSProperties}
             >
-              <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </span>
-          </button>
-        </li>
-      ))}
+              <DateBullet date={n.created_at} locale={locale} descriptionId={rowId} />
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="text-base font-bold leading-snug text-text-primary line-clamp-2">
+                  {n.title}
+                </span>
+                {/* The title alone names the row; the excerpt is its description. */}
+                <span
+                  id={`${rowId}-excerpt`}
+                  aria-hidden="true"
+                  className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2"
+                >
+                  {(n.content ?? String()).slice(0, 110)}
+                  {(n.content ?? String()).length > 110 ? "…" : ""}
+                </span>
+              </div>
+              <span
+                aria-hidden="true"
+                className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:text-brand"
+              >
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </span>
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 })

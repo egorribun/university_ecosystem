@@ -233,6 +233,7 @@ func signRouteBranchToken(t *testing.T, userID, jti string, isActive bool) strin
 	now := time.Now()
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":       userID,
+		"iss":       middleware.DefaultJWTIssuer,
 		"aud":       middleware.DefaultJWTAudience,
 		"role":      "student",
 		"jti":       jti,
@@ -256,6 +257,7 @@ func TestSetupRouter_AuthenticatedAdminRouteReachesProxy(t *testing.T) {
 	require.NoError(t, err)
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":       "user-1",
+		"iss":       middleware.DefaultJWTIssuer,
 		"aud":       middleware.DefaultJWTAudience,
 		"role":      "admin",
 		"jti":       "route-jti-1",

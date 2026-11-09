@@ -84,7 +84,7 @@ class NotificationSettings(BaseAppSettings):
     notifications_scheduler_poll_seconds: int = 30
     notifications_scheduler_window_minutes: int = 6
     notifications_scheduler_max_backoff_seconds: int = 300
-    notifications_worker_metrics_host: str = "0.0.0.0"  # nosec B104
+    notifications_worker_metrics_host: str = "127.0.0.1"
     notifications_worker_metrics_port: int = 9101
     notifications_retention_days: int = 90
     notifications_retention_batch_size: int = 500

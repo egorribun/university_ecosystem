@@ -4,6 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import vm from "node:vm"
+import {
+  classifyAuthenticatedAuditSummaries,
+  emitAxeDiagnostics,
+  summarizeAxeDiagnostics,
+} from "./visual-smoke-contract.mjs"
 
 import {
   buildAdminCaptureBasename,
@@ -594,4 +600,387 @@ test("admin smoke workflow masks a per-run password before exposing it only to s
       !artifactStep.includes("admin_smoke_password"),
     "the generated value must not enter uploaded reports"
   )
+})
+
+const trustedIds = new Set(["color-contrast", "button-name"])
+const privateText = "private@example.test?access_token=private"
+const snapshot = (violations, axeError = null) => ({
+  httpStatus: 200,
+  redirectedToLogin: false,
+  hydrationErrorCount: 0,
+  axeError,
+  axeViolationCount: violations.length,
+  consoleErrorCount: 0,
+  failedNetworkRequestCount: 0,
+})
+
+function capture(route, violations, load = () => trustedIds) {
+  const lines = []
+  emitAxeDiagnostics(route, violations, load, (line) => lines.push(line))
+  return lines
+}
+
+test("axe diagnostics disclose only allowlisted route and rule metadata", () => {
+  const violations = [
+    {
+      id: "color-contrast",
+      impact: "serious",
+      nodes: [{ html: privateText, target: [privateText], failureSummary: privateText }],
+      help: privateText,
+    },
+  ]
+  const before = JSON.stringify(violations)
+  assert.deepEqual(summarizeAxeDiagnostics("/news", violations, trustedIds), {
+    route: "/news",
+    totalViolationCount: 1,
+    omittedViolationCount: 0,
+    violations: [{ id: "color-contrast", impact: "serious", nodeCount: 1 }],
+  })
+  assert.equal(JSON.stringify(violations), before)
+  assert.equal(capture("/news", violations).length, 1)
+  assert.ok(!capture("/news", violations)[0].includes(privateText))
+})
+
+test("private route and rule values are never coerced or emitted", () => {
+  const hostile = {
+    toString() {
+      throw new Error(privateText)
+    },
+  }
+  for (const route of [
+    privateText,
+    "/news?private=value",
+    "/messenger/private",
+    hostile,
+    "x".repeat(10000),
+  ]) {
+    const result = summarizeAxeDiagnostics(
+      route,
+      [{ id: privateText, impact: privateText, nodes: { length: privateText } }],
+      new Set([privateText])
+    )
+    assert.deepEqual(result, {
+      route: "unknown-route",
+      totalViolationCount: 1,
+      omittedViolationCount: 0,
+      violations: [{ id: "unknown-rule", impact: "unknown-impact", nodeCount: 0 }],
+    })
+  }
+  const result = summarizeAxeDiagnostics(
+    "/messenger/12345678-1234-1234-8234-123456789abc",
+    [],
+    trustedIds
+  )
+  assert.deepEqual(result, {
+    route: "/messenger/:id",
+    totalViolationCount: 0,
+    omittedViolationCount: 0,
+    violations: [],
+  })
+})
+
+test("rule IDs require exact catalog membership and bounded primitive slugs", () => {
+  const bounded = "a".repeat(64)
+  const oversized = "a".repeat(65)
+  const ids = [
+    "button-name",
+    "not-in-catalog",
+    bounded,
+    oversized,
+    {
+      toString() {
+        throw new Error(privateText)
+      },
+    },
+  ]
+  const result = summarizeAxeDiagnostics(
+    "/events",
+    ids.map((id) => ({ id, impact: "critical", nodes: [] })),
+    new Set(["button-name", bounded, oversized])
+  )
+  assert.deepEqual(
+    result.violations.map(({ id }) => id),
+    ["button-name", "unknown-rule", bounded, "unknown-rule", "unknown-rule"]
+  )
+})
+
+test("projection has a fixed twenty-entry cap and truthful total and omitted counts", () => {
+  const violations = Array.from({ length: 10001 }, () => ({
+    id: "button-name",
+    impact: "critical",
+    nodes: [],
+  }))
+  Object.defineProperty(violations, 20, {
+    get() {
+      throw new Error("entries after cap must not be read")
+    },
+  })
+  const result = summarizeAxeDiagnostics("/activity", violations, trustedIds)
+  assert.equal(result.violations.length, 20)
+  assert.equal(result.totalViolationCount, 10001)
+  assert.equal(result.omittedViolationCount, 9981)
+  assert.equal(violations.length, 10001)
+  const lines = capture("/activity", violations)
+  assert.equal(lines.length, 1)
+  assert.ok(lines[0].length <= 4096)
+  assert.equal(classifyAuthenticatedAuditSummaries([snapshot(violations)]).axeIssues.length, 1)
+})
+
+test("projection reads each record property once and rejects malformed node counts", () => {
+  const reads = { id: 0, impact: 0, nodes: 0 }
+  const violation = {}
+  for (const [key, value] of Object.entries({
+    id: "button-name",
+    impact: "serious",
+    nodes: [{}],
+  })) {
+    Object.defineProperty(violation, key, {
+      get() {
+        reads[key] += 1
+        return reads[key] === 1 ? value : privateText
+      },
+    })
+  }
+  assert.deepEqual(summarizeAxeDiagnostics("/settings", [violation], trustedIds).violations, [
+    { id: "button-name", impact: "serious", nodeCount: 1 },
+  ])
+  assert.deepEqual(reads, { id: 1, impact: 1, nodes: 1 })
+  const nodes = new Proxy([], {
+    get(_target, key) {
+      return key === "length" ? privateText : undefined
+    },
+  })
+  assert.equal(
+    summarizeAxeDiagnostics("/map", [{ id: "button-name", nodes }], trustedIds).violations[0]
+      .nodeCount,
+    0
+  )
+})
+
+test("catalog and projection failures emit no error or partial metadata", () => {
+  assert.deepEqual(
+    capture("/news", [], () => {
+      throw new Error(privateText)
+    }),
+    []
+  )
+  assert.deepEqual(capture("/news", null), [])
+  const violation = {
+    get id() {
+      throw new Error(privateText)
+    },
+  }
+  assert.deepEqual(capture("/news", [violation]), [])
+  const input = new Proxy([], {
+    get() {
+      throw new Error(privateText)
+    },
+  })
+  assert.deepEqual(capture("/news", input), [])
+})
+
+test("serialization failures and oversized serialization never reach output", () => {
+  const original = JSON.stringify
+  try {
+    for (const stringify of [
+      () => {
+        throw new Error(privateText)
+      },
+      () => undefined,
+      () => "x".repeat(4097),
+    ]) {
+      JSON.stringify = stringify
+      assert.deepEqual(capture("/news", []), [])
+    }
+  } finally {
+    JSON.stringify = original
+  }
+})
+
+test("output failure is swallowed without retry or raw fallback", () => {
+  let writes = 0
+  assert.doesNotThrow(() =>
+    emitAxeDiagnostics(
+      "/news",
+      [],
+      () => trustedIds,
+      () => {
+        writes += 1
+        throw new Error(privateText)
+      }
+    )
+  )
+  assert.equal(writes, 1)
+})
+
+test("audit loads only the Node-installed rule catalog inside the isolated emitter", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  assert.match(
+    source,
+    /emitAxeDiagnostics\(\s*routePath,\s*axeViolations,\s*\(\)\s*=>\s*new Set\(\s*requireFromProject\("axe-core"\)\s*\.getRules\(\)\s*\.map\(\(rule\) => rule\.ruleId\)/u
+  )
+  assert.equal(source.match(/requireFromProject\("axe-core"\)/gu).length, 1)
+  assert.ok(!source.includes("const AXE_RULE_IDS"))
+})
+
+test("actual filtered audit region preserves gate inputs across diagnostic failures", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("      axeViolations = results.violations.filter(")
+  const end = source.indexOf("  } catch (err) {\n    navError = err", start)
+  assert.ok(start >= 0 && end > start)
+  const region = source.slice(start, end)
+  assert.match(
+    region,
+    /catch \(err\) \{\s*axeError = err\.message\s*\}\s*if \(axeError === null\) \{\s*emitAxeDiagnostics/u
+  )
+  const originalStringify = JSON.stringify
+  for (const fault of ["none", "catalog", "projection", "stringify", "output"]) {
+    const violation =
+      fault === "projection"
+        ? {
+            impact: "critical",
+            get id() {
+              throw new Error(privateText)
+            },
+          }
+        : { id: "button-name", impact: "critical", nodes: [{}] }
+    const violations = [violation, { id: "ignored", impact: "minor", nodes: [] }]
+    const lines = []
+    try {
+      if (fault === "stringify")
+        JSON.stringify = () => {
+          throw new Error(privateText)
+        }
+      const result = vm.runInNewContext(
+        `(() => { let axeViolations = []; let axeError = null; try { ${region}\n return { axeViolations, axeError }; })()`,
+        {
+          results: { violations },
+          routePath: "/news",
+          requireFromProject(name) {
+            assert.equal(name, "axe-core")
+            if (fault === "catalog") throw new Error(privateText)
+            return { getRules: () => [{ ruleId: "button-name" }] }
+          },
+          emitAxeDiagnostics: (...args) =>
+            emitAxeDiagnostics(...args, (line) => {
+              if (fault === "output") throw new Error(privateText)
+              lines.push(line)
+            }),
+        }
+      )
+      assert.equal(result.axeError, null)
+      assert.equal(result.axeViolations.length, 1)
+      assert.equal(result.axeViolations[0], violation)
+      const classification = classifyAuthenticatedAuditSummaries([
+        snapshot(result.axeViolations, result.axeError),
+      ])
+      assert.equal(classification.axeErrors.length, 0)
+      assert.equal(classification.axeIssues.length, 1)
+      assert.equal(lines.length, fault === "none" ? 1 : 0)
+    } finally {
+      JSON.stringify = originalStringify
+    }
+  }
+})
+
+test("actual audit region keeps empty and minor-only passing gates passing on diagnostic faults", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("      axeViolations = results.violations.filter(")
+  const end = source.indexOf("  } catch (err) {\n    navError = err", start)
+  assert.ok(start >= 0 && end > start)
+  const region = source.slice(start, end)
+  const originalStringify = JSON.stringify
+  for (const violations of [[], [{ id: "button-name", impact: "minor", nodes: [{}] }]]) {
+    for (const fault of ["none", "catalog", "projection", "stringify", "output"]) {
+      const lines = []
+      try {
+        if (fault === "stringify")
+          JSON.stringify = () => {
+            throw new Error(privateText)
+          }
+        const result = vm.runInNewContext(
+          `(() => { let axeViolations = []; let axeError = null; try { ${region}\n return { axeViolations, axeError }; })()`,
+          {
+            results: { violations },
+            routePath: "/news",
+            requireFromProject(name) {
+              assert.equal(name, "axe-core")
+              if (fault === "catalog") throw new Error(privateText)
+              return { getRules: () => [{ ruleId: "button-name" }] }
+            },
+            emitAxeDiagnostics(route, filtered, load) {
+              const input =
+                fault === "projection"
+                  ? new Proxy(filtered, {
+                      get() {
+                        throw new Error(privateText)
+                      },
+                    })
+                  : filtered
+              emitAxeDiagnostics(route, input, load, (line) => {
+                if (fault === "output") throw new Error(privateText)
+                lines.push(line)
+              })
+            },
+          }
+        )
+        assert.equal(result.axeError, null)
+        assert.equal(result.axeViolations.length, 0)
+        const classification = classifyAuthenticatedAuditSummaries([
+          snapshot(result.axeViolations, result.axeError),
+        ])
+        assert.equal(classification.axeErrors.length, 0)
+        assert.equal(classification.axeIssues.length, 0)
+        assert.equal(lines.length, fault === "none" ? 1 : 0)
+      } finally {
+        JSON.stringify = originalStringify
+      }
+    }
+  }
+})
+
+test("original axe failure remains unchanged and does not invoke diagnostics", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("      axeViolations = results.violations.filter(")
+  const end = source.indexOf("  } catch (err) {\n    navError = err", start)
+  assert.ok(start >= 0 && end > start)
+  let diagnosticCalls = 0
+  const result = vm.runInNewContext(
+    `(() => { let axeViolations = []; let axeError = null; try { ${source.slice(start, end)}\n return { axeViolations, axeError }; })()`,
+    {
+      results: {
+        violations: {
+          filter() {
+            throw new Error("original-axe-failure")
+          },
+        },
+      },
+      routePath: "/news",
+      requireFromProject() {
+        throw new Error("catalog must not be read")
+      },
+      emitAxeDiagnostics() {
+        diagnosticCalls += 1
+      },
+    }
+  )
+  assert.equal(diagnosticCalls, 0)
+  assert.equal(result.axeError, "original-axe-failure")
+  const classification = classifyAuthenticatedAuditSummaries([
+    snapshot(result.axeViolations, result.axeError),
+  ])
+  assert.equal(classification.axeErrors.length, 1)
+  assert.equal(classification.axeIssues.length, 0)
 })

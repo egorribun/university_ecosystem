@@ -28,7 +28,7 @@ def test_mvp_load_profile_matches_accepted_capacity_and_sla() -> None:
         else:
             assert re.search(rf"\b{key}:\s*{value}\b", source)
 
-    assert "minimumSourceIpCount: Math.ceil(1000 / 10)" in source
+    assert "minimumSourceIpCount: Math.ceil(1000 / 120)" in source
     assert "rate>=1" in source
     assert "p(95)<=${PROFILE.deliveryP95Ms}" in compact
     assert 'ws_mvp_duplicate_deliveries: ["count==0"]' in source
@@ -141,8 +141,13 @@ def test_profile_fails_closed_on_fixture_target_and_source_ip_requirements() -> 
     assert "console.log" not in source
     assert "console.error" not in source
 
+    # The source-IP requirement above follows from this budget per client IP.
     hub_source = WS_HUB_PATH.read_text(encoding="utf-8")
-    assert "NewWSUpgradeRateLimiter(10, 60)" in hub_source
+    assert "NewWSUpgradeRateLimiter(wsUpgradeRatePerMinute(cfg), 60)" in hub_source
+    config_source = (WS_HUB_PATH.parents[1] / "config" / "config.go").read_text(
+        encoding="utf-8"
+    )
+    assert "const DefaultWSUpgradeRatePerMinute = 120" in config_source
 
 
 def test_run_requires_a_compose_project_bound_to_its_synthetic_run_id() -> None:

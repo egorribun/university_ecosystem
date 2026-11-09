@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import inspect
 import json
 import logging
 import secrets
 import ssl
+from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -263,7 +267,8 @@ async def test_smtp_errors_keep_task_logging_and_suppression_contract(
     }
     assert log_event.call_args_list[1].args[1] == "auth.lockout_email.error"
     assert log_event.call_args_list[1].kwargs["extra"] == {"email": "user@example.test"}
-    assert all(call.kwargs["exc_info"] is True for call in log_event.call_args_list)
+    assert log_event.call_args_list[0].kwargs["exc_info"] is False
+    assert log_event.call_args_list[1].kwargs["exc_info"] is True
     assert events == [
         "reset.abort",
         "reset.close",
@@ -360,6 +365,7 @@ async def test_smtp_abort_failure_still_closes_and_preserves_cancellation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("encrypted", [False, True], ids=["legacy", "encrypted"])
 @pytest.mark.parametrize(
     "abort_error",
     [
@@ -373,8 +379,10 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     monkeypatch: pytest.MonkeyPatch,
     configured_smtp: SimpleNamespace,
     abort_error: Exception | None,
+    encrypted: bool,
 ) -> None:
     """Cancel local SMTP work before NATS retry; remote exactly-once is unprovable."""
+    import app.services.auth_service as auth_module
     from app.tasks import email as email_tasks
 
     task_name = "app.tasks.email.send_auth_email"
@@ -389,11 +397,19 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
         )
     handler = email_tasks.broker._tasks[task_name]
     events: list[str] = []
+    marker = secrets.token_hex(16)
+    link = f"https://example.test/reset-password#token={marker}"
+    if encrypted:
+        secret = secrets.token_hex(32)
+        monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+        link = email_tasks.seal_auth_email_link(
+            link, datetime.now(UTC) + timedelta(minutes=5), secret
+        )
     payload = {
         "id": "same-task-id",
         "name": task_name,
-        "args": ["user@example.test", "https://example.test/reset", "Student"],
-        "kwargs": {"locale": "en"},
+        "args": ["user@example.test", link, "Student"],
+        "kwargs": {"locale": "en", "encrypted_link": encrypted},
         "trace_context": {},
     }
     first_message = SimpleNamespace(
@@ -424,9 +440,14 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     third_fetch = asyncio.Event()
     active_sends = 0
     maximum_active_sends = 0
+    link_was_delivered: list[bool] = []
 
-    async def blocked_first_send(_message: object) -> None:
+    async def blocked_first_send(_message: EmailMessage) -> None:
         nonlocal active_sends, maximum_active_sends
+        plain_body = _message.get_body(preferencelist=("plain",))
+        link_was_delivered.append(
+            plain_body is not None and marker in plain_body.get_content()
+        )
         active_sends += 1
         maximum_active_sends = max(maximum_active_sends, active_sends)
         events.append("first.send_started")
@@ -440,8 +461,12 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
         finally:
             active_sends -= 1
 
-    async def successful_retry_send(_message: object) -> None:
+    async def successful_retry_send(_message: EmailMessage) -> None:
         nonlocal active_sends, maximum_active_sends
+        plain_body = _message.get_body(preferencelist=("plain",))
+        link_was_delivered.append(
+            plain_body is not None and marker in plain_body.get_content()
+        )
         active_sends += 1
         maximum_active_sends = max(maximum_active_sends, active_sends)
         events.append("retry.send_started")
@@ -506,6 +531,7 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     assert retry_started.is_set()
     assert maximum_active_sends == 1
     assert active_sends == 0
+    assert link_was_delivered == [True, True]
     first_client.transport.abort.assert_called_once()
     first_client.close.assert_called_once()
     retry_client.transport.abort.assert_not_called()
@@ -802,3 +828,128 @@ async def test_shared_delivery_error_preserves_non_link_metadata_without_credent
     logged_call = repr(log_event.mock_calls)
     assert smtp_user not in logged_call
     assert smtp_password not in logged_call
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_error"),
+    [
+        ("non_object", "Invalid auth email envelope"),
+        ("legacy_extra_field", "Invalid legacy auth email envelope"),
+        ("legacy_non_boolean_marker", "Invalid legacy auth email marker"),
+    ],
+)
+def test_auth_payload_rejects_authenticated_invalid_envelope_shapes(
+    monkeypatch: pytest.MonkeyPatch, case: str, expected_error: str
+) -> None:
+    import app.services.auth_service as auth_module
+    from app.tasks import email as email_tasks
+
+    marker = "synthetic-" + secrets.token_hex(12)
+    link = f"https://example.test/reset-password#token={marker}"
+    secret = secrets.token_hex(32)
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    plain = {"args": ["user@example.test", link], "kwargs": {}}
+    plain_before = copy.deepcopy(plain)
+    protected, logical = email_tasks.prepare_auth_email_payload(plain)
+    valid_round_trip = (
+        logical == plain_before
+        and email_tasks._read_auth_email_link(protected["args"][1], secret)
+        == (link, None, False)
+        and marker not in json.dumps(protected)
+        and plain == plain_before
+    )
+    assert valid_round_trip, "valid legacy protection must preserve its logical input"
+
+    legacy: dict[str, Any] = {
+        "kind": "auth-email-legacy-v1",
+        "link": link,
+        "encrypted_link_present": False,
+    }
+    malformed: object = legacy
+    if case == "non_object":
+        malformed = [link]
+    elif case == "legacy_extra_field":
+        legacy["unexpected"] = marker
+    else:
+        assert case == "legacy_non_boolean_marker"
+        legacy["encrypted_link_present"] = 1
+    envelope = (
+        email_tasks._auth_email_cipher(secret)
+        .encrypt(json.dumps(malformed).encode("utf-8"))
+        .decode("ascii")
+    )
+
+    # The bytes authenticate; rejection must be for the inner format, not crypto.
+    with pytest.raises(ValueError, match=rf"^{expected_error}$"):
+        email_tasks._read_auth_email_link(envelope, secret)
+    payload = {
+        "args": ["user@example.test", envelope],
+        "kwargs": {"encrypted_link": True},
+    }
+    before = copy.deepcopy(payload)
+    with pytest.raises(email_tasks.AuthEmailPayloadError) as failure:
+        email_tasks.prepare_auth_email_payload(payload)
+    opaque = (
+        str(failure.value) == "Authentication email payload protection failed"
+        and failure.value.__cause__ is None
+        and failure.value.__suppress_context__
+    )
+    unchanged = payload == before
+    assert opaque, "task preparation must expose only its bounded rejection"
+    assert unchanged, "rejection must not partially rewrite the caller payload"
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["extra_field", "tuple_args", "list_kwargs", "non_string_link", "integer_marker"],
+)
+def test_auth_payload_rejects_invalid_task_structure_without_mutation(
+    monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    import app.services.auth_service as auth_module
+    from app.tasks import email as email_tasks
+
+    marker = "synthetic-" + secrets.token_hex(12)
+    link = f"https://example.test/reset-password#token={marker}"
+    secret = secrets.token_hex(32)
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    envelope = email_tasks.seal_auth_email_link(
+        link, datetime.now(UTC) + timedelta(minutes=5), secret
+    )
+    valid = {
+        "args": ["user@example.test", envelope],
+        "kwargs": {"encrypted_link": True},
+    }
+    original = copy.deepcopy(valid)
+    protected, logical = email_tasks.prepare_auth_email_payload(valid)
+    valid_unchanged = (
+        protected == original and logical == original and valid == original
+    )
+    assert valid_unchanged, "valid native envelopes must preserve their exact payload"
+
+    payload: dict[str, Any] = copy.deepcopy(valid)
+    if case == "extra_field":
+        payload["unexpected"] = marker
+    elif case == "tuple_args":
+        payload["args"] = tuple(payload["args"])
+    elif case == "list_kwargs":
+        payload["kwargs"] = []
+    elif case == "non_string_link":
+        payload["args"][1] = 1
+        payload["kwargs"] = {}
+    else:
+        assert case == "integer_marker"
+        # Use an authentic envelope: a later decrypt failure must not hide a
+        # missing strict-bool check for the otherwise truthy integer marker.
+        payload["kwargs"]["encrypted_link"] = 1
+    before = copy.deepcopy(payload)
+    with pytest.raises(email_tasks.AuthEmailPayloadError) as failure:
+        email_tasks.prepare_auth_email_payload(payload)
+    opaque = (
+        str(failure.value) == "Authentication email payload protection failed"
+        and failure.value.__cause__ is None
+        and failure.value.__suppress_context__
+    )
+    unchanged = payload == before
+    assert opaque, "invalid task arguments must produce only the bounded rejection"
+    assert unchanged, "rejection must not partially rewrite the caller payload"

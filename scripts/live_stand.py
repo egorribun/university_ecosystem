@@ -59,6 +59,142 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from scripts import fast_preflight
+from scripts.live_stand_playwright_evidence import (
+    _PASSWORD_FORGOT_COUNTS as _PASSWORD_FORGOT_COUNTS,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PASSWORD_FORGOT_SNAPSHOT_KEYS as _PASSWORD_FORGOT_SNAPSHOT_KEYS,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PASSWORD_FORGOT_STATUSES as _PASSWORD_FORGOT_STATUSES,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES as _PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES as _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT as _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_FAILURE_FRAME_SOURCES as _PLAYWRIGHT_FAILURE_FRAME_SOURCES,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_FAILURE_SOURCES as _PLAYWRIGHT_FAILURE_SOURCES,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PLAYWRIGHT_FULL_COLLECTION_COUNT as _PLAYWRIGHT_FULL_COLLECTION_COUNT,
+)
+from scripts.live_stand_playwright_evidence import (
+    _closed_diagnostic_label as _closed_diagnostic_label,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_a11y_contrasts as _live_playwright_a11y_contrasts,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_a11y_paint_states as _live_playwright_a11y_paint_states,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_a11y_phase_states as _live_playwright_a11y_phase_states,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_auth_http_diagnostics as _live_playwright_auth_http_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_auth_registration_diagnostics as _live_playwright_auth_registration_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_auth_ui_diagnostics as _live_playwright_auth_ui_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_counts as _live_playwright_counts,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_failure_diagnostics as _live_playwright_failure_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_failure_locations as _live_playwright_failure_locations,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_footer_geometries as _live_playwright_footer_geometries,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_http_statuses as _live_playwright_http_statuses,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_login_failures as _live_playwright_login_failures,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_news_viewports as _live_playwright_news_viewports,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_page_error_details as _live_playwright_page_error_details,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_page_errors as _live_playwright_page_errors,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_password_forgot_diagnostics as _live_playwright_password_forgot_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_profile_save_diagnostics as _live_playwright_profile_save_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_push_observations as _live_playwright_push_observations,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_pwa_bundle_route_diagnostics as _live_playwright_pwa_bundle_route_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_pwa_update_lifecycle_diagnostics as _live_playwright_pwa_update_lifecycle_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_rate_limit_headers as _live_playwright_rate_limit_headers,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reconnect_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_registration_admission_diagnostics as _live_playwright_registration_admission_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reset_registration_steps as _live_playwright_reset_registration_steps,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reset_registration_v2 as _live_playwright_reset_registration_v2,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reset_registration_v3 as _live_playwright_reset_registration_v3,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reset_url_observations as _live_playwright_reset_url_observations,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_retry_decisions as _live_playwright_retry_decisions,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_skipped_identities as _live_playwright_skipped_identities,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_story_memory_cycle_trace_diagnostics as _live_playwright_story_memory_cycle_trace_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_story_memory_records as _live_playwright_story_memory_records,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_story_setup_diagnostics as _live_playwright_story_setup_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
+    _PlaywrightSkipIdentity as _PlaywrightSkipIdentity,
+)
+from scripts.live_stand_playwright_evidence import (
+    _render_forgot_observation as _render_forgot_observation,
+)
+from scripts.live_stand_playwright_evidence import (
+    _validated_password_forgot_record as _validated_password_forgot_record,
+)
+from scripts.seed_identity import owned_seed_tenant_id
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKTREE_NAME = "ue-live"
@@ -213,6 +349,7 @@ LIVE_CORE_EXPECTED_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -237,10 +374,19 @@ SEED_SCRIPTS = (
 )
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
 LIVE_CADDY_PROBE_SPEC = "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts"
+LIVE_AUD178_RESET_PROBE_SPEC = "tests/e2e-live/aud178-reset-referer-csp.live.spec.ts"
 LIVE_CADDY_PROBE_PROJECTS = ("desktop", "mobile")
+# Every live-stand subprocess and lifecycle lock wait has a finite bound (AUD-309).
+LIVE_COMMAND_TIMEOUT_SECONDS = 3_600
+LIVE_PROBE_TIMEOUT_SECONDS = 120
+LIVE_INSTALL_TIMEOUT_SECONDS = 1_800
+LIVE_E2E_TIMEOUT_SECONDS = 7_200
+LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS = 10_800
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
+    "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
+    "tests/e2e-live/pwa-offline-shell.live.spec.ts",
     "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
     "tests/e2e-live/settings-radio-focus.live.spec.ts",
     LIVE_CADDY_PROBE_SPEC,
@@ -290,6 +436,10 @@ STAND_PATHS_TO_PROTECT = (
     Path(".secrets/jwt_rs256.pem"),
     Path(".secrets/jwt_rs256.pub.pem"),
     Path(".secrets/temporal_api_key"),
+    Path(".temporal-bootstrap"),
+    Path(".temporal-bootstrap/profile.toml"),
+    Path(".temporal-bootstrap/owner.marker"),
+    Path(".temporal-bootstrap/profile.lock"),
     Path(".secrets/s3-cutover-attestation.txt"),
 )
 
@@ -669,6 +819,17 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         repository / "services" / "temporal" / "entrypoint.sh",
         "/etc/temporal/wave144-entrypoint.sh",
     )
+    namespace_script_mount = readonly_bind(
+        repository / "scripts" / "temporal" / "namespace-init.sh",
+        "/etc/temporal/namespace-init.sh",
+    )
+    namespace_admin_mount = readonly_bind(
+        resolved_root / ".temporal-bootstrap" / "profile.toml",
+        "/run/temporal-bootstrap/profile.toml",
+    )
+    namespace_worker_mount = readonly_bind(
+        runtime_bind_directory / "temporal_api_key", "/run/temporal-worker/token"
+    )
     content = (
         "services:\n"
         "  backend:\n"
@@ -690,6 +851,27 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         "    volumes: !override\n"
         f"{temporal_config_mount}"
         f"{temporal_entrypoint_mount}"
+        "      - type: volume\n"
+        "        source: temporal-jwks-ca\n"
+        "        target: /etc/temporal/jwks-ca\n"
+        "        read_only: true\n"
+        "  temporal-namespace-init:\n"
+        '    user: "1000:1000"\n'
+        "    read_only: true\n"
+        '    cap_drop: ["ALL"]\n'
+        '    security_opt: !override ["no-new-privileges:true"]\n'
+        "    network_mode: service:temporal\n"
+        "    networks: !reset null\n"
+        "    environment: !reset {}\n"
+        '    entrypoint: !override ["/bin/sh", "/etc/temporal/namespace-init.sh"]\n'
+        "    command: !reset []\n"
+        "    tmpfs: !override\n"
+        "      - /tmp:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev\n"
+        "      - /run/temporal-bootstrap-runtime:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev\n"
+        "    volumes: !override\n"
+        f"{namespace_script_mount}"
+        f"{namespace_admin_mount}"
+        f"{namespace_worker_mount}"
     )
     override = state_root / IN_PLACE_OVERLAY
     _assert_worktree_paths_safe(state_root, (Path(IN_PLACE_OVERLAY),))
@@ -730,14 +912,22 @@ def load_or_create_vapid(worktree: Path) -> dict[str, str]:
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("x", encoding="utf-8") as key_file:
-            key_file.write(json.dumps(keys))
-        if IN_PLACE_MODE and os.name == "nt":
-            _restrict_in_place_windows_state_file(path)
-        elif os.name != "nt":
-            path.chmod(0o600)
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
     except FileExistsError:
         return load_vapid(worktree)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as key_file:
+            key_file.write(json.dumps(keys))
+    finally:
+        os.close(descriptor)
+    if IN_PLACE_MODE and os.name == "nt":
+        _restrict_in_place_windows_state_file(path)
+    elif os.name != "nt":
+        path.chmod(0o600)
     return keys
 
 
@@ -1112,6 +1302,7 @@ def stand_lifecycle_lock() -> Iterator[None]:
             if os.fstat(lock_file.fileno()).st_size == 0:
                 lock_file.write(b"\0")
                 lock_file.flush()
+            deadline = time.monotonic() + LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS
             while True:
                 try:
                     lock_file.seek(0)
@@ -1122,11 +1313,34 @@ def stand_lifecycle_lock() -> Iterator[None]:
                         raise StandError(
                             "cannot acquire the live stand lifecycle lock"
                         ) from error
+                    if time.monotonic() >= deadline:
+                        raise StandError(
+                            "timed out waiting for the live stand lifecycle lock"
+                        ) from error
                     time.sleep(0.05)
         else:
-            import fcntl
+            from fcntl import (  # type: ignore[attr-defined]
+                LOCK_EX,
+                LOCK_NB,
+                LOCK_UN,
+                flock,
+            )
 
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+            deadline = time.monotonic() + LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS
+            while True:
+                try:
+                    flock(lock_file.fileno(), LOCK_EX | LOCK_NB)
+                    break
+                except OSError as error:
+                    if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                        raise StandError(
+                            "cannot acquire the live stand lifecycle lock"
+                        ) from error
+                    if time.monotonic() >= deadline:
+                        raise StandError(
+                            "timed out waiting for the live stand lifecycle lock"
+                        ) from error
+                    time.sleep(0.05)
         try:
             yield
         finally:
@@ -1136,9 +1350,7 @@ def stand_lifecycle_lock() -> Iterator[None]:
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                flock(lock_file.fileno(), LOCK_UN)
 
 
 def _validate_project_name(project_name: str) -> None:
@@ -2017,6 +2229,10 @@ def stand_environment(
     _validate_project_name(project_name)
     ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
+    tenant_identity = str(owned_seed_tenant_id(project_name))
+    if "MVP_TENANT_ID" in env and env["MVP_TENANT_ID"] != tenant_identity:
+        raise StandError("MVP_TENANT_ID does not match the owned live project")
+    env["MVP_TENANT_ID"] = tenant_identity
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]
@@ -2239,6 +2455,7 @@ def _compose_resource_evidence(
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=LIVE_PROBE_TIMEOUT_SECONDS,
                 **run_options,
             )
             if docker_context is not None:
@@ -2250,7 +2467,15 @@ def _compose_resource_evidence(
         StandError,
         UnicodeError,
         subprocess.SubprocessError,
-    ):
+    ) as error:
+        category, exit_status = _compose_resource_failure_category(error)
+        try:
+            sys.stderr.write(
+                "live_stand_compose_config_diagnostic="
+                f"category:{category};exit:{exit_status}\n"
+            )
+        except (OSError, UnicodeError, ValueError):
+            pass
         raise StandError("cannot verify resolved Compose resource ownership") from None
     try:
         project = json.loads(completed_stdout)
@@ -2264,6 +2489,56 @@ def _compose_resource_evidence(
         service_roots=service_roots,
         legacy_projection=legacy_projection,
     )
+
+
+def _compose_resource_failure_category(error: BaseException) -> tuple[str, str]:
+    """Return only allowlisted Compose failure metadata; never render exception data."""
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "compose_timeout", "unavailable"
+    if isinstance(error, subprocess.CalledProcessError):
+        raw_stderr = error.stderr
+        if isinstance(raw_stderr, bytes):
+            stderr = raw_stderr.decode("utf-8", errors="replace").casefold()
+        elif isinstance(raw_stderr, str):
+            stderr = raw_stderr.casefold()
+        else:
+            stderr = ""
+        if "required variable" in stderr or (
+            "variable" in stderr and "is not set" in stderr
+        ):
+            category = "required_interpolation"
+        elif "unknown flag" in stderr or "unknown shorthand flag" in stderr:
+            category = "unsupported_compose_option"
+        elif "permission denied" in stderr:
+            category = "compose_input_permission"
+        elif any(
+            marker in stderr
+            for marker in ("no such file", "not found", "cannot open", "failed to read")
+        ):
+            category = "missing_or_unreadable_input"
+        elif any(
+            marker in stderr for marker in ("yaml", "unmarshal", "invalid compose")
+        ):
+            category = "compose_parse_or_schema"
+        elif "cannot connect to the docker daemon" in stderr:
+            category = "unexpected_daemon_dependency"
+        else:
+            category = "compose_nonzero_unclassified"
+        exit_status = (
+            str(error.returncode) if type(error.returncode) is int else "unavailable"
+        )
+        return category, exit_status
+    if isinstance(error, FileNotFoundError):
+        return "compose_executable_missing", "unavailable"
+    if isinstance(error, PermissionError):
+        return "compose_process_permission", "unavailable"
+    if isinstance(error, OSError):
+        return "compose_process_io", "unavailable"
+    if isinstance(error, UnicodeError):
+        return "compose_output_encoding", "unavailable"
+    if isinstance(error, StandError):
+        return "compose_ownership_precondition", "unavailable"
+    return "compose_process_failure", "unavailable"
 
 
 def _compose_resource_evidence_from_project(
@@ -2951,6 +3226,7 @@ def _assert_compose_volume_ownership(
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=LIVE_PROBE_TIMEOUT_SECONDS,
                 **run_options,
             )
             if docker_context is not None:
@@ -3139,7 +3415,16 @@ def _run(
     command: Sequence[str], *, cwd: Path, env: dict[str, str] | None = None
 ) -> None:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, env=env, check=True)  # noqa: S603 - fixed argv
+    try:
+        subprocess.run(  # noqa: S603 - fixed argv
+            command,
+            cwd=cwd,
+            env=env,
+            check=True,
+            timeout=LIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise StandError("live stand command timed out") from None
 
 
 def _docker_output(
@@ -3181,6 +3466,7 @@ def _docker_output(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
             **run_options,
         )
         if docker_context is not None:
@@ -4338,13 +4624,17 @@ def _remove_core_project_volumes(
 
 
 def _git(*args: str) -> str:
-    completed = subprocess.run(  # noqa: S603 - fixed git argv
-        ["git", *args],  # noqa: S607 - git resolved from PATH like every repo script
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed git argv
+            ["git", *args],  # noqa: S607 - git resolved from PATH like every repo script
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise StandError("live stand git probe timed out") from None
     return completed.stdout.strip()
 
 
@@ -4434,16 +4724,186 @@ def _assert_no_ignored_in_place_build_sources() -> None:
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
         *IN_PLACE_BUILD_SOURCE_PATHS,
         *(f":(exclude,glob){path}" for path in IN_PLACE_DOCKERIGNORE_EXCLUSIONS),
     )
-    if ignored_sources:
+    source_roots = tuple(
+        os.path.normcase(path.rstrip("/")).replace(os.path.sep, "/")
+        for path in IN_PLACE_BUILD_SOURCE_PATHS
+    )
+
+    def is_in_place_source_path(path: str) -> bool:
+        normalized_path = os.path.normcase(path).replace(os.path.sep, "/")
+        return any(
+            normalized_path == source_root
+            or normalized_path.startswith(f"{source_root}/")
+            for source_root in source_roots
+        )
+
+    ignored_build_sources = (
+        path
+        for path in ignored_sources.split("\0")
+        if path and is_in_place_source_path(path)
+    )
+    if next(ignored_build_sources, None) is not None:
         raise StandError(
             "in-place source checkout contains ignored untracked files in Docker COPY paths"
         )
+
+
+_LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES = 4096
+_LIVE_BOOTSTRAP_INSPECT_FORMAT = (
+    '{"Id":{{json .Id}},"Name":{{json .Name}},"Image":{{json .Image}},'
+    '"Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},'
+    '"State":{"Running":{{json .State.Running}},"Status":{{json .State.Status}},'
+    '"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}}},'
+    '"Mounts":{{json .Mounts}}}'
+)
+
+
+def _parse_bootstrap_diagnostic(stdout: bytes, stderr: bytes) -> tuple[int, str]:
+    """Discard log content; accept one complete, finite wrapper metadata record."""
+    if (
+        not isinstance(stdout, bytes)
+        or not isinstance(stderr, bytes)
+        or len(stdout) + len(stderr) > _LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES
+        or any(stream and not stream.endswith(b"\n") for stream in (stdout, stderr))
+    ):
+        raise StandError("bootstrap diagnostic framing is unavailable")
+    rows: list[tuple[int, str]] = []
+    for stream in (stdout, stderr):
+        for line in stream.split(b"\n"):
+            match = re.fullmatch(
+                rb"\[postgres-roles-init\] phase=reconcile exit=([1-9][0-9]{0,2}) "
+                rb"sqlstate=([0-9A-Z]{5}|UNKNOWN)",
+                line,
+            )
+            if match is not None and int(match[1]) <= 255:
+                rows.append((int(match[1]), match[2].decode("ascii")))
+    if len(rows) != 1:
+        raise StandError("bootstrap diagnostic record is unavailable")
+    return rows[0]
+
+
+def _bootstrap_container_pin(
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    *,
+    deadline: float,
+    context: _LiveDockerReadContext,
+) -> tuple[str, str, int]:
+    output = _docker_output(
+        [
+            "ps",
+            "--all",
+            "--quiet",
+            "--no-trunc",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+            "--filter",
+            "label=com.docker.compose.service=postgres-roles-init",
+        ],
+        "bootstrap container selection is unavailable",
+        deadline=deadline,
+        docker_context=context,
+    )
+    ids = output.splitlines()
+    if len(ids) != 1 or re.fullmatch(r"[0-9a-f]{64}", ids[0]) is None:
+        raise StandError("bootstrap container selection is ambiguous")
+    raw = _docker_output(
+        [
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+            _LIVE_BOOTSTRAP_INSPECT_FORMAT,
+            ids[0],
+        ],
+        "bootstrap container identity is unavailable",
+        deadline=deadline,
+        docker_context=context,
+    )
+    try:
+        record = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_docker_json_keys,
+            parse_constant=_reject_nonstandard_docker_json_constant,
+        )
+    except (json.JSONDecodeError, _DockerProjectionError):
+        raise StandError("bootstrap container identity is malformed") from None
+    if not isinstance(record, dict):
+        raise StandError("bootstrap container identity is malformed")
+    inspected = _core_container_record_from_inspect(ids[0], owner, evidence, record)
+    state = record.get("State")
+    config = record.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    exit_code = state.get("ExitCode") if isinstance(state, dict) else None
+    if (
+        inspected.service != "postgres-roles-init"
+        or inspected.running
+        or inspected.status != "exited"
+        or not isinstance(state, dict)
+        or state.get("OOMKilled") is not False
+        or not isinstance(labels, dict)
+        or labels.get("com.docker.compose.oneoff") != "False"
+        or type(exit_code) is not int
+        or not 1 <= exit_code <= 255
+    ):
+        raise StandError("bootstrap container has no verified failed exit")
+    return ids[0], inspected.identity, exit_code
+
+
+def _capture_owned_bootstrap_diagnostic(owner: StandOwner) -> str:
+    """Read only one signed initializer, pinning identity around a bounded read."""
+    deadline = time.monotonic() + 10.0
+    context = _new_live_docker_read_context()
+    _assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
+    evidence = _verify_stand_owner_compose_resources(
+        WORKTREE, owner, deadline=deadline, docker_context=context
+    )
+    if "postgres-roles-init" not in evidence.managed_services:
+        raise StandError("bootstrap service is outside the signed closure")
+    pin = _bootstrap_container_pin(owner, evidence, deadline=deadline, context=context)
+    completed = _run_live_bounded_read(
+        ["docker", "logs", "--tail", "32", pin[0]],
+        context=context,
+        deadline=deadline,
+        maximum_bytes=_LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES,
+        command_timeout_seconds=3.0,
+    )
+    if completed.returncode != 0:
+        raise StandError("bootstrap diagnostic read failed")
+    exit_code, sqlstate = _parse_bootstrap_diagnostic(
+        completed.stdout, completed.stderr
+    )
+    _assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
+    if evidence != _verify_stand_owner_compose_resources(
+        WORKTREE, owner, deadline=deadline, docker_context=context
+    ) or pin != _bootstrap_container_pin(
+        owner, evidence, deadline=deadline, context=context
+    ):
+        raise StandError("bootstrap ownership or identity changed during capture")
+    _assert_live_docker_read_context(context)
+    _live_probe_remaining(deadline)
+    if exit_code != pin[2]:
+        raise StandError("bootstrap diagnostic does not match the verified exit")
+    return f"[postgres-roles-init] phase=reconcile exit={exit_code} sqlstate={sqlstate}"
+
+
+def _run_owned_start_command(
+    command: Sequence[str], owner: StandOwner, environment: dict[str, str]
+) -> None:
+    try:
+        _run(command, cwd=WORKTREE, env=environment)
+    except subprocess.CalledProcessError as error:
+        try:
+            print(_capture_owned_bootstrap_diagnostic(owner))
+        finally:
+            # Diagnostic failures, including output errors, never replace startup.
+            # Suppress their context so no private read/error content is rendered.
+            raise error from None
 
 
 def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
@@ -4666,7 +5126,7 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         )
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
-    _run(start_command, cwd=WORKTREE, env=env)
+    _run_owned_start_command(start_command, owner, env)
     _configure_live_trusted_proxy_peers(
         owner, env, _verify_stand_owner_compose_resources(WORKTREE, owner)
     )
@@ -4688,6 +5148,34 @@ def _new_test_password() -> str:
     return secrets.token_urlsafe(32) + "!Aa0"
 
 
+SEED_OWNED_STAND_RECORD = Path(".secrets") / "owned-stand-seed.json"
+SEED_OWNED_STAND_CONTAINER_PATH = "/run/live-stand/owned-stand.json"
+SEED_OWNED_STAND_DATABASE_HOST = "postgres"
+
+
+def _write_seed_owned_stand_record(owner: StandOwner) -> Path:
+    """Write the owner-issued seed record that the seed gate verifies (AUD-313)."""
+    _assert_worktree_paths_safe(WORKTREE, (SEED_OWNED_STAND_RECORD,))
+    destination = WORKTREE / SEED_OWNED_STAND_RECORD
+    destination.parent.mkdir(mode=0o700, exist_ok=True)
+    _assert_worktree_paths_safe(WORKTREE, (SEED_OWNED_STAND_RECORD,))
+    record = {
+        "schema_version": 1,
+        "project_name": owner.project_name,
+        "database_host": SEED_OWNED_STAND_DATABASE_HOST,
+    }
+    temporary = destination.with_name(f"{destination.name}.{secrets.token_hex(8)}.tmp")
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(temporary, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+        # The record is not secret and must stay readable by the backend container's
+        # uid 10001; fchmod sets the mode explicitly so the umask cannot strip read bits.
+        os.fchmod(descriptor, 0o644)
+        json.dump(record, handle, sort_keys=True)
+    os.replace(temporary, destination)
+    return destination
+
+
 def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> None:
     _require_worktree()
     current_owner = load_stand_owner(WORKTREE)
@@ -4701,43 +5189,52 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
     env.pop("TEST_PASSWORD", None)
     source_root = REPO_ROOT if IN_PLACE_MODE else WORKTREE
     scripts_mount = f"{source_root / 'scripts'}:/app/scripts:ro"
-    for script in SEED_SCRIPTS:
-        run_env = env
-        run_options = [
-            "run",
-            "--rm",
-            "--no-deps",
-            "-v",
-            scripts_mount,
-            "--env",
-            f"COMPOSE_PROJECT_NAME={owner.project_name}",
-            "--env",
-            "LIVE_STAND_OWNER_VERIFIED=1",
-            "--env",
-            f"LIVE_STAND_SEED_PROJECT={owner.project_name}",
-        ]
-        if script == "scripts/seed_admin_data.py":
-            run_env = {**env, "TEST_PASSWORD": admin_password}
-            run_options.extend(("-e", "TEST_PASSWORD"))
-        if script == "scripts/seed_live_authorization.py":
-            run_options.extend(
-                ("-v", f"{source_root / 'schema.zed'}:/app/schema.zed:ro")
-            )
-        run_options.extend(("backend", "python", script))
-        try:
-            _verify_stand_owner_compose_resources(WORKTREE, owner)
-            _require_owned_docker_daemon(owner)
-            _run(
-                compose_command(
-                    *run_options,
-                    project_name=owner.project_name,
-                ),
-                cwd=WORKTREE,
-                env=run_env,
-            )
-        finally:
-            if script == "scripts/seed_admin_data.py":
-                run_env.pop("TEST_PASSWORD", None)
+    record_path = _write_seed_owned_stand_record(owner)
+    try:
+        for script in SEED_SCRIPTS:
+            run_env = env
+            run_options = [
+                "run",
+                "--rm",
+                "--no-deps",
+                "-v",
+                scripts_mount,
+                "-v",
+                f"{record_path}:{SEED_OWNED_STAND_CONTAINER_PATH}:ro",
+                "--env",
+                f"COMPOSE_PROJECT_NAME={owner.project_name}",
+                "--env",
+                "LIVE_STAND_OWNER_VERIFIED=1",
+                "--env",
+                f"LIVE_STAND_SEED_PROJECT={owner.project_name}",
+            ]
+            if script in {"scripts/seed_demo_data.py", "scripts/seed_admin_data.py"}:
+                run_env = {**env, "TEST_PASSWORD": admin_password}
+                run_options.extend(("-e", "TEST_PASSWORD"))
+            if script == "scripts/seed_live_authorization.py":
+                run_options.extend(
+                    ("-v", f"{source_root / 'schema.zed'}:/app/schema.zed:ro")
+                )
+            run_options.extend(("backend", "python", script))
+            try:
+                _verify_stand_owner_compose_resources(WORKTREE, owner)
+                _require_owned_docker_daemon(owner)
+                _run(
+                    compose_command(
+                        *run_options,
+                        project_name=owner.project_name,
+                    ),
+                    cwd=WORKTREE,
+                    env=run_env,
+                )
+            finally:
+                if script in {
+                    "scripts/seed_demo_data.py",
+                    "scripts/seed_admin_data.py",
+                }:
+                    run_env.pop("TEST_PASSWORD", None)
+    finally:
+        record_path.unlink(missing_ok=True)
 
 
 def seed() -> None:
@@ -4911,10 +5408,19 @@ def _playwright_browser_cache_path(
     )
 
 
+# The failure parser also attributes audit-config specs, but the live runner's
+# testMatch collects only tests/e2e-live/*.live.spec.ts, so only those are selectable.
+_LIVE_E2E_SELECTABLE_SPECS = tuple(
+    source
+    for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+    if source.endswith(".live.spec.ts")
+)
+
+
 def _validated_live_e2e_specs(
     specs: Sequence[str] | None, *, mode: str
 ) -> tuple[str, ...]:
-    """Return only distinct, canonical full-suite paths from the reviewed list."""
+    """Return only distinct, canonical live-suite paths from the reviewed list."""
     if mode not in {"smoke", "full"}:
         raise StandError("live E2E mode must be smoke or full")
     if specs is None:
@@ -4923,23 +5429,19 @@ def _validated_live_e2e_specs(
         raise StandError("invalid live E2E focused selection")
     if not specs:
         return ()
-    if mode != "full" or len(specs) > len(_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES):
+    if mode != "full" or len(specs) > len(_LIVE_E2E_SELECTABLE_SPECS):
         raise StandError("invalid live E2E focused selection")
     if any(
         type(spec) is not str
         or not spec.isascii()
-        or spec not in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
+        or spec not in _LIVE_E2E_SELECTABLE_SPECS
         for spec in specs
     ):
         raise StandError("invalid live E2E focused selection")
     if len(set(specs)) != len(specs):
         raise StandError("invalid live E2E focused selection")
     selected = set(specs)
-    return tuple(
-        source
-        for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
-        if source in selected
-    )
+    return tuple(source for source in _LIVE_E2E_SELECTABLE_SPECS if source in selected)
 
 
 def _live_e2e_probe_selected(mode: str, selected_specs: Sequence[str]) -> bool:
@@ -4947,7 +5449,9 @@ def _live_e2e_probe_selected(mode: str, selected_specs: Sequence[str]) -> bool:
     if mode == "smoke":
         return LIVE_CADDY_PROBE_SPEC in LIVE_E2E_SMOKE_FILES
     return mode == "full" and (
-        not selected_specs or LIVE_CADDY_PROBE_SPEC in selected_specs
+        not selected_specs
+        or LIVE_CADDY_PROBE_SPEC in selected_specs
+        or LIVE_AUD178_RESET_PROBE_SPEC in selected_specs
     )
 
 
@@ -4960,6 +5464,12 @@ def _live_e2e_command(
     """Return a fixed, secret-free launcher for the requested live suite."""
     selected_specs = _validated_live_e2e_specs(specs, mode=mode)
     selected_files = LIVE_E2E_SMOKE_FILES if mode == "smoke" else selected_specs
+    if (
+        mode == "full"
+        and LIVE_AUD178_RESET_PROBE_SPEC in selected_files
+        and LIVE_CADDY_PROBE_SPEC not in selected_files
+    ):
+        selected_files = (*selected_files, LIVE_CADDY_PROBE_SPEC)
     if (platform or os.name) == "nt":
         if not selected_files:
             return LIVE_E2E_WINDOWS_COMMAND
@@ -5073,7 +5583,10 @@ def _run_live_e2e_npm_ci(frontend: Path, environment: Mapping[str, str]) -> None
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_INSTALL_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise StandError("locked live E2E dependency install timed out") from None
     except OSError as error:
         raise StandError(
             "could not launch the locked live E2E dependency install"
@@ -5100,7 +5613,10 @@ def _probe_live_e2e_chromium(frontend: Path, environment: Mapping[str, str]) -> 
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise StandError("cached live E2E browser inspection timed out") from None
     except OSError as error:
         raise StandError("could not inspect the cached live E2E browser") from error
 
@@ -5158,2433 +5674,6 @@ def _ensure_live_e2e_dependencies(
     _probe_live_e2e_chromium(frontend, environment)
 
 
-_PLAYWRIGHT_COUNT_LINE = re.compile(
-    r" *(?P<count>0|[1-9][0-9]{0,4}) "
-    r"(?P<kind>passed|failed|skipped|flaky|interrupted|did not run)"
-    r"(?: \([0-9]{1,8}(?:\.[0-9])?(?:ms|s|m|h|d)\))? *"
-)
-_PLAYWRIGHT_FAILURE_HEADER = re.compile(
-    r"  [1-9][0-9]{0,3}\) \[(?P<project>desktop|mobile)\] › "
-    r"(?P<source>[^ :]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
-    r"(?P<column>[1-9][0-9]{0,4}) › "
-)
-_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
-    "tests/e2e-live/activity-dashboard.live.spec.ts",
-    "tests/e2e-live/activity-summary.live.spec.ts",
-    "tests/e2e-live/admin-audit-rbac.live.spec.ts",
-    "tests/e2e-live/admin-feature-flags-rbac.live.spec.ts",
-    "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
-    "tests/e2e-live/admin-stories-rbac.live.spec.ts",
-    "tests/e2e-live/admin-stories-smoke.live.spec.ts",
-    "tests/e2e-live/admin-users-rbac.live.spec.ts",
-    "tests/e2e-live/auth-login-lockout.live.spec.ts",
-    "tests/e2e-live/auth-roles.live.spec.ts",
-    "tests/e2e-live/auth-safe-redirect.live.spec.ts",
-    "tests/e2e-live/avatar-persistence.live.spec.ts",
-    "tests/e2e-live/chat-attachment-isolation.live.spec.ts",
-    "tests/e2e-live/core-a11y-live.live.spec.ts",
-    "tests/e2e-live/email-otp-mfa-login.live.spec.ts",
-    "tests/e2e-live/email-otp-verification.live.spec.ts",
-    "tests/e2e-live/events-scroll-restoration.live.spec.ts",
-    "tests/e2e-live/events-tab-keyboard.live.spec.ts",
-    "tests/e2e-live/footer-bottom-navigation.live.spec.ts",
-    "tests/e2e-live/map-gesture-isolation.live.spec.ts",
-    "tests/e2e-live/map-zoom-longtask.live.spec.ts",
-    "tests/e2e-live/messenger-a11y.live.spec.ts",
-    "tests/e2e-live/messenger-focus-trap.live.spec.ts",
-    "tests/e2e-live/messenger-group-isolation.live.spec.ts",
-    "tests/e2e-live/messenger-keyboard-focus.live.spec.ts",
-    "tests/e2e-live/messenger-membership-revocation.live.spec.ts",
-    "tests/e2e-live/messenger-realtime.live.spec.ts",
-    "tests/e2e-live/messenger-reconnect-ordering.live.spec.ts",
-    "tests/e2e-live/messenger-reconnect.live.spec.ts",
-    "tests/e2e-live/messenger-unread-read.live.spec.ts",
-    "tests/e2e-live/navbar-layout-stability.live.spec.ts",
-    "tests/e2e-live/new-chat-hit-targets.live.spec.ts",
-    "tests/e2e-live/news-responsive-matrix.live.spec.ts",
-    "tests/e2e-live/news-scroll-restoration.live.spec.ts",
-    "tests/e2e-live/not-found-i18n.live.spec.ts",
-    "tests/e2e-live/notification-in-app.live.spec.ts",
-    "tests/e2e-live/notification-preferences.live.spec.ts",
-    "tests/e2e-live/notification-topics-delivery.live.spec.ts",
-    "tests/e2e-live/password-reset.live.spec.ts",
-    "tests/e2e-live/profile-csrf.live.spec.ts",
-    "tests/e2e-live/profile-persistence.live.spec.ts",
-    "tests/e2e-live/push-delivery.live.spec.ts",
-    "tests/e2e-live/push-permission-default.live.spec.ts",
-    "tests/e2e-live/push-permission-denied.live.spec.ts",
-    "tests/e2e-live/push-subscription.live.spec.ts",
-    "tests/e2e-live/pwa-offline-shell-i18n.live.spec.ts",
-    "tests/e2e-live/pwa-offline-shell.live.spec.ts",
-    "tests/e2e-live/register-double-submit.live.spec.ts",
-    "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts",
-    "tests/e2e-live/schedule-grid-keyboard.live.spec.ts",
-    "tests/e2e-live/schedule-hydration-i18n.live.spec.ts",
-    "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
-    "tests/e2e-live/settings-password-change-rollback.live.spec.ts",
-    "tests/e2e-live/settings-radio-focus.live.spec.ts",
-    "tests/e2e-live/settings-tabs-keyboard.live.spec.ts",
-    "tests/e2e-live/settings-theme-roundtrip.live.spec.ts",
-    "tests/e2e-live/ssr-hydration-i18n.live.spec.ts",
-    "tests/e2e-live/story-viewer-keyboard.live.spec.ts",
-    "tests/e2e-live/story-viewer-memory.live.spec.ts",
-    "tests/e2e-live/story-viewer-reduced-motion.live.spec.ts",
-    "tests/e2e-live/totp-recovery.live.spec.ts",
-    "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts",
-)
-_PLAYWRIGHT_FAILURE_SOURCES = {
-    **{source: source for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES},
-    **{
-        source.replace("/", "\\"): source
-        for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES
-    },
-}
-_PLAYWRIGHT_FAILURE_FRAME_SOURCES = {
-    **_PLAYWRIGHT_FAILURE_SOURCES,
-    "tests/e2e-live/fixtures.ts": "tests/e2e-live/fixtures.ts",
-    r"tests\e2e-live\fixtures.ts": "tests/e2e-live/fixtures.ts",
-}
-_PLAYWRIGHT_FAILURE_PROJECTS = {project: project for project in ("desktop", "mobile")}
-_PLAYWRIGHT_FAILURE_FRAME = re.compile(
-    r"        at (?:[^()]{1,256} \((?P<named>.+)\)|(?P<anonymous>.+))"
-)
-_PLAYWRIGHT_FRAME_LOCATION = re.compile(
-    r"(?P<source>.{1,1024}):(?P<line>[1-9][0-9]{0,4}):"
-    r"(?P<column>[1-9][0-9]{0,4})"
-)
-_PLAYWRIGHT_A11Y_CONTRAST_LINE = re.compile(
-    r"UE_LIVE_A11Y_CONTRAST_V1 project=(?P<project>desktop|mobile) "
-    r"route=(?P<route>dashboard|settings) "
-    r"fg=(?P<foreground>#[0-9a-fA-F]{6}) bg=(?P<background>#[0-9a-fA-F]{6}) "
-    r"ratio_milli=(?P<ratio>0|[1-9][0-9]{0,4})"
-)
-_PLAYWRIGHT_A11Y_CONTRAST_LIMIT = 16
-_PLAYWRIGHT_A11Y_CONTRAST_PER_ROUTE_LIMIT = 4
-_PlaywrightA11yContrast = tuple[str, str, str, str, int]
-
-_PLAYWRIGHT_A11Y_PAINT_LINE = re.compile(
-    r"UE_LIVE_A11Y_PAINT_V1 project=(?P<project>desktop|mobile) "
-    r"route=(?P<route>dashboard|settings) "
-    r"axe_fg=(?P<axe_foreground>#[0-9a-fA-F]{6}) "
-    r"axe_bg=(?P<axe_background>#[0-9a-fA-F]{6}) "
-    r"ratio_milli=(?P<ratio>0|[1-9][0-9]{0,4}) "
-    r"css_fg=(?P<css_foreground>#[0-9a-fA-F]{6}) "
-    r"text_color=(?P<text_color>opaque|translucent|transparent) "
-    r"css_alpha_milli=(?P<css_alpha>0|[1-9][0-9]{0,2}|1000) "
-    r"node_opacity_milli=(?P<node_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"ancestor_opacity_milli=(?P<ancestor_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"opacity_tag=(?P<opacity_tag>none|node|ancestor|fade|layout|fade-pending|multiple) "
-    r"page_ready=(?P<page_ready>true|false) "
-    r"page_opacity_milli=(?P<page_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"layout_opacity_milli=(?P<layout_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"animation=(?P<animation>none|opacity|transform|color|other|mixed) "
-    r"active_animations=(?P<active_animations>0|[1-9][0-9]{0,2})"
-)
-_PLAYWRIGHT_A11Y_PAINT_LIMIT = 16
-_PLAYWRIGHT_A11Y_PAINT_PER_ROUTE_LIMIT = 4
-_PlaywrightA11yPaintState = tuple[
-    str, str, str, str, int, str, str, int, int, int, str, bool, int, int, str, int
-]
-
-_PLAYWRIGHT_A11Y_PHASE_LINE = re.compile(
-    r"UE_LIVE_A11Y_PHASE_V1 project=(?P<project>desktop|mobile) "
-    r"route=(?P<route>dashboard|settings) "
-    r"phase=(?P<phase>before_axe|after_axe) "
-    r"page_ready=(?P<page_ready>true|false) "
-    r"page_opacity_milli=(?P<page_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"root_opacity_milli=(?P<root_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"layout_opacity_milli=(?P<layout_opacity>0|[1-9][0-9]{0,2}|1000) "
-    r"animation=(?P<animation>none|opacity|transform|color|other|mixed) "
-    r"active_animations=(?P<active_animations>0|[1-9][0-9]{0,2})"
-)
-_PLAYWRIGHT_A11Y_PHASE_LIMIT = 16
-_PlaywrightA11yPhaseState = tuple[str, str, str, bool, int, int, int, str, int]
-
-_PLAYWRIGHT_FOOTER_GEOMETRY_LINE = re.compile(
-    r"UE_LIVE_FOOTER_GEOM_V1 project=(?P<project>desktop|mobile) "
-    r"req_w_milli=(?P<requested_width>-?(?:0|[1-9][0-9]{0,6})) "
-    r"req_h_milli=(?P<requested_height>-?(?:0|[1-9][0-9]{0,6})) "
-    r"inner_w_milli=(?P<inner_width>-?(?:0|[1-9][0-9]{0,6})) "
-    r"inner_h_milli=(?P<inner_height>-?(?:0|[1-9][0-9]{0,6})) "
-    r"client_w_milli=(?P<client_width>-?(?:0|[1-9][0-9]{0,6})) "
-    r"scroll_w_milli=(?P<scroll_width>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_left_milli=(?P<nav_left>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_right_milli=(?P<nav_right>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_top_milli=(?P<nav_top>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_bottom_milli=(?P<nav_bottom>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_width_milli=(?P<nav_width>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_transform_present=(?P<nav_transform_present>true|false) "
-    r"nav_tx_milli=(?P<nav_tx>-?(?:0|[1-9][0-9]{0,6})) "
-    r"nav_ty_milli=(?P<nav_ty>-?(?:0|[1-9][0-9]{0,6})) "
-    r"fixed_cb_found=(?P<fixed_cb_found>true|false) "
-    r"fixed_cb_depth=(?P<fixed_cb_depth>0|[1-9][0-9]{0,1}|32) "
-    r"cb_left_milli=(?P<cb_left>-?(?:0|[1-9][0-9]{0,6})) "
-    r"cb_right_milli=(?P<cb_right>-?(?:0|[1-9][0-9]{0,6})) "
-    r"cb_top_milli=(?P<cb_top>-?(?:0|[1-9][0-9]{0,6})) "
-    r"cb_bottom_milli=(?P<cb_bottom>-?(?:0|[1-9][0-9]{0,6}))"
-)
-_PLAYWRIGHT_FOOTER_GEOMETRY_LIMIT = 16
-_PlaywrightFooterGeometry = tuple[
-    str,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    bool,
-    int,
-    int,
-    bool,
-    int,
-    int,
-    int,
-    int,
-    int,
-]
-
-
-_PLAYWRIGHT_NEWS_VIEWPORT_LINE = re.compile(
-    r"UE_LIVE_NEWS_VIEWPORT_V1 project=(?P<project>desktop|mobile) "
-    r"language=(?P<language>ru|en) "
-    r"width=(?P<width>360|390|768|1024|1440) "
-    r"viewportHeight=(?P<viewport_height>[1-9][0-9]{0,5}) "
-    r"scrollY=(?P<scroll_y>-?(?:0|[1-9][0-9]{0,5})) "
-    r"top=(?P<top>-?(?:0|[1-9][0-9]{0,5})) "
-    r"bottom=(?P<bottom>-?(?:0|[1-9][0-9]{0,5})) "
-    r"left=(?P<left>-?(?:0|[1-9][0-9]{0,5})) "
-    r"right=(?P<right>-?(?:0|[1-9][0-9]{0,5}))"
-)
-_PLAYWRIGHT_NEWS_VIEWPORT_LIMIT = 20
-_PlaywrightNewsViewport = tuple[str, str, int, int, int, int, int, int, int]
-
-
-_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int]
-_PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
-    r"UE_LIVE_PUSH_OBS_V1 project=(?P<project>desktop|mobile) "
-    r"permission=(?P<permission>default|granted|denied|unsupported) "
-    r"ready=(?P<ready>resolved|timeout|error) "
-    r"state=(?P<state>missing|installing|installed|activating|"
-    r"activated|redundant|error) "
-    r"controller=(?P<controller>[01]) subscription=(?P<subscription>[01]) "
-    r"matches=(?P<matches>[01])"
-)
-_PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
-
-_PLAYWRIGHT_STORY_MEMORY_PREFIX = "STORY_MEMORY_DIAG "
-_PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT = 8192
-_PLAYWRIGHT_STORY_MEMORY_RECORD_LIMIT = 4
-_PLAYWRIGHT_STORY_MEMORY_MAX_COUNT = 9_007_199_254_740_991
-_PLAYWRIGHT_STORY_MEMORY_DOM_KEYS = ("documents", "nodes", "jsEventListeners")
-_PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS = ("window", "document", "documentTree")
-_PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS = (
-    "total",
-    "appinstalled",
-    "beforeinstallprompt",
-    "visibilitychange",
-    "focus",
-    "blur",
-    "focusin",
-    "focusout",
-    "keydown",
-    "keyup",
-    "click",
-    "ecosystem:push-education-requested",
-    "mousedown",
-    "mouseup",
-    "pointerdown",
-    "pointerup",
-    "touchstart",
-    "touchend",
-    "online",
-    "offline",
-    "pwa:need-refresh",
-    "resize",
-    "scroll",
-    "other",
-)
-_PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS = (
-    "schema",
-    "project",
-    "phase",
-    "diagnosticStatus",
-    "warmDOM",
-    "cycle0DOM",
-    "warmListeners",
-    "cycle0Listeners",
-)
-_PlaywrightStoryMemoryRecord = dict[str, object]
-
-_STORY_MEMORY_CYCLE_TRACE_PREFIX = "STORY_MEMORY_CYCLE_TRACE_DIAG "
-_STORY_MEMORY_CYCLE_TRACE_KEYS = (
-    "schema",
-    "project",
-    "diagnosticStatus",
-    "samples",
-)
-_STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS = (
-    "baseline",
-    "dialogOpen",
-    "hiddenResumed",
-    "afterCloseSettled",
-)
-_STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS = ("documents", "nodes", "jsEventListeners")
-_STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT = 2048
-_STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT = 4
-
-
-def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | None:
-    record = _story_memory_object(value, _STORY_MEMORY_CYCLE_TRACE_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    status = record["diagnosticStatus"]
-    if project not in ("desktop", "mobile") or status not in (
-        "available",
-        "partial",
-        "unavailable",
-    ):
-        return None
-    samples = _story_memory_object(
-        record["samples"], _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS
-    )
-    if samples is None:
-        return None
-    normalized_samples: dict[str, dict[str, int] | None] = {}
-    present = 0
-    for sample_name in _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS:
-        sample = samples[sample_name]
-        if sample is None:
-            normalized_samples[sample_name] = None
-            continue
-        counts = _story_memory_object(sample, _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS)
-        if counts is None:
-            return None
-        normalized: dict[str, int] = {}
-        for key in _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS:
-            count = counts[key]
-            if (
-                type(count) is not int
-                or count < 0
-                or count > _PLAYWRIGHT_STORY_MEMORY_MAX_COUNT
-            ):
-                return None
-            normalized[key] = count
-        present += 1
-        normalized_samples[sample_name] = normalized
-    if (
-        (status == "available" and present != 4)
-        or (status == "partial" and not 1 <= present <= 3)
-        or (status == "unavailable" and present != 0)
-    ):
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "diagnosticStatus": status,
-        "samples": normalized_samples,
-    }
-
-
-def _live_playwright_story_memory_cycle_trace_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_STORY_MEMORY_CYCLE_TRACE_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_STORY_MEMORY_CYCLE_TRACE_PREFIX) :],
-                object_pairs_hook=_story_memory_json_object,
-                parse_constant=_reject_story_memory_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_story_memory_cycle_trace(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-def _story_memory_object(
-    value: object, expected_keys: tuple[str, ...]
-) -> Mapping[str, object] | None:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        return None
-    if set(value) != set(expected_keys):
-        return None
-    return value
-
-
-def _story_memory_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    value: dict[str, object] = {}
-    for key, item in pairs:
-        if key in value:
-            raise ValueError("duplicate Story diagnostic key")
-        value[key] = item
-    return value
-
-
-def _reject_story_memory_json_constant(value: str) -> None:
-    raise ValueError(f"invalid Story diagnostic number: {value}")
-
-
-def _story_memory_counts(
-    value: object, expected_keys: tuple[str, ...], *, unavailable: bool
-) -> dict[str, int | None] | None:
-    record = _story_memory_object(value, expected_keys)
-    if record is None:
-        return None
-    counts: dict[str, int | None] = {}
-    for key in expected_keys:
-        count = record[key]
-        if unavailable:
-            if count is not None:
-                return None
-            counts[key] = None
-            continue
-        if (
-            not isinstance(count, int)
-            or isinstance(count, bool)
-            or count < 0
-            or count > _PLAYWRIGHT_STORY_MEMORY_MAX_COUNT
-        ):
-            return None
-        counts[key] = count
-    if not unavailable and "total" in counts:
-        bucket_total = sum(
-            count
-            for key, count in counts.items()
-            if key != "total" and count is not None
-        )
-        if bucket_total != counts["total"]:
-            return None
-    return counts
-
-
-def _validated_story_memory_record(
-    value: object,
-) -> _PlaywrightStoryMemoryRecord | None:
-    record = _story_memory_object(value, _PLAYWRIGHT_STORY_MEMORY_RECORD_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 2:
-        return None
-    project = record["project"]
-    phase = record["phase"]
-    status = record["diagnosticStatus"]
-    if project not in ("desktop", "mobile"):
-        return None
-    if phase != "cycle0-after-settle-before-assertion":
-        return None
-    if status not in ("available", "unavailable"):
-        return None
-
-    unavailable = status == "unavailable"
-    warm_dom = _story_memory_counts(
-        record["warmDOM"], _PLAYWRIGHT_STORY_MEMORY_DOM_KEYS, unavailable=unavailable
-    )
-    cycle0_dom = _story_memory_counts(
-        record["cycle0DOM"], _PLAYWRIGHT_STORY_MEMORY_DOM_KEYS, unavailable=unavailable
-    )
-    warm_listeners = _story_memory_object(
-        record["warmListeners"], _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS
-    )
-    cycle0_listeners = _story_memory_object(
-        record["cycle0Listeners"], _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS
-    )
-    if (
-        warm_dom is None
-        or cycle0_dom is None
-        or warm_listeners is None
-        or cycle0_listeners is None
-    ):
-        return None
-
-    normalized_warm_listeners: dict[str, dict[str, int | None]] = {}
-    normalized_cycle0_listeners: dict[str, dict[str, int | None]] = {}
-    for target in _PLAYWRIGHT_STORY_MEMORY_LISTENER_TARGETS:
-        warm_counts = _story_memory_counts(
-            warm_listeners[target],
-            _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS,
-            unavailable=unavailable,
-        )
-        cycle0_counts = _story_memory_counts(
-            cycle0_listeners[target],
-            _PLAYWRIGHT_STORY_MEMORY_LISTENER_KEYS,
-            unavailable=unavailable,
-        )
-        if warm_counts is None or cycle0_counts is None:
-            return None
-        normalized_warm_listeners[target] = warm_counts
-        normalized_cycle0_listeners[target] = cycle0_counts
-
-    return {
-        "schema": 2,
-        "project": project,
-        "phase": "cycle0-after-settle-before-assertion",
-        "diagnosticStatus": status,
-        "warmDOM": warm_dom,
-        "cycle0DOM": cycle0_dom,
-        "warmListeners": normalized_warm_listeners,
-        "cycle0Listeners": normalized_cycle0_listeners,
-    }
-
-
-def _live_playwright_story_memory_records(
-    output: str,
-) -> list[_PlaywrightStoryMemoryRecord]:
-    """Accept only the closed, byte-bounded Story memory diagnostic protocol."""
-    records: list[_PlaywrightStoryMemoryRecord] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_PLAYWRIGHT_STORY_MEMORY_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_PLAYWRIGHT_STORY_MEMORY_PREFIX) :],
-                object_pairs_hook=_story_memory_json_object,
-                parse_constant=_reject_story_memory_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_story_memory_record(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _PLAYWRIGHT_STORY_MEMORY_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_PLAYWRIGHT_STORY_SETUP_PREFIX = "STORY_SETUP_DIAG "
-_PLAYWRIGHT_STORY_SETUP_LINE_BYTES_LIMIT = 512
-_PLAYWRIGHT_STORY_SETUP_RECORD_LIMIT = 4
-_PLAYWRIGHT_STORY_SETUP_KEYS = ("schema", "project", "stage", "exceptionKind")
-_PLAYWRIGHT_STORY_SETUP_STAGES = (
-    "browser-launch",
-    "fixture-policy",
-    "owner-cdp",
-    "command-line",
-    "debug-port",
-    "cdp-attach",
-    "default-context",
-    "cookies",
-    "main-target",
-    "project-options",
-    "bootstrap-listener",
-    "login",
-    "dashboard",
-    "bootstrap",
-    "story-trigger",
-    "warm-up",
-    "baseline",
-    "cycle0",
-    "measured-cycle",
-    "acceptance",
-    "cleanup",
-)
-_PLAYWRIGHT_STORY_SETUP_EXCEPTION_KINDS = (
-    "error",
-    "non-error",
-    "cleanup",
-    "error-with-cleanup",
-    "non-error-with-cleanup",
-)
-
-
-def _validated_story_setup_record(value: object) -> dict[str, object] | None:
-    record = _story_memory_object(value, _PLAYWRIGHT_STORY_SETUP_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    stage = record["stage"]
-    exception_kind = record["exceptionKind"]
-    if not isinstance(project, str) or project not in ("desktop", "mobile"):
-        return None
-    if not isinstance(stage, str) or stage not in _PLAYWRIGHT_STORY_SETUP_STAGES:
-        return None
-    if (
-        not isinstance(exception_kind, str)
-        or exception_kind not in _PLAYWRIGHT_STORY_SETUP_EXCEPTION_KINDS
-    ):
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "stage": stage,
-        "exceptionKind": exception_kind,
-    }
-
-
-def _live_playwright_story_setup_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    """Accept only closed, byte-bounded Story setup failures from stdout."""
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _PLAYWRIGHT_STORY_SETUP_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_PLAYWRIGHT_STORY_SETUP_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_PLAYWRIGHT_STORY_SETUP_PREFIX) :],
-                object_pairs_hook=_story_memory_json_object,
-                parse_constant=_reject_story_memory_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_story_setup_record(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _PLAYWRIGHT_STORY_SETUP_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_AUTH_UI_DIAG_PREFIX = "AUTH_UI_DIAG "
-_AUTH_HTTP_DIAG_PREFIX = "AUTH_HTTP_DIAG "
-_AUTH_DIAG_LINE_BYTES_LIMIT = 1024
-_AUTH_DIAG_RECORD_LIMIT = 16
-_AUTH_UI_DIAG_KEYS = (
-    "schema",
-    "project",
-    "scenario",
-    "status",
-    "detailClass",
-    "alertCount",
-    "alertCountCapped",
-    "alertVisible",
-    "currentFieldInvalid",
-    "loginChallenge",
-    "pageError",
-)
-_AUTH_UI_DIAG_SCENARIOS = ("password_current_invalid", "totp_recovery_replay")
-_AUTH_UI_DIAG_DETAIL_CLASSES = ("expected", "other-string", "non-string", "missing")
-_AUTH_HTTP_DIAG_KEYS = ("schema", "project", "operation", "expectedStatus", "status")
-_AUTH_HTTP_DIAG_EXPECTED_STATUS = {
-    operation: (
-        403
-        if operation == "student_admin_read"
-        else 400
-        if operation in {"password_change_invalid", "totp_recovery_replay"}
-        else 200
-    )
-    for operation in (
-        "profile_read",
-        "profile_identity_read",
-        "password_settings_register",
-        "totp_register",
-        "password_change_invalid",
-        "password_change_save",
-        "totp_recovery_accept",
-        "totp_recovery_replay",
-        "push_topics_read",
-        "push_subscribe",
-        "push_topics_initial",
-        "push_topics_optout",
-        "push_unsubscribe",
-        "push_rebind",
-        "profile_update_enable",
-        "profile_update_start",
-        "profile_update_end",
-        "profile_update_midnight_start",
-        "profile_update_midnight_end",
-        "profile_update_disable",
-        "student_admin_read",
-        "admin_topics_read",
-        "admin_account_search",
-        "admin_account_delete",
-    )
-}
-
-
-def _auth_diag_object(
-    value: object, expected_keys: tuple[str, ...]
-) -> Mapping[str, object] | None:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        return None
-    if set(value) != set(expected_keys):
-        return None
-    return value
-
-
-def _auth_diag_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    value: dict[str, object] = {}
-    for key, item in pairs:
-        if key in value:
-            raise ValueError("duplicate auth diagnostic key")
-        value[key] = item
-    return value
-
-
-def _reject_auth_diag_json_constant(value: str) -> None:
-    raise ValueError(f"invalid auth diagnostic number: {value}")
-
-
-def _validated_auth_ui_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _AUTH_UI_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    scenario = record["scenario"]
-    status = record["status"]
-    detail_class = record["detailClass"]
-    alert_count = record["alertCount"]
-    capped = record["alertCountCapped"]
-    alert_visible = record["alertVisible"]
-    current_invalid = record["currentFieldInvalid"]
-    login_challenge = record["loginChallenge"]
-    page_error = record["pageError"]
-    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
-        return None
-    if not isinstance(scenario, str) or scenario not in _AUTH_UI_DIAG_SCENARIOS:
-        return None
-    if type(status) is not int or not 100 <= status <= 599:
-        return None
-    if (
-        not isinstance(detail_class, str)
-        or detail_class not in _AUTH_UI_DIAG_DETAIL_CLASSES
-    ):
-        return None
-    if type(alert_count) is not int or not 0 <= alert_count <= 8:
-        return None
-    if type(capped) is not bool or (capped and alert_count != 8):
-        return None
-    if type(alert_visible) is not bool:
-        return None
-    if type(page_error) is not bool:
-        return None
-    if scenario == "password_current_invalid":
-        if type(current_invalid) is not bool or login_challenge is not None:
-            return None
-    elif current_invalid is not None or type(login_challenge) is not bool:
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "scenario": scenario,
-        "status": status,
-        "detailClass": detail_class,
-        "alertCount": alert_count,
-        "alertCountCapped": capped,
-        "alertVisible": alert_visible,
-        "currentFieldInvalid": current_invalid,
-        "loginChallenge": login_challenge,
-        "pageError": page_error,
-    }
-
-
-def _live_playwright_auth_ui_diagnostics(output: str) -> list[dict[str, object]]:
-    """Retain only complete bounded Auth UI failure records from stdout."""
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _AUTH_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_AUTH_UI_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_AUTH_UI_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_auth_ui_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _AUTH_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-def _validated_auth_http_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _AUTH_HTTP_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    operation = record["operation"]
-    expected_status = record["expectedStatus"]
-    status = record["status"]
-    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
-        return None
-    if (
-        not isinstance(operation, str)
-        or operation not in _AUTH_HTTP_DIAG_EXPECTED_STATUS
-    ):
-        return None
-    if (
-        type(expected_status) is not int
-        or expected_status != _AUTH_HTTP_DIAG_EXPECTED_STATUS[operation]
-    ):
-        return None
-    if type(status) is not int or not 100 <= status <= 599:
-        return None
-    if status == expected_status:
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "operation": operation,
-        "expectedStatus": expected_status,
-        "status": status,
-    }
-
-
-_AUTH_REGISTRATION_DIAG_PREFIX = "AUTH_REGISTRATION_DIAG "
-_AUTH_REGISTRATION_DIAG_KEYS = (
-    "schema",
-    "project",
-    "scenario",
-    "phase",
-    "formValid",
-    "submitEnabled",
-    "requestObserved",
-    "status",
-)
-_AUTH_REGISTRATION_DIAG_SCENARIOS = ("password-settings", "totp", "email-otp")
-_AUTH_REGISTRATION_DIAG_PHASES = (
-    "before-submit",
-    "submit-click",
-    "response-wait",
-    "response-received",
-    "navigation",
-)
-_AUTH_REGISTRATION_DIAG_LINE_BYTES_LIMIT = 512
-_AUTH_REGISTRATION_DIAG_RECORD_LIMIT = 4
-
-
-def _validated_auth_registration_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _AUTH_REGISTRATION_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    scenario = record["scenario"]
-    phase = record["phase"]
-    form_valid = record["formValid"]
-    submit_enabled = record["submitEnabled"]
-    request_observed = record["requestObserved"]
-    status = record["status"]
-    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
-        return None
-    if (
-        not isinstance(scenario, str)
-        or scenario not in _AUTH_REGISTRATION_DIAG_SCENARIOS
-    ):
-        return None
-    if not isinstance(phase, str) or phase not in _AUTH_REGISTRATION_DIAG_PHASES:
-        return None
-    if type(form_valid) is not bool or type(submit_enabled) is not bool:
-        return None
-    if type(request_observed) is not bool:
-        return None
-    if status is not None and (type(status) is not int or not 100 <= status <= 599):
-        return None
-    if phase == "before-submit" and (request_observed or status is not None):
-        return None
-    if phase == "submit-click" and status is not None and not request_observed:
-        return None
-    if phase == "response-wait" and status is not None:
-        return None
-    if phase in {"response-received", "navigation"} and (
-        not request_observed or status is None
-    ):
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "scenario": scenario,
-        "phase": phase,
-        "formValid": form_valid,
-        "submitEnabled": submit_enabled,
-        "requestObserved": request_observed,
-        "status": status,
-    }
-
-
-def _live_playwright_auth_registration_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    """Retain only closed registration-failure rows from complete stdout lines."""
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _AUTH_REGISTRATION_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_AUTH_REGISTRATION_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_AUTH_REGISTRATION_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_auth_registration_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _AUTH_REGISTRATION_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_REGISTRATION_ADMISSION_DIAG_PREFIX = "REGISTRATION_ADMISSION_DIAG "
-_REGISTRATION_ADMISSION_DIAG_KEYS = (
-    "schema",
-    "project",
-    "stage",
-    "errorClass",
-    "nodeCode",
-    "cost",
-    "timeoutMs",
-    "remainingMs",
-    "requestCount",
-    "activeRequestCount",
-    "deadlineAvailable",
-    "ownerPresent",
-    "ledgerPresent",
-    "requestObserved",
-    "responseObserved",
-    "actionFailed",
-    "status",
-)
-_REGISTRATION_ADMISSION_DIAG_STAGES = (
-    "deadline",
-    "origin",
-    "state-root",
-    "owner-read",
-    "ledger-read",
-    "quiet-wait",
-    "rolling-wait",
-    "reserve",
-    "submit",
-    "request-drain",
-    "confirm",
-)
-_REGISTRATION_ADMISSION_DIAG_ERROR_CLASSES = (
-    "Error",
-    "TypeError",
-    "RangeError",
-    "ReferenceError",
-    "SyntaxError",
-    "URIError",
-    "EvalError",
-    "AggregateError",
-    "AbortError",
-    "TimeoutError",
-    "PlaywrightError",
-    "AssertionError",
-    "other",
-)
-_REGISTRATION_ADMISSION_DIAG_NODE_CODES = (
-    "EACCES",
-    "EADDRINUSE",
-    "EBUSY",
-    "ECONNRESET",
-    "EEXIST",
-    "EINVAL",
-    "EISDIR",
-    "EMFILE",
-    "ENOENT",
-    "ENOSPC",
-    "EPERM",
-    "ETIMEDOUT",
-    "ERR_INVALID_ARG_TYPE",
-    "ERR_MODULE_NOT_FOUND",
-)
-_REGISTRATION_ADMISSION_DIAG_LINE_BYTES_LIMIT = 1024
-_REGISTRATION_ADMISSION_DIAG_RECORD_LIMIT = 4
-_REGISTRATION_ADMISSION_DIAG_MAX_MS = 360_000
-_REGISTRATION_ADMISSION_DIAG_MAX_REQUESTS = 256
-_REGISTRATION_ADMISSION_DIAG_MAX_COST = 5
-
-
-def _validated_registration_admission_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _REGISTRATION_ADMISSION_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    if (
-        not isinstance(record["project"], str)
-        or record["project"] not in _PLAYWRIGHT_FAILURE_PROJECTS
-    ):
-        return None
-    if record["stage"] not in _REGISTRATION_ADMISSION_DIAG_STAGES:
-        return None
-    if record["errorClass"] not in _REGISTRATION_ADMISSION_DIAG_ERROR_CLASSES:
-        return None
-    if record["nodeCode"] is not None and record["nodeCode"] not in (
-        *_REGISTRATION_ADMISSION_DIAG_NODE_CODES,
-        "other",
-    ):
-        return None
-    cost = record["cost"]
-    if cost is not None and (
-        type(cost) is not int or not 1 <= cost <= _REGISTRATION_ADMISSION_DIAG_MAX_COST
-    ):
-        return None
-    for key in ("timeoutMs", "remainingMs"):
-        number = record[key]
-        if number is not None and (
-            type(number) is not int
-            or not 1 <= number <= _REGISTRATION_ADMISSION_DIAG_MAX_MS
-        ):
-            return None
-    for key in ("requestCount", "activeRequestCount"):
-        number = record[key]
-        if (
-            type(number) is not int
-            or not 0 <= number <= _REGISTRATION_ADMISSION_DIAG_MAX_REQUESTS
-        ):
-            return None
-    if record["activeRequestCount"] > record["requestCount"]:
-        return None
-    for key in (
-        "deadlineAvailable",
-        "ownerPresent",
-        "ledgerPresent",
-        "requestObserved",
-        "responseObserved",
-        "actionFailed",
-    ):
-        if type(record[key]) is not bool:
-            return None
-    if record["requestObserved"] != (record["requestCount"] > 0):
-        return None
-    if not record["deadlineAvailable"] and record["remainingMs"] is not None:
-        return None
-    if record["responseObserved"] and not record["requestObserved"]:
-        return None
-    status = record["status"]
-    if status is not None and (type(status) is not int or not 100 <= status <= 599):
-        return None
-    if not record["responseObserved"] and status is not None:
-        return None
-    return dict(record)
-
-
-_PLAYWRIGHT_RESET_REGISTRATION_LINE = re.compile(
-    r"UE_LIVE_RESET_REGISTRATION_V1 project=(desktop|mobile) "
-    r"step=(arm-response|click|await-response)"
-)
-
-
-def _live_playwright_reset_registration_steps(output: str) -> list[tuple[str, str]]:
-    records: list[tuple[str, str]] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 128 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_RESET_REGISTRATION_LINE.fullmatch(line)
-        if match is None:
-            continue
-        record = (match.group(1), match.group(2))
-        if record not in records:
-            records.append(record)
-        if len(records) == 6:
-            break
-    return records
-
-
-def _live_playwright_registration_admission_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _REGISTRATION_ADMISSION_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_REGISTRATION_ADMISSION_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_REGISTRATION_ADMISSION_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_registration_admission_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _REGISTRATION_ADMISSION_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_PWA_BUNDLE_ROUTE_DIAG_PREFIX = "PWA_BUNDLE_ROUTE_DIAG "
-_PWA_BUNDLE_ROUTE_DIAG_KEYS = (
-    "schema",
-    "project",
-    "routeEntries",
-    "originMatches",
-    "bundlePathMatches",
-    "serviceWorkerRequestSeen",
-)
-_PWA_BUNDLE_ROUTE_DIAG_LINE_BYTES_LIMIT = 512
-_PWA_BUNDLE_ROUTE_DIAG_RECORD_LIMIT = 4
-_PWA_BUNDLE_ROUTE_DIAG_MAX_COUNT = 64
-
-
-def _validated_pwa_bundle_route_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _PWA_BUNDLE_ROUTE_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    project = record["project"]
-    route_entries = record["routeEntries"]
-    origin_matches = record["originMatches"]
-    bundle_path_matches = record["bundlePathMatches"]
-    service_worker_seen = record["serviceWorkerRequestSeen"]
-    if not isinstance(project, str) or project not in _PLAYWRIGHT_FAILURE_PROJECTS:
-        return None
-    counts = (route_entries, origin_matches, bundle_path_matches)
-    if any(
-        type(count) is not int or not 0 <= count <= _PWA_BUNDLE_ROUTE_DIAG_MAX_COUNT
-        for count in counts
-    ):
-        return None
-    if origin_matches > route_entries or bundle_path_matches > origin_matches:
-        return None
-    if type(service_worker_seen) is not bool:
-        return None
-    if service_worker_seen and route_entries == 0:
-        return None
-    return {
-        "schema": 1,
-        "project": project,
-        "routeEntries": route_entries,
-        "originMatches": origin_matches,
-        "bundlePathMatches": bundle_path_matches,
-        "serviceWorkerRequestSeen": service_worker_seen,
-    }
-
-
-def _live_playwright_pwa_bundle_route_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    """Retain only closed, bounded PWA route observations from complete stdout lines."""
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _PWA_BUNDLE_ROUTE_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_PWA_BUNDLE_ROUTE_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_PWA_BUNDLE_ROUTE_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_pwa_bundle_route_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _PWA_BUNDLE_ROUTE_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
-_PWA_UPDATE_LIFECYCLE_DIAG_KEYS = (
-    "schema",
-    "project",
-    "diagnosticStatus",
-    "controllerChangeCount",
-    "controllerPresent",
-    "controllerState",
-    "installingState",
-    "waitingState",
-    "activeState",
-    "controllerIsActive",
-    "workerTransformApplied",
-    "bundleUpdateResponseSeen",
-    "routeEntries",
-    "originMatches",
-    "bundlePathMatches",
-    "serviceWorkerRequestSeen",
-)
-_PWA_UPDATE_LIFECYCLE_STATES = (
-    "none",
-    "parsed",
-    "installing",
-    "installed",
-    "activating",
-    "activated",
-    "redundant",
-)
-_PWA_UPDATE_LIFECYCLE_DIAG_LINE_BYTES_LIMIT = 1024
-_PWA_UPDATE_LIFECYCLE_DIAG_RECORD_LIMIT = 4
-_PWA_UPDATE_LIFECYCLE_DIAG_MAX_COUNT = 64
-
-
-def _validated_pwa_update_lifecycle_diag(value: object) -> dict[str, object] | None:
-    record = _auth_diag_object(value, _PWA_UPDATE_LIFECYCLE_DIAG_KEYS)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
-        return None
-    if (
-        not isinstance(record["project"], str)
-        or record["project"] not in _PLAYWRIGHT_FAILURE_PROJECTS
-    ):
-        return None
-    if record["diagnosticStatus"] not in ("available", "unavailable"):
-        return None
-    for key in (
-        "controllerState",
-        "installingState",
-        "waitingState",
-        "activeState",
-    ):
-        if record[key] not in _PWA_UPDATE_LIFECYCLE_STATES:
-            return None
-    for key in (
-        "controllerChangeCount",
-        "routeEntries",
-        "originMatches",
-        "bundlePathMatches",
-    ):
-        count = record[key]
-        if count is not None and (
-            type(count) is not int
-            or not 0 <= count <= _PWA_UPDATE_LIFECYCLE_DIAG_MAX_COUNT
-        ):
-            return None
-    for key in ("controllerPresent", "controllerIsActive"):
-        if record[key] is not None and type(record[key]) is not bool:
-            return None
-    for key in (
-        "workerTransformApplied",
-        "bundleUpdateResponseSeen",
-        "serviceWorkerRequestSeen",
-    ):
-        if type(record[key]) is not bool:
-            return None
-    route_entries = record["routeEntries"]
-    origin_matches = record["originMatches"]
-    bundle_path_matches = record["bundlePathMatches"]
-    if (
-        route_entries is not None
-        and origin_matches is not None
-        and bundle_path_matches is not None
-        and not bundle_path_matches <= origin_matches <= route_entries
-    ):
-        return None
-    if record["serviceWorkerRequestSeen"] and (
-        route_entries is None or route_entries < 1
-    ):
-        return None
-    if record["diagnosticStatus"] == "unavailable" and (
-        record["controllerChangeCount"] is not None
-        or record["controllerPresent"] is not None
-        or record["controllerIsActive"] is not None
-        or any(
-            record[key] != "none"
-            for key in (
-                "controllerState",
-                "installingState",
-                "waitingState",
-                "activeState",
-            )
-        )
-    ):
-        return None
-    return dict(record)
-
-
-def _live_playwright_pwa_update_lifecycle_diagnostics(
-    output: str,
-) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _PWA_UPDATE_LIFECYCLE_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_PWA_UPDATE_LIFECYCLE_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_pwa_update_lifecycle_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _PWA_UPDATE_LIFECYCLE_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-def _live_playwright_auth_http_diagnostics(output: str) -> list[dict[str, object]]:
-    """Retain only complete bounded Auth HTTP status mismatches from stdout."""
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if (
-            len(line.encode("utf-8")) > _AUTH_DIAG_LINE_BYTES_LIMIT
-            or not line.isprintable()
-            or not line.startswith(_AUTH_HTTP_DIAG_PREFIX)
-        ):
-            continue
-        try:
-            raw = json.loads(
-                line[len(_AUTH_HTTP_DIAG_PREFIX) :],
-                object_pairs_hook=_auth_diag_json_object,
-                parse_constant=_reject_auth_diag_json_constant,
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        record = _validated_auth_http_diag(raw)
-        if record is None:
-            continue
-        identity = json.dumps(record, separators=(",", ":"), sort_keys=True)
-        if identity in seen:
-            continue
-        if len(records) >= _AUTH_DIAG_RECORD_LIMIT:
-            break
-        seen.add(identity)
-        records.append(record)
-    return records
-
-
-_PLAYWRIGHT_LOGIN_FAILURE_LINE = re.compile(
-    r"UE_LIVE_LOGIN_FAILURE_V1 project=(?P<project>desktop|mobile) "
-    r"stage=(?P<stage>submit|navigation) "
-    r"requests=(?P<requests>0|1|many) responses=(?P<responses>0|1|many) "
-    r"status=(?P<status>none|[1-5][0-9]{2}) "
-    r"route=(?P<route>login|dashboard|register|other|unavailable)"
-)
-_PLAYWRIGHT_LOGIN_FAILURE_LIMIT = 16
-_PlaywrightLoginFailure = tuple[str, str, str, str, str, str]
-
-
-def _live_playwright_login_failures(output: str) -> list[_PlaywrightLoginFailure]:
-    """Accept only complete, closed login observations without raw URLs or errors."""
-    records: list[_PlaywrightLoginFailure] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 192 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_LOGIN_FAILURE_LINE.fullmatch(line)
-        if match is None:
-            continue
-        record: _PlaywrightLoginFailure = (
-            match["project"],
-            match["stage"],
-            match["requests"],
-            match["responses"],
-            match["status"],
-            match["route"],
-        )
-        if record in records:
-            continue
-        records.append(record)
-        if len(records) >= _PLAYWRIGHT_LOGIN_FAILURE_LIMIT:
-            break
-    return records
-
-
-_PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
-    r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
-    r"auth-login|auth-session-cap|auth-logout|auth-session-preflight|"
-    r"messenger-message-send|chat-attachment-create|email-otp-register|"
-    r"email-otp-verification-start|email-otp-verification-wrong-code|"
-    r"email-otp-verification-resend|email-otp-verification-stale-code|"
-    r"email-otp-verification-accept|email-mfa-register|email-mfa-initial-login|"
-    r"email-mfa-sibling-login|email-mfa-verification-start|"
-    r"email-mfa-verification-accept|email-mfa-enable-start|email-mfa-enable-accept|"
-    r"email-mfa-enabled-login|email-mfa-login-resend-early|email-mfa-login-accept) "
-    r"status=(?P<status>[1-5][0-9]{2})"
-)
-_PLAYWRIGHT_HTTP_STATUS_CHECKS = {
-    check: check
-    for check in (
-        "admin-users",
-        "admin-feature-flags",
-        "admin-feature-flags-ui",
-        "password-reset-replay",
-        "auth-login",
-        "auth-session-cap",
-        "auth-logout",
-        "auth-session-preflight",
-        "messenger-message-send",
-        "chat-attachment-create",
-        "email-otp-register",
-        "email-otp-verification-start",
-        "email-otp-verification-wrong-code",
-        "email-otp-verification-resend",
-        "email-otp-verification-stale-code",
-        "email-otp-verification-accept",
-        "email-mfa-register",
-        "email-mfa-initial-login",
-        "email-mfa-sibling-login",
-        "email-mfa-verification-start",
-        "email-mfa-verification-accept",
-        "email-mfa-enable-start",
-        "email-mfa-enable-accept",
-        "email-mfa-enabled-login",
-        "email-mfa-login-resend-early",
-        "email-mfa-login-accept",
-    )
-}
-# 26 closed checks × two projects × two attempts (initial plus one retry).
-_PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
-
-
-_PLAYWRIGHT_RETRY_DECISION_LINE = re.compile(
-    r"UE_LIVE_RETRY_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>auth-logout|password-reset-replay|"
-    r"email-otp-verification-wrong-code|email-otp-verification-stale-code|"
-    r"email-mfa-enabled-login) "
-    r"retry_after_seconds=(?P<retry_after>invalid|[1-9][0-9]{0,2}) "
-    r"decision=(?P<decision>retry|declined-header|declined-deadline|not-retried) "
-    r"remaining_ms=(?P<remaining>0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|60000)"
-)
-_PLAYWRIGHT_RETRY_DECISION_LIMIT = 32
-_PlaywrightRetryDecision = tuple[str, str, int | None, str, int]
-
-_PLAYWRIGHT_RATE_LIMIT_LINE = re.compile(
-    r"UE_LIVE_RATE_LIMIT_V1 project=(?P<project>desktop|mobile) "
-    r"check=auth-logout "
-    r"x_ratelimit_limit=(?P<limit>invalid|[1-9][0-9]{0,5}) "
-    r"x_ratelimit_remaining=(?P<remaining>invalid|0|[1-9][0-9]{0,5})"
-)
-_PLAYWRIGHT_RATE_LIMIT_MAX = 100_000
-_PLAYWRIGHT_RATE_LIMIT_RECORD_LIMIT = 32
-_PlaywrightRateLimit = tuple[str, int | None, int | None]
-
-
-def _live_playwright_a11y_contrasts(output: str) -> list[_PlaywrightA11yContrast]:
-    """Accept bounded contrast values from the fixed stdout protocol only."""
-    records: list[_PlaywrightA11yContrast] = []
-    route_counts: dict[tuple[str, str], int] = {}
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 160 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_A11Y_CONTRAST_LINE.fullmatch(line)
-        if match is None:
-            continue
-        ratio_milli = int(match["ratio"])
-        if ratio_milli > 21_000:
-            continue
-        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
-        route = match["route"]
-        record: _PlaywrightA11yContrast = (
-            project,
-            route,
-            match["foreground"].lower(),
-            match["background"].lower(),
-            ratio_milli,
-        )
-        if record in records:
-            continue
-        route_key = (project, route)
-        if route_counts.get(route_key, 0) >= _PLAYWRIGHT_A11Y_CONTRAST_PER_ROUTE_LIMIT:
-            continue
-        records.append(record)
-        route_counts[route_key] = route_counts.get(route_key, 0) + 1
-        if len(records) == _PLAYWRIGHT_A11Y_CONTRAST_LIMIT:
-            break
-    return records
-
-
-def _live_playwright_a11y_paint_states(output: str) -> list[_PlaywrightA11yPaintState]:
-    """Accept only fixed paint, opacity, text-color and animation tags."""
-    records: list[_PlaywrightA11yPaintState] = []
-    route_counts: dict[tuple[str, str], int] = {}
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 480 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_A11Y_PAINT_LINE.fullmatch(line)
-        if match is None:
-            continue
-        ratio_milli = int(match["ratio"])
-        if ratio_milli > 21_000:
-            continue
-        record: _PlaywrightA11yPaintState = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            match["route"],
-            match["axe_foreground"].lower(),
-            match["axe_background"].lower(),
-            ratio_milli,
-            match["css_foreground"].lower(),
-            match["text_color"],
-            int(match["css_alpha"]),
-            int(match["node_opacity"]),
-            int(match["ancestor_opacity"]),
-            match["opacity_tag"],
-            match["page_ready"] == "true",
-            int(match["page_opacity"]),
-            int(match["layout_opacity"]),
-            match["animation"],
-            int(match["active_animations"]),
-        )
-        route_key = (record[0], record[1])
-        if record in records or route_counts.get(route_key, 0) >= (
-            _PLAYWRIGHT_A11Y_PAINT_PER_ROUTE_LIMIT
-        ):
-            continue
-        records.append(record)
-        route_counts[route_key] = route_counts.get(route_key, 0) + 1
-        if len(records) == _PLAYWRIGHT_A11Y_PAINT_LIMIT:
-            break
-    return records
-
-
-def _live_playwright_a11y_phase_states(output: str) -> list[_PlaywrightA11yPhaseState]:
-    """Accept only fixed phase, page/root opacity and animation measurements."""
-    records: list[_PlaywrightA11yPhaseState] = []
-    phases_by_route: dict[tuple[str, str], set[str]] = {}
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 400 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_A11Y_PHASE_LINE.fullmatch(line)
-        if match is None:
-            continue
-        record: _PlaywrightA11yPhaseState = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            match["route"],
-            match["phase"],
-            match["page_ready"] == "true",
-            int(match["page_opacity"]),
-            int(match["root_opacity"]),
-            int(match["layout_opacity"]),
-            match["animation"],
-            int(match["active_animations"]),
-        )
-        route_key = (record[0], record[1])
-        phase_set = phases_by_route.setdefault(route_key, set())
-        if record[2] in phase_set:
-            continue
-        records.append(record)
-        phase_set.add(record[2])
-        if len(records) == _PLAYWRIGHT_A11Y_PHASE_LIMIT:
-            break
-    return records
-
-
-def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeometry]:
-    """Accept bounded viewport/nav measurements and fixed-block flags only."""
-    records: list[_PlaywrightFooterGeometry] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 768 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_FOOTER_GEOMETRY_LINE.fullmatch(line)
-        if match is None:
-            continue
-        number_names = (
-            "requested_width",
-            "requested_height",
-            "inner_width",
-            "inner_height",
-            "client_width",
-            "scroll_width",
-            "nav_left",
-            "nav_right",
-            "nav_top",
-            "nav_bottom",
-            "nav_width",
-            "nav_tx",
-            "nav_ty",
-            "fixed_cb_depth",
-            "cb_left",
-            "cb_right",
-            "cb_top",
-            "cb_bottom",
-        )
-        values = {name: int(match[name]) for name in number_names}
-        if any(abs(value) > 5_000_000 for value in values.values()):
-            continue
-        if (
-            values["requested_width"] <= 0
-            or values["requested_height"] <= 0
-            or values["inner_width"] <= 0
-            or values["inner_height"] <= 0
-            or values["client_width"] < 0
-            or values["scroll_width"] < 0
-            or values["nav_width"] < 0
-            or values["fixed_cb_depth"] > 32
-        ):
-            continue
-        fixed_found = match["fixed_cb_found"] == "true"
-        depth = values["fixed_cb_depth"]
-        cb_rect = tuple(
-            values[name] for name in ("cb_left", "cb_right", "cb_top", "cb_bottom")
-        )
-        if (fixed_found and depth == 0) or (
-            not fixed_found and (depth != 0 or any(cb_rect))
-        ):
-            continue
-        record: _PlaywrightFooterGeometry = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            values["requested_width"],
-            values["requested_height"],
-            values["inner_width"],
-            values["inner_height"],
-            values["client_width"],
-            values["scroll_width"],
-            values["nav_left"],
-            values["nav_right"],
-            values["nav_top"],
-            values["nav_bottom"],
-            values["nav_width"],
-            match["nav_transform_present"] == "true",
-            values["nav_tx"],
-            values["nav_ty"],
-            fixed_found,
-            depth,
-            values["cb_left"],
-            values["cb_right"],
-            values["cb_top"],
-            values["cb_bottom"],
-        )
-        if record not in records:
-            records.append(record)
-            if len(records) == _PLAYWRIGHT_FOOTER_GEOMETRY_LIMIT:
-                break
-    return records
-
-
-def _live_playwright_news_viewports(output: str) -> list[_PlaywrightNewsViewport]:
-    # Parse only the fixed stdout geometry fields.
-    records: list[_PlaywrightNewsViewport] = []
-    seen: set[tuple[str, str, int]] = set()
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 256 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_NEWS_VIEWPORT_LINE.fullmatch(line)
-        if match is None:
-            continue
-        viewport_height = int(match["viewport_height"])
-        scroll_y = int(match["scroll_y"])
-        top = int(match["top"])
-        bottom = int(match["bottom"])
-        left = int(match["left"])
-        right = int(match["right"])
-        if (
-            viewport_height <= 0
-            or bottom < top
-            or right < left
-            or any(
-                abs(value) > 999_999 for value in (scroll_y, top, bottom, left, right)
-            )
-        ):
-            continue
-        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
-        language = match["language"]
-        width = int(match["width"])
-        key = (project, language, width)
-        if key in seen:
-            continue
-        record: _PlaywrightNewsViewport = (
-            project,
-            language,
-            width,
-            viewport_height,
-            scroll_y,
-            top,
-            bottom,
-            left,
-            right,
-        )
-        records.append(record)
-        seen.add(key)
-        if len(records) == _PLAYWRIGHT_NEWS_VIEWPORT_LIMIT:
-            break
-    return records
-
-
-def _live_playwright_push_observations(
-    output: str,
-) -> list[_PlaywrightPushObservation]:
-    """Accept only closed, bounded browser-only Push observations from stdout."""
-    observations: list[_PlaywrightPushObservation] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 240 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_PUSH_OBSERVATION_LINE.fullmatch(line)
-        if match is None:
-            continue
-        record: _PlaywrightPushObservation = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            match["permission"],
-            match["ready"],
-            match["state"],
-            match["controller"] == "1",
-            match["subscription"] == "1",
-            int(match["matches"]),
-        )
-        if record in observations:
-            continue
-        if len(observations) >= _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT:
-            break
-        observations.append(record)
-    return observations
-
-
-def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
-    """Accept only complete stdout protocol records; discard all other content."""
-    statuses: list[tuple[str, str, int]] = []
-    # LF and CRLF terminate records; bare controls and EOF never do.
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 96 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_HTTP_STATUS_LINE.fullmatch(line)
-        if match is None:
-            continue
-        check = _PLAYWRIGHT_HTTP_STATUS_CHECKS[match["check"]]
-        status = int(match["status"])
-        # The producer emits this row only after the exact API detail check.
-        if check == "auth-session-cap" and status != 403:
-            continue
-        record = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            check,
-            status,
-        )
-        if record not in statuses:
-            statuses.append(record)
-            if len(statuses) == _PLAYWRIGHT_HTTP_STATUS_LIMIT:
-                break
-    return statuses
-
-
-def _live_playwright_retry_decisions(output: str) -> list[_PlaywrightRetryDecision]:
-    """Accept only bounded retry-decision records from the live E2E helper."""
-    decisions: list[_PlaywrightRetryDecision] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 160 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_RETRY_DECISION_LINE.fullmatch(line)
-        if match is None:
-            continue
-
-        retry_after_text = match["retry_after"]
-        retry_after = None if retry_after_text == "invalid" else int(retry_after_text)
-        decision = match["decision"]
-        check = match["check"]
-        if check == "email-otp-verification-stale-code":
-            if decision != "not-retried" or (
-                retry_after is not None and retry_after > 600
-            ):
-                continue
-        else:
-            if decision == "not-retried" or (
-                retry_after is not None and retry_after > 60
-            ):
-                continue
-            if (retry_after is None) != (decision == "declined-header"):
-                continue
-        remaining_ms = int(match["remaining"])
-        if decision == "retry" and remaining_ms == 0:
-            continue
-        record: _PlaywrightRetryDecision = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            check,
-            retry_after,
-            decision,
-            remaining_ms,
-        )
-        if record not in decisions:
-            decisions.append(record)
-            if len(decisions) == _PLAYWRIGHT_RETRY_DECISION_LIMIT:
-                break
-    return decisions
-
-
-def _live_playwright_rate_limit_headers(output: str) -> list[_PlaywrightRateLimit]:
-    """Accept only bounded logout-header records; never retain raw header text."""
-    records: list[_PlaywrightRateLimit] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 160 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_RATE_LIMIT_LINE.fullmatch(line)
-        if match is None:
-            continue
-
-        limit_text = match["limit"]
-        remaining_text = match["remaining"]
-        limit = None if limit_text == "invalid" else int(limit_text)
-        remaining = None if remaining_text == "invalid" else int(remaining_text)
-        if (
-            (limit is not None and not 1 <= limit <= _PLAYWRIGHT_RATE_LIMIT_MAX)
-            or (
-                remaining is not None
-                and not 0 <= remaining <= _PLAYWRIGHT_RATE_LIMIT_MAX
-            )
-            or (limit is not None and remaining is not None and remaining > limit)
-        ):
-            continue
-
-        record: _PlaywrightRateLimit = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            limit,
-            remaining,
-        )
-        if record not in records:
-            records.append(record)
-            if len(records) == _PLAYWRIGHT_RATE_LIMIT_RECORD_LIMIT:
-                break
-    return records
-
-
-_PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
-    r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>password-reset|admin-notifications|auth-roles|map-gesture|"
-    r"schedule-grid-keyboard) "
-    r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|"
-    r"admin-notifications|admin-users|admin-feature-flags|map|schedule|other) "
-    r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
-    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
-    r"count=(?P<count>[1-9][0-9]{0,2})"
-)
-# One aggregate per allowed project/check/page/type combination across all checks.
-_PLAYWRIGHT_PAGE_ERROR_LIMIT = 534
-
-_PLAYWRIGHT_PAGE_ERROR_DETAIL_LINE = re.compile(
-    r"UE_LIVE_PAGE_ERROR_DETAIL_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>map-gesture|schedule-grid-keyboard) "
-    r"page=(?P<page>login|map|schedule|other) "
-    r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
-    r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
-    r"source=(?P<source>map-worker|map-shared|map-bundle|schedule-bundle|remote-script|unknown) "
-    r"line=(?P<line>0|[1-9][0-9]{0,5}) "
-    r"column=(?P<column>0|[1-9][0-9]{0,5}) "
-    r"count=(?P<count>[1-9][0-9]{0,2})"
-)
-_PLAYWRIGHT_PAGE_ERROR_DETAIL_LIMIT = 156
-_PlaywrightPageErrorDetail = tuple[str, str, str, str, str, int, int, int]
-
-
-_PLAYWRIGHT_PROFILE_SAVE_LINE = re.compile(
-    r"UE_LIVE_PROFILE_SAVE_V1 project=(?P<project>desktop|mobile) "
-    r"status=(?P<status>[1-5][0-9]{2}) "
-    r"detail=(?P<detail>absent|array|object|string|number|boolean|null|unavailable) "
-    r"detail_count=(?P<detail_count>unknown|0|[1-9][0-9]{0,2}) "
-    r"detail_msg=(?P<detail_msg>true|false|unknown) "
-    r"alert_count=(?P<alert_count>unknown|0|[1-9][0-9]{0,2}) "
-    r"save_disabled=(?P<save_disabled>true|false|unknown) "
-    r"route=(?P<route>profile|login|register|dashboard|other) "
-    r"page_error_count=(?P<page_error_count>unknown|0|[1-9][0-9]{0,2}) "
-    r"page_error=(?P<page_error>none|error|type-error|reference-error|syntax-error|range-error|"
-    r"uri-error|eval-error|aggregate-error|abort-error|security-error|invalid-state-error|other|unknown)"
-)
-_PLAYWRIGHT_PROFILE_SAVE_LIMIT = 4
-_ProfileSaveDiagnostic = tuple[
-    str,
-    int,
-    str,
-    int | None,
-    bool | None,
-    int | None,
-    bool | None,
-    str,
-    int | None,
-    str,
-]
-
-
-def _profile_save_diagnostic_count(match: re.Match[str], name: str) -> int | None:
-    value = match[name]
-    return None if value == "unknown" else int(value)
-
-
-def _profile_save_diagnostic_flag(match: re.Match[str], name: str) -> bool | None:
-    value = match[name]
-    return None if value == "unknown" else value == "true"
-
-
-def _live_playwright_profile_save_diagnostics(
-    output: str,
-) -> list[_ProfileSaveDiagnostic]:
-    """Accept only the fixed profile-save diagnostic protocol and discard all other text."""
-    records: list[_ProfileSaveDiagnostic] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 320 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_PROFILE_SAVE_LINE.fullmatch(line)
-        if match is None:
-            continue
-
-        record: _ProfileSaveDiagnostic = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            int(match["status"]),
-            match["detail"],
-            _profile_save_diagnostic_count(match, "detail_count"),
-            _profile_save_diagnostic_flag(match, "detail_msg"),
-            _profile_save_diagnostic_count(match, "alert_count"),
-            _profile_save_diagnostic_flag(match, "save_disabled"),
-            match["route"],
-            _profile_save_diagnostic_count(match, "page_error_count"),
-            match["page_error"],
-        )
-        if record not in records:
-            records.append(record)
-            if len(records) == _PLAYWRIGHT_PROFILE_SAVE_LIMIT:
-                break
-    return records
-
-
-def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, int]]:
-    """Accept fixed current-page/type counts only, without retaining private text."""
-    records: list[tuple[str, str, str, str, int]] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 160 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_PAGE_ERROR_LINE.fullmatch(line)
-        if match is None:
-            continue
-        if match["check"] == "admin-notifications":
-            if match["page"] not in {
-                "login",
-                "dashboard",
-                "admin-notifications",
-                "other",
-            }:
-                continue
-        elif match["check"] == "auth-roles":
-            if match["page"] not in {
-                "login",
-                "dashboard",
-                "admin-users",
-                "admin-feature-flags",
-                "other",
-            }:
-                continue
-        elif match["check"] == "map-gesture":
-            if match["page"] not in {"login", "map", "other"}:
-                continue
-        elif match["check"] == "schedule-grid-keyboard":
-            if match["project"] != "desktop" or match["page"] not in {
-                "login",
-                "schedule",
-                "other",
-            }:
-                continue
-        elif (
-            match["page"]
-            not in {
-                "register",
-                "login",
-                "forgot-password",
-                "reset-password",
-                "dashboard",
-                "other",
-            }
-            or match["type"] == "react-418"
-        ):
-            continue
-        record = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            match["check"],
-            match["page"],
-            match["type"],
-            int(match["count"]),
-        )
-        if record not in records:
-            records.append(record)
-            if len(records) == _PLAYWRIGHT_PAGE_ERROR_LIMIT:
-                break
-    return records
-
-
-def _live_playwright_page_error_details(
-    output: str,
-) -> list[_PlaywrightPageErrorDetail]:
-    # Retain only bounded source buckets linked to accepted summaries.
-    summaries = set(_live_playwright_page_errors(output))
-    records: list[_PlaywrightPageErrorDetail] = []
-    for line in output.split("\n")[:-1]:
-        line = line.removesuffix("\r")
-        if len(line) > 256 or not line.isprintable():
-            continue
-        match = _PLAYWRIGHT_PAGE_ERROR_DETAIL_LINE.fullmatch(line)
-        if match is None:
-            continue
-        check = match["check"]
-        page = match["page"]
-        source = match["source"]
-        if check == "map-gesture":
-            if page not in {"login", "map", "other"} or source not in {
-                "map-worker",
-                "map-shared",
-                "map-bundle",
-                "remote-script",
-                "unknown",
-            }:
-                continue
-        elif (
-            match["project"] != "desktop"
-            or page not in {"login", "schedule", "other"}
-            or source not in {"schedule-bundle", "remote-script", "unknown"}
-        ):
-            continue
-        line_number = int(match["line"])
-        column = int(match["column"])
-        if (source == "unknown") != (line_number == 0 and column == 0):
-            continue
-        if source != "unknown" and (line_number == 0 or column == 0):
-            continue
-        count = int(match["count"])
-        record: _PlaywrightPageErrorDetail = (
-            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
-            check,
-            page,
-            match["type"],
-            source,
-            line_number,
-            column,
-            count,
-        )
-        summary = (record[0], check, page, record[3], count)
-        if summary not in summaries or record in records:
-            continue
-        records.append(record)
-        if len(records) == _PLAYWRIGHT_PAGE_ERROR_DETAIL_LIMIT:
-            break
-    return records
-
-
-def _live_playwright_counts(output: str) -> dict[str, int]:
-    """Extract only numeric aggregate counts from exact Playwright summary lines."""
-    counts: dict[str, int] = {}
-    for line in output.split("\n"):
-        match = _PLAYWRIGHT_COUNT_LINE.fullmatch(line.removesuffix("\r"))
-        if match is not None:
-            kind = match.group("kind").replace(" ", "_")
-            counts[kind] = counts.get(kind, 0) + int(match.group("count"))
-    return counts
-
-
-_PlaywrightSkipIdentity = tuple[str, str, int]
-_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES: tuple[_PlaywrightSkipIdentity, ...] = (
-    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 144),
-    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 144),
-    ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 174),
-    ("mobile", "tests/e2e-live/schedule-grid-keyboard.live.spec.ts", 5),
-    ("mobile", "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts", 5),
-    ("mobile", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 178),
-    ("mobile", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 209),
-    ("desktop", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 248),
-)
-_PLAYWRIGHT_SKIPPED_ROW_PREFIX = re.compile(r"^  - {2,4}[1-9][0-9]{0,2} ")
-_PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
-    r"^  - {2,4}(?P<index>[1-9][0-9]{0,2}) "
-    r"\[(?P<project>desktop|mobile)\] \u203a "
-    r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
-    r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
-)
-_PLAYWRIGHT_FULL_COLLECTION_COUNT = 220
-_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 216
-_PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
-_PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
-
-
-def _live_playwright_skipped_identities(
-    output: str, *, cwd: Path
-) -> tuple[list[_PlaywrightSkipIdentity], int, bool]:
-    """Extract bounded allowlisted skip identities, never test titles or reasons."""
-    identities: list[_PlaywrightSkipIdentity] = []
-    rejected_rows = 0
-    overflow = False
-    seen_indexes: set[int] = set()
-    source_cache: dict[str, list[str]] = {}
-    try:
-        frontend_root = cwd.resolve(strict=True)
-    except (OSError, RuntimeError):
-        return identities, 0, True
-
-    position = 0
-    scanned_lines = 0
-    while True:
-        line_end = output.find("\n", position)
-        if line_end < 0:
-            break  # Only complete reporter rows are accepted.
-        if scanned_lines >= _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT:
-            overflow = True
-            break
-        line = output[position:line_end]
-        position = line_end + 1
-        scanned_lines += 1
-        if line.endswith("\r"):
-            line = line[:-1]
-        if _PLAYWRIGHT_SKIPPED_ROW_PREFIX.match(line) is None:
-            continue
-        if len(line) > _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT or not line.isprintable():
-            rejected_rows += 1
-            continue
-        match = _PLAYWRIGHT_SKIPPED_ROW_HEADER.match(line)
-        if match is None:
-            rejected_rows += 1
-            continue
-        index = int(match["index"])
-        source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
-        project = _PLAYWRIGHT_FAILURE_PROJECTS.get(match["project"])
-        line_number = int(match["line"])
-        column = int(match["column"])
-        if (
-            index > _PLAYWRIGHT_SKIP_IDENTITY_LIMIT
-            or index in seen_indexes
-            or source is None
-            or project is None
-        ):
-            rejected_rows += 1
-            continue
-        seen_indexes.add(index)
-        if source not in source_cache:
-            try:
-                source_path = frontend_root / source
-                if source_path.is_symlink():
-                    raise OSError("skip source is a symlink")
-                resolved_source = source_path.resolve(strict=True)
-                if (
-                    not resolved_source.is_relative_to(frontend_root)
-                    or not resolved_source.is_file()
-                ):
-                    raise OSError("skip source is outside the frontend root")
-                source_cache[source] = resolved_source.read_text(
-                    encoding="utf-8"
-                ).splitlines()
-            except (OSError, RuntimeError, UnicodeError):
-                rejected_rows += 1
-                continue
-        source_lines = source_cache[source]
-        if line_number > len(source_lines):
-            rejected_rows += 1
-            continue
-        declaration = source_lines[line_number - 1]
-        indentation = len(declaration) - len(declaration.lstrip())
-        if not declaration.lstrip().startswith("test(") or column != indentation + 1:
-            rejected_rows += 1
-            continue
-        if len(identities) >= _PLAYWRIGHT_SKIP_IDENTITY_LIMIT:
-            overflow = True
-            break
-        identities.append((project, source, line_number))
-    return identities, rejected_rows, overflow
-
-
-def _live_playwright_failure_locations(
-    output: str, *, cwd: Path
-) -> list[tuple[str, str, int, str]]:
-    """Return public declarations/frames, never titles, function names or errors."""
-    locations: list[tuple[str, str, int, str]] = []
-    source_lines: dict[str, list[str]] = {}
-    frame_sources = {
-        **_PLAYWRIGHT_FAILURE_FRAME_SOURCES,
-        **{
-            str(cwd.absolute() / source): source
-            for source in _PLAYWRIGHT_FAILURE_FRAME_SOURCES.values()
-        },
-    }
-    project = ""
-    # Split only actual reporter newlines, not control characters in a title.
-    for reporter_line in output.split("\n"):
-        # A new top-level reporter line ends the previous failure, even if its
-        # project, path or location cannot be validated. Blank lines are normal
-        # between a failure header, error message and its indented stack.
-        if reporter_line and not reporter_line.startswith("    "):
-            project = ""
-        if len(reporter_line) > 4096 or (
-            reporter_line and not reporter_line.isprintable()
-        ):
-            project = ""
-            continue
-        match = _PLAYWRIGHT_FAILURE_HEADER.match(reporter_line)
-        kind = "declaration"
-        if match is not None:
-            source = _PLAYWRIGHT_FAILURE_SOURCES.get(match["source"])
-        elif project:
-            frame = _PLAYWRIGHT_FAILURE_FRAME.fullmatch(reporter_line)
-            if frame is None:
-                continue
-            match = _PLAYWRIGHT_FRAME_LOCATION.fullmatch(
-                frame["named"] or frame["anonymous"]
-            )
-            if match is None:
-                continue
-            source = frame_sources.get(match["source"])
-            kind = "frame"
-        else:
-            continue
-        if source is None:
-            continue
-        if source not in source_lines:
-            try:
-                source_lines[source] = (
-                    (cwd / source).read_text(encoding="utf-8").splitlines()
-                )
-            except (OSError, UnicodeError):
-                # Diagnostics must not expose paths/errors or replace the exit status.
-                source_lines[source] = []
-        lines = source_lines[source]
-        line_number = int(match["line"])
-        column = int(match["column"])
-        if line_number > len(lines) or column > len(lines[line_number - 1]) + 1:
-            continue
-        if kind == "declaration":
-            project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
-        location = (project, source, line_number, kind)
-        if location not in locations:
-            locations.append(location)
-    return locations
-
-
-_PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT = 256
-_PLAYWRIGHT_FAILURE_EXPECT_LINE = re.compile(r"^ {4}Error: expect\(")
-_PLAYWRIGHT_FAILURE_MATCHER_HEADER = re.compile(
-    r"^ {4}Error: expect\((?:locator|page|received)\)\."
-    r"(?P<negated>not\.)?(?P<matcher>toBe|toEqual|toStrictEqual|toContain|toMatch|"
-    r"toBeVisible|toBeHidden|toBeEnabled|toBeDisabled|toBeChecked|"
-    r"toBeFocused|toBeEditable|toBeEmpty|toBeAttached|toBeInViewport|toHaveText|"
-    r"toContainText|toHaveValue|toHaveAttribute|toHaveClass|toHaveCount|toHaveCSS|"
-    r"toHaveJSProperty|toHaveTitle|toHaveURL|toHaveId|toHaveRole|"
-    r"toHaveAccessibleName|toHaveAccessibleDescription|toMatchAriaSnapshot|toPass)\s*\("
-)
-_PLAYWRIGHT_FAILURE_TIMEOUT_LINE = re.compile(
-    r"^ {4}(?:"
-    r"Error: (?:(?:locator|page)\.[A-Za-z]+: )?"
-    r"Timeout [0-9]{1,6}(?:\.[0-9]{1,3})?(?:ms|s) exceeded\."
-    r'|Error: page\.waitForResponse: Timeout [0-9]{1,6}ms exceeded while waiting for event "response"'
-    r"|Test timeout of [0-9]{1,6}ms exceeded\."
-    r"|Test timeout of [0-9]{1,6}ms exceeded while setting up "
-    r'"[^"\r\n]{0,256}"\.'
-    r'|Tearing down "[^"\r\n]{0,256}" exceeded the test timeout of '
-    r"[0-9]{1,6}ms\."
-    r'|Test timeout of [0-9]{1,6}ms exceeded while running "(?:beforeEach|afterEach)" hook\.'
-    r'|"(?:beforeAll|afterAll)" hook timeout of [0-9]{1,6}ms exceeded\.'
-    r"|Worker teardown timeout of [0-9]{1,6}ms exceeded"
-    r'(?: while (?:setting up|tearing down) "[^"\r\n]{0,256}")?\.'
-    r'|"(?:skip|slow|fixme|fail)" modifier timeout of [0-9]{1,6}ms exceeded\.'
-    r'|Fixture "[^"\r\n]{0,256}" timeout of [0-9]{1,6}ms exceeded during (?:setup|teardown)\.'
-    r")$"
-)
-_PLAYWRIGHT_FAILURE_NAVIGATION_LINE = re.compile(
-    r"^ {4}Error: page\.(?:goto|waitForURL)\b"
-)
-_PLAYWRIGHT_FAILURE_LOCATOR_LINE = re.compile(r"^ {4}Error: locator\.[A-Za-z]+\b")
-_PLAYWRIGHT_FAILURE_RUNTIME_LINE = re.compile(
-    r"^ {4}(?:Error: )?(?:TypeError|ReferenceError|SyntaxError|RangeError|EvalError|"
-    r"URIError|AggregateError|AbortError|SecurityError|InvalidStateError):"
-)
-_PLAYWRIGHT_FAILURE_LOCATOR_CALL = re.compile(
-    r"^ {6}- waiting for (?:(?:page|locator)\.)?"
-    r"(?P<method>getByRole|getByLabel|getByPlaceholder|getByText|getByTestId|"
-    r"getByAltText|getByTitle|locator)\s*\("
-)
-_PLAYWRIGHT_FAILURE_CALL_LOG_START = re.compile(r"^ {4}Call log:$")
-_PLAYWRIGHT_FAILURE_LOCATOR_CATEGORIES = {
-    "getByRole": "role",
-    "getByLabel": "label",
-    "getByPlaceholder": "placeholder",
-    "getByText": "text",
-    "getByTestId": "test_id",
-    "getByAltText": "alt_text",
-    "getByTitle": "title",
-    "locator": "locator",
-}
-
-
-def _live_playwright_failure_diagnostics(
-    output: str, *, cwd: Path
-) -> list[tuple[str, str, int, str, str, str]]:
-    """Classify validated failure headers using fixed public enums only."""
-    diagnostics: list[tuple[str, str, int, str, str, str]] = []
-    source_lines: dict[str, list[str]] = {}
-    current: dict[str, str | int] | None = None
-
-    def finish() -> None:
-        nonlocal current
-        if current is None or len(diagnostics) >= _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT:
-            current = None
-            return
-        diagnostics.append(
-            (
-                str(current["project"]),
-                str(current["source"]),
-                int(current["line"]),
-                str(current["category"]),
-                str(current["matcher"]),
-                str(current["locator"]),
-            )
-        )
-        current = None
-
-    for reporter_line in output.split("\n"):
-        if reporter_line and not reporter_line.startswith("    "):
-            finish()
-        if len(reporter_line) > 4096 or (
-            reporter_line and not reporter_line.isprintable()
-        ):
-            current = None
-            continue
-        if len(diagnostics) >= _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT:
-            break
-
-        header = _PLAYWRIGHT_FAILURE_HEADER.match(reporter_line)
-        if header is not None:
-            source = _PLAYWRIGHT_FAILURE_SOURCES.get(header["source"])
-            project = _PLAYWRIGHT_FAILURE_PROJECTS.get(header["project"])
-            if source is None or project is None:
-                current = None
-                continue
-            if source not in source_lines:
-                try:
-                    source_lines[source] = (
-                        (cwd / source).read_text(encoding="utf-8").splitlines()
-                    )
-                except (OSError, UnicodeError):
-                    source_lines[source] = []
-            lines = source_lines[source]
-            line_number = int(header["line"])
-            column = int(header["column"])
-            if line_number > len(lines) or column > len(lines[line_number - 1]) + 1:
-                current = None
-                continue
-            current = {
-                "project": project,
-                "source": source,
-                "line": line_number,
-                "category": "unknown",
-                "matcher": "none",
-                "locator": "none",
-                "in_call_log": False,
-            }
-            continue
-        if current is None:
-            continue
-
-        if _PLAYWRIGHT_FAILURE_CALL_LOG_START.fullmatch(reporter_line):
-            current["in_call_log"] = True
-            continue
-        if current["in_call_log"]:
-            locator = _PLAYWRIGHT_FAILURE_LOCATOR_CALL.match(reporter_line)
-            if locator is not None and current["locator"] == "none":
-                current["locator"] = _PLAYWRIGHT_FAILURE_LOCATOR_CATEGORIES[
-                    locator["method"]
-                ]
-            elif not reporter_line.startswith("      "):
-                current["in_call_log"] = False
-
-        if current["category"] != "unknown":
-            continue
-        if _PLAYWRIGHT_FAILURE_TIMEOUT_LINE.fullmatch(reporter_line):
-            current["category"] = "timeout"
-        elif _PLAYWRIGHT_FAILURE_EXPECT_LINE.match(reporter_line):
-            current["category"] = "assertion"
-            matcher = _PLAYWRIGHT_FAILURE_MATCHER_HEADER.match(reporter_line)
-            if matcher is None:
-                current["matcher"] = "other"
-            else:
-                matcher_name = matcher["matcher"]
-                current["matcher"] = (
-                    f"not.{matcher_name}" if matcher["negated"] else matcher_name
-                )
-        elif _PLAYWRIGHT_FAILURE_NAVIGATION_LINE.match(reporter_line):
-            current["category"] = "navigation"
-        elif _PLAYWRIGHT_FAILURE_LOCATOR_LINE.match(reporter_line):
-            current["category"] = "locator"
-        elif _PLAYWRIGHT_FAILURE_RUNTIME_LINE.match(reporter_line):
-            current["category"] = "runtime"
-
-    finish()
-    return diagnostics
-
-
 def _run_live_playwright(
     *,
     cwd: Path,
@@ -7598,22 +5687,30 @@ def _run_live_playwright(
     if selected_specs:
         print("live E2E scope=focused diagnostic_only=true", flush=True)
     print("+", " ".join(command), flush=True)
-    try:
-        completed = subprocess.run(  # noqa: S603 - fixed platform-specific argv
-            command,
-            cwd=cwd,
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=False,
-        )
-    except OSError as error:
-        raise StandError("could not launch the live Playwright command") from error
+    # Reuse the bounded Popen runner so Windows does not wait indefinitely for
+    # a descendant that inherited stdout or stderr after the direct child exits.
+    completed = fast_preflight.run_check(
+        fast_preflight.CheckSpec("live-playwright", tuple(command)),
+        repo_root=cwd,
+        timeout_seconds=LIVE_E2E_TIMEOUT_SECONDS,
+        include_output=True,
+        env=environment,
+    )
+    if completed.status == "timed_out":
+        raise StandError("live Playwright command timed out") from None
+    if completed.status == "error":
+        if completed.error is not None and completed.error.startswith(
+            "could not launch check:"
+        ):
+            raise StandError("could not launch the live Playwright command") from None
+        raise StandError("could not capture live Playwright command output") from None
+    if completed.exit_code is None:
+        raise StandError("could not read live Playwright command result") from None
 
-    return_code = completed.returncode
-    # Text mode converts bare CR into LF, which could fabricate protocol lines.
-    stdout = (completed.stdout or b"").decode("utf-8", errors="replace")
-    stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
+    return_code = completed.exit_code
+    stdout = completed.stdout
+    stderr = completed.stderr
+    del completed
     output = "\n".join((stdout, stderr))
     counts = _live_playwright_counts(output)
     canonical_full_run = mode == "full" and not selected_specs
@@ -7627,7 +5724,11 @@ def _run_live_playwright(
         )
         skip_accounting_passed = (
             _live_playwright_counts(stdout)
-            == {"passed": 212, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            == {
+                "passed": _PLAYWRIGHT_FULL_COLLECTION_COUNT
+                - len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+                "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+            }
             and not skip_rejected_rows
             and not skip_overflow
             and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
@@ -7656,8 +5757,20 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    password_forgot_diagnostics = (
+        _live_playwright_password_forgot_diagnostics(stdout) if return_code != 0 else []
+    )
+    reset_url_observations = (
+        _live_playwright_reset_url_observations(stdout) if return_code != 0 else []
+    )
     reset_registration_steps = (
         _live_playwright_reset_registration_steps(stdout) if return_code != 0 else []
+    )
+    reset_registration_v2 = (
+        _live_playwright_reset_registration_v2(stdout) if return_code != 0 else []
+    )
+    reset_registration_v3 = (
+        _live_playwright_reset_registration_v3(stdout) if return_code != 0 else []
     )
     registration_admission_diagnostics = (
         _live_playwright_registration_admission_diagnostics(stdout)
@@ -7701,10 +5814,15 @@ def _run_live_playwright(
             stream.replace("\r\n", "\n"), cwd=cwd
         )
     ][:_PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT]
+    reconnect_diagnostics = (
+        _live_playwright_reconnect_diagnostics(stdout) if return_code != 0 else []
+    )
     del output, stdout, stderr
-    completed.stdout = b""
-    completed.stderr = b""
-    del completed
+    for record in reconnect_diagnostics:
+        print(
+            "live E2E reconnect " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
     if counts:
         count_summary = " ".join(
             f"{name}={counts[name]}"
@@ -7799,9 +5917,33 @@ def _run_live_playwright(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
+    for record in password_forgot_diagnostics:
+        rendered = _render_forgot_observation(record)
+        if rendered is not None:
+            print("live E2E password-forgot " + rendered, flush=True)
+    for project, phase, route, query, fragment, href in reset_url_observations:
+        print(
+            f"live E2E reset-url project={project} phase={phase} "
+            f"reset_route={str(route).lower()} token_query_absent={str(query).lower()} "
+            f"token_fragment_absent={str(fragment).lower()} "
+            f"token_url_absent={str(href).lower()}",
+            flush=True,
+        )
     for project, step in reset_registration_steps:
         print(
             f"live E2E reset-registration project={project} step={step}",
+            flush=True,
+        )
+    for record in reset_registration_v2:
+        print(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
+            flush=True,
+        )
+    for record in reset_registration_v3:
+        print(
+            "live E2E reset-registration-v3 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
             flush=True,
         )
     for record in registration_admission_diagnostics:
@@ -8022,13 +6164,18 @@ def _run_live_playwright(
 _LIVE_CADDY_PROBE_MAX_BYTES = 1_048_576
 _LIVE_CADDY_PROBE_MARKER_MAX_BYTES = 256
 _LIVE_CADDY_PROBE_MAX_OUTPUT_DIRECTORY_ENTRIES = 512
-_LIVE_CADDY_PROBE_WINDOW_MS = 5_000
+# The probe request's own access row is written before the spec records
+# completed_at_ms, so a short half-window covers clock and log-pipeline skew.
+# Wider windows only re-read unrelated E2E traffic and exhaust the shared cap.
+_LIVE_CADDY_PROBE_WINDOW_MS = 2_000
 _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS = 10
 _LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS = 64
 _LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_FAILURE = "Caddy access-log redaction proof failed"
 _LIVE_CADDY_PROBE_DIAGNOSTIC_PREFIX = "live_caddy_probe_failure_stage="
+_LIVE_CADDY_PROBE_BUDGET_PREFIX = "live_caddy_probe_capture_budget="
+_LIVE_CADDY_PROBE_FIRST_CAPTURE_PREFIX = "live_caddy_probe_first_capture="
 _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES = frozenset(
     {
         "input_validation",
@@ -8041,6 +6188,7 @@ _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES = frozenset(
         "log_pipe_io",
         "log_size",
         "nonce_exposure",
+        "reset_marker_exposure",
         "correlation_row",
         "stderr_validation",
         "project_row",
@@ -8058,14 +6206,16 @@ _LIVE_CADDY_PROBE_WINDOWS_KERNEL32: object | None = None
 
 
 class _LiveCaddyProbeStageFailure(StandError):
-    """Carry only a finite diagnostic code while preserving the generic error."""
+    """Carry a finite stage and optional budget facts with the generic error."""
 
-    def __init__(self, stage: str) -> None:
+    def __init__(self, stage: str, *, capture_budget: object = None) -> None:
         self.stage = (
             stage
             if isinstance(stage, str) and stage in _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES
             else "internal"
         )
+        self.capture_budget = capture_budget if self.stage == "log_size" else None
+        self.first_capture_summary: dict[str, int] | None = None
         super().__init__(_LIVE_CADDY_PROBE_FAILURE)
 
 
@@ -8092,6 +6242,136 @@ def _emit_live_caddy_probe_diagnostic(stage: str) -> None:
         sys.stderr.flush()
     except (OSError, ValueError):
         pass
+
+
+def _emit_live_caddy_probe_budget(metadata: object) -> None:
+    """Emit only validated finite capture-budget facts, never captured log data."""
+    integer_fields = (
+        "window_count",
+        "capture_ordinal",
+        "previous_capture_bytes",
+        "remaining_budget",
+    )
+    if type(metadata) is not dict or set(metadata) != {
+        *integer_fields,
+        "overflow_origin",
+    }:
+        return
+    values = [metadata[field] for field in integer_fields]
+    if any(type(value) is not int for value in values):
+        return
+    window_count, capture_ordinal, previous_bytes, remaining_budget = values
+    origin = metadata["overflow_origin"]
+    if (
+        window_count not in (1, 2)
+        or not 1 <= capture_ordinal <= window_count
+        or not 0 <= previous_bytes <= _LIVE_CADDY_PROBE_MAX_BYTES
+        or not 0 <= remaining_budget <= _LIVE_CADDY_PROBE_MAX_BYTES
+        or previous_bytes + remaining_budget != _LIVE_CADDY_PROBE_MAX_BYTES
+        or (capture_ordinal == 1 and previous_bytes != 0)
+        or type(origin) is not str
+        or origin not in ("reader_limit", "returned_size")
+    ):
+        return
+    encoded = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+    try:
+        sys.stderr.write(f"{_LIVE_CADDY_PROBE_BUDGET_PREFIX}{encoded}\n")
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        pass
+
+
+def _summarize_live_caddy_first_capture(
+    stdout: bytes, stderr: bytes, capture_budget: object
+) -> dict[str, int] | None:
+    """Count only retained first-capture bytes after a second-capture overflow."""
+    integer_fields = (
+        "window_count",
+        "capture_ordinal",
+        "previous_capture_bytes",
+        "remaining_budget",
+    )
+    if (
+        type(stdout) is not bytes
+        or type(stderr) is not bytes
+        or type(capture_budget) is not dict
+        or set(capture_budget) != {*integer_fields, "overflow_origin"}
+        or any(type(capture_budget[field]) is not int for field in integer_fields)
+    ):
+        return None
+    previous_bytes = len(stdout) + len(stderr)
+    if (
+        capture_budget["window_count"] != 2
+        or capture_budget["capture_ordinal"] != 2
+        or not 0 <= previous_bytes <= _LIVE_CADDY_PROBE_MAX_BYTES
+        or capture_budget["previous_capture_bytes"] != previous_bytes
+        or capture_budget["remaining_budget"]
+        != _LIVE_CADDY_PROBE_MAX_BYTES - previous_bytes
+        or type(capture_budget["overflow_origin"]) is not str
+        or capture_budget["overflow_origin"] not in ("reader_limit", "returned_size")
+        or (stdout and not stdout.endswith(b"\n"))
+        or (stderr and not stderr.endswith(b"\n"))
+    ):
+        return None
+    summary = {"schema_version": 1, "capture_ordinal": 1}
+    for name, data in (("stdout", stdout), ("stderr", stderr)):
+        complete_lines = 0
+        maximum_line_bytes = 0
+        line_start = 0
+        while (line_end := data.find(b"\n", line_start)) != -1:
+            complete_lines += 1
+            maximum_line_bytes = max(maximum_line_bytes, line_end - line_start)
+            line_start = line_end + 1
+        summary[f"{name}_bytes"] = len(data)
+        summary[f"{name}_complete_lines"] = complete_lines
+        summary[f"{name}_max_line_bytes"] = max(
+            maximum_line_bytes, len(data) - line_start
+        )
+    return summary
+
+
+def _emit_live_caddy_first_capture_summary(metadata: object) -> None:
+    """Emit only a closed, bounded numeric summary; diagnostic faults stay silent."""
+    fields = {
+        "schema_version",
+        "capture_ordinal",
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdout_complete_lines",
+        "stderr_complete_lines",
+        "stdout_max_line_bytes",
+        "stderr_max_line_bytes",
+    }
+    if (
+        type(metadata) is not dict
+        or set(metadata) != fields
+        or any(type(value) is not int for value in metadata.values())
+        or metadata["schema_version"] != 1
+        or metadata["capture_ordinal"] != 1
+        or any(
+            not 0 <= value <= _LIVE_CADDY_PROBE_MAX_BYTES for value in metadata.values()
+        )
+        or metadata["stdout_bytes"] + metadata["stderr_bytes"]
+        > _LIVE_CADDY_PROBE_MAX_BYTES
+    ):
+        return
+    for name in ("stdout", "stderr"):
+        size = metadata[f"{name}_bytes"]
+        lines = metadata[f"{name}_complete_lines"]
+        maximum = metadata[f"{name}_max_line_bytes"]
+        if lines > size or maximum > size - lines or (size > 0 and lines == 0):
+            return
+    if sys.stderr is None:
+        return
+    try:
+        encoded = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        line = f"{_LIVE_CADDY_PROBE_FIRST_CAPTURE_PREFIX}{encoded}\n"
+        if len(line) > 512:
+            return
+        sys.stderr.write(line)
+        sys.stderr.flush()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return
 
 
 @dataclass(frozen=True, slots=True)
@@ -8456,6 +6736,32 @@ def _new_live_caddy_probe_values() -> tuple[str, dict[str, str]]:
     return nonce, correlations
 
 
+def _new_live_aud178_reset_probe_values(
+    *, reserved_values: Sequence[str] = ()
+) -> dict[str, dict[str, dict[str, str]]]:
+    """Create distinct run-only reset tokens and harmless Caddy row IDs."""
+    reserved = set(reserved_values)
+    while True:
+        values = {
+            project: {
+                source: {
+                    "marker": secrets.token_hex(16),
+                    "correlationId": secrets.token_hex(16),
+                }
+                for source in ("query", "path")
+            }
+            for project in LIVE_CADDY_PROBE_PROJECTS
+        }
+        flattened = [
+            value
+            for project_values in values.values()
+            for source_values in project_values.values()
+            for value in source_values.values()
+        ]
+        if len(set(flattened)) == len(flattened) and not (set(flattened) & reserved):
+            return values
+
+
 def _reject_live_caddy_probe_json_constant(_value: str) -> None:
     raise ValueError
 
@@ -8577,6 +6883,101 @@ def _assert_live_caddy_probe_redaction(
         raise _LiveCaddyProbeStageFailure("project_row")
 
 
+def _assert_live_aud178_reset_probe_redaction(
+    output: bytes,
+    *,
+    stderr: bytes,
+    marker: str,
+    correlation_id: str,
+    source: str,
+    project: str,
+    since_ms: int,
+    until_ms: int,
+) -> None:
+    """Require one in-window, reset-specific redacted row for the exact marker."""
+    if type(output) is not bytes or type(stderr) is not bytes:
+        raise _LiveCaddyProbeStageFailure("input_validation")
+    if len(output) + len(stderr) > _LIVE_CADDY_PROBE_MAX_BYTES:
+        raise _LiveCaddyProbeStageFailure("log_size")
+    if (
+        project not in LIVE_CADDY_PROBE_PROJECTS
+        or source not in {"query", "path"}
+        or not isinstance(marker, str)
+        or re.fullmatch(r"[0-9a-f]{32}", marker) is None
+        or not isinstance(correlation_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", correlation_id) is None
+        or marker == correlation_id
+        or type(since_ms) is not int
+        or type(until_ms) is not int
+        or since_ms <= 0
+        or until_ms < since_ms
+    ):
+        raise _LiveCaddyProbeStageFailure("input_validation")
+
+    marker_bytes = marker.encode("ascii")
+    correlation_bytes = correlation_id.encode("ascii")
+    if marker_bytes in output or marker_bytes in stderr:
+        raise _LiveCaddyProbeStageFailure("reset_marker_exposure")
+
+    matching_rows: list[tuple[int, dict[str, Any]]] = []
+    for stream in (output, stderr):
+        for line in stream.splitlines():
+            if correlation_bytes not in line:
+                continue
+            try:
+                timestamp_bytes, payload_bytes = line.split(b" ", 1)
+                row_timestamp_ns = _parse_live_docker_log_timestamp(timestamp_bytes)
+                payload = json.loads(
+                    payload_bytes,
+                    object_pairs_hook=_reject_duplicate_docker_json_keys,
+                    parse_constant=_reject_live_caddy_probe_json_constant,
+                )
+            except (
+                ValueError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                RecursionError,
+            ):
+                raise _LiveCaddyProbeStageFailure("project_row") from None
+            if not isinstance(payload, dict):
+                raise _LiveCaddyProbeStageFailure("project_row")
+            request = payload.get("request")
+            headers = request.get("headers") if isinstance(request, dict) else None
+            if not isinstance(headers, dict):
+                raise _LiveCaddyProbeStageFailure("project_row")
+            observed_ids = [
+                value
+                for name, value in headers.items()
+                if isinstance(name, str) and name.casefold() == "x-aud178-correlation"
+            ]
+            if len(observed_ids) != 1:
+                raise _LiveCaddyProbeStageFailure("project_row")
+            observed_id = observed_ids[0]
+            if observed_id == [correlation_id] or observed_id == correlation_id:
+                matching_rows.append((row_timestamp_ns, payload))
+
+    if len(matching_rows) != 1:
+        raise _LiveCaddyProbeStageFailure("correlation_row")
+    row_timestamp_ns, payload = matching_rows[0]
+    if not since_ms * 1_000_000 <= row_timestamp_ns <= until_ms * 1_000_000:
+        raise _LiveCaddyProbeStageFailure("project_row")
+
+    request = payload.get("request")
+    headers = request.get("headers")
+    referer_present = any(
+        isinstance(name, str) and name.casefold() == "referer" for name in headers
+    )
+    if (
+        payload.get("logger") != _LIVE_CADDY_ACCESS_LOGGER
+        or request.get("method") != "GET"
+        or request.get("uri") != "[REDACTED]"
+        or type(payload.get("status")) is not int
+        or payload.get("status") != 302
+        or referer_present
+    ):
+        raise _LiveCaddyProbeStageFailure("project_row")
+
+
 def _parse_live_docker_log_timestamp(value: bytes) -> int:
     """Parse Docker's UTC RFC3339Nano prefix into an exact nanosecond value."""
     try:
@@ -8606,12 +7007,28 @@ def _read_live_caddy_probe_observations(
     started_at_ms: int,
     finished_at_ms: int,
     deadline: float | None = None,
-) -> dict[str, int]:
-    """Read and remove the two fixed, bounded, value-free project markers."""
+    probe_kind: str = "aud174",
+) -> dict[str, int] | dict[str, dict[str, int]]:
+    """Read and remove the fixed, bounded, value-free live Caddy markers."""
+    if probe_kind == "aud174":
+        filename_prefix = "aud174-caddy-probe-"
+        schema = "aud174-caddy-probe-v1"
+        expected_fields = {"schema", "project", "completed_at_ms"}
+    elif probe_kind == "aud178":
+        filename_prefix = "aud178-reset-caddy-probe-"
+        schema = "aud178-reset-caddy-probe-v1"
+        expected_fields = {
+            "schema",
+            "project",
+            "query_completed_at_ms",
+            "path_completed_at_ms",
+        }
+    else:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
     expected_names = {
-        f"aud174-caddy-probe-{project}.json" for project in LIVE_CADDY_PROBE_PROJECTS
+        f"{filename_prefix}{project}.json" for project in LIVE_CADDY_PROBE_PROJECTS
     }
-    observed: dict[str, int] = {}
+    observed: dict[str, Any] = {}
     cleanup_failed = False
     try:
         if (
@@ -8643,7 +7060,7 @@ def _read_live_caddy_probe_observations(
                     raise ValueError
                 if deadline is not None:
                     _live_probe_remaining(deadline)
-                if child.name.startswith("aud174-caddy-probe-"):
+                if child.name.startswith(filename_prefix):
                     marker_names.add(child.name)
         if marker_names != expected_names:
             raise ValueError
@@ -8651,7 +7068,7 @@ def _read_live_caddy_probe_observations(
         for project in LIVE_CADDY_PROBE_PROJECTS:
             if deadline is not None:
                 _live_probe_remaining(deadline)
-            marker_path = output_directory / f"aud174-caddy-probe-{project}.json"
+            marker_path = output_directory / f"{filename_prefix}{project}.json"
             before = marker_path.lstat()
             if (
                 not stat.S_ISREG(before.st_mode)
@@ -8710,14 +7127,31 @@ def _read_live_caddy_probe_observations(
             marker = json.loads(raw.decode("utf-8"))
             if (
                 not isinstance(marker, dict)
-                or set(marker) != {"schema", "project", "completed_at_ms"}
-                or marker["schema"] != "aud174-caddy-probe-v1"
+                or set(marker) != expected_fields
+                or marker["schema"] != schema
                 or marker["project"] != project
-                or type(marker["completed_at_ms"]) is not int
-                or not started_at_ms <= marker["completed_at_ms"] <= finished_at_ms
             ):
                 raise ValueError
-            observed[project] = marker["completed_at_ms"]
+            if probe_kind == "aud174":
+                completed_at_ms = marker["completed_at_ms"]
+                if (
+                    type(completed_at_ms) is not int
+                    or not started_at_ms <= completed_at_ms <= finished_at_ms
+                ):
+                    raise ValueError
+                observed[project] = completed_at_ms
+            else:
+                reset_times = {
+                    source: marker[f"{source}_completed_at_ms"]
+                    for source in ("query", "path")
+                }
+                if any(
+                    type(completed_at_ms) is not int
+                    or not started_at_ms <= completed_at_ms <= finished_at_ms
+                    for completed_at_ms in reset_times.values()
+                ):
+                    raise ValueError
+                observed[project] = reset_times
         if set(observed) != set(LIVE_CADDY_PROBE_PROJECTS):
             raise ValueError
         return observed
@@ -8732,7 +7166,7 @@ def _read_live_caddy_probe_observations(
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     finally:
         for project in LIVE_CADDY_PROBE_PROJECTS:
-            marker_path = output_directory / f"aud174-caddy-probe-{project}.json"
+            marker_path = output_directory / f"{filename_prefix}{project}.json"
             try:
                 marker_path.lstat()
             except FileNotFoundError:
@@ -9164,6 +7598,8 @@ def _read_live_caddy_probe_logs(
     correlation_ids: Mapping[str, str],
     deadline: float,
     docker_context: _LiveDockerReadContext | None = None,
+    reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]] | None = None,
+    reset_observations: Mapping[str, Mapping[str, int]] | None = None,
 ) -> None:
     """Verify coalesced probe windows under shared budgets and fresh pins."""
     completed: subprocess.CompletedProcess[bytes] | None = None
@@ -9184,6 +7620,7 @@ def _read_live_caddy_probe_logs(
                 for project in LIVE_CADDY_PROBE_PROJECTS
             )
             or len({password_nonce, *correlation_ids.values()}) != 3
+            or (reset_probe_markers is None) != (reset_observations is None)
         ):
             raise _LiveCaddyProbeStageFailure("input_validation")
         project_windows: dict[str, tuple[int, int]] = {}
@@ -9195,8 +7632,52 @@ def _read_live_caddy_probe_logs(
             until_ms = observed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
             project_windows[project] = (since_ms, until_ms)
 
+        reset_windows: dict[tuple[str, str], tuple[int, int]] = {}
+        if reset_probe_markers is not None and reset_observations is not None:
+            if (
+                not isinstance(reset_probe_markers, Mapping)
+                or set(reset_probe_markers) != set(LIVE_CADDY_PROBE_PROJECTS)
+                or not isinstance(reset_observations, Mapping)
+                or set(reset_observations) != set(LIVE_CADDY_PROBE_PROJECTS)
+            ):
+                raise _LiveCaddyProbeStageFailure("input_validation")
+            all_markers = [password_nonce, *correlation_ids.values()]
+            for project in LIVE_CADDY_PROBE_PROJECTS:
+                project_markers = reset_probe_markers[project]
+                project_observations = reset_observations[project]
+                if (
+                    not isinstance(project_markers, Mapping)
+                    or set(project_markers) != {"query", "path"}
+                    or not isinstance(project_observations, Mapping)
+                    or set(project_observations) != {"query", "path"}
+                ):
+                    raise _LiveCaddyProbeStageFailure("input_validation")
+                for source in ("query", "path"):
+                    binding = project_markers[source]
+                    observed_at_ms = project_observations[source]
+                    if (
+                        not isinstance(binding, Mapping)
+                        or set(binding) != {"marker", "correlationId"}
+                        or not isinstance(binding["marker"], str)
+                        or re.fullmatch(r"[0-9a-f]{32}", binding["marker"]) is None
+                        or not isinstance(binding["correlationId"], str)
+                        or re.fullmatch(r"[0-9a-f]{32}", binding["correlationId"])
+                        is None
+                        or type(observed_at_ms) is not int
+                        or observed_at_ms <= 0
+                    ):
+                        raise _LiveCaddyProbeStageFailure("input_validation")
+                    all_markers.extend((binding["marker"], binding["correlationId"]))
+                    reset_windows[(project, source)] = (
+                        max(1, observed_at_ms - _LIVE_CADDY_PROBE_WINDOW_MS),
+                        observed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS,
+                    )
+            if len(set(all_markers)) != len(all_markers):
+                raise _LiveCaddyProbeStageFailure("input_validation")
+
         capture_windows: list[tuple[int, int]] = []
-        for since_ms, until_ms in sorted(project_windows.values()):
+        all_windows = [*project_windows.values(), *reset_windows.values()]
+        for since_ms, until_ms in sorted(all_windows):
             if capture_windows and since_ms <= capture_windows[-1][1]:
                 capture_windows[-1] = (
                     capture_windows[-1][0],
@@ -9225,7 +7706,7 @@ def _read_live_caddy_probe_logs(
             _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
         )
         remaining_bytes = _LIVE_CADDY_PROBE_MAX_BYTES
-        for since_ms, until_ms in capture_windows:
+        for capture_ordinal, (since_ms, until_ms) in enumerate(capture_windows, 1):
             stage = "deadline"
             remaining = _live_probe_remaining(deadline)
             capture_remaining = capture_deadline - time.monotonic()
@@ -9243,6 +7724,12 @@ def _read_live_caddy_probe_logs(
                 container_pin[0],
             ]
             stage = "log_read"
+            capture_budget = {
+                "window_count": len(capture_windows),
+                "capture_ordinal": capture_ordinal,
+                "previous_capture_bytes": _LIVE_CADDY_PROBE_MAX_BYTES - remaining_bytes,
+                "remaining_budget": remaining_bytes,
+            }
             try:
                 completed = _run_live_bounded_read(
                     command,
@@ -9256,12 +7743,25 @@ def _read_live_caddy_probe_logs(
                     "output_limit": "log_size",
                     "pipe_io": "log_pipe_io",
                 }.get(error.reason, "log_read")
-                raise _LiveCaddyProbeStageFailure(failure_stage) from None
+                raise _LiveCaddyProbeStageFailure(
+                    failure_stage,
+                    capture_budget=(
+                        {**capture_budget, "overflow_origin": "reader_limit"}
+                        if error.reason == "output_limit"
+                        else None
+                    ),
+                ) from None
             if completed.returncode != 0:
                 raise _LiveCaddyProbeStageFailure("log_exit")
             received_bytes = len(completed.stdout or b"") + len(completed.stderr or b"")
             if received_bytes > remaining_bytes:
-                raise _LiveCaddyProbeStageFailure("log_size")
+                raise _LiveCaddyProbeStageFailure(
+                    "log_size",
+                    capture_budget={
+                        **capture_budget,
+                        "overflow_origin": "returned_size",
+                    },
+                )
             remaining_bytes -= received_bytes
             if len(capture_windows) > 1:
                 # Do not manufacture a valid row from two truncated captures.
@@ -9299,11 +7799,37 @@ def _read_live_caddy_probe_logs(
             except StandError:
                 if invalid_stage is None:
                     invalid_stage = "project_row"
+        if reset_probe_markers is not None and reset_observations is not None:
+            for project in LIVE_CADDY_PROBE_PROJECTS:
+                for source in ("query", "path"):
+                    window = reset_windows[(project, source)]
+                    binding = reset_probe_markers[project][source]
+                    try:
+                        _assert_live_aud178_reset_probe_redaction(
+                            stdout,
+                            stderr=stderr,
+                            marker=binding["marker"],
+                            correlation_id=binding["correlationId"],
+                            source=source,
+                            project=project,
+                            since_ms=window[0],
+                            until_ms=window[1],
+                        )
+                    except _LiveCaddyProbeStageFailure as error:
+                        if invalid_stage is None:
+                            invalid_stage = error.stage
+                    except StandError:
+                        if invalid_stage is None:
+                            invalid_stage = "project_row"
         if invalid_stage is not None:
             raise _LiveCaddyProbeStageFailure(invalid_stage)
         stage = "deadline"
         _live_probe_remaining(deadline)
-    except _LiveCaddyProbeStageFailure:
+    except _LiveCaddyProbeStageFailure as error:
+        if error.stage == "log_size":
+            error.first_capture_summary = _summarize_live_caddy_first_capture(
+                stdout, stderr, error.capture_budget
+            )
         raise
     except (
         OSError,
@@ -9348,6 +7874,7 @@ def _verify_live_caddy_probe_log(
     correlation_ids: Mapping[str, str],
     container_pin: tuple[str, str],
     docker_context: _LiveDockerReadContext | None = None,
+    reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]] | None = None,
 ) -> None:
     """Require fresh correlated redaction rows for both Playwright projects."""
     stage = "input_validation"
@@ -9365,6 +7892,34 @@ def _verify_live_caddy_probe_log(
             or len({password_nonce, *correlation_ids.values()}) != 3
         ):
             raise _LiveCaddyProbeStageFailure("input_validation")
+        if reset_probe_markers is not None:
+            if not isinstance(reset_probe_markers, Mapping) or set(
+                reset_probe_markers
+            ) != set(LIVE_CADDY_PROBE_PROJECTS):
+                raise _LiveCaddyProbeStageFailure("input_validation")
+            marker_values = [password_nonce, *correlation_ids.values()]
+            for project in LIVE_CADDY_PROBE_PROJECTS:
+                project_markers = reset_probe_markers[project]
+                if not isinstance(project_markers, Mapping) or set(project_markers) != {
+                    "query",
+                    "path",
+                }:
+                    raise _LiveCaddyProbeStageFailure("input_validation")
+                for source in ("query", "path"):
+                    binding = project_markers[source]
+                    if (
+                        not isinstance(binding, Mapping)
+                        or set(binding) != {"marker", "correlationId"}
+                        or not isinstance(binding["marker"], str)
+                        or re.fullmatch(r"[0-9a-f]{32}", binding["marker"]) is None
+                        or not isinstance(binding["correlationId"], str)
+                        or re.fullmatch(r"[0-9a-f]{32}", binding["correlationId"])
+                        is None
+                    ):
+                        raise _LiveCaddyProbeStageFailure("input_validation")
+                    marker_values.extend((binding["marker"], binding["correlationId"]))
+            if len(set(marker_values)) != len(marker_values):
+                raise _LiveCaddyProbeStageFailure("input_validation")
         if docker_context is None:
             stage = "context_resolution"
             docker_context = _new_live_docker_read_context()
@@ -9381,6 +7936,18 @@ def _verify_live_caddy_probe_log(
             )
         except (OSError, RuntimeError, StandError, ValueError, TypeError):
             raise _LiveCaddyProbeStageFailure("marker_observation") from None
+        reset_observations = None
+        if reset_probe_markers is not None:
+            try:
+                reset_observations = _read_live_caddy_probe_observations(
+                    output_directory,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=finished_at_ms,
+                    deadline=deadline,
+                    probe_kind="aud178",
+                )
+            except (OSError, RuntimeError, StandError, ValueError, TypeError):
+                raise _LiveCaddyProbeStageFailure("marker_observation") from None
         stage = "deadline"
         _live_probe_remaining(deadline)
         stage = "log_read"
@@ -9392,12 +7959,23 @@ def _verify_live_caddy_probe_log(
             correlation_ids=correlation_ids,
             deadline=deadline,
             docker_context=docker_context,
+            reset_probe_markers=reset_probe_markers,
+            reset_observations=reset_observations,
         )
         stage = "deadline"
         _live_probe_remaining(deadline)
-        print("live Caddy access-log redaction=verified projects=2", flush=True)
+        if reset_probe_markers is None:
+            print("live Caddy access-log redaction=verified projects=2", flush=True)
+        else:
+            print(
+                "live Caddy access-log redaction=verified projects=2 reset_cases=4",
+                flush=True,
+            )
     except _LiveCaddyProbeStageFailure as error:
         _emit_live_caddy_probe_diagnostic(error.stage)
+        if error.stage == "log_size":
+            _emit_live_caddy_probe_budget(error.capture_budget)
+            _emit_live_caddy_first_capture_summary(error.first_capture_summary)
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
         _emit_live_caddy_probe_diagnostic(stage)
@@ -9430,11 +8008,15 @@ def _e2e_locked(
         playwright_environment: dict[str, str] = {}
         probe_nonce = ""
         probe_ids: dict[str, str] = {}
+        reset_probe_markers: dict[str, dict[str, dict[str, str]]] = {}
         container_pin: tuple[str, str] | None = None
         try:
             _ensure_live_e2e_dependencies(frontend, environment)
             playwright_environment = dict(environment)
             probe_enabled = _live_e2e_probe_selected(mode, selected_specs)
+            reset_probe_enabled = mode == "full" and (
+                not selected_specs or LIVE_AUD178_RESET_PROBE_SPEC in selected_specs
+            )
             probe_started_at_ms = 0
             ports = dict(owner.published_ports)
             try:
@@ -9461,6 +8043,13 @@ def _e2e_locked(
                 playwright_environment["LIVE_CADDY_PROBE_IDS"] = json.dumps(
                     probe_ids, separators=(",", ":")
                 )
+                if reset_probe_enabled:
+                    reset_probe_markers = _new_live_aud178_reset_probe_values(
+                        reserved_values=(probe_nonce, *probe_ids.values())
+                    )
+                    playwright_environment["LIVE_AUD178_PROBE_MARKERS"] = json.dumps(
+                        reset_probe_markers, separators=(",", ":")
+                    )
             if probe_enabled:
                 admission_deadline = (
                     time.monotonic() + _LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS
@@ -9520,12 +8109,17 @@ def _e2e_locked(
                     correlation_ids=probe_ids,
                     container_pin=container_pin,
                     docker_context=docker_context,
+                    reset_probe_markers=(
+                        reset_probe_markers if reset_probe_enabled else None
+                    ),
                 )
         finally:
             playwright_environment.pop("LIVE_CADDY_LOG_PROBE", None)
             playwright_environment.pop("LIVE_CADDY_PROBE_IDS", None)
+            playwright_environment.pop("LIVE_AUD178_PROBE_MARKERS", None)
             probe_nonce = ""
             probe_ids.clear()
+            reset_probe_markers.clear()
             container_pin = None
             playwright_environment.pop("TEST_PASSWORD", None)
             playwright_environment.pop("LIVE_BASE_URL", None)
@@ -9659,8 +8253,9 @@ def _status_compose_output(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         raise StandError("cannot read live stand status") from None
     if not isinstance(completed.stdout, str):
         raise StandError("cannot read live stand status")
@@ -9863,11 +8458,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "nats-outage":
             try:
                 from scripts.owned_nats_coordinator import (
+                    BrokerProbePhase,
                     OutageCheckpoint,
                     OutageOutcome,
                     OutageResult,
                     OutageStage,
                     RuntimeObservationPhase,
+                    SendPhase,
+                    valid_backend_diagnostic,
                 )
                 from scripts.owned_nats_outage_cli import run_owned_nats_outage
 
@@ -9888,12 +8486,56 @@ def main(argv: Sequence[str] | None = None) -> int:
                     and type(result.checkpoint) is not OutageCheckpoint
                 )
                 or (
+                    result.outcome is OutageOutcome.ACCEPTED
+                    and result.checkpoint is not None
+                )
+                or (
                     result.runtime_diagnostic is not None
                     and (
                         type(result.runtime_diagnostic) is not RuntimeObservationPhase
                         or result.outcome is not OutageOutcome.FAILED
                         or result.stage is not OutageStage.PREFLIGHT
                         or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                    )
+                )
+                or (
+                    result.broker_diagnostic is not None
+                    and (
+                        type(result.broker_diagnostic) is not BrokerProbePhase
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.BROKER
+                        or result.checkpoint is not OutageCheckpoint.BROKER_PROBE
+                    )
+                )
+                or (
+                    result.backend_diagnostic is not None
+                    and (
+                        not valid_backend_diagnostic(result.backend_diagnostic)
+                        or result.send_http_status != 500
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
+                    )
+                )
+                or (
+                    result.send_phase is not None
+                    and (
+                        type(result.send_phase) is not SendPhase
+                        or result.send_http_status is not None
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
+                    )
+                )
+                or (
+                    result.send_http_status is not None
+                    and (
+                        type(result.send_http_status) is not int
+                        or not 100 <= result.send_http_status <= 599
+                        or result.send_http_status == 200
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
                     )
                 )
             ):
@@ -9912,10 +8554,36 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.runtime_diagnostic is None
                     else f" runtime_diagnostic={result.runtime_diagnostic.value}"
                 )
+                broker_diagnostic = (
+                    ""
+                    if result.broker_diagnostic is None
+                    else f" broker_diagnostic={result.broker_diagnostic.value}"
+                )
+                if result.send_phase is not None:
+                    send_phase = f" phase={result.send_phase.value}"
+                elif result.send_http_status is not None:
+                    send_phase = f" phase=http_status={result.send_http_status}"
+                else:
+                    send_phase = ""
+                if result.send_http_status == 500:
+                    backend = result.backend_diagnostic
+                    if backend is None:
+                        print("owned_backend_failure_v1 evidence=unknown")
+                    elif backend.capture_stage is not None:
+                        print(
+                            "owned_backend_failure_v1 evidence=unknown "
+                            f"capture_stage={backend.capture_stage.value}"
+                        )
+                    else:
+                        print(
+                            "owned_backend_failure_v1 evidence=correlated "
+                            f"category={backend.category.value} kind={backend.kind.value} "
+                            f"sqlstate={backend.sqlstate}"
+                        )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}{diagnostic}"
+                    f"{checkpoint}{diagnostic}{broker_diagnostic}{send_phase}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

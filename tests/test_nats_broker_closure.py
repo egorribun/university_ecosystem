@@ -67,7 +67,7 @@ async def test_connect_registers_streams_and_lifecycle_callbacks() -> None:
     assert configs[4].name == "OUTBOX_EVENTS"
     assert configs[4].subjects == ["outbox.*"]
     assert configs[5].name == "CACHE_INVALIDATIONS"
-    assert configs[5].subjects == ["cache.invalidate"]
+    assert configs[5].subjects == ["cache.invalidate", "cache.revoke"]
 
 
 async def test_concurrent_connects_share_one_initialization() -> None:

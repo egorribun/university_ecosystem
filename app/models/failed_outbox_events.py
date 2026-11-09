@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import JSON, UUID, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.models.mixins import UUID7PrimaryKeyMixin
 
 

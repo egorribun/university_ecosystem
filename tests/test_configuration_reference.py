@@ -60,6 +60,13 @@ def test_configuration_reference_tracks_runtime_defaults_and_security_semantics(
         assert variable in rows
         assert expected in rows[variable]
 
+    assert (
+        "backend also accepts it as an alias for `SERVICE_VERSION`"
+        in rows["APP_VERSION"]
+    )
+    assert "Empty (backend, same as `SERVICE_VERSION`)" in rows["APP_VERSION"]
+    assert "not through `Settings`" in rows["NATS_TASK_MAX_DELIVERIES"]
+
     cdc_row = rows["EMBEDDED_CDC_OUTBOX_WORKER_ENABLED"].lower()
     for semantic in ("unsupported", "rejected", "polling", "adr-037"):
         assert semantic in cdc_row
@@ -77,3 +84,25 @@ def test_local_example_marks_mfa_ttl_as_an_explicit_override() -> None:
 
     assert "# Local profile override: runtime default is 600 seconds." in example
     assert "MFA_CHALLENGE_TTL_SECONDS=300" in example
+
+
+def test_file_scanner_environment_example_matches_supported_settings() -> None:
+    from app.core.config import Settings
+
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assignments = _env_assignments()
+
+    assert "EVENT_FILE_SCANNER_ENABLED" in assignments
+    assert "EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE" not in example
+    assert Settings.model_fields["event_file_scanner_enabled"].default is False
+    assert "event_file_scanner_allow_on_unavailable" not in Settings.model_fields
+
+
+def test_env_example_omits_unconsumed_spicedb_settings() -> None:
+    assignments = _env_assignments()
+
+    assert not {
+        "SPICEDB_HOST",
+        "SPICEDB_PORT",
+        "SPICEDB_PG_SSLMODE",
+    }.intersection(assignments)

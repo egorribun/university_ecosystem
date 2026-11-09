@@ -106,10 +106,42 @@ test("nested extglobs retain the original engine's semantics", () => {
 
 test("Docker's builder transfer retains the adapter engine after the filtered source copy", (t) => {
   const dockerfile = readFileSync(new URL("../../frontend.Dockerfile", import.meta.url), "utf8")
-  const builder = dockerfile.split("FROM base AS builder")[1].split("FROM base AS prod-deps")[0]
-  assert.match(
-    builder,
-    /COPY --from=deps \/app\/scripts\/boundary-micromatch-compat \.\/scripts\/boundary-micromatch-compat/
+  const dockerignore = readFileSync(new URL("../../.dockerignore", import.meta.url), "utf8")
+  const assertInheritedAdapter = (source, ignore) => {
+    const stages = source.split(/(?=^FROM )/m)
+    const deps = stages.find((stage) => /^FROM \S+ AS deps$/m.test(stage))
+    const builder = stages.find((stage) => /^FROM \S+ AS builder$/m.test(stage))
+    assert.ok(deps, "the dependency stage must exist")
+    assert.ok(builder, "the builder stage must exist")
+    assert.match(builder, /^FROM deps AS builder$/m)
+    assert.match(deps, /^COPY frontend\/scripts \.\/scripts\/$/m)
+    assert.match(deps, /until npm ci --legacy-peer-deps;/)
+    assert.ok(
+      deps.indexOf("COPY frontend/scripts ./scripts/") <
+        deps.indexOf("until npm ci --legacy-peer-deps;")
+    )
+    assert.match(builder, /^COPY frontend \.\/$/m)
+    assert.match(ignore, /^\*\*\/node_modules\/$/m)
+  }
+  assertInheritedAdapter(dockerfile, dockerignore)
+  // Bind the filesystem model below to the actual inheritance and filtered overlay.
+  for (const [name, before, after] of [
+    ["lost inheritance", "FROM deps AS builder", "FROM base AS builder"],
+    ["missing builder", "FROM deps AS builder", "FROM deps AS renamed-builder"],
+    ["missing adapter source", "COPY frontend/scripts ./scripts/\n", ""],
+    ["missing install", "until npm ci --legacy-peer-deps;", "until true;"],
+    ["missing overlay", "COPY frontend ./\n", ""],
+  ]) {
+    assert.throws(
+      () => assertInheritedAdapter(dockerfile.replace(before, after), dockerignore),
+      { code: "ERR_ASSERTION" },
+      name
+    )
+  }
+  assert.throws(
+    () => assertInheritedAdapter(dockerfile, dockerignore.replace("**/node_modules/\n", "")),
+    { code: "ERR_ASSERTION" },
+    "unfiltered nested dependencies"
   )
 
   const target = mkdtempSync(path.join(tmpdir(), "boundary-adapter-builder-"))
@@ -129,9 +161,33 @@ test("Docker's builder transfer retains the adapter engine after the filtered so
 
   const builderRequire = createRequire(path.join(target, "package.json"))
   const adapterRequire = createRequire(builderRequire.resolve("micromatch"))
+  const nestedEngine = path.join(targetAdapter, "node_modules", "picomatch")
+  assert.equal(
+    adapterRequire.resolve("picomatch/package.json"),
+    path.join(nestedEngine, "package.json")
+  )
   assert.equal(adapterRequire("picomatch/package.json").version, "2.3.2")
   assert.equal(builderRequire("micromatch").isMatch("test/utils", "test?(/utils/**)"), false)
   assert.equal(builderRequire("micromatch").isMatch("b", "+(*(a)|*(b))"), false)
+
+  // A fresh process cannot satisfy this negative control from the require cache.
+  rmSync(nestedEngine, { recursive: true, force: true })
+  const missingEngine = spawnSync(
+    process.execPath,
+    [
+      "--no-global-search-paths",
+      "-e",
+      `const assert = require("node:assert/strict");
+       assert.throws(() => require(process.argv[1]), {
+         code: "MODULE_NOT_FOUND",
+         message: /Cannot find module 'picomatch'/,
+       });`,
+      builderRequire.resolve("micromatch"),
+    ],
+    { encoding: "utf8", timeout: 15000 }
+  )
+  assert.ifError(missingEngine.error)
+  assert.equal(missingEngine.status, 0, missingEngine.stderr)
 })
 
 test("path, dotfile, case, and globstar options remain intact", () => {

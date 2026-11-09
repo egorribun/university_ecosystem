@@ -1,10 +1,11 @@
+type _MockedModuleType1 = typeof import("react")
 import { render, screen, act } from "@testing-library/react"
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
 
 const reactEffects = vi.hoisted(() => ({ dependencies: [] as unknown[] }))
 
 vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useEffect: (effect: Parameters<typeof actual.useEffect>[0], dependencies?: unknown[]) => {
@@ -67,7 +68,7 @@ describe("OfflineIndicator", () => {
       "left-1/2",
       "z-toast",
       "bg-(--warning-bg)",
-      "border-(--warning-text)/(--opacity-dim)",
+      "border-(--warning-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--warning-text)"
     )
   })
@@ -86,7 +87,7 @@ describe("OfflineIndicator", () => {
     expect(offlineToast).toHaveTextContent("You're offline")
     expect(offlineToast).toHaveClass(
       "bg-(--warning-bg)",
-      "border-(--warning-text)/(--opacity-dim)",
+      "border-(--warning-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--warning-text)"
     )
 
@@ -98,7 +99,7 @@ describe("OfflineIndicator", () => {
     expect(onlineToast).toHaveTextContent("Back online")
     expect(onlineToast).toHaveClass(
       "bg-(--success-bg)",
-      "border-(--success-text)/(--opacity-dim)",
+      "border-(--success-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--success-text)"
     )
 

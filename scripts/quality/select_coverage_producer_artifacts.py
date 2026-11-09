@@ -67,6 +67,9 @@ COVERAGE_PRODUCER_SPECS: tuple[CoverageProducerSpec, ...] = (
         "unit-tests",
     ),
     CoverageProducerSpec("frontend", "frontend-coverage-attempt-", "unit-tests"),
+    CoverageProducerSpec(
+        "node_actions", "node-actions-coverage-attempt-", "coverage-policy-gate"
+    ),
     CoverageProducerSpec("go_gateway", "go-coverage-services-gateway-attempt-", "test"),
     CoverageProducerSpec("go_ws_hub", "go-coverage-services-ws-hub-attempt-", "test"),
     CoverageProducerSpec(

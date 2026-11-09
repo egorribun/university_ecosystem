@@ -739,7 +739,14 @@ def test_policy_static_defaults_remain_bound_to_effective_worker_sources() -> No
     assert "outbox-worker:\n    environment: *live-delivery" in live
     assert "COPY --chown=app:app app ./app" in dockerfile
     assert "COPY --chown=app:app .env" not in dockerfile
-    assert "ENV_FILE_PATH" in config_base
+    settings_sources = (repo / "app/core/settings_sources.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from app.core.settings_sources import (" in config_base
+    assert "    resolve_env_file," in config_base
+    assert "return resolve_env_file(base_dir, logger=_logger)" in config_base
+    assert "_ENV_FILE = _resolve_env_file(_PROJECT_ROOT)" in config_base
+    assert 'env_override = os.environ.get("ENV_FILE_PATH")' in settings_sources
     assert "case_sensitive=False" in config_base
 
 
@@ -960,3 +967,198 @@ def test_policy_projection_through_real_docker_cli(
         )
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [None, TimeoutError("synthetic-private"), RuntimeError("synthetic-private")],
+)
+def test_http500_diagnostic_preserves_single_post_and_original_failure(
+    monkeypatch, failure
+) -> None:
+    from uuid import uuid4
+
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        MessagePostEvidence,
+    )
+
+    port = _port()
+    request_id = str(uuid4())
+    calls = []
+
+    def send(self, *args, **kwargs):
+        calls.append("post")
+        self._send_request_id = request_id
+        return MessagePostEvidence(500, None)
+
+    monkeypatch.setattr(http.OwnedNatsHttpPort, "send_message_once", send)
+    monkeypatch.setattr(
+        SignedOwnerLeasePort, "read_signed_owner", lambda *args, **kwargs: _OWNER
+    )
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+
+    def capture(*args, deadline, **kwargs):
+        calls.append("capture")
+        assert args[3] == request_id
+        assert deadline.expires_at <= 5.0
+        if failure is not None:
+            raise failure
+        return projected
+
+    monkeypatch.setattr(transport_port, "capture_backend_failure", capture)
+    response = port.send_message_once("chat", "content", deadline=_deadline())
+    assert response.status_code == 500
+    assert response.phase is None
+    if failure is None:
+        assert response.backend_diagnostic == projected
+    else:
+        from scripts.owned_nats_coordinator import BackendCaptureStage
+
+        assert response.backend_diagnostic is not None
+        assert response.backend_diagnostic.category is BackendFailureCategory.UNKNOWN
+        assert (
+            response.backend_diagnostic.capture_stage
+            is BackendCaptureStage.OWNER_BEFORE
+        )
+    assert calls == ["post", "capture"]
+    assert port._http._send_request_id is None
+    assert request_id not in repr(response)
+    assert "synthetic-private" not in repr(response)
+
+
+def test_no_diagnostic_read_without_primary_deadline_reserve(monkeypatch) -> None:
+    from uuid import uuid4
+
+    from scripts.owned_nats_coordinator import MessagePostEvidence
+
+    port = _port()
+
+    def send(self, *args, **kwargs):
+        self._send_request_id = str(uuid4())
+        return MessagePostEvidence(500, None)
+
+    monkeypatch.setattr(http.OwnedNatsHttpPort, "send_message_once", send)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("diagnostic read cannot consume restoration budget")
+
+    monkeypatch.setattr(transport_port, "capture_backend_failure", forbidden)
+    response = port.send_message_once(
+        "chat", "content", deadline=Deadline.after(0.5, clock=lambda: _NOW)
+    )
+    assert response.status_code == 500
+    from scripts.owned_nats_coordinator import BackendCaptureStage
+
+    assert response.backend_diagnostic is not None
+    assert (
+        response.backend_diagnostic.capture_stage
+        is BackendCaptureStage.DEADLINE_RESERVE
+    )
+    assert port._http._send_request_id is None
+
+
+def test_read_admission_preserves_two_argument_cast_and_delegation(monkeypatch) -> None:
+    from scripts.owned_nats_coordinator import AdmissionEvidence
+
+    port = _port()
+    deadline = _deadline()
+    postgres = replace(_WORKER, service="postgres")
+    sentinel = object.__new__(AdmissionEvidence)
+    calls = []
+
+    def read(self, owner, target, *, deadline):
+        calls.append((self, owner, target, deadline))
+        return sentinel
+
+    monkeypatch.setattr(sql.OwnedNatsSqlAdapter, "read_admission", read)
+    assert port.read_admission(_OWNER, postgres, deadline=deadline) is sentinel
+    assert calls == [(port._sql, _OWNER, postgres, deadline)]
+
+
+@pytest.mark.parametrize(
+    "mode, expected_stage, expected_owner_reads, expected_captures",
+    [
+        ("missing_request_id", "request_id", 0, 0),
+        ("owner_before_raises", "owner_before", 1, 0),
+        ("owner_after_changed", "owner_after", 2, 1),
+        ("owner_after_raises", "owner_after", 2, 1),
+        ("unmatched_owner_equal", "projection_unmatched", 2, 1),
+        ("unmatched_owner_raises", "owner_after", 2, 1),
+        ("unmatched_owner_changed", "owner_after", 2, 1),
+    ],
+)
+def test_capture_owner_boundaries_and_failure_precedence(
+    monkeypatch, mode, expected_stage, expected_owner_reads, expected_captures
+):
+    from uuid import uuid4
+
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        MessagePostEvidence,
+    )
+
+    port = _port()
+    request_id = str(uuid4())
+    calls = []
+    owners = []
+    original_deadline = _deadline()
+    correlated = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+
+    def send(self, *args, deadline):
+        calls.append("post")
+        assert deadline is original_deadline
+        self._send_request_id = None if mode == "missing_request_id" else request_id
+        return MessagePostEvidence(500, None)
+
+    def owner_read(self, *, deadline):
+        calls.append("owner")
+        owners.append(deadline)
+        assert deadline.expires_at == 5.0
+        if len(owners) == 1 and mode == "owner_before_raises":
+            raise RuntimeError("synthetic-private-owner-before")
+        if len(owners) == 2:
+            if mode in {"owner_after_raises", "unmatched_owner_raises"}:
+                raise RuntimeError("synthetic-private-owner-after")
+            if mode in {"owner_after_changed", "unmatched_owner_changed"}:
+                return replace(_OWNER, source_sha="e" * 40)
+        return _OWNER
+
+    def capture(*args, deadline, recorder):
+        calls.append("capture")
+        assert deadline is owners[0]
+        assert args[3] == request_id
+        if mode.startswith("unmatched_"):
+            recorder.record(BackendCaptureStage.PROJECTION_UNMATCHED)
+            return None
+        return correlated
+
+    monkeypatch.setattr(http.OwnedNatsHttpPort, "send_message_once", send)
+    monkeypatch.setattr(SignedOwnerLeasePort, "read_signed_owner", owner_read)
+    monkeypatch.setattr(transport_port, "capture_backend_failure", capture)
+    response = port.send_message_once("chat", "content", deadline=original_deadline)
+
+    assert response.status_code == 500
+    assert response.phase is None
+    assert response.backend_diagnostic is not None
+    assert response.backend_diagnostic.category is BackendFailureCategory.UNKNOWN
+    assert response.backend_diagnostic.kind is BackendFailureKind.UNKNOWN
+    assert response.backend_diagnostic.sqlstate == "UNKNOWN"
+    assert response.backend_diagnostic.capture_stage.value == expected_stage
+    assert response.backend_diagnostic != correlated
+    assert calls.count("post") == 1
+    assert calls.count("owner") == expected_owner_reads
+    assert calls.count("capture") == expected_captures
+    assert all(deadline is owners[0] for deadline in owners)
+    assert port._http._send_request_id is None
+    assert request_id not in repr(response)
+    assert "synthetic-private" not in repr(response)

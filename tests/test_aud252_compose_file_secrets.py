@@ -19,11 +19,18 @@ _PRODUCTION_COMPOSE_FILES = ("docker-compose.yml", "docker-compose.prod.yml")
 _SECRET_NAMES = (
     "secret_key",
     "database_url",
+    "migration_database_url",
+    "notifications_database_url",
     "nats_auth_token",
     "cache_redis_url",
     "rate_limit_storage_uri",
     "revocation_redis_url",
     "postgres_password",
+    "ue_app_db_password",
+    "ue_worker_db_password",
+    "ue_migrator_db_password",
+    "ue_spicedb_db_password",
+    "ue_temporal_db_password",
     "mfa_totp_encryption_keys",
     "vapid_private_key",
     "spotify_client_secret",
@@ -35,6 +42,7 @@ _SECRET_NAMES = (
     "internal_hmac_secret",
     "spicedb_preshared_key",
     "token_hmac_secret",
+    "idempotency_hmac_secret",
     "ws_hub_internal_secret",
 )
 # Every Compose secret name uses the matching <NAME>_SOURCE_FILE variable.
@@ -60,11 +68,12 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "notifications-worker": {
         "secret_key",
-        "database_url",
+        "notifications_database_url",
         "nats_auth_token",
         "cache_redis_url",
         "rate_limit_storage_uri",
@@ -76,6 +85,7 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "outbox-worker": {
@@ -90,11 +100,12 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "migrations": {
         "secret_key",
-        "database_url",
+        "migration_database_url",
         "nats_auth_token",
         "cache_redis_url",
         "revocation_redis_url",
@@ -106,10 +117,19 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "postgres": {"postgres_password"},
-    "pgbouncer": {"postgres_password"},
+    "pgbouncer": {"ue_app_db_password", "ue_worker_db_password"},
+    "postgres-roles-init": {
+        "postgres_password",
+        "ue_app_db_password",
+        "ue_worker_db_password",
+        "ue_migrator_db_password",
+        "ue_spicedb_db_password",
+        "ue_temporal_db_password",
+    },
 }
 _SERVICE_FILE_ENVIRONMENT = {
     "backend": {
@@ -130,11 +150,12 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "notifications-worker": {
         "SECRET_KEY_FILE": "/run/secrets/secret_key",
-        "DATABASE_URL_FILE": "/run/secrets/database_url",
+        "DATABASE_URL_FILE": "/run/secrets/notifications_database_url",
         "NATS_AUTH_TOKEN_FILE": "/run/secrets/nats_auth_token",
         "CACHE_REDIS_URL_FILE": "/run/secrets/cache_redis_url",
         "RATE_LIMIT_STORAGE_URI_FILE": "/run/secrets/rate_limit_storage_uri",
@@ -146,6 +167,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "outbox-worker": {
@@ -160,11 +182,12 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "migrations": {
         "SECRET_KEY_FILE": "/run/secrets/secret_key",
-        "DATABASE_URL_FILE": "/run/secrets/database_url",
+        "DATABASE_URL_FILE": "/run/secrets/migration_database_url",
         "NATS_AUTH_TOKEN_FILE": "/run/secrets/nats_auth_token",
         "CACHE_REDIS_URL_FILE": "/run/secrets/cache_redis_url",
         "REVOCATION_REDIS_URL_FILE": "/run/secrets/revocation_redis_url",
@@ -176,6 +199,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
 }
@@ -322,6 +346,7 @@ def test_production_profile_renders_only_file_backed_secret_sources(
         "ELASTICSEARCH_URL",
         "SPICEDB_ENDPOINT",
         "EVENT_FILE_SCANNER_HOST",
+        "TRUSTED_PROXIES",
     ),
 )
 def test_production_render_fails_when_required_secret_path_or_key_id_is_missing(

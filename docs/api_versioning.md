@@ -45,19 +45,34 @@ queries and repeated cursor pages can still retrieve matching public
 profiles. Broader directory scoping or dedicated anti-abuse limits require
 a separate policy decision.
 
-## Additive My-events paging (API 1.1.0)
+## My-events paging and v1 limit exception (AUD-260)
 
-GET /api/v1/events/my/page adds cursor-based paging with server-side filters.
-The existing GET /api/v1/events/my remains an array response for v1
-compatibility. Both routes use the approved stable starts_at ascending, id
-ascending order; the previous My-events array had no defined SQL order. The new
-page route uses a distinct cache-key prefix while both routes retain
-event-cache-version invalidation and authenticated private caching.
+`GET /api/v1/events/my/page` provides cursor-based paging and server-side
+category and date filters. `limit` is 1–100 (default 20). The response contains
+`items`, `total` (null), `limit`, `cursor`, `next_cursor`, and `has_more`.
+Clients should follow `next_cursor` until `has_more` is false, keeping the same
+locale, filters, sort, limit, and upcoming cutoff for each cursor chain.
+`lang` selects the response locale using the existing locale fallback rules.
+`newest` and `upcoming` retain ascending start-time and ID order;
+`newest_desc` adds descending start-time and ID order. `popular` uses actual
+attendance counts and server ordering. Page items expose those actual counts.
 
-The legacy array endpoint now reads registrations with bounded keyset database
-batches, but it still serializes and caches the complete array. Its response and
-cache payload therefore remain O(N) in the number of registrations; this is an
-open follow-up rather than a claim that all My-events resource use is bounded.
+The owner approved a narrow, intentional v1 compatibility exception for
+`GET /api/v1/events/my`: accounts with up to 100 registrations still receive
+the complete array in ascending start-time and ID order, with the legacy zero
+participant counts. An account with more than 100 receives HTTP 409 with
+problem code `events_my_pagination_required`, `legacy_limit: 100`,
+`pagination_url: /api/v1/events/my/page`, and a `Link` to the page endpoint.
+This changes behavior for existing array clients with more than 100 entries;
+they must migrate to the page endpoint and handle its cursor and filters. The
+exception is specific to AUD-260 and does not authorize other v1 breaks.
+
+Both My routes and event detail read fresh data before deriving an ETag. They
+do not reuse a server-side cached payload, and send `Cache-Control: private,
+no-store`. Conditional 304 responses are based on the freshly derived payload;
+overflow is checked before returning a legacy 304. This contract describes the
+source change, not a claim that deployed clients have already migrated.
+
 ## Enforcement
 
 The canonical OpenAPI snapshot is

@@ -14,11 +14,13 @@ from scripts.owned_nats_coordinator import (
     CorrelationRows,
     LoginEvidence,
     MessagePostEvidence,
+    OutageCheckpoint,
     OutageOutcome,
     OutageResult,
     OutageStage,
     ParticipantEvidence,
     PgRoleRow,
+    SendPhase,
     WaitVerdict,
     run_owned_outage,
     wait_for_poll,
@@ -75,6 +77,7 @@ def test_valid_path_binds_exact_event_and_restores_before_drain() -> None:
 
     assert result.outcome is OutageOutcome.ACCEPTED
     assert result.stage is OutageStage.COMPLETE
+    assert result.checkpoint is None
     assert ports.owner.repository.startswith("/")
     assert ports.owner.worktree.startswith(
         "/fixtures/system-temp/ue-live-acceptance/run-"
@@ -325,8 +328,14 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
         "stage",
         "checkpoint",
         "runtime_diagnostic",
+        "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
+        "backend_diagnostic",
     }
-    assert result.checkpoint is None
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is SendPhase.NOT_READY
+    assert result.send_http_status is None
     assert result.runtime_diagnostic is None
     output = repr(result) + captured.out + captured.err
     for forbidden in (private, MESSAGE, CONTENT, "password=", "cookie=", "token="):
@@ -598,6 +607,39 @@ def test_coordinator_requires_exact_raw_broker_receipt(case: str) -> None:
         ports.broker = replace(ports.broker, envelope={"type": "new_message"})
     result = assert_failed(ports, sends=1, restores=1)
     assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_RECEIPT
+
+
+def test_invalid_broker_probe_has_distinct_finite_checkpoint() -> None:
+    ports = FakePorts()
+    ports.broker = BrokerErrorEvidence(status=503, error_code=None)
+
+    result = assert_failed(ports, sends=1, restores=1)
+
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_PROBE
+
+
+def test_coordinator_carries_finite_broker_probe_phase_only_on_failure() -> None:
+    from scripts.owned_nats_coordinator import BrokerProbePhase
+
+    ports = FakePorts()
+    ports.broker = BrokerErrorEvidence(
+        status=None,
+        error_code=None,
+        failure_phase=BrokerProbePhase.DECODE,
+    )
+
+    result = assert_failed(ports, sends=1, restores=1)
+
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_PROBE
+    assert result.broker_diagnostic is BrokerProbePhase.DECODE
+    assert result.outcome is OutageOutcome.FAILED
+
+    accepted = run(FakePorts())
+    assert accepted.outcome is OutageOutcome.ACCEPTED
+    assert accepted.broker_diagnostic is None
 
 
 @pytest.mark.parametrize(
@@ -814,3 +856,105 @@ def test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection(
     captured = capsys.readouterr()
     assert captured.out == captured.err == ""
     assert "private-observation-error" not in repr(result)
+
+
+@pytest.mark.parametrize(
+    ("response", "phase", "status"),
+    [
+        (MessagePostEvidence(401, None), None, 401),
+        (MessagePostEvidence(503, None), None, 503),
+        (
+            MessagePostEvidence(201, MessageEvidence(MESSAGE, CHAT, ADMIN, CONTENT)),
+            None,
+            201,
+        ),
+        (MessagePostEvidence(None, None, SendPhase.TIMEOUT), SendPhase.TIMEOUT, None),
+        (
+            MessagePostEvidence(None, None, SendPhase.CONNECT_ERROR),
+            SendPhase.CONNECT_ERROR,
+            None,
+        ),
+        (
+            MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH),
+            SendPhase.BODY_MISMATCH,
+            None,
+        ),
+        (
+            MessagePostEvidence(None, None, SendPhase.NOT_READY),
+            SendPhase.NOT_READY,
+            None,
+        ),
+        (MessagePostEvidence(200, None), SendPhase.BODY_MISMATCH, None),
+        (TimeoutError("private HTTP body"), SendPhase.NOT_READY, None),
+    ],
+    ids=[
+        "http_status-401",
+        "http_status-503",
+        "http_status-201-with-message",
+        "timeout",
+        "connect_error",
+        "body_mismatch-phase",
+        "not_ready-phase",
+        "body_mismatch-missing-message",
+        "raised-exception-not-ready",
+    ],
+)
+def test_send_boundary_failure_propagates_one_closed_phase(
+    response: object, phase: SendPhase | None, status: int | None
+) -> None:
+    ports = FakePorts()
+    ports.script["send_message_once"] = [response]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.SEND
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is phase
+    assert result.send_http_status is status
+    assert "private HTTP body" not in repr(result)
+
+
+def test_send_deadline_exhaustion_reports_timeout_phase() -> None:
+    from scripts import owned_nats_coordinator as coordinator
+
+    ports = FakePorts()
+    ports.script["send_message_once"] = [coordinator._EvidenceFailure()]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is SendPhase.TIMEOUT
+    assert result.send_http_status is None
+
+
+def test_post_boundary_failure_after_accepted_post_has_no_send_phase() -> None:
+    ports = FakePorts()
+    ports.script["read_correlation"] = [CorrelationRows(None, ())]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.SEND
+    assert result.checkpoint is None
+    assert result.send_phase is None
+    assert result.send_http_status is None
+
+
+@pytest.mark.parametrize("cleanup", [None, "close_clients", "release_lock"])
+def test_backend_diagnostic_never_overrides_restoration_or_cleanup(
+    cleanup: str | None,
+) -> None:
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+    )
+
+    ports = FakePorts()
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+    ports.script["send_message_once"] = [
+        MessagePostEvidence(500, None, backend_diagnostic=projected)
+    ]
+    if cleanup is not None:
+        ports.script[cleanup] = [RuntimeError("synthetic-private")]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is (
+        OutageStage.SEND if cleanup is None else OutageStage.CLEANUP
+    )
+    assert result.backend_diagnostic == (projected if cleanup is None else None)
+    assert "42501" not in repr(result)

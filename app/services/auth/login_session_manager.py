@@ -82,11 +82,9 @@ class LoginSessionManager:
         # candidate #1 (admin auth JWT-no-role-claim race on cold-cache
         # direct /admin/* URL navigation).
         #
-        # Tenant scope is deliberately absent. The current schema has no
-        # authoritative user-to-tenant membership relation, so minting a
-        # request-header value would turn a routing hint into an auth claim.
-        # Downstream services therefore operate without tenant identity until
-        # membership resolution and token rotation are implemented together.
+        # SessionService binds the operator-configured MVP tenant claim to the
+        # locked users.tenant_id row. This facade never promotes routing headers
+        # or a pre-authentication DTO into membership authority.
         token, session = await self.session_service.create_access_token(
             sub=user.id,
             metadata=metadata,

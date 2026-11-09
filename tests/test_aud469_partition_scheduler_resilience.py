@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from sqlalchemy.exc import OperationalError
 
+from app.core.task_registry import TaskRegistry
 from app.services import partition_manager as manager
 
 
@@ -78,6 +79,21 @@ async def test_scheduler_survives_database_error_waits_and_stops_cleanly(
 async def test_scheduler_stops_when_shutdown_cancels_partition_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    task_holder: dict[str, asyncio.Task[Any]] = {}
+
+    class CapturingRegistry(TaskRegistry):
+        def create_task(
+            self,
+            coro: Coroutine[Any, Any, Any],
+            *,
+            name: str,
+        ) -> asyncio.Task[Any]:
+            task = super().create_task(coro, name=name)
+            task_holder["task"] = task
+            return task
+
+    monkeypatch.setattr("app.core.task_registry.TaskRegistry", CapturingRegistry)
+
     work_started = asyncio.Event()
     never_complete = asyncio.Event()
 
@@ -90,6 +106,10 @@ async def test_scheduler_stops_when_shutdown_cancels_partition_work(
 
     await asyncio.wait_for(work_started.wait(), timeout=1)
     await asyncio.wait_for(stop(), timeout=1)
+
+    task = task_holder["task"]
+    assert task.done()
+    assert task.cancelled()
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/components/ui/Button")
 import { createElement, type ElementType } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -17,7 +18,7 @@ vi.mock("react-i18next", () => ({
 
 const buttonBoundary = vi.hoisted(() => ({ disabledSaveOnClick: null as unknown }))
 vi.mock("@/components/ui/Button", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/ui/Button")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     Button: (props: ButtonProps<ElementType>) => {

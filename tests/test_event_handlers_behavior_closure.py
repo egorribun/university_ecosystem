@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -28,19 +28,53 @@ from app.services import event_handlers
 
 @pytest.mark.asyncio
 async def test_simple_event_handlers_accept_normal_and_optional_payloads():
-    await event_handlers.log_all_events(UserCreated(user_id=1, email="a@example.com"))
-    await event_handlers.handle_user_created(UserCreated(user_id=1))
-    await event_handlers.handle_user_logged_in(UserLoggedIn(user_id=1, ip_address=None))
-    await event_handlers.handle_mfa_enabled(MfaEnabled(user_id=1, method="totp"))
-    await event_handlers.handle_event_created(
-        EventCreated(event_id_entity=2, organizer_id=3, title="Event")
+    logged = UserCreated(user_id=1, email="a@example.com")
+    created = UserCreated(user_id=1)
+    login = UserLoggedIn(user_id=1, ip_address=None)
+    mfa = MfaEnabled(user_id=1, method="totp")
+    event = EventCreated(event_id_entity=2, organizer_id=3, title="Event")
+    registration = EventRegistration(event_id_entity=2, user_id=3)
+    notification = NotificationSent(
+        notification_id="n-1", user_id=3, notification_type="push"
     )
-    await event_handlers.handle_event_registration(
-        EventRegistration(event_id_entity=2, user_id=3)
-    )
-    await event_handlers.handle_notification_sent(
-        NotificationSent(notification_id="n-1", user_id=3, notification_type="push")
-    )
+
+    with (
+        patch.object(event_handlers.logger, "info") as info,
+        patch.object(event_handlers.logger, "debug") as debug,
+    ):
+        assert (await event_handlers.log_all_events(logged)) is None
+        assert (await event_handlers.handle_user_created(created)) is None
+        assert (await event_handlers.handle_user_logged_in(login)) is None
+        assert (await event_handlers.handle_mfa_enabled(mfa)) is None
+        assert (await event_handlers.handle_event_created(event)) is None
+        assert (await event_handlers.handle_event_registration(registration)) is None
+        assert (await event_handlers.handle_notification_sent(notification)) is None
+
+    assert info.call_args_list == [
+        call("Domain event: %s (id=%s)", logged.event_type, logged.event_id),
+        call("New user registered: user_id=%d", created.user_id),
+        call("MFA enabled: user_id=%d, method=%s", mfa.user_id, mfa.method),
+        call(
+            "Event created: event_id=%s, organizer=%s, title=%s",
+            event.event_id_entity,
+            event.organizer_id,
+            event.title,
+        ),
+    ]
+    assert debug.call_args_list == [
+        call("User login: user_id=%d, ip=%s", login.user_id, "unknown"),
+        call(
+            "Event registration: event_id=%d, user_id=%d",
+            registration.event_id_entity,
+            registration.user_id,
+        ),
+        call(
+            "Notification sent: notification_id=%s, user_id=%d, type=%s",
+            notification.notification_id,
+            notification.user_id,
+            notification.notification_type,
+        ),
+    ]
 
 
 def _session(db: AsyncMock) -> MagicMock:
@@ -736,7 +770,11 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 32
+    assert subscribe.call_count == 33
+    subscribe.assert_any_call(
+        "chat.participant_cache_invalidation",
+        event_handlers.handle_chat_participant_cache_invalidation,
+    )
     subscribe.assert_any_call(
         "event.created", event_handlers.handle_event_created_notification
     )
@@ -778,22 +816,44 @@ async def test_audit_only_producers_have_explicit_durable_acknowledgement(
         "NOTIFICATION_DEAD_LETTER_PURGE",
     }
     bus = EventBus()
+    acknowledge = AsyncMock()
+    monkeypatch.setattr(event_handlers, "acknowledge_audit_only_event", acknowledge)
     monkeypatch.setattr(event_handlers, "event_bus", bus)
     monkeypatch.setattr(outbox_module, "event_bus", bus)
     event_handlers.configure_event_handlers()
-    worker = outbox_module.OutboxWorker()
-
-    for event_type in sorted(audit_only):
-        await worker._dispatch_event(
-            StoredEvent(
-                id=uuid4(),
-                event_type=event_type,
-                aggregate_type="audit",
-                aggregate_id="test",
-                payload={},
-                metadata_={},
-            )
+    stored_events = [
+        StoredEvent(
+            id=uuid4(),
+            event_type=event_type,
+            aggregate_type="audit",
+            aggregate_id="test",
+            payload={},
+            metadata_={},
+            error_count=0,
+            last_error=None,
         )
+        for event_type in sorted(audit_only)
+    ]
+    selected = MagicMock()
+    selected.scalars.return_value.all.return_value = stored_events
+    pending = MagicMock()
+    pending.scalar_one.return_value = len(stored_events)
+    outbox_db = AsyncMock()
+    outbox_db.execute.side_effect = [selected, pending]
+    monkeypatch.setattr(outbox_module, "async_session", lambda: _session(outbox_db))
+
+    processed = await outbox_module.OutboxWorker(
+        batch_size=len(stored_events)
+    ).process_batch()
+
+    assert processed == len(stored_events)
+    assert all(event.processed_at is not None for event in stored_events)
+    assert all(
+        event.error_count == 0 and event.last_error is None for event in stored_events
+    )
+    dispatched_types = [call.args[0].event_type for call in acknowledge.await_args_list]
+    assert sorted(dispatched_types) == sorted(audit_only)
+    outbox_db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -867,7 +927,10 @@ async def test_created_notification_handler_skips_deleted_source_record(
     monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
     monkeypatch.setattr(event_handlers, notify_name, notify)
 
-    await getattr(event_handlers, handler_name)(event_type(**{field: event_id}))
+    # A known tenant distinguishes deletion from an unscoped RLS miss.
+    event = event_type(**{field: event_id})
+    vars(event.metadata)["tenant_id"] = str(uuid4())
+    await getattr(event_handlers, handler_name)(event)
 
     db.get.assert_awaited_once_with(
         getattr(event_handlers.models, model_name), event_id
@@ -896,9 +959,10 @@ async def test_comment_notification_fails_closed_when_news_or_author_disappears(
     monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
     monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
 
-    await event_handlers.handle_news_comment_created_notification(
-        NewsCommentCreated(comment_id=uuid4(), locale="en")
-    )
+    # The comment exists; protected parents are missing in a known tenant.
+    event = NewsCommentCreated(comment_id=uuid4(), locale="en")
+    vars(event.metadata)["tenant_id"] = str(uuid4())
+    await event_handlers.handle_news_comment_created_notification(event)
 
     assert db.get.await_count == 3
     notify.assert_not_awaited()
@@ -1032,7 +1096,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     monkeypatch.setattr(outbox_module, "event_bus", bus)
     event_handlers.configure_event_handlers()
     monkeypatch.setattr(
-        ws_manager, "_get_chat_participants_cached", AsyncMock(return_value=[])
+        ws_manager, "_get_chat_participants", AsyncMock(return_value=[])
     )
 
     async def publish_core(_subject, _payload, *, strict=False):
@@ -1070,3 +1134,64 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     handler_db.commit.assert_not_awaited()
     broker_publish.assert_awaited_once()
     assert broker_publish.await_args.kwargs["strict"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "field", "handler_name", "model_name"),
+    [
+        (EventCreated, "event_id_entity", "handle_event_created_notification", "Event"),
+        (NewsCreated, "news_id", "handle_news_created_notification", "News"),
+    ],
+)
+async def test_created_notification_handler_retries_unscoped_missing_source(
+    monkeypatch, event_type, field, handler_name, model_name
+):
+    """RLS-hidden legacy content is not distinguishable from deleted public content."""
+    source_id = uuid4()
+    db = AsyncMock()
+    db.get.return_value = None
+    notify = AsyncMock()
+    notify_name = "notify_about_event" if model_name == "Event" else "notify_about_news"
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, notify_name, notify)
+    event = event_type(**{field: source_id})
+
+    with pytest.raises(RuntimeError) as caught:
+        await getattr(event_handlers, handler_name)(event)
+
+    expected = "Durable content source is unavailable without tenant scope"
+    assert str(caught.value) == expected
+    db.get.assert_awaited_once_with(
+        getattr(event_handlers.models, model_name), source_id
+    )
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["news", "author"])
+async def test_comment_notification_retries_unscoped_missing_protected_parent(
+    monkeypatch, missing
+):
+    from app.core.events import NewsCommentCreated
+
+    comment_id, news_id, user_id = uuid4(), uuid4(), uuid4()
+    comment = SimpleNamespace(news_id=news_id, user_id=user_id)
+    news = None if missing == "news" else SimpleNamespace(id=news_id)
+    author = None if missing == "author" else SimpleNamespace(id=user_id)
+    db = AsyncMock()
+    db.get.side_effect = [comment, news, author]
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
+    event = NewsCommentCreated(comment_id=comment_id, locale="en")
+
+    with pytest.raises(RuntimeError) as caught:
+        await event_handlers.handle_news_comment_created_notification(event)
+
+    expected = "Durable content source is unavailable without tenant scope"
+    assert str(caught.value) == expected
+    assert db.get.await_count == 3
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()

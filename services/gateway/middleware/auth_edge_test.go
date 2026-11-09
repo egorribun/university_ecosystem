@@ -53,6 +53,9 @@ func signRS256(t *testing.T, priv *rsa.PrivateKey, claims Claims) string {
 	if len(claims.Audience) == 0 {
 		claims.Audience = jwt.ClaimStrings{DefaultJWTAudience}
 	}
+	if claims.Issuer == "" {
+		claims.Issuer = DefaultJWTIssuer
+	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	s, err := tok.SignedString(priv)
 	require.NoError(t, err)
@@ -62,6 +65,7 @@ func signRS256(t *testing.T, priv *rsa.PrivateKey, claims Claims) string {
 func freshClaims(jti string) Claims {
 	return Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			ID:        jti,
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),

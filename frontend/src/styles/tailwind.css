@@ -4,6 +4,8 @@
 @import "./partials/_micro-interactions.css";
 @import "./partials/_modern-css.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /*
    * Semantic Color Mapping
@@ -284,7 +286,7 @@
   --bg-footer-light:
     radial-gradient(
       120% 180% at -10% -20%,
-      color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
+      color-mix(in srgb, var(--color-blue-400) calc(var(--glass-alpha-med) * 100%), transparent),
       transparent 60%
     ),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
@@ -423,30 +425,30 @@
 
 @keyframes aura-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, white var(--opacity-dim), transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent);
   }
 
   50% {
     box-shadow: 0 0 0 var(--space-35, 0.875rem)
-      color-mix(in srgb, white var(--opacity-faint), transparent);
+      color-mix(in srgb, white calc(var(--opacity-faint) * 100%), transparent);
   }
 
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, white var(--opacity-faint), transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, white calc(var(--opacity-faint) * 100%), transparent);
   }
 }
 
 @keyframes chip-highlight {
   0% {
-    border-color: color-mix(in srgb, white var(--opacity-dim), transparent);
+    border-color: color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent);
   }
 
   50% {
-    border-color: color-mix(in srgb, white var(--opacity-soft), transparent);
+    border-color: color-mix(in srgb, white calc(var(--opacity-soft) * 100%), transparent);
   }
 
   100% {
-    border-color: color-mix(in srgb, white var(--opacity-dim), transparent);
+    border-color: color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent);
   }
 }
 
@@ -560,7 +562,11 @@
   align-items: center;
   justify-content: center;
   border: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-subtle), transparent);
+  background: color-mix(
+    in srgb,
+    var(--bg-surface-hover) calc(var(--opacity-subtle) * 100%),
+    transparent
+  );
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow-xs);
   transition:
@@ -569,8 +575,12 @@
     transform 200ms var(--ease-premium);
 }
 .nav-action-btn:hover {
-  background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-dim), transparent);
-  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
+  background: color-mix(
+    in srgb,
+    var(--bg-surface-hover) calc(var(--opacity-dim) * 100%),
+    transparent
+  );
+  border-color: color-mix(in srgb, var(--brand-main) calc(var(--opacity-soft) * 100%), transparent);
 }
 .nav-action-btn:active {
   transform: scale(0.93);
@@ -592,8 +602,8 @@
 
 /* Unread state — persistent, non-animated brand cue. */
 .nav-action-btn[data-unread] {
-  border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
-  background: color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent);
+  border-color: color-mix(in srgb, var(--brand-main) calc(var(--opacity-soft) * 100%), transparent);
+  background: color-mix(in srgb, var(--brand-main) calc(var(--opacity-faint) * 100%), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -974,7 +984,7 @@
 @layer components {
   /* Skeleton with organic pulse */
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-(--bg-page)/(--opacity-dim) dark:bg-(--bg-page)/(--opacity-medium);
+    @apply relative overflow-hidden rounded-md bg-(--bg-page)/[calc(var(--opacity-dim)*100%)] dark:bg-(--bg-page)/[calc(var(--opacity-medium)*100%)];
   }
 
   .skeleton::after {
@@ -983,7 +993,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      color-mix(in srgb, white var(--opacity-subtle), transparent) 50%,
+      color-mix(in srgb, white calc(var(--opacity-subtle) * 100%), transparent) 50%,
       transparent 100%
     );
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
@@ -993,7 +1003,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
+      color-mix(in srgb, white calc(var(--opacity-faint) * 100%), transparent) 50%,
       transparent 100%
     );
   }
@@ -1041,7 +1051,7 @@
 }
 
 @utility glass-high-fidelity {
-  @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
+  @apply border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass backdrop-blur-3xl;
 
   /* Performance fallback for low-power or reduced-motion preferences */
   @media (prefers-reduced-motion: reduce) {
@@ -1470,39 +1480,39 @@
 }
 
 @utility badge-glass {
-  @apply font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium);
+  @apply font-medium text-(--text-primary)/[calc(var(--opacity-hover)*100%)] border-(--glass-border) bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] dark:text-(--text-primary)/[calc(var(--opacity-heavy)*100%)] dark:bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)];
 }
 
 @utility badge-glass-dim {
-  @apply font-medium text-(--text-primary)/(--opacity-dim) border-(--glass-border-subtle) bg-(--bg-surface)/(--opacity-faint) dark:text-(--text-primary)/(--opacity-soft) dark:bg-(--bg-surface)/(--opacity-dim);
+  @apply font-medium text-(--text-primary)/[calc(var(--opacity-dim)*100%)] border-(--glass-border-subtle) bg-(--bg-surface)/[calc(var(--opacity-faint)*100%)] dark:text-(--text-primary)/[calc(var(--opacity-soft)*100%)] dark:bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)];
 }
 
 @utility chip-time {
-  @apply font-medium border-brand/(--opacity-dim) bg-brand-subtle-bg text-brand dark:border-brand/(--opacity-soft) dark:bg-brand-subtle-bg/(--opacity-hover);
+  @apply font-medium border-brand/[calc(var(--opacity-dim)*100%)] bg-brand-subtle-bg text-brand dark:border-brand/[calc(var(--opacity-soft)*100%)] dark:bg-brand-subtle-bg/[calc(var(--opacity-hover)*100%)];
 }
 
 @utility button-icon-glass {
-  @apply absolute top-2 right-2 z-surface flex h-11 w-11 items-center justify-center rounded-lg opacity-0 bg-(--error-bg) text-(--error-text) border border-(--error-text)/(--opacity-soft) shadow-sm hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft);
+  @apply absolute top-2 right-2 z-surface flex h-11 w-11 items-center justify-center rounded-lg opacity-0 bg-(--error-bg) text-(--error-text) border border-(--error-text)/[calc(var(--opacity-soft)*100%)] shadow-sm hover:bg-(--error-text)/[calc(var(--opacity-dim)*100%)] hover:shadow-md group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/[calc(var(--opacity-soft)*100%)];
   transition: var(--transition-premium);
 }
 
 @utility auth-card-glass {
-  @apply border border-glass-border/(--opacity-hover) bg-surface/(--opacity-strong) shadow-glass backdrop-blur-3xl;
+  @apply border border-glass-border/[calc(var(--opacity-hover)*100%)] bg-surface/[calc(var(--opacity-strong)*100%)] shadow-glass backdrop-blur-3xl;
   border-radius: var(--radius-4xl);
 }
 
 @utility auth-perk-card {
-  @apply relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium hover:-translate-y-1;
+  @apply relative overflow-hidden rounded-lg border border-glass-border/[calc(var(--opacity-heavy)*100%)] bg-surface/[calc(var(--opacity-medium)*100%)] px-5 py-6 shadow-premium hover:-translate-y-1;
   transition-property: transform;
   transition-duration: var(--motion-duration-base);
 }
 
 @utility auth-stat-glass {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover) bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold text-text-primary/(--opacity-heavy) shadow-sm;
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-glass-border-subtle/[calc(var(--opacity-hover)*100%)] bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold text-text-primary/[calc(var(--opacity-heavy)*100%)] shadow-sm;
 }
 
 @utility badge-brand {
-  @apply inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/(--opacity-subtle);
+  @apply inline-flex items-center gap-2 rounded-full border border-brand/[calc(var(--opacity-dim)*100%)] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/[calc(var(--opacity-subtle)*100%)];
 }
 
 @utility card-glass {
@@ -1518,7 +1528,7 @@
 }
 
 @utility header-glass {
-  @apply sticky top-0 z-deep border-b border-glass-border bg-surface/(--opacity-medium) backdrop-blur-xl;
+  @apply sticky top-0 z-deep border-b border-glass-border bg-surface/[calc(var(--opacity-medium)*100%)] backdrop-blur-xl;
 }
 
 @utility transition-premium {

@@ -201,4 +201,43 @@ describe("Auth layout session settlement", () => {
     )
     expect(router.state.location.pathname).toBe("/settings")
   })
+
+  it("uses the request auth hint in the SSR beforeLoad branch", () => {
+    useAuthStore.setState({ user: null, loading: false })
+    const originalSSR = import.meta.env.SSR
+    const beforeLoad = (Route.options as any).beforeLoad as (input: any) => void
+    const location = {
+      href: "http://localhost/settings",
+      pathname: "/settings",
+      search: {},
+      searchStr: "",
+      hash: "",
+      state: {},
+    }
+
+    try {
+      import.meta.env.SSR = true
+      expect(
+        beforeLoad({
+          context: { auth: { isAuth: true, user: testUser, loading: false } },
+          location,
+        })
+      ).toBeUndefined()
+
+      let caught: unknown
+      try {
+        beforeLoad({
+          context: { auth: { isAuth: false, user: testUser, loading: false } },
+          location,
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toMatchObject({
+        options: { to: "/login", search: { redirect: "http://localhost/settings" } },
+      })
+    } finally {
+      import.meta.env.SSR = originalSSR
+    }
+  })
 })

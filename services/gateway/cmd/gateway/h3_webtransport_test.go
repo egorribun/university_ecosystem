@@ -32,6 +32,7 @@ func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) 
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":       userID,
+		"iss":       middleware.DefaultJWTIssuer,
 		"aud":       middleware.DefaultJWTAudience,
 		"role":      role,
 		"jti":       jti,

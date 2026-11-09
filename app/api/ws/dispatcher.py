@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import Any
 
@@ -58,6 +59,19 @@ class MessageDispatcher:
                 last_seen,
                 source=PRESENCE_SOURCE_PING,
             )
+
+        elif msg_type == "heartbeat_ping":
+            nonce = data.get("nonce")
+            if (
+                not isinstance(nonce, str)
+                or re.fullmatch(r"[0-9a-f]{32}", nonce) is None
+            ):
+                await websocket.send_json(
+                    {"type": "error", "message": "Invalid heartbeat nonce"}
+                )
+                return
+
+            await websocket.send_json({"type": "heartbeat_pong", "nonce": nonce})
 
         elif msg_type == "read":
             # Legacy direct-backend clients may still send a chat-level read

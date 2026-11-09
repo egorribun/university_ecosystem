@@ -180,6 +180,12 @@ async def test_redis_session_backend_update_last_seen_fails() -> None:
         # Should catch exception silently
         await backend.update_last_seen(jti)
 
+    mock_client.hset.assert_awaited_once()
+    args = mock_client.hset.await_args.args
+    assert args[:2] == (f"session:v2:{jti}", "last_seen_at")
+    assert datetime.fromisoformat(args[2]).tzinfo == UTC
+    mock_client.expire.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_redis_session_backend_publish_failure_keeps_revocation_successful() -> (

@@ -1434,3 +1434,413 @@ def test_output_rejects_hard_links_and_linked_parent_paths(tmp_path: Path) -> No
 
     with pytest.raises(selector.SameRunArtifactError, match="parent"):
         selector._append_output(output_through_link, result)
+
+
+_NIGHTLY_SHARD_PREFIX = "nightly-frontend-mutation-shard-"
+
+
+def _nightly_shard_arguments() -> selector.SelectionArguments:
+    return replace(
+        _arguments(),
+        artifact_prefix=_NIGHTLY_SHARD_PREFIX,
+        artifact_suffix="",
+        attempt_policy="current-or-earlier",
+        allow_empty=True,
+        producer_attempt="1",
+        shard_index="1",
+        shard_count="2",
+    )
+
+
+def _nightly_shard_artifact(
+    *, artifact_id: int, producer_attempt: int, shard_index: int
+) -> dict[str, object]:
+    artifact = _artifact(artifact_id=artifact_id, producer_attempt=producer_attempt)
+    artifact["name"] = (
+        f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-{producer_attempt}-{shard_index}"
+    )
+    return artifact
+
+
+@pytest.mark.parametrize(
+    ("producer_attempt", "shard_index", "expected_id"),
+    [("1", "0", 10), ("1", "1", 11), ("3", "1", 31)],
+)
+def test_exact_shard_selects_original_producer_not_latest_or_sibling(
+    tmp_path: Path, producer_attempt: str, shard_index: str, expected_id: int
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    artifacts = [
+        _nightly_shard_artifact(
+            artifact_id=attempt * 10 + index,
+            producer_attempt=attempt,
+            shard_index=index,
+        )
+        for attempt in (1, 2, 3)
+        for index in (0, 1)
+    ]
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 6, "artifacts": artifacts[:2]}),
+            _response({"total_count": 6, "artifacts": artifacts[2:]}),
+        ]
+    )
+    result = selector.select_same_run_artifact(
+        replace(
+            _nightly_shard_arguments(),
+            producer_attempt=producer_attempt,
+            shard_index=shard_index,
+        ),
+        token="test-token",
+        github_output=output,
+        request=network,
+    )
+    expected_name = (
+        f"nightly-frontend-mutation-shard-{RUN_ID}-{producer_attempt}-{shard_index}"
+    )
+    assert result == selector.SelectionResult(
+        True,
+        expected_id,
+        expected_name,
+        int(producer_attempt),
+        "sha256:" + "b" * 64,
+    )
+    assert output.read_text(encoding="utf-8") == (
+        "prior=true\n"
+        "has_candidate=true\n"
+        f"artifact_id={expected_id}\n"
+        f"artifact_name={expected_name}\n"
+        f"producer_attempt={producer_attempt}\n"
+        "artifact_digest=sha256:" + "b" * 64 + "\n"
+    )
+    assert network.requests[-1].path.endswith("page=2")
+
+
+@pytest.mark.parametrize("allow_empty", [False, True])
+def test_exact_shard_absence_requires_complete_catalog_and_explicit_opt_in(
+    tmp_path: Path, allow_empty: bool
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    artifacts = [
+        _nightly_shard_artifact(artifact_id=10, producer_attempt=1, shard_index=0),
+        _nightly_shard_artifact(artifact_id=21, producer_attempt=2, shard_index=1),
+        {"name": "unrelated"},
+    ]
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 3, "artifacts": artifacts[:1]}),
+            _response({"total_count": 3, "artifacts": artifacts[1:]}),
+        ]
+    )
+    arguments = replace(_nightly_shard_arguments(), allow_empty=allow_empty)
+    if allow_empty:
+        result = selector.select_same_run_artifact(
+            arguments,
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+        assert result == selector.SelectionResult(False, None, None, None)
+        assert output.read_text(encoding="utf-8") == (
+            "prior=true\n"
+            "has_candidate=false\nartifact_id=\nartifact_name=\nproducer_attempt=\n"
+        )
+    else:
+        with pytest.raises(selector.SameRunArtifactError, match="no valid"):
+            selector.select_same_run_artifact(
+                arguments,
+                token="test-token",
+                github_output=output,
+                request=network,
+            )
+        assert output.read_text(encoding="utf-8") == "prior=true\n"
+    assert network.requests[-1].path.endswith("page=2")
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"producer_attempt": None},
+        {"shard_index": None},
+        {"shard_count": None},
+        {"producer_attempt": None, "shard_index": None},
+        {"producer_attempt": None, "shard_count": None},
+        {"shard_index": None, "shard_count": None},
+        {"artifact_prefix": PREFIX},
+        {"artifact_suffix": "1"},
+        {"artifact_name_layout": "attempt"},
+        {"attempt_policy": "earlier"},
+        {"producer_attempt": "0"},
+        {"producer_attempt": "4"},
+        {"shard_count": "0"},
+        {"shard_count": "1", "shard_index": "0"},
+        {"shard_count": "257"},
+        {"shard_index": "2"},
+    ],
+)
+def test_exact_shard_rejects_partial_ambiguous_or_out_of_range_contracts(
+    tmp_path: Path, updates: dict[str, object]
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    network = _Network([])
+    with pytest.raises(selector.SameRunArtifactError):
+        selector.select_same_run_artifact(
+            replace(_nightly_shard_arguments(), **cast(Any, updates)),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert network.requests == []
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+@pytest.mark.parametrize("field", ["producer_attempt", "shard_index", "shard_count"])
+@pytest.mark.parametrize(
+    "value",
+    [True, 1, 1.0, "", "01", "-1", " 1", "1.0", "9" * 21, "9007199254740992"],
+)
+def test_exact_shard_rejects_noncanonical_or_unbounded_numeric_inputs(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    network = _Network([])
+    with pytest.raises(selector.SameRunArtifactError):
+        selector.select_same_run_artifact(
+            replace(_nightly_shard_arguments(), **cast(Any, {field: value})),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert network.requests == []
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}invalid"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{int(RUN_ID) + 1}-2-0"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-02-0"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2-00"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2--1"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2-2"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2-9007199254740992"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-4-0"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-9007199254740992-0"},
+        {"name": f"{_NIGHTLY_SHARD_PREFIX}{RUN_ID}-2-0-extra"},
+        {"id": 0},
+        {"id": True},
+        {"id": 9007199254740992},
+        {"size_in_bytes": 0},
+        {"size_in_bytes": True},
+        {"expired": True},
+        {"expired": "false"},
+        {"digest": "bad"},
+        {"workflow_run": None},
+        {"workflow_run": {"id": int(RUN_ID) + 1, "head_sha": COMMIT_SHA}},
+        {"workflow_run": {"id": True, "head_sha": COMMIT_SHA}},
+        {"workflow_run": {"id": int(RUN_ID), "head_sha": RUN_HEAD_SHA}},
+    ],
+)
+def test_exact_shard_rejects_invalid_siblings_after_finding_exact_candidate(
+    tmp_path: Path, mutation: dict[str, object]
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    target = _nightly_shard_artifact(artifact_id=11, producer_attempt=1, shard_index=1)
+    sibling = _nightly_shard_artifact(artifact_id=20, producer_attempt=2, shard_index=0)
+    sibling.update(mutation)
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 2, "artifacts": [target]}),
+            _response({"total_count": 2, "artifacts": [sibling]}),
+        ]
+    )
+    with pytest.raises(selector.SameRunArtifactError):
+        selector.select_same_run_artifact(
+            _nightly_shard_arguments(),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+@pytest.mark.parametrize(
+    ("first_identity", "second_identity"),
+    [
+        ((11, 1, 1), (12, 1, 1)),
+        ((20, 2, 0), (22, 2, 0)),
+        ((10, 1, 0), (10, 1, 1)),
+        ((10, 1, 0), (10, 2, 1)),
+    ],
+)
+def test_exact_shard_rejects_duplicate_target_sibling_or_artifact_id(
+    tmp_path: Path,
+    first_identity: tuple[int, int, int],
+    second_identity: tuple[int, int, int],
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    artifacts = [
+        _nightly_shard_artifact(
+            artifact_id=artifact_id,
+            producer_attempt=attempt,
+            shard_index=index,
+        )
+        for artifact_id, attempt, index in (first_identity, second_identity)
+    ]
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 2, "artifacts": artifacts}),
+        ]
+    )
+    with pytest.raises(selector.SameRunArtifactError, match="duplicated"):
+        selector.select_same_run_artifact(
+            _nightly_shard_arguments(),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429, 500])
+def test_exact_shard_catalog_failure_is_not_absence(
+    tmp_path: Path, status: int
+) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            selector.HttpResponse(status, {}, b"{}"),
+        ]
+    )
+    with pytest.raises(selector.SameRunArtifactError, match="unexpected status"):
+        selector.select_same_run_artifact(
+            _nightly_shard_arguments(),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert len(network.requests) == 2
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+def test_exact_shard_incomplete_catalog_never_emits_absence(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+    network = _Network(
+        [_response(_run_metadata())]
+        + [_response({"total_count": 1, "artifacts": []})] * 3
+    )
+    with pytest.raises(selector.SameRunArtifactError, match="converge"):
+        selector.select_same_run_artifact(
+            _nightly_shard_arguments(),
+            token="test-token",
+            github_output=output,
+            request=network,
+        )
+    assert len(network.requests) == 4
+    assert output.read_text(encoding="utf-8") == "prior=true\n"
+
+
+def test_exact_shard_cli_arguments_reach_real_selection(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("", encoding="utf-8")
+    arguments = selector.parse_arguments(
+        [
+            "--repository",
+            REPOSITORY,
+            "--run-id",
+            RUN_ID,
+            "--consumer-run-attempt",
+            CONSUMER_ATTEMPT,
+            "--commit-sha",
+            COMMIT_SHA,
+            "--event",
+            EVENT,
+            "--workflow-path",
+            WORKFLOW_PATH,
+            "--artifact-prefix",
+            _NIGHTLY_SHARD_PREFIX,
+            "--artifact-suffix",
+            "",
+            "--attempt-policy",
+            "current-or-earlier",
+            "--producer-attempt",
+            "1",
+            "--shard-index",
+            "1",
+            "--shard-count",
+            "2",
+            "--allow-empty",
+        ]
+    )
+    artifact = _nightly_shard_artifact(
+        artifact_id=11, producer_attempt=1, shard_index=1
+    )
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 1, "artifacts": [artifact]}),
+        ]
+    )
+    result = selector.select_same_run_artifact(
+        arguments, token="test-token", github_output=output, request=network
+    )
+    assert result.artifact_id == 11
+    assert result.producer_attempt == 1
+    assert "has_candidate=true\n" in output.read_text(encoding="utf-8")
+
+
+def test_exact_shard_accepts_largest_supported_shard_index(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("", encoding="utf-8")
+    artifact = _nightly_shard_artifact(
+        artifact_id=255, producer_attempt=1, shard_index=255
+    )
+    network = _Network(
+        [
+            _response(_run_metadata()),
+            _response({"total_count": 1, "artifacts": [artifact]}),
+        ]
+    )
+    result = selector.select_same_run_artifact(
+        replace(_nightly_shard_arguments(), shard_index="255", shard_count="256"),
+        token="test-token",
+        github_output=output,
+        request=network,
+    )
+    assert result.artifact_id == 255
+    assert result.artifact_name == f"nightly-frontend-mutation-shard-{RUN_ID}-1-255"
+
+
+def test_exact_shard_transport_failure_never_emits_absence(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    output.write_text("prior=true\n", encoding="utf-8")
+
+    def request(item: selector.Request, maximum_bytes: int) -> selector.HttpResponse:
+        del maximum_bytes
+        if item.path == f"/repos/{REPOSITORY}/actions/runs/{RUN_ID}":
+            return _response(_run_metadata())
+        raise selector.SameRunArtifactError("GitHub REST request failed")
+
+    with pytest.raises(selector.SameRunArtifactError, match="request failed"):
+        selector.select_same_run_artifact(
+            _nightly_shard_arguments(),
+            token="test-token",
+            github_output=output,
+            request=request,
+        )
+    assert output.read_text(encoding="utf-8") == "prior=true\n"

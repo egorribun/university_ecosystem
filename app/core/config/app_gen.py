@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from typing import Literal, cast
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationInfo, field_validator
@@ -30,6 +31,8 @@ _VALID_APP_PROCESS_ROLES: frozenset[str] = frozenset(
 class AppGeneralSettings(BaseAppSettings):
     environment: str
     campus_timezone: str = "UTC"
+    # Explicit operator-selected single-organization MVP; never inferred from HTTP.
+    mvp_tenant_id: UUID | None = None
     # The deployment manifests set these explicitly for background workers.
     # API/migration processes retain the secure defaults and therefore cannot
     # start with the revocation capability silently disabled.

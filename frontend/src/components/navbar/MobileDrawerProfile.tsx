@@ -24,7 +24,7 @@ export function MobileDrawerProfile({ user, onProfileClick, t }: MobileDrawerPro
     <button
       type="button"
       onClick={onProfileClick}
-      className="flex w-full items-center gap-4 rounded-2xl border-none p-4 text-left transition-[transform,opacity,background-color] duration-200 hover:bg-(--bg-surface-hover)/(--opacity-soft) cursor-pointer"
+      className="flex w-full items-center gap-4 rounded-2xl border-none p-4 text-left transition-[transform,opacity,background-color] duration-200 hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)] cursor-pointer"
       style={{
         background: "linear-gradient(135deg, var(--quick-action-icon-bg), transparent 60%)",
       }}

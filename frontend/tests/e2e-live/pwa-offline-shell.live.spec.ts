@@ -2,6 +2,10 @@ import { expect, ownedSessionOrigin, test } from "./fixtures"
 import type { Page, Request } from "@playwright/test"
 import { startPwaUpdateProxy } from "./pwa-update-proxy"
 import { replacePrecacheRevision } from "./pwa-precache-revision"
+import {
+  createPwaBuildMarkerScript,
+  readPrecachedModuleAppBundleEvidence,
+} from "./pwa-app-bundle-evidence"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 const PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
@@ -154,6 +158,66 @@ async function emitPwaUpdateLifecycleDiagnostic(
   }
 }
 
+type PwaLiveUpdateBarrierWindow = Window & {
+  __pwaLiveUpdatePromptBarrier?: Promise<void>
+  __pwaLiveNewControllerBarrier?: Promise<void>
+}
+
+const PWA_REFRESH_EVENT = "pwa:need-refresh"
+// The test pins ue:language to en; this is system:installPrompt.reload's accessible button name.
+const UPDATE_RELOAD_BUTTON_NAME = "Reload"
+
+const updateReloadButton = (page: Page) =>
+  page.getByRole("button", { name: UPDATE_RELOAD_BUTTON_NAME, exact: true })
+
+async function armPwaLiveUpdatePromptBarrier(page: Page): Promise<void> {
+  await page.evaluate((refreshEventName) => {
+    const state = window as PwaLiveUpdateBarrierWindow
+    state.__pwaLiveUpdatePromptBarrier = new Promise<void>((resolve) => {
+      window.addEventListener(refreshEventName, () => resolve(), { once: true })
+    })
+  }, PWA_REFRESH_EVENT)
+}
+
+async function waitForPwaLiveUpdatePrompt(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const barrier = (window as PwaLiveUpdateBarrierWindow).__pwaLiveUpdatePromptBarrier
+    if (!barrier) throw new Error("PWA update prompt barrier was not armed")
+    await barrier
+  })
+}
+
+async function armDifferentServiceWorkerControllerBarrier(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = window as PwaLiveUpdateBarrierWindow
+    const serviceWorker = navigator.serviceWorker
+    const previousController = serviceWorker.controller
+    if (!previousController) {
+      throw new Error("The peer page must already have a service worker controller")
+    }
+
+    state.__pwaLiveNewControllerBarrier = new Promise<void>((resolve) => {
+      const onControllerChange = () => {
+        const currentController = serviceWorker.controller
+        if (!currentController || currentController === previousController) return
+        serviceWorker.removeEventListener("controllerchange", onControllerChange)
+        resolve()
+      }
+      // This listener is attached synchronously after the snapshot; a delayed
+      // initial-claim event is ignored because it keeps the same controller object.
+      serviceWorker.addEventListener("controllerchange", onControllerChange)
+    })
+  })
+}
+
+async function waitForDifferentServiceWorkerController(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const barrier = (window as PwaLiveUpdateBarrierWindow).__pwaLiveNewControllerBarrier
+    if (!barrier) throw new Error("The peer controller barrier was not armed")
+    await barrier
+  })
+}
+
 async function ensureServiceWorkerControlsPage(page: Page) {
   await page.evaluate(async () => {
     if (!("serviceWorker" in navigator)) {
@@ -265,14 +329,20 @@ test.describe("PWA offline app shell on the live stack", () => {
 
     const updateProxy = await startPwaUpdateProxy(context, ownedSessionOrigin())
     let cdp: Awaited<ReturnType<typeof context.newCDPSession>> | undefined
+    let peerCdp: Awaited<ReturnType<typeof context.newCDPSession>> | undefined
 
     try {
-      await page.addInitScript((storageKey) => {
-        navigator.serviceWorker?.addEventListener("controllerchange", () => {
-          const current = Number(sessionStorage.getItem(storageKey) ?? "0")
-          sessionStorage.setItem(storageKey, String(current + 1))
-        })
-      }, CONTROLLER_CHANGE_COUNT)
+      await context.addCookies([{ name: "ue:language", value: "en", url: updateProxy.origin }])
+      const prepareUpdatePage = async (targetPage: Page) => {
+        await targetPage.addInitScript((storageKey) => {
+          localStorage.setItem("ue:language", "en")
+          navigator.serviceWorker?.addEventListener("controllerchange", () => {
+            const current = Number(sessionStorage.getItem(storageKey) ?? "0")
+            sessionStorage.setItem(storageKey, String(current + 1))
+          })
+        }, CONTROLLER_CHANGE_COUNT)
+      }
+      await prepareUpdatePage(page)
 
       await page.goto(new URL("/login", updateProxy.origin).toString(), {
         waitUntil: "domcontentloaded",
@@ -285,31 +355,7 @@ test.describe("PWA offline app shell on the live stack", () => {
         CONTROLLER_CHANGE_COUNT
       )
 
-      const initialEvidence = await page.evaluate(async () => {
-        const bundlePaths = [...document.scripts]
-          .map((script) => (script.src ? new URL(script.src).pathname : null))
-          .filter((pathname): pathname is string => pathname?.endsWith(".js") ?? false)
-        const precacheNames = (await caches.keys()).filter((name) =>
-          name.startsWith("workbox-precache")
-        )
-        const precacheEntries = (
-          await Promise.all(
-            precacheNames.map(async (cacheName) => {
-              const cache = await caches.open(cacheName)
-              return (await cache.keys()).map((request) => ({
-                cacheName,
-                requestUrl: request.url,
-                path: new URL(request.url).pathname,
-              }))
-            })
-          )
-        ).flat()
-        const appBundlePath = bundlePaths.find((path) =>
-          precacheEntries.some((entry) => entry.path === path)
-        )
-
-        return { appBundlePath: appBundlePath ?? null, precacheEntries }
-      })
+      const initialEvidence = await page.evaluate(readPrecachedModuleAppBundleEvidence)
 
       expect(initialEvidence.appBundlePath).not.toBeNull()
       const appBundlePath = initialEvidence.appBundlePath!
@@ -332,6 +378,37 @@ test.describe("PWA offline app shell on the live stack", () => {
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
       await context.setOffline(false)
+
+      const updatePageInitialUrl = page.url()
+      const updatePageInitialTimeOrigin = await page.evaluate(() => performance.timeOrigin)
+      let updatePageMainFrameNavigations = 0
+      page.on("framenavigated", (frame) => {
+        if (frame === page.mainFrame()) updatePageMainFrameNavigations += 1
+      })
+
+      const peerPage = await context.newPage()
+      await prepareUpdatePage(peerPage)
+      await peerPage.goto(new URL("/login", updateProxy.origin).toString(), {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(peerPage.getByRole("textbox", { name: "E-mail" })).toBeVisible()
+      await peerPage.waitForFunction(() => window.__APP_HYDRATED === true)
+      await ensureServiceWorkerControlsPage(peerPage)
+      await peerPage.evaluate(
+        (storageKey) => sessionStorage.removeItem(storageKey),
+        CONTROLLER_CHANGE_COUNT
+      )
+      const peerDraft = "pwa-update-tab-two-draft@invalid.test"
+      const peerEmailInput = peerPage.getByRole("textbox", { name: "E-mail" })
+      await peerEmailInput.fill(peerDraft)
+      const peerInitialUrl = peerPage.url()
+      const peerInitialTimeOrigin = await peerPage.evaluate(() => performance.timeOrigin)
+      let peerMainFrameNavigations = 0
+      peerPage.on("framenavigated", (frame) => {
+        if (frame === peerPage?.mainFrame()) peerMainFrameNavigations += 1
+      })
+      peerCdp = await context.newCDPSession(peerPage)
+      await peerCdp.send("Network.setCacheDisabled", { cacheDisabled: true })
 
       const appOrigin = new URL(page.url()).origin
       const marker = `pwa-build-marker-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -371,7 +448,7 @@ test.describe("PWA offline app shell on the live stack", () => {
 
         const response = await route.fetch()
         const source = await response.text()
-        const markerScript = `\n;(() => { const marker = document.createElement("output"); marker.id = "pwa-build-marker"; marker.dataset.pwaBuildMarker = ${JSON.stringify(marker)}; marker.textContent = ${JSON.stringify(marker)}; marker.style.cssText = "position:fixed;top:0;left:0;z-index:2147483647;background:#fff;color:#000;padding:4px"; document.body.append(marker); })();\n`
+        const markerScript = createPwaBuildMarkerScript(marker)
         bundleUpdateResponses += 1
         await route.fulfill({
           response,
@@ -380,31 +457,60 @@ test.describe("PWA offline app shell on the live stack", () => {
         })
       })
 
-      const updateReload = page.waitForEvent("framenavigated", {
-        predicate: (frame) => frame === page.mainFrame(),
-        timeout: 15_000,
-      })
       await Promise.all([
-        page.evaluate(async () => {
-          const activeRegistration = await navigator.serviceWorker.ready
-          await activeRegistration.update()
-        }),
-        updateReload,
+        armPwaLiveUpdatePromptBarrier(page),
+        armPwaLiveUpdatePromptBarrier(peerPage),
       ])
+      await page.evaluate(async () => {
+        const activeRegistration = await navigator.serviceWorker.ready
+        await activeRegistration.update()
+      })
+      await waitForPwaLiveUpdatePrompt(page)
+      await expect(updateReloadButton(page)).toBeVisible()
+      expect(
+        await page.evaluate(async () => Boolean((await navigator.serviceWorker.ready).waiting))
+      ).toBe(true)
+      expect(workerUpdateResponses).toBeGreaterThan(0)
+      await expect(page).toHaveURL(updatePageInitialUrl)
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(updatePageInitialTimeOrigin)
+      expect(updatePageMainFrameNavigations).toBe(0)
 
+      await armDifferentServiceWorkerControllerBarrier(peerPage)
+      const peerNewController = waitForDifferentServiceWorkerController(peerPage)
+      await Promise.all([
+        page.waitForEvent("framenavigated", {
+          predicate: (frame) => frame === page.mainFrame(),
+          timeout: 15_000,
+        }),
+        updateReloadButton(page).click(),
+      ])
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
-      expect(workerUpdateResponses).toBeGreaterThan(0)
+      expect(updatePageMainFrameNavigations).toBe(1)
+      await peerNewController
+      await waitForPwaLiveUpdatePrompt(peerPage)
+
+      await expect(updateReloadButton(peerPage)).toBeVisible()
+      await expect(peerPage).toHaveURL(peerInitialUrl)
+      await expect(peerEmailInput).toHaveValue(peerDraft)
+      expect(await peerPage.evaluate(() => performance.timeOrigin)).toBe(peerInitialTimeOrigin)
+      expect(peerMainFrameNavigations).toBe(0)
+
       try {
         await expect
           .poll(() =>
-            page.evaluate(
+            peerPage.evaluate(
               (storageKey) => Number(sessionStorage.getItem(storageKey) ?? "0"),
               CONTROLLER_CHANGE_COUNT
             )
           )
           .toBeGreaterThan(0)
         expect(bundleUpdateResponses).toBeGreaterThan(0)
+        const pageControllerChangeCount = await page.evaluate(
+          (storageKey) => Number(sessionStorage.getItem(storageKey) ?? "0"),
+          CONTROLLER_CHANGE_COUNT
+        )
+        expect(pageControllerChangeCount).toBeGreaterThan(0)
       } catch (assertionFailure) {
         try {
           const project = testInfo.project.name
@@ -437,6 +543,19 @@ test.describe("PWA offline app shell on the live stack", () => {
         throw assertionFailure
       }
 
+      const peerReload = peerPage.waitForEvent("framenavigated", {
+        predicate: (frame) => frame === peerPage?.mainFrame(),
+        timeout: 15_000,
+      })
+      await updateReloadButton(peerPage).click()
+      await peerReload
+      await peerPage.waitForFunction(() => window.__APP_HYDRATED === true)
+      await expect(peerPage).toHaveURL(/\/login$/u)
+      expect(peerMainFrameNavigations).toBe(1)
+      expect(
+        await peerPage.evaluate(() => Reflect.get(window, "__UE_PWA_TEST_BUILD_MARKER__"))
+      ).toBe(marker)
+
       const newBundleCacheEntries = await readBundleCacheEvidence(page, appBundlePath, marker)
       const newBundleCacheKeys = newBundleCacheEntries.map((entry) => entry.requestUrl)
       expect(newBundleCacheEntries.some((entry) => entry.hasBuildMarker)).toBe(true)
@@ -459,8 +578,7 @@ test.describe("PWA offline app shell on the live stack", () => {
       )
       await assertStaticSpaDocumentResponse(updatedOfflineResponse)
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
-      await expect(page.locator("#pwa-build-marker")).toHaveAttribute(
-        "data-pwa-build-marker",
+      expect(await page.evaluate(() => Reflect.get(window, "__UE_PWA_TEST_BUILD_MARKER__"))).toBe(
         marker
       )
       await expect(page).toHaveURL(/\/forgot-password$/u)
@@ -472,9 +590,13 @@ test.describe("PWA offline app shell on the live stack", () => {
           await context.setOffline(false)
         } finally {
           try {
-            if (cdp) await cdp.detach()
+            if (peerCdp) await peerCdp.detach()
           } finally {
-            await updateProxy.close()
+            try {
+              if (cdp) await cdp.detach()
+            } finally {
+              await updateProxy.close()
+            }
           }
         }
       }

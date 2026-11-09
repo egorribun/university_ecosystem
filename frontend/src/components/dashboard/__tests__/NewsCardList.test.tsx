@@ -20,6 +20,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 import { NewsCardList } from "@/components/dashboard/NewsCardList"
 import type { NewsItem } from "@/api/news"
+import { checkA11y } from "@/tests/axeTest"
 
 const NEWS = [
   {
@@ -84,7 +85,12 @@ describe("NewsCardList", () => {
       "sm:gap-5"
     )
     expect(items[0]).toHaveAttribute("title", NEWS[0]!.title)
-    expect(items[0]).toHaveAttribute("aria-label", `dashboard:aria.newsItem:${NEWS[0]!.title}`)
+    expect(items[0]).toHaveAccessibleName(NEWS[0]!.title)
+  })
+
+  it("passes axe with row names that contain each visible title", async () => {
+    const { container } = render(<NewsCardList news={NEWS} loading={false} locale="en" />)
+    await checkA11y(container)
   })
 
   it("navigates to the news detail route when a row is clicked", async () => {

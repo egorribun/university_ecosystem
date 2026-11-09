@@ -81,6 +81,7 @@ STAGING_OVERRIDES: dict[str, Any] = {
     "fileProcessor.config.temporalHost": "temporal.staging.internal:7233",
     "fileProcessor.config.otlpEndpoint": "otel-collector.staging.internal:4317",
     # TEST-NET/IPv6 documentation peers exist only in the generated scanner profile.
+    "backend.config.trustedProxies": ["192.0.2.13/32", "2001:db8::13"],
     "gateway.config.trustedProxies": ["192.0.2.11/32", "2001:db8::11"],
     "wsHub.config.trustedProxies": ["198.51.100.12/32", "2001:db8::12"],
     "ingress.hosts[0].host": "university.staging.example.org",
@@ -98,6 +99,8 @@ STAGING_OVERRIDES: dict[str, Any] = {
     "cwv.exportOIDC.workflowRef": "example/university-ecosystem/.github/workflows/cwv-field-certification.yml@refs/heads/main",
     "cwv.exportOIDC.subject": "repo:example/university-ecosystem:environment:staging",
     "networkPolicy.gatewayJWKS.egressCIDRs[0]": "192.0.2.0/24",
+    "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs[0]": "192.0.2.0/24",
+    "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs[0]": "192.0.2.0/24",
     "cwv.deploymentRunID": 0,
     "cwv.deploymentRunAttempt": 0,
 }

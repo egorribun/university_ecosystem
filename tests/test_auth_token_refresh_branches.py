@@ -79,7 +79,12 @@ async def test_decode_token_valid_token_returns_payload(monkeypatch):
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
 
-    token = _make_token(subject=subject, kid=kid, secret=secret)
+    token = _make_token(
+        subject=subject,
+        kid=kid,
+        secret=secret,
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     payload = decode_token(token)
     assert payload is not None, "decode_token must return a dict for a valid token"
     assert payload["sub"] == subject
@@ -133,7 +138,12 @@ async def test_decode_token_expired_returns_none():
 
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
-    token = _make_token(kid=kid, secret=secret, expires_minutes=-5)
+    token = _make_token(
+        kid=kid,
+        secret=secret,
+        expires_minutes=-5,
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     result = decode_token(token)
     assert result is None, "Expired token MUST be rejected"
 
@@ -149,7 +159,12 @@ async def test_decode_token_wrong_audience_returns_none():
 
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
-    token = _make_token(kid=kid, secret=secret, audience="wrong-audience")
+    token = _make_token(
+        kid=kid,
+        secret=secret,
+        audience="wrong-audience",
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     result = decode_token(token)
     assert result is None, "Wrong audience token MUST be rejected"
 
@@ -384,6 +399,8 @@ async def test_redis_session_revoke_ordered_fallback(monkeypatch):
     AWS ElastiCache in cluster mode). The pipeline fallback ensures revocation
     still works without Lua.
     """
+    from unittest.mock import AsyncMock
+
     import fakeredis.aioredis
     from redis.exceptions import ResponseError
 
@@ -391,24 +408,35 @@ async def test_redis_session_revoke_ordered_fallback(monkeypatch):
 
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
-    original_eval = fake.eval
+    operations: list[tuple[str, str]] = []
+    original_set = fake.set
+    original_delete = fake.delete
 
-    async def _fail_eval(*args, **kwargs):
-        raise ResponseError("EVAL not available")
+    fail_eval = AsyncMock(side_effect=ResponseError("EVAL not available"))
 
-    fake.eval = _fail_eval
+    async def _record_set(name, *args, **kwargs):
+        operations.append(("set", name))
+        return await original_set(name, *args, **kwargs)
 
+    async def _record_delete(name, *args, **kwargs):
+        operations.append(("delete", name))
+        return await original_delete(name, *args, **kwargs)
+
+    monkeypatch.setattr(fake, "eval", fail_eval)
     backend = RedisSessionBackend(fake)
     jti = str(uuid4())
-    # Calculate expiry for context (not used directly — ex=300 is the real TTL)
-    _future = datetime.now(UTC) + timedelta(minutes=30)
-    await fake.set(f"session:{jti}", json.dumps({"user_id": "u1"}), ex=300)
+    session_key = f"session:{jti}"
+    tombstone_key = f"revoked:jti:{jti}"
+    await fake.set(session_key, json.dumps({"user_id": "u1"}), ex=300)
+    monkeypatch.setattr(fake, "set", _record_set)
+    monkeypatch.setattr(fake, "delete", _record_delete)
 
-    # Should not raise; ordered tombstone-first fallback handles it.
     await backend.revoke_session(jti)
 
-    # Restore
-    fake.eval = original_eval
+    fail_eval.assert_awaited_once()
+    assert operations == [("set", tombstone_key), ("delete", session_key)]
+    assert await fake.get(tombstone_key) == "1"
+    assert await backend.is_session_valid(jti) is False
 
 
 # ---------------------------------------------------------------------------

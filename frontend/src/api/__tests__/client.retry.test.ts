@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/app/logger")
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AxiosHeaders, isCancel } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
@@ -8,7 +9,7 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 // hoisted + stable across vi.resetModules() so re-imported client graphs share it.
 const setTraceContextMock = vi.hoisted(() => vi.fn((..._a: unknown[]) => undefined))
 vi.mock("@/app/logger", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/app/logger")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return { ...actual, setTraceContext: setTraceContextMock }
 })
 

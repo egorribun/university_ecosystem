@@ -104,7 +104,20 @@ const nextLesson = vi.hoisted(() => ({ value: null as { building: string } | nul
 vi.mock("@/hooks/useNextLesson", () => ({ useNextLesson: () => nextLesson.value }))
 
 vi.mock("@/hooks/useScheduleData", () => ({ useScheduleData: () => ({ todayLessons: [] }) }))
-vi.mock("@/hooks/useMapEvents", () => ({ useMapEvents: () => ({ events: [], isLoading: false }) }))
+const mapEventsPagination = vi.hoisted(() => ({
+  hasMoreEvents: false,
+  isLoadingMoreEvents: false,
+  loadMoreEvents: vi.fn(),
+}))
+vi.mock("@/hooks/useMapEvents", () => ({
+  useMapEvents: () => ({
+    events: [],
+    isLoading: false,
+    hasMoreEvents: mapEventsPagination.hasMoreEvents,
+    isLoadingMoreEvents: mapEventsPagination.isLoadingMoreEvents,
+    loadMoreEvents: mapEventsPagination.loadMoreEvents,
+  }),
+}))
 
 const weather = vi.hoisted(() => ({
   value: undefined as { condition: string } | undefined,
@@ -180,12 +193,50 @@ beforeEach(() => {
   i18nMock.language = "en"
   nextLesson.value = null
   weather.value = undefined
+  mapEventsPagination.hasMoreEvents = false
+  mapEventsPagination.isLoadingMoreEvents = false
+  mapEventsPagination.loadMoreEvents = vi.fn()
   mq.narrow = false
   mq.reduced = false
 })
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe("MapFeature — map event pagination", () => {
+  it("loads another marker page and disables requests while it is pending", () => {
+    const loadMoreEvents = vi.fn()
+    mapEventsPagination.hasMoreEvents = true
+    mapEventsPagination.loadMoreEvents = loadMoreEvents
+    const view = renderFeature()
+
+    const loadMoreButton = screen.getByRole("button", {
+      name: "common:buttons.loadMore",
+    })
+    expect(loadMoreButton).toBeEnabled()
+    fireEvent.click(loadMoreButton)
+    expect(loadMoreEvents).toHaveBeenCalledOnce()
+
+    mapEventsPagination.isLoadingMoreEvents = true
+    view.rerender(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+    const loadingButton = screen.getByRole("button", {
+      name: "common:buttons.loadMore",
+    })
+    expect(loadingButton).toBeDisabled()
+    expect(loadingButton).toHaveAttribute("aria-busy", "true")
+  })
+
+  it("hides the map pagination control when no cursor page remains", () => {
+    renderFeature()
+    expect(
+      screen.queryByRole("button", { name: "common:buttons.loadMore" })
+    ).not.toBeInTheDocument()
+  })
 })
 
 describe("MapFeature — orchestration handlers", () => {

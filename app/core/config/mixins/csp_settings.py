@@ -19,6 +19,7 @@ class CspSettingsMixin:
 
     security_csp: str = ""
     security_connect_src_extra: str | list[str] = (
+        "https://api.open-meteo.com,"
         "https://api.spotify.com,"
         "https://fcm.googleapis.com,"
         "https://fcmregistrations.googleapis.com,"
@@ -175,7 +176,7 @@ class CspSettingsMixin:
         for host in ("localhost:5173", "127.0.0.1:5173"):
             # Development-only loopback Vite HMR; production never reaches
             # this branch and HTTPS origins are mapped to WSS below.
-            ws_origin = f"ws://{host}"  # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+            ws_origin = f"ws://{host}"
             key = ws_origin.lower()
             if key not in seen:
                 overrides.append(ws_origin)

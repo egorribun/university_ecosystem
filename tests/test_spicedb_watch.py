@@ -166,12 +166,20 @@ async def test_watch_once_secure():
 @pytest.mark.anyio
 async def test_start_permission_watch_disabled(caplog):
     # If spicedb_endpoint is not set, start_permission_watch returns early
-    with patch("app.core.spicedb_watch.settings") as mock_settings:
+    with (
+        patch("app.core.spicedb_watch.settings") as mock_settings,
+        patch(
+            "app.core.spicedb_watch._watch_once", new_callable=AsyncMock
+        ) as watch_once,
+        patch("app.core.spicedb_watch.logger.info") as info,
+    ):
         mock_settings.spicedb_endpoint = ""
         mock_settings.spicedb_preshared_key = ""
 
-        await start_permission_watch()
-        # No loops, returns immediately
+        assert (await start_permission_watch()) is None
+
+    watch_once.assert_not_awaited()
+    info.assert_called_once_with("SpiceDB Watch: disabled (no endpoint/key configured)")
 
 
 @pytest.mark.anyio

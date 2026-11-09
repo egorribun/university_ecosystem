@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/generated/sdk.gen")
 import type { ReactNode } from "react"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -18,7 +19,7 @@ const sdk = vi.hoisted(() => ({
 }))
 
 vi.mock("@/api/generated/sdk.gen", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/generated/sdk.gen")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     newsListApiV1NewsGet: (...args: unknown[]) => sdk.newsList(...args),
@@ -112,10 +113,11 @@ vi.mock("framer-motion", async () => {
 })
 
 const article = {
-  id: "news-hydration-item",
+  id: "550e8400-e29b-41d4-a716-446655440104",
   title: "Hydrated news item",
   content: "The real news query resolved after the owner was confirmed.",
   created_at: "2026-10-05T08:00:00.000Z",
+  image_url_optimized: null,
 }
 
 const response = {

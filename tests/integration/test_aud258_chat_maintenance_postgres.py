@@ -17,8 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import database
 from app.core.events import AttachmentCleanupRequested, ChatDeleted
+from app.core.tenant import (
+    bypass_rls_ctx,
+    set_bypass_rls,
+    set_current_tenant,
+    tenant_id_ctx,
+)
 from app.models import Attachment, Chat, Message, User
 from app.models.domain_events import StoredEvent
+from app.models.tenant import Tenant
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.unit_of_work import uow_from_session
 from app.services.chat.attachment_service import ChatAttachmentService
@@ -51,12 +58,14 @@ async def _assert_message_count_as_restricted_role(
     *,
     chat_id: uuid.UUID,
     user_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
     expected_count: int,
 ) -> None:
     # Each caller commits its fixture changes first. Keep the role and grants
     # transactional so rollback removes them even when an assertion fails.
     assert not db_session.in_transaction()
     role_name = f"aud258_rls_{uuid.uuid4().hex}"
+    tenant_token = set_current_tenant(tenant_id)
     try:
         # The quoted identifier contains only a fixed prefix and generated hex.
         await db_session.execute(
@@ -70,6 +79,10 @@ async def _assert_message_count_as_restricted_role(
             )
         )
         await db_session.execute(text(f'SET LOCAL ROLE "{role_name}"'))
+        await db_session.execute(
+            text("SELECT set_config('app.current_tenant', :tenant_id, true)"),
+            {"tenant_id": str(tenant_id) if tenant_id is not None else ""},
+        )
         await ChatRepository(db_session).set_message_rls_user(user_id)
         rls_active = await db_session.scalar(
             text("SELECT row_security_active('public.messages')")
@@ -80,7 +93,10 @@ async def _assert_message_count_as_restricted_role(
         )
         assert visible_message_count == expected_count
     finally:
-        await db_session.rollback()
+        try:
+            await db_session.rollback()
+        finally:
+            tenant_id_ctx.reset(tenant_token)
 
 
 async def _seed_chat(
@@ -572,95 +588,193 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
     tmp_path: Path,
 ) -> None:
     _require_postgres()
-    admin = await user_factory(role="admin")
-    former_participant = await user_factory()
-    chat = await _seed_chat(
-        db_session,
-        [former_participant],
-        message_count=1,
-        attachment_count=1,
-    )
-    # Keep identifiers independent of deliberate ORM expiration and rollback.
-    chat_id = chat.id
-    former_participant_id = former_participant.id
-    storage = StaticFSStorage(tmp_path, base_url="https://objects.example.test")
-    attachment_url = await storage.save_file(
-        f"chat/{uuid.uuid4().hex}/orphan.txt", b"orphan blob"
-    )
-    await db_session.execute(
-        update(Attachment)
-        .where(Attachment.url == "https://objects.example.test/aud258/1")
-        .values(url=attachment_url)
-    )
-    await db_session.execute(
-        text(
-            "DELETE FROM chat_participants "
-            "WHERE chat_id = :chat_id AND user_id = :user_id"
-        ),
-        {"chat_id": chat_id, "user_id": former_participant_id},
-    )
-    await db_session.commit()
-    db_session.expire_all()
-
-    # The policy correctly hides old messages from a former member. Maintenance
-    # must therefore refuse an orphaned chat instead of treating it as empty.
-    await _assert_message_count_as_restricted_role(
-        db_session,
-        chat_id=chat_id,
-        user_id=former_participant_id,
-        expected_count=0,
-    )
-    # Rollback expires the actor too; load its columns before synchronous checks.
-    await db_session.refresh(admin)
-
-    service = ChatMaintenanceService(
-        uow_from_session(db_session), ChatAttachmentService()
-    )
-    with pytest.raises(HTTPException) as denied:
-        await getattr(service, operation)(chat_id, admin, "en")
-    assert denied.value.status_code == 403
-    assert await storage.exists(attachment_url)
-    assert (
-        await db_session.scalar(
-            select(func.count()).select_from(Chat).where(Chat.id == chat_id)
-        )
-        == 1
-    )
-    assert not (
-        await db_session.scalars(
-            select(StoredEvent).where(
-                StoredEvent.aggregate_id == str(chat_id),
-                StoredEvent.event_type.in_(
-                    [AttachmentCleanupRequested.EVENT_TYPE, ChatDeleted.EVENT_TYPE]
+    assert not db_session.in_transaction()
+    tenant_id = uuid.uuid4()
+    wrong_tenant_id = uuid.uuid4()
+    tenant_token = set_current_tenant(tenant_id)
+    bypass_token = set_bypass_rls(False)
+    try:
+        db_session.add_all(
+            [
+                Tenant(
+                    id=tenant_id,
+                    name="AUD-258 fixture",
+                    slug=f"aud258-{tenant_id.hex}",
                 ),
+                Tenant(
+                    id=wrong_tenant_id,
+                    name="AUD-258 other tenant",
+                    slug=f"aud258-{wrong_tenant_id.hex}",
+                ),
+            ]
+        )
+        # The migrated tenant FKs must resolve before users/chat/messages are seeded.
+        await db_session.commit()
+        admin = await user_factory(role="admin")
+        former_participant = await user_factory()
+        chat = await _seed_chat(
+            db_session,
+            [former_participant],
+            message_count=1,
+            attachment_count=1,
+        )
+        # Keep identifiers independent of deliberate ORM expiration and rollback.
+        chat_id = chat.id
+        former_participant_id = former_participant.id
+        # These columns are migration-owned, not mapped ORM constructor fields.
+        # Assert that real tenant-default triggers populated every core entity.
+        message_id, attachment_id, *seeded_tenants = (
+            await db_session.execute(
+                text(
+                    """
+                    SELECT message.id, attachment.id,
+                           actor.tenant_id, sender.tenant_id,
+                           chat.tenant_id, message.tenant_id
+                    FROM messages AS message
+                    JOIN attachments AS attachment ON attachment.message_id = message.id
+                    JOIN chats AS chat ON chat.id = message.chat_id
+                    JOIN users AS sender ON sender.id = message.sender_id
+                    JOIN users AS actor ON actor.id = :admin_id
+                    WHERE message.chat_id = :chat_id
+                    """
+                ),
+                {"admin_id": admin.id, "chat_id": chat_id},
             )
+        ).one()
+        assert seeded_tenants == [tenant_id] * 4
+        storage = StaticFSStorage(tmp_path, base_url="https://objects.example.test")
+        attachment_url = await storage.save_file(
+            f"chat/{uuid.uuid4().hex}/orphan.txt", b"orphan blob"
         )
-    ).all()
+        await db_session.execute(
+            update(Attachment)
+            .where(Attachment.url == "https://objects.example.test/aud258/1")
+            .values(url=attachment_url)
+        )
+        await db_session.commit()
+        # Establish that both the participant and tenant predicates can succeed.
+        await _assert_message_count_as_restricted_role(
+            db_session,
+            chat_id=chat_id,
+            user_id=former_participant_id,
+            tenant_id=tenant_id,
+            expected_count=1,
+        )
+        await db_session.execute(
+            text(
+                "DELETE FROM chat_participants "
+                "WHERE chat_id = :chat_id AND user_id = :user_id"
+            ),
+            {"chat_id": chat_id, "user_id": former_participant_id},
+        )
+        await db_session.commit()
+        db_session.expire_all()
 
-    # Restore membership only for verification; the rejected maintenance request
-    # must leave both the invisible database rows and their blob reference intact.
-    await db_session.execute(
-        text(
-            "INSERT INTO chat_participants (chat_id, user_id) "
-            "VALUES (:chat_id, :user_id)"
-        ),
-        {"chat_id": chat_id, "user_id": former_participant_id},
-    )
-    await db_session.commit()
-    await _assert_message_count_as_restricted_role(
-        db_session,
-        chat_id=chat_id,
-        user_id=former_participant_id,
-        expected_count=1,
-    )
-    assert (
-        await db_session.scalar(
-            select(func.count())
-            .select_from(Attachment)
-            .where(Attachment.url == attachment_url)
+        # The policy correctly hides old messages from a former member. Maintenance
+        # must therefore refuse an orphaned chat instead of treating it as empty.
+        await _assert_message_count_as_restricted_role(
+            db_session,
+            chat_id=chat_id,
+            user_id=former_participant_id,
+            tenant_id=tenant_id,
+            expected_count=0,
         )
-        == 1
-    )
+        # Rollback expires the actor too; load its columns before synchronous checks.
+        await db_session.refresh(admin)
+
+        service = ChatMaintenanceService(
+            uow_from_session(db_session), ChatAttachmentService()
+        )
+        with pytest.raises(HTTPException) as denied:
+            await getattr(service, operation)(chat_id, admin, "en")
+        assert denied.value.status_code == 403
+        assert await storage.exists(attachment_url)
+        assert (
+            await db_session.scalar(
+                select(func.count()).select_from(Chat).where(Chat.id == chat_id)
+            )
+            == 1
+        )
+        assert not (
+            await db_session.scalars(
+                select(StoredEvent).where(
+                    StoredEvent.aggregate_id == str(chat_id),
+                    StoredEvent.event_type.in_(
+                        [AttachmentCleanupRequested.EVENT_TYPE, ChatDeleted.EVENT_TYPE]
+                    ),
+                )
+            )
+        ).all()
+
+        # The original fixture operator independently checks physical retention
+        # before membership is restored; no privilege is granted to the observer.
+        original_operator_rls_active = await db_session.scalar(
+            text("SELECT row_security_active('public.messages')")
+        )
+        assert original_operator_rls_active is False, (
+            "Physical-retention witness requires the original fixture operator"
+        )
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(Message)
+                .where(Message.id == message_id, Message.chat_id == chat_id)
+            )
+            == 1
+        )
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(Attachment)
+                .where(
+                    Attachment.id == attachment_id,
+                    Attachment.message_id == message_id,
+                    Attachment.url == attachment_url,
+                )
+            )
+            == 1
+        )
+
+        # Restore membership only for verification; the rejected maintenance request
+        # must leave both the invisible database rows and their blob reference intact.
+        await db_session.execute(
+            text(
+                "INSERT INTO chat_participants (chat_id, user_id) "
+                "VALUES (:chat_id, :user_id)"
+            ),
+            {"chat_id": chat_id, "user_id": former_participant_id},
+        )
+        await db_session.commit()
+        # Membership alone must not expose rows without the matching tenant.
+        for observer_tenant_id in (None, wrong_tenant_id):
+            await _assert_message_count_as_restricted_role(
+                db_session,
+                chat_id=chat_id,
+                user_id=former_participant_id,
+                tenant_id=observer_tenant_id,
+                expected_count=0,
+            )
+        await _assert_message_count_as_restricted_role(
+            db_session,
+            chat_id=chat_id,
+            user_id=former_participant_id,
+            tenant_id=tenant_id,
+            expected_count=1,
+        )
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(Attachment)
+                .where(Attachment.url == attachment_url)
+            )
+            == 1
+        )
+    finally:
+        try:
+            await db_session.rollback()
+        finally:
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
 
 
 async def test_send_timestamp_update_does_not_deadlock_with_maintenance_chat_lock(

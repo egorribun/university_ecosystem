@@ -1,0 +1,9 @@
+{
+  "name": "@university-ecosystem/node-resolve-defaults-clone-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fail-closed clone adapter for fixed node-resolve 16.0.3 defaults only",
+  "main": "index.cjs",
+  "files": ["index.cjs", "README.md"],
+  "engines": {"node": ">=24"}
+}

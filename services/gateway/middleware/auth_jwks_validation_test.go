@@ -266,7 +266,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
+		tokenStr, err := token.SignedString([]byte("secret"))
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
@@ -297,7 +297,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
+		tokenStr, err := token.SignedString([]byte("secret"))
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
@@ -335,7 +335,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
+		tokenStr, err := token.SignedString([]byte("secret"))
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 mode="${1:-}"
 user_agent="University-Ecosystem-MFA-Rotation-Smoke/1"
@@ -12,7 +13,7 @@ fail() {
   exit 1
 }
 
-for command_name in curl jq date awk realpath; do
+for command_name in curl jq date awk realpath mktemp rm; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Required command '$command_name' is unavailable."
 done
 
@@ -28,10 +29,27 @@ done
 [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || fail "MFA_SMOKE_TIMEOUT_SECONDS must be numeric."
 (( timeout_seconds >= 30 && timeout_seconds <= 600 )) || fail "MFA_SMOKE_TIMEOUT_SECONDS must be between 30 and 600."
 
-runner_temp="$(realpath "$RUNNER_TEMP")"
+runner_root="$(realpath "$RUNNER_TEMP")"
 state_dir="$(realpath "$MFA_SMOKE_STATE_DIR")"
-[[ "$state_dir" == "$runner_temp"/* ]] || fail "MFA_SMOKE_STATE_DIR must stay under RUNNER_TEMP."
+[[ "$state_dir" == "$runner_root"/* ]] || fail "MFA_SMOKE_STATE_DIR must stay under RUNNER_TEMP."
 chmod 700 "$state_dir"
+transient_dir="$(mktemp -d -- "$state_dir/mfa-overlap-XXXXXXXX")"
+
+cleanup_transient_files() {
+  local original_status=$?
+  trap - EXIT
+  if ! rm -rf -- "$transient_dir"; then
+    echo "::error::Unable to remove temporary MFA smoke files." >&2
+    if (( original_status == 0 )); then
+      original_status=1
+    fi
+  fi
+  exit "$original_status"
+}
+trap cleanup_transient_files EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 state_file="$state_dir/old-challenge.json"
 old_verified_file="$state_dir/old-verified"
 old_cookies="$state_dir/old-cookies.txt"
@@ -75,12 +93,13 @@ post_api() {
 issue_email_otp() {
   local cookie_file="$1"
   local response_file="$2"
-  local payload_file="$state_dir/login-payload.json"
+  local payload_file="$transient_dir/login-payload.json"
   bootstrap_csrf "$cookie_file"
   jq --null-input --arg email "$MFA_SMOKE_EMAIL" --arg password "$MFA_SMOKE_PASSWORD" \
-    '{email: $email, password: $password, trust_device: false}' > "$payload_file"
-  chmod 600 "$payload_file"
+    '{email: $email, password: $password, trust_device: false}' > "$payload_file" || \
+    fail "Unable to create the login request."
   post_api "/api/v1/auth/login/json" "$cookie_file" "$payload_file" "$response_file"
+  rm -f -- "$payload_file" || fail "Unable to remove the login request."
   jq --exit-status '
     .status == "mfa_required" and
     ([.methods[] | select(.method == "email_otp")] | length == 1)
@@ -94,14 +113,13 @@ await_delivery() {
   local challenge_token="$2"
   local response_file="$3"
   local delivery_timeout_seconds="${4:-$timeout_seconds}"
-  local payload_file="$state_dir/mailbox-$generation-request.json"
+  local payload_file="$transient_dir/mailbox-$generation-request.json"
   local status
   jq --null-input --arg operation "await_email_otp" \
     --arg challenge_token "$challenge_token" \
     --argjson timeout_seconds "$delivery_timeout_seconds" \
     '{operation: $operation, challenge_token: $challenge_token, timeout_seconds: $timeout_seconds}' \
     > "$payload_file"
-  chmod 600 "$payload_file"
   status="$(curl --silent --show-error --proto '=https' --tlsv1.2 \
     --header "Authorization: Bearer $MFA_SMOKE_MAILBOX_TOKEN" \
     --header "Content-Type: application/json" \
@@ -109,6 +127,7 @@ await_delivery() {
     --output "$response_file" --write-out '%{http_code}' \
     "$MFA_SMOKE_MAILBOX_URL")"
   [[ "$status" == "200" ]] || fail "Mailbox probe returned HTTP $status for $generation delivery."
+  rm -f -- "$payload_file" || fail "Unable to remove the mailbox request."
   jq --exit-status --arg challenge_token "$challenge_token" '
     .status == "delivered" and
     .challenge_token == $challenge_token and
@@ -123,13 +142,13 @@ verify_email_otp() {
   local cookie_file="$2"
   local challenge_token="$3"
   local code="$4"
-  local payload_file="$state_dir/verify-$generation-request.json"
-  local response_file="$state_dir/verify-$generation-response.json"
+  local payload_file="$transient_dir/verify-$generation-request.json"
+  local response_file="$transient_dir/verify-$generation-response.json"
   jq --null-input --arg challenge_token "$challenge_token" --arg code "$code" \
     '{method: "email_otp", challenge_token: $challenge_token, code: $code}' \
     > "$payload_file"
-  chmod 600 "$payload_file"
   post_api "/api/v1/auth/mfa/verify" "$cookie_file" "$payload_file" "$response_file"
+  rm -f -- "$payload_file" || fail "Unable to remove the verification request."
   jq --exit-status '(.user.id | type == "string" and length > 0)' \
     "$response_file" >/dev/null || fail "$generation email OTP verification did not return a user."
   awk '$6 == "access_token_v2" && length($7) > 0 { found=1 } END { exit !found }' \
@@ -141,7 +160,7 @@ case "$mode" in
     [[ ! -e "$state_file" ]] || fail "Old-challenge state already exists; refusing stale reuse."
     : > "$old_cookies"
     chmod 600 "$old_cookies"
-    old_login_response="$state_dir/old-login-response.json"
+    old_login_response="$transient_dir/old-login-response.json"
     old_challenge_token="$(issue_email_otp "$old_cookies" "$old_login_response")"
     [[ "$old_challenge_token" =~ ^[A-Za-z0-9_.-]{32,128}$ ]] || fail "Old challenge token is invalid."
     jq --null-input --arg challenge_token "$old_challenge_token" \
@@ -175,6 +194,9 @@ case "$mode" in
     ;;
   verify-new)
     [[ -s "$old_verified_file" ]] || fail "Old-key overlap verification did not complete."
+    [[ -s "$state_file" ]] || fail "Prepared old challenge state is unavailable."
+    old_challenge_token="$(jq --raw-output '.challenge_token // empty' "$state_file")"
+    [[ "$old_challenge_token" =~ ^[A-Za-z0-9_.-]{32,128}$ ]] || fail "Stored old challenge token is invalid."
     old_delivery="$state_dir/old-delivery.json"
     [[ -s "$old_delivery" ]] || fail "Old delivery proof is unavailable."
     old_delivery_id="$(jq --raw-output '.delivery_id // empty' "$old_delivery")"
@@ -182,10 +204,10 @@ case "$mode" in
 
     : > "$new_cookies"
     chmod 600 "$new_cookies"
-    new_login_response="$state_dir/new-login-response.json"
+    new_login_response="$transient_dir/new-login-response.json"
     new_challenge_token="$(issue_email_otp "$new_cookies" "$new_login_response")"
     [[ "$new_challenge_token" != "$old_challenge_token" ]] || fail "New issue reused the old challenge token."
-    new_delivery="$state_dir/new-delivery.json"
+    new_delivery="$transient_dir/new-delivery.json"
     await_delivery new "$new_challenge_token" "$new_delivery"
     new_delivery_id="$(jq --raw-output '.delivery_id' "$new_delivery")"
     [[ "$new_delivery_id" != "$old_delivery_id" ]] || fail "New issue reused the old delivery envelope."

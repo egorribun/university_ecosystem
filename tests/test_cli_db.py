@@ -1,16 +1,21 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 from typer.testing import CliRunner
 
 from app.cli.db import app
+from app.core.config import settings
 from app.models.users import InviteCode
 
 runner = CliRunner()
 
 
 @pytest.fixture
-def mock_db_session():
+def mock_db_session(monkeypatch):
+    monkeypatch.setattr(
+        settings, "mvp_tenant_id", UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    )
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.__aenter__.return_value = mock_session
@@ -41,7 +46,11 @@ def test_create_admin_success(mock_db_session, mock_engine):
         # Mock query result to return None (user not found)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
-        mock_db_session.execute.return_value = mock_result
+        tenant_result = MagicMock()
+        tenant_result.scalar_one_or_none.return_value = settings.mvp_tenant_id
+        mock_db_session.execute.side_effect = lambda _statement: (
+            tenant_result if mock_db_session.execute.await_count == 1 else mock_result
+        )
 
         result = runner.invoke(
             app, ["create-admin", "--email", "new@admin.com", "--password", "secret"]
@@ -66,11 +75,16 @@ def test_create_admin_existing(mock_db_session, mock_engine):
         # Mock query result to return existing user
         existing_user = MagicMock()
         existing_user.id = 1
+        existing_user.tenant_id = settings.mvp_tenant_id
         existing_user.email = "existing@admin.com"
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = existing_user
-        mock_db_session.execute.return_value = mock_result
+        tenant_result = MagicMock()
+        tenant_result.scalar_one_or_none.return_value = settings.mvp_tenant_id
+        mock_db_session.execute.side_effect = lambda _statement: (
+            tenant_result if mock_db_session.execute.await_count == 1 else mock_result
+        )
 
         result = runner.invoke(
             app,

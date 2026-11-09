@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { sanitize_rich_text, strip_html } from "wasm-sanitizer"
+import initializeWasmSanitizer, { sanitize_rich_text, strip_html } from "wasm-sanitizer"
 import { logWarning } from "@/app/logger"
 import { sanitizeNewsHtml, sanitizeNewsText } from "../sanitize"
 
@@ -7,6 +7,7 @@ import { sanitizeNewsHtml, sanitizeNewsText } from "../sanitize"
 // can drive the RZ-24-04 regex fallback + Trusted Types policy-failure branches
 // that the WASM-initialized happy path in setupTests.ts never reaches.
 vi.mock("wasm-sanitizer", () => ({
+  default: vi.fn(async () => undefined),
   sanitize_rich_text: vi.fn((s: string) => s),
   strip_html: vi.fn((s: string) => s),
 }))
@@ -34,6 +35,22 @@ beforeEach(() => {
 afterEach(() => {
   win.trustedTypes = originalTrustedTypes
   delete win.__dompurifyNewsPolicy
+})
+
+it("returns text-only fallbacks when browser WASM initialization fails", async () => {
+  const createPolicy = vi.fn()
+  win.trustedTypes = { createPolicy }
+  vi.mocked(initializeWasmSanitizer).mockRejectedValueOnce(
+    new Error("CSP blocked WASM compilation")
+  )
+
+  await expect(sanitizeNewsHtml("<b>safe article</b>")).resolves.toBe("safe article")
+  expect(createPolicy).not.toHaveBeenCalled()
+
+  vi.mocked(initializeWasmSanitizer).mockRejectedValueOnce(
+    new Error("CSP blocked WASM compilation")
+  )
+  await expect(sanitizeNewsText("<p>safe summary</p>")).resolves.toBe("safe summary")
 })
 
 // ---------------------------------------------------------------------------

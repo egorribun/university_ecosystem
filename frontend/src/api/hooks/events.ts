@@ -12,8 +12,13 @@ import {
   type UseSuspenseQueryResult,
 } from "@tanstack/react-query"
 import { useMemo, useSyncExternalStore } from "react"
+import * as v from "valibot"
 
-import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generated/sdk.gen"
+import {
+  allEventsApiV1EventsGet,
+  myEventsApiV1EventsMyGet,
+  myEventsPageApiV1EventsMyPageGet,
+} from "@/api/generated/sdk.gen"
 import type { AllEventsApiV1EventsGetData } from "@/api/generated/types.gen"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
@@ -22,6 +27,7 @@ import { StorageItem } from "@/utils/storage"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import {
   captureSessionEpoch,
+  getBrowserSessionGeneration,
   getSessionEpoch,
   isCurrentBrowserSession,
 } from "@/stores/sessionEpoch"
@@ -535,6 +541,141 @@ export const useSuspenseMyEventsQuery = (
   }
 }
 
+export type MyEventsPageParams = {
+  language: ResolvedLang
+  sort: "newest_desc" | "popular" | "upcoming"
+  cursor: string | null
+  category?: "lecture" | "seminar" | "conference" | "workshop" | "social" | "sport" | "other"
+  dateRange?: "today" | "week" | "month"
+  dateAnchor?: string
+  upcomingAfter?: string
+}
+
+export type MyEventsPage = {
+  items: Event[]
+  total: null
+  limit: number
+  cursor: string | null
+  next_cursor: string | null
+  has_more: boolean
+}
+
+type MyEventsPageKey = readonly [
+  "events",
+  "my-page-v2",
+  { owner: string | null; epoch: number; generation: string | null; params: MyEventsPageParams },
+]
+
+const boundedCursor = v.pipe(v.string(), v.minLength(1), v.maxLength(1024))
+const optionalEventText = v.optional(v.nullable(v.string()))
+const eventTimestamp = v.pipe(
+  v.string(),
+  v.check((value) => Number.isFinite(Date.parse(value)))
+)
+const MyEventsPageSchema = v.object({
+  items: v.array(
+    v.looseObject({
+      id: v.pipe(v.string(), v.minLength(1)),
+      title: v.string(),
+      created_at: eventTimestamp,
+      created_by: v.unknown(),
+      starts_at: eventTimestamp,
+      ends_at: eventTimestamp,
+      is_active: v.boolean(),
+      is_registered: v.literal(true),
+      participant_count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      my_qr_token: v.nullable(v.pipe(v.string(), v.minLength(1))),
+      description: optionalEventText,
+      description_en: optionalEventText,
+      title_en: optionalEventText,
+      event_type: optionalEventText,
+      event_type_en: optionalEventText,
+      location: optionalEventText,
+      location_en: optionalEventText,
+      speaker: optionalEventText,
+      image_url: optionalEventText,
+      image_url_optimized: optionalEventText,
+    })
+  ),
+  total: v.null_(),
+  limit: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)),
+  cursor: v.nullable(boundedCursor),
+  next_cursor: v.nullable(boundedCursor),
+  has_more: v.boolean(),
+})
+
+type MyEventsPageOptions = PrivateListControls<
+  UseQueryOptions<MyEventsPage, Error, MyEventsPage | undefined, MyEventsPageKey>
+>
+
+/** A single private page; never hydrate it from a legacy complete-list snapshot. */
+export const useMyEventsPageQuery = (params: MyEventsPageParams, options?: MyEventsPageOptions) => {
+  const owner = useAuthStore(getConfirmedUserId)
+  const epoch = getSessionEpoch()
+  const generation = getBrowserSessionGeneration()
+  const isCurrentSession = captureSessionEpoch(epoch)
+  const ownsSession = () =>
+    typeof window !== "undefined" &&
+    owner !== null &&
+    isCurrentSession() &&
+    getCurrentConfirmedUserId() === owner
+  const queryKey: MyEventsPageKey = ["events", "my-page-v2", { owner, epoch, generation, params }]
+  const { enabled = true, ...rest } = pickPrivateListControls(options)
+
+  return useQuery<MyEventsPage, Error, MyEventsPage | undefined, MyEventsPageKey>({
+    ...rest,
+    queryKey,
+    enabled: typeof window !== "undefined" && owner !== null && enabled,
+    queryFn: async ({ signal }) => {
+      if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+      const query = {
+        limit: EVENTS_PAGE_SIZE,
+        sort: params.sort,
+        lang: params.language,
+        ...(params.cursor === null ? {} : { cursor: params.cursor }),
+        ...(params.category ? { category: params.category } : {}),
+        ...(params.dateRange ? { date_range: params.dateRange } : {}),
+        ...(params.dateAnchor ? { date_anchor: params.dateAnchor } : {}),
+        ...(params.upcomingAfter ? { upcoming_after: params.upcomingAfter } : {}),
+      }
+      const config = {
+        query,
+        headers: { "Cache-Control": "no-store", "Accept-Language": params.language },
+        signal,
+        throwOnError: true,
+        validateStatus: (status: number) => status >= 200 && status < 300,
+      }
+      const response = await myEventsPageApiV1EventsMyPageGet(
+        config as unknown as Parameters<typeof myEventsPageApiV1EventsMyPageGet>[0]
+      )
+      if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+      const status = ensureNumericResponseStatus(
+        response.status,
+        "Unexpected my-events page status"
+      )
+      if (status < 200 || status >= 300) throw new Error("Unexpected my-events page status")
+      const parsed = v.safeParse(MyEventsPageSchema, response.data)
+      if (!parsed.success) throw new Error("Invalid my-events page response")
+      const page = parsed.output
+      if (
+        page.limit !== EVENTS_PAGE_SIZE ||
+        page.cursor !== params.cursor ||
+        page.items.length > EVENTS_PAGE_SIZE ||
+        (page.has_more
+          ? page.next_cursor === null || page.next_cursor === params.cursor
+          : page.next_cursor !== null)
+      ) {
+        throw new Error("Invalid my-events page response")
+      }
+      return page as MyEventsPage
+    },
+    gcTime: 0,
+    meta: { ...rest.meta, persist: false },
+    refetchOnMount: "always",
+    select: (page) => (ownsSession() ? page : undefined),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // EVENT DETAIL QUERY (Wave 76; Wave 129 SW2 factory extraction)
 // ---------------------------------------------------------------------------
@@ -542,6 +683,19 @@ export const useSuspenseMyEventsQuery = (
 type EventDetailQueryKey = readonly ["events", "detail", string, ResolvedLang]
 
 export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
+
+const EventDetailResponseSchema = v.looseObject({
+  id: v.pipe(v.string(), v.minLength(1)),
+  title: v.string(),
+  created_at: v.string(),
+  created_by: v.unknown(),
+  starts_at: v.string(),
+  ends_at: v.string(),
+  is_active: v.boolean(),
+})
+
+const isEventDetailPayload = (value: unknown): value is Event =>
+  v.safeParse(EventDetailResponseSchema, value).success
 
 /**
  * Pure query options factory for a single event id and normalized language. Used by both:
@@ -568,8 +722,21 @@ export const eventDetailQueryOptions = (id: string, language: ResolvedLang) => (
       path: { event_id: id },
       query: { lang: language },
       signal,
+      throwOnError: true,
+      validateStatus: (status: number) => status >= 200 && status < 300,
     })
-    return response.data as Event
+    const status = ensureNumericResponseStatus(
+      response.status,
+      "Unexpected event detail response status"
+    )
+    if (status < 200 || status >= 300) {
+      throw new Error("Unexpected event detail response status")
+    }
+
+    if (!isEventDetailPayload(response.data)) {
+      throw new Error("Invalid event detail response")
+    }
+    return response.data
   },
   staleTime: 60_000,
   retry: 1,

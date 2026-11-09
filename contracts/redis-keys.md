@@ -285,14 +285,39 @@ configuration and are not fixed key-contract constants.
 
 | Key Pattern | Value | TTL | Owner | Consumer |
 |-------------|-------|-----|-------|----------|
-| `idm:msg:{digest}` | `{"status": "pending"}`, then `{"status": "completed", "message_id": "<uuid>"}` | 300s while pending (`SET NX`), 86400s (24h) once completed | Python backend (`app/services/chat/command_service.py`, `_make_idempotency_key`) | Python backend (same module) |
+| `idm:msg:{digest}` | `{"status":"pending","owner":"<token>"}`, then `{"status":"completed","receipt_version":1,"message_id":"<uuid>","expires_at":"<UTC timestamp>"}` | 300s owned pending lease; completed TTL is floored remaining DB receipt lifetime, at most 86400s | Python backend (`app/services/chat/command_service.py`) | Python backend (same module) |
 
-**Field details:**
-- `{digest}`: HMAC-BLAKE2b of `{chat_id}:{user_id}:{Idempotency-Key}` keyed with `IDEMPOTENCY_HMAC_SECRET`; plain BLAKE2b (16-byte digest) when the secret is empty. Neither the chat, the user nor the raw header value is recoverable from the key.
+The Redis key remains HMAC-BLAKE2b of
+`{chat_id}:{user_id}:{Idempotency-Key}` using `IDEMPOTENCY_HMAC_SECRET`,
+or plain BLAKE2b with a 16-byte digest when that optional secret is empty.
+The database receipt identity is separate: stable versioned, domain-separated
+SHA-256 over chat/user UUID bytes and the client key. Rotating the optional
+Redis HMAC secret does not change durable receipt ownership. Neither store
+contains the raw client key or a message-payload fingerprint.
 
-**Behaviour on cache hit:** A completed entry stores only the message ID; the backend re-reads the message from the database and returns it instead of sending a duplicate. Message content never sits in Redis.
+Chat existence and current membership are checked first. The primary database
+receipt is then consulted before Redis, so a committed send replays through
+cache outage, lost completion, eviction, or lease expiry. The fixed 24-hour
+receipt window is never refreshed by replay. Message, attachments, receipt and
+MessageSent commit in one transaction; the named receipt uniqueness constraint
+adjudicates concurrent Redis admissions. A live uncommitted lease still returns
+409 `idempotency_in_progress` with `Retry-After: 1`.
 
-> **Security note:** Binding `chat_id` and `user_id` into the digest prevents user A from replaying user B's idempotent request.
+Completed values are hints, not authority. A durable-format cache value without
+a live receipt is compare-deleted only if unchanged. An observed expired
+receipt also overrides a legacy cache value. Legacy completed values may still
+hydrate their scoped message when no receipt exists, until their existing Redis
+TTL expires; historical sends cannot be backfilled and mixed old/new writers
+are outside the durability guarantee. New sends are not guaranteed during a
+Redis outage.
+
+A soft-deleted message replays its tombstone. Hard deletion or history clearing
+nulls the receipt's message reference and retains the same 409 contract until
+expiry; replay never resurrects content. Chat/user deletion cascades receipts.
+Authorized keyed new sends prune at most 100 expired receipts in their own scope;
+exact-key expiry replacement is independent of that cleanup. Inactive scopes
+can retain non-content receipt metadata until later authorized keyed sends or
+chat/user deletion. Global physical-retention readiness remains open.
 
 ---
 

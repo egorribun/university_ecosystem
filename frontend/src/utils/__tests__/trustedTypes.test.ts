@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { createTrustedScriptURL, ensureTrustedTypesPolicies, sanitizeHTML } from "../trustedTypes"
+import {
+  createTrustedScriptURL,
+  ensureTrustedTypesPolicies,
+  getAppTrustedTypesPolicy,
+  sanitizeHTML,
+} from "../trustedTypes"
 import { sanitize_rich_text } from "wasm-sanitizer"
 
 vi.mock("wasm-sanitizer", () => ({
+  default: vi.fn(async () => undefined),
   sanitize_rich_text: vi.fn((s: string) => s + " (sanitized)"),
 }))
 
@@ -134,6 +140,64 @@ describe("trustedTypes util", () => {
       await expect(ensureTrustedTypesPolicies()).resolves.toBeUndefined()
       await expect(sanitizeHTML("<b>server</b>")).resolves.toBe("<b>server</b> (sanitized)")
       expect(createTrustedScriptURL("/server.js")).toBe("/server.js")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("keeps server sanitization text-only if the WASM binding is cold", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+    vi.mocked(sanitize_rich_text).mockImplementationOnce(() => {
+      throw new Error("WASM not initialized")
+    })
+
+    try {
+      await expect(sanitizeHTML("<p>safe &amp; sound</p>")).resolves.toBe("safe & sound")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("returns plain text when browser WASM initialization fails", async () => {
+    const originalTrustedTypes = (window as unknown as { trustedTypes: unknown }).trustedTypes
+    const initialize = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(new Error("WASM compilation blocked"))
+    const sanitize = vi.fn((value: string) => `${value} (sanitized)`)
+    const createPolicy = vi.fn()
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = { createPolicy }
+
+    vi.resetModules()
+    vi.doMock("wasm-sanitizer", () => ({
+      default: initialize,
+      sanitize_rich_text: sanitize,
+    }))
+
+    try {
+      const { sanitizeHTML: sanitizeAfterInitializationFailure } = await import("../trustedTypes")
+      const result = await sanitizeAfterInitializationFailure(
+        "<p>safe <strong>formatted</strong></p>"
+      )
+
+      expect(result).toBe("safe formatted")
+      expect(result).not.toContain("<")
+      expect(initialize).toHaveBeenCalledOnce()
+      expect(sanitize).not.toHaveBeenCalled()
+      expect(createPolicy).not.toHaveBeenCalled()
+    } finally {
+      vi.doUnmock("wasm-sanitizer")
+      vi.resetModules()
+      ;(window as unknown as { trustedTypes: unknown }).trustedTypes = originalTrustedTypes
+    }
+  })
+
+  it("returns no app policy during SSR", () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(getAppTrustedTypesPolicy()).toBeNull()
     } finally {
       vi.stubGlobal("window", originalWindow)
     }

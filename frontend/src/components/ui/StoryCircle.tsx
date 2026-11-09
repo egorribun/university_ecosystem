@@ -34,7 +34,7 @@ export const StoryCircle = <T extends ElementType = "div">({
         "bg-linear-to-br from-(--primary-main) to-(--primary-main) shadow-lg",
         "transition-opacity duration-base ease-premium",
         "hover:opacity-80",
-        "focus-visible:outline-(--primary-main) focus-visible:ring-1 focus-visible:ring-(--primary-main)/(--opacity-dim)",
+        "focus-visible:outline-(--primary-main) focus-visible:ring-1 focus-visible:ring-(--primary-main)/[calc(var(--opacity-dim)*100%)]",
         size === "sm" &&
           "h-(--size-story-sm) w-(--size-story-sm) min-h-(--size-story-sm) min-w-(--size-story-sm)",
         size === "md" &&
@@ -53,7 +53,7 @@ export const StoryCircle = <T extends ElementType = "div">({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 outline-offset-[0.1875rem] transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/[calc(var(--opacity-subtle)*100%)] opacity-0 outline-offset-[0.1875rem] transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
       />
       <span className="relative z-deep flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}

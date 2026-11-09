@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { useSessionCrypto } from "./useSessionCrypto"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import {
+  acceptBrowserSessionGeneration,
   captureSessionEpoch,
   getBrowserSessionGeneration,
   rotateBrowserSession,
@@ -1171,13 +1172,52 @@ describe("signing key handoff ownership", () => {
       throw new Error("storage denied")
     })
     const { result } = renderHook(() => useSessionCrypto())
-    await act(() => result.current.updateSessionSigningKey(crypto.randomUUID()))
+    const signingKey = crypto.randomUUID()
+    await act(() => result.current.updateSessionSigningKey(signingKey))
     expect(result.current.isCurrentSigningSession()).toBe(false)
+    expect(result.current.sessionSigningKeyRef.current).toBe(signingKey)
     expect(
       controller.postMessage.mock.calls
         .map(([message]) => message)
         .some((message) => message.sessionHash)
     ).toBe(false)
+  })
+
+  it("keeps a prior mirrored identity unpublished when replacement storage fails", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    localStorage.setItem(
+      key,
+      JSON.stringify({ nonce: "prior-generation", hash: "prior-profile-hash" })
+    )
+    acceptBrowserSessionGeneration()
+    const controller = { postMessage: vi.fn() }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { controller },
+    })
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    try {
+      await act(() => result.current.updateSessionSigningKey("replacement-key"))
+
+      const messages = controller.postMessage.mock.calls.map(([message]) => message)
+      expect(
+        messages.some(
+          (message) => message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY
+        )
+      ).toBe(false)
+      expect(result.current.isCurrentSigningSession()).toBe(false)
+      expect(result.current.sessionSigningKeyRef.current).toBe("replacement-key")
+    } finally {
+      storageWrite.mockRestore()
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
   })
 
   it("ignores foreign workers and unrelated messages before answering its controller", async () => {

@@ -10,6 +10,7 @@ import { server } from "@/tests/mocks/server"
 import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
 import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 
 // Login's successful path warms the dashboard in the background.  Keep the
@@ -95,6 +96,7 @@ const renderLogin = async (options: RenderLoginOptions = {}) => {
 describe("Login page", () => {
   beforeEach(() => {
     localStorage.clear()
+    acceptBrowserSessionGeneration()
     localStorage.setItem("ue:language", "en")
   })
 
@@ -119,10 +121,10 @@ describe("Login page", () => {
   it("presents one centered, distraction-free sign-in form", async () => {
     await renderLogin()
 
-    const main = screen.getByRole("main", { name: tAuth("login.title") })
-    expect(main).toHaveClass("auth-shell")
-    expect(main.querySelectorAll("form")).toHaveLength(1)
-    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    const region = screen.getByRole("region", { name: tAuth("login.title") })
+    expect(region).toHaveClass("auth-shell")
+    expect(region.querySelectorAll("form")).toHaveLength(1)
+    expect(region.querySelectorAll(".auth-card-matte")).toHaveLength(1)
     expect(
       screen.getByRole("heading", { level: 1, name: tAuth("login.title") })
     ).toBeInTheDocument()

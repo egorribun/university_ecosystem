@@ -17,15 +17,17 @@ def register_tenant_listeners() -> None:
 
 
 def set_pg_tenant_context(session: Any, transaction: Any, connection: Any) -> None:
-    """Set transaction-local PostgreSQL GUC variables for Row Level Security (RLS)."""
+    """Set transaction-local PostgreSQL GUC variables for Row Level Security (RLS).
+
+    Only the session tenant identity is written. Privileged access is decided in
+    the policy by membership in the ue_rls_bypass role, so no Python bypass flag
+    reaches the database. A GUC that any SQL session can set must never grant
+    access (AUD-450); a bypass-scoped session therefore sets no tenant either.
+    """
     if connection.dialect.name != "postgresql":
         return
 
     if get_bypass_rls():
-        connection.execute(
-            text("SELECT set_config('app.bypass_rls', :bypass_rls, true);"),
-            {"bypass_rls": "on"},
-        )
         return
 
     tenant_id = get_current_tenant()
@@ -36,4 +38,3 @@ def set_pg_tenant_context(session: Any, transaction: Any, connection: Any) -> No
         )
     else:
         connection.execute(text("SELECT set_config('app.current_tenant', '', true);"))
-        connection.execute(text("SELECT set_config('app.bypass_rls', '', true);"))

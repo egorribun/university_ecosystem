@@ -74,6 +74,7 @@ const (
 )
 
 var (
+	newJWKSHTTPClientFunc     = newJWKSHTTPClient
 	dialTemporalFunc          = client.Dial
 	newWorkerFunc             = worker.New
 	buildMinIOClientFunc      = workflow.BuildMinIOClient
@@ -152,6 +153,8 @@ func main() {
 }
 
 func runMain(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	logger := initLogger()
 	// Keep fallback slog.Default call sites (for example gRPC setup) behind the
 	// same recursive redaction boundary as the explicitly injected logger.
@@ -168,33 +171,24 @@ func runMain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	keySet, err := initializeJWKSKeySet(ctx, cfg, rsaPublicKey, logger)
+	jwksClient, closeJWKS, err := newJWKSHTTPClientFunc(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cancel()
+		logCloseError(ctx, logger, "Failed to close JWKS SPIFFE source", closeJWKS)
+	}()
+	keySet, err := initializeJWKSKeySet(ctx, cfg, rsaPublicKey, logger, jwksClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize JWKS verification", "err", err)
 		return err
 	}
-	var revocationRedisClient *redis.Client
-	var revocations revocationChecker
-	if redisURL := strings.TrimSpace(cfg.RevocationRedisURL); redisURL != "" {
-		revocationRedisClient, err = newRevocationRedisClient(ctx, redisURL)
-		if err != nil {
-			logger.ErrorContext(ctx, "Failed to initialize session revocation Redis", "err", err)
-			return err
-		}
-		revocations = &redisRevocationChecker{client: revocationRedisClient}
-		defer closeRevocationRedis(ctx, logger, revocationRedisClient)
-	}
-	jwtOptions, err := strictJWTOptionsWithKeySet(cfg, rsaPublicKey, revocations, keySet)
+	jwtOptions, replayGuard, closeRevocation, err := initRevocationAndReplay(ctx, cfg, rsaPublicKey, keySet, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "JWT security configuration is invalid", "err", err)
 		return err
 	}
-	var replayGuard pb.CapabilityReplayGuard = pb.NewCapabilityReplayRegistry(0)
-	if revocationRedisClient != nil {
-		// Release deployments use the same shared Redis authority for session
-		// revocation and one-time capability admission across replicas.
-		replayGuard = &redisCapabilityReplayGuard{client: revocationRedisClient}
-	}
+	defer closeRevocation()
 	initSentry(ctx, cfg, logger)
 
 	defer initializeTracerShutdown(ctx, cfg, logger)()
@@ -216,13 +210,7 @@ func runMain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if spiffeClient != nil {
-		defer func() {
-			if err := closeSpiffeClientFunc(spiffeClient); err != nil {
-				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
-			}
-		}()
-	}
+	defer closeSpiffeClientOnExit(ctx, logger, spiffeClient)
 
 	grpcSrv, err := setupGRPCServerFunc(ctx, cfg, rsaPublicKey, c, spiffeClient, logger, jwtOptions, replayGuard)
 	if err != nil {
@@ -237,6 +225,57 @@ func runMain(ctx context.Context) error {
 	}
 
 	return runServersFunc(ctx, grpcSrv, graphqlSrv, cfg, logger)
+}
+
+// initRevocationAndReplay wires the optional shared Redis authority used for
+// session revocation and one-time capability admission. Release deployments use
+// the same Redis for both so replicas agree. The returned cleanup closes that
+// client (a no-op without a Redis URL) and must be deferred by the caller. On
+// error the cleanup has already run, so the caller only returns the error.
+func initRevocationAndReplay(ctx context.Context, cfg *config.Config, rsaPublicKey *rsa.PublicKey, keySet *rsaKeySetStore, logger *slog.Logger) (jwtAuthOptions, pb.CapabilityReplayGuard, func(), error) {
+	var revocationRedisClient *redis.Client
+	var revocations revocationChecker
+	closeRevocation := func() {}
+	if redisURL := strings.TrimSpace(cfg.RevocationRedisURL); redisURL != "" {
+		client, err := newRevocationRedisClient(ctx, redisURL)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to initialize session revocation Redis", "err", err)
+			return jwtAuthOptions{}, nil, nil, err
+		}
+		revocationRedisClient = client
+		revocations = &redisRevocationChecker{client: client}
+		closeRevocation = func() { closeRevocationRedis(ctx, logger, client) }
+	}
+	jwtOptions, err := strictJWTOptionsWithKeySet(cfg, rsaPublicKey, revocations, keySet)
+	if err != nil {
+		closeRevocation()
+		logger.ErrorContext(ctx, "JWT security configuration is invalid", "err", err)
+		return jwtAuthOptions{}, nil, nil, err
+	}
+	var replayGuard pb.CapabilityReplayGuard = pb.NewCapabilityReplayRegistry(0)
+	if revocationRedisClient != nil {
+		replayGuard = &redisCapabilityReplayGuard{client: revocationRedisClient}
+	}
+	return jwtOptions, replayGuard, closeRevocation, nil
+}
+
+// logCloseError runs a shutdown hook and records, rather than propagates, its
+// failure because shutdown already has a return value committed.
+func logCloseError(ctx context.Context, logger *slog.Logger, msg string, closeFn func() error) {
+	if err := closeFn(); err != nil {
+		logger.WarnContext(ctx, msg, "err", err)
+	}
+}
+
+// closeSpiffeClientOnExit is deferred by runMain. A nil client means the
+// SPIFFE workload API is disabled, so there is nothing to close.
+func closeSpiffeClientOnExit(ctx context.Context, logger *slog.Logger, spiffeClient *spiffe.Client) {
+	if spiffeClient == nil {
+		return
+	}
+	logCloseError(ctx, logger, "Failed to close SPIFFE client", func() error {
+		return closeSpiffeClientFunc(spiffeClient)
+	})
 }
 
 func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
@@ -355,6 +394,14 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// New-TemporalServiceToken). Closes W137 §Honesty #5 + W140 NEW #6.
 	opts := client.Options{
 		HostPort: cfg.TemporalHost,
+		ConnectionOptions: client.ConnectionOptions{
+			TLSDisabled: cfg.TemporalTLSDisabled,
+		},
+	}
+	// The Temporal SDK only auto-enables TLS for API-key credentials. Configure
+	// the transport explicitly so anonymous TLS deployments are also protected.
+	if !cfg.TemporalTLSDisabled {
+		opts.ConnectionOptions.TLS = &tls.Config{MinVersion: tls.VersionTLS13}
 	}
 
 	if cfg.TemporalAPIKeyFile != "" {
@@ -379,9 +426,6 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 				// Production K8s deployments keep TLS enabled; only the local
 				// plaintext Temporal dev server opts out through configuration.
 				opts.Credentials = client.NewAPIKeyStaticCredentials(token)
-				opts.ConnectionOptions = client.ConnectionOptions{
-					TLSDisabled: cfg.TemporalTLSDisabled,
-				}
 				logger.InfoContext(ctx, "Attached Temporal service token",
 					"token_chars", len(token),
 					"tls_enabled", !cfg.TemporalTLSDisabled,

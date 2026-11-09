@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-digest-redis-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: dependency
+      image: docker.io/redis@sha256:0000000000000000000000000000000000000000000000000000000000000000

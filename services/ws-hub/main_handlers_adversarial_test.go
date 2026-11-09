@@ -34,7 +34,7 @@ func TestAdversarial_ReadinessHandler_StressAndFailureModes(t *testing.T) {
 	})
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, &config.Config{}, rdb, revRdb)
+	h := mustNewTestHub(t, nil, logger, nil, &config.Config{}, rdb, revRdb)
 
 	oldNats := healthNATSConnectedFunc
 	oldJWKS := healthJWKSReadyFunc

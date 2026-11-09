@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -23,7 +24,7 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     default: {
@@ -211,7 +212,7 @@ describe("NewsCardEditDialog", () => {
     await user.tab()
 
     await waitFor(() => {
-      expect(screen.getByText("Title is required")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.titleRequired")).toBeInTheDocument()
     })
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
@@ -230,7 +231,9 @@ describe("NewsCardEditDialog", () => {
     await user.clear(content)
     await user.tab()
 
-    await waitFor(() => expect(screen.getByText("Content is required")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("news:form.validation.contentRequired")).toBeInTheDocument()
+    )
 
     const titleEn = screen.getByLabelText("news:form.title_en")
     fireEvent.change(titleEn, { target: { value: "x".repeat(101) } })
@@ -241,8 +244,8 @@ describe("NewsCardEditDialog", () => {
     fireEvent.blur(contentEn)
 
     await waitFor(() => {
-      expect(screen.getByText("Title (EN) must be less than 100 characters")).toBeInTheDocument()
-      expect(screen.getByText("Content (EN) must be less than 3000 characters")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.titleEnMaxLength")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.contentEnMaxLength")).toBeInTheDocument()
     })
   })
 
@@ -351,9 +354,7 @@ describe("NewsCardEditDialog", () => {
     })
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Only .jpg, .jpeg, .png and .webp formats are supported.")
-      ).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.imageFormats")).toBeInTheDocument()
     })
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))

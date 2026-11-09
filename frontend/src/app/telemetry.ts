@@ -61,7 +61,7 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
   const backendApiPattern = backendOrigin
     ? // Build-time origin is escaped so regex metacharacters stay literal.
       // eslint-disable-next-line security/detect-non-literal-regexp -- OpenTelemetry accepts only string or RegExp targets; the origin is escaped above and regression-tested.
-      new RegExp(`^${escapeRegExp(backendOrigin)}/api/`) // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      new RegExp(`^${escapeRegExp(backendOrigin)}/api/`)
     : sameOriginApiPattern
   const traceHeaderTargets = backendOrigin
     ? [backendApiPattern, sameOriginApiPattern]

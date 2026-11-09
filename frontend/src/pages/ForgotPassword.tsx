@@ -24,12 +24,17 @@ const RESEND_COOLDOWN_SEC = 30
 export default function ForgotPassword() {
   // Every key names its namespace explicitly ("auth:…").
   const { t } = useTranslation()
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [requestFailed, setRequestFailed] = useState(false)
 
   const {
     register,
@@ -46,6 +51,9 @@ export default function ForgotPassword() {
     },
     mode: "onChange",
   })
+
+  // SSR and the first client render stay inert until the form handlers attach.
+  const controlsDisabled = !hydrated || isSubmitting
 
   // Watch email for suggestions and UI logic
   const email = watch("email")
@@ -68,19 +76,15 @@ export default function ForgotPassword() {
     data: ResetPasswordValues,
     telemetryContext: CapturedTelemetryContext
   ) => {
+    setRequestFailed(false)
     try {
       await telemetryContext.run(() => axios.post(FORGOT_URL, { email: data.email }))
-      // Even if API fails (security reasons), we often show success or generic message.
-      // But here we'll assume success for the UX flow if no error thrown.
-      // If the backend throws for non-existent email, we might want to catch that.
-      // The original code caught all errors and ignored them ("Ignore errors, message is same for security").
-
       setCooldown(RESEND_COOLDOWN_SEC)
       setIsSuccess(true)
     } catch {
-      // Ignore errors for security, pretend it worked
-      setCooldown(RESEND_COOLDOWN_SEC)
-      setIsSuccess(true)
+      // Keep the response generic so an operational failure does not reveal
+      // whether an account exists, while allowing the user to retry.
+      setRequestFailed(true)
     }
   }
 
@@ -128,7 +132,7 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-lg bg-success-bg/(--opacity-dim) flex items-center justify-center text-success-text">
+                    <div className="h-20 w-20 rounded-lg bg-success-bg/[calc(var(--opacity-dim)*100%)] flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -166,7 +170,9 @@ export default function ForgotPassword() {
                       className="w-full text-(--text-secondary) hover:text-text-primary"
                     >
                       {t("auth:forgot.enterAnother")}
-                      {cooldown > 0 ? ` (${cooldown}s)` : ""}
+                      {cooldown > 0
+                        ? ` ${t("auth:forgot.cooldownSuffix", { seconds: cooldown })}`
+                        : ""}
                     </Button>
                   </div>
                 </m.div>
@@ -190,7 +196,7 @@ export default function ForgotPassword() {
                         autoComplete="email"
                         error={!!errors.email}
                         helperText={errors.email?.message ? t(errors.email.message) : ""}
-                        disabled={isSubmitting}
+                        disabled={controlsDisabled}
                         className="rounded-lg h-14"
                       />
 
@@ -209,11 +215,17 @@ export default function ForgotPassword() {
                               setEmailSuggestion(null)
                             }}
                             color="primary"
-                            className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
+                            className="cursor-pointer hover:bg-brand/[calc(var(--opacity-subtle)*100%)] transition-colors"
                           />
                         </m.div>
                       )}
                     </div>
+
+                    {requestFailed ? (
+                      <p role="alert" className="text-body-sm text-error-text">
+                        {t("common:errors.generic")}
+                      </p>
+                    ) : null}
 
                     <div className="space-y-4 pt-2">
                       <Button
@@ -221,8 +233,8 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        // `loading` also disables the button; the form never shows during a cooldown.
-                        disabled={!isValid}
+                        // Keep validation enforced after hydration and during submission.
+                        disabled={controlsDisabled || !isValid}
                         loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >

@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
@@ -127,32 +127,67 @@ describe("AdminUsers page", () => {
   })
 
   it("filters users by name", async () => {
+    const requestedNames: string[] = []
+    server.use(
+      http.get("*/users", ({ request }) => {
+        requestedNames.push(new URL(request.url).searchParams.get("full_name") ?? "")
+        return HttpResponse.json(
+          mockUsers.filter((u) =>
+            u.full_name.includes(new URL(request.url).searchParams.get("full_name") ?? "")
+          )
+        )
+      })
+    )
     await renderPage()
     // Disambiguate from the "Full name, not sorted" column header button that
     // shares the same accessible label text.
     const filterInput = await screen.findByLabelText(/Full Name/i, { selector: "input" })
     await userEvent.type(filterInput, "John")
-    // fetchUsers is debounced by the effect dependency, so it should trigger
-    // Note: our mock returns all users regardless of filter, but we verify the call
+
+    await waitFor(() => expect(requestedNames).toContain("John"))
+    await waitFor(() => expect(screen.queryByText("Jane Smith")).not.toBeInTheDocument())
+    expect((await screen.findAllByText("John Doe"))[0]).toBeInTheDocument()
   })
 
-  it("handles user deletion", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true)
+  it("deletes the selected user through the API only after the confirmation dialog", async () => {
+    const deletedIds: string[] = []
+    server.use(
+      http.delete("*/users/:id", ({ params }) => {
+        deletedIds.push(String(params.id))
+        return HttpResponse.json({ success: true })
+      })
+    )
     await renderPage()
     const deleteButtons = await screen.findAllByLabelText(/Delete user/i)
     await userEvent.click(deleteButtons[0]!)
-    // Verify deletion call happened (could check server calls if we tracked them)
+    expect(deletedIds).toEqual([])
+
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getAllByRole("button").at(-1)!)
+
+    await waitFor(() => expect(deletedIds).toEqual(["1"]))
   })
 
-  it("handles group change", async () => {
+  it("sends the chosen group for the user whose select changed", async () => {
     const user = userEvent.setup()
+    const patches: { id: string; body: unknown }[] = []
+    server.use(
+      http.patch("*/users/:id", async ({ params, request }) => {
+        patches.push({ id: String(params.id), body: await request.json() })
+        return HttpResponse.json({ success: true })
+      })
+    )
     await renderPage()
-    const selects = await screen.findAllByRole("combobox")
-    // The first select is for filters, others are for users
-    // Let's find the one for John Doe (it has value g1)
-    const johnSelect = selects.find((s) => (s as HTMLSelectElement).value === "g1")
-    if (johnSelect) {
-      await user.selectOptions(johnSelect, "g2")
-    }
+    // The first select is for filters; the per-user selects follow. John Doe is in g1.
+    const johnSelect = await waitFor(() => {
+      const found = screen
+        .getAllByRole("combobox")
+        .find((s) => (s as HTMLSelectElement).value === "g1")
+      expect(found).toBeDefined()
+      return found as HTMLSelectElement
+    })
+    await user.selectOptions(johnSelect, "g2")
+
+    await waitFor(() => expect(patches).toEqual([{ id: "1", body: { group_id: "g2" } }]))
   })
 })

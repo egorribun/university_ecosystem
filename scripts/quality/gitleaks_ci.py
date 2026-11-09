@@ -21,6 +21,10 @@ _TERMINATION_TERM_GRACE_SECONDS = 0.1
 _TERMINATION_REAP_TIMEOUT_SECONDS = 1.0
 _GITLEAKS_TIMEOUT_SECONDS = 960
 _MAX_SARIF_BYTES = 32 * 1024 * 1024
+_MAX_DIAGNOSTIC_IDENTITIES = 25
+_MAX_DIAGNOSTIC_BYTES = 32 * 1024
+_SARIF_RULE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,127}\Z")
+_SARIF_PATH_PATTERN = re.compile(r"[A-Za-z0-9._/-]{1,512}\Z")
 
 
 class GitleaksGateError(RuntimeError):
@@ -458,7 +462,55 @@ def build_gitleaks_command(
     ]
 
 
-def _validate_sarif(report_path: Path) -> None:
+def _sarif_object(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise GitleaksGateError("Redacted SARIF report metadata is invalid")
+    return value
+
+
+def _sarif_identity(result: object) -> dict[str, str | int]:
+    """Select only finite identity fields from the pinned scanner's SARIF shape."""
+
+    finding = _sarif_object(result)
+    rule_id = finding.get("ruleId")
+    if not isinstance(rule_id, str) or _SARIF_RULE_PATTERN.fullmatch(rule_id) is None:
+        raise GitleaksGateError("Redacted SARIF rule identity is invalid")
+
+    locations = finding.get("locations")
+    if not isinstance(locations, list) or len(locations) != 1:
+        raise GitleaksGateError("Redacted SARIF location topology is unsupported")
+    location = _sarif_object(locations[0])
+    physical_location = _sarif_object(location.get("physicalLocation"))
+    artifact_location = _sarif_object(physical_location.get("artifactLocation"))
+    region = _sarif_object(physical_location.get("region"))
+    path = artifact_location.get("uri")
+    if (
+        not isinstance(path, str)
+        or _SARIF_PATH_PATTERN.fullmatch(path) is None
+        or any(part in {"", ".", ".."} for part in path.split("/"))
+    ):
+        raise GitleaksGateError("Redacted SARIF path identity is invalid")
+    line = region.get("startLine")
+    if not isinstance(line, int) or isinstance(line, bool) or not 1 <= line < 2**31:
+        raise GitleaksGateError("Redacted SARIF line identity is invalid")
+
+    identity: dict[str, str | int] = {
+        "rule_id": rule_id,
+        "path": path,
+        "line": line,
+    }
+    fingerprints = _sarif_object(finding.get("partialFingerprints", {}))
+    commit = fingerprints.get("commitSha", "")
+    if not isinstance(commit, str):
+        raise GitleaksGateError("Redacted SARIF commit identity is invalid")
+    if commit:
+        identity["commit"] = _require_sha(commit)
+    return identity
+
+
+def _validate_sarif(
+    report_path: Path,
+) -> tuple[int, list[dict[str, str | int]]]:
     try:
         metadata = report_path.lstat()
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_SARIF_BYTES:
@@ -466,18 +518,31 @@ def _validate_sarif(report_path: Path) -> None:
         report = json.loads(report_path.read_bytes())
     except GitleaksGateError:
         raise
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise GitleaksGateError("Redacted SARIF report is invalid") from exc
     if not isinstance(report, dict) or report.get("version") != "2.1.0":
         raise GitleaksGateError("Redacted SARIF report is invalid")
-    if not isinstance(report.get("runs"), list):
-        raise GitleaksGateError("Redacted SARIF report is invalid")
+    runs = report.get("runs")
+    if not isinstance(runs, list) or len(runs) != 1:
+        raise GitleaksGateError("Redacted SARIF run topology is unsupported")
+    results = _sarif_object(runs[0]).get("results")
+    if not isinstance(results, list):
+        raise GitleaksGateError("Redacted SARIF result metadata is invalid")
+
+    identities: list[dict[str, str | int]] = []
+    for result in results:
+        # Validate every identity before logging anything, including those beyond
+        # the output cap. No snippets, messages or arbitrary metadata are copied.
+        identity = _sarif_identity(result)
+        if len(identities) < _MAX_DIAGNOSTIC_IDENTITIES:
+            identities.append(identity)
+    return len(results), identities
 
 
 def execute_scan(
     event_environment: Mapping[str, str],
 ) -> int:
-    """Validate the immutable event range and run Gitleaks without logging output."""
+    """Validate immutable history and emit only a bounded identity summary."""
 
     workspace = event_environment.get("GITHUB_WORKSPACE", "")
     report_value = event_environment.get("GITLEAKS_REPORT_PATH", "")
@@ -517,7 +582,22 @@ def execute_scan(
         )
         if result.returncode not in {0, 2}:
             raise GitleaksGateError("Gitleaks scan failed")
-        _validate_sarif(resolved_report)
+        result_count, identities = _validate_sarif(resolved_report)
+        if result.returncode == 0 and result_count:
+            raise GitleaksGateError("Gitleaks status contradicts its report")
+        summary = {
+            "status": "findings" if result.returncode == 2 else "clean",
+            "scanner_exit_code": result.returncode,
+            "result_count": result_count,
+            "identities": identities,
+            "omitted_identity_count": result_count - len(identities),
+        }
+        diagnostic = "GITLEAKS_DIAGNOSTIC " + json.dumps(
+            summary, ensure_ascii=True, separators=(",", ":")
+        )
+        if len(diagnostic.encode("ascii")) + 1 > _MAX_DIAGNOSTIC_BYTES:
+            raise GitleaksGateError("Gitleaks diagnostic exceeded its output limit")
+        print(diagnostic)
         return result.returncode
     finally:
         temporary.cleanup()
@@ -527,6 +607,7 @@ def main() -> int:
     try:
         return execute_scan(os.environ)
     except GitleaksGateError:
+        print('GITLEAKS_DIAGNOSTIC {"status":"gate_error"}', file=sys.stderr)
         print(
             "Gitleaks gate failed closed; see the redacted SARIF artifact if available.",
             file=sys.stderr,

@@ -74,11 +74,14 @@ describe("ssrAuth.parseCookie", () => {
 
 describe("ssrAuth.validateJwt", () => {
   beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "test")
+    vi.stubEnv("JWT_ISSUER", "university-ecosystem")
     _setJwtVerifyOverrideForTests(null)
   })
 
   afterEach(() => {
     _setJwtVerifyOverrideForTests(null)
+    vi.unstubAllEnvs()
   })
 
   it("returns SSR_AUTH_UNAUTH when override resolves null (verify failed)", async () => {
@@ -97,7 +100,11 @@ describe("ssrAuth.validateJwt", () => {
 
   it("returns SSR_AUTH_UNAUTH when sub claim missing", async () => {
     _setJwtVerifyOverrideForTests(async () => ({
-      payload: { aud: "university-ecosystem-api", exp: Date.now() / 1000 + 60 },
+      payload: {
+        iss: "university-ecosystem",
+        aud: "university-ecosystem-api",
+        exp: Date.now() / 1000 + 60,
+      },
     }))
     const auth = await validateJwt("any.token.value")
     expect(auth).toEqual(SSR_AUTH_UNAUTH)
@@ -105,7 +112,12 @@ describe("ssrAuth.validateJwt", () => {
 
   it("returns isAuth=true with role from claims when JWT is valid", async () => {
     _setJwtVerifyOverrideForTests(async () => ({
-      payload: { sub: "user-uuid-1", role: "teacher", aud: "university-ecosystem-api" },
+      payload: {
+        sub: "user-uuid-1",
+        role: "teacher",
+        aud: "university-ecosystem-api",
+        iss: "university-ecosystem",
+      },
     }))
     const auth = await validateJwt("any.token.value")
     expect(auth).toEqual({
@@ -119,7 +131,9 @@ describe("ssrAuth.validateJwt", () => {
     ["an empty", ""],
     ["a numeric", 42],
   ])("rejects %s sub claim", async (_label, sub) => {
-    _setJwtVerifyOverrideForTests(async () => ({ payload: { sub, role: "admin" } }))
+    _setJwtVerifyOverrideForTests(async () => ({
+      payload: { sub, role: "admin", iss: "university-ecosystem" },
+    }))
 
     expect(await validateJwt("any.token.value")).toEqual({
       isAuth: false,
@@ -130,7 +144,7 @@ describe("ssrAuth.validateJwt", () => {
 
   it("defaults role to 'student' when claim missing or non-string", async () => {
     _setJwtVerifyOverrideForTests(async () => ({
-      payload: { sub: "user-uuid-2", aud: "university-ecosystem-api" },
+      payload: { sub: "user-uuid-2", aud: "university-ecosystem-api", iss: "university-ecosystem" },
     }))
     expect(await validateJwt("any.token.value")).toEqual({
       isAuth: true,
@@ -144,6 +158,8 @@ describe("ssrAuth.extractAuthFromRequest", () => {
   beforeEach(() => {
     _setJwtVerifyOverrideForTests(null)
     vi.unstubAllEnvs()
+    vi.stubEnv("NODE_ENV", "test")
+    vi.stubEnv("JWT_ISSUER", "university-ecosystem")
   })
 
   afterEach(() => {
@@ -233,7 +249,12 @@ describe("ssrAuth.extractAuthFromRequest", () => {
 
   it("returns auth state when cookie present + JWT validates", async () => {
     _setJwtVerifyOverrideForTests(async () => ({
-      payload: { sub: "user-1", role: "admin", aud: "university-ecosystem-api" },
+      payload: {
+        sub: "user-1",
+        role: "admin",
+        aud: "university-ecosystem-api",
+        iss: "university-ecosystem",
+      },
     }))
     const request = new Request("http://localhost/dashboard", {
       headers: { Cookie: "access_token_v2=valid.jwt.token" },

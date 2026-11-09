@@ -38,7 +38,7 @@ async def test_connection_manager_accepts_without_subprotocol_and_reports_online
     )
 
     with patch.object(module, "settings", settings):
-        assert await manager.connect(websocket, user_id) is True
+        assert await manager.connect(websocket, user_id, session_jti="session") is True
 
     websocket.accept.assert_awaited_once_with()
     assert manager.is_online(user_id) is True
@@ -57,13 +57,21 @@ async def test_connection_manager_sends_live_messages_and_cleans_mapped_dead_pee
     dead.send_json.side_effect = RuntimeError("closed")
     manager.active_connections[user_id] = {live, dead}
     manager.connection_users[dead] = user_id
+    manager.connection_sessions.update({live: "live-session", dead: "dead-session"})
 
-    with patch.object(module, "logger") as logger:
+    with (
+        patch.object(module, "logger") as logger,
+        patch.object(
+            module,
+            "_resolve_user_from_ids",
+            AsyncMock(return_value=(object(), "session")),
+        ),
+    ):
         sent = await manager.send_to_user(user_id, {"type": "ping"})
-
-    assert sent == 1
-    live.send_json.assert_awaited_once_with({"type": "ping"})
-    assert dead not in manager.active_connections[user_id]
-    logger.info.assert_called_once_with("ws_batch_disconnected", user_id=str(user_id))
-
-    assert await manager.send_to_user(user_id, {"type": "second"}) == 1
+        assert sent == 1
+        live.send_json.assert_awaited_once_with({"type": "ping"})
+        assert dead not in manager.active_connections[user_id]
+        logger.info.assert_called_once_with(
+            "ws_batch_disconnected", user_id=str(user_id)
+        )
+        assert await manager.send_to_user(user_id, {"type": "second"}) == 1

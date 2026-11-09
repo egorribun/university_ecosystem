@@ -4,9 +4,10 @@
 	# Global options
 	email admin@example.com
 
-	# Development mode - disable HTTPS for local testing
-	# Remove this block in production
-	auto_https off
+	# Development mode: the plain :80 edge does not redirect to HTTPS. Certificate
+	# management stays enabled so the internal JWKS listener (caddy:8443) obtains
+	# its certificate from Caddy's local CA. Remove this block in production.
+	auto_https disable_redirects
 
 	# Error entries can include the original request URI. Retain useful request
 	# details while redacting login passwords and bearer values.
@@ -18,7 +19,19 @@
 				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
 				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
 				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
 			}
+			# The rewrite handler also logs its target URI as a top-level field.
+			uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
+			}
+			request>headers>Referer delete
+			resp_headers>Location delete
 		}
 		exclude http.log.access
 	}
@@ -35,7 +48,7 @@
 	rate_limit @ws_upgrade {
 		zone ws_upgrades {
 			key {http.request.remote.host}
-			events 10
+			events {$WS_UPGRADE_RATE_PER_MINUTE:120}
 			window 1m
 		}
 	}
@@ -43,6 +56,36 @@
 	# Edge-local liveness endpoint used by start-docker.ps1.
 	handle /healthz {
 		respond "OK" 200
+	}
+
+	# AUD-178: a legacy reset link carries the bearer token in the query string
+	# or the path. Move it to a legacy-only fragment at the edge, before a document
+	# that still contains the token can reach access logs, CSP reports or a
+	# Referer header. Browsers never send URL fragments to the server.
+	# The client captures this transit form in memory and scrubs it on hydration;
+	# canonical #token links remain reloadable until a successful reset.
+	@legacy_reset_query {
+		path /reset-password
+		expression {query.token} != ""
+	}
+	# Native query rewriting escapes the opaque value before fragment transport.
+	handle @legacy_reset_query {
+		header Cache-Control "no-store"
+		route {
+			rewrite * ?legacy-token={query.token}
+			redir * /reset-password#{http.request.uri.query} 302
+		}
+	}
+	@legacy_reset_path {
+		path_regexp legacy_reset ^/reset-password/([^/]+)$
+	}
+	# Native query rewriting escapes the opaque value before fragment transport.
+	handle @legacy_reset_path {
+		header Cache-Control "no-store"
+		route {
+			rewrite * ?legacy-token={re.legacy_reset.1}
+			redir * /reset-password#{http.request.uri.query} 302
+		}
 	}
 
 	# Compression
@@ -167,8 +210,14 @@
 		}
 	}
 
+	# Hashed Vite bundles under /assets/ are public, high-volume static files with no
+	# credential-bearing URI. Skip only their access rows; API, login, WebSocket and
+	# proxy rows keep the filtered URI redaction below.
+	@static_bundles path /assets/*
+	log_skip @static_bundles
+
 	# Preserve useful request details while redacting passwords, reset tokens,
-	# and WebSocket tickets from access-log URI values.
+	# OAuth code/state, and WebSocket tickets from access-log URI values.
 	log {
 		format filter {
 			request>uri multi_regexp {
@@ -177,8 +226,29 @@
 				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
 				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
 				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
 			}
+			request>headers>Referer delete
+			resp_headers>Location delete
 		}
+	}
+}
+
+# AUD-506: Temporal verifies its JWT signing keys only over TLS. This listener is
+# not published to the host, uses a certificate from Caddy's local CA, and serves
+# nothing except the JWKS document. The explicit tls directive keeps certificate
+# management on for this listener, as the global block above describes.
+caddy:8443 {
+	tls internal
+
+	handle /.well-known/jwks.json {
+		reverse_proxy backend:8000 {
+			header_up Host {upstream_hostport}
+		}
+	}
+
+	handle {
+		respond 404
 	}
 }
 

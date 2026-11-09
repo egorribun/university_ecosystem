@@ -172,8 +172,9 @@ function parseProviderWallHour(value: unknown): number | null {
 
   const dateTime = value.split("T")
   if (dateTime.length !== 2) return null
-  const dateParts = dateTime[0]?.split("-") ?? []
-  const timeParts = dateTime[1]?.split(":") ?? []
+  // The exact-length guard above proves both entries exist; these assertions are type-only.
+  const dateParts = dateTime[0]!.split("-")
+  const timeParts = dateTime[1]!.split(":")
   if (dateParts.length !== 3 || timeParts.length < 2 || timeParts.length > 3) return null
 
   const yearText = dateParts[0]

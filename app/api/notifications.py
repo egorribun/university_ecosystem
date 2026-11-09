@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 
@@ -204,6 +205,20 @@ async def _existing_notification_columns(db: AsyncDatabaseSession) -> set[str]:
     return await db.run_sync(_sync_get_columns)
 
 
+@asynccontextmanager
+async def _notification_query_savepoint(
+    db: AsyncDatabaseSession,
+) -> AsyncIterator[None]:
+    """Keep PostgreSQL usable after a missing-column compatibility query."""
+    bind = getattr(db, "bind", None)
+    dialect = getattr(bind, "dialect", None)
+    if getattr(dialect, "name", None) == "postgresql":
+        async with db.begin_nested():
+            yield
+        return
+    yield
+
+
 async def _fetch_notification_rows(
     db: AsyncDatabaseSession,
     user_id: uuid.UUID | int | str,
@@ -243,7 +258,8 @@ async def _fetch_notification_rows(
         .limit(limit + 1)
     )
     try:
-        rows = (await db.execute(stmt)).mappings().all()
+        async with _notification_query_savepoint(db):
+            rows = (await db.execute(stmt)).mappings().all()
         return cast(list[Mapping[str, Any]], rows), None
     except SQLAlchemyError as exc:
         if not _is_missing_column_error(exc):

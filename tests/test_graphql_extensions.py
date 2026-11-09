@@ -52,6 +52,16 @@ from app.graphql.extensions import (
     _load_manifest,
 )
 
+
+async def _assert_validation_completes(
+    extension: PersistedQueryExtension,
+) -> None:
+    validation = extension.on_validate()
+    assert await validation.__anext__() is None
+    with pytest.raises(StopAsyncIteration):
+        await validation.__anext__()
+
+
 # ===========================================================================
 # 1. Strict APQ Verification Tests
 # ===========================================================================
@@ -121,8 +131,9 @@ class TestStrictAPQVerification:
             patch("app.core.config.settings.environment", "production"),
             patch.object(ext_module, "_query_allowlist", {query_hash: query_str}),
         ):
-            async for _ in ext.on_validate():
-                pass
+            await _assert_validation_completes(ext)
+
+        assert ext.execution_context.query == query_str
 
     @pytest.mark.asyncio
     async def test_prod_raw_query_with_mismatched_hash_rejected(self) -> None:
@@ -160,8 +171,9 @@ class TestStrictAPQVerification:
         ext.execution_context.extensions = None
 
         with patch("app.core.config.settings.environment", env_name):
-            async for _ in ext.on_validate():
-                pass
+            await _assert_validation_completes(ext)
+
+        assert ext.execution_context.query == "query { adhocQuery { customField } }"
 
     @pytest.mark.asyncio
     async def test_dev_mode_unknown_hash_without_raw_body_raises(self) -> None:
@@ -247,8 +259,9 @@ class TestStrictAPQVerification:
                 {introspection_hash: introspection_query},
             ),
         ):
-            async for _ in ext.on_validate():
-                pass
+            await _assert_validation_completes(ext)
+
+        assert ext.execution_context.query == introspection_query
 
     @pytest.mark.asyncio
     async def test_prod_missing_manifest_raises(self) -> None:

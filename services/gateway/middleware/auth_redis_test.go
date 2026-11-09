@@ -164,6 +164,7 @@ func newUnrevokedJWTMiddleware(t *testing.T) *JWTMiddleware {
 func revocableClaims(jti string) Claims {
 	return Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			ID:        jti,
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),

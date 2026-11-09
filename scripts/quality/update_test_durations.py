@@ -5,11 +5,11 @@ the measurements at file granularity makes the input deterministic and avoids
 splitting fixtures or stateful tests across runners.  Existing entries are
 preserved by default so a partial report cannot silently erase the historical
 fallback map.  A caller may pass ``--replace`` only when it has a
-complete report.  Replacement mode retains a positive historical value when
-  a file contains skipped test cases: a partial or zero-second sample is not
-  evidence that the file is cheap when some of its real tests were not run.
-  Newly observed files whose cases are all skipped are omitted until a real
-  duration is measured, so the planner falls back to its conservative default.
+complete report.  A file with at least one executed case takes the measured
+  total of its report, including any skipped cases, as its new estimate.  A
+  file whose cases were all skipped keeps a positive historical value; a
+  newly observed file with no executed case is omitted until a real duration
+  is measured, so the planner falls back to its conservative default.
 """
 
 from __future__ import annotations
@@ -108,7 +108,6 @@ def build_duration_payload(
         ) from error
 
     measured: dict[str, float] = {}
-    executed_measured: dict[str, float] = {}
     skipped: dict[str, bool] = {}
     executed: dict[str, bool] = {}
     for testcase in root.iter("testcase"):
@@ -122,29 +121,25 @@ def build_duration_payload(
         is_skipped = testcase.find("skipped") is not None
         skipped[path] = skipped.get(path, False) or is_skipped
         executed[path] = executed.get(path, False) or not is_skipped
-        if not is_skipped:
-            executed_measured[path] = executed_measured.get(path, 0.0) + duration
 
     existing_durations = _read_existing(existing)
     durations = {} if replace else dict(existing_durations)
     for path, value in measured.items():
-        if skipped.get(path, False):
-            historical = existing_durations.get(path, 0.0)
-            if historical > 0:
-                durations[path] = historical
-            elif executed.get(path, False) and executed_measured.get(path, 0.0) > 0:
-                # A partial file still has an observed execution cost.  It is
-                # safer to retain that lower bound than to collapse a large
-                # file to the global default merely because one optional case
-                # was skipped in this environment.
-                durations[path] = executed_measured[path]
-            else:
-                # An all-skipped report provides no useful estimate in either
-                # mode.  Leave the path absent so collection uses the
-                # conservative default rather than a bookkeeping duration.
-                durations.pop(path, None)
+        if executed.get(path, False):
+            # Any executed case is a fresh measurement of the file.  Skipped
+            # cases only add bookkeeping time, so the measured total replaces
+            # the historical value.  Keeping the old value when a file has a
+            # skipped case froze stale estimates in place (for example, a file
+            # measured at 706 s kept a 13 s estimate for months).
+            durations[path] = value
             continue
-        durations[path] = value
+        # All cases skipped: the report provides no execution cost.  Keep a
+        # positive historical estimate; otherwise leave the path absent so
+        # collection uses the planner's conservative fallback.
+        if existing_durations.get(path, 0.0) > 0:
+            durations[path] = existing_durations[path]
+        else:
+            durations.pop(path, None)
     values = [value for path, value in measured.items() if not skipped.get(path, False)]
     default_duration = (
         round(statistics.median(values), 3)

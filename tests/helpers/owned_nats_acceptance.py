@@ -22,6 +22,7 @@ CORE_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -32,7 +33,13 @@ CORE_SERVICES = (
 )
 NO_HEALTHCHECK = frozenset({"caddy", "flagd", "gateway", "mailpit", "tempo", "ws-hub"})
 CORE_INITIALIZERS = frozenset(
-    {"migrations", "minio-init", "postgres-databases-init", "spicedb-migrate"}
+    {
+        "migrations",
+        "minio-init",
+        "postgres-databases-init",
+        "postgres-roles-init",
+        "spicedb-migrate",
+    }
 )
 
 

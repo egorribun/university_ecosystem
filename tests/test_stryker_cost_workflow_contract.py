@@ -72,10 +72,10 @@ def test_full_stryker_inventory_is_nightly_not_a_blocking_ci_dependency() -> Non
     selector = _step(shards, "Select immutable same-run Stryker preflight candidate")
     selector_run = selector["run"]
     for required in (
-        '--run-id "${{ github.run_id }}"',
-        '--consumer-run-attempt "${{ github.run_attempt }}"',
-        '--commit-sha "${{ github.sha }}"',
-        '--run-head-sha "${{ github.sha }}"',
+        '--run-id "$GITHUB_RUN_ID"',
+        '--consumer-run-attempt "$GITHUB_RUN_ATTEMPT"',
+        '--commit-sha "$GITHUB_SHA"',
+        '--run-head-sha "$GITHUB_SHA"',
         '--workflow-path ".github/workflows/nightly-full-gate.yml"',
         '--artifact-prefix "frontend-mutation-preflight-"',
         "--attempt-policy current-or-earlier",
@@ -119,9 +119,9 @@ def test_nightly_stryker_aggregate_checks_all_shards_and_round_trips_bound_evide
     selector = _step(
         roundtrip, "Select immutable same-run validated Stryker evidence candidate"
     )
-    assert '--run-id "${{ github.run_id }}"' in selector["run"]
-    assert '--consumer-run-attempt "${{ github.run_attempt }}"' in selector["run"]
-    assert '--commit-sha "${{ github.sha }}"' in selector["run"]
+    assert '--run-id "$GITHUB_RUN_ID"' in selector["run"]
+    assert '--consumer-run-attempt "$GITHUB_RUN_ATTEMPT"' in selector["run"]
+    assert '--commit-sha "$GITHUB_SHA"' in selector["run"]
     reverify = _step(
         roundtrip, "Re-verify downloaded nightly frontend mutation evidence"
     )

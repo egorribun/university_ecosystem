@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.workers.outbox import OutboxWorker
+from app.workers.outbox import _OUTBOX_BATCH_RETRY_PENDING, OutboxWorker
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -302,6 +302,7 @@ async def test_process_batch_dispatch_failure_increments_error(worker: OutboxWor
 
     assert result == 1
     assert se.error_count == 1
+    assert _OUTBOX_BATCH_RETRY_PENDING.get() is True
 
 
 @pytest.mark.asyncio
@@ -442,3 +443,156 @@ async def test_run_forever_processed_equals_or_exceeds_batch_size(worker: Outbox
     # The wakeup wait should NOT be called on the first loop iteration!
     assert call_count >= 2
     mock_wait.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_drains_underfilled_success_batches_without_poll_wait(
+    worker: OutboxWorker,
+):
+    worker.batch_size = 20
+    calls = 0
+
+    async def process_one_successful_head() -> int:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            return 1
+        raise asyncio.CancelledError
+
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
+
+    worker.process_batch = process_one_successful_head  # type: ignore[method-assign]
+    mock_wait = AsyncMock()
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    with patch.object(worker, "_listen_loop", side_effect=wait_forever):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    assert calls == 4
+    mock_wait.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_waits_after_empty_or_all_locked_poll(
+    worker: OutboxWorker,
+):
+    calls = 0
+
+    async def empty_batch_then_cancel() -> int:
+        nonlocal calls
+        calls += 1
+        return 0
+
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
+
+    worker.process_batch = empty_batch_then_cancel  # type: ignore[method-assign]
+    mock_wait = AsyncMock(side_effect=asyncio.CancelledError)
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    with patch.object(worker, "_listen_loop", side_effect=wait_forever):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    assert calls == 1
+    mock_wait.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_waits_after_retryable_failure_even_for_full_batch(
+    worker: OutboxWorker,
+):
+    worker.batch_size = 2
+    calls = 0
+
+    async def failed_full_batch() -> int:
+        nonlocal calls
+        calls += 1
+        _OUTBOX_BATCH_RETRY_PENDING.set(True)
+        return worker.batch_size
+
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
+
+    worker.process_batch = failed_full_batch  # type: ignore[method-assign]
+    mock_wait = AsyncMock(side_effect=asyncio.CancelledError)
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    with patch.object(worker, "_listen_loop", side_effect=wait_forever):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    assert calls == 1
+    mock_wait.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_waits_after_deferred_underfilled_batch(
+    worker: OutboxWorker,
+):
+    worker.batch_size = 2
+    calls = 0
+
+    async def deferred_batch() -> int:
+        nonlocal calls
+        calls += 1
+        _OUTBOX_BATCH_RETRY_PENDING.set(True)
+        return 0
+
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
+
+    worker.process_batch = deferred_batch  # type: ignore[method-assign]
+    mock_wait = AsyncMock(side_effect=asyncio.CancelledError)
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    with patch.object(worker, "_listen_loop", side_effect=wait_forever):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    assert calls == 1
+    mock_wait.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_retry_marker_isolated_from_overlapping_task(
+    worker: OutboxWorker,
+):
+    calls = 0
+    child_entered = asyncio.Event()
+    release_child = asyncio.Event()
+    child_marked_retry = asyncio.Event()
+
+    async def mark_retry_in_child_task() -> None:
+        child_entered.set()
+        await release_child.wait()
+        _OUTBOX_BATCH_RETRY_PENDING.set(True)
+        child_marked_retry.set()
+
+    async def successful_batch_with_overlapping_retry_task() -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            child = asyncio.create_task(mark_retry_in_child_task())
+            await child_entered.wait()
+            release_child.set()
+            await child_marked_retry.wait()
+            await child
+            return 1
+        raise asyncio.CancelledError
+
+    worker.process_batch = successful_batch_with_overlapping_retry_task  # type: ignore[method-assign]
+    mock_wait = AsyncMock()
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
+
+    with patch.object(worker, "_listen_loop", side_effect=wait_forever):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    assert calls == 2
+    mock_wait.assert_not_awaited()
