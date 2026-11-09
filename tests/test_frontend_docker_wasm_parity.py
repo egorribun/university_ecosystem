@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -71,7 +72,7 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
         in dockerfile
     )
     assert '/opt/binaryen/bin/wasm-opt --version | grep -Fq "version 133"' in dockerfile
-    assert 'ENV PATH="/opt/binaryen/bin:${PATH}"' in dockerfile
+    assert 'ENV PATH="/opt/wasm-bindgen:/opt/binaryen/bin:${PATH}"' in dockerfile
     assert "--remap-path-prefix=/root/.cargo=/usr/local/cargo" in dockerfile
     assert "--remap-path-prefix=/wasm=/work/frontend" in dockerfile
     assert "wasm-pack build rust-crypto --target web --release" in dockerfile
@@ -174,3 +175,67 @@ def test_ci_rust_quality_jobs_use_the_canonical_producer_toolchain(job: str) -> 
     ]
 
     assert [str(step["with"]["toolchain"]) for step in setups] == [canonical]
+
+
+def test_frontend_wasm_bindgen_cli_uses_verified_release() -> None:
+    """The exact release CLI must precede wasm-pack's unlocked fallback."""
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    url = (
+        "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/"
+        "wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz"
+    )
+    checksum = (
+        "printf '%s  %s\\n' '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e'"
+        " /tmp/wasm-bindgen.tar.gz | sha256sum --check --strict"
+    )
+    extract = (
+        "tar -xzf /tmp/wasm-bindgen.tar.gz --strip-components=1 -C /opt/wasm-bindgen"
+    )
+    assert url in dockerfile
+    assert checksum in dockerfile
+    assert extract in dockerfile
+    assert (
+        dockerfile.index(url) < dockerfile.index(checksum) < dockerfile.index(extract)
+    )
+    assert dockerfile.index(extract) < dockerfile.index("wasm-pack build rust-crypto")
+    assert (
+        'test "$(/opt/wasm-bindgen/wasm-bindgen --version)" = "wasm-bindgen 0.2.129"'
+        in dockerfile
+    )
+    for package in ("rust-crypto", "wasm-sanitizer"):
+        lock = tomllib.loads(
+            (ROOT / "frontend" / package / "Cargo.lock").read_text(encoding="utf-8")
+        )
+        versions = [
+            item["version"]
+            for item in lock["package"]
+            if item["name"] == "wasm-bindgen"
+        ]
+        assert versions == ["0.2.129"]
+    assert "writeSourceProvenance" not in dockerfile
+
+
+def test_canonical_wasm_producer_uses_the_same_verified_cli() -> None:
+    workflow = yaml.safe_load(PRODUCER.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["build"]["steps"]
+    install = _step(steps, "Install pinned wasm-bindgen")
+    run = install["run"]
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    url = re.search(
+        r'https://github.com/wasm-bindgen/wasm-bindgen/releases/download/[^"\s]+', run
+    )
+    digest = re.search(r"'[0-9a-f]{64}'", run)
+    assert url is not None and url.group() in dockerfile
+    assert digest is not None and digest.group() in dockerfile
+    assert "set -euo pipefail" in run
+    assert "--proto '=https' --tlsv1.2 --retry 3" in run
+    assert "sha256sum --check --strict" in run
+    assert run.index("sha256sum --check --strict") < run.index("tar --extract")
+    assert (
+        'test "$("$bindgen_root/wasm-bindgen" --version)" = "wasm-bindgen 0.2.129"'
+        in run
+    )
+    assert 'echo "$bindgen_root" >> "$GITHUB_PATH"' in run
+    assert steps.index(install) < steps.index(
+        _step(steps, "Build immutable WASM modules")
+    )

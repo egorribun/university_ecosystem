@@ -5957,6 +5957,43 @@ _NOV6_ZLIB_PRIOR_FRONTEND_IDENTITY = (
 )
 
 
+# Three exact owner-approved wasm-bindgen release checksum identities, November 9.
+_NOV9_WASM_CLI_DIGEST = tuple(
+    bytes.fromhex("20 72 3e 69 d0 30 f2 1c 3c 42 bb 5a bc 49 d1 2b 12 24 83 c3")
+)
+_NOV9_WASM_CLI_PATHS = frozenset(
+    {
+        "frontend.Dockerfile",
+        ".github/workflows/reusable-e2e-wasm-build.yml",
+        "tests/test_frontend_docker_wasm_parity.py",
+    }
+)
+_NOV9_WASM_CLI_EVIDENCE = {
+    (source_path, "Hex High Entropy String", _NOV9_WASM_CLI_DIGEST): (
+        "Official wasm-bindgen 0.2.129 x86_64-unknown-linux-musl release archive "
+        "SHA-256, verified against "
+        "https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/tags/0.2.129; "
+        f"exact source path {source_path}; owner approved this finite public "
+        "integrity identity on 2026-11-09; not credential material."
+    )
+    for source_path in _NOV9_WASM_CLI_PATHS
+}
+_NOV9_WASM_CLI_PRIOR_IDENTITIES = frozenset(
+    identity
+    for identity in _NOV6_ZLIB_APK_EVIDENCE
+    if identity[0] in _NOV9_WASM_CLI_PATHS
+) | {
+    _NOV6_ZLIB_PRIOR_FRONTEND_IDENTITY,
+    (
+        "tests/test_frontend_docker_wasm_parity.py",
+        "Hex High Entropy String",
+        tuple(
+            bytes.fromhex("5c ea 64 39 03 3d 5e 5e f1 bf 07 e9 62 2d 8a d8 35 be 4c 9f")
+        ),
+    ),
+}
+
+
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _FALSE_POSITIVE_RECORD_LIMIT = 512
@@ -6437,9 +6474,29 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        wasm_cli_evidence = _NOV9_WASM_CLI_EVIDENCE.get(exact_source_identity)
+        if (
+            exact_source_identity not in _NOV9_WASM_CLI_PRIOR_IDENTITIES
+            and (
+                path in _NOV9_WASM_CLI_PATHS
+                or tuple(raw_digest_bytes) == _NOV9_WASM_CLI_DIGEST
+            )
+        ) and (
+            wasm_cli_evidence is None
+            or category != "public_integrity_digest"
+            or record.get("evidence") != wasm_cli_evidence
+            or record.get("owner") != "egorribun"
+            or record.get("reviewed_on") != "2026-11-09"
+            or record.get("expires_on") != "2027-01-10"
+            or record.get("approval_status") != "approved"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-9 WASM CLI identity or approval changed"
+            )
         apk_evidence = _NOV6_ZLIB_APK_EVIDENCE.get(exact_source_identity)
         if (
             exact_source_identity != _NOV6_ZLIB_PRIOR_FRONTEND_IDENTITY
+            and wasm_cli_evidence is None
             and (
                 path in _NOV6_ZLIB_APK_PATHS
                 or tuple(raw_digest_bytes) in _NOV6_ZLIB_APK_DIGESTS

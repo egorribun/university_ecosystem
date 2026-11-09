@@ -17203,6 +17203,108 @@
       },
       "owner": "egorribun",
       "reviewed_on": "2026-11-07"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Official wasm-bindgen 0.2.129 x86_64-unknown-linux-musl release archive SHA-256, verified against https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/tags/0.2.129; exact source path frontend.Dockerfile; owner approved this finite public integrity identity on 2026-11-09; not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          32,
+          114,
+          62,
+          105,
+          208,
+          48,
+          242,
+          28,
+          60,
+          66,
+          187,
+          90,
+          188,
+          73,
+          209,
+          43,
+          18,
+          36,
+          131,
+          195
+        ],
+        "path": "frontend.Dockerfile",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-09"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Official wasm-bindgen 0.2.129 x86_64-unknown-linux-musl release archive SHA-256, verified against https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/tags/0.2.129; exact source path .github/workflows/reusable-e2e-wasm-build.yml; owner approved this finite public integrity identity on 2026-11-09; not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          32,
+          114,
+          62,
+          105,
+          208,
+          48,
+          242,
+          28,
+          60,
+          66,
+          187,
+          90,
+          188,
+          73,
+          209,
+          43,
+          18,
+          36,
+          131,
+          195
+        ],
+        "path": ".github/workflows/reusable-e2e-wasm-build.yml",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-09"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Official wasm-bindgen 0.2.129 x86_64-unknown-linux-musl release archive SHA-256, verified against https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/tags/0.2.129; exact source path tests/test_frontend_docker_wasm_parity.py; owner approved this finite public integrity identity on 2026-11-09; not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          32,
+          114,
+          62,
+          105,
+          208,
+          48,
+          242,
+          28,
+          60,
+          66,
+          187,
+          90,
+          188,
+          73,
+          209,
+          43,
+          18,
+          36,
+          131,
+          195
+        ],
+        "path": "tests/test_frontend_docker_wasm_parity.py",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-09"
     }
   ],
   "schema_version": 1

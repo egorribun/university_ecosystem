@@ -34,7 +34,16 @@ RUN mkdir -p /opt/binaryen \
  && tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen \
  && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 133" \
  && rustup target add wasm32-unknown-unknown
-ENV PATH="/opt/binaryen/bin:${PATH}"
+# Use the exact release CLI used by the canonical producer. wasm-pack's
+# download fallback compiles unlocked transitive crates and changes WASM bytes.
+RUN curl --fail --silent --show-error --location \
+      --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
+      --output /tmp/wasm-bindgen.tar.gz "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz" \
+ && printf '%s  %s\n' '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e' /tmp/wasm-bindgen.tar.gz | sha256sum --check --strict
+RUN mkdir -p /opt/wasm-bindgen \
+ && tar -xzf /tmp/wasm-bindgen.tar.gz --strip-components=1 -C /opt/wasm-bindgen \
+ && test "$(/opt/wasm-bindgen/wasm-bindgen --version)" = "wasm-bindgen 0.2.129"
+ENV PATH="/opt/wasm-bindgen:/opt/binaryen/bin:${PATH}"
 WORKDIR /wasm
 ENV RUSTFLAGS="--remap-path-prefix=/root/.cargo=/usr/local/cargo --remap-path-prefix=/wasm=/work/frontend"
 COPY frontend/rust-crypto ./rust-crypto

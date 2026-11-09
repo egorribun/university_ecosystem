@@ -78,6 +78,23 @@ jobs:
           "$binaryen_root/bin/wasm-opt" --version | grep -Fq "version 133"
           echo "$binaryen_root/bin" >> "$GITHUB_PATH"
 
+      - name: Install pinned wasm-bindgen
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Match Docker and checked-in packages; never use wasm-pack's unlocked cargo fallback.
+          bindgen_root="$RUNNER_TEMP/wasm-bindgen-0.2.129"
+          bindgen_archive="$RUNNER_TEMP/wasm-bindgen-0.2.129.tar.gz"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
+            --output "$bindgen_archive" "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz"
+          printf '%s  %s\n' '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e' "$bindgen_archive" \
+            | sha256sum --check --strict
+          mkdir -p -- "$bindgen_root"
+          tar --extract --file "$bindgen_archive" --strip-components=1 --directory "$bindgen_root"
+          test "$("$bindgen_root/wasm-bindgen" --version)" = "wasm-bindgen 0.2.129"
+          echo "$bindgen_root" >> "$GITHUB_PATH"
+
       - name: Build immutable WASM modules
         working-directory: frontend
         shell: bash

@@ -1072,9 +1072,9 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 7)
+        repository_root=root, today=verifier.date(2026, 11, 9)
     )
-    assert len(validated) == 506
+    assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -17981,15 +17981,7 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     )
     policy_bytes = policy_path.read_bytes()
     policy = json.loads(policy_bytes.decode("utf-8"))
-    records = policy.get("records")
-    if isinstance(records, list) and len(records) == 506:
-        assert len(policy_bytes) == 495840, "live disposition bytes changed"
-        assert hashlib.sha256(policy_bytes).digest() == (
-            _AUD428_ROW13_ACTIVE_POLICY_SHA256
-        ), "live disposition policy digest changed"
-        assert hashlib.sha256(policy_bytes[:494905]).digest() == (
-            _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
-        ), "prior 505 policy bytes changed"
+    _nov9_assert_live_policy_bytes(policy_bytes)
     return policy
 
 
@@ -18031,6 +18023,7 @@ def _aud380_assert_live_policy_is_exact_505(
 def _aud380_historical_490_from_live_policy(
     live_policy: dict[str, Any],
 ) -> dict[str, Any]:
+    live_policy = _nov9_historical_506_from_live_policy(live_policy)
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
     assert len(live_records) == 506, "live disposition row count changed"
@@ -18047,7 +18040,7 @@ def _aud380_historical_490_from_live_policy(
 
 
 def _aud380_conditional_policy() -> dict[str, Any]:
-    """Return the exact historical 490 prefix after validating live 506 bytes."""
+    """Return the exact historical 490 prefix after validating live 509 bytes."""
     return _aud380_historical_490_from_live_policy(_aud380_read_live_policy())
 
 
@@ -26174,7 +26167,7 @@ def _assert_aud380_n4_conditional_policy(
 def test_aud380_live_approved_policy_requires_exact_506_projection(
     mutation: str,
 ) -> None:
-    live_policy = _aud380_read_live_policy()
+    live_policy = _nov9_historical_506_from_live_policy(_aud380_read_live_policy())
     historical_490 = _aud380_conditional_policy()
     _aud428_assert_live_policy_is_exact_506(live_policy, historical_490)
 
@@ -30607,6 +30600,7 @@ _NOV6_ZLIB_EXPECTED_RECORDS = [
 def _nov6_zlib_historical_497_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
+    policy = _nov9_historical_506_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
     assert len(records) == 506, "live disposition row count changed"
@@ -30902,7 +30896,11 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
     policy_path = repository_root / "quality/security-false-positive-dispositions.json"
     ledger_bytes = ledger_path.read_bytes()
     companion_bytes = companion_path.read_bytes()
-    policy_bytes = policy_path.read_bytes()
+    live_policy_bytes = policy_path.read_bytes()
+    _nov9_assert_live_policy_bytes(live_policy_bytes)
+    policy_bytes = _nov9_historical_506_policy_bytes(
+        _nov9_historical_506_from_live_policy(json.loads(live_policy_bytes))
+    )
     companion_sha = hashlib.sha256(companion_bytes).digest()
     assert companion_sha == _AUD428_ROW13_COMPANION_SHA256
     assert (
@@ -30995,8 +30993,9 @@ def test_aud428_row13_approved_506_binding_preserves_505_prefix_and_zlib_suffix(
 ):
     repository_root = Path(__file__).resolve().parents[1]
     _aud428_assert_row13_source_binding(repository_root)
-    active = _aud380_read_live_policy()
-    historical_490 = _aud380_historical_490_from_live_policy(active)
+    live = _aud380_read_live_policy()
+    historical_490 = _aud380_historical_490_from_live_policy(live)
+    active = _nov9_historical_506_from_live_policy(live)
     _aud428_assert_live_policy_is_exact_506(active, historical_490)
     assert len(active["records"]) == 506
     assert active["records"][497:505] == _NOV6_ZLIB_EXPECTED_RECORDS
@@ -31024,8 +31023,9 @@ def test_aud428_row13_approved_506_binding_preserves_505_prefix_and_zlib_suffix(
     ),
 )
 def test_aud428_row13_approved_506_rejects_scope_drift(mutation: str) -> None:
-    active = _aud380_read_live_policy()
-    historical_490 = _aud380_historical_490_from_live_policy(active)
+    live = _aud380_read_live_policy()
+    historical_490 = _aud380_historical_490_from_live_policy(live)
+    active = _nov9_historical_506_from_live_policy(live)
     changed = copy.deepcopy(active)
     if mutation == "digest":
         changed["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -31444,3 +31444,343 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
     **_AUD380_N6_FINAL_SOURCE_SHA256,
     "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
 }
+
+
+# Owner-approved 2026-11-09 wasm-bindgen archive identities. Keep the historical
+# 506-record policy and all earlier fixture contracts intact; append only these
+# three public checksum identities, with the same finite January-10 expiry.
+_NOV9_WASM_CLI_PATHS = (
+    "frontend.Dockerfile",
+    ".github/workflows/reusable-e2e-wasm-build.yml",
+    "tests/test_frontend_docker_wasm_parity.py",
+)
+_NOV9_WASM_CLI_ARCHIVE_SHA256 = bytes.fromhex(
+    "82 d1 2b b9 40 e2 d4 e7 2e 0d 56 05 38 7f c1 b8 ca 17 90 44 e0 12 b6 20 f0 ce 4e 74 40 e8 32 0e"
+)
+_NOV9_WASM_CLI_SCANNER_DIGEST = bytes.fromhex(
+    "20 72 3e 69 d0 30 f2 1c 3c 42 bb 5a bc 49 d1 2b 12 24 83 c3"
+)
+_NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
+    "dc 8d 6b 45 f8 a2 df dd 1d 28 7b 80 0a a6 42 40 db e9 90 35 43 85 ff 28 36 09 a4 15 ea ca 4b 97"
+)
+_NOV9_WASM_CLI_EXPECTED_RECORDS = [
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Official wasm-bindgen 0.2.129 x86_64-unknown-linux-musl release "
+            "archive SHA-256, verified against "
+            "https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/tags/0.2.129; "
+            f"exact source path {path}; owner approved this finite public integrity "
+            "identity on 2026-11-09; not credential material."
+        ),
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": list(_NOV9_WASM_CLI_SCANNER_DIGEST),
+            "path": path,
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-09",
+    }
+    for path in _NOV9_WASM_CLI_PATHS
+]
+
+
+def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
+    return (json.dumps(policy, sort_keys=True, indent=2) + "\n").encode("utf-8")
+
+
+def _nov9_historical_506_from_live_policy(
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    records = policy.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    assert len(records) == 509, "live disposition row count changed"
+    assert records[506:] == _NOV9_WASM_CLI_EXPECTED_RECORDS, (
+        "approved wasm-bindgen suffix changed"
+    )
+    historical = {**policy, "records": copy.deepcopy(records[:506])}
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    assert len(historical_bytes) == 495840, "prior 506 policy bytes changed"
+    assert hashlib.sha256(historical_bytes).digest() == (
+        _AUD428_ROW13_ACTIVE_POLICY_SHA256
+    ), "prior 506 approved records or header changed"
+    accepted = verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 11, 9)
+    )
+    assert len(accepted) == 509, "live approved disposition count changed"
+    return historical
+
+
+def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
+    assert len(policy_bytes) == 498822, "live disposition bytes changed"
+    assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
+        "live disposition policy digest changed"
+    )
+    historical = _nov9_historical_506_from_live_policy(json.loads(policy_bytes))
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    # Everything before the former closing list is byte-identical, including
+    # the row13 companion and each old approval's evidence, dates, and owner.
+    assert policy_bytes[:495810] == historical_bytes[:495810]
+    assert hashlib.sha256(policy_bytes[:494905]).digest() == (
+        _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
+    ), "prior 505 policy bytes changed"
+
+
+def test_nov9_wasm_cli_policy_appends_only_three_and_preserves_exact_506() -> None:
+    live = _aud380_read_live_policy()
+    historical = _nov9_historical_506_from_live_policy(live)
+    historical_490 = _aud380_historical_490_from_live_policy(live)
+    _aud428_assert_live_policy_is_exact_506(historical, historical_490)
+    assert historical["records"][497:505] == _NOV6_ZLIB_EXPECTED_RECORDS
+    assert historical["records"][505] == _AUD428_ROW13_APPROVED_RECORD
+    expected = {
+        _aud380_identity_key(record): record["evidence"]
+        for record in _NOV9_WASM_CLI_EXPECTED_RECORDS
+    }
+    assert len(expected) == 3
+    assert verifier._NOV9_WASM_CLI_EVIDENCE == expected
+    assert verifier._NOV9_WASM_CLI_PATHS == frozenset(_NOV9_WASM_CLI_PATHS)
+    assert verifier._NOV9_WASM_CLI_DIGEST == tuple(_NOV9_WASM_CLI_SCANNER_DIGEST)
+    prior_identities = {
+        _aud380_identity_key(record)
+        for record in historical["records"]
+        if record["identity"]["path"] in _NOV9_WASM_CLI_PATHS
+    }
+    assert len(prior_identities) == 4
+    assert verifier._NOV9_WASM_CLI_PRIOR_IDENTITIES == prior_identities
+    assert not set(expected) & prior_identities
+    assert Counter(row["category"] for row in live["records"]) == Counter(
+        row["category"] for row in historical["records"]
+    ) + Counter({"public_integrity_digest": 3})
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "extra",
+        "reordered",
+        "duplicate",
+        "old_record",
+        "old_expiry",
+        "header",
+    ],
+)
+def test_nov9_wasm_cli_live_projection_refuses_scope_drift(mutation: str) -> None:
+    policy = _aud380_read_live_policy()
+    if mutation == "missing":
+        policy["records"].pop()
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    elif mutation == "reordered":
+        policy["records"][506], policy["records"][507] = (
+            policy["records"][507],
+            policy["records"][506],
+        )
+    elif mutation == "duplicate":
+        policy["records"][508] = copy.deepcopy(policy["records"][506])
+    elif mutation == "old_record":
+        policy["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "old_expiry":
+        policy["records"][0]["expires_on"] = "2027-01-11"
+    else:
+        policy["schema_version"] = 2
+    with pytest.raises(AssertionError):
+        _nov9_historical_506_from_live_policy(policy)
+
+
+@pytest.mark.parametrize("mutation", ["missing_byte", "extra_byte", "changed_byte"])
+def test_nov9_wasm_cli_live_policy_rejects_byte_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy_bytes = (
+        root / "quality/security-false-positive-dispositions.json"
+    ).read_bytes()
+    _nov9_assert_live_policy_bytes(policy_bytes)
+    if mutation == "missing_byte":
+        policy_bytes = policy_bytes[:-1]
+    elif mutation == "extra_byte":
+        policy_bytes += b"\n"
+    else:
+        policy_bytes = policy_bytes.replace(
+            b'"schema_version": 1', b'"schema_version": 2'
+        )
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov9_assert_live_policy_bytes(policy_bytes)
+
+
+@pytest.mark.parametrize("index", range(3))
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "wildcard_path",
+        "digest",
+        "type",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed",
+        "expiry_shortened",
+        "expiry_extended",
+        "status",
+    ],
+)
+def test_nov9_wasm_cli_validator_refuses_approval_drift(
+    index: int, mutation: str
+) -> None:
+    record = copy.deepcopy(_NOV9_WASM_CLI_EXPECTED_RECORDS[index])
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(record), today=verifier.date(2026, 11, 9)
+            )
+        )
+        == 1
+    )
+    if mutation == "path":
+        record["identity"]["path"] = "other/changed-source.py"
+    elif mutation == "wildcard_path":
+        record["identity"]["path"] = "frontend*"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        record["evidence"] += " altered"
+    elif mutation == "owner":
+        record["owner"] = "other-owner"
+    elif mutation == "reviewed":
+        record["reviewed_on"] = "2026-11-08"
+    elif mutation == "expiry_shortened":
+        record["expires_on"] = "2027-01-09"
+    elif mutation == "expiry_extended":
+        record["expires_on"] = "2027-01-11"
+    else:
+        record["approval_status"] = "NOT_APPROVED"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 9)
+        )
+    policy = _aud380_read_live_policy()
+    policy["records"][506 + index] = record
+    with pytest.raises(AssertionError, match="approved wasm-bindgen suffix changed"):
+        _nov9_historical_506_from_live_policy(policy)
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_nov9_wasm_cli_review_and_inclusive_expiry_are_finite(index: int) -> None:
+    document = _disposition_document(
+        copy.deepcopy(_NOV9_WASM_CLI_EXPECTED_RECORDS[index])
+    )
+    expected = {
+        verifier.FindingIdentity(
+            _NOV9_WASM_CLI_PATHS[index],
+            "Hex High Entropy String",
+            _NOV9_WASM_CLI_SCANNER_DIGEST.hex(),
+            1,
+        )
+    }
+    for today in (verifier.date(2026, 11, 9), verifier.date(2027, 1, 10)):
+        assert verifier.validate_false_positive_dispositions(document, today=today) == (
+            expected
+        )
+    for today in (verifier.date(2026, 11, 8), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)
+    with pytest.raises(verifier.BaselineArtifactError, match="duplicate"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*document["records"], *document["records"]),
+            today=verifier.date(2026, 11, 9),
+        )
+
+
+def _nov9_wasm_cli_source_identities(
+    root: Path,
+) -> set[tuple[str, str, tuple[int, ...]]]:
+    checksum = _NOV9_WASM_CLI_ARCHIVE_SHA256.hex()
+    digest = hashlib.sha1(checksum.encode("utf-8"), usedforsecurity=False).digest()
+    assert digest == _NOV9_WASM_CLI_SCANNER_DIGEST
+    identities = set()
+    for path in _NOV9_WASM_CLI_PATHS:
+        source = (root / path).read_text(encoding="utf-8")
+        checksums = re.findall(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", source)
+        assert checksums.count(checksum) == 1, f"wasm-bindgen checksum changed: {path}"
+        identities.add((path, "Hex High Entropy String", tuple(digest)))
+    return identities
+
+
+def test_nov9_wasm_cli_integrity_records_bind_exact_source_values() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert _nov9_wasm_cli_source_identities(root) == {
+        _aud380_identity_key(record) for record in _NOV9_WASM_CLI_EXPECTED_RECORDS
+    }
+
+
+@pytest.mark.parametrize("path", _NOV9_WASM_CLI_PATHS)
+@pytest.mark.parametrize("mutation", ["missing", "changed", "duplicate"])
+def test_nov9_wasm_cli_source_bindings_reject_drift(
+    tmp_path: Path, path: str, mutation: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    for source_path in _NOV9_WASM_CLI_PATHS:
+        target = tmp_path / source_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / source_path).read_bytes())
+    target = tmp_path / path
+    source = target.read_text(encoding="utf-8")
+    checksum = _NOV9_WASM_CLI_ARCHIVE_SHA256.hex()
+    replacement = {
+        "missing": "",
+        "changed": "0" * 64,
+        "duplicate": f"{checksum} {checksum}",
+    }[mutation]
+    assert source.count(checksum) == 1
+    target.write_text(source.replace(checksum, replacement), encoding="utf-8")
+    with pytest.raises(AssertionError, match="wasm-bindgen checksum changed"):
+        _nov9_wasm_cli_source_identities(tmp_path)
+
+
+@pytest.mark.parametrize("path", _NOV9_WASM_CLI_PATHS)
+@pytest.mark.parametrize("mutation", ["exact", "path", "digest", "type"])
+def test_nov9_wasm_cli_trusted_scan_rejects_unmatched_findings(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    path: str,
+    mutation: str,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, _NOV9_WASM_CLI_EXPECTED_RECORDS)
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    digest = _NOV9_WASM_CLI_SCANNER_DIGEST.hex()
+    finding_type = "Hex High Entropy String"
+    if mutation == "path":
+        path = f"unapproved/{path}"
+    elif mutation == "digest":
+        digest = "0" * 40
+    elif mutation == "type":
+        finding_type = "Secret Keyword"
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(
+        tmp_path / "current.json", _document((path, finding_type, digest, 999))
+    )
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+    output = capsys.readouterr()
+    assert result == (0 if mutation == "exact" else 1)
+    if mutation == "exact":
+        assert "1 exact false-positive finding(s)" in output.out
+    else:
+        assert "new finding" in output.err
