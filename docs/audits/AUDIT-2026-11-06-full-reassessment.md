@@ -22,6 +22,16 @@ then passed all 24 authenticated matrix captures (en, ru; light, dark;
 `diagnostic_only=true`, so it is criterion evidence for AUD-429 and not the
 full live suite; that suite runs on `main` and remains separate evidence.
 
+The next CI generation, on documentation commit `c2738105`, reported
+`passed=15 flaky=1` in [job 129159789633](https://github.com/egorribun/university_ecosystem/actions/runs/42617164190/job/129159789633),
+and the gate failed it as designed. The retained diagnostic shows the receiver
+socket in the closing state at the `old-close-wait` stage after the 15-second
+default wait, with no failed product assertion: offline, the browser reports the
+close only when its handshake gives up. The later test-only commit raises that wait
+to 65 seconds in `messenger-realtime.live.spec.ts` and `messenger-reconnect.live.spec.ts`,
+matching `messenger-reconnect-ordering.live.spec.ts`. The live-realtime-visual job
+is a required check, so the merged source must still pass it with exactly 16 passes.
+
 ### AUD-373 — backend SPIFFE transport
 
 The owner accepted [ADR-052](../adr/ADR-052-backend-spiffe-transport.md) on

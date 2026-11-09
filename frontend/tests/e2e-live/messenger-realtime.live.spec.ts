@@ -708,6 +708,7 @@ test.describe("live messenger delivery", () => {
     browser,
     page,
   }, testInfo) => {
+    test.setTimeout(210_000)
     const mobile = testInfo.project.name === "mobile"
     const receiverContext = await browser.newContext({
       ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
@@ -837,7 +838,9 @@ test.describe("live messenger delivery", () => {
       await receiverContext.setOffline(true)
       diagnostic.note("offline-returned")
       diagnostic.stage("old-close-wait")
-      await expect.poll(() => activeSession?.closed ?? false).toBe(true)
+      // The app closes at once, but offline the browser reports the socket closed only when
+      // its close handshake gives up, which can take up to a minute.
+      await expect.poll(() => activeSession?.closed ?? false, { timeout: 65_000 }).toBe(true)
       diagnostic.stage("offline-confirm")
       await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
