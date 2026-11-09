@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import date, time
 from typing import Any
 
+from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import translate
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
@@ -55,6 +56,10 @@ class ScheduleService:
         # Serialize the conflict read and write in one transaction. The
         # repository query bypasses the display cache and its 500-row cap.
         await self.repo.lock_schedule_mutations()
+        # Resolve the parent in this transaction, not the shared display cache.
+        # RLS hides foreign and unowned groups from the ordinary application role.
+        if not await self.group_repo.get(data.group_id, with_for_update=True):
+            raise EntityNotFound("Group", str(data.group_id))
         all_existing = await self.repo.get_conflict_candidates(
             data.group_id, data.teacher
         )
@@ -119,6 +124,8 @@ class ScheduleService:
 
         update_values = data.model_dump(exclude_unset=True)
         group_id = update_values.get("group_id", sched.group_id)
+        if not await self.group_repo.get(group_id, with_for_update=True):
+            raise EntityNotFound("Group", str(group_id))
         teacher = update_values.get("teacher", sched.teacher)
         all_existing = [
             item
