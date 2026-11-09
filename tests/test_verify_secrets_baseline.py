@@ -31308,3 +31308,37 @@ _AUD380_N6_SOURCE_LINE_HASHES = (
     ),
     *_AUD380_N6_SOURCE_LINE_HASHES[1:],
 )
+
+
+# Exact existing row13 companion binding for the AUD360 receipt cohort.
+# Preserve historical snapshots and every approval field; rebind record 505 only.
+_AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
+    "26 05 f1 2b 47 23 89 29 e8 84 e4 9e 15 cf 30 b9 e1 45 2f 68 70 fe 37 e4 68 bb 5f 68 a1 f9 1b 51"
+)
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "ad 44 45 07 fd 99 4a fc 92 8e 2a 14 2c f4 3a 7c dd 26 4e f0 a4 d3 19 22 83 7d 25 00 f2 fb bc e6"
+)
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "6b b9 dd 86 78 df 7a 67 dd 77 81 22 ee 1f 2e d1 2f 96 26 1c 33 c0 98 eb c7 eb e8 24 66 02 66 4d"
+)
+_AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
+    "0a 32 48 1a 66 52 ff a1 45 e3 0d 51 1a 22 45 a1 27 7a b4 5b 29 9d e2 c0 84 7d 1f 0b 44 f0 a4 c7"
+)
+_AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
+    "b2 f5 26 e4 31 c6 be bd a1 23 e2 eb 18 88 df fd 79 8b 60 ab 3c 47 5d 06 af 9b 5d af 2b 87 fc 0e"
+)
+_AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
+    "a9 d3 a6 6f 6b 32 20 8e 00 a3 d5 d4 cc 72 61 bb 24 4b 10 16 50 55 82 59 4f 07 5e b3 71 2f e3 82"
+)
+_AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
+_AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
+    bytes.fromhex("d8 84 4c a3 df dc 9b 17 cd 83 45 ca 78 5c 8b d8 e9 c9 f0 20")
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
