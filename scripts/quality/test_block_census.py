@@ -141,7 +141,7 @@ def _python_has_result_check(
     proven = proven if proven is not None else set()
     if id(function) in proven:
         return True
-    if _direct_python_check(function, imported, pytest_bare):
+    if _direct_python_check(function, imported, pytest_bare, frozenset(definitions)):
         proven.add(id(function))
         return True
     active = stack | {id(function)}
@@ -168,8 +168,13 @@ def _direct_python_check(
     function: PythonFunction,
     imported: frozenset[str],
     pytest_bare: frozenset[str],
+    local_names: frozenset[str] = frozenset(),
 ) -> bool:
     for node in ast.walk(function):
+        if isinstance(node, ast.Raise):
+            exception = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+            if isinstance(exception, ast.Name) and exception.id == "AssertionError":
+                return True
         if isinstance(node, ast.Assert):
             if not _is_trivial_test(node.test):
                 return True
@@ -178,6 +183,12 @@ def _direct_python_check(
             continue
         callee = node.func
         if isinstance(callee, ast.Attribute):
+            if (
+                isinstance(callee.value, ast.Name)
+                and callee.value.id in {"self", "cls"}
+                and callee.attr in local_names
+            ):
+                continue
             if (
                 isinstance(callee.value, ast.Name)
                 and callee.value.id == "pytest"
@@ -194,6 +205,9 @@ def _direct_python_check(
             ):
                 return True
         elif isinstance(callee, ast.Name):
+            # Known helpers must prove their body, regardless of their name.
+            if callee.id in local_names:
+                continue
             if callee.id in pytest_bare or callee.id.startswith(HELPER_PREFIXES):
                 return True
     return False
@@ -316,16 +330,22 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
-def _go_has_result_check(region: str, variable: str) -> bool:
+def _go_has_result_check(
+    region: str, variable: str, local_names: frozenset[str] = frozenset()
+) -> bool:
     var = re.escape(variable)
     patterns = (
         re.compile(r"(?<![\w.])(?:require|assert)\.\w+"),
         re.compile(rf"\b{var}\.(?:{GO_ERROR_METHODS})\s*\("),
-        re.compile(
-            rf"(?<![\w.])(?:assert|require|expect|check|verify)\w*\s*\([^()]*\b{var}\b"
-        ),
     )
-    return any(pattern.search(region) for pattern in patterns)
+    if any(pattern.search(region) for pattern in patterns):
+        return True
+    helper_call = re.compile(
+        rf"(?<![\w.])((?:assert|require|expect|check|verify)\w*)\s*\([^()]*\b{var}\b"
+    )
+    return any(
+        match.group(1) not in local_names for match in helper_call.finditer(region)
+    )
 
 
 def _go_subtest_label(original: str, call_open: int, literal_start: int) -> str:
@@ -366,7 +386,7 @@ def _go_region_has_check(
     is called with that ``t``. The search follows helper calls transitively and stops
     at a cycle. A helper that is not in the file is not resolved.
     """
-    if _go_has_result_check(region, variable):
+    if _go_has_result_check(region, variable, frozenset(helpers)):
         return True
     call = re.compile(rf"(?<![\w.])(\w+)\s*\([^()]*\b{re.escape(variable)}\b")
     for match in call.finditer(region):

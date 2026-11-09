@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
-from datetime import date
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, date, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 TEST_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = TEST_ROOT / "scripts" / "quality" / "validate_trivy_kyverno_fixture.py"
@@ -65,8 +68,63 @@ class TrivyFixtureValidatorTests(unittest.TestCase):
             today=today,
         )
 
+    def run_cli(self, today=date(2026, 10, 23)) -> tuple[int, str, str]:
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(today.year, today.month, today.day, tzinfo=UTC).astimezone(
+                    tz
+                )
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with (
+            patch.object(validator, "datetime", FixedDatetime),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            code = validator.main(
+                [
+                    "--repo-root",
+                    str(self.root),
+                    "--target",
+                    str(self.target),
+                    "--report",
+                    str(self.report),
+                ]
+            )
+        return code, stdout.getvalue(), stderr.getvalue()
+
     def test_exact_source_policy_and_report_pass(self) -> None:
         self.validate()
+        self.assertEqual(
+            self.run_cli(),
+            (
+                0,
+                "Trivy fixture preflight verified: pinned source and exact five residual findings.\n",
+                "",
+            ),
+        )
+
+    def test_cli_malformed_report_fails(self) -> None:
+        self.report.write_text("{not-json", encoding="utf-8")
+        self.assertEqual(
+            self.run_cli(),
+            (
+                1,
+                "",
+                "Trivy fixture preflight failed: Trivy JSON report is missing or malformed\n",
+            ),
+        )
+
+    def test_cli_expired_policy_fails(self) -> None:
+        self.assertEqual(
+            self.run_cli(date(2027, 1, 10)),
+            (
+                1,
+                "",
+                "Trivy fixture preflight failed: fixture exception has expired\n",
+            ),
+        )
 
     def test_expiry_must_be_live_and_within_90_days(self) -> None:
         validator.validate_expiry(date(2026, 10, 23))

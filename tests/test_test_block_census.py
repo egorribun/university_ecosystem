@@ -712,3 +712,53 @@ def test_repository_has_no_unreviewed_resultless_test_block(tmp_path: Path) -> N
 
     assert census.main(["--output", str(report)]) == 0
     assert json.loads(report.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+@pytest.mark.parametrize("name", census.HELPER_PREFIXES)
+@pytest.mark.parametrize("checked", [False, True])
+def test_python_known_prefixed_helper_requires_body_check(
+    name: str, checked: bool
+) -> None:
+    body = "assert value == 5" if checked else "return value"
+    source = f"def {name}_ready(value):\n    {body}\n\ndef test_calls():\n    {name}_ready(5)\n"
+    assert _python_checks(source) == [("test_calls", checked)]
+
+
+@pytest.mark.parametrize("name", ["assert", "require", "expect", "check", "verify"])
+@pytest.mark.parametrize("checked", [False, True])
+def test_go_known_prefixed_helper_requires_body_check(name: str, checked: bool) -> None:
+    body = 'if value != 5 { t.Fatal("bad") }' if checked else 't.Log("nothing")'
+    source = (
+        GO_HEADER
+        + f"func {name}Ready(t *testing.T, value int) {{ {body} }}\nfunc TestCalls(t *testing.T) {{ {name}Ready(t, 5) }}\n"
+    )
+    assert _go_checks(source) == [("TestCalls", checked)]
+
+
+@pytest.mark.parametrize("checked", [False, True])
+def test_python_known_prefixed_method_requires_body_check(checked: bool) -> None:
+    body = "assert value == 5" if checked else "return value"
+    source = f"class Suite:\n    def assert_ready(self, value):\n        {body}\n    def test_calls(self):\n        self.assert_ready(5)\n"
+    assert _python_checks(source) == [("Suite.test_calls", checked)]
+
+
+def test_python_explicit_assertion_failure_is_a_check() -> None:
+    source = 'def test_value(value):\n    if value != 5:\n        raise AssertionError("unexpected result")\n'
+    assert _python_checks(source) == [("test_value", True)]
+
+
+@pytest.mark.parametrize("checked", [False, True])
+def test_python_prefixed_helper_cycle_requires_real_check(checked: bool) -> None:
+    check = "\n    assert value == 5" if checked else ""
+    source = f"def assert_first(value):\n    assert_second(value){check}\ndef assert_second(value):\n    assert_first(value)\ndef test_calls():\n    assert_first(5)\n"
+    assert _python_checks(source) == [("test_calls", checked)]
+
+
+@pytest.mark.parametrize("checked", [False, True])
+def test_go_prefixed_helper_cycle_requires_real_check(checked: bool) -> None:
+    check = '; if value != 5 { t.Fatal("bad") }' if checked else ""
+    source = (
+        GO_HEADER
+        + f"func checkFirst(t *testing.T, value int) {{{check.lstrip(';')} ; if value > 0 {{ checkSecond(t, value - 1) }} }}\nfunc checkSecond(t *testing.T, value int) {{ if value > 0 {{ checkFirst(t, value - 1) }} }}\nfunc TestCalls(t *testing.T) {{ checkFirst(t, 5) }}\n"
+    )
+    assert _go_checks(source) == [("TestCalls", checked)]
