@@ -249,19 +249,15 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
           route.request().isNavigationRequest() &&
           requestUrl.pathname === legacyTarget.pathname &&
           requestUrl.search === legacyTarget.search
+        // Header overrides from route.continue are kept across redirects, so the
+        // clean document would carry the selector too. Send the token-bearing
+        // request with it and hand the browser that 302 unchanged; the browser then
+        // requests the clean document itself, without the selector.
         if (isLegacyDocumentRequest) {
           const requestHeaders = await route.request().allHeaders()
           requestHeaders["x-aud178-correlation"] = resetBinding.correlationId
-          await route.continue({ headers: requestHeaders }).catch(() => undefined)
-          return
-        }
-        if (route.request().isNavigationRequest()) {
-          // route.continue header overrides also apply to redirects. Remove
-          // the selector from the clean fragment redirect so it identifies
-          // only the original token-bearing 302 row.
-          const requestHeaders = await route.request().allHeaders()
-          Reflect.set(requestHeaders, "x-aud178-correlation", undefined)
-          await route.continue({ headers: requestHeaders }).catch(() => undefined)
+          const redirect = await route.fetch({ headers: requestHeaders, maxRedirects: 0 })
+          await route.fulfill({ response: redirect }).catch(() => undefined)
           return
         }
         await route.continue().catch(() => undefined)
