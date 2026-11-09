@@ -425,15 +425,95 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def _go_assertion_call(region: str) -> bool:
+    """Recognize direct or parenthesized package assertion calls, not references.
+
+    ``region`` has already had comments and literals blanked. A parenthesized
+    selector is a callee only when its opening parentheses do not belong to an
+    enclosing call such as ``discard(require.Equal)(t, ...)``.
+    """
+    selector = re.compile(r"(?<![\w.])(?:require|assert)\s*\.\s*\w+")
+    # An identifier or closing parenthesis ends a Go statement at newline.
+    # Do not join a reference to an unrelated next-line call or IIFE.
+    for match in selector.finditer(region):
+        tail = match.end()
+        while tail < len(region) and region[tail].isspace() and region[tail] != "\n":
+            tail += 1
+        if tail < len(region) and region[tail] == "(":
+            return True
+        head = match.start() - 1
+        wrapped = False
+        while tail < len(region) and region[tail] == ")":
+            while head >= 0 and region[head].isspace():
+                head -= 1
+            if head < 0 or region[head] != "(":
+                break
+            wrapped = True
+            head -= 1
+            tail += 1
+            while (
+                tail < len(region) and region[tail].isspace() and region[tail] != "\n"
+            ):
+                tail += 1
+        if not wrapped or tail >= len(region) or region[tail] != "(":
+            continue
+        prefix = region[: head + 1]
+        previous = re.search(r"(\w+|[)\]}])\s*$", prefix)
+        # Go inserts a semicolon at a newline after identifiers/literals and
+        # closing delimiters. That separates a preceding statement from this
+        # parenthesized callee, even when no explicit semicolon was written.
+        nonterminating_keywords = {
+            "case",
+            "chan",
+            "const",
+            "default",
+            "defer",
+            "else",
+            "for",
+            "func",
+            "go",
+            "goto",
+            "if",
+            "import",
+            "interface",
+            "map",
+            "package",
+            "range",
+            "select",
+            "struct",
+            "switch",
+            "type",
+            "var",
+        }
+        newline_boundary = (
+            previous is not None
+            and "\n" in prefix[previous.end(1) :]
+            and previous.group(1) not in nonterminating_keywords
+        )
+        if (
+            newline_boundary
+            or previous is None
+            or previous.group(1)
+            in {
+                "return",
+                "defer",
+                "go",
+                "if",
+                "for",
+                "switch",
+                "case",
+            }
+        ):
+            return True
+    return False
+
+
 def _go_has_result_check(
     region: str, variable: str, local_names: frozenset[str] = frozenset()
 ) -> bool:
     var = re.escape(variable)
-    patterns = (
-        re.compile(r"(?<![\w.])(?:require|assert)\.\w+"),
-        re.compile(rf"\b{var}\.(?:{GO_ERROR_METHODS})\s*\("),
-    )
-    if any(pattern.search(region) for pattern in patterns):
+    failure = re.compile(rf"\b{var}\.(?:{GO_ERROR_METHODS})\s*\(")
+    if _go_assertion_call(region) or failure.search(region):
         return True
     helper_call = re.compile(
         rf"(?<![\w.])((?:assert|require|expect|check|verify)\w*)\s*\([^()]*\b{var}\b"

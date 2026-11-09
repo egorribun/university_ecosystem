@@ -859,3 +859,114 @@ def test_python_stored_context_outside_proven_binding_scope_is_not_claimed(
 def test_python_unresolved_starred_context_arguments_are_not_claimed() -> None:
     source = "import pytest\ndef test_context(args):\n    with pytest.raises(*args):\n        operation()\n"
     assert _python_checks(source) == [("test_context", False)]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "_ = require.Equal",
+        "other := func(_ int, _ any) func(*testing.T, int, int) { return func(*testing.T, int, int) {} }; other(0, require.Equal)(t, 2, 2)",
+        "_ = assert.AnError",
+        "_ = require.Equal /* no invocation */",
+        "_ = require.Equal // no invocation\n",
+        "_ = (require.Equal)",
+        "_ = ((require.Equal))",
+        "other := func(_ any) func(*testing.T, int, int) { return func(*testing.T, int, int) {} }; other(require.Equal)(t, 2, 2)",
+        "other := func(_ any) func(*testing.T, int, int) { return func(*testing.T, int, int) {} }; other((require.Equal))(t, 2, 2)",
+    ],
+)
+def test_go_assertion_member_reference_is_not_a_check(body: str) -> None:
+    source = GO_HEADER + f"func TestReference(t *testing.T) {{ {body} }}\n"
+    assert _go_checks(source) == [("TestReference", False)]
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "require.Equal(t, 2, got)",
+        "require.Equal(\n t, 2, got,\n)",
+        "require.Equal /* invoke */ (t, 2, got)",
+        "require.\n Equal(t, 2, got)",
+        "(require.Equal)(t, 2, got)",
+        "((require.Equal))(t, 2, got)",
+        "( require.Equal /* invoke */ )(t, 2, got)",
+        'if (assert.Equal)(t, 2, got) { t.Log("checked") }',
+        'if\n(assert.Equal)(t, 2, got) { t.Log("checked") }',
+    ],
+)
+def test_go_assertion_call_syntax_remains_a_check(call: str) -> None:
+    source = GO_HEADER + f"func TestCalled(t *testing.T) {{ got := 1 + 1; {call} }}\n"
+    assert _go_checks(source) == [("TestCalled", True)]
+
+
+def test_go_reference_only_file_fails_real_census_cli(tmp_path: Path) -> None:
+    code, report = _run(
+        tmp_path,
+        go={
+            "services/sample/result_test.go": GO_HEADER
+            + "func TestReference(t *testing.T) { _ = require.Equal /* not invoked */ }\n"
+        },
+    )
+    assert code == 1
+    assert report["unlisted"] == ["services/sample/result_test.go::TestReference"]
+    assert report["errors"] == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "got := 1 + 1\n(require.Equal)(t, 2, got)",
+        't.Log("ready")\n(require.Equal)(t, 2, 1 + 1)',
+        "got := 1 + 1 /* new statement\n */ (require.Equal)(t, 2, got)",
+        "got := 1 + 1 // new statement\n((require.Equal))(t, 2, got)",
+    ],
+)
+def test_go_parenthesized_assertion_after_automatic_semicolon_is_a_check(
+    body: str,
+) -> None:
+    assert _go_checks(GO_HEADER + f"func TestCalled(t *testing.T) {{ {body} }}\n") == [
+        ("TestCalled", True)
+    ]
+
+
+@pytest.mark.parametrize(
+    "argument", ["require.Equal", "(require.Equal)", "((require.Equal))"]
+)
+def test_go_literal_function_discarding_assertion_reference_is_not_a_check(
+    argument: str,
+) -> None:
+    body = f"func(_ any) func(*testing.T, int, int) {{ return func(*testing.T, int, int) {{}} }}({argument})(t, 2, 2)"
+    assert _go_checks(
+        GO_HEADER + f"func TestReference(t *testing.T) {{ {body} }}\n"
+    ) == [("TestReference", False)]
+
+
+@pytest.mark.parametrize(
+    "argument", ["require.Equal", "(require.Equal)", "((require.Equal))"]
+)
+def test_go_multiline_literal_callee_does_not_create_a_semicolon_boundary(
+    argument: str,
+) -> None:
+    body = f"func(_ any) func(*testing.T, int, int) {{\n return func(*testing.T, int, int) {{}}\n}}({argument})(t, 2, 2)"
+    assert _go_checks(
+        GO_HEADER + f"func TestReference(t *testing.T) {{ {body} }}\n"
+    ) == [("TestReference", False)]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "_ = require.Equal\n(func() {})()",
+        "_ = (require.Equal)\n(func() {})()",
+        "_ = ((require.Equal))\n(func() {})()",
+        "_ = require.Equal // reference only\n(func() {})()",
+        "_ = require.Equal /* reference only\n */ (func() {})()",
+        "_ = (require.Equal) /* reference only\n */ (func() {})()",
+        "_ = require.Equal; (func() {})()",
+        "_ = (require.Equal); (func() {})()",
+    ],
+)
+def test_go_reference_then_unrelated_iife_is_not_an_assertion_call(body: str) -> None:
+    assert _go_checks(
+        GO_HEADER + f"func TestReference(t *testing.T) {{ {body} }}\n"
+    ) == [("TestReference", False)]
