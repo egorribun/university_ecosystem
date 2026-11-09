@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,9 @@ from app.management import weekly_cleanup
 @pytest.mark.asyncio
 async def test_subscription_cleanup_returns_zero_without_commits_for_empty_batches():
     session = AsyncMock()
+    session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
     result = MagicMock()
     result.scalars.return_value.fetchmany.return_value = []
     session.execute.return_value = result
@@ -25,6 +29,9 @@ async def test_subscription_cleanup_returns_zero_without_commits_for_empty_batch
 @pytest.mark.asyncio
 async def test_subscription_cleanup_commits_each_orphan_batch_and_logs_total():
     session = AsyncMock()
+    session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
     result = MagicMock()
     result.scalars.return_value.fetchmany.side_effect = [["orphan-1", "orphan-2"], []]
     session.execute.return_value = result
@@ -43,6 +50,9 @@ async def test_subscription_cleanup_commits_each_orphan_batch_and_logs_total():
 @pytest.mark.asyncio
 async def test_subscription_cleanup_commits_each_stale_batch_and_logs_total():
     session = AsyncMock()
+    session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
     result = MagicMock()
     result.scalars.return_value.fetchmany.side_effect = [["stale-1"], []]
     session.execute.return_value = result
