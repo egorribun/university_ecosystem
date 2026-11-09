@@ -12,6 +12,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "ci" / "helm_dependency_build.py"
 CURRENT_HELM_ARCHIVES = ("redis-0.1.0.tgz", "nats-2.15.0.tgz")
+NATS_GATEWAY_TIME_OUT = (
+    "Error: could not download "
+    "https://github.com/nats-io/k8s/releases/download/nats-2.15.0/nats-2.15.0.tgz: "
+    "failed to fetch "
+    "https://github.com/nats-io/k8s/releases/download/nats-2.15.0/nats-2.15.0.tgz "
+    ": 504 Gateway Time-out"
+)
+PERMANENT_FAILURES = (
+    "401 Unauthorized",
+    "403 Forbidden",
+    "404 Not Found",
+    "checksum mismatch for nats-2.15.0.tgz",
+    "the lock file (Chart.lock) is out of sync with the dependencies file (Chart.yaml)",
+    "authentication required",
+    "403 Gateway Time-out",
+)
 
 
 def _load_helper() -> ModuleType:
@@ -31,8 +47,15 @@ def _load_helper() -> ModuleType:
         ("unexpected EOF from registry", True),
         ("received HTTP 503 Service Unavailable", True),
         ("429 Too Many Requests", True),
-        ("401 Unauthorized", False),
-        ("404 Not Found", False),
+        ("504 Gateway Timeout", True),
+        ("504 Gateway Time-out", True),
+        ("504 gateway time-out", True),
+        (NATS_GATEWAY_TIME_OUT, True),
+        ("Gateway Time-out", False),
+        ("504 Gateway Time--out", False),
+        ("504 Gateway Time out", False),
+        ("504 Gateway Time-outside", False),
+        *((output, False) for output in PERMANENT_FAILURES),
         ("chart metadata is invalid", False),
         (
             "no repository definition for https://nats-io.github.io/k8s/helm/charts/",
@@ -125,8 +148,12 @@ def test_helm_helper_does_not_register_unreviewed_remote_repositories(
     assert calls == [["helm", "dependency", "build", str(chart)]]
 
 
+@pytest.mark.parametrize("first_output", ["first: i/o timeout", NATS_GATEWAY_TIME_OUT])
 def test_helm_helper_retries_transient_failure_and_keeps_first_output(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    first_output: str,
 ) -> None:
     helper = _load_helper()
     chart = tmp_path / "chart"
@@ -134,7 +161,7 @@ def test_helm_helper_retries_transient_failure_and_keeps_first_output(
     outcomes = iter(
         [
             subprocess.CompletedProcess(
-                ["helm"], 1, stdout="", stderr="first: i/o timeout\n"
+                ["helm"], 1, stdout="", stderr=f"{first_output}\n"
             ),
             subprocess.CompletedProcess(["helm"], 0, stdout="ok\n", stderr=""),
         ]
@@ -146,8 +173,43 @@ def test_helm_helper_retries_transient_failure_and_keeps_first_output(
 
     assert helper.main([str(chart)]) == 0
     output = capsys.readouterr().out
-    assert "first: i/o timeout" in output
+    assert first_output in output
     assert "attempt 2" in output
+
+
+@pytest.mark.parametrize(
+    "failure_output", ["504 Gateway Timeout", NATS_GATEWAY_TIME_OUT]
+)
+def test_helm_helper_stops_after_three_transient_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure_output: str,
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    calls: list[list[str]] = []
+    delays: list[float] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        assert kwargs["timeout"] == 120
+        return subprocess.CompletedProcess(
+            command, 1, stdout="", stderr=f"{failure_output}\n"
+        )
+
+    monkeypatch.setattr(helper.subprocess, "run", run)
+
+    assert helper.run(chart, sleep_fn=delays.append) == 1
+    assert calls == [["helm", "dependency", "build", str(chart)]] * 3
+    assert delays == [15, 30]
+    output = capsys.readouterr()
+    assert "attempt 3/3" in output.out
+    assert "attempt 4" not in output.out
+    assert "failed after three transient attempts" in output.err
+    assert failure_output in output.err
+    assert "non-transient" not in output.err
 
 
 def test_helm_helper_retries_transient_nats_repository_bootstrap(
@@ -224,8 +286,12 @@ def test_helm_helper_retries_a_timed_out_dependency_build(
     assert "attempt 2" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("failure_output", PERMANENT_FAILURES)
 def test_helm_helper_fails_fast_on_permanent_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure_output: str,
 ) -> None:
     helper = _load_helper()
     chart = tmp_path / "chart"
@@ -236,7 +302,7 @@ def test_helm_helper_fails_fast_on_permanent_failure(
         nonlocal calls
         calls += 1
         return subprocess.CompletedProcess(
-            ["helm"], 1, stdout="", stderr="401 Unauthorized\n"
+            ["helm"], 1, stdout="", stderr=f"{failure_output}\n"
         )
 
     monkeypatch.setattr(helper.subprocess, "run", run)

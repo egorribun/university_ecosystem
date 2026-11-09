@@ -45,7 +45,7 @@ _TRANSIENT_FAILURE_RE = re.compile(
     r"\b(?:too many requests|rate limit)\b|"
     r"\b(?:http|status(?: code)?)\s*(?:408|429|500|502|503|504)\b|"
     r"\b(?:408|429|500|502|503|504)\s+(?:request timeout|too many requests|"
-    r"internal server error|bad gateway|service unavailable|gateway timeout)\b"
+    r"internal server error|bad gateway|service unavailable|gateway time-?out)\b"
     r")",
     re.IGNORECASE,
 )
