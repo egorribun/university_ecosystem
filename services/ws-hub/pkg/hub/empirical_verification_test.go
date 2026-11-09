@@ -144,7 +144,7 @@ func TestEmpirical_RateLimitingEnforcement(t *testing.T) {
 	testTicket := empiricalTicket
 
 	// Flood upgrade limiter for target IP
-	for i := 0; i < 100; i++ {
+	for i := 0; i <= config.DefaultWSUpgradeRatePerMinute; i++ {
 		h.UpgradeLimiter.Allow(targetIP)
 	}
 

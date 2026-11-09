@@ -31,6 +31,10 @@ func aud167UpgradeAttempt(t *testing.T, h *Hub, cfg *config.Config, remoteAddr, 
 // must leave the second client's budget untouched.
 func TestAUD167TwoClientsBehindTrustedProxyHaveSeparateUpgradeKeys(t *testing.T) {
 	h := setupTestHub()
+	h.UpgradeLimiter.Stop()
+	// A small budget with no refill keeps the exhaustion exact during slow CI.
+	h.UpgradeLimiter = NewWSUpgradeRateLimiter(10, 3600)
+	t.Cleanup(h.Stop)
 	cfg := &config.Config{
 		MaxClients:        100,
 		TrustedProxiesSet: map[string]struct{}{"10.200.0.12": {}},
@@ -52,6 +56,10 @@ func TestAUD167TwoClientsBehindTrustedProxyHaveSeparateUpgradeKeys(t *testing.T)
 // budget is shared across all spoofed values.
 func TestAUD167SpoofedForwardedForFromUntrustedPeerIsIgnored(t *testing.T) {
 	h := setupTestHub()
+	h.UpgradeLimiter.Stop()
+	// A small budget with no refill keeps the exhaustion exact during slow CI.
+	h.UpgradeLimiter = NewWSUpgradeRateLimiter(10, 3600)
+	t.Cleanup(h.Stop)
 	cfg := &config.Config{
 		MaxClients:        100,
 		TrustedProxiesSet: map[string]struct{}{"10.200.0.12": {}},
@@ -91,7 +99,7 @@ func TestAUD167EmptyForwardedHopFailsClosed(t *testing.T) {
 func TestAUD167RotatingSpoofsAcrossEmptyHopCannotEscapeUpgradeLimit(t *testing.T) {
 	h := setupTestHub()
 	h.UpgradeLimiter.Stop()
-	// Preserve the production burst while preventing a refill during slow CI.
+	// A small budget with no refill keeps the exhaustion exact during slow CI.
 	h.UpgradeLimiter = NewWSUpgradeRateLimiter(10, 3600)
 	t.Cleanup(h.Stop)
 	cfg := &config.Config{
