@@ -40,7 +40,10 @@ def _cwv_values(release_sha: object) -> dict[str, Any]:
 def test_schema_preserves_current_release_identity_and_placeholder(
     values_validator: Draft7Validator, release_sha: str
 ) -> None:
-    values_validator.validate(_cwv_values(release_sha))
+    values = _cwv_values(release_sha)
+
+    assert list(values_validator.iter_errors(values)) == []
+    assert values["cwv"]["releaseSHA"] == release_sha
 
 
 @pytest.mark.parametrize(

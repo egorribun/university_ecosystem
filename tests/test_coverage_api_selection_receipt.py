@@ -620,7 +620,7 @@ def test_api_receipt_is_a_subset_for_current_aggregate_sidecars(
     )
     # The current-job aggregate is intentionally omitted from the API receipt.
     # It remains protected by ordinary exact verification.
-    merge_metadata(
+    payload = merge_metadata(
         repository_root=repository,
         contract_path=contract,
         metadata_paths=[selected, current],
@@ -633,6 +633,15 @@ def test_api_receipt_is_a_subset_for_current_aggregate_sidecars(
         retry_selection_receipt=receipt,
         **_consumer(repository),
     )
+
+    # The aggregate covers both the receipted prior attempt and the current sidecar, and
+    # the written file is exactly the payload that merge_metadata returned.
+    assert {report["path"] for report in payload["reports"]} == {
+        "frontend/coverage/coverage-final.json",
+        "artifacts/coverage/python/coverage.json",
+    }
+    written = json.loads((repository / "aggregate.json").read_text(encoding="utf-8"))
+    assert written == payload
 
 
 def test_api_receipt_cli_writes_the_same_validated_contract(repository: Path) -> None:

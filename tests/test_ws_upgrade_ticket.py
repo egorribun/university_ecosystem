@@ -532,11 +532,7 @@ async def test_signed_int64_max_expiry_boundary_is_enforced(
         maximum_result = await auth.get_user_from_ticket(ticket)
         overflow_result = await auth.get_user_from_ticket(overflow_ticket)
 
-    if (
-        maximum_result[0] is None
-        or maximum_result[0].id != test_user.id
-        or maximum_result[1] != jti
-    ):
-        raise AssertionError("signed_int64_max_expiry_acceptance_contract")
-    if overflow_result != (None, None):
-        raise AssertionError("signed_int64_expiry_overflow_rejection_contract")
+    assert maximum_result[0] is not None
+    assert maximum_result[0].id == test_user.id
+    assert maximum_result[1] == jti
+    assert overflow_result == (None, None)

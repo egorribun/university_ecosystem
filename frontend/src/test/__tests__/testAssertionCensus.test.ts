@@ -233,6 +233,48 @@ describe("census helper resolution across modules", () => {
     expect(containsAssertion(body("assert.ok(1)"), new Set())).toBe(true)
   })
 
+  it("rejects expect calls without a matcher as result checks", () => {
+    const body = (code: string) => {
+      const source = parseTypeScript("c.ts", `const f = () => { ${code} }`)
+      return collectFunctionBodies(source).get("f")!
+    }
+    const withoutMatcher = [
+      "expect(value)",
+      "const pending = expect(value); void pending",
+      "expect(value).not",
+      "expect(value).resolves",
+      "expect(value).rejects",
+      "expect(value).toBe",
+      "expect(value).toBe.call(null, 1)",
+      "expect.hasAssertions()",
+      "expectTypeOf(value)",
+    ]
+    expect(withoutMatcher.map((code) => containsAssertion(body(code), new Set()))).toStrictEqual(
+      withoutMatcher.map(() => false)
+    )
+  })
+
+  it("rejects tautological expectations on a constant subject", () => {
+    const body = (code: string) => {
+      const source = parseTypeScript("c.ts", `const f = () => { ${code} }`)
+      return collectFunctionBodies(source).get("f")!
+    }
+    const tautologies = [
+      "expect(true).toBe(true)",
+      "expect(false).toBe(false)",
+      "expect(true).toBeTruthy()",
+      "expect(false).not.toBe(true)",
+      "expect(null).toBeNull()",
+      "expect(true).toStrictEqual(true)",
+    ]
+    expect(tautologies.map((code) => containsAssertion(body(code), new Set()))).toStrictEqual(
+      tautologies.map(() => false)
+    )
+    // A constant subject checked against a value that is computed at run time is a result check.
+    expect(containsAssertion(body("expect(true).toBe(computed)"), new Set())).toBe(true)
+    expect(containsAssertion(body("expect(computed).toBe(true)"), new Set())).toBe(true)
+  })
+
   it("does not count assertions inside an uncalled local helper", () => {
     const source = parseTypeScript(
       FIXTURE_PATH,

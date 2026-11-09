@@ -530,6 +530,9 @@ func TestAUD512NormalCallbackEarlyReturnsDoNotTerminateMessages(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			test.handler(&Hub{}, ctx)(&nats.Msg{Subject: test.subject})
+
+			assert.Zero(t, termCalls, "a normal early return must not TERM the message")
+			assert.Zero(t, nakCalls, "a normal early return must not NAK the message")
 		})
 	}
 

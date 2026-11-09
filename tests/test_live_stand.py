@@ -8117,7 +8117,10 @@ def test_in_place_source_guard_allows_exact_ignored_frontend_artifact(
     (reports / "generated-summary.html").write_text("local report\n", encoding="utf-8")
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
 
-    live_stand._assert_no_ignored_in_place_build_sources()
+    assert live_stand._assert_no_ignored_in_place_build_sources() is None
+    assert (reports / "generated-summary.html").read_text(
+        encoding="utf-8"
+    ) == "local report\n"
 
 
 def test_in_place_source_guard_allows_nested_python_bytecode_cache(
@@ -8133,7 +8136,8 @@ def test_in_place_source_guard_allows_nested_python_bytecode_cache(
     (bytecode_cache / "generated.pyc").write_bytes(b"synthetic bytecode")
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
 
-    live_stand._assert_no_ignored_in_place_build_sources()
+    assert live_stand._assert_no_ignored_in_place_build_sources() is None
+    assert (bytecode_cache / "generated.pyc").read_bytes() == b"synthetic bytecode"
 
 
 def test_in_place_up_refuses_owned_runroot_from_another_source_sha(

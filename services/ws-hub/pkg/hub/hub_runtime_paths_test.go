@@ -176,8 +176,24 @@ func TestInternalAPIAuthClientInvalidateEdgeCases(t *testing.T) {
 	})
 
 	t.Run("wildcard mode with miniredis", func(t *testing.T) {
+		ctx := context.Background()
 		userID := uuid.NewString()
+		otherUserID := uuid.NewString()
+		ownKeys := []string{
+			"auth:perms:" + userID + ":" + uuid.NewString(),
+			"auth:perms:" + userID + ":" + uuid.NewString(),
+		}
+		otherKey := "auth:perms:" + otherUserID + ":" + uuid.NewString()
+		for _, key := range append(append([]string{}, ownKeys...), otherKey) {
+			require.NoError(t, rClient.Set(ctx, key, "1", 0).Err())
+		}
+
 		auth.Invalidate(userID, "") // should scan and delete
+
+		for _, key := range ownKeys {
+			assert.Zero(t, rClient.Exists(ctx, key).Val(), "wildcard invalidation must delete %s", key)
+		}
+		assert.Equal(t, int64(1), rClient.Exists(ctx, otherKey).Val(), "another user's permissions must survive")
 	})
 }
 

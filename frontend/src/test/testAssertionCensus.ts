@@ -269,6 +269,50 @@ export function collectFunctionBodies(source: ts.SourceFile): Map<string, ts.Nod
   return bodies
 }
 
+// The subject of `expect(...)` reached through a matcher chain such as `.not`, if any.
+function expectationSubject(call: ts.CallExpression): ts.Expression | undefined {
+  let current: ts.Expression = call.expression
+  while (ts.isPropertyAccessExpression(current)) current = current.expression
+  if (
+    ts.isCallExpression(current) &&
+    ts.isIdentifier(current.expression) &&
+    current.expression.text === "expect"
+  ) {
+    return current.arguments[0]
+  }
+  return undefined
+}
+
+function isConstantTruthValue(node: ts.Expression): boolean {
+  return (
+    node.kind === ts.SyntaxKind.TrueKeyword ||
+    node.kind === ts.SyntaxKind.FalseKeyword ||
+    node.kind === ts.SyntaxKind.NullKeyword
+  )
+}
+
+function isConstantOperand(node: ts.Expression): boolean {
+  return (
+    isConstantTruthValue(node) ||
+    ts.isStringLiteral(node) ||
+    ts.isNoSubstitutionTemplateLiteral(node) ||
+    ts.isNumericLiteral(node) ||
+    (ts.isIdentifier(node) && node.text === "undefined")
+  )
+}
+
+// `expect(true).toBe(true)` and similar checks compare a constant with constants. They
+// cannot fail on the code under test, so they are not result checks. A constant subject
+// compared with a computed value, or a computed subject, is still a result check.
+function isTautologicalExpectation(call: ts.CallExpression): boolean {
+  const subject = expectationSubject(call)
+  return (
+    subject !== undefined &&
+    isConstantTruthValue(subject) &&
+    call.arguments.every((argument) => isConstantOperand(argument))
+  )
+}
+
 export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): boolean {
   const branchThrowsError = (statement: ts.Statement): boolean => {
     let foundErrorThrow = false
@@ -314,7 +358,8 @@ export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): 
       const isExpectationMatcher =
         (root === "expect" || root === "expectTypeOf") &&
         ts.isPropertyAccessExpression(child.expression) &&
-        EXPECTATION_MATCHERS.has(child.expression.name.text)
+        EXPECTATION_MATCHERS.has(child.expression.name.text) &&
+        !isTautologicalExpectation(child)
       if (
         root !== undefined &&
         (isExpectationMatcher ||

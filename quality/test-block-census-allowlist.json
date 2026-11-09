@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "path": "tests/test_auth_concurrency_extra.py",
+      "name": "TestEnsureChallengeNotLocked.test_under_limit_noop",
+      "reason": "Open defect: needs real assertions, and this file is a pinned Semgrep companion, so the fix must rebind its digest 1:1."
+    }
+  ]
+}

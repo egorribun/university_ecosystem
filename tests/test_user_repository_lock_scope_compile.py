@@ -33,39 +33,45 @@ def _compiled_sql(statement: Select[tuple[User]]) -> str:
     return " ".join(str(compiled).upper().split())
 
 
-async def _get_statement(*, with_for_update: bool) -> str:
+_NULLABLE_JOIN_TABLES = (
+    "USER_PREFERENCES",
+    "SPOTIFY_INTEGRATIONS",
+    "USER_PROFILES",
+    "USER_EDUCATION_PATHS",
+)
+
+
+async def _get_statement(*, with_for_update: bool) -> tuple[object, int, str]:
+    """Run the repository get and return (result, statement count, compiled SQL)."""
     session = _RecordingSession()
     repository = UserRepository(cast(AsyncDatabaseSession, session))
 
-    if await repository.get(uuid.uuid4(), with_for_update=with_for_update) is not None:
-        raise AssertionError("user_get_missing_row_contract")
-    if len(session.statements) != 1:
-        raise AssertionError("user_get_statement_count_contract")
-    return _compiled_sql(session.statements[0])
+    found = await repository.get(uuid.uuid4(), with_for_update=with_for_update)
+    sql = _compiled_sql(session.statements[-1]) if session.statements else ""
+    return found, len(session.statements), sql
 
 
-def _require_nullable_join_context(sql: str) -> None:
-    for table_name in (
-        "USER_PREFERENCES",
-        "SPOTIFY_INTEGRATIONS",
-        "USER_PROFILES",
-        "USER_EDUCATION_PATHS",
-    ):
-        if f"LEFT OUTER JOIN {table_name}" not in sql:
-            raise AssertionError("user_get_nullable_join_context_contract")
+def _missing_nullable_joins(sql: str) -> list[str]:
+    return [
+        table_name
+        for table_name in _NULLABLE_JOIN_TABLES
+        if f"LEFT OUTER JOIN {table_name}" not in sql
+    ]
 
 
 async def test_get_with_for_update_locks_only_users_row() -> None:
-    sql = await _get_statement(with_for_update=True)
+    found, statement_count, sql = await _get_statement(with_for_update=True)
 
-    _require_nullable_join_context(sql)
-    if "FOR UPDATE OF USERS" not in sql:
-        raise AssertionError("user_get_for_update_users_scope_contract")
+    assert found is None
+    assert statement_count == 1
+    assert _missing_nullable_joins(sql) == []
+    assert "FOR UPDATE OF USERS" in sql
 
 
 async def test_get_without_for_update_emits_no_lock_clause() -> None:
-    sql = await _get_statement(with_for_update=False)
+    found, statement_count, sql = await _get_statement(with_for_update=False)
 
-    _require_nullable_join_context(sql)
-    if "FOR UPDATE" in sql:
-        raise AssertionError("user_get_without_for_update_contract")
+    assert found is None
+    assert statement_count == 1
+    assert _missing_nullable_joins(sql) == []
+    assert "FOR UPDATE" not in sql
