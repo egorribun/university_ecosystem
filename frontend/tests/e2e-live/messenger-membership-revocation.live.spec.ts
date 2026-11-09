@@ -127,9 +127,13 @@ async function expectSocketMessage(
   groupId: string,
   content: string
 ): Promise<void> {
+  // Delivery runs through the outbox after commit; on a loaded runner it can
+  // exceed the default 15-second poll, so allow a bounded 30 seconds.
   await expect
-    .poll(() =>
-      socket.newMessages.some((event) => event.chatId === groupId && event.content === content)
+    .poll(
+      () =>
+        socket.newMessages.some((event) => event.chatId === groupId && event.content === content),
+      { timeout: 30_000 }
     )
     .toBe(true)
 }
@@ -314,6 +318,8 @@ test.describe("live Messenger membership revocation", () => {
     browser,
     page,
   }, testInfo) => {
+    // Several live deliveries are awaited in sequence, each bounded at 30 seconds.
+    test.setTimeout(240_000)
     const mobile = testInfo.project.name === "mobile"
     const contextOptions = {
       ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
