@@ -768,7 +768,10 @@ export const ChatWindow = memo(function ChatWindow({
                               strokeWidth={2.5}
                               aria-hidden="true"
                             />
-                            <span className="truncate">
+                            {/* min-w-0 lets the flex item shrink so truncate can
+                                ellipsize; otherwise a long label overflows the bubble
+                                and white text lands on the light page background. */}
+                            <span className="min-w-0 truncate">
                               {t("messenger:forwardedFrom", {
                                 name: message.forwardedFromName,
                               })}
