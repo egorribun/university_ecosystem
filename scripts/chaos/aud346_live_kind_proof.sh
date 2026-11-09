@@ -359,9 +359,12 @@ curl --noproxy '*' --fail --silent --show-error --max-time 2 \
   "http://127.0.0.1:${PORT}/health" >/dev/null
 
 # Preserve the nightly offline validation; this second phase is the bounded live proof.
+# In a 5-second window every request succeeded although Chaos Mesh reported the fault
+# injected; swapping the container image can take longer than that. Observe for 25 s,
+# inside the 45-second PodChaos lifetime.
 uv_python_bounded "${ROOT_DIR}/scripts/chaos/run_chaos_loadtest.py" \
   --manifest "${ROOT_DIR}/k8s/chaos/aud346-pod-failure.yaml" \
-  --duration 5 \
+  --duration 25 \
   --target-url "http://127.0.0.1:${PORT}/health" \
   --require-fault-impact
 curl --noproxy '*' --fail --silent --show-error --max-time 2 \

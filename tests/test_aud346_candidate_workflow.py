@@ -100,7 +100,7 @@ def test_candidate_live_setup_uses_owned_and_bounded_targets() -> None:
     assert "setsid timeout --signal=TERM --kill-after=2s" in script
     assert "kind-create.log" in script
     assert "port-forward --address 127.0.0.1" in script
-    assert "--duration 5" in script
+    assert "--duration 25" in script
     assert "--require-fault-impact" in script
     assert "trap cleanup EXIT" in script
     assert "trap 'exit 130' INT" in script
@@ -178,6 +178,13 @@ def test_fixture_liveness_does_not_mask_the_bounded_chaos_fault() -> None:
         "periodSeconds"
     ] >= duration + 15
     assert readiness["periodSeconds"] * readiness["failureThreshold"] < duration
+    # The observed fault window must end before the PodChaos lifetime, leaving time
+    # to confirm injection first; otherwise the fault could expire mid-measurement.
+    script = (ROOT / "scripts/chaos/aud346_live_kind_proof.sh").read_text(
+        encoding="utf-8"
+    )
+    window = int(re.search(r"--duration (\d+) \\", script).group(1))
+    assert window + 15 <= duration
 
 
 def test_fixture_network_policy_is_exact_and_default_deny() -> None:
