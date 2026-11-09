@@ -319,6 +319,39 @@ func TestSetupRouter_PasswordRecoveryRoutesArePublicOnlyForPOST(t *testing.T) {
 	}, forwarded)
 }
 
+func TestSetupRouter_CSPReportRouteIsPublicOnlyForPOST(t *testing.T) {
+	var forwarded []string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = append(forwarded, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(backend.Close)
+
+	router, cancel := newRouteBranchRouterWithUpstreams(t, backend.URL, "http://127.0.0.1:1")
+	t.Cleanup(cancel)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/csp-report", nil)
+	router.ServeHTTP(recorder, request)
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+
+	for _, probe := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/csp-report"},
+		{method: http.MethodPut, path: "/api/v1/csp-report"},
+		{method: http.MethodPost, path: "/api/v1/csp-report/extra"},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil)
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, probe.method+" "+probe.path)
+	}
+
+	assert.Equal(t, []string{"POST /api/v1/csp-report"}, forwarded)
+}
+
 func TestSetupRouter_WSProxyErrorHandlerReturnsBadGateway(t *testing.T) {
 	router, cancel := newRouteBranchRouter(t, "http://127.0.0.1:1")
 	t.Cleanup(cancel)
