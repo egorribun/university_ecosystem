@@ -51,13 +51,19 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     done && \
     cp -R "$(go env GOMODCACHE)/${probe_module}/." . && \
     chmod -R u+w . && \
-    go get \
-      github.com/go-jose/go-jose/v4@v4.1.7 \
-      github.com/spiffe/go-spiffe/v2@v2.9.0 \
-      google.golang.org/grpc@v1.84.0 \
-      golang.org/x/net@v0.62.0 \
-      golang.org/x/text@v0.43.0 && \
-    go mod tidy && \
+    n=0 && \
+    until go get \
+        github.com/go-jose/go-jose/v4@v4.1.7 \
+        github.com/spiffe/go-spiffe/v2@v2.9.0 \
+        google.golang.org/grpc@v1.84.0 \
+        golang.org/x/net@v0.62.0 \
+        golang.org/x/text@v0.43.0 && \
+      go mod tidy; do \
+      n=$((n + 1)); \
+      if [ "$n" -ge 5 ]; then echo "grpc-health-probe dependency update failed after $n attempts" >&2; exit 1; fi; \
+      echo "grpc-health-probe dependency update failed, retry $n/5 in 5s..."; \
+      sleep 5; \
+    done && \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-w -s -buildid= -X main.versionTag=${GRPC_HEALTH_PROBE_VERSION}" \
