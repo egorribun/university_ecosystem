@@ -112,6 +112,9 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                 connection.exec_driver_sql(
                     f'GRANT SELECT, INSERT, UPDATE ON public.user_profiles, public.active_sessions TO "{ordinary_role}"'
                 )
+                connection.exec_driver_sql(
+                    f'GRANT SELECT, DELETE ON public.push_subscriptions TO "{ordinary_role}"'
+                )
                 for table in _CORE_TABLES:
                     connection.exec_driver_sql(
                         f'ALTER TABLE public.{table} OWNER TO "{ordinary_role}"'
@@ -1247,3 +1250,248 @@ async def test_create_admin_real_producer_rejects_unconfigured_tenant(
         assert cli.sessions == []
         assert cli.scopes == []
         cli.hasher.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ambient", ["", str(_TENANT_A), str(_TENANT_B)], ids=["empty", "a", "b"]
+)
+@pytest.mark.parametrize("bypass", [False, True], ids=["normal", "python-bypass"])
+async def test_weekly_cleanup_preserves_rls_hidden_subscriptions(
+    rls_schema, monkeypatch, ambient, bypass
+):
+    from app.core.db.listeners import register_tenant_listeners
+    from app.management import weekly_cleanup
+
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    owners = (_TENANT_A, _TENANT_B, None)
+    users = [uuid.uuid4() for _ in owners]
+    subscriptions = [uuid.uuid4() for _ in owners]
+    fresh = dt.datetime.now(dt.UTC)
+    sql = []
+    gucs = []
+    register_tenant_listeners()
+
+    @sa.event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def record_sql(_connection, _cursor, statement, _parameters, _context, _many):
+        sql.append(statement)
+
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    def factory():
+        session = maker()
+
+        @sa.event.listens_for(session.sync_session, "after_begin")
+        def record(_session, _transaction, connection):
+            role = connection.execute(
+                sa.text(
+                    "SELECT rolsuper, rolbypassrls, pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), row_security_active('public.users') FROM pg_roles WHERE rolname = current_user"
+                )
+            ).one()
+            assert tuple(role) == (False, False, False, True)
+            gucs.append(
+                connection.scalar(
+                    sa.text(
+                        "SELECT coalesce(current_setting('app.current_tenant', true), '')"
+                    )
+                )
+            )
+
+        return session
+
+    tenant_token = tenant_id_ctx.set(ambient)
+    bypass_token = bypass_rls_ctx.set(bypass)
+    try:
+        with admin.begin() as connection:
+            for user, subscription, owner in zip(
+                users, subscriptions, owners, strict=True
+            ):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO users (id, email, hashed_password, tenant_id) VALUES (:id, :email, :digest, :owner)"
+                    ),
+                    {
+                        "id": user,
+                        "email": f"{user}@cleanup.invalid",
+                        "digest": uuid.uuid4().hex,
+                        "owner": owner,
+                    },
+                )
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, last_seen_at) VALUES (:id, :user, :endpoint, :value, :value, :fresh)"
+                    ),
+                    {
+                        "id": subscription,
+                        "user": user,
+                        "endpoint": f"https://{subscription}.invalid",
+                        "value": uuid.uuid4().hex,
+                        "fresh": fresh,
+                    },
+                )
+        monkeypatch.setattr(weekly_cleanup, "async_session", factory)
+        async with factory() as session:
+            visible = (
+                (
+                    await session.execute(
+                        sa.text("SELECT id FROM users WHERE id = ANY(:ids)"),
+                        {"ids": users},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            expected = (
+                []
+                if bypass or not ambient
+                else [users[0] if ambient == str(_TENANT_A) else users[1]]
+            )
+            assert visible == expected
+            assert await weekly_cleanup._delete_orphaned_subscriptions(session) == 0
+        assert await weekly_cleanup.run_weekly_cleanup() == {
+            "subscriptions_removed": 0,
+            "subscriptions_orphaned": 0,
+            "subscriptions_stale": 0,
+        }
+        assert tenant_id_ctx.get() == ambient
+        assert bypass_rls_ctx.get() is bypass
+        assert gucs == ["" if bypass else ambient] * 2
+        assert not any("user_id not in" in statement.lower() for statement in sql)
+        with admin.connect() as connection:
+            rows = connection.execute(
+                sa.text(
+                    "SELECT id, user_id, last_seen_at FROM push_subscriptions WHERE id = ANY(:ids)"
+                ),
+                {"ids": subscriptions},
+            ).all()
+            assert {(row.id, row.user_id, row.last_seen_at) for row in rows} == set(
+                zip(subscriptions, users, [fresh] * 3, strict=True)
+            )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        await engine.dispose()
+        admin.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", ["missing-fk", "shadow-child", "shadow-parent"])
+async def test_weekly_cleanup_schema_drift_rejects_before_stale_delete(
+    rls_schema, monkeypatch, drift
+):
+    from unittest.mock import AsyncMock
+
+    from app.core.db.listeners import register_tenant_listeners
+    from app.management import weekly_cleanup
+
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.admin.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    statements = []
+    committed = []
+    stale = AsyncMock(side_effect=AssertionError("stale cleanup must not run"))
+    monkeypatch.setattr(weekly_cleanup, "_delete_stale_subscriptions", stale)
+    tenant_token = tenant_id_ctx.set(str(_TENANT_A))
+    bypass_token = bypass_rls_ctx.set(False)
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            try:
+                await connection.execute(sa.text("SET LOCAL lock_timeout = '5s'"))
+                await connection.execute(sa.text("SET LOCAL statement_timeout = '10s'"))
+                if drift == "missing-fk":
+                    await connection.execute(
+                        sa.text(
+                            "ALTER TABLE public.push_subscriptions DROP CONSTRAINT fk_push_subscriptions_user_id"
+                        )
+                    )
+                elif drift == "shadow-child":
+                    await connection.execute(
+                        sa.text(
+                            "CREATE TEMP TABLE push_subscriptions (id uuid, user_id uuid)"
+                        )
+                    )
+                else:
+                    await connection.execute(
+                        sa.text("CREATE TEMP TABLE users (id uuid)")
+                    )
+                # Own the DDL and guard on one connection: no second connection
+                # waits on an uncommitted ACCESS EXCLUSIVE table lock.
+                role = rls_schema.ordinary.username
+                assert role is not None and role.startswith("tenant_reader_")
+                await connection.exec_driver_sql(f'SET LOCAL ROLE "{role}"')
+                actual_role = (
+                    await connection.execute(
+                        sa.text(
+                            "SELECT rolsuper, rolbypassrls, pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), row_security_active('public.users') FROM pg_roles WHERE rolname = current_user"
+                        )
+                    )
+                ).one()
+                assert tuple(actual_role) == (False, False, False, True)
+                maker = async_sessionmaker(
+                    bind=connection,
+                    expire_on_commit=False,
+                    join_transaction_mode="create_savepoint",
+                )
+
+                def factory():
+                    session = maker()
+                    sa.event.listen(
+                        session.sync_session,
+                        "after_commit",
+                        lambda _session: committed.append(True),
+                    )
+                    return session
+
+                @sa.event.listens_for(
+                    connection.sync_connection, "before_cursor_execute"
+                )
+                def capture(
+                    _connection, _cursor, statement, _parameters, _context, _many
+                ):
+                    statements.append(statement)
+
+                monkeypatch.setattr(weekly_cleanup, "async_session", factory)
+                with pytest.raises(RuntimeError, match="foreign key"):
+                    await weekly_cleanup.run_weekly_cleanup()
+                stale.assert_not_awaited()
+                assert committed == []
+                assert not any(
+                    statement.lstrip().lower().startswith("delete")
+                    for statement in statements
+                )
+                assert tenant_id_ctx.get() == str(_TENANT_A)
+                assert bypass_rls_ctx.get() is False
+            finally:
+                await transaction.rollback()
+            # Transactional DDL and SET ROLE must be gone before fixture reuse.
+            assert (
+                await connection.scalar(
+                    sa.text(
+                        "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.push_subscriptions'::regclass AND conname = 'fk_push_subscriptions_user_id' AND convalidated)"
+                    )
+                )
+                is True
+            )
+            assert (
+                await connection.scalar(
+                    sa.text(
+                        "SELECT to_regclass('push_subscriptions') = to_regclass('public.push_subscriptions') AND to_regclass('users') = to_regclass('public.users')"
+                    )
+                )
+                is True
+            )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        await engine.dispose()

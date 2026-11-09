@@ -46,6 +46,19 @@ ADMIN_CASES = (
 )
 
 
+WEEKLY_CASES = (
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[normal-empty]",
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[normal-a]",
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[normal-b]",
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[python-bypass-empty]",
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[python-bypass-a]",
+    "test_weekly_cleanup_preserves_rls_hidden_subscriptions[python-bypass-b]",
+    "test_weekly_cleanup_schema_drift_rejects_before_stale_delete[missing-fk]",
+    "test_weekly_cleanup_schema_drift_rejects_before_stale_delete[shadow-child]",
+    "test_weekly_cleanup_schema_drift_rejects_before_stale_delete[shadow-parent]",
+)
+
+
 def validator():
     runner = RUNNER.read_text()
     marker = "$receiptValidator = @'\n"
@@ -69,7 +82,7 @@ def receipt():
     for classname, names in expected.items():
         # The required target cohort is independent of the validator's contents.
         if classname == TENANT_CLASS:
-            names = (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES)
+            names = (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES, *WEEKLY_CASES)
         for name in names:
             ElementTree.SubElement(root, "testcase", classname=classname, name=name)
     return source, root
@@ -86,17 +99,22 @@ def execute(source, root, tmp_path, monkeypatch):
 
 def test_tenant_cohort_preserves_all_previous_names_and_adds_exact_mfa_cases():
     _, expected = validator()
-    assert expected[TENANT_CLASS] == (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES)
-    assert sum(map(len, expected.values())) == 52
+    assert expected[TENANT_CLASS] == (
+        *PREVIOUS_TENANT_CASES,
+        *MFA_CASES,
+        *ADMIN_CASES,
+        *WEEKLY_CASES,
+    )
+    assert sum(map(len, expected.values())) == 61
 
 
 def test_complete_expanded_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 52\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 61\n"
 
 
-@pytest.mark.parametrize("name", (*MFA_CASES, *ADMIN_CASES))
+@pytest.mark.parametrize("name", (*MFA_CASES, *ADMIN_CASES, *WEEKLY_CASES))
 @pytest.mark.parametrize(
     "mutation",
     ["missing", "skipped", "failure", "error", "duplicate", "wrong-name", "extra-case"],
@@ -133,6 +151,6 @@ def test_same_length_duplicate_cannot_replace_missing_mfa_case(tmp_path, monkeyp
     source, root = receipt()
     cases = [case for case in root if case.get("classname") == TENANT_CLASS]
     cases[-1].set("name", cases[-2].get("name"))
-    assert len(cases) == 25
+    assert len(cases) == 34
     with pytest.raises(SystemExit, match=TENANT_CLASS):
         execute(source, root, tmp_path, monkeypatch)
