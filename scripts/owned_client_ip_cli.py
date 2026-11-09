@@ -52,11 +52,12 @@ print(
 
 
 class ClientIpNotAccepted(RuntimeError):
-    """A closed failure naming only the phase that did not pass."""
+    """A closed failure naming only the phase and fixed step that did not pass."""
 
-    def __init__(self, phase: str) -> None:
+    def __init__(self, phase: str, step: str | None = None) -> None:
         super().__init__(phase)
         self.phase = phase
+        self.step = step
 
 
 class _LiveDocker:
@@ -278,8 +279,8 @@ def _run_probe(
             probe_id=probe_id,
             run_id=run_id,
         )
-    except owned_client_ip_runtime.RuntimeNotReady:
-        raise ClientIpNotAccepted("topology") from None
+    except owned_client_ip_runtime.RuntimeNotReady as error:
+        raise ClientIpNotAccepted("topology", error.step) from None
 
     started = clock()
     result = docker.attach(probe_id, _program(probe_input))
@@ -381,7 +382,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         with live_stand.stand_lifecycle_lock():
             result = run_locked(_LiveDocker())
     except ClientIpNotAccepted as error:
-        print(f"owned client-IP outcome=failed phase={error.phase}", flush=True)
+        step = f" step={error.step}" if error.step else ""
+        print(f"owned client-IP outcome=failed phase={error.phase}{step}", flush=True)
         return 1
     except live_stand.StandError:
         print("owned client-IP outcome=failed phase=stand", flush=True)

@@ -901,6 +901,33 @@ def test_ambiguous_resolved_service_address_fails_closed(runtime, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("step", "defect"),
+    (
+        ("owner", lambda snapshot: snapshot.update(run_id=1)),
+        ("trust", lambda snapshot: snapshot["networks"].clear()),
+        (
+            "endpoints",
+            lambda snapshot: snapshot["probe"].update(Id=7),
+        ),
+        (
+            "probe",
+            lambda snapshot: snapshot["probe"]["HostConfig"].update(Privileged=True),
+        ),
+    ),
+)
+def test_failure_names_only_the_fixed_step(runtime, step, defect):
+    snapshot, _marker = _inspect_fixture()
+    defect(snapshot)
+
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ) as denied:
+        _derive(runtime, snapshot)
+
+    assert denied.value.step == step
+
+
+@pytest.mark.parametrize(
     "defect", ["not_mapping", "keys", "owner", "evidence", "oversize", "unserializable"]
 )
 def test_frozen_witness_rejects_invalid_snapshot_without_details(runtime, defect):

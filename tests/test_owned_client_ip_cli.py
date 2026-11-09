@@ -279,7 +279,11 @@ def test_an_inconsistent_probe_record_is_refused_and_removed(
 ) -> None:
     stand.snapshot["probe"]["HostConfig"]["Privileged"] = True
 
-    _expect_phase(stand, "topology")
+    with pytest.raises(ClientIpNotAccepted) as caught:
+        owned_client_ip_cli.run_locked(stand)
+
+    assert caught.value.phase == "topology"
+    assert caught.value.step == "probe"
     assert stand.programs == []
     assert stand.removed is True
 
@@ -394,6 +398,15 @@ def test_main_names_only_the_failed_phase(
 ) -> None:
     assert _main(monkeypatch, ClientIpNotAccepted("probe")) == 1
     assert capsys.readouterr().out == "owned client-IP outcome=failed phase=probe\n"
+
+
+def test_main_names_the_fixed_topology_step(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _main(monkeypatch, ClientIpNotAccepted("topology", "trust")) == 1
+    assert capsys.readouterr().out == (
+        "owned client-IP outcome=failed phase=topology step=trust\n"
+    )
 
 
 def test_main_does_not_print_stand_error_details(
