@@ -2,18 +2,36 @@ import { expect, test } from "./test"
 import { validateResponseBody } from "../../src/tests/contractValidator"
 import { useMockApi } from "./utils/mockApi"
 
-test("mock API supports credentialed service-host requests", async ({ page }) => {
+test("mock API answers credentialed requests to the same-origin API base", async ({ page }) => {
   await useMockApi(page, { authenticated: false })
   await page.goto("/login")
 
   const result = await page.evaluate(async () => {
-    const response = await fetch("http://api/v1/news?limit=1", { credentials: "include" }) // intentional local mock service-host test
+    const response = await fetch("/api/v1/news?limit=1", { credentials: "include" })
     return { ok: response.ok, status: response.status, body: await response.json() }
   })
 
   expect(result.ok).toBe(true)
   expect(result.status).toBe(200)
   expect(result.body).toHaveProperty("items")
+})
+
+test("the page CSP refuses a cross-origin API host", async ({ page }) => {
+  // The app only calls its own origin. A request to another API host must be
+  // stopped by connect-src before any mock or network sees it.
+  await useMockApi(page, { authenticated: false })
+  await page.goto("/login")
+
+  const outcome = await page.evaluate(async () => {
+    try {
+      await fetch("http://api/v1/news?limit=1", { credentials: "include" }) // intentional cross-origin probe
+      return "fetched"
+    } catch (error) {
+      return error instanceof TypeError ? "blocked" : "other"
+    }
+  })
+
+  expect(outcome).toBe("blocked")
 })
 
 test("mock API provides a stable WebSocket for authenticated pages", async ({ page }) => {

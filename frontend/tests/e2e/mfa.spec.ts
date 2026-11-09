@@ -7,7 +7,7 @@ const matchTotpSection = /^Приложение-аутентификатор|^Au
 const matchTotpVerifyButton = /Подтвердить|Verify|Confirm/i
 
 const fillOtp = async (page: Page, code: string) => {
-  const inputs = page.getByRole("textbox", { name: /digit \d/i })
+  const inputs = page.getByRole("textbox", { name: /(?:digit|цифра) \d/i })
   await expect(inputs).toHaveCount(6)
   for (const [index, digit] of [...code].entries()) {
     await inputs.nth(index).fill(digit)

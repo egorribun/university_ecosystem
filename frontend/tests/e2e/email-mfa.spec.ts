@@ -115,11 +115,11 @@ async function openEmailChallenge(page: Page, locale: Locale) {
   await page.locator('button[type="submit"]').click()
   await expect(page.getByRole("heading", { name: locales[locale].title, level: 2 })).toBeVisible()
   await expect(page.getByText(locales[locale].sentTo, { exact: true })).toBeVisible()
-  await expect(page.getByRole("textbox", { name: /digit \d/ })).toHaveCount(6)
+  await expect(page.getByRole("textbox", { name: /(?:digit|цифра) \d/i })).toHaveCount(6)
 }
 
 async function fillCode(page: Page, code: string) {
-  const inputs = page.getByRole("textbox", { name: /digit \d/ })
+  const inputs = page.getByRole("textbox", { name: /(?:digit|цифра) \d/i })
   for (const [index, digit] of [...code].entries()) await inputs.nth(index).fill(digit)
 }
 
@@ -173,7 +173,7 @@ for (const locale of ["ru", "en"] as const) {
       await fillCode(page, "000000")
       await expect(page.getByText(copy.invalid, { exact: true })).toBeVisible()
       await expect(page).toHaveURL(/\/login$/)
-      const inputs = page.getByRole("textbox", { name: /digit \d/ })
+      const inputs = page.getByRole("textbox", { name: /(?:digit|цифра) \d/i })
       for (let index = 0; index < 6; index++) await expect(inputs.nth(index)).toHaveValue("")
 
       await fillCode(page, "123456")
@@ -196,7 +196,7 @@ for (const locale of ["ru", "en"] as const) {
       await expect(
         page.getByRole("textbox", { name: copy.recoveryInput, exact: true })
       ).toBeVisible()
-      await expect(page.getByRole("textbox", { name: /digit \d/ })).toHaveCount(0)
+      await expect(page.getByRole("textbox", { name: /(?:digit|цифра) \d/i })).toHaveCount(0)
       await page.getByRole("button", { name: copy.useOtp, exact: true }).click()
       await expect(page.getByText(copy.sentTo, { exact: true })).toBeVisible()
       expect(api.verificationRequests).toEqual([])

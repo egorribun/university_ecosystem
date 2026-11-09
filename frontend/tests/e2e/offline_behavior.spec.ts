@@ -1,8 +1,8 @@
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
-test.describe("SPA Offline Banner & IndexedDB Queueing", () => {
-  test("shows reconnect banner and queues likes in IndexedDB offline store", async ({ page }) => {
+test.describe("SPA offline banner and unqueued ambiguous likes", () => {
+  test("shows the offline banner and never queues an ambiguous like", async ({ page }) => {
     const mock = await useMockApi(page)
 
     // Purge any stale service workers and caches to prevent 404 module imports from previous test runs
@@ -51,66 +51,43 @@ test.describe("SPA Offline Banner & IndexedDB Queueing", () => {
     // Trigger offline API state so the like request fails with a network error
     await mock.setApiOffline(true)
 
-    // Click the like button on the first news card while navigator is still online
-    // to bypass TanStack Query mutation pausing and trigger handleMutationError
+    // A like whose request fails with a network error is ambiguous: the server
+    // may have applied it. Without durable idempotency the app must not queue it
+    // for replay, so it rolls back instead (useNewsInteraction).
+    const likeRequest = page.waitForRequest(
+      (request) => request.method() === "POST" && /\/news\/[^/]+\/like$/u.test(request.url())
+    )
     await likeBtn.click()
+    await likeRequest
 
-    interface QueuedItem {
-      url: string
-      method: string
-    }
-
-    // Retrieve pending items from IndexedDB with retry/polling to prevent race conditions
-    let queuedItems: QueuedItem[] = []
-    const startTime = Date.now()
-    while (queuedItems.length === 0 && Date.now() - startTime < 5000) {
-      queuedItems = await page.evaluate(async () => {
-        return new Promise<QueuedItem[]>((resolve) => {
-          const request = indexedDB.open("notification-interactions", 3)
-          request.onupgradeneeded = () => {
-            const db = request.result
-            if (!db.objectStoreNames.contains("pending-navigations")) {
-              db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+    const queuedNewsInteractions = () =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            const request = indexedDB.open("notification-interactions")
+            request.onsuccess = () => {
+              const db = request.result
+              if (!db.objectStoreNames.contains("pending-news-interactions")) {
+                db.close()
+                resolve(0)
+                return
+              }
+              const count = db
+                .transaction("pending-news-interactions", "readonly")
+                .objectStore("pending-news-interactions")
+                .count()
+              count.onsuccess = () => {
+                db.close()
+                resolve(count.result)
+              }
+              count.onerror = () => resolve(-1)
             }
-            if (!db.objectStoreNames.contains("pending-reports")) {
-              db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
-            }
-            if (!db.objectStoreNames.contains("pending-news-interactions")) {
-              db.createObjectStore("pending-news-interactions", {
-                keyPath: "id",
-                autoIncrement: true,
-              })
-            }
-          }
-          request.onsuccess = () => {
-            const db = request.result
-            if (!db.objectStoreNames.contains("pending-news-interactions")) {
-              resolve([])
-              return
-            }
-            try {
-              const tx = db.transaction("pending-news-interactions", "readonly")
-              const store = tx.objectStore("pending-news-interactions")
-              const getAll = store.getAll()
-              getAll.onsuccess = () => resolve(getAll.result)
-              getAll.onerror = () => resolve([])
-            } catch {
-              resolve([])
-            }
-          }
-          request.onerror = () => resolve([])
-        })
-      })
-      if (queuedItems.length === 0) {
-        await page.waitForTimeout(100)
-      }
-    }
-
-    // Assert that the news like event is successfully queued
-    expect(queuedItems.length).toBeGreaterThan(0)
-    const item = queuedItems[0]!
-    expect(item.url).toContain("/news/")
-    expect(item.method).toBe("POST")
+            request.onerror = () => resolve(-1)
+          })
+      )
+    // Give any queueing path time to write before asserting it did not.
+    await page.waitForTimeout(1500)
+    expect(await queuedNewsInteractions()).toBe(0)
 
     // Now trigger UI offline mode by emulating navigator.onLine and offline event
     await page.evaluate(() => {

@@ -98,7 +98,7 @@ test.describe("University ecosystem app", () => {
     await expect(page.getByText(/Расписание|Schedule/i).first()).toBeVisible()
   })
 
-  test("caches news responses using ETag", async ({ page }) => {
+  test("does not send a stale conditional news request after a reload", async ({ page }) => {
     const hydrationErrors = trackHydrationErrors(page)
 
     const mock = await useMockApi(page)
@@ -124,8 +124,12 @@ test.describe("University ecosystem app", () => {
     await page.reload({ waitUntil: "networkidle" })
     await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
-    expect(mock.state.newsLog.some((entry) => entry.status === 304)).toBeTruthy()
-    expect(mock.state.newsLog.filter((entry) => entry.status === 200).length).toBeGreaterThan(0)
+    // Response bodies live only in memory (RZ-NEW-04), so a new document has no
+    // signed copy to revalidate. It must fetch the feed in full rather than send
+    // If-None-Match and then be unable to render a 304.
+    expect(mock.state.newsLog.length).toBeGreaterThan(1)
+    expect(mock.state.newsLog.every((entry) => entry.header === undefined)).toBe(true)
+    expect(mock.state.newsLog.every((entry) => entry.status === 200)).toBe(true)
     expect(hydrationErrors).toEqual([])
   })
 

@@ -46,6 +46,12 @@ test.describe("Admin notification queue", () => {
     })
     await secondCheckbox.check()
     await page.getByRole("button", { name: /Удалить выбранные|Delete selected/i }).click()
+    // Deletion cannot be undone, so the queue asks for confirmation first.
+    const confirm = page.getByRole("alertdialog", {
+      name: /Удалить задачи из очереди\?|Delete jobs from the queue\?/i,
+    })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole("button", { name: /^(Удалить|Delete)$/i }).click()
 
     await expect(
       page.getByText(/В отложенной очереди нет задач|No dead-lettered jobs/i)
