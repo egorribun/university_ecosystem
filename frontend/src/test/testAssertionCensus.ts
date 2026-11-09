@@ -313,6 +313,51 @@ function isTautologicalExpectation(call: ts.CallExpression): boolean {
   )
 }
 
+// Calling a factory does not execute the assertion closure it returns. Keep that
+// provenance separate from helpers that check during their first invocation.
+class AssertingHelpers extends Set<string> {
+  readonly returnedChecks = new Set<string>()
+}
+
+function isReturnedFunction(node: ts.Node): boolean {
+  if (!isFunctionLike(node)) return false
+  let expression: ts.Node = node
+  while (ts.isParenthesizedExpression(expression.parent)) expression = expression.parent
+  return (
+    ts.isReturnStatement(expression.parent) ||
+    (ts.isArrowFunction(expression.parent) && expression.parent.body === expression)
+  )
+}
+
+function containsReturnedCheck(node: ts.Node, helpers: ReadonlySet<string>): boolean {
+  const owner = isFunctionLike(node) ? node : node.parent
+  // Async and generator factories return a promise or iterator, not the check itself.
+  if (
+    isFunctionLike(owner) &&
+    (owner.asteriskToken !== undefined ||
+      owner.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword))
+  ) {
+    return false
+  }
+  let found = false
+  const visit = (child: ts.Node) => {
+    if (found) return
+    if (child !== node && isFunctionLike(child)) {
+      if (
+        isReturnedFunction(child) &&
+        child.asteriskToken === undefined &&
+        containsAssertion(child, helpers)
+      ) {
+        found = true
+      }
+      return
+    }
+    ts.forEachChild(child, visit)
+  }
+  visit(node)
+  return found
+}
+
 export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): boolean {
   const branchThrowsError = (statement: ts.Statement): boolean => {
     let foundErrorThrow = false
@@ -338,7 +383,8 @@ export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): 
     if (found) return
     if (
       child !== node &&
-      (ts.isFunctionDeclaration(child) ||
+      (isReturnedFunction(child) ||
+        ts.isFunctionDeclaration(child) ||
         (isFunctionLike(child) &&
           ts.isVariableDeclaration(child.parent) &&
           child.parent.initializer === child))
@@ -364,7 +410,11 @@ export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): 
         root !== undefined &&
         (isExpectationMatcher ||
           (ASSERTION_ROOTS.has(root) && root !== "expect" && root !== "expectTypeOf") ||
-          helpers.has(root))
+          helpers.has(root) ||
+          (ts.isCallExpression(child.expression) &&
+            ts.isIdentifier(child.expression.expression) &&
+            helpers instanceof AssertingHelpers &&
+            helpers.returnedChecks.has(root)))
       ) {
         found = true
         return
@@ -429,8 +479,8 @@ export interface AssertionCensus {
 export function createAssertionCensus(frontendRoot: string): AssertionCensus {
   const moduleMemo = new Map<string, Set<string>>()
 
-  function importedAssertingHelpers(source: ts.SourceFile, path: string): Set<string> {
-    const names = new Set<string>()
+  function importedAssertingHelpers(source: ts.SourceFile, path: string): AssertingHelpers {
+    const names = new AssertingHelpers()
     for (const statement of source.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
         continue
@@ -443,6 +493,9 @@ export function createAssertionCensus(frontendRoot: string): AssertionCensus {
       for (const element of bindings.elements) {
         const original = (element.propertyName ?? element.name).text
         if (exported.has(original)) names.add(element.name.text)
+        if (exported instanceof AssertingHelpers && exported.returnedChecks.has(original)) {
+          names.returnedChecks.add(element.name.text)
+        }
       }
     }
     return names
@@ -455,6 +508,10 @@ export function createAssertionCensus(frontendRoot: string): AssertionCensus {
     while (changed) {
       changed = false
       for (const [name, body] of bodies) {
+        if (!helpers.returnedChecks.has(name) && containsReturnedCheck(body, helpers)) {
+          helpers.returnedChecks.add(name)
+          changed = true
+        }
         if (!helpers.has(name) && containsAssertion(body, helpers)) {
           helpers.add(name)
           changed = true

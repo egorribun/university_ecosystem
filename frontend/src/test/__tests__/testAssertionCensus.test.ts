@@ -290,6 +290,112 @@ describe("census helper resolution across modules", () => {
     expect(containsAssertion(callback, helpers)).toBe(false)
   })
 
+  it.each([
+    ["function makeCheck() { return () => expect(value).toBe(1) }", "makeCheck()", false],
+    ["function makeCheck() { return (() => expect(value).toBe(1)) }", "makeCheck()", false],
+    ["const makeCheck = () => (() => expect(value).toBe(1))", "makeCheck()", false],
+    [
+      "function makeCheck() { if (value) return () => expect(value).toBe(1); return () => expect(value).toBe(2) }",
+      "makeCheck()()",
+      true,
+    ],
+    ["function makeCheck() { return function () { expect(value).toBe(1) } }", "makeCheck()", false],
+    ["const makeCheck = () => () => expect(value).toBe(1)", "makeCheck()", false],
+    ["function makeCheck() { return () => expect(value).toBe(1) }", "makeCheck()()", true],
+    ["const makeCheck = () => () => expect(value).toBe(1)", "makeCheck()()", true],
+    ["function check() { expect(value).toBe(1) }", "check()", true],
+    ["function check() { return (() => expect(value).toBe(1))() }", "check()", true],
+    [
+      "function makeCheck() { return () => other() } function other() { return () => makeCheck() }",
+      "makeCheck()()",
+      false,
+    ],
+    [
+      "function makeCheck() { return () => check() } function check() { expect(value).toBe(1) }",
+      "makeCheck()()",
+      true,
+    ],
+
+    ["async function makeCheck() { return () => expect(value).toBe(1) }", "makeCheck()()", false],
+    ["const makeCheck = async () => () => expect(value).toBe(1)", "makeCheck()()", false],
+    ["function* makeCheck() { return () => expect(value).toBe(1) }", "makeCheck()()", false],
+
+    [
+      "function makeCheck() { return function* () { expect(value).toBe(1) } }",
+      "makeCheck()()",
+      false,
+    ],
+
+    [
+      "function makeCheck() { return async function* () { expect(value).toBe(1) } }",
+      "makeCheck()()",
+      false,
+    ],
+  ])("only counts executed returned checks: %s; %s", (declaration, call, checked) => {
+    const source = parseTypeScript(FIXTURE_PATH, `${declaration}; it('target', () => { ${call} })`)
+    const census = createAssertionCensus(FRONTEND_ROOT)
+    const callback = testCallback(
+      callsOf(source).find((node) => testCallback(node) !== undefined)!
+    )!
+    expect(containsAssertion(callback, census.fileHelpers(source, FIXTURE_PATH))).toBe(checked)
+  })
+
+  it("preserves returned-check provenance across a named import alias", () => {
+    const root = mkdtempSync(join(tmpdir(), "census-returned-"))
+    const helperPath = join(root, "helper.ts")
+    const callerPath = join(root, "caller.test.ts")
+    writeFileSync(helperPath, "export function makeCheck() { return () => expect(value).toBe(1) }")
+    const source = parseTypeScript(
+      callerPath,
+      [
+        "import { makeCheck as buildCheck } from './helper'",
+        "it('factory only', () => { buildCheck() })",
+        "it('returned check invoked', () => { buildCheck()() })",
+      ].join("\n")
+    )
+    const helpers = createAssertionCensus(root).fileHelpers(source, callerPath)
+    const callbacks = callsOf(source)
+      .map(testCallback)
+      .filter((node) => node !== undefined)
+    expect(helpers.has("buildCheck")).toBe(false)
+    expect(callbacks.map((callback) => containsAssertion(callback, helpers))).toStrictEqual([
+      false,
+      true,
+    ])
+  })
+
+  it("distinguishes constructing a check from executing it at runtime", () => {
+    let checks = 0
+    const makeCheck = () => () => {
+      checks += 1
+      expect(checks).toBeGreaterThan(0)
+    }
+    makeCheck()
+    expect(checks).toBe(0)
+    makeCheck()()
+    expect(checks).toBe(1)
+  })
+
+  it("does not execute returned generator checks until iteration", async () => {
+    let checks = 0
+    const makeCheck = () =>
+      function* () {
+        checks += 1
+        yield checks
+      }
+    const makeAsyncCheck = () =>
+      async function* () {
+        checks += 1
+        yield checks
+      }
+    const pending = makeCheck()()
+    const asyncPending = makeAsyncCheck()()
+    expect(checks).toBe(0)
+    expect(pending.next()).toStrictEqual({ value: 1, done: false })
+    expect(await asyncPending.next()).toStrictEqual({ value: 2, done: false })
+    expect(checks).toBe(2)
+  })
+
   it("recognises fail-fast guards and assertion helpers unpacked from a table", () => {
     const source = parseTypeScript(
       FIXTURE_PATH,
