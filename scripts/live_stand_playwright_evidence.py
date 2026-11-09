@@ -2967,3 +2967,205 @@ def _live_playwright_failure_diagnostics(
 
     finish()
     return diagnostics
+
+
+_RECONNECT_KEYS = (
+    "schema",
+    "scenario",
+    "project",
+    "attempt",
+    "stage",
+    "selected",
+    "sessions",
+    "sessionsCapped",
+    "joined",
+    "closed",
+    "elapsedMs",
+    "elapsedCapped",
+    "offlineEvents",
+    "onlineEvents",
+    "online",
+    "probe",
+    "nativeState",
+    "buffered",
+    "eventsCapped",
+    "events",
+    "sampleAfterFailureMs",
+)
+_RECONNECT_STAGES = (
+    "setup",
+    "baseline",
+    "offline-call",
+    "old-close-wait",
+    "offline-confirm",
+    "missed-send",
+    "online-call",
+    "new-join-wait",
+    "replay-check",
+    "final-check",
+)
+_RECONNECT_EVENTS = (
+    "socket-created",
+    "room-joined",
+    "socket-closed",
+    "offline-called",
+    "offline-returned",
+    "online-called",
+    "online-returned",
+)
+
+
+def _reconnect_integer(value: object, maximum: int) -> bool:
+    return type(value) is int and 0 <= value <= maximum
+
+
+def _validated_reconnect_diagnostic(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _RECONNECT_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+        return None
+    if record["scenario"] != "direct-message-replay" or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if (
+        not _reconnect_integer(record["attempt"], 1)
+        or record["stage"] not in _RECONNECT_STAGES
+    ):
+        return None
+    sessions, selected, elapsed = (
+        record["sessions"],
+        record["selected"],
+        record["elapsedMs"],
+    )
+    if type(sessions) is not int or not 0 <= sessions <= 32:
+        return None
+    if not _reconnect_integer(selected, sessions):
+        return None
+    if any(
+        type(record[key]) is not bool
+        for key in (
+            "sessionsCapped",
+            "joined",
+            "closed",
+            "elapsedCapped",
+            "eventsCapped",
+        )
+    ):
+        return None
+    if selected == 0 and (
+        record["joined"] or record["closed"] or record["probe"] == "unique"
+    ):
+        return None
+    if record["sessionsCapped"] and sessions != 32:
+        return None
+    if type(elapsed) is not int or not 0 <= elapsed <= 120_000:
+        return None
+    if record["elapsedCapped"] and elapsed != 120_000:
+        return None
+    if record["sampleAfterFailureMs"] is None:
+        if record["probe"] != "unavailable" or any(
+            record[key] is not None
+            for key in (
+                "offlineEvents",
+                "onlineEvents",
+                "online",
+                "nativeState",
+                "buffered",
+            )
+        ):
+            return None
+    elif not _reconnect_integer(record["sampleAfterFailureMs"], 1000):
+        return None
+    if record["probe"] not in (
+        "unique",
+        "missing",
+        "ambiguous",
+        "overflow",
+        "unavailable",
+    ):
+        return None
+    if any(
+        record[key] is not None and not _reconnect_integer(record[key], 32)
+        for key in ("offlineEvents", "onlineEvents")
+    ):
+        return None
+    if record["online"] is not None and type(record["online"]) is not bool:
+        return None
+    if record["probe"] == "unique":
+        if not _reconnect_integer(record["nativeState"], 3) or record[
+            "buffered"
+        ] not in ("zero", "nonzero"):
+            return None
+    elif record["nativeState"] is not None or record["buffered"] is not None:
+        return None
+    events = record["events"]
+    if (
+        not isinstance(events, list)
+        or len(events) > 24
+        or (record["eventsCapped"] and len(events) != 24)
+    ):
+        return None
+    previous = 0
+    for index, raw_event in enumerate(events, 1):
+        event = _auth_diag_object(
+            raw_event, ("sequence", "kind", "session", "elapsedMs")
+        )
+        if (
+            event is None
+            or type(event["sequence"]) is not int
+            or event["sequence"] != index
+        ):
+            return None
+        if event["kind"] not in _RECONNECT_EVENTS or not _reconnect_integer(
+            event["session"], sessions
+        ):
+            return None
+        event_elapsed = event["elapsedMs"]
+        if type(event_elapsed) is not int or not previous <= event_elapsed <= elapsed:
+            return None
+        socket_event = event["kind"] in (
+            "socket-created",
+            "socket-closed",
+            "room-joined",
+        )
+        if (event["session"] == 0) == socket_event:
+            return None
+        previous = event_elapsed
+    return {key: record[key] for key in _RECONNECT_KEYS}
+
+
+def _live_playwright_reconnect_diagnostics(
+    output: str,
+    *,
+    retained: bool = False,
+) -> list[dict[str, object]]:
+    """Accept complete literal-newline records only, never reporter fragments."""
+    prefix = "live E2E reconnect " if retained else "UE_LIVE_RECONNECT_V1 "
+    records: list[dict[str, object]] = []
+    seen: set[tuple[object, object]] = set()
+    for raw_line in output.split("\n")[:-1]:
+        line = raw_line.removesuffix("\r")
+        if not line.startswith(prefix) or not line.isprintable():
+            continue
+        try:
+            if len((raw_line + "\n").encode("utf-8")) > 4096:
+                continue
+            value = json.loads(
+                line[len(prefix) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+            record = _validated_reconnect_diagnostic(value)
+        except (ValueError, RecursionError):
+            continue
+        if record is None:
+            continue
+        identity = (record["project"], record["attempt"])
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+        if len(records) == 4:
+            break
+    return records

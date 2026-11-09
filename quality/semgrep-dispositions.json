@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "43866aacdb318ac3d4e296207a30eb232ac458b924a0038449b5c6f543544275"
+          "sha256": "c2d8959a488cb77e001ad3b75afb7bf99002a91a789c67a4fa4770ed02b77c2c"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -478,7 +478,7 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "c370dc11749182b5779b6289447f84f3123ff5f751e9c37e76ed1ab7fdcfe98b"
+          "sha256": "c637a646140b9825170067f05828c37784c05779623da7f6584dd5ad1defdd56"
         },
         {
           "path": "frontend/package-lock.json",

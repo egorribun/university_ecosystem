@@ -17983,11 +17983,11 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     policy = json.loads(policy_bytes.decode("utf-8"))
     records = policy.get("records")
     if isinstance(records, list) and len(records) == 506:
-        assert len(policy_bytes) == 495844, "live disposition bytes changed"
+        assert len(policy_bytes) == 495842, "live disposition bytes changed"
         assert hashlib.sha256(policy_bytes).digest() == (
             _AUD428_ROW13_ACTIVE_POLICY_SHA256
         ), "live disposition policy digest changed"
-        assert hashlib.sha256(policy_bytes[:494907]).digest() == (
+        assert hashlib.sha256(policy_bytes[:494905]).digest() == (
             _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
         ), "prior 505 policy bytes changed"
     return policy
@@ -30909,8 +30909,8 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495844
-    assert hashlib.sha256(policy_bytes[:494907]).digest() == (
+    assert len(policy_bytes) == 495842
+    assert hashlib.sha256(policy_bytes[:494905]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
     reconstructed = ledger_bytes.replace(
@@ -31191,4 +31191,120 @@ _AUD380_N6_PENDING_ADDITIONS_SHA256 = bytes.fromhex(
 )
 _AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
     "71 95 bf c2 0c 26 77 00 73 e3 1a 66 17 4e d1 15 84 aa ae 1c f9 93 44 45 0d 43 de 85 67 0b af 4d"
+)
+
+
+# Exact active bindings for the two 2026-11-09 reconnect diagnostic companions.
+# Historical snapshot constants and approval metadata remain unchanged.
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "ec 5a 55 82 69 b2 f7 f8 bd 20 8e fb 19 88 59 e4 64 c3 ae b2 9e c3 55 0b d3 12 bb 91 fd c8 f5 19"
+)
+_AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256 = bytes.fromhex(
+    "af 23 fb d9 22 ec e8 94 b8 e1 9d e5 a6 25 6b b8 d1 a9 09 ee 2b 24 e5 d3 07 4f 1a fd 4f f3 aa 82"
+)
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "75 b9 0f 54 32 91 0c b7 6a 6e 72 08 9d 91 2f 9c d3 cb 1c ca ba 2c 89 28 74 75 79 27 e9 80 a0 24"
+)
+_AUD380_APPROVED_OWNER_ADDITIONS_SHA256 = bytes.fromhex(
+    "02 fa bf 87 43 fc fb 4a be bc d6 dc 0f d6 5f 51 39 ce 8e e6 16 3f 24 00 95 a0 02 be 67 c2 60 9b"
+)
+_AUD380_CONDITIONAL_RECORDSET_SHA256 = bytes.fromhex(
+    "41 1f ae 6f 57 ce ad 41 9d 1f 31 c8 d4 55 95 74 96 d2 96 02 91 29 83 ec 1b 57 a9 e4 17 a4 16 83"
+)
+_AUD380_N3_PENDING_493_RECORDSET_SHA256 = bytes.fromhex(
+    "db b2 65 3f 2b 50 97 a7 0c d2 e7 02 a0 f2 c7 9a 42 0d 53 3f ba 03 f5 6e e0 09 a4 70 39 93 f6 a9"
+)
+_AUD380_N3_CONDITIONAL_493_RECORDSET_SHA256 = bytes.fromhex(
+    "5e 7a 7f 4d 0f a3 11 12 6a 52 33 49 79 c8 8d 1d e5 48 4c df e5 b9 fd fc 41 25 e3 6f 11 17 09 6e"
+)
+_AUD380_N6_PENDING_ADDITIONS_SHA256 = bytes.fromhex(
+    "ce 7a 76 25 2d 3e 77 95 08 c8 c9 e2 43 43 b3 b9 6c a4 7d ef e2 df 43 fa 8d d9 ae 01 fc ee 7c 1a"
+)
+_AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = bytes.fromhex(
+    "87 05 18 e6 23 53 e7 8e 2f f9 e0 b0 f3 6d 7b df fe 9e c4 6b 89 e6 d4 f7 06 22 54 f2 63 ae 58 52"
+)
+_AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
+    "59 ed 07 6d 22 ab d0 df 77 2e 94 87 35 36 3b 51 f2 2e 95 35 fb 46 05 e4 00 e4 94 a8 eb dd 65 17"
+)
+_AUD429_DIAGNOSTIC_SOURCE_REBINDS = {
+    "frontend/package.json": bytes.fromhex(
+        "c6 37 a6 46 14 0b 98 25 17 00 67 f0 58 28 c3 77 84 c0 57 79 62 3d a7 f6 58 4d d5 ad 1d ef dd 56"
+    ),
+    "scripts/live_stand.py": bytes.fromhex(
+        "c2 d8 95 9a 48 8c b7 7e 00 1a d3 b7 5a fb 7b f9 90 02 a9 1a 78 9c 67 a4 fa 47 70 ed 02 b7 7c 2c"
+    ),
+    "quality/semgrep-dispositions.json": bytes.fromhex(
+        "75 b9 0f 54 32 91 0c b7 6a 6e 72 08 9d 91 2f 9c d3 cb 1c ca ba 2c 89 28 74 75 79 27 e9 80 a0 24"
+    ),
+}
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    **_AUD429_DIAGNOSTIC_SOURCE_REBINDS,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    **{
+        path: digest
+        for path, digest in _AUD429_DIAGNOSTIC_SOURCE_REBINDS.items()
+        if path in _AUD380_N6_FINAL_SOURCE_SHA256
+    },
+}
+_AUD429_LIVE_STAND_IDENTITY_DIGEST = bytes.fromhex(
+    "52 78 9d 30 50 fa 68 70 db bf 71 29 dc c0 67 3a b9 15 ce 6c"
+)
+_AUD380_N6_PENDING_OWNER_RECORDS = copy.deepcopy(_AUD380_N6_PENDING_OWNER_RECORDS)
+_AUD380_N6_PENDING_OWNER_RECORDS[0]["identity"]["hashed_secret_bytes"] = list(
+    _AUD429_LIVE_STAND_IDENTITY_DIGEST
+)
+_AUD380_N6_EXPECTED_IDENTITIES = frozenset(
+    _aud380_identity_key(record) for record in _AUD380_N6_PENDING_OWNER_RECORDS
+)
+_AUD380_N6_IDENTITY_SOURCE_LINES = (
+    (
+        *_AUD380_N6_IDENTITY_SOURCE_LINES[0][:2],
+        tuple(_AUD429_LIVE_STAND_IDENTITY_DIGEST),
+        *_AUD380_N6_IDENTITY_SOURCE_LINES[0][3:],
+    ),
+    *_AUD380_N6_IDENTITY_SOURCE_LINES[1:],
+)
+_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
+    *_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES[:19],
+    (
+        *_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES[19][:2],
+        tuple(_AUD429_LIVE_STAND_IDENTITY_DIGEST),
+        *_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES[19][3:],
+    ),
+    *_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES[20:],
+)
+_AUD429_DIAGNOSTIC_LINE_REBINDS = {
+    189: (
+        bytes.fromhex(
+            "92 c1 d6 bb f5 64 3d 25 6d 48 48 a0 8b 95 97 17 a5 9b 1c 85 8f 73 53 8d 00 3f d0 99 c6 13 25 37"
+        ),
+        bytes.fromhex(
+            "39 3f 5b 4f ac fa eb 05 6c ac f5 1b 38 d0 32 88 1b 68 b5 df 5e f9 d0 9f e6 ea 87 00 09 d1 0c 2f"
+        ),
+    ),
+    481: (
+        bytes.fromhex(
+            "25 f6 d1 ff 61 b9 18 0f 34 88 35 d4 20 ce 33 d8 33 00 25 e7 fc 29 44 cb 76 4a e4 18 a0 a2 3e dc"
+        ),
+        bytes.fromhex(
+            "6b 69 52 e3 33 87 1b f2 7d 08 1f 50 78 ff 0b 4d 7f 7c 2a cf 87 cf 31 65 04 bb f1 8b 92 b4 23 43"
+        ),
+    ),
+}
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = tuple(
+    (path, line, *_AUD429_DIAGNOSTIC_LINE_REBINDS[line])
+    if path == "quality/semgrep-dispositions.json"
+    and line in _AUD429_DIAGNOSTIC_LINE_REBINDS
+    else (path, line, line_hash, context_hash)
+    for path, line, line_hash, context_hash in _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES
+)
+_AUD380_N6_SOURCE_LINE_HASHES = (
+    (
+        *_AUD380_N6_SOURCE_LINE_HASHES[0][:2],
+        *_AUD429_DIAGNOSTIC_LINE_REBINDS[189],
+    ),
+    *_AUD380_N6_SOURCE_LINE_HASHES[1:],
 )

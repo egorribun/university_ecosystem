@@ -1,6 +1,11 @@
 import { devices, type Locator, type Page, type WebSocket } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
+import {
+  armReconnectConnectivity,
+  createReconnectDiagnostic,
+  type ReconnectObservedSession,
+} from "./messenger-reconnect-diagnostic"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
@@ -144,7 +149,7 @@ function findReactionMutationFrames(value: unknown): ReactionMutationFrame[] {
 }
 
 type CreatedLiveMessage = { id: string; content: string }
-type ReceiverSocketSession = { joinedChat: boolean; closed: boolean }
+type ReceiverSocketSession = ReconnectObservedSession
 type TypingObservation = {
   text: string | null
   appearedAt: number | null
@@ -713,9 +718,13 @@ test.describe("live messenger delivery", () => {
     const createdMessages: CreatedLiveMessage[] = []
     let chatId: string | null = null
     let senderLog: Locator | null = null
+    let diagnosticPage: Page | undefined
+    const receiverSessions: ReceiverSocketSession[] = []
+    const diagnostic = createReconnectDiagnostic(testInfo.project.name, testInfo.retry)
 
     try {
       const receiverPage = await receiverContext.newPage()
+      diagnosticPage = receiverPage
       await loginAs(page, "student")
       await loginAs(receiverPage, "teacher")
 
@@ -747,18 +756,26 @@ test.describe("live messenger delivery", () => {
       chatId = chatIdFromRoute
 
       const receiverMessages: ReceivedMessageFrame[] = []
-      const receiverSessions: ReceiverSocketSession[] = []
       receiverPage.on("websocket", (socket) => {
-        const session: ReceiverSocketSession = { joinedChat: false, closed: false }
+        const session: ReceiverSocketSession = {
+          joinedChat: false,
+          closed: false,
+          socket,
+          ordinal: diagnostic.socketCreated(),
+        }
         receiverSessions.push(session)
         socket.on("framesent", (frame) => {
-          if (hasRoomJoin(parseFrame(frame), chatIdFromRoute)) session.joinedChat = true
+          if (hasRoomJoin(parseFrame(frame), chatIdFromRoute)) {
+            session.joinedChat = true
+            diagnostic.note("room-joined", session.ordinal)
+          }
         })
         socket.on("framereceived", (frame) => {
           receiverMessages.push(...findNewMessageFrames(parseFrame(frame)))
         })
         socket.on("close", () => {
           session.closed = true
+          diagnostic.note("socket-closed", session.ordinal)
         })
       })
 
@@ -769,6 +786,8 @@ test.describe("live messenger delivery", () => {
       await expect(receiverLog).toBeVisible()
       await expect.poll(() => receiverSessions.some((session) => session.joinedChat)).toBe(true)
 
+      diagnostic.stage("baseline")
+      const connectivityReady = armReconnectConnectivity(receiverPage)
       const first = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -810,11 +829,19 @@ test.describe("live messenger delivery", () => {
 
       const activeSession = [...receiverSessions].reverse().find((session) => session.joinedChat)
       expect(activeSession).toBeDefined()
+      diagnostic.select(activeSession?.ordinal ?? 0)
       const previousSessionCount = receiverSessions.length
+      diagnostic.connectivityReady(connectivityReady())
+      diagnostic.stage("offline-call")
+      diagnostic.note("offline-called")
       await receiverContext.setOffline(true)
+      diagnostic.note("offline-returned")
+      diagnostic.stage("old-close-wait")
       await expect.poll(() => activeSession?.closed ?? false).toBe(true)
+      diagnostic.stage("offline-confirm")
       await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
+      diagnostic.stage("missed-send")
       const missedWhileOffline = await sendLiveMessage(
         page,
         chatIdFromRoute,
@@ -838,7 +865,11 @@ test.describe("live messenger delivery", () => {
           new URL(response.url()).pathname === `/api/v1/chats/${chatIdFromRoute}/messages`
         )
       })
+      diagnostic.stage("online-call")
+      diagnostic.note("online-called")
       await receiverContext.setOffline(false)
+      diagnostic.note("online-returned")
+      diagnostic.stage("new-join-wait")
       await expect
         .poll(() =>
           receiverSessions.slice(previousSessionCount).some((session) => session.joinedChat)
@@ -847,6 +878,7 @@ test.describe("live messenger delivery", () => {
       const historyRefetch = await historyRefetchPromise
       expect(historyRefetch.ok()).toBe(true)
 
+      diagnostic.stage("replay-check")
       await expect.poll(() => missedDeliveries().length).toBe(1)
       const missedDelivery = missedDeliveries()[0]!
       expect(missedDelivery.replayed).toBe(true)
@@ -881,6 +913,7 @@ test.describe("live messenger delivery", () => {
       }
       expect(missedSequence).toBeLessThan(afterReconnectSequence)
 
+      diagnostic.stage("final-check")
       const expectedMessageIds = [first.id, second.id, missedWhileOffline.id, afterReconnect.id]
       const allTestDeliveries = receiverMessages.filter(
         (frame) =>
@@ -892,6 +925,9 @@ test.describe("live messenger delivery", () => {
       for (const message of createdMessages) {
         await expect(receiverLog.getByText(message.content, { exact: true })).toHaveCount(1)
       }
+    } catch (error) {
+      if (diagnosticPage) await diagnostic.reportFailure(diagnosticPage, receiverSessions)
+      throw error
     } finally {
       if (chatId && senderLog) {
         for (const message of createdMessages) {

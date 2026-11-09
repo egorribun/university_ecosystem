@@ -153,6 +153,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_rate_limit_headers as _live_playwright_rate_limit_headers,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_reconnect_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_registration_admission_diagnostics as _live_playwright_registration_admission_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5811,7 +5814,15 @@ def _run_live_playwright(
             stream.replace("\r\n", "\n"), cwd=cwd
         )
     ][:_PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT]
+    reconnect_diagnostics = (
+        _live_playwright_reconnect_diagnostics(stdout) if return_code != 0 else []
+    )
     del output, stdout, stderr
+    for record in reconnect_diagnostics:
+        print(
+            "live E2E reconnect " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
     if counts:
         count_summary = " ".join(
             f"{name}={counts[name]}"

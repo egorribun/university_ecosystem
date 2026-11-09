@@ -101,10 +101,14 @@ jobs:
           python - "$RUNNER_TEMP/aud429-realtime-raw.txt" \
             "$RUNNER_TEMP/aud429-realtime-summary.txt" "$run_result" <<'PY'
           from pathlib import Path
+          import json
           import re
           import sys
 
-          lines = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines()
+          from scripts.live_stand_playwright_evidence import _live_playwright_reconnect_diagnostics
+
+          raw_output = Path(sys.argv[1]).read_bytes().decode("utf-8", errors="replace")
+          lines = raw_output.splitlines()
           counts = [line for line in lines if line.startswith("live E2E counts ")]
           outcomes = [line for line in lines if line.startswith("live E2E outcome=")]
           count_pattern = r"live E2E counts (?:(?:passed|failed|skipped|flaky|interrupted|did_not_run)=[0-9]{1,5})(?: (?:passed|failed|skipped|flaky|interrupted|did_not_run)=[0-9]{1,5})*"
@@ -112,6 +116,9 @@ jobs:
           safe = [line for line in counts if len(line) <= 256 and re.fullmatch(count_pattern, line)]
           safe += [line for line in outcomes if len(line) <= 256 and re.fullmatch(outcome_pattern, line)]
           safe = safe[:16]
+          if sys.argv[3] != "0":
+              safe += ["live E2E reconnect " + json.dumps(record, separators=(",", ":"))
+                       for record in _live_playwright_reconnect_diagnostics(raw_output, retained=True)]
           Path(sys.argv[2]).write_text("\n".join(safe) + "\n", encoding="utf-8")
           if sys.argv[3] != "0" or counts != ["live E2E counts passed=16"] or outcomes != ["live E2E outcome=passed exit_code=0"]:
               raise SystemExit("realtime E2E did not execute all 16 cases without skips or retries")
