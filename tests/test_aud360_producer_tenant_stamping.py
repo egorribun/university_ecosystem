@@ -21,7 +21,9 @@ def _session() -> AsyncMock:
     session.__aexit__.return_value = None
     empty = MagicMock()
     empty.scalar_one_or_none.return_value = None
-    session.execute.return_value = empty
+    tenant_result = MagicMock()
+    tenant_result.scalar_one_or_none.return_value = _TENANT
+    session.execute.side_effect = [tenant_result, empty]
     return session
 
 
@@ -51,11 +53,15 @@ def test_operator_created_admin_is_owned_by_the_configured_tenant(
     assert added.tenant_id == _TENANT
 
 
-def test_operator_created_admin_without_configured_tenant_stays_unset(
+def test_operator_created_admin_without_configured_tenant_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "mvp_tenant_id", None)
-
-    added = _create_admin(_session(), "solo@admin.invalid")
-
-    assert added.tenant_id is None
+    with patch("app.cli.db.async_session") as session_factory:
+        result = CliRunner().invoke(
+            cli_app,
+            ["create-admin", "--email", "solo@admin.invalid", "--password", "pw"],
+        )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+    session_factory.assert_not_called()

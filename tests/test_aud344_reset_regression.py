@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -15,6 +16,15 @@ import app.cli.db as candidate_cli
 from app.core.database import Base
 from app.models import ActiveSession, Group, User, UserRole
 from app.models.tenant import Tenant
+
+
+@pytest.fixture(autouse=True)
+def configured_tenant(monkeypatch):
+    monkeypatch.setattr(
+        candidate_cli.settings,
+        "mvp_tenant_id",
+        UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+    )
 
 
 def _session(existing):
@@ -28,7 +38,11 @@ def _session(existing):
     db.__aexit__.side_effect = exit_context
     result = MagicMock()
     result.scalar_one_or_none.return_value = existing
-    db.execute.return_value = result
+    tenant_result = MagicMock()
+    tenant_result.scalar_one_or_none.return_value = UUID(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    )
+    db.execute.side_effect = [tenant_result, result]
     db.add = MagicMock()
     return db
 
@@ -40,6 +54,7 @@ def test_existing_admin_reset_rotates_epoch_and_revokes_before_commit():
     existing = SimpleNamespace(
         id=UUID("11111111-1111-4111-8111-111111111111"),
         email="existing@example.test",
+        tenant_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
         hashed_password=existing_digest,
         mfa_epoch=11,
     )
@@ -87,7 +102,7 @@ def test_existing_admin_reset_rotates_epoch_and_revokes_before_commit():
     assert existing.hashed_password == replacement_digest
     assert existing.mfa_epoch == 12
     account_lock_sql = str(
-        db.execute.await_args_list[0].args[0].compile(dialect=postgresql.dialect())
+        db.execute.await_args_list[1].args[0].compile(dialect=postgresql.dialect())
     )
     assert "FROM users" in account_lock_sql
     assert account_lock_sql.rstrip().endswith("FOR UPDATE")
@@ -121,7 +136,16 @@ def test_actual_session_helper_redis_failure_rolls_back_database_but_keeps_prior
                 ],
             )
         async with session_factory() as db:
+            db.add(
+                Tenant(
+                    id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+                    name="CLI test",
+                    slug="cli-test",
+                )
+            )
+            await db.flush()
             user = User(
+                tenant_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
                 email="fixture@example.test",
                 hashed_password=existing_digest,
                 role=UserRole.ADMIN,
@@ -189,6 +213,7 @@ def test_actual_session_helper_redis_failure_rolls_back_database_but_keeps_prior
 
         assert result.exit_code != 0
         assert "Password reset." not in result.output
+        assert backend.revoke_session.await_count, repr(result.exception)
         backend.revoke_session.assert_awaited()
         assert len(attempts) == 2
         assert set(attempts) == {
