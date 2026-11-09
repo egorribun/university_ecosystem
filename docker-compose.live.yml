@@ -36,9 +36,6 @@ services:
       # Admit this stand's exact loopback origin without weakening WS origin checks.
       ALLOWED_ORIGINS: >-
         ${LIVE_BASE_URL:?set by scripts/live_stand.py},http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173
-      # Browser projects share one client IP and open sockets for every page and
-      # receiver session. The 10/minute default stays in effect outside this overlay.
-      WS_UPGRADE_RATE_PER_MINUTE: "600"
 
   temporal:
     ports: !override
@@ -69,9 +66,6 @@ services:
     ports: !override
       - "127.0.0.1:${LIVE_HOST_PORT_CADDY_HTTP:?set by scripts/live_stand.py}:80"
       - "127.0.0.1:${LIVE_HOST_PORT_CADDY_HTTPS:?set by scripts/live_stand.py}:443"
-    environment:
-      # The edge applies the same per-IP upgrade budget as ws-hub; see ws-hub above.
-      WS_UPGRADE_RATE_PER_MINUTE: "600"
 
   mailpit:
     image: ghcr.io/axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48

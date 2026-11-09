@@ -1048,6 +1048,7 @@ def test_security_audit_protects_aud381_gate_inputs() -> None:
         for path in (
             "scripts/quality/dast_privacy.py",
             "scripts/quality/nuclei_findings_gate.py",
+            "scripts/quality/zap_findings_gate.py",
             "scripts/quality/sqlmap_scan_gate.py",
             "scripts/quality/scorecard_floors_gate.py",
             "quality/scorecard-floors.json",

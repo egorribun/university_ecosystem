@@ -2,10 +2,11 @@
 
 ## Status
 
-Proposed and not accepted. The transport and its client integrations exist in
-source. The Helm chart defaults internal HTTP mTLS off, while production chart
-rendering requires it. The required SPIRE issuance and rotation proof remains
-outstanding; neither the source nor the chart requirement closes AUD-373.
+Accepted by the owner on 2026-11-09. The transport and its client integrations
+exist in source. The Helm chart defaults internal HTTP mTLS off, while production
+chart rendering requires it. Acceptance does not close AUD-373 by itself: that takes
+the hosted kind proof on the reviewed source, including the certificate-required
+rejection diagnostic.
 
 ## Context
 

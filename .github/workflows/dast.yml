@@ -288,3 +288,15 @@ jobs:
           path: zap-sarif-provenance.json
           retention-days: 90
           if-no-files-found: error
+
+      # AUD-381: the ZAP report is gated after the uploads above, so findings are
+      # published first. Medium and high ZAP alerts (riskcode 2 and 3) fail the
+      # run; informational and low alerts are reported only. A missing, unreadable
+      # or malformed report fails closed because the scan result is then unknown.
+      - name: Fail on medium or high ZAP findings
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/zap_findings_gate.py "$GITHUB_WORKSPACE/report_json.json" \
+            --summary-file "$GITHUB_STEP_SUMMARY"

@@ -37,8 +37,8 @@ import { Counter, Rate, Trend } from "k6/metrics";
 // preserved, the owner must tear down only the isolated Compose project created
 // for this run; never point this harness at a persistent stand or delete shared
 // chat history as a cleanup shortcut.
-// The ws-hub's production 10-upgrades/IP/60s guard remains in force: provide at
-// least 100 dedicated local IPs and verify that the network path presents them
+// The ws-hub's production 120-upgrades/IP/60s guard remains in force: provide at
+// least 9 dedicated local IPs and verify that the network path presents them
 // as distinct peers to both ws-hub and the backend (a proxy or host-published
 // port can collapse them). Source IP addresses must be preconfigured on the
 // load-generator OS; `--local-ips` binds VUs to that existing address pool.
@@ -54,7 +54,7 @@ const PROFILE = Object.freeze({
   connectionDurationMs: 30 * 60 * 1000,
   deliveryP95Ms: 500,
   maxConnectionsPerSourceIp: 10,
-  minimumSourceIpCount: Math.ceil(1000 / 10),
+  minimumSourceIpCount: Math.ceil(1000 / 120),
   minimumMessagesSent: 175000,
   minimumMessagesDelivered: 175000,
 });

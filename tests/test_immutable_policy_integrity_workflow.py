@@ -231,6 +231,7 @@ def test_aud381_gate_scripts_are_owner_protected() -> None:
     for path in (
         "scripts/quality/dast_privacy.py",
         "scripts/quality/nuclei_findings_gate.py",
+        "scripts/quality/zap_findings_gate.py",
         "scripts/quality/sqlmap_scan_gate.py",
         "scripts/quality/scorecard_floors_gate.py",
     ):

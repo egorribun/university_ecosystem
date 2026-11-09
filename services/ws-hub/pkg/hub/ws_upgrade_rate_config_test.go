@@ -9,9 +9,9 @@ import (
 )
 
 func TestWSUpgradeRatePerMinuteKeepsTheDefaultUnlessConfigured(t *testing.T) {
-	require.Equal(t, 10, wsUpgradeRatePerMinute(nil))
-	require.Equal(t, 10, wsUpgradeRatePerMinute(&config.Config{}))
-	require.Equal(t, 10, wsUpgradeRatePerMinute(&config.Config{WSUpgradeRatePerMinute: -5}))
+	require.Equal(t, 120, wsUpgradeRatePerMinute(nil))
+	require.Equal(t, 120, wsUpgradeRatePerMinute(&config.Config{}))
+	require.Equal(t, 120, wsUpgradeRatePerMinute(&config.Config{WSUpgradeRatePerMinute: -5}))
 	require.Equal(t, 600, wsUpgradeRatePerMinute(&config.Config{WSUpgradeRatePerMinute: 600}))
 }
 

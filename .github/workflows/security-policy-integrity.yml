@@ -176,6 +176,7 @@ jobs:
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
               scripts/quality/dast_privacy.py|\
               scripts/quality/nuclei_findings_gate.py|\
+              scripts/quality/zap_findings_gate.py|\
               scripts/quality/sqlmap_scan_gate.py|\
               scripts/quality/scorecard_floors_gate.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\

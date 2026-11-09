@@ -2466,3 +2466,23 @@ policy blocked those calls, so the widgets could never load in production.
 All project-level metadata declares MIT, matching `LICENSE`: the root and frontend
 packages, both Python projects and the native crate.
 
+## Decisions recorded on 2026-11-09
+
+### WebSocket upgrade budget
+
+The owner set the default to 120 upgrades per client IP per minute, at the Caddy edge
+and in ws-hub. The previous 10 per minute would throttle a campus behind one NAT
+address, since each page load opens a socket. Each upgrade still needs a single-use
+ticket issued after authentication. `WS_UPGRADE_RATE_PER_MINUTE` overrides the default
+per deployment. The live stand uses the default with no override, so it proves the
+shipped value.
+
+### DAST thresholds
+
+ZAP blocks on medium and higher, matching Nuclei. The Scorecard Vulnerabilities floor
+stays 0 until the merge to main closes the alerts that caused it; it then rises to the
+measured score and only moves up.
+
+### ADR-052
+
+The owner accepted ADR-052. AUD-373 still needs its hosted kind proof.

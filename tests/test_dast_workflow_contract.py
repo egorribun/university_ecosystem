@@ -644,3 +644,60 @@ def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None
             "allow_issue_writing": False,
         },
     }
+
+
+def test_zap_findings_gate_runs_last_and_blocks_medium_and_high_alerts() -> None:
+    """AUD-381: the ZAP gate fails on medium+ alerts after findings are published."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["zap"]["steps"]
+    names = [step.get("name") for step in steps]
+    gate = next(
+        step
+        for step in steps
+        if step.get("name") == "Fail on medium or high ZAP findings"
+    )
+
+    assert names.count("Fail on medium or high ZAP findings") == 1
+    assert names[-1] == "Fail on medium or high ZAP findings"
+    assert gate["if"] == "${{ always() }}"
+    assert gate["shell"] == "bash"
+    assert gate.get("continue-on-error", False) is False
+    assert gate.get("id") is None
+    assert "${{" not in gate["run"]
+    assert (
+        'python3 scripts/quality/zap_findings_gate.py "$GITHUB_WORKSPACE/report_json.json"'
+        in gate["run"]
+    )
+    assert '--summary-file "$GITHUB_STEP_SUMMARY"' in gate["run"]
+    assert "set -euo pipefail" in gate["run"]
+
+
+def test_zap_gate_follows_sarif_provenance_and_both_publication_steps() -> None:
+    """Publication steps keep their conditions and run before the blocking gate."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["zap"]["steps"]
+    names = [step.get("name") for step in steps]
+    gate_index = names.index("Fail on medium or high ZAP findings")
+
+    for earlier in (
+        "ZAP Full Scan",
+        "Validate ZAP SARIF provenance",
+        "Upload ZAP SARIF to GitHub Security",
+        "Upload ZAP provenance receipt",
+    ):
+        assert names.index(earlier) < gate_index
+
+    sarif_upload = steps[names.index("Upload ZAP SARIF to GitHub Security")]
+    assert sarif_upload["if"] == (
+        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
+        "&& hashFiles('zap-results.sarif') != '' }}"
+    )
+    assert sarif_upload["with"]["category"] == "zap-dast"
+    receipt_upload = steps[names.index("Upload ZAP provenance receipt")]
+    assert receipt_upload["if"] == (
+        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
+        "&& hashFiles('zap-sarif-provenance.json') != '' }}"
+    )
+    assert receipt_upload["with"]["retention-days"] == 90

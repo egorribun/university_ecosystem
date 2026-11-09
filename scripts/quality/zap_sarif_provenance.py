@@ -2,8 +2,8 @@
 
 This private candidate validates a ZAP report and binds its digest to the
 checked-out DAST workflow, rules file, event commit, and workflow run. It does
-not set or apply a ZAP finding threshold; the current owner decision defines
-thresholds for Nuclei and Scorecard, while ZAP threshold policy remains open.
+not set or apply a ZAP finding threshold; scripts/quality/zap_findings_gate.py
+enforces the owner's medium-and-above threshold from the JSON report.
 """
 
 from __future__ import annotations

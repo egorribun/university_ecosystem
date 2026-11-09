@@ -49,6 +49,7 @@ containers/quality/Dockerfile.performance-rust @egorribun
 # DAST and Scorecard gate scripts are executable security policy inputs.
 scripts/quality/dast_privacy.py @egorribun
 scripts/quality/nuclei_findings_gate.py @egorribun
+scripts/quality/zap_findings_gate.py @egorribun
 scripts/quality/sqlmap_scan_gate.py @egorribun
 scripts/quality/scorecard_floors_gate.py @egorribun
 

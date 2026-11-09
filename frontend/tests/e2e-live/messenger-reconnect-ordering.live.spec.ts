@@ -333,7 +333,7 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
   browser,
   page,
 }, testInfo) => {
-  test.setTimeout(150_000)
+  test.setTimeout(210_000)
   const identity = randomUUID()
   const sender: SyntheticAccount = {
     id: null,
@@ -428,7 +428,9 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
     expect(activeSession).toBeDefined()
     const previousSessionCount = receiverSocket.sessions.length
     await currentReceiverContext.setOffline(true)
-    await expect.poll(() => activeSession?.closed ?? false).toBe(true)
+    // The app closes at once, but offline the browser reports the socket closed only when
+    // its close handshake gives up, which can take up to a minute.
+    await expect.poll(() => activeSession?.closed ?? false, { timeout: 65_000 }).toBe(true)
     await expect.poll(() => receiverPage.evaluate(() => navigator.onLine)).toBe(false)
 
     const offlineMessages = [

@@ -48,7 +48,7 @@
 	rate_limit @ws_upgrade {
 		zone ws_upgrades {
 			key {http.request.remote.host}
-			events {$WS_UPGRADE_RATE_PER_MINUTE:10}
+			events {$WS_UPGRADE_RATE_PER_MINUTE:120}
 			window 1m
 		}
 	}

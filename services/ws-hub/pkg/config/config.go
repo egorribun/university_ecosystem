@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultWSUpgradeRatePerMinute is the per-client-IP budget outside explicit configuration.
-const DefaultWSUpgradeRatePerMinute = 10
+const DefaultWSUpgradeRatePerMinute = 120
 
 // Config holds application configuration.
 type Config struct {

@@ -8359,8 +8359,7 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         environment = services[sender]["environment"]
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
-    assert set(services["caddy"]) == {"ports", "environment"}
-    assert services["caddy"]["environment"] == {"WS_UPGRADE_RATE_PER_MINUTE": "600"}
+    assert set(services["caddy"]) == {"ports"}
     mailpit_limits = services["mailpit"]["deploy"]["resources"]["limits"]
     assert services["mailpit"]["pids_limit"] == 64
     assert mailpit_limits == {"cpus": "0.25", "memory": "512M", "pids": 64}
@@ -16053,27 +16052,13 @@ def test_live_e2e_selection_rejects_non_live_specs_for_live_runner() -> None:
             live_stand._live_e2e_command(mode="full", platform="posix", specs=(spec,))
 
 
-def test_live_overlay_alone_raises_the_shared_ip_socket_budget() -> None:
-    """One stand client IP opens every socket; the default must stay elsewhere."""
-    root = Path(__file__).resolve().parents[1]
-    live = (root / "docker-compose.live.yml").read_text(encoding="utf-8")
-    ws_hub = live.split("\n  ws-hub:\n", 1)[1].split("\n  temporal:\n", 1)[0]
-    assert 'WS_UPGRADE_RATE_PER_MINUTE: "600"' in ws_hub
-    caddy = live.split("\n  caddy:\n", 1)[1].split("\n  mailpit:\n", 1)[0]
-    assert 'WS_UPGRADE_RATE_PER_MINUTE: "600"' in caddy
-    # Both edges keep the ten-per-minute default for every other deployment.
+def test_live_stand_exercises_the_default_socket_budget_at_both_edges() -> None:
+    """The stand must prove the shipped budget, so nothing may override it."""
+    assert "WS_UPGRADE_RATE_PER_MINUTE" not in (
+        ROOT / "docker-compose.live.yml"
+    ).read_text(encoding="utf-8")
     for edge in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
-        source = (root / edge).read_text(encoding="utf-8")
-        assert "events {$WS_UPGRADE_RATE_PER_MINUTE:10}" in source
-    for name in (
-        "docker-compose.yml",
-        "docker-compose.full.yml",
-        "docker-compose.go.yml",
-    ):
-        assert "WS_UPGRADE_RATE_PER_MINUTE" not in (root / name).read_text(
-            encoding="utf-8"
-        )
-    assert "WS_UPGRADE_RATE_PER_MINUTE" not in "".join(
-        path.read_text(encoding="utf-8")
-        for path in (root / "charts/university-ecosystem").rglob("*.yaml")
-    )
+        source = (ROOT / edge).read_text(encoding="utf-8")
+        assert "events {$WS_UPGRADE_RATE_PER_MINUTE:120}" in source
+    config = (ROOT / "services/ws-hub/pkg/config/config.go").read_text(encoding="utf-8")
+    assert "const DefaultWSUpgradeRatePerMinute = 120" in config
