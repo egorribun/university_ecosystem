@@ -126,7 +126,7 @@ def _python_references(function: PythonFunction) -> list[tuple[str, bool]]:
 def _python_has_result_check(
     function: PythonFunction,
     imported: frozenset[str],
-    pytest_bare: frozenset[str],
+    pytest_bare: dict[str, str],
     definitions: dict[str, list[PythonFunction]] | None = None,
     stack: frozenset[int] = frozenset(),
     proven: set[int] | None = None,
@@ -164,12 +164,98 @@ def _python_has_result_check(
     return False
 
 
+def _pytest_call_kind(call: ast.Call, aliases: dict[str, str]) -> str | None:
+    callee = call.func
+    if isinstance(callee, ast.Name):
+        return aliases.get(callee.id)
+    if isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name):
+        if callee.value.id == "pytest" and callee.attr in PYTEST_RESULT_CALLS:
+            return callee.attr
+        return aliases.get(f"{callee.value.id}.{callee.attr}")
+    return None
+
+
+def _pytest_context_factory(call: ast.Call, kind: str | None) -> bool:
+    if kind not in {"raises", "warns"} or len(call.args) > 1:
+        return False
+    if call.args and isinstance(call.args[0], ast.Starred):
+        return False
+    return (
+        kind == "warns"
+        or bool(call.args)
+        or any(
+            keyword.arg in {"match", "check", "expected_exception"}
+            for keyword in call.keywords
+        )
+    )
+
+
+def _consumed_pytest_contexts(
+    function: PythonFunction, aliases: dict[str, str]
+) -> set[int]:
+    """Prove context entry locally, without guessing across control-flow boundaries.
+
+    Stored objects are supported only in consecutive simple assignments followed by
+    a with statement in the same statement list. Every other statement invalidates
+    bindings. Nested statement lists start fresh; definitions are not executed.
+    """
+    consumed: set[int] = set()
+
+    def factory(node: ast.expr) -> bool:
+        return isinstance(node, ast.Call) and _pytest_context_factory(
+            node, _pytest_call_kind(node, aliases)
+        )
+
+    def visit(statements: list[ast.stmt]) -> None:
+        bindings: dict[str, int] = {}
+        for statement in statements:
+            if any(isinstance(node, ast.NamedExpr) for node in ast.walk(statement)):
+                bindings.clear()
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                target = statement.targets[0]
+                if isinstance(target, ast.Name) and factory(statement.value):
+                    bindings[target.id] = id(statement.value)
+                    continue
+            if isinstance(statement, ast.With):
+                for item in statement.items:
+                    expression = item.context_expr
+                    if factory(expression):
+                        consumed.add(id(expression))
+                    elif isinstance(expression, ast.Name) and expression.id in bindings:
+                        consumed.add(bindings[expression.id])
+                    # Entering one manager may rebind a name used by a later item.
+                    if item.optional_vars is not None:
+                        bindings.clear()
+            bindings.clear()
+            if isinstance(
+                statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+            ):
+                continue
+            for _, value in ast.iter_fields(statement):
+                if (
+                    isinstance(value, list)
+                    and value
+                    and all(isinstance(child, ast.stmt) for child in value)
+                ):
+                    visit(value)
+                elif isinstance(value, list):
+                    for child in value:
+                        if isinstance(child, ast.ExceptHandler | ast.match_case):
+                            visit(child.body)
+            if isinstance(statement, ast.Return | ast.Raise | ast.Break | ast.Continue):
+                break
+
+    visit(function.body)
+    return consumed
+
+
 def _direct_python_check(
     function: PythonFunction,
     imported: frozenset[str],
-    pytest_bare: frozenset[str],
+    pytest_bare: dict[str, str],
     local_names: frozenset[str] = frozenset(),
 ) -> bool:
+    consumed_contexts = _consumed_pytest_contexts(function, pytest_bare)
     for node in ast.walk(function):
         if isinstance(node, ast.Raise):
             exception = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
@@ -182,6 +268,17 @@ def _direct_python_check(
         if not isinstance(node, ast.Call):
             continue
         callee = node.func
+        if not (isinstance(callee, ast.Name) and callee.id in local_names):
+            pytest_kind = _pytest_call_kind(node, pytest_bare)
+            if pytest_kind is not None:
+                if pytest_kind == "fail" or id(node) in consumed_contexts:
+                    return True
+                if len(node.args) >= 2 and isinstance(
+                    node.args[1], ast.Name | ast.Attribute | ast.Lambda
+                ):
+                    return True
+                # A known factory cannot fall back to an assertion-shaped alias.
+                continue
         if isinstance(callee, ast.Attribute):
             if (
                 isinstance(callee.value, ast.Name)
@@ -189,12 +286,6 @@ def _direct_python_check(
                 and callee.attr in local_names
             ):
                 continue
-            if (
-                isinstance(callee.value, ast.Name)
-                and callee.value.id == "pytest"
-                and callee.attr in PYTEST_RESULT_CALLS
-            ):
-                return True
             if callee.attr.startswith("assert") or callee.attr in EXTERNAL_RESULT_CALLS:
                 return True
             root = _root_name(callee)
@@ -208,7 +299,7 @@ def _direct_python_check(
             # Known helpers must prove their body, regardless of their name.
             if callee.id in local_names:
                 continue
-            if callee.id in pytest_bare or callee.id.startswith(HELPER_PREFIXES):
+            if callee.id.startswith(HELPER_PREFIXES):
                 return True
     return False
 
@@ -216,9 +307,13 @@ def _direct_python_check(
 def python_blocks(relative_path: str, text: str) -> list[Block]:
     tree = ast.parse(text, filename=relative_path)
     imported: set[str] = set()
-    pytest_bare: set[str] = set()
+    pytest_bare: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest":
+                    for method in PYTEST_RESULT_CALLS:
+                        pytest_bare[f"{alias.asname or alias.name}.{method}"] = method
             imported.update(
                 alias.asname or alias.name.split(".")[0] for alias in node.names
             )
@@ -227,7 +322,7 @@ def python_blocks(relative_path: str, text: str) -> list[Block]:
                 bound = alias.asname or alias.name
                 imported.add(bound)
                 if node.module == "pytest" and alias.name in PYTEST_RESULT_CALLS:
-                    pytest_bare.add(bound)
+                    pytest_bare[bound] = alias.name
     definitions: dict[str, list[PythonFunction]] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -248,7 +343,7 @@ def python_blocks(relative_path: str, text: str) -> list[Block]:
                             _python_has_result_check(
                                 child,
                                 frozenset(imported),
-                                frozenset(pytest_bare),
+                                pytest_bare,
                                 definitions,
                                 frozenset(),
                                 proven,

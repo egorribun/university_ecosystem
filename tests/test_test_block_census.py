@@ -762,3 +762,100 @@ def test_go_prefixed_helper_cycle_requires_real_check(checked: bool) -> None:
         + f"func checkFirst(t *testing.T, value int) {{{check.lstrip(';')} ; if value > 0 {{ checkSecond(t, value - 1) }} }}\nfunc checkSecond(t *testing.T, value int) {{ if value > 0 {{ checkFirst(t, value - 1) }} }}\nfunc TestCalls(t *testing.T) {{ checkFirst(t, 5) }}\n"
     )
     assert _go_checks(source) == [("TestCalls", checked)]
+
+
+@pytest.mark.parametrize("api", ["raises(ValueError)", "warns(UserWarning)"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "{call}",
+        "pending = {call}",
+        "pending = {call}\n    pending = other\n    with pending:\n        pass",
+        "if enabled:\n        pending = {call}\n    with pending:\n        pass",
+        "pending = {call}\n    if enabled:\n        pending = other\n    with pending:\n        pass",
+        "with pending:\n        pass\n    pending = {call}",
+    ],
+)
+def test_python_unused_pytest_context_is_not_a_check(api: str, body: str) -> None:
+    source = (
+        "import pytest\ndef test_context():\n    "
+        + body.format(call="pytest." + api)
+        + "\n"
+    )
+    assert _python_checks(source) == [("test_context", False)]
+
+
+@pytest.mark.parametrize(
+    "imports,call",
+    [
+        ("import pytest", "pytest.raises(ValueError)"),
+        ("import pytest as pt", "pt.raises(ValueError)"),
+        ("from pytest import raises as require_error", "require_error(ValueError)"),
+        ("from pytest import warns as assert_warning", "assert_warning(UserWarning)"),
+    ],
+)
+@pytest.mark.parametrize("entered", [False, True])
+def test_python_context_alias_preserves_consumption(
+    imports: str, call: str, entered: bool
+) -> None:
+    body = f"pending = {call}"
+    if entered:
+        body += "\n    with pending:\n        operation()"
+    assert _python_checks(f"{imports}\ndef test_context():\n    {body}\n") == [
+        ("test_context", entered)
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "with pytest.raises(ValueError):\n        operation()",
+        "with pytest.warns(UserWarning):\n        operation()",
+        "with pytest.warns():\n        operation()",
+        "pytest.raises(ValueError, operation)",
+        "pytest.warns(UserWarning, operation)",
+        'pytest.fail("unexpected outcome")',
+        "pending = pytest.raises(ValueError)\n    with pending:\n        operation()",
+    ],
+)
+def test_python_consumed_expectation_remains_a_check(body: str) -> None:
+    assert _python_checks(f"import pytest\ndef test_context():\n    {body}\n") == [
+        ("test_context", True)
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "pytest.raises()",
+        "pytest.raises(ValueError, None)",
+        "pytest.warns(UserWarning, None)",
+        "with pytest.raises():\n        operation()",
+    ],
+)
+def test_python_malformed_expectation_is_not_a_check(body: str) -> None:
+    assert _python_checks(f"import pytest\ndef test_context():\n    {body}\n") == [
+        ("test_context", False)
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "pending = pytest.raises(ValueError)\n    other = pytest.raises((pending := TypeError))\n    with pending:\n        operation()",
+        "pending = pytest.raises(ValueError) if enabled else other\n    with pending:\n        operation()",
+        "pending = pytest.raises(ValueError)\n    operation()\n    with pending:\n        operation()",
+        "pending = pytest.raises(ValueError)\n    def helper():\n        with pending:\n            operation()",
+    ],
+)
+def test_python_stored_context_outside_proven_binding_scope_is_not_claimed(
+    body: str,
+) -> None:
+    assert _python_checks(f"import pytest\ndef test_context():\n    {body}\n") == [
+        ("test_context", False)
+    ]
+
+
+def test_python_unresolved_starred_context_arguments_are_not_claimed() -> None:
+    source = "import pytest\ndef test_context(args):\n    with pytest.raises(*args):\n        operation()\n"
+    assert _python_checks(source) == [("test_context", False)]
