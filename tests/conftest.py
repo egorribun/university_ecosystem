@@ -38,6 +38,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.compiler import compiles
 
+# The process environment before the test defaults below overwrite it. Tests that
+# drive an external Compose stack (tests/chaos) hand this to `docker compose`, so
+# blanked values such as IMGPROXY_KEY do not break its variable interpolation.
+ENVIRONMENT_BEFORE_TEST_DEFAULTS: Mapping[str, str] = types.MappingProxyType(
+    dict(os.environ)
+)
+
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
 

@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import subprocess
 import time
 import uuid
 
 import httpx
 import pytest
+
+from tests.chaos.chaos_identity import ProvisioningError, provision
+from tests.conftest import ENVIRONMENT_BEFORE_TEST_DEFAULTS
 
 # ── Guard ────────────────────────────────────────────────────────────────────
 # Chaos tests only run when CHAOS_TESTS=1 is set so that a regular `pytest`
@@ -57,6 +61,10 @@ def _run_docker_compose(cmd: str) -> str:
     WHY shlex.split: avoids shell=True (ruff S602) while correctly handling
     quoted arguments.  The `cmd` parameter is always a test-internal literal
     (e.g. "stop nats"), never user-supplied input, so S603/S607 are safe here.
+
+    WHY the saved environment: tests/conftest.py blanks values such as
+    IMGPROXY_KEY for the in-process app, and Compose would read those blanks
+    when interpolating the stack's required variables, failing every command.
     """
     import shlex
 
@@ -66,6 +74,7 @@ def _run_docker_compose(cmd: str) -> str:
             capture_output=True,
             text=True,
             check=True,
+            env=dict(ENVIRONMENT_BEFORE_TEST_DEFAULTS),
         )
         return result.stdout
     except subprocess.CalledProcessError as exc:
@@ -101,7 +110,9 @@ def _first_chaos_chat_id(client: httpx.Client) -> str:
     AUD-322: the chat lookup is a precondition, so a missing chat fails the test
     explicitly (before any container is stopped) instead of skipping it.
     """
-    response = client.get("/api/v1/chats/?limit=1")
+    # The list route has no trailing slash; "/chats/" answers 307, which httpx
+    # does not follow, and would make a provisioned chat look missing.
+    response = client.get("/api/v1/chats", params={"limit": 1})
     items = response.json().get("items") if response.status_code == 200 else None
     if not items:
         pytest.fail(
@@ -274,13 +285,38 @@ def _wait_for_outbox_event_processed(
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
+def _provision_chaos_identity(patch: pytest.MonkeyPatch) -> None:
+    """Create the chaos user and its chat unless the caller supplied a user.
+
+    AUD-322: the disposable chaos stack starts with no accounts. Register a
+    fresh user, a peer and their chat through the public API, and fail the
+    module (never skip it) when any step is refused.
+    """
+    if os.getenv("CHAOS_TEST_USER"):
+        return
+    email = f"chaos-{uuid.uuid4().hex[:16]}@university.dev"
+    # The password policy requires upper, lower, digit and symbol classes.
+    password = f"Ch4os-{secrets.token_hex(24)}"
+    try:
+        provision(BASE_URL, email, password)
+    except (ProvisioningError, httpx.HTTPError, ValueError) as error:
+        pytest.fail(
+            f"Could not provision the chaos user under CHAOS_TESTS=1: {error}",
+            pytrace=False,
+        )
+    patch.setenv("CHAOS_TEST_USER", email)
+    patch.setenv("CHAOS_TEST_PASSWORD", password)
+
+
 @pytest.fixture(scope="module")
 def setup_chaos_env():
     """Ensure docker compose environment is up before the module runs."""
     if os.getenv("GITHUB_ACTIONS") != "true":
         _run_docker_compose("up -d --no-build --no-recreate")
         time.sleep(3)  # Wait for services to initialise
-    yield
+    with pytest.MonkeyPatch.context() as patch:
+        _provision_chaos_identity(patch)
+        yield
     # Restore any services that a test may have stopped
     _run_docker_compose("start valkey nats ws-hub gateway")
     time.sleep(2)
@@ -290,7 +326,8 @@ def setup_chaos_env():
 def authenticated_client(setup_chaos_env) -> httpx.Client:
     """Return a synchronous httpx client pre-authenticated against the live API.
 
-    The credentials must belong to a user with a seeded chat on the owned stand.
+    setup_chaos_env provisions the credentials and chat unless CHAOS_TEST_USER
+    already names a user with a chat.
     """
     credentials = {
         "username": os.getenv("CHAOS_TEST_USER", "chaos@test.local"),

@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
 import secrets
 import time
 import uuid
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from typing import cast
 
 import httpx
 import pytest
 import sqlalchemy as sa
 
+from tests.chaos import chaos_identity
 from tests.chaos import test_resilience as resilience
 
 
@@ -438,3 +443,172 @@ def test_ws_hub_proxy_fallback_rejects_non_gateway_error_status(
         resilience.test_ws_hub_down_gateway_proxy_fallback(None)
 
     assert commands == ["stop ws-hub", "start ws-hub"]
+
+
+def _mock_clients(
+    monkeypatch: pytest.MonkeyPatch,
+    module: ModuleType,
+    handle: Callable[[httpx.Request], httpx.Response],
+) -> None:
+    real_client = httpx.Client
+
+    def local_client(*args: object, **kwargs: object) -> httpx.Client:
+        return real_client(*args, **kwargs, transport=httpx.MockTransport(handle))
+
+    monkeypatch.setattr(module.httpx, "Client", local_client)
+
+
+def _provisioning_stand(
+    fail_at: str | None = None,
+) -> tuple[list[str], Callable[[httpx.Request], httpx.Response], str]:
+    calls: list[str] = []
+    chat_id = str(uuid.uuid4())
+    peer_id = str(uuid.uuid4())
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(f"{request.method} {path}")
+        if fail_at == path:
+            return httpx.Response(403)
+        if path == "/api/v1/auth/csrf-cookie":
+            return httpx.Response(200, headers={"set-cookie": "csrf_token=c; Path=/"})
+        if path == "/api/v1/auth/register":
+            assert request.headers["x-csrf-token"] == "c"
+            return httpx.Response(200, json={"status": "ok"})
+        if path == "/api/v1/auth/login":
+            return httpx.Response(
+                200,
+                headers=[
+                    ("set-cookie", "access_token_v2=s; Path=/; HttpOnly"),
+                    ("set-cookie", "csrf_token=rotated; Path=/"),
+                ],
+            )
+        if path == "/api/v1/users/me":
+            return httpx.Response(200, json={"id": peer_id})
+        if path == "/api/v1/chats" and request.method == "POST":
+            assert request.headers["x-csrf-token"] == "rotated"
+            assert json.loads(request.content) == {"participant_id": peer_id}
+            return httpx.Response(200, json={"id": chat_id})
+        assert path == "/api/v1/chats" and request.url.params["limit"] == "1"
+        return httpx.Response(200, json={"items": [{"id": chat_id}]})
+
+    return calls, handle, chat_id
+
+
+def test_chaos_provisioning_registers_a_peer_and_opens_their_chat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls, handle, expected_chat = _provisioning_stand()
+    _mock_clients(monkeypatch, chaos_identity, handle)
+    password = secrets.token_urlsafe(24)
+    chat_id = chaos_identity.provision(
+        "http://chaos.invalid", "a@university.dev", password
+    )
+    assert chat_id == expected_chat
+    assert chaos_identity.peer_email("a@university.dev") == "a-peer@university.dev"
+    assert calls == [
+        "GET /api/v1/auth/csrf-cookie",
+        "POST /api/v1/auth/register",
+        "GET /api/v1/auth/csrf-cookie",
+        "POST /api/v1/auth/register",
+        "GET /api/v1/auth/csrf-cookie",
+        "POST /api/v1/auth/login",
+        "GET /api/v1/users/me",
+        "GET /api/v1/auth/csrf-cookie",
+        "POST /api/v1/auth/login",
+        "POST /api/v1/chats",
+        "GET /api/v1/chats",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("fail_at", "message"),
+    [
+        ("/api/v1/auth/register", "registering Chaos User failed: HTTP 403"),
+        ("/api/v1/users/me", "reading the chaos peer identity failed: HTTP 403"),
+        ("/api/v1/chats", "opening the chaos chat failed: HTTP 403"),
+    ],
+)
+def test_chaos_provisioning_names_the_refused_step_without_the_password(
+    monkeypatch: pytest.MonkeyPatch, fail_at: str, message: str
+) -> None:
+    _calls, handle, _chat = _provisioning_stand(fail_at)
+    _mock_clients(monkeypatch, chaos_identity, handle)
+    password = secrets.token_urlsafe(24)
+    with pytest.raises(chaos_identity.ProvisioningError, match=message) as captured:
+        chaos_identity.provision("http://chaos.invalid", "a@university.dev", password)
+    assert password not in str(captured.value)
+
+
+def test_chaos_module_provisions_its_own_user_unless_one_is_supplied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[tuple[str, str]] = []
+
+    def fake_provision(_base: str, email: str, password: str) -> str:
+        created.append((email, password))
+        return "room"
+
+    monkeypatch.setattr(resilience, "provision", fake_provision)
+    monkeypatch.delenv("CHAOS_TEST_USER", raising=False)
+    with pytest.MonkeyPatch.context() as patch:
+        resilience._provision_chaos_identity(patch)
+        email, password = created[0]
+        assert re.fullmatch(r"chaos-[0-9a-f]{16}@university\.dev", email)
+        assert os.environ["CHAOS_TEST_USER"] == email
+        assert os.environ["CHAOS_TEST_PASSWORD"] == password
+    assert "CHAOS_TEST_USER" not in os.environ
+
+    monkeypatch.setenv("CHAOS_TEST_USER", "owned@university.dev")
+    with pytest.MonkeyPatch.context() as patch:
+        resilience._provision_chaos_identity(patch)
+    assert len(created) == 1
+
+
+def test_chaos_module_fails_when_provisioning_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(*_args: object) -> str:
+        raise chaos_identity.ProvisioningError(
+            "registering Chaos User failed: HTTP 429"
+        )
+
+    monkeypatch.setattr(resilience, "provision", refuse)
+    monkeypatch.delenv("CHAOS_TEST_USER", raising=False)
+    with pytest.MonkeyPatch.context() as patch:
+        with pytest.raises(pytest.fail.Exception, match="HTTP 429"):
+            resilience._provision_chaos_identity(patch)
+
+
+def test_chat_lookup_uses_the_unslashed_list_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/chats"
+        assert request.url.params["limit"] == "1"
+        return httpx.Response(200, json={"items": [{"id": "room"}]})
+
+    with httpx.Client(
+        base_url="http://chaos.invalid", transport=httpx.MockTransport(handle)
+    ) as client:
+        assert resilience._first_chaos_chat_id(client) == "room"
+
+
+def test_compose_commands_receive_the_environment_before_test_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, str]] = []
+
+    def run(*_args: object, **kwargs: object) -> SimpleNamespace:
+        captured.append(cast(dict[str, str], kwargs["env"]))
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(resilience.subprocess, "run", run)
+    monkeypatch.setattr(
+        resilience,
+        "ENVIRONMENT_BEFORE_TEST_DEFAULTS",
+        {"PATH": "/bin", "IMGPROXY_KEY": "kept"},
+    )
+    assert os.environ["IMGPROXY_KEY"] == ""
+    resilience._run_docker_compose("stop nats")
+    assert captured == [{"PATH": "/bin", "IMGPROXY_KEY": "kept"}]
