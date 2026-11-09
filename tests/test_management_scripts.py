@@ -1,7 +1,8 @@
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Integer, String
@@ -51,6 +52,9 @@ class MockActiveSession(MockBase):
 def mock_db_session():
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
+    mock_session.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
     mock_session.__aenter__.return_value = mock_session
     mock_session.__aexit__.return_value = None
     return mock_session
@@ -250,6 +254,7 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
     user = MagicMock()
     target_user = user
     user.id = 1
+    user.tenant_id = uuid4()
     stats = MagicMock()
     stats.changed = True
     stats.totp_deleted = 1
@@ -329,7 +334,7 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
 async def test_reset_user_mfa_commit_failure_rolls_back_retaining_redis_revocation(
     mock_db_session,
 ) -> None:
-    user = MagicMock(id=1)
+    user = MagicMock(id=1, tenant_id=uuid4())
     stats = MagicMock(changed=True, session_revocations=[MagicMock()])
     mock_db_session.get.return_value = user
     mock_db_session.commit.side_effect = RuntimeError("commit failed")
@@ -361,6 +366,7 @@ async def test_reset_user_mfa_commit_failure_rolls_back_retaining_redis_revocati
 async def test_async_main_reset_mfa() -> None:
     user = MagicMock()
     user.id = 1
+    user.tenant_id = uuid4()
     stats = MagicMock()
     stats.totp_deleted = 0
     stats.challenges_revoked = 0
@@ -527,3 +533,56 @@ async def test_backfill_uuids_main(mock_db_session) -> None:
         assert rec_own.uuid_id is not None
         assert rec_fk.shadow_user_id == "some-uuid"
         mock_db_session.commit.assert_called()
+
+
+def test_mfa_audit_without_extra_retains_required_payload(monkeypatch) -> None:
+    import json
+
+    from app.management import reset_mfa
+
+    messages = []
+    monkeypatch.setattr(reset_mfa.audit_logger, "info", messages.append)
+    reset_mfa._audit_cli("reset", user_id=UUID(int=1), reason="admin_reset")
+    assert len(messages) == 1
+    assert json.loads(messages[0]) == {
+        "event": "reset",
+        "user_id": str(UUID(int=1)),
+        "reason": "admin_reset",
+        "source": "management",
+    }
+
+
+def test_mfa_main_reports_reset_error_through_real_parser(monkeypatch, capsys) -> None:
+    import sys
+
+    from app.management import reset_mfa
+
+    async def unavailable_target(_args):
+        raise ValueError("User not found")
+
+    monkeypatch.setattr(sys, "argv", ["reset_mfa", "--user-id", str(UUID(int=1))])
+    monkeypatch.setattr(reset_mfa, "_async_main", unavailable_target)
+    with pytest.raises(SystemExit) as stopped:
+        reset_mfa.main()
+    assert stopped.value.code == 2
+    captured = capsys.readouterr()
+    assert "error: User not found" in captured.err
+    assert "usage:" in captured.err
+    assert "MFA reset completed" not in captured.out
+
+
+def test_mfa_module_entrypoint_help_exits_without_database(monkeypatch, capsys) -> None:
+    import runpy
+    import sys
+
+    from app.management import reset_mfa
+
+    monkeypatch.setattr(sys, "argv", ["reset_mfa", "--help"])
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_path(reset_mfa.__file__, run_name="__main__")
+    assert stopped.value.code == 0
+    captured = capsys.readouterr()
+    assert "Reset all MFA methods for a specific user" in captured.out
+    assert "--user-id" in captured.out
+    assert "--no-notify" in captured.out
+    assert captured.err == ""

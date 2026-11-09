@@ -847,3 +847,124 @@ def test_permissive_true_causality_depends_on_restrictive_tenant_policy(
         # _rolled_back() rolls back both CREATE POLICY mutations. An actual
         # owned-PostgreSQL run is required before treating these expectations as
         # observed behavior or using this to classify the removed history.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ambient", ["", str(_TENANT_B)])
+@pytest.mark.parametrize("owned_target", [True, False])
+async def test_mfa_reset_real_producer_uses_target_owner_under_bypass(
+    rls_schema: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    ambient: str,
+    owned_target: bool,
+) -> None:
+    """Actual helper/trigger/outbox, with target ownership independent of ambient B."""
+    from app.management import reset_mfa
+    from app.services.notifications import delivery
+
+    target_id = uuid.uuid4()
+    target_tenant = _TENANT_A if owned_target else None
+    admin = _engine(rls_schema.admin)
+    with admin.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO users (id, email, hashed_password, tenant_id) VALUES (:id, :email, :credential, :tenant)"
+            ),
+            {
+                "id": target_id,
+                "email": f"{target_id}@mfa.invalid",
+                "credential": "!" + uuid.uuid4().hex,
+                "tenant": target_tenant,
+            },
+        )
+    from app.core.db.listeners import register_tenant_listeners
+
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.bypass.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    session = session_factory()
+    monkeypatch.setattr(reset_mfa, "async_session", lambda: session)
+    monkeypatch.setattr(reset_mfa, "resolve_locale", lambda **_: "en")
+    monkeypatch.setattr(reset_mfa, "_audit_cli", lambda *_, **__: None)
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: False)
+
+    # Isolate the MFA mutation from this producer proof; never mock the notifier.
+    async def reset(*_, **__):
+        return SimpleNamespace(
+            changed=True, session_revocations=[], totp_deleted=0, challenges_revoked=0
+        )
+
+    restored = []
+
+    async def publish(_):
+        restored.append(
+            await session.scalar(
+                sa.text("SELECT current_setting('app.current_tenant', true)")
+            )
+        )
+
+    monkeypatch.setattr(reset_mfa.mfa, "reset_user_mfa", reset)
+    monkeypatch.setattr(reset_mfa.mfa, "publish_mfa_session_revocations", publish)
+    assert (
+        reset_mfa.create_notifications_for_users
+        is delivery.create_notifications_for_users
+    )
+    tenant_token = tenant_id_ctx.set(ambient)
+    bypass_token = bypass_rls_ctx.set(False)
+    try:
+        if owned_target:
+            await reset_mfa._reset_user_mfa(user_id=target_id, email=None, notify=True)
+            assert restored == [ambient]
+        else:
+            with pytest.raises(ValueError, match="tenant"):
+                await reset_mfa._reset_user_mfa(
+                    user_id=target_id, email=None, notify=True
+                )
+            assert restored == []
+        assert tenant_id_ctx.get() == ambient
+        assert bypass_rls_ctx.get() is False
+        with admin.connect() as connection:
+            rows = connection.execute(
+                sa.text("SELECT id, tenant_id FROM notifications WHERE user_id = :id"),
+                {"id": target_id},
+            ).all()
+            if not owned_target:
+                assert rows == []
+            else:
+                assert len(rows) == 1
+                notification_id, tenant = rows[0]
+                assert tenant == _TENANT_A
+                metadata = connection.execute(
+                    sa.text(
+                        "SELECT metadata FROM stored_events WHERE CAST(payload AS jsonb) -> 'notification_ids' @> CAST(:ids AS jsonb)"
+                    ),
+                    {"ids": '["' + str(notification_id) + '"]'},
+                ).scalar_one()
+                assert metadata == {"tenant_id": str(_TENANT_A)}
+                for visible_tenant, count in (
+                    (_TENANT_A, 1),
+                    (_TENANT_B, 0),
+                    (None, 0),
+                ):
+                    with _rolled_back(rls_schema.ordinary) as ordinary:
+                        with _application_context(ordinary, tenant=visible_tenant):
+                            assert (
+                                ordinary.scalar(
+                                    sa.text(
+                                        "SELECT count(*) FROM notifications WHERE id = :id"
+                                    ),
+                                    {"id": notification_id},
+                                )
+                                == count
+                            )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        await session.close()
+        await engine.dispose()
+        admin.dispose()
