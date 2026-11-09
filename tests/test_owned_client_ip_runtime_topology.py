@@ -835,3 +835,88 @@ def test_plain_mutable_snapshots_cannot_be_passed_as_frozen_witnesses(runtime):
     snapshot, _ = _inspect_fixture()
     with pytest.raises(runtime.RuntimeNotReady):
         runtime.assert_topology_unchanged(snapshot, copy.deepcopy(snapshot))
+
+
+@pytest.mark.parametrize("entries", [None, {}, [None], ["missing-equals"], ["=empty"]])
+def test_malformed_environment_entries_fail_closed(runtime, entries):
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ):
+        runtime._environment({"Config": {"Env": entries}})
+
+
+@pytest.mark.parametrize("subnet", [None, "invalid", "172.28.0.0/255.255.255.0"])
+def test_invalid_or_noncanonical_subnet_fails_closed(runtime, subnet):
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ):
+        runtime._subnet({"IPAM": {"Config": [{"Subnet": subnet}]}})
+
+
+@pytest.mark.parametrize("defect", ["id", "attachments", "address", "registered"])
+def test_malformed_endpoint_records_fail_closed(runtime, defect):
+    snapshot, _ = _inspect_fixture()
+    probe = snapshot["probe"]
+    public = f"{snapshot['owner'].project_name}_public"
+    if defect == "id":
+        probe["Id"] = None
+    elif defect == "attachments":
+        probe["NetworkSettings"]["Networks"] = None
+    elif defect == "address":
+        probe["NetworkSettings"]["Networks"][public]["IPAddress"] = "invalid"
+    else:
+        snapshot["networks"][public]["Containers"][probe["Id"]]["IPv4Address"] = (
+            "invalid"
+        )
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ):
+        _derive(runtime, snapshot)
+
+
+@pytest.mark.parametrize("section", ["Config", "HostConfig", "State"])
+def test_probe_requires_mapping_inspect_sections(runtime, section):
+    snapshot, _ = _inspect_fixture()
+    snapshot["probe"][section] = None
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ):
+        _derive(runtime, snapshot)
+
+
+def test_ambiguous_resolved_service_address_fails_closed(runtime, monkeypatch):
+    snapshot, _ = _inspect_fixture()
+    resolver = live_stand._trusted_proxy_settings_from_inspects
+
+    def ambiguous(*args):
+        settings, addresses = resolver(*args)
+        addresses["caddy"]["public"] = ("172.28.0.2", "172.28.0.3")
+        return settings, addresses
+
+    monkeypatch.setattr(live_stand, "_trusted_proxy_settings_from_inspects", ambiguous)
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ):
+        _derive(runtime, snapshot)
+
+
+@pytest.mark.parametrize(
+    "defect", ["not_mapping", "keys", "owner", "evidence", "oversize", "unserializable"]
+)
+def test_frozen_witness_rejects_invalid_snapshot_without_details(runtime, defect):
+    snapshot, marker = _inspect_fixture()
+    if defect == "not_mapping":
+        snapshot = []
+    elif defect == "keys":
+        del snapshot["image"]
+    elif defect in ("owner", "evidence"):
+        snapshot[defect] = None
+    elif defect == "oversize":
+        snapshot["probe"]["padding"] = "x" * 1_048_576
+    else:
+        snapshot["probe"]["padding"] = object()
+    with pytest.raises(
+        runtime.RuntimeNotReady, match=r"^owned client-IP runtime is not ready$"
+    ) as denied:
+        runtime.freeze_topology_witness(snapshot)
+    assert marker not in str(denied.value)

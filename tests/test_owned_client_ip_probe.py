@@ -110,7 +110,7 @@ class _SimulatedNetwork:
             "/api/v1/auth/register": 5,
             "/api/v1/auth/mfa/verify": 5,
             "/api/v1/password/forgot": 3,
-            "/ws": 10,
+            "/ws": 120,
         }
         limit = limits[path]
         key = (request.source_ip, path)
@@ -162,7 +162,7 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
         "not_assessed",
         "not_assessed",
     )
-    assert len(network.requests) == 119
+    assert len(network.requests) == 229
     assert frame["http_requests"] == len(network.requests)
     assert b"token" not in encoded and b"nonce" not in encoded
     for address in (
@@ -261,7 +261,7 @@ def test_direct_backend_spoof_bypass_cannot_pass_backend_verdict(path):
         return response
 
     frame = probe._collect(config, bypass)
-    assert injected and len(network.requests) == 119
+    assert injected and len(network.requests) == 229
     result = PrivateProcessResult(
         ProcessOutcome.EXITED,
         0,
@@ -428,3 +428,448 @@ def test_http_transport_uses_and_closes_its_real_bound_local_socket():
         server.server_close()
         thread.join(timeout=5)
         assert not thread.is_alive()
+
+
+class _RefillingNetwork(_SimulatedNetwork):
+    """Offline simulation, not execution or acceptance of the Go service.
+
+    Models config.DefaultWSUpgradeRatePerMinute and tokenBucket.allow in
+    services/ws-hub/pkg/hub/ratelimit.go: capacity 120, elapsed * (120/60)
+    refill, consume one token only when at least one token remains.
+    """
+
+    def __init__(self, latency: float, *, never_exhaust: bool = False) -> None:
+        super().__init__()
+        self.now = 0.0
+        self.latency = latency
+        self.never_exhaust = never_exhaust
+        self.buckets: dict[str, tuple[float, float]] = {}
+
+    def __call__(self, request: probe.Request, timeout: float) -> probe.Response:
+        if request.path not in ("/ws/chat", "/ws"):
+            return super().__call__(request, timeout)
+        assert 0 < timeout <= 5
+        self.requests.append(request)
+        self.now += self.latency
+        tokens, last_seen = self.buckets.get(request.source_ip, (120.0, self.now))
+        tokens = min(120.0, tokens + (self.now - last_seen) * (120 / 60))
+        allowed = self.never_exhaust or tokens >= 1
+        if allowed:
+            tokens -= 1
+        self.buckets[request.source_ip] = (tokens, self.now)
+        return probe.Response(
+            401 if allowed else 429,
+            (("content-type", "text/plain; charset=utf-8"),),
+            b"Unauthorized\n" if allowed else b"Too Many Requests\n",
+            True,
+            True,
+        )
+
+
+def _decode_produced_frame(frame):
+    return decode_observations(
+        PrivateProcessResult(
+            ProcessOutcome.EXITED,
+            0,
+            (json.dumps(frame, separators=(",", ":")) + "\n").encode(),
+            b"",
+            LocalCleanup.CONFIRMED,
+        ),
+        expected_source_sha="a" * 40,
+        expected_run_id="b" * 64,
+        now_ms=1000,
+        deadline_ms=121000,
+    )
+
+
+@pytest.mark.parametrize("latency", [0.0, 0.005, 0.01, 0.03])
+def test_elapsed_refill_depletes_within_derived_budget(monkeypatch, latency):
+    network = _RefillingNetwork(latency)
+    monkeypatch.setattr(probe.time, "monotonic", lambda: network.now)
+    frame = probe._collect(probe.parse_input(_input()), network)
+    observed = _decode_produced_frame(frame)
+    assert observed is not None
+    assert evaluate_observations(observed).ws_hub
+    allowed = len(observed.cases[4].allowed)
+    assert 120 <= allowed <= 130
+    assert (allowed > 120) == (latency > 0)
+    assert observed.http_requests == len(network.requests) == 229 + allowed - 120
+    assert observed.http_requests <= 239
+    assert observed.cases[4].elapsed_ms < 5000
+    assert len(json.dumps(frame).encode()) + 1 <= 4096
+
+
+@pytest.mark.parametrize("latency,never_exhaust", [(0.04, False), (0.0, True)])
+def test_slow_or_non_exhausting_bucket_cannot_emit_frame(
+    monkeypatch, latency, never_exhaust
+):
+    network = _RefillingNetwork(latency, never_exhaust=never_exhaust)
+    monkeypatch.setattr(probe.time, "monotonic", lambda: network.now)
+    with pytest.raises(probe.ProbeError):
+        probe._collect(probe.parse_input(_input()), network)
+    assert len(network.requests) <= 239
+
+
+@pytest.mark.parametrize("defect", ["other_client", "spoofed", "direct_untrusted"])
+def test_ws_isolation_remains_strict_with_refill(monkeypatch, defect):
+    network = _RefillingNetwork(0.01)
+    monkeypatch.setattr(probe.time, "monotonic", lambda: network.now)
+    frame = probe._collect(probe.parse_input(_input()), network)
+    case = frame["cases"][4]
+    if defect == "spoofed":
+        case[defect][0] = 401
+    else:
+        case[defect] = 429 if defect == "other_client" else 401
+    observed = _decode_produced_frame(frame)
+    assert observed is not None
+    verdict = evaluate_observations(observed)
+    assert verdict.backend and not verdict.ws_hub
+
+
+def test_producer_refuses_frame_outside_its_declared_request_budget(monkeypatch):
+    network = _SimulatedNetwork()
+    monkeypatch.setattr(probe, "_BASE_REQUESTS", 230)
+    with pytest.raises(probe.ProbeError, match="invalid observation frame"):
+        probe._collect(probe.parse_input(_input()), network)
+    assert len(network.requests) == 229
+
+
+@pytest.mark.parametrize("address", [None, "", "not-an-ip", "192.168.001.1", "8.8.8.8"])
+def test_address_decoder_rejects_non_private_or_noncanonical_values(address):
+    with pytest.raises(probe.ProbeError, match="invalid address"):
+        probe._address(address)
+
+
+@pytest.mark.parametrize(
+    "network", [None, "", "invalid", "172.23.0.1/24", "8.8.8.0/24"]
+)
+def test_network_decoder_rejects_non_private_or_noncanonical_values(network):
+    with pytest.raises(probe.ProbeError, match="invalid topology"):
+        probe._topology_network(network)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "route_shape",
+        "external_service",
+        "peer_shape",
+        "peer_host",
+        "public_peer",
+        "network_identity",
+        "duplicate_service",
+        "trust_shape",
+    ],
+)
+def test_topology_inventory_inconsistencies_fail_closed(defect):
+    value = _input()
+    if defect == "route_shape":
+        value["routes"][0]["network"] = "unexpected"
+    elif defect == "external_service":
+        value["ws_hub_ip"] = "172.24.0.40"
+    elif defect == "peer_shape":
+        value["gateway_backend_peers"][1]["network"] = "unexpected"
+    elif defect == "peer_host":
+        value["gateway_backend_peers"][1]["address"] = "172.25.0.0"
+    elif defect == "public_peer":
+        value["gateway_backend_peers"][0]["address"] = "172.23.0.31"
+    elif defect == "network_identity":
+        value["gateway_backend_peers"][1]["network_id"] = "c" * 64
+    elif defect == "duplicate_service":
+        value["ws_hub_ip"] = value["backend_public_ip"]
+    else:
+        value["trusted_proxies"] = []
+    with pytest.raises(probe.ProbeError, match="invalid topology"):
+        probe.parse_input(value)
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [],
+        (("name",),),
+        (("bad name", "value"),),
+        (("name", "x" * 16384),),
+        (("upgrade", "websocket"),),
+    ],
+)
+def test_header_map_rejects_unsafe_or_unbounded_headers(headers):
+    with pytest.raises(probe.ProbeError):
+        probe._header_map(headers)
+
+
+def test_checked_response_rejects_compressed_representation():
+    response = probe.Response(200, (("content-encoding", "gzip"),), b"", True, True)
+    with pytest.raises(probe.ProbeError, match="encoded response"):
+        probe._checked_response(response)
+
+
+@pytest.mark.parametrize(
+    "config,transport", [(None, lambda *_: None), ("config", None)]
+)
+def test_collect_requires_parsed_configuration_and_callable_transport(
+    config, transport
+):
+    with pytest.raises(probe.ProbeError, match="invalid producer input"):
+        probe._collect(config, transport)
+
+
+def test_collect_enforces_absolute_request_budget(monkeypatch):
+    # Shrink only the probe's own budget to exercise exhaustion at its send seam.
+    # No production service or limiter configuration is changed.
+    monkeypatch.setattr(probe, "_MAX_REQUESTS", 1)
+    network = _SimulatedNetwork()
+    with pytest.raises(probe.ProbeError, match="request budget exhausted"):
+        probe._collect(probe.parse_input(_input()), network)
+    assert len(network.requests) == 1
+
+
+@pytest.mark.parametrize("error", [OSError, ValueError, TypeError])
+def test_collect_redacts_transport_exceptions(error):
+    def failed_request(_request, _timeout):
+        raise error("transport-private-detail")
+
+    with pytest.raises(probe.ProbeError, match=r"^request failed$"):
+        probe._collect(probe.parse_input(_input()), failed_request)
+
+
+def _encoder_request():
+    return probe.Request("172.23.0.10", "172.23.0.20", 80, "GET", "/ws/chat", (), b"")
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "wrong_type",
+        "mixed_loopback",
+        "route",
+        "pair",
+        "forwarded_prefix",
+        "csrf_value",
+        "multiple_forwarding",
+        "csrf_get",
+        "csrf_mismatch",
+    ],
+)
+def test_encoder_rejects_invalid_request_shapes(defect):
+    request = _encoder_request()
+    if defect == "wrong_type":
+        request = None
+    elif defect == "mixed_loopback":
+        request = replace(request, source_ip="127.0.0.1")
+    elif defect == "route":
+        request = replace(request, path="/unapproved")
+    elif defect == "pair":
+        request = replace(request, headers=(("forwarded",),))
+    elif defect == "forwarded_prefix":
+        request = replace(request, headers=(("forwarded", "172.23.0.11"),))
+    elif defect == "csrf_value":
+        request = replace(request, headers=(("x-csrf-token", "invalid value"),))
+    elif defect == "multiple_forwarding":
+        request = replace(
+            request,
+            headers=(("x-forwarded-for", "172.23.0.11"), ("x-real-ip", "172.23.0.12")),
+        )
+    elif defect == "csrf_get":
+        request = replace(request, headers=(("x-csrf-token", "fixture"),))
+    else:
+        request = replace(
+            request,
+            method="POST",
+            path="/api/v1/auth/login/json",
+            body=b"{}",
+            headers=(
+                ("cookie", "csrf_token=one; _csrf_anon_nonce=two"),
+                ("x-csrf-token", "three"),
+            ),
+        )
+    with pytest.raises(probe.ProbeError, match="invalid request"):
+        probe._request_bytes(request)
+
+
+@pytest.mark.parametrize(
+    "header,value",
+    [
+        ("forwarded", "for=172.23.0.11"),
+        ("x-real-ip", "172.23.0.11"),
+        ("x-forwarded-for", "172.23.0.11"),
+    ],
+)
+def test_encoder_accepts_each_individual_forwarding_control(header, value):
+    request = replace(_encoder_request(), headers=((header, value),))
+    assert f"{header}: {value}\r\n".encode() in probe._request_bytes(request)
+
+
+def test_encoder_fails_closed_if_cookie_parser_contract_regresses(monkeypatch):
+    # Fault injection of an incomplete helper result. The real parser currently
+    # rejects this condition earlier; keep the caller's defensive check tested.
+    monkeypatch.setattr(probe, "_cookies", lambda _headers: {"csrf_token": "one"})
+    request = replace(
+        _encoder_request(),
+        headers=(("cookie", "csrf_token=one; _csrf_anon_nonce=two"),),
+    )
+    with pytest.raises(probe.ProbeError, match="invalid request"):
+        probe._request_bytes(request)
+
+
+class _ByteSocket:
+    """Deterministic finite wire source, obeying socket recv's size contract."""
+
+    def __init__(self, wire=b""):
+        self.wire = wire
+        self.closed = False
+
+    def settimeout(self, timeout):
+        assert timeout > 0
+
+    def recv(self, size):
+        chunk, self.wire = self.wire[:size], self.wire[size:]
+        return chunk
+
+    def bind(self, address):
+        self.source = address
+
+    def connect(self, address):
+        self.target = address
+
+    def getsockname(self):
+        return self.source
+
+    def getpeername(self):
+        return self.target
+
+    def sendall(self, wire):
+        assert wire.startswith(b"GET / HTTP/1.1")
+
+    def close(self):
+        self.closed = True
+
+    def fileno(self):
+        return -1 if self.closed else 3
+
+
+def _wire_reader(wire):
+    return probe._Reader(_ByteSocket(wire), probe.time.monotonic() + 5)
+
+
+@pytest.mark.parametrize(
+    "wire,error",
+    [
+        (b"invalid\r\n", "invalid response status"),
+        (b"HTTP/1.1 200 OK\r\n" + b"X: y\r\n" * 65, "response header count"),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nxyz\r\n",
+            "invalid response chunk",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX: y\r\n",
+            "response trailers not supported",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1001\r\n",
+            "response body limit",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nxzz",
+            "invalid response chunk",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+            + b"1\r\nx\r\n" * 128,
+            "response chunk count",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: invalid\r\n\r\n",
+            "invalid response length",
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nextra",
+            "unexpected response bytes",
+        ),
+    ],
+)
+def test_wire_parser_rejects_malformed_finite_responses(wire, error):
+    with pytest.raises(probe.ProbeError, match=error):
+        probe._read_response(_wire_reader(wire))
+
+
+def test_reader_limits_wire_allocation_even_across_many_small_reads():
+    reader = _wire_reader(b"x" * (probe._MAX_WIRE + 1))
+    with pytest.raises(probe.ProbeError, match="response wire limit"):
+        while reader.fill():
+            reader.buffer.clear()
+    assert reader.received == probe._MAX_WIRE + 1
+
+
+def test_reader_limits_complete_header_line():
+    reader = _wire_reader(b"abcd\r\n")
+    with pytest.raises(probe.ProbeError, match="response header limit"):
+        reader.line(5)
+
+
+def test_reader_limits_close_delimited_body():
+    with pytest.raises(probe.ProbeError, match="response body limit"):
+        probe._read_response(_wire_reader(b"HTTP/1.1 200 OK\r\n\r\n" + b"x" * 4097))
+
+
+@pytest.mark.parametrize(
+    "failure", ["create", "attribution", "close", "still_open", "missing_response"]
+)
+def test_request_socket_failure_and_closure_contracts(monkeypatch, failure):
+    from types import SimpleNamespace
+
+    connection = _ByteSocket(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+
+    def create(*_args):
+        if failure == "create":
+            raise OSError("socket creation failed")
+        return connection
+
+    def close_failed():
+        raise OSError("socket closure failed")
+
+    if failure == "attribution":
+        monkeypatch.setattr(connection, "getsockname", lambda: ("127.0.0.3", 1))
+    elif failure == "close":
+        monkeypatch.setattr(connection, "close", close_failed)
+    elif failure == "still_open":
+        monkeypatch.setattr(connection, "close", lambda: None)
+    elif failure == "missing_response":
+        # Inject a missing parser result to test the caller's defensive guard.
+        monkeypatch.setattr(probe, "_read_response", lambda _reader: None)
+    guarded = SimpleNamespace(**vars(probe.socket))
+    guarded.socket = create
+    monkeypatch.setattr(probe, "socket", guarded)
+    messages = {
+        "create": "transport failed",
+        "attribution": "socket attribution failed",
+        "close": "socket closure failed",
+        "still_open": "socket closure unconfirmed",
+        "missing_response": "missing response",
+    }
+    with pytest.raises(probe.ProbeError, match=messages[failure]):
+        probe._request(
+            probe.Request("127.0.0.2", "127.0.0.1", 80, "GET", "/", (), b""), 5
+        )
+    if failure in {"attribution", "missing_response"}:
+        assert connection.closed
+
+
+@pytest.mark.parametrize("stage", ["bind", "connect", "sendall", "recv"])
+def test_request_closes_socket_after_primary_io_failure(monkeypatch, stage):
+    from types import SimpleNamespace
+
+    connection = _ByteSocket()
+
+    def io_failed(*_args):
+        raise OSError("private transport detail")
+
+    monkeypatch.setattr(connection, stage, io_failed)
+    guarded = SimpleNamespace(**vars(probe.socket))
+    guarded.socket = lambda *_args: connection
+    monkeypatch.setattr(probe, "socket", guarded)
+    with pytest.raises(probe.ProbeError, match=r"^transport failed$"):
+        probe._request(
+            probe.Request("127.0.0.2", "127.0.0.1", 80, "GET", "/", (), b""), 5
+        )
+    assert connection.closed

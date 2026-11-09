@@ -54,7 +54,7 @@ def _pins() -> AdmissionPins:
             ("172.23.0.20",),
             ("172.23.0.20",),
         ),
-        limits=(60, 5, 5, 3, 10),
+        limits=(60, 5, 5, 3, 120),
         backend_command=(
             "gunicorn",
             "app.main:app",
@@ -80,6 +80,27 @@ def _admitted(expected: AdmissionPins, current: AdmissionPins) -> bool:
     return validate_admission(expected, current, now_ms=1000, deadline_ms=121000)
 
 
+@pytest.mark.parametrize("address", [None, 123, ["172.23.0.20"]])
+def test_admission_rejects_non_string_trusted_peer(address) -> None:
+    pins = replace(_pins(), trusted_proxies=((address,),) * 3)
+    assert not _admitted(pins, pins)
+
+
+@pytest.mark.parametrize("subnet", ["not-a-subnet", "172.23.0.1/24"])
+def test_admission_rejects_unparseable_route_subnet(subnet: str) -> None:
+    pins = _pins()
+    pins = replace(
+        pins, routes=(replace(pins.routes[0], subnet=subnet), pins.routes[1])
+    )
+    assert not _admitted(pins, pins)
+
+
+@pytest.mark.parametrize("peers", [None, [], (), (("172.23.0.20",),) * 2])
+def test_admission_requires_three_trusted_proxy_sets(peers) -> None:
+    pins = replace(_pins(), trusted_proxies=peers)
+    assert not _admitted(pins, pins)
+
+
 def _case(name: str, count: int, status: int, elapsed_ms: int) -> dict[str, object]:
     return {
         "case": name,
@@ -96,7 +117,7 @@ def _case(name: str, count: int, status: int, elapsed_ms: int) -> dict[str, obje
 
 def _wire() -> dict[str, object]:
     return {
-        "schema": "ue-owned-client-ip-v2",
+        "schema": "ue-owned-client-ip-v3",
         "source_sha": SHA,
         "run_id": RUN_ID,
         "closed": True,
@@ -106,14 +127,14 @@ def _wire() -> dict[str, object]:
         "source_labels": ["public", "frontend_net"],
         "csrf_ready": [True, True],
         "setup_requests": 2,
-        "http_requests": 119,
+        "http_requests": 229,
         "elapsed_ms": 60000,
         "cases": [
             _case("login", 60, 422, 1000),
             _case("register", 5, 422, 1000),
             _case("mfa", 5, 422, 1000),
             _case("forgot", 3, 422, 1000),
-            _case("ws_hub", 10, 401, 1000),
+            _case("ws_hub", 120, 401, 1000),
         ],
     }
 
@@ -158,7 +179,7 @@ def test_admission_accepts_only_the_unchanged_owned_two_interface_configuration(
         ("resource_identity", "0" * 64),
         ("container_ids", tuple(character * 64 for character in "1235")),
         ("image_ids", tuple("sha256:" + character * 64 for character in "5679")),
-        ("limits", (61, 5, 5, 3, 10)),
+        ("limits", (61, 5, 5, 3, 120)),
         ("backend_command", ("uvicorn", "app.main:app")),
     ],
 )
@@ -176,7 +197,7 @@ def test_admission_rejects_changed_source_owner_runtime_or_limits(field, value):
         ("resource_identity", True),
         ("container_ids", ("1" * 64,) * 4),
         ("image_ids", ("latest",) * 4),
-        ("limits", (60, 5, True, 3, 10)),
+        ("limits", (60, 5, True, 3, 120)),
         ("limits", (60, 5, 5, 3, 11)),
         ("backend_command", ("gunicorn", "other:app")),
         ("trusted_proxies", (("0.0.0.0/0",), (), ())),

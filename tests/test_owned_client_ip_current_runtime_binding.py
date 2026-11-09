@@ -101,3 +101,38 @@ def test_backend_admission_rejects_legacy_worker_even_when_pins_match() -> None:
     pins = replace(_pins(), backend_command=tuple(command))
 
     assert not _admitted(pins, pins)
+
+
+@pytest.mark.parametrize("configured", [None, "120"])
+def test_runtime_admits_only_the_supported_ws_bucket(configured: str | None) -> None:
+    snapshot, _ = _inspect_fixture()
+    if configured is not None:
+        snapshot["containers"]["ws-hub"]["Config"]["Env"].append(
+            f"WS_UPGRADE_RATE_PER_MINUTE={configured}"
+        )
+    assert _derive(runtime, snapshot) == _expected_input(snapshot)
+
+
+@pytest.mark.parametrize(
+    "configured", ["10", "600", "0", "-1", "", "120 ", "0120", "unknown"]
+)
+def test_runtime_refuses_an_unbound_ws_bucket(configured: str) -> None:
+    snapshot, _ = _inspect_fixture()
+    assert _derive(runtime, snapshot) == _expected_input(snapshot)
+    snapshot["containers"]["ws-hub"]["Config"]["Env"].append(
+        f"WS_UPGRADE_RATE_PER_MINUTE={configured}"
+    )
+    with pytest.raises(runtime.RuntimeNotReady):
+        _derive(runtime, snapshot)
+
+
+def test_runtime_budget_matches_the_current_ws_hub_default() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = (root / "services/ws-hub/pkg/config/config.go").read_text(encoding="utf-8")
+    match = re.search(
+        r"(?m)^const DefaultWSUpgradeRatePerMinute\s*=\s*(\d+)\s*$", config
+    )
+    assert match is not None
+    assert int(match.group(1)) == 120
+    snapshot, _ = _inspect_fixture()
+    assert _derive(runtime, snapshot) == _expected_input(snapshot)

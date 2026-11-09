@@ -27,13 +27,18 @@ _PRIVATE_NETWORKS = tuple(
 )
 _SOURCE_LABELS = ("public", "frontend_net")
 _CASES = ("login", "register", "mfa", "forgot", "ws_hub")
-_LIMITS = (60, 5, 5, 3, 10)
+_LIMITS = (60, 5, 5, 3, 120)
 _EXPECTED_STATUSES = (422, 422, 422, 422, 401)
 _CASE_BUDGETS_MS = (45000, 45000, 45000, 45000, 5000)
 _TOTAL_BUDGET_MS = 120000
 _MAX_OUTPUT_BYTES = 4096
 _SETUP_REQUESTS = 2
 _HTTP_REQUESTS = _SETUP_REQUESTS + sum(_LIMITS) + 6 * len(_CASES) + 4
+# 120-token capacity, 120/60 tokens per second, at most five seconds.
+_WS_MAX_ALLOWED = _LIMITS[4] + _LIMITS[4] * _CASE_BUDGETS_MS[4] // 60000
+_MAX_HTTP_REQUESTS = _HTTP_REQUESTS + _WS_MAX_ALLOWED - _LIMITS[4]
+
+
 _BACKEND_COMMAND = (
     "gunicorn",
     "app.main:app",
@@ -297,6 +302,14 @@ def _status(value: object) -> bool:
     return type(value) is int and 100 <= value <= 599
 
 
+def _valid_allowed_count(count: int, index: int, elapsed_ms: int) -> bool:
+    # Reported milliseconds are truncated: actual elapsed is below ms + 1.
+    # A full extra request needs a whole refilled token. The upper endpoint
+    # is conservative, including when it falls exactly on a token boundary.
+    maximum = min(_WS_MAX_ALLOWED, _LIMITS[4] + _LIMITS[4] * (elapsed_ms + 1) // 60000)
+    return _LIMITS[index] <= count <= maximum if index == 4 else count == _LIMITS[index]
+
+
 def _case_from_row(row: object, index: int) -> CaseObservation | None:
     if type(row) is not dict or row.keys() != _CASE_KEYS:
         return None
@@ -305,7 +318,8 @@ def _case_from_row(row: object, index: int) -> CaseObservation | None:
     if (
         row["case"] != _CASES[index]
         or type(allowed) is not list
-        or len(allowed) != _LIMITS[index]
+        or not _bounded_integer(row["elapsed_ms"], _CASE_BUDGETS_MS[index])
+        or not _valid_allowed_count(len(allowed), index, row["elapsed_ms"])
         or not all(_status(status) for status in allowed)
         or not _status(row["blocked"])
         or not _status(row["other_client"])
@@ -318,7 +332,6 @@ def _case_from_row(row: object, index: int) -> CaseObservation | None:
             if index < 4
             else row["backend_direct_untrusted"] is not None
         )
-        or not _bounded_integer(row["elapsed_ms"], _CASE_BUDGETS_MS[index])
     ):
         return None
     return CaseObservation(
@@ -339,7 +352,7 @@ def _decode_frame(
     if type(wire) is not dict or wire.keys() != _ROOT_KEYS:
         return None
     if (
-        wire["schema"] != "ue-owned-client-ip-v2"
+        wire["schema"] != "ue-owned-client-ip-v3"
         or wire["source_sha"] != expected_source_sha
         or wire["run_id"] != expected_run_id
         or wire["closed"] is not True
@@ -352,7 +365,7 @@ def _decode_frame(
         or type(wire["setup_requests"]) is not int
         or wire["setup_requests"] != _SETUP_REQUESTS
         or type(wire["http_requests"]) is not int
-        or wire["http_requests"] != _HTTP_REQUESTS
+        or not _HTTP_REQUESTS <= wire["http_requests"] <= _MAX_HTTP_REQUESTS
         or not _bounded_integer(wire["elapsed_ms"], _TOTAL_BUDGET_MS)
         or type(wire["cases"]) is not list
         or len(wire["cases"]) != len(_CASES)
@@ -364,7 +377,11 @@ def _decode_frame(
         if case is None:
             return None
         cases.append(case)
-    if sum(case.elapsed_ms for case in cases) > wire["elapsed_ms"]:
+    expected_count = _SETUP_REQUESTS + sum(len(case.allowed) + 6 for case in cases) + 4
+    if (
+        wire["http_requests"] != expected_count
+        or sum(case.elapsed_ms for case in cases) > wire["elapsed_ms"]
+    ):
         return None
     return ProbeObservations(
         source_sha=expected_source_sha,
@@ -416,7 +433,8 @@ def _case_passes(case: CaseObservation, index: int) -> bool:
     expected = _EXPECTED_STATUSES[index]
     return (
         case.case == _CASES[index]
-        and case.allowed == (expected,) * _LIMITS[index]
+        and _valid_allowed_count(len(case.allowed), index, case.elapsed_ms)
+        and case.allowed == (expected,) * len(case.allowed)
         and case.blocked == 429
         and case.other_client == expected
         and case.spoofed == (429, 429, 429)

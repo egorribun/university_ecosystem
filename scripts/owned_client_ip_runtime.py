@@ -266,6 +266,11 @@ def derive_probe_input(
                 settings[setting]
             ):
                 _not_ready()
+        # The bounded producer is calibrated to the reviewed 120/minute bucket.
+        # Unknown, malformed, or overridden capacity cannot establish its proof.
+        ws_limit = _environment(containers["ws-hub"]).get("WS_UPGRADE_RATE_PER_MINUTE")
+        if ws_limit not in (None, "120"):
+            _not_ready()
         backend_env = _environment(containers["backend"])
         if (
             containers["backend"]["Config"].get("Cmd") != list(_BACKEND_COMMAND)

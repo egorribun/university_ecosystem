@@ -52,14 +52,19 @@ _CASES = (
     ("register", "/api/v1/auth/register", 5, 5, 45.0),
     ("mfa", "/api/v1/auth/mfa/verify", 5, 200, 45.0),
     ("forgot", "/api/v1/password/forgot", 3, 3, 45.0),
-    ("ws_hub", "/ws/chat", 10, None, 5.0),
+    ("ws_hub", "/ws/chat", 120, None, 5.0),
 )
 _API_PATHS = frozenset(case[1] for case in _CASES[:4])
 _MAX_HEADERS = 16384
 _MAX_BODY = 4096
 _MAX_WIRE = 24576
 _TOTAL_SECONDS = 120.0
-_MAX_REQUESTS = 119
+# A full bucket holds 120 tokens and refills at 120 / 60 per second.
+# The five-second case deadline permits at most ten additional allowed requests.
+_WS_MAX_ALLOWED = 120 + math.ceil((120 / 60) * 5)
+# Two setup requests, six controls per case, and four backend-direct controls.
+_BASE_REQUESTS = 2 + sum(case[2] for case in _CASES) + 6 * len(_CASES) + 4
+_MAX_REQUESTS = _BASE_REQUESTS + (_WS_MAX_ALLOWED - 120)
 
 
 class ProbeError(RuntimeError):
@@ -457,6 +462,12 @@ def _collect(
         case_deadline = min(deadline, case_started + budget)
         allowed = [observe(path, header_limit, case_deadline, 0) for _ in range(limit)]
         blocked = observe(path, header_limit, case_deadline, 0)
+        if name == "ws_hub":
+            while blocked == 401 and len(allowed) < _WS_MAX_ALLOWED:
+                allowed.append(blocked)
+                blocked = observe(path, header_limit, case_deadline, 0)
+            if blocked != 429:
+                raise ProbeError("websocket bucket did not exhaust")
         other_client = observe(path, header_limit, case_deadline, 1)
         other_ip = config.routes[1].source_ip
         spoofed = [
@@ -501,7 +512,7 @@ def _collect(
         )
     _remaining(deadline)
     frame: dict[str, object] = {
-        "schema": "ue-owned-client-ip-v2",
+        "schema": "ue-owned-client-ip-v3",
         "source_sha": config.source_sha,
         "run_id": config.run_id,
         "closed": True,
@@ -514,7 +525,12 @@ def _collect(
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "cases": cases,
     }
-    if count != _MAX_REQUESTS or len(json.dumps(frame).encode()) + 1 > 4096:
+    expected_count = 2 + sum(len(case["allowed"]) + 6 for case in cases) + 4
+    if (
+        count != expected_count
+        or not _BASE_REQUESTS <= count <= _MAX_REQUESTS
+        or len(json.dumps(frame).encode()) + 1 > 4096
+    ):
         raise ProbeError("invalid observation frame")
     return frame
 
@@ -753,10 +769,12 @@ def _request(request: Request, timeout: float) -> Response:
         raise ProbeError("invalid timeout")
     wire = _request_bytes(request)
     deadline = time.monotonic() + timeout
-    connection: socket.socket | None = None
     response: tuple[int, tuple[tuple[str, str], ...], bytes] | None = None
     try:
         connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except (OSError, ValueError, OverflowError):
+        raise ProbeError("transport failed") from None
+    try:
         connection.settimeout(_remaining(deadline))
         connection.bind((request.source_ip, 0))
         connection.settimeout(_remaining(deadline))
@@ -776,13 +794,12 @@ def _request(request: Request, timeout: float) -> Response:
     except (OSError, ValueError, OverflowError):
         raise ProbeError("transport failed") from None
     finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except OSError:
-                raise ProbeError("socket closure failed") from None
-            if connection.fileno() != -1:
-                raise ProbeError("socket closure unconfirmed")
+        try:
+            connection.close()
+        except OSError:
+            raise ProbeError("socket closure failed") from None
+        if connection.fileno() != -1:
+            raise ProbeError("socket closure unconfirmed")
     if response is None:
         raise ProbeError("missing response")
     _remaining(deadline)
