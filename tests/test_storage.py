@@ -406,6 +406,22 @@ async def test_s3_cancelled_put_deletes_exact_key_and_reraises(
 
 
 @pytest.mark.asyncio
+async def test_s3_failed_compensating_delete_keeps_the_upload_error(
+    s3_storage, mock_s3_client
+):
+    """A delete the store rejects must not replace the original upload failure."""
+    mock_s3_client.put_object.side_effect = TimeoutError("put timed out")
+    mock_s3_client.delete_object.side_effect = RuntimeError("delete rejected")
+
+    with pytest.raises(TimeoutError, match="put timed out"):
+        await s3_storage.save_file_cancellable("chat_uploads/kept.pdf", b"data")
+
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="test-bucket", Key="chat_uploads/kept.pdf"
+    )
+
+
+@pytest.mark.asyncio
 async def test_s3_cancelled_delete_survives_second_cancellation(
     s3_storage, mock_s3_client
 ):
