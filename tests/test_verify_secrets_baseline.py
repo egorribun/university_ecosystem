@@ -17983,7 +17983,7 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     policy = json.loads(policy_bytes.decode("utf-8"))
     records = policy.get("records")
     if isinstance(records, list) and len(records) == 506:
-        assert len(policy_bytes) == 495838, "live disposition bytes changed"
+        assert len(policy_bytes) == 495840, "live disposition bytes changed"
         assert hashlib.sha256(policy_bytes).digest() == (
             _AUD428_ROW13_ACTIVE_POLICY_SHA256
         ), "live disposition policy digest changed"
@@ -30909,7 +30909,7 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495838
+    assert len(policy_bytes) == 495840
     assert hashlib.sha256(policy_bytes[:494905]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
@@ -31401,6 +31401,40 @@ _AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
 _AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
 _AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
     bytes.fromhex("e1 2d 25 3a e0 e6 34 e7 13 14 f3 32 61 d3 b0 98 b7 b0 0a f6")
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+
+
+# Exact existing row13 companion binding for the AUD360 schedule PostgreSQL cohort.
+# Preserve historical snapshots and every approval field; rebind record 505 only.
+_AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
+    "d7 8f 3a 81 1b 1b 05 de d8 29 b8 a9 a8 89 29 b4 94 b4 bf e6 01 c0 da 93 80 4a 5e 4c fe 84 8f 6c"
+)
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "9d cb 6a 8e 82 bf 4f 04 ac 88 14 30 e1 dd e5 8a 4b 8e bd d5 9b 50 3f 53 c3 25 e7 37 1d f9 8b 8d"
+)
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "1f dd 8d 37 85 e3 a2 5d 64 62 cf a7 50 ce 96 8f f3 20 37 09 4f 42 67 4a 9a 75 15 bd ae 6f bf 45"
+)
+_AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
+    "59 7c f5 e5 c4 cd de ce 08 5a 3b 43 9d 32 c3 73 3d 8f 82 1f 12 c5 64 3a e4 0a d5 77 75 e7 88 9b"
+)
+_AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
+    "bd 7f 9b 5c d4 39 91 70 85 b8 24 93 ea 85 a5 23 89 d3 19 28 36 90 eb e3 cf 51 64 e3 84 e1 5d 00"
+)
+_AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
+    "c8 73 dc 44 91 d2 3f 53 61 fd b2 ec e0 cc c2 a6 64 a5 38 71 cc 4c 8d da 7e 98 bb 93 9d a3 96 3b"
+)
+_AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
+_AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
+    bytes.fromhex("a3 81 34 21 f0 d4 c3 4c c1 33 4f 88 a5 6c 87 cf 42 8c e7 57")
 )
 _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     **_AUD380_CURRENT_DELTA_SOURCE_SHA256,

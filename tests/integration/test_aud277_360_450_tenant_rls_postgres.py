@@ -105,6 +105,10 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                 connection.exec_driver_sql(
                     f'GRANT SELECT, INSERT ON public.stored_events TO "{bypass_role}"'
                 )
+                # Real schedule audit appends lock the chain head; owned role only.
+                connection.exec_driver_sql(
+                    f'GRANT SELECT, INSERT, UPDATE ON public.stored_events TO "{ordinary_role}"'
+                )
                 # The CLI uses the ordinary role: no additional bypass membership.
                 connection.exec_driver_sql(
                     f'GRANT SELECT ON public.tenants TO "{ordinary_role}"'
@@ -1495,3 +1499,206 @@ async def test_weekly_cleanup_schema_drift_rejects_before_stale_delete(
         bypass_rls_ctx.reset(bypass_token)
         tenant_id_ctx.reset(tenant_token)
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "parent_owner"),
+    [
+        (op, owner)
+        for op in ("create", "move", "unchanged")
+        for owner in ("a", "b", "null", "missing")
+        if (op, owner) != ("unchanged", "missing")
+    ],
+    ids=[
+        f"{op}-{owner}"
+        for op in ("create", "move", "unchanged")
+        for owner in ("a", "b", "null", "missing")
+        if (op, owner) != ("unchanged", "missing")
+    ],
+)
+async def test_schedule_service_parent_ownership(
+    rls_schema: SimpleNamespace,
+    operation: str,
+    parent_owner: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real service, repository, transaction listener and ordinary-role RLS."""
+    from unittest.mock import AsyncMock
+
+    from app.core.db.listeners import register_tenant_listeners
+    from app.core.exceptions.domain import EntityNotFound
+    from app.repositories.unit_of_work import uow_from_session
+    from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
+    from app.services.schedule_optimizer import ScheduleOptimizerService
+    from app.services.schedule_service import ScheduleService
+
+    # Cache invalidation is unrelated to database authorization; no Redis needed.
+    monkeypatch.setattr(
+        "app.repositories.schedule_repository.schedule_cache.delete", AsyncMock()
+    )
+    register_tenant_listeners()
+    target, original, schedule_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    start = dt.datetime(2026, 11, 9, 9, tzinfo=dt.UTC)
+    end = start + dt.timedelta(hours=1)
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    # Capture effects by owned groups, not a guessed generated schedule UUID.
+    ownership = {
+        "target": target,
+        "original": original,
+        "target_text": str(target),
+        "original_text": str(original),
+    }
+    token = tenant_id_ctx.set(str(_TENANT_A))
+    bypass = bypass_rls_ctx.set(False)
+    try:
+        with admin.begin() as connection:
+            groups = [(original, _TENANT_A)]
+            if parent_owner != "missing":
+                groups.append(
+                    (
+                        target,
+                        {"a": _TENANT_A, "b": _TENANT_B, "null": None}[parent_owner],
+                    )
+                )
+            for identifier, owner in groups:
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO groups(id, name, tenant_id) VALUES (:id, :name, :owner)"
+                    ),
+                    {"id": identifier, "name": str(identifier), "owner": owner},
+                )
+            if operation != "create":
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO schedule(id, group_id, tenant_id, subject, weekday, start_time, end_time) "
+                        "VALUES (:id, :group, :owner, 'original', 'monday', :start, :end)"
+                    ),
+                    {
+                        "id": schedule_id,
+                        "group": target if operation == "unchanged" else original,
+                        "owner": _TENANT_A,
+                        "start": start,
+                        "end": end,
+                    },
+                )
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            evidence = (
+                await session.execute(
+                    sa.text(
+                        "SELECT rolsuper, rolbypassrls, pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                        "row_security_active('public.groups'), row_security_active('public.schedule'), "
+                        "current_setting('app.current_tenant', true) FROM pg_roles WHERE rolname=current_user"
+                    )
+                )
+            ).one()
+            assert tuple(evidence) == (False, False, False, True, True, str(_TENANT_A))
+            service = ScheduleService(
+                uow_from_session(session), ScheduleOptimizerService()
+            )
+            data = ScheduleCreate(
+                group_id=target,
+                subject="changed",
+                weekday="monday",
+                start_time=start,
+                end_time=end,
+            )
+
+            async def mutate():
+                if operation == "create":
+                    return await service.create_schedule(data)
+                return await service.update_schedule(
+                    schedule_id,
+                    ScheduleUpdate(
+                        subject="changed",
+                        **({"group_id": target} if operation == "move" else {}),
+                    ),
+                )
+
+            if parent_owner == "a":
+                changed = await mutate()
+                schedule_id = changed.id
+                assert changed.group_id == target
+                assert changed.subject == "changed"
+            else:
+                with pytest.raises(EntityNotFound):
+                    await mutate()
+                await session.rollback()
+            assert tenant_id_ctx.get() == str(_TENANT_A)
+            assert bypass_rls_ctx.get() is False
+        with admin.connect() as connection:
+            row = connection.execute(
+                sa.text(
+                    "SELECT group_id, tenant_id, subject FROM schedule WHERE id=:id"
+                ),
+                {"id": schedule_id},
+            ).one_or_none()
+            actual_rows = connection.execute(
+                sa.text(
+                    "SELECT id, group_id, tenant_id, subject FROM schedule WHERE group_id IN (:target, :original)"
+                ),
+                ownership,
+            ).all()
+            actual_events = connection.execute(
+                sa.text(
+                    "SELECT id, aggregate_id FROM stored_events WHERE aggregate_type = 'schedule' AND ("
+                    "aggregate_id IN (SELECT id::text FROM schedule WHERE group_id IN (:target, :original)) "
+                    "OR payload->>'group_id' IN (:target_text, :original_text) "
+                    "OR payload->'current_state'->>'group_id' IN (:target_text, :original_text) "
+                    "OR payload->'previous_state'->>'group_id' IN (:target_text, :original_text))"
+                ),
+                ownership,
+            ).all()
+            events = len(actual_events)
+            if parent_owner == "a":
+                assert tuple(row) == (target, _TENANT_A, "changed")
+                assert len(actual_rows) == 1
+                assert events == 1
+                assert actual_events[0].aggregate_id == str(schedule_id)
+            elif operation == "create":
+                assert actual_rows == []
+                assert row is None
+                assert events == 0
+            else:
+                assert len(actual_rows) == 1
+                assert actual_rows[0].id == schedule_id
+                assert tuple(row) == (
+                    target if operation == "unchanged" else original,
+                    _TENANT_A,
+                    "original",
+                )
+                assert events == 0
+    finally:
+        try:
+            await engine.dispose()
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text(
+                        "DELETE FROM stored_events WHERE aggregate_type = 'schedule' AND ("
+                        "aggregate_id IN (SELECT id::text FROM schedule WHERE group_id IN (:target, :original)) "
+                        "OR payload->>'group_id' IN (:target_text, :original_text) "
+                        "OR payload->'current_state'->>'group_id' IN (:target_text, :original_text) "
+                        "OR payload->'previous_state'->>'group_id' IN (:target_text, :original_text))"
+                    ),
+                    ownership,
+                )
+                connection.execute(
+                    sa.text(
+                        "DELETE FROM schedule WHERE group_id IN (:target, :original)"
+                    ),
+                    {"target": target, "original": original},
+                )
+                connection.execute(
+                    sa.text("DELETE FROM groups WHERE id IN (:target, :original)"),
+                    {"target": target, "original": original},
+                )
+        finally:
+            admin.dispose()
+            bypass_rls_ctx.reset(bypass)
+            tenant_id_ctx.reset(token)

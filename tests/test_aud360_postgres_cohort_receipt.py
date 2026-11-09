@@ -59,6 +59,21 @@ WEEKLY_CASES = (
 )
 
 
+SCHEDULE_CASES = (
+    "test_schedule_service_parent_ownership[create-a]",
+    "test_schedule_service_parent_ownership[create-b]",
+    "test_schedule_service_parent_ownership[create-null]",
+    "test_schedule_service_parent_ownership[create-missing]",
+    "test_schedule_service_parent_ownership[move-a]",
+    "test_schedule_service_parent_ownership[move-b]",
+    "test_schedule_service_parent_ownership[move-null]",
+    "test_schedule_service_parent_ownership[move-missing]",
+    "test_schedule_service_parent_ownership[unchanged-a]",
+    "test_schedule_service_parent_ownership[unchanged-b]",
+    "test_schedule_service_parent_ownership[unchanged-null]",
+)
+
+
 def validator():
     runner = RUNNER.read_text()
     marker = "$receiptValidator = @'\n"
@@ -82,7 +97,13 @@ def receipt():
     for classname, names in expected.items():
         # The required target cohort is independent of the validator's contents.
         if classname == TENANT_CLASS:
-            names = (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES, *WEEKLY_CASES)
+            names = (
+                *PREVIOUS_TENANT_CASES,
+                *MFA_CASES,
+                *ADMIN_CASES,
+                *WEEKLY_CASES,
+                *SCHEDULE_CASES,
+            )
         for name in names:
             ElementTree.SubElement(root, "testcase", classname=classname, name=name)
     return source, root
@@ -104,17 +125,20 @@ def test_tenant_cohort_preserves_all_previous_names_and_adds_exact_mfa_cases():
         *MFA_CASES,
         *ADMIN_CASES,
         *WEEKLY_CASES,
+        *SCHEDULE_CASES,
     )
-    assert sum(map(len, expected.values())) == 61
+    assert sum(map(len, expected.values())) == 72
 
 
 def test_complete_expanded_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 61\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 72\n"
 
 
-@pytest.mark.parametrize("name", (*MFA_CASES, *ADMIN_CASES, *WEEKLY_CASES))
+@pytest.mark.parametrize(
+    "name", (*MFA_CASES, *ADMIN_CASES, *WEEKLY_CASES, *SCHEDULE_CASES)
+)
 @pytest.mark.parametrize(
     "mutation",
     ["missing", "skipped", "failure", "error", "duplicate", "wrong-name", "extra-case"],
@@ -151,6 +175,6 @@ def test_same_length_duplicate_cannot_replace_missing_mfa_case(tmp_path, monkeyp
     source, root = receipt()
     cases = [case for case in root if case.get("classname") == TENANT_CLASS]
     cases[-1].set("name", cases[-2].get("name"))
-    assert len(cases) == 34
+    assert len(cases) == 45
     with pytest.raises(SystemExit, match=TENANT_CLASS):
         execute(source, root, tmp_path, monkeypatch)
