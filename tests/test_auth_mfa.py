@@ -3,7 +3,7 @@ import datetime as dt
 import json
 import logging
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pyotp
 import pytest
@@ -16,6 +16,7 @@ from app.auth.mfa.email_otp import _parse_challenge_id
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.localization import translate
+from app.core.tenant import bypass_rls_ctx, get_current_tenant, tenant_id_ctx
 from app.management import reset_mfa
 
 
@@ -781,7 +782,11 @@ async def test_reset_mfa_command_resets_state(
 ):
     _setup_audit_logger(caplog)
 
-    user = await user_factory(email="cli-reset@example.com")
+    tenant = models.Tenant(name="MFA reset test", slug="mfa-reset-test")
+    db_session.add(tenant)
+    await db_session.flush()
+    user = await user_factory(email="cli-reset@example.com", tenant_id=tenant.id)
+    assert user.tenant_id == tenant.id
 
     enrollment, secret, _ = await mfa.start_totp_enrollment(
         db_session, user=user, label="cli-reset"
@@ -799,9 +804,12 @@ async def test_reset_mfa_command_resets_state(
     user.mfa_last_verified_at = dt.datetime.now(dt.UTC)
     await db_session.commit()
 
-    notifications: list[list[int]] = []
+    notifications: list[list[UUID]] = []
+    previous_tenant = get_current_tenant()
 
     async def fake_create_notifications(db: Any, **kwargs: Any) -> int:
+        assert get_current_tenant() == str(tenant.id)
+        assert bypass_rls_ctx.get() is False
         notifications.append(list(kwargs.get("user_ids", [])))
         return len(kwargs.get("user_ids", []))
 
@@ -838,10 +846,82 @@ async def test_reset_mfa_command_resets_state(
     assert user.mfa_last_verified_at is None
 
     assert notifications == [[user.id]]
+    assert user.tenant_id == tenant.id
+    assert get_current_tenant() == previous_tenant
 
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")
     assert audit_event["user_id"] == str(user.id)
     assert audit_event["reason"] == "admin_reset"
+
+
+@pytest.mark.asyncio
+async def test_reset_mfa_command_unowned_notification_rolls_back_real_state(
+    user_factory, db_session, monkeypatch
+):
+    user = await user_factory(email="cli-unowned-reset@example.com")
+    assert user.tenant_id is None
+    enrollment, secret, _ = await mfa.start_totp_enrollment(
+        db_session, user=user, label="cli-unowned-reset"
+    )
+    await mfa.complete_totp_enrollment(
+        db_session, enrollment=enrollment, code=pyotp.TOTP(secret).now()
+    )
+    await mfa.issue_challenge(
+        db_session, user_id=user.id, challenge_type=mfa.CHALLENGE_TYPE_TOTP_VERIFY
+    )
+    user.mfa_required = True
+    user.mfa_default_method = mfa.MFA_METHOD_TOTP
+    await db_session.commit()
+    original_epoch = user.mfa_epoch
+
+    async def unexpected_notification(*_, **__):
+        raise AssertionError("Unowned reset must not reach notification delivery")
+
+    async def unexpected_publication(*_, **__):
+        raise AssertionError("Rejected reset must not publish revocations")
+
+    monkeypatch.setattr(
+        reset_mfa, "create_notifications_for_users", unexpected_notification
+    )
+    monkeypatch.setattr(mfa, "publish_mfa_session_revocations", unexpected_publication)
+    ambient = str(uuid4())
+    token = tenant_id_ctx.set(ambient)
+    try:
+        with pytest.raises(ValueError, match="persisted tenant identity"):
+            await reset_mfa._reset_user_mfa(user_id=user.id, email=None, notify=True)
+        assert get_current_tenant() == ambient
+    finally:
+        tenant_id_ctx.reset(token)
+
+    await db_session.refresh(user)
+    assert user.tenant_id is None
+    assert user.mfa_epoch == original_epoch
+    assert user.mfa_required is True
+    assert user.mfa_default_method == mfa.MFA_METHOD_TOTP
+    enrollments = (
+        (
+            await db_session.execute(
+                select(models.MfaTotpEnrollment).where(
+                    models.MfaTotpEnrollment.user_id == user.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    challenges = (
+        (
+            await db_session.execute(
+                select(models.MfaChallenge).where(
+                    models.MfaChallenge.user_id == user.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.id for row in enrollments] == [enrollment.id]
+    assert len(challenges) == 1
 
 
 @pytest.mark.asyncio
