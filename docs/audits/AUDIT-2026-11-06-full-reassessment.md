@@ -2,8 +2,90 @@
 
 ## Current scoped supplement — 2026-11-09
 
-The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
-**14S / 12P / 0U / 0N**. This update accepts only AUD-226 and preserves the
+The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
+**13S / 9P / 0U / 0N**. This update accepts only AUD-360, AUD-373, AUD-428 and
+AUD-429 and preserves the prior 486/26, 485/27, 484/28, 478/34 and 476/36
+checkpoints as dated history.
+
+All four rest on one CI generation: source HEAD `a4233009c`, tested merge
+`5f7f0af0e`, [CI - Matrix Expansion run 42611712235](https://github.com/egorribun/university_ecosystem/actions/runs/42611712235).
+The later documentation commit that records them needs its own hooks and
+required checks; it changes no source, test or workflow file.
+
+### AUD-429 — realtime and visual E2E run in CI
+
+The [live-realtime-visual job 129141507497](https://github.com/egorribun/university_ecosystem/actions/runs/42611712235/job/129141507497) started the full stand
+and printed exactly `live E2E counts passed=16` and
+`live E2E outcome=passed exit_code=0`, with no flaky, skipped or retried case,
+then passed all 24 authenticated matrix captures (en, ru; light, dark;
+390 and 1440 px) with axe-core. The runner labels this focused selection
+`diagnostic_only=true`, so it is criterion evidence for AUD-429 and not the
+full live suite; that suite runs on `main` and remains separate evidence.
+
+### AUD-373 — backend SPIFFE transport
+
+The owner accepted [ADR-052](../adr/ADR-052-backend-spiffe-transport.md) on
+2026-11-09. The [hosted kind proof job 129141503715](https://github.com/egorribun/university_ecosystem/actions/runs/42611712046/job/129141503715) printed
+`PASS` for a-gateway-to-backend-mtls-hop, b-no-svid-tls-client-rejected,
+c-plaintext-http-rejected and d-backend-logs-gateway-peer-spiffe-id, then
+`RESULT=PASS`.
+
+Limit on case B: the client observed `NO_SVID_TLS=ERROR` at `READ_ALERT` with
+event `EOF`, not a delivered `TLSV13_ALERT_CERTIFICATE_REQUIRED` alert. The
+rejection diagnostic is the server's: artifact
+`aud373-internal-mtls-kind-diagnostics` records
+`SERVER_REJECTION_EVIDENCE=VALID`, `SERVER_REJECTION_EVENT=MISSING_CLIENT_CERTIFICATE`
+and `SERVER_REJECTION_MATCHES=1`, correlated by the collector to the same probe
+on an unchanged workload. This is the source-bound rule in
+`scripts/kind/mtls_rejection_evidence.py`, and it replaces the 1f result below,
+where the same client fields were counted as unmet. It is a kind proof, not
+production deployment evidence; the chart defaults internal mTLS off and
+production rendering requires it.
+
+Limit on scope: this acceptance covers the Helm chart, the finding's original
+target. MVP v1.0.0 runs on Docker Compose, where the gateway calls the backend
+over plaintext HTTP. The owner accepted that risk in
+[ADR-054](../adr/ADR-054-mvp-docker-compose-deployment-target.md), which records
+the network facts.
+
+### AUD-360 — tenant ownership of rows
+
+The [PostgreSQL integration job 129143361594](https://github.com/egorribun/university_ecosystem/actions/runs/42611712235/job/129143361594) ran
+`tests/integration/test_aud277_360_450_tenant_rls_postgres.py` with
+45 passed cases and no skip or failure. They include NULL-row
+invisibility, `NewsService` and notification producers, the bypass scheduler,
+the MFA reset, administrator creation, weekly cleanup and schedule parent
+ownership, with cross-tenant and NULL negative controls.
+
+A source review of writers to the tenant-owned tables (chats, events, groups,
+messages, news, notifications, schedule, stories, users) found that request
+paths run under the tenant middleware context, and that the non-request
+producers that create rows set ownership explicitly: the MFA reset, the
+administrator CLI and the reminder scheduler. Outbox redelivery creates no new
+tenant-owned row, and the dead-letter tables have no tenant column. The review is
+a reading of this tree, not a generated inventory. The criterion is the single
+configured MVP tenant; multi-tenant operation is not established.
+
+### AUD-428 — test blocks that check no result
+
+`scripts/quality/test_block_census.py` scans Python and Go test blocks, has
+assertion-free negative controls in `tests/test_test_block_census.py`, and reports
+`files=1516 blocks=17345 resultless=0 allowlisted=0 unlisted=0 stale=0 errors=0` in a local run on this tree. Its reviewed allowlist is empty, and
+`test_repository_has_no_unreviewed_resultless_test_block` in the backend test
+suite fails on any new resultless block, so the census is enforced rather than
+recorded. `frontend/src/test/testAssertionCensus.ts` rejects assertion-shaped
+no-ops and `expect` calls without matchers, with negative controls. The census is
+a static classifier: it shows that a block checks a result, not that the check
+is sufficient.
+
+---
+
+<a id="dated-486-26-scoped-supplement--2026-11-09"></a>
+
+## Dated 486/26 scoped supplement — 2026-11-09 (superseded)
+
+At this dated checkpoint the total was **486/512 (94.9%) accepted or resolved, 26 open**:
+**14S / 12P / 0U / 0N**. That update accepted only AUD-226 and preserved the
 prior 485/27, 484/28, 478/34 and 476/36 checkpoints as dated history.
 
 ### AUD-226 — strict coverage for current tracked migrations
@@ -68,7 +150,7 @@ recovery, full CI, merge, deployment or release readiness. The evidence is
 bound to the named hosted tree, not this later documentation postimage.
 The later documentation commit needs its own normal hooks and required checks.
 All required checks, scanner inventories, hooks and quality floors remain
-unchanged. All 26 open criteria, including AUD-154, retain their requirements.
+unchanged. All then-open criteria, including AUD-154, retained their requirements.
 
 ---
 
@@ -297,8 +379,8 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 | AUD-347 | The nightly MinIO chaos suite never executes because the workflow supplies environment variable names the tests do not consume (docs/audits/AUDIT-2026-10.md:543). | S | fixed / missing | Open (S) | `docs/audits/AUDIT-2026-10.md:543` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-31-review.md:95` (snapshot, blob `5d89d423c58f`) | After the snapshot source is on main, inspect the existing nightly Chaos Engineering (ToxiProxy) job and retain a source-bound JUnit receipt showing the two current S3 case names exactly once with no skips, failures or errors. If an unrelated chaos case blocks artifact upload, retain the exact named-case JUnit/log results and bind them to the same source SHA. |
 | AUD-348 | AUDIT-2026-10.md:544: Upgrade 148642dd1207 removes Spotify tokens from users without transferring them. The dated reconciliation narrows the remaining historical loss case to an existing spotify_integrations row that blocks backfill before the legacy user columns are dropped. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:544` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:369` (snapshot, blob `6c8637f0bb3d`) The cited revision `148642dd1207_fix_missing_tables.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/148642dd1207_fix_missing_tables.py`. | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-350 | The historical 202603280001 migration changes stored_events.created_at to TIMESTAMPTZ by altering the existing column, rewriting the outbox table. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:546` (snapshot, blob `ce20147fdbee`); `alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py:622` (historical, blob `f71934a46e83`) The cited revision `202603280001_reconcile_post_uuid_migration_drift.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py`. | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-360 | RLS rows with tenant_id IS NULL are visible to all tenants, and the application does not write tenant_id. | P | partial / missing | Open (P) | `docs/audits/AUDIT-2026-10.md:579` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:103` (snapshot, blob `e4e0679260e8`) | Run the snapshot-bound owned-PostgreSQL AUD-360 cases for NULL-row visibility, the actual NewsService and notification producers, and the bypass scheduler with cross-tenant/NULL negative controls. Confirm every remaining ordinary API insert path has transaction tenant context and every bypass producer supplies tenant ownership explicitly. |
-| AUD-373 | Internal HTTP requests to the backend carry tokens and identity without TLS (original target: gateway-deployment.yaml). | U | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:592` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/gateway-deployment.yaml:95` (snapshot, blob `995929b7e065`) | Obtain owner acceptance of ADR-052 or record the replacement decision; the snapshot still marks this transport proposal unaccepted. Run the hosted Kind proof against the reviewed current source, require A/B/C/D to pass, and retain B's exact certificate-required TLS rejection diagnostic. Do not treat contract tests or a B failure with missing output as that proof. |
+| AUD-360 | RLS rows with tenant_id IS NULL are visible to all tenants, and the application does not write tenant_id. | P | partial / missing | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:579` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:103` (snapshot, blob `e4e0679260e8`) | Run the snapshot-bound owned-PostgreSQL AUD-360 cases for NULL-row visibility, the actual NewsService and notification producers, and the bypass scheduler with cross-tenant/NULL negative controls. Confirm every remaining ordinary API insert path has transaction tenant context and every bypass producer supplies tenant ownership explicitly. |
+| AUD-373 | Internal HTTP requests to the backend carry tokens and identity without TLS (original target: gateway-deployment.yaml). | U | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:592` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/gateway-deployment.yaml:95` (snapshot, blob `995929b7e065`) | Obtain owner acceptance of ADR-052 or record the replacement decision; the snapshot still marks this transport proposal unaccepted. Run the hosted Kind proof against the reviewed current source, require A/B/C/D to pass, and retain B's exact certificate-required TLS rejection diagnostic. Do not treat contract tests or a B failure with missing output as that proof. |
 | AUD-375 | Service-worker queue replay can omit the CSRF header, retain a record after HTTP 403, and run without mutual exclusion across replay passes. | P | fixed / partial | Open (S) | `frontend/src/sw/offline.ts:432` (snapshot, blob `13205676d3ee`); `frontend/src/sw/offline.ts:782` (snapshot, blob `13205676d3ee`) | Execute both cases in the snapshot's frontend/tests/e2e/audit375-service-worker.spec.ts in Chromium and archive a receipt bound to this source tree and test blob; this is the smallest discriminating check for actual cookie/header forwarding, 403 removal, worker contention, and takeover recovery. |
 | AUD-378 | The SLSA Provenance Dry-Run included in CI Success checked only whether ci.yml existed; it must verify provenance rather than accept file presence. | U | partial / partial | Open (S) | `docs/audits/AUDIT-2026-10.md:597` (snapshot, blob `ce20147fdbee`); `.github/workflows/ci.yml:1019` (snapshot, blob `f6ecac56cbf6`) | Make the verifier handle multiple gh verification results by selecting the unique result matching the exact current run invocation and artifact claims; add a two-valid-result regression and an ambiguity negative control. Obtain one passing hosted push run from the final reviewed source showing the exact frontend-dist archive digest and verified certificate/run claims, with provenance-check and CI Success passing. |
 | AUD-380 | The October audit says .semgrep.yml claims Semgrep runs in CI, but no Semgrep scanner job exists (.semgrep.yml:20-21). | U | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:599` (snapshot, blob `ce20147fdbee`); `.semgrep.yml:1` (snapshot, blob `94a21ff83822`) | No additional action for this finding-specific scope; limitations below remain. |
@@ -311,8 +393,8 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 | AUD-420 | The rescue bundle and archive inventory referenced by docs/audits/INDEX.md and the MVP plan were absent on disk at the documented local paths. | N | unproven / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `docs/audits/AUDIT-2026-10.md:639` (snapshot, blob `ce20147fdbee`); `docs/audits/INDEX.md:288` (snapshot, blob `96d9ab020205`) | Historical 478/512 remaining action: Root owner decides whether the current repository object store plus the incremental branch-cleanup bundle satisfies the private-retention requirement, and chooses a durable private location before any copy or move. The branch-cleanup bundle alone is not a standalone full-history backup because it requires two prerequisite commits. Current evidence and its scope limits are in the supplement above. |
 | AUD-422 | CONFIGURATION.md covered only 95 of 290 typed Settings fields and omitted some environment variables read outside Settings (docs/audits/AUDIT-2026-10.md:641). | P | fixed / partial | Scoped acceptance; see decision section | `CONFIGURATION.md`; `tests/test_configuration_settings_inventory.py`; `tests/test_configuration_reference.py`; `tests/test_configuration_outside_settings_drift.py` (tree `ea381c19bda1`) | No additional action for this documentation and inventory-contract criterion; limits below remain.
 | AUD-423 | Correct documented numbers, paths, and defaults in README.md, README.ru.md, SECURITY.md, DEPLOY.md, and AGENTS.md that disagree with code; the original finding cites README.md:228 and README.ru.md:226. | P | partial / partial | Scoped acceptance; see decision section | `README.md`; `README.ru.md`; `SECURITY.md`; `AGENTS.md`; `docs/DEPLOY.md`; `docs/DEPLOY.en.md`; `app/auth/security.py`; `tests/test_docs_source_alignment_static.py`; `tests/test_argon2id_variant_enforcement.py` (tree `ea381c19bda1`) | No additional action for the documented source-alignment criterion; limits below remain.
-| AUD-428 | Approximately 140 Python, 17 Go, and about 30 TypeScript test blocks lacked result checks. The criterion is a complete cross-language census and correction of test blocks that do not check results. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:647` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:877` (snapshot, blob `6c8637f0bb3d`) | Produce and preserve a reproducible Python and Go test-block census against this tree, with assertion-free negative controls; enumerate and correct all remaining resultless blocks, then record named runs. Add frontend negative controls for assertion-shaped no-ops and expect calls without matchers, and refine the classifier where they pass. |
-| AUD-429 | E2E realtime suite and visual tests are not executed in CI (frontend/tests/e2e/chat-realtime.spec.ts:21, 24). | P | fixed / missing | Open (S) | `frontend/tests/e2e/chat-realtime.spec.ts:21` (snapshot, blob `b568a66b29ac`); `.github/workflows/reusable-e2e-tests.yml:420` (snapshot, blob `3d7f580f7641`) | Obtain a successful run of the existing required live-realtime-visual job bound to the exact reviewed source tree, with full-stand startup, 16/16 realtime passes and the complete authenticated visual matrix passing. |
+| AUD-428 | Approximately 140 Python, 17 Go, and about 30 TypeScript test blocks lacked result checks. The criterion is a complete cross-language census and correction of test blocks that do not check results. | P | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:647` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:877` (snapshot, blob `6c8637f0bb3d`) | Produce and preserve a reproducible Python and Go test-block census against this tree, with assertion-free negative controls; enumerate and correct all remaining resultless blocks, then record named runs. Add frontend negative controls for assertion-shaped no-ops and expect calls without matchers, and refine the classifier where they pass. |
+| AUD-429 | E2E realtime suite and visual tests are not executed in CI (frontend/tests/e2e/chat-realtime.spec.ts:21, 24). | P | fixed / missing | Scoped acceptance at 490/512 (was Open (S) at 486/512) | `frontend/tests/e2e/chat-realtime.spec.ts:21` (snapshot, blob `b568a66b29ac`); `.github/workflows/reusable-e2e-tests.yml:420` (snapshot, blob `3d7f580f7641`) | Obtain a successful run of the existing required live-realtime-visual job bound to the exact reviewed source tree, with full-stand startup, 16/16 realtime passes and the complete authenticated visual matrix passing. |
 | AUD-432 | E2E-live contract tests check spec-file text with regular expressions (docs/audits/AUDIT-2026-10.md:651, citing auth-login-lockout.contract.test.mjs:15-60). The dated scoped follow-on work names behavior-level evidence for lockout, full SSR, and registration (docs/superpowers/plans/2026-11-03-audit-evidence/l6.md:20,33-35); those boundaries define what the regex-only checks fail to establish. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:651` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:133` (snapshot, blob `aea09f60fe11`) | Run the current-source auth-login-lockout.live.spec.ts on desktop and mobile against the owned backend/database; retain named results showing the expected pre-threshold 401s, threshold 423, bounded Retry-After, no rate-limit 429 masking, and cleanup. Run register-double-submit.live.spec.ts on desktop and mobile against the owned real stack; retain named results proving two physical inputs produce exactly one real registration request/account and verified cleanup. Run the production SSR suite with playwright.ssr.config.ts and PRODUCTION_SERVER_E2E=true against the managed production server; retain results for login/register in both locales and the wrong-locale negative. Run the hydration scenarios if that behavior remains in the accepted scope. |
 | AUD-433 | Fresh-chain intermediate state: notifications has no child partitions and writes fail before migration 202607020001. | U | fixed / sufficient | Scoped acceptance; see decision section | `alembic/versions/202611020000_mvp_baseline.py:31` (snapshot, blob `e4e0679260e8`); `alembic/versions/202611020000_mvp_baseline.py:584` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-434 | The original AUD-434 entry says that alembic check did not compare server defaults and that push_subscriptions.topics diverged from the model. This review tests that named PostgreSQL JSON default against the model and baseline; it does not broaden the finding to every schema object or database workflow. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:653` (snapshot, blob `ce20147fdbee`); `alembic/env.py:199` (snapshot, blob `16edeb9ffd9c`) | No additional action for this finding-specific scope; limitations below remain. |
@@ -332,7 +414,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 
 ### AUD-373 — source-bound 1f hosted result
 
-The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lock Git-blob prefixes 534569d485a1/d50b74517439/8e1296d8b407), proof-script SHA-256 prefix a2721732d7fa, and contract-test SHA-256 prefix 4bef0e32f4bd. A/C/D passed; B failed with sanitized client fields TCP=CONNECTED, STAGE=READ_ALERT, EVENT=EOF, TLS=ERROR. One backend internal_mtls_handshake_rejected event correlated to the same probe and recorded PEER_DID_NOT_RETURN_A_CERTIFICATE, proving server-side rejection telemetry and correlation while the client did not observe the required TLSV13_ALERT_CERTIFICATE_REQUIRED. The diagnostic artifact is 13574360531 (SHA-256 prefix cc6821c2ccd8); the private receipt retains its full digest. B remains unmet and AUD-373 remains Open (P); this evidence changes no finding counts. [Hosted AUD-373 Kind job](https://github.com/egorribun/university_ecosystem/actions/runs/42370761376/job/128398210334).
+The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lock Git-blob prefixes 534569d485a1/d50b74517439/8e1296d8b407), proof-script SHA-256 prefix a2721732d7fa, and contract-test SHA-256 prefix 4bef0e32f4bd. A/C/D passed; B failed with sanitized client fields TCP=CONNECTED, STAGE=READ_ALERT, EVENT=EOF, TLS=ERROR. One backend internal_mtls_handshake_rejected event correlated to the same probe and recorded PEER_DID_NOT_RETURN_A_CERTIFICATE, proving server-side rejection telemetry and correlation while the client did not observe the required TLSV13_ALERT_CERTIFICATE_REQUIRED. The diagnostic artifact is 13574360531 (SHA-256 prefix cc6821c2ccd8); the private receipt retains its full digest. B was unmet at this dated result and AUD-373 stayed Open (P); the current supplement above records the later accepted result and its limit. [Hosted AUD-373 Kind job](https://github.com/egorribun/university_ecosystem/actions/runs/42370761376/job/128398210334).
 
 ## 25 prior scoped acceptance decisions at the 478/34 checkpoint
 
@@ -648,6 +730,6 @@ The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lo
 
 ## Current scope and continuation
 
-The current decision set contains 33 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **486 / 512 (94.9%) accepted or resolved, with 26 open**. The 14S / 12P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-26-finding-reconciliation--2026-11-09). The prior 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The eight scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
+The current decision set contains 37 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **490 / 512 (95.7%) accepted or resolved, with 22 open**. The 14S / 12P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-26-finding-reconciliation--2026-11-09). The prior 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The eight scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
 
 AUD-269's current schema/HNSW results do not establish query performance or a deployed catalog; the expanded candidate flags are not actual execution. AUD-474's synthetic browser oracle does not establish a real backend or full live stand. Git object IDs and SHA-256 public prefixes are shown as abbreviated identifiers; exact bindings remain in private evidence inputs. The package retains the existing 78 required context/app pairs, blocking CodeQL, hooks, quality thresholds, active baselines and disposition matching rules. No passing scanner, full-source check set, hosted all-green run, merge, deployment, or release readiness is claimed.

@@ -2,12 +2,12 @@
 
 ## Current reconciliation — 2026-11-09
 
-The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
-**14S / 12P / 0U / 0N**. Eight scope additions since the **478/34** checkpoint
-are AUD-208, AUD-226, AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480.
-Only AUD-226 is added by this update, for current tracked Python migration
-coverage and inclusion in the strict Tier 0 gate. The prior **485/27**,
-**484/28**, **478/34** and **476/36** checkpoints remain dated history.
+The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
+**13S / 9P / 0U / 0N**. Twelve scope additions since the **478/34** checkpoint are
+AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-478 and AUD-480.
+Only AUD-360, AUD-373, AUD-428 and AUD-429 are added by this update, each for its
+own stated criterion. The prior **486/26**, **485/27**, **484/28**, **478/34** and
+**476/36** checkpoints remain dated history.
 
 [Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09).
 The reviewed supplemental evidence is bound to its individual source pins,

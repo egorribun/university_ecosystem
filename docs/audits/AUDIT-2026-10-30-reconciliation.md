@@ -2,14 +2,19 @@
 
 ## Current reconciliation — 2026-11-09
 
-The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
-**14S / 12P / 0U / 0N**. Only AUD-226 is accepted in this update, for current
-tracked Python migration coverage and strict Tier 0 gate inclusion. Eight
-scope additions since 478/34 are AUD-208, AUD-226, AUD-272, AUD-334, AUD-416,
-AUD-420, AUD-478 and AUD-480. The prior 485/27 complement remains dated
+The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
+**13S / 9P / 0U / 0N**. Only AUD-360, AUD-373, AUD-428 and AUD-429 are accepted in
+this update, each for its own stated criterion. Twelve scope additions since 478/34
+are AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428,
+AUD-429, AUD-478 and AUD-480. The prior 486/26 and 485/27 complements remain dated
 history below.
 
 [Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09)
+record those four decisions. [ADR-054](../adr/ADR-054-mvp-docker-compose-deployment-target.md)
+makes Docker Compose the MVP target: AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438
+stay open until a Kubernetes target exists.
+
+The [dated AUD-226 scope and evidence limits](AUDIT-2026-11-06-full-reassessment.md#dated-486-26-scoped-supplement--2026-11-09)
 bind AUD-226 to source HEAD `3ac5c590`, actual tested merge `9be180ef`
 and their identical complete tree `ccfccba6`. The validated merged manifest
 records 64/64 lines, 64/64 statements, 6/6 branches and 4/4 derived function
@@ -19,19 +24,24 @@ This decision left the then 506 dispositions, 242 baseline identities, 27 Gitlea
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
 quality floors unchanged. The current policy inventory is 509 dispositions.
 
-<a id="current-26-finding-reconciliation--2026-11-09"></a>
+<a id="current-22-finding-reconciliation--2026-11-09"></a>
 
-### Current 26-finding complement
+### Current 22-finding complement
 
-- **S (14):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
-- **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
+- **S (13):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-438, AUD-454, AUD-501.
+- **P (9):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-381, AUD-432, AUD-483, AUD-484.
 - **U (0):** none.
 - **N (0):** none.
 
-This is exactly the previous 27-ID complement minus AUD-226. All other
-finding-specific acceptance requirements remain. In particular, the recent
-16-case realtime aggregate does not execute AUD-154's named original
-delivery-marker case and does not close it.
+This is exactly the previous 26-ID complement minus AUD-360, AUD-373, AUD-428
+and AUD-429. All other finding-specific acceptance requirements remain.
+
+<a id="current-26-finding-reconciliation--2026-11-09"></a>
+
+### Dated 26-finding complement (486/26; superseded)
+
+- **S (14):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
+- **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
 
 ---
 
