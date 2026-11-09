@@ -15,9 +15,9 @@ and their identical complete tree `ccfccba6`. The validated merged manifest
 records 64/64 lines, 64/64 statements, 6/6 branches and 4/4 derived function
 entries for the sole tracked migration, without an exception. No deleted-
 revision coverage, SQL coverage, runtime-safety or release claim is added.
-The 506 dispositions, 242 baseline identities, 27 Gitleaks fingerprints,
+This decision left the then 506 dispositions, 242 baseline identities, 27 Gitleaks fingerprints,
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
-quality floors remain unchanged.
+quality floors unchanged. The current policy inventory is 509 dispositions.
 
 <a id="current-26-finding-reconciliation--2026-11-09"></a>
 
@@ -44,7 +44,7 @@ complement is retained below as dated history.
 
 [Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
 The 19 frozen AUD-272 source/test pins match the hosted merge tree documented
-in that supplement. Current policy inventory remains **506 dispositions /
+in that supplement. Policy inventory then remained **506 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**; this is
 inventory, not scan or required-check evidence. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.

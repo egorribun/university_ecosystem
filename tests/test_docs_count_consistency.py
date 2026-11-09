@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_DISPOSITION_RECORDS = 506
+EXPECTED_DISPOSITION_RECORDS = 509
 
 
 def _baseline_identities() -> int:

@@ -18,7 +18,7 @@ historical, not a current-index or coverage assertion; the working index has
 since advanced, and no checks are claimed for the later index or these doc
 updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
-Inventory remains **506 dispositions / 242 baseline identities / 27 Gitleaks
+Inventory remains **509 dispositions / 242 baseline identities / 27 Gitleaks
 fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.
 
@@ -127,7 +127,7 @@ handoffs are intentionally not part of the canonical index.
   for rows #7–#10 and exactly two `public_integrity_digest` identities. At the N6 integration snapshot, the working tree contained 505 approved disposition records;
   expiry values remain unchanged, and the two additions expire 2027-01-10. The
   baseline remains at 242 identities and Gitleaks at 27 historical fingerprints.
-  After the owner-approved AUD-428 row13 integration, the working tree contains 506 approved records; the exact public-integrity identity is appended after the unchanged 505-record prefix and expires 2027-01-10.
+  After the owner-approved AUD-428 row13 integration and WASM CLI integrity update, the working tree contains 509 approved records; the row13 public-integrity identity follows the unchanged 505-record prefix, the three wasm-bindgen checksum identities follow it, and all four expire 2027-01-10.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
@@ -162,4 +162,4 @@ and decisions while removing superseded handoffs and duplicate snapshots.
 The vendored skill catalog under `.agents/skills/` retains upstream guidance;
 current task and repository instructions determine how it applies here.
 
-The current inventory includes the eight unchanged, previously approved zlib APK integrity identities restored after the merge omission. Their owner, exact scope and 2027-01-10 expiry are unchanged; the preceding 497 records are preserved. The owner-approved AUD-428 row13 public-integrity identity is appended at record index 505, preserving all 505 prior records and bringing the total to 506.
+The current inventory includes the eight unchanged, previously approved zlib APK integrity identities restored after the merge omission. Their owner, exact scope and 2027-01-10 expiry are unchanged; the preceding 497 records are preserved. The owner-approved AUD-428 row13 public-integrity identity is appended at record index 505, preserving all 505 prior records. The three owner-approved wasm-bindgen CLI checksum identities follow at record indexes 506-508, preserving those 506 records and bringing the total to 509.

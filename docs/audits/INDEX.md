@@ -20,11 +20,11 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **506 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The 506 total preserves all previous 505 records, including the eight
+current policy-file inventory is **509 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 509 total preserves all previous 506 records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
-ADR-047 addendum, and appends the owner-approved AUD-428 row13 public-integrity
-identity. The new row expires 2027-01-10. These are inventory counts only and do
+ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,
+and appends three owner-approved wasm-bindgen CLI checksum identities. All new rows expire 2027-01-10. These are inventory counts only and do
 not establish passing scanner results or required checks.
 All 78 required context/app pairs (78 is the count from the live GitHub ruleset; the repository holds no script deriving it), blocking CodeQL, hooks and quality floors
 remain in force.
