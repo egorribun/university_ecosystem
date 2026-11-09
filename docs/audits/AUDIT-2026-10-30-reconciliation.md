@@ -1,8 +1,43 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Current reconciliation — 2026-11-07
+## Current reconciliation — 2026-11-09
 
-The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
+**14S / 12P / 0U / 0N**. Only AUD-226 is accepted in this update, for current
+tracked Python migration coverage and strict Tier 0 gate inclusion. Eight
+scope additions since 478/34 are AUD-208, AUD-226, AUD-272, AUD-334, AUD-416,
+AUD-420, AUD-478 and AUD-480. The prior 485/27 complement remains dated
+history below.
+
+[Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09)
+bind AUD-226 to source HEAD `3ac5c590`, actual tested merge `9be180ef`
+and their identical complete tree `ccfccba6`. The validated merged manifest
+records 64/64 lines, 64/64 statements, 6/6 branches and 4/4 derived function
+entries for the sole tracked migration, without an exception. No deleted-
+revision coverage, SQL coverage, runtime-safety or release claim is added.
+The 506 dispositions, 242 baseline identities, 27 Gitleaks fingerprints,
+15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
+quality floors remain unchanged.
+
+<a id="current-26-finding-reconciliation--2026-11-09"></a>
+
+### Current 26-finding complement
+
+- **S (14):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
+- **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
+- **U (0):** none.
+- **N (0):** none.
+
+This is exactly the previous 27-ID complement minus AUD-226. All other
+finding-specific acceptance requirements remain. In particular, the recent
+16-case realtime aggregate does not execute AUD-154's named original
+delivery-marker case and does not close it.
+
+---
+
+## Dated 485/27 reconciliation — 2026-11-07 UTC (superseded)
+
+At this dated checkpoint, the formal total was **485/512 (94.7%) accepted or resolved, 27 open**:
 **15S / 12P / 0U / 0N**. Seven scope additions since 478/34 are AUD-208,
 AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The former 484/28
 complement is retained below as dated history.
@@ -16,7 +51,7 @@ pairs, blocking CodeQL, hooks and quality floors remain in force.
 
 <a id="current-27-finding-reconciliation--2026-11-07"></a>
 
-### Current 27-finding complement
+### Dated 27-finding complement (485/27)
 
 - **S (15):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-226, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
 - **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.

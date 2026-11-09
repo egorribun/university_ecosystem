@@ -1,14 +1,15 @@
 # Статус выпуска MVP v1.0.0 — current totals live in [docs/audits/INDEX.md](../../audits/INDEX.md); dated sections below are history with counts valid only on their date.
 
-## Current reconciliation — 2026-11-07
+## Current reconciliation — 2026-11-09
 
-The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
-**15S / 12P / 0U / 0N**. Seven scope additions since the **478/34** checkpoint
-are AUD-208, AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The
-prior **484/28**, **478/34** and **476/36** checkpoints remain below as dated
-history; this supplement supersedes their totals.
+The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
+**14S / 12P / 0U / 0N**. Eight scope additions since the **478/34** checkpoint
+are AUD-208, AUD-226, AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480.
+Only AUD-226 is added by this update, for current tracked Python migration
+coverage and inclusion in the strict Tier 0 gate. The prior **485/27**,
+**484/28**, **478/34** and **476/36** checkpoints remain dated history.
 
-[Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+[Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09).
 The reviewed supplemental evidence is bound to its individual source pins,
 including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
 packet was captured at index tree 8ba3ea986595; the first 484 documentation

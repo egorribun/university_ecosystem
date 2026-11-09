@@ -1,12 +1,87 @@
-# Full audit reassessment — 2026-11-07 UTC
+# Full audit reassessment — 2026-11-09 UTC
 
-## Current scoped supplement — 2026-11-07
+## Current scoped supplement — 2026-11-09
 
-The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+The current formal total is **486/512 (94.9%) accepted or resolved, 26 open**:
+**14S / 12P / 0U / 0N**. This update accepts only AUD-226 and preserves the
+prior 485/27, 484/28, 478/34 and 476/36 checkpoints as dated history.
+
+### AUD-226 — strict coverage for current tracked migrations
+
+The original criterion is: “Tier-0 миграции (`alembic/versions/**`) выпадают
+из требования 100% покрытия”. Acceptance is limited to including every
+current tracked Python migration in the strict Tier 0 gate and establishing
+100% line, statement, branch and function coverage. The remaining action in
+the matrix below required a valid merged manifest after the Python and
+PostgreSQL migration coverage producers ran.
+
+[CI - Matrix Expansion run 42552001684](https://github.com/egorribun/university_ecosystem/actions/runs/42552001684),
+attempt 1, tested synthetic PR merge `9be180ef`, not branch HEAD
+`3ac5c590`. Both Git commit objects name the identical complete tree
+`ccfccba6`; the two untruncated recursive inventories have 6,242 entries
+and identical path, type, mode and object identities. The criterion,
+source, test and policy bindings were checked against that tree.
+
+The [Coverage & Quality Policy Gate job 128957742475](https://github.com/egorribun/university_ecosystem/actions/runs/42552001684/job/128957742475)
+validated the schema-v3 merged manifest with the expected source HEAD,
+tested merge, base, repository, workflow, run and attempt identities.
+Its [canonical quality artifact 13647235515](https://github.com/egorribun/university_ecosystem/actions/runs/42552001684/artifacts/13647235515)
+has ZIP SHA-256 prefix `19243cbb2dfa` and manifest SHA-256 prefix
+`56e6f3371535`. Downloaded bytes match the API and producer-log digests;
+all 16 manifest report size/hash bindings and the pinned schema validate.
+
+The complete tracked migration inventory contains only
+`alembic/versions/202611020000_mvp_baseline.py` (blob `e4e0679260e8`).
+Its merged Tier 0 entry reports **64/64 lines, 64/64 statements, 6/6 branches
+and 4/4 function entries, all 100%**. Raw Python JSON and XML agree on the
+line/branch counters, with no missing or excluded lines, missing branches
+or partial branches. Function coverage is the documented **derived AST
+entry metric**: the first executable body lines of `_execute`,
+`_schedule_pg_cron_jobs`, `upgrade` and `downgrade` all executed.
+It is not a native function counter or a count of physical SQL-string lines.
+
+The [PostgreSQL migration producer job 128951422987](https://github.com/egorribun/university_ecosystem/actions/runs/42552001684/job/128951422987)
+records actual Alembic upgrade, supported downgrade-boundary validation and
+re-upgrade under coverage, then **49 focused baseline tests passed**. Its
+[migration coverage artifact 13645578080](https://github.com/egorribun/university_ecosystem/actions/runs/42552001684/artifacts/13645578080)
+has ZIP SHA-256 prefix `144d6b25c704`; the raw coverage-data prefix is
+`1e287c14e7d7`. Its same-run, same-merge provenance and digest match the
+aggregate job's recorded artifact selection in its hosted log. The gate
+verified and combined this producer
+with the four Python shard inputs before normalization and validation.
+
+The pinned contract (blob `93d57cd21d2e`) requires 100% for all four metrics
+and contains no legacy migration exception. The ownership mapping
+(`e1477ff25992`) includes `alembic/versions/**`; the schema
+(`c9181d1f51c1`), normalizer (`a763675dca33`) and validator
+(`411ab3e04dbb`) are the unchanged hosted inputs. The manifest has
+`validation.valid=true`, no validation errors, no missing reports and
+no Tier 0 errors. Independent review verified these bindings and counters.
+
+The owner-approved retirement of the historical 131-file exception in
+[ADR-047](../adr/ADR-047-risk-based-quality-policy.md#owner-approved-retirement-of-obsolete-migration-coverage-baseline-2026-11-02-utc)
+and the one-baseline inventory in [ADR-051](../adr/ADR-051-mvp-migration-baseline-squash.md)
+do not themselves establish coverage; the hosted evidence above does.
+This acceptance does not assign coverage to deleted revisions or establish
+SQL/PLpgSQL branch coverage, schema equivalence, runtime safety, production
+recovery, full CI, merge, deployment or release readiness. The evidence is
+bound to the named hosted tree, not this later documentation postimage.
+The later documentation commit needs its own normal hooks and required checks.
+All required checks, scanner inventories, hooks and quality floors remain
+unchanged. All 26 open criteria, including AUD-154, retain their requirements.
+
+---
+
+<a id="current-scoped-supplement--2026-11-07"></a>
+
+## Dated 485/27 scoped supplement — 2026-11-07 UTC (superseded)
+
+At this dated checkpoint, the formal total was **485/512 (94.7%) accepted or resolved, 27 open**:
 **15S / 12P / 0U / 0N**. This update adds the scoped AUD-272 claim-ledger and
 sender-replay acceptance to the prior 484/28 overlay. The prior 484/28, 478/34
 and 476/36 checkpoints remain dated history. This finding-specific decision
-does not establish overall CI GREEN or release readiness.
+does not establish overall CI GREEN or release readiness. The 486/26 supplement
+above supersedes this dated total.
 
 ### AUD-272 notification replay — hosted case-level evidence
 
@@ -190,7 +265,7 @@ That dated checkpoint accepted AUD-422 for its configuration-documentation/inven
 
 ## Complete 60-row reassessment matrix (478/34 baseline with 484 overlay)
 
-The Nov 6 class and primary-proof columns preserve the dated baseline. This matrix records the 484/512 overlay; the later AUD-272 decision is in the current supplement above. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
+The Nov 6 class and primary-proof columns preserve the dated baseline. This matrix preserves the 484/512 overlay and records the later AUD-226 acceptance; the AUD-272 and AUD-226 decisions are in their supplements above. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
 
 | ID | Original criterion | Nov 6 class | Primary implementation / proof | Current outcome | Current source pointer | Remaining action |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -203,7 +278,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 | AUD-188 | The file-processor JWKS endpoint is denied by NetworkPolicy, causing RS256 tokens to be rejected after roughly 24 hours (docs/audits/AUDIT-2026-10.md:276). | P | fixed / partial | Open (S) | `charts/university-ecosystem/templates/file-processor-deployment.yaml:2` (snapshot, blob `f5b8bdc8aee7`); `charts/university-ecosystem/templates/network-policy.yaml:515` (snapshot, blob `2c11ef6f7464`) | In an owner-authorized isolated environment matching each target cluster's CNI and resolved chart values, execute the documented AUD-188 protocol: prove direct Pod IP and Service reachability to the actual JWKS URL with HTTP 200 and no redirect from the file-processor namespace; prove same-release allowance and sibling/unrelated denial with same-destination controls and CNI verdicts; then demonstrate per-replica key B refresh without restart using the authentication boundary. Record endpoint, effective policy, CIDR, and DNAT observations. |
 | AUD-189 | The chart NetworkPolicy permits TCP/443 and DNS egress to any destination, including in-cluster services (AUDIT-2026-10.md:277; original source pointer network-policy.yaml:146-148). | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:277` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/network-policy.yaml:734` (snapshot, blob `2c11ef6f7464`) | For the target deployment and source SHA, bind resolved chart values and all additive NetworkPolicies to actual Pod/Service CIDRs and the CNI, then execute the documented same-destination-controlled probes for TCP/443 to private PodIP, ClusterIP, link-local, and approved public listeners, plus UDP/TCP DNS to the real resolver and a controlled non-resolver; retain correlated CNI verdicts. |
 | AUD-208 | The Squawk gate must not pass guard migrations with no lintable SQL and must not be weakened by rule exclusions. | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `.github/workflows/ci.yml:1553` (snapshot, blob `f6ecac56cbf6`); `scripts/quality/render_live_alembic_sql.py:234` (snapshot, blob `27febaf0f99c`) | Historical 478/512 remaining action: Run a named PostgreSQL+Squawk guard case bound to this tree that proves DO/SELECT guard SQL is retained or causes a fail-closed result when no lintable DDL is captured; include an empty/no-op negative control and confirm only the exact documented baseline exclusions apply. Current evidence and its scope limits are in the supplement above. |
-| AUD-226 | Tier-0 migration sources under alembic/versions/** must participate in the 100% coverage requirement; each tracked Tier-0 migration must be evidenced and meet 100% line, statement, branch, and function coverage. | P | fixed / missing | Open (S) | `docs/audits/AUDIT-2026-10.md:313` (snapshot, blob `ce20147fdbee`); `quality/quality-contract.json:268` (snapshot, blob `93d57cd21d2e`) | Run the source-bound Coverage & Quality Policy Gate for snapshot tree 20d4/current source after the Python and PostgreSQL migration coverage artifacts are produced; retain its valid merged manifest and per-file Tier-0 output showing every tracked alembic/versions migration at 100% for all four metrics with no exception. |
+| AUD-226 | Tier-0 migration sources under alembic/versions/** must participate in the 100% coverage requirement; each tracked Tier-0 migration must be evidenced and meet 100% line, statement, branch, and function coverage. | P | fixed / missing | Scoped acceptance at 486/512 (was Open at 485/512) | `docs/audits/AUDIT-2026-10.md:313` (snapshot, blob `ce20147fdbee`); `quality/quality-contract.json:268` (snapshot, blob `93d57cd21d2e`) | Historical 485/512 remaining action: Run the source-bound Coverage & Quality Policy Gate for snapshot tree 20d4/current source after the Python and PostgreSQL migration coverage artifacts are produced; retain its valid merged manifest and per-file Tier-0 output showing every tracked alembic/versions migration at 100% for all four metrics with no exception. Current evidence and limits are in the AUD-226 supplement above. |
 | AUD-245 | The KSV Trivy ignore entries reported at .trivyignore:17-26 were global, lacked manifest path scope, and had an expired review period. | U | fixed / sufficient | Scoped acceptance; see decision section | `.trivyignore:7` (snapshot, blob `03c6c6fad623`); `.trivyignore.yaml:6` (snapshot, blob `9c12f93dbdca`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-251 | The SPIRE agent receives cluster-wide nodes/proxy get/list/watch permissions. | P | partial / partial | Open (P) | `k8s/spire/spire-rbac.yaml:91` (snapshot, blob `5d871c81f229`); `k8s/spire/README.md:62` (snapshot, blob `8b730d4fa69f`) | Owner confirmed 2026-11-07 that no target Kubernetes profile is selected and no deployment is authorized. The isolated Kind profile remains reference-only and establishes no target-cluster settings or closure; AUD-251 stays Open (P). No acceptance, count, or policy changes. Next obtain owner selection of the kubelet profile and node lifecycle; then consider the nodes/pods-only role and fail-closed all-node gate, followed by target-cluster effective-RBAC evidence (including nodes/proxy get/list/watch) and real agent/workload SVID plus mTLS success and negative controls. |
 | AUD-269 | Reconcile 202603280001 removes approximately 15 hot-path indexes without restoring them. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:465` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:2060` (snapshot, blob `e4e0679260e8`) The cited revision `202603280001_reconcile_post_uuid_migration_drift.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py`. | No additional action for this finding-specific scope; limitations below remain. |
@@ -573,6 +648,6 @@ The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lo
 
 ## Current scope and continuation
 
-The current decision set contains 32 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **485 / 512 (94.7%) accepted or resolved, with 27 open**. The 15S / 12P / 0U / 0N complement is listed in the current reconciliation. The prior 484/28, 478/34 and 476/36 checkpoints remain dated history. The seven scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
+The current decision set contains 33 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **486 / 512 (94.9%) accepted or resolved, with 26 open**. The 14S / 12P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-26-finding-reconciliation--2026-11-09). The prior 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The eight scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
 
 AUD-269's current schema/HNSW results do not establish query performance or a deployed catalog; the expanded candidate flags are not actual execution. AUD-474's synthetic browser oracle does not establish a real backend or full live stand. Git object IDs and SHA-256 public prefixes are shown as abbreviated identifiers; exact bindings remain in private evidence inputs. The package retains the existing 78 required context/app pairs, blocking CodeQL, hooks, quality thresholds, active baselines and disposition matching rules. No passing scanner, full-source check set, hosted all-green run, merge, deployment, or release readiness is claimed.
