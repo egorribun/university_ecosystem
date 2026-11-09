@@ -105,6 +105,13 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                 connection.exec_driver_sql(
                     f'GRANT SELECT, INSERT ON public.stored_events TO "{bypass_role}"'
                 )
+                # The CLI uses the ordinary role: no additional bypass membership.
+                connection.exec_driver_sql(
+                    f'GRANT SELECT ON public.tenants TO "{ordinary_role}"'
+                )
+                connection.exec_driver_sql(
+                    f'GRANT SELECT, INSERT, UPDATE ON public.user_profiles, public.active_sessions TO "{ordinary_role}"'
+                )
                 for table in _CORE_TABLES:
                     connection.exec_driver_sql(
                         f'ALTER TABLE public.{table} OWNER TO "{ordinary_role}"'
@@ -968,3 +975,275 @@ async def test_mfa_reset_real_producer_uses_target_owner_under_bypass(
         await session.close()
         await engine.dispose()
         admin.dispose()
+
+
+@contextlib.asynccontextmanager
+async def _admin_cli(rls_schema, monkeypatch, *, configured=_TENANT_A):
+    """Run the actual CLI coroutine against the ordinary owned PostgreSQL role."""
+    from unittest.mock import AsyncMock
+
+    from app.cli import db as cli
+    from app.core.db.listeners import register_tenant_listeners
+
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    scopes = []
+    sessions = []
+
+    def session_factory():
+        assert tenant_id_ctx.get() == str(configured)
+        assert bypass_rls_ctx.get() is False
+        session = maker()
+        sessions.append(session)
+
+        def record(_session, _transaction, connection):
+            assert tenant_id_ctx.get() == str(configured)
+            assert bypass_rls_ctx.get() is False
+            assert tuple(
+                connection.execute(
+                    sa.text(
+                        "SELECT rolsuper, rolbypassrls, "
+                        "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                        "row_security_active('public.users') "
+                        "FROM pg_roles WHERE rolname = current_user"
+                    )
+                ).one()
+            ) == (False, False, False, True)
+            scopes.append(
+                connection.scalar(
+                    sa.text("SELECT current_setting('app.current_tenant', true)")
+                )
+            )
+
+        sa.event.listen(session.sync_session, "after_begin", record)
+        return session
+
+    captured = []
+    monkeypatch.setattr(cli, "asyncio", SimpleNamespace(run=captured.append))
+    monkeypatch.setattr(cli, "async_session", session_factory)
+    monkeypatch.setattr(cli.settings, "mvp_tenant_id", configured)
+    digest = uuid.uuid4().hex
+    hasher = AsyncMock(return_value=digest)
+    monkeypatch.setattr(cli, "get_password_hash", hasher)
+    backend = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.session_cleanup.get_session_backend",
+        AsyncMock(return_value=backend),
+    )
+
+    async def run(email):
+        before = (tenant_id_ctx.get(), bypass_rls_ctx.get())
+        cli.create_admin(
+            email=email, password=uuid.uuid4().hex, full_name="Tenant test"
+        )
+        assert len(captured) == 1
+        try:
+            await captured.pop()
+        finally:
+            assert (tenant_id_ctx.get(), bypass_rls_ctx.get()) == before
+
+    try:
+        yield SimpleNamespace(
+            run=run,
+            scopes=scopes,
+            sessions=sessions,
+            hasher=hasher,
+            backend=backend,
+            digest=digest,
+        )
+    finally:
+        for session in sessions:
+            await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ambient", ["", str(_TENANT_B)], ids=["empty", "foreign"])
+async def test_create_admin_real_producer_scopes_create_and_reset(
+    rls_schema, monkeypatch, ambient
+):
+    identifier = uuid.uuid4()
+    email = f"{identifier}@admin.invalid"
+    admin = _engine(rls_schema.admin)
+    tenant_token = tenant_id_ctx.set(ambient)
+    bypass_token = bypass_rls_ctx.set(True)
+    try:
+        async with _admin_cli(rls_schema, monkeypatch) as cli:
+            await cli.run(email)
+            with admin.begin() as connection:
+                user = connection.execute(
+                    sa.text(
+                        "SELECT id, tenant_id, mfa_epoch, hashed_password FROM users WHERE email = :email"
+                    ),
+                    {"email": email},
+                ).one()
+                assert user.tenant_id == _TENANT_A
+                active_id = uuid.uuid4()
+                jti = str(uuid.uuid4())
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO active_sessions (id, user_id, jti, expires_at, signing_key) VALUES (:id, :user, :jti, :expires, :key)"
+                    ),
+                    {
+                        "id": active_id,
+                        "user": user.id,
+                        "jti": jti,
+                        "key": uuid.uuid4().hex,
+                        "expires": dt.datetime.now(dt.UTC) + dt.timedelta(hours=1),
+                    },
+                )
+            assert user.hashed_password == cli.digest
+            replacement = uuid.uuid4().hex
+            assert replacement != user.hashed_password
+            cli.hasher.return_value = replacement
+            await cli.run(email)
+            assert cli.scopes == [str(_TENANT_A)] * 3  # lookup, refresh, reset lookup
+            cli.backend.revoke_session.assert_awaited_once()
+            assert cli.backend.revoke_session.await_args.args == (jti,)
+            with admin.connect() as connection:
+                rows = connection.execute(
+                    sa.text(
+                        "SELECT id, tenant_id, mfa_epoch, hashed_password FROM users WHERE email = :email"
+                    ),
+                    {"email": email},
+                ).all()
+                assert len(rows) == 1
+                assert tuple(rows[0]) == (
+                    user.id,
+                    _TENANT_A,
+                    user.mfa_epoch + 1,
+                    replacement,
+                )
+                assert (
+                    connection.scalar(
+                        sa.text(
+                            "SELECT revoked_at IS NOT NULL FROM active_sessions WHERE id = :id"
+                        ),
+                        {"id": active_id},
+                    )
+                    is True
+                )
+            for tenant, count in ((_TENANT_A, 1), (_TENANT_B, 0), (None, 0)):
+                with _rolled_back(rls_schema.ordinary) as connection:
+                    with _application_context(connection, tenant=tenant):
+                        assert (
+                            connection.scalar(
+                                sa.text("SELECT count(*) FROM users WHERE id = :id"),
+                                {"id": user.id},
+                            )
+                            == count
+                        )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        admin.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [_TENANT_B, None], ids=["foreign", "null"])
+async def test_create_admin_real_producer_rejects_foreign_email(
+    rls_schema, monkeypatch, owner
+):
+    user_id, active_id = uuid.uuid4(), uuid.uuid4()
+    email = f"{user_id}@admin.invalid"
+    digest = uuid.uuid4().hex
+    admin = _engine(rls_schema.admin)
+    tenant_token = tenant_id_ctx.set(str(_TENANT_B))
+    bypass_token = bypass_rls_ctx.set(True)
+    try:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO users (id, email, hashed_password, tenant_id, mfa_epoch) VALUES (:id, :email, :digest, :tenant, 3)"
+                ),
+                {"id": user_id, "email": email, "digest": digest, "tenant": owner},
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO active_sessions (id, user_id, jti, expires_at, signing_key) VALUES (:id, :user, :jti, :expires, :key)"
+                ),
+                {
+                    "id": active_id,
+                    "user": user_id,
+                    "jti": str(uuid.uuid4()),
+                    "key": uuid.uuid4().hex,
+                    "expires": dt.datetime.now(dt.UTC) + dt.timedelta(hours=1),
+                },
+            )
+        async with _admin_cli(rls_schema, monkeypatch) as cli:
+            with pytest.raises(sa.exc.IntegrityError):
+                await cli.run(email)
+            assert cli.scopes == [str(_TENANT_A)]
+            cli.backend.revoke_session.assert_not_awaited()
+        with admin.connect() as connection:
+            assert tuple(
+                connection.execute(
+                    sa.text(
+                        "SELECT id, tenant_id, hashed_password, mfa_epoch FROM users WHERE email = :email"
+                    ),
+                    {"email": email},
+                ).one()
+            ) == (user_id, owner, digest, 3)
+            assert (
+                connection.scalar(
+                    sa.text("SELECT revoked_at FROM active_sessions WHERE id = :id"),
+                    {"id": active_id},
+                )
+                is None
+            )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        admin.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["missing", "inactive"])
+async def test_create_admin_real_producer_requires_active_tenant(
+    rls_schema, monkeypatch, state
+):
+    configured = uuid.uuid4()
+    email = f"{configured}@admin.invalid"
+    admin = _engine(rls_schema.admin)
+    try:
+        if state == "inactive":
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO tenants (id, name, slug, is_active) VALUES (:id, :name, :name, false)"
+                    ),
+                    {"id": configured, "name": configured.hex},
+                )
+        async with _admin_cli(rls_schema, monkeypatch, configured=configured) as cli:
+            with pytest.raises(ValueError, match="active"):
+                await cli.run(email)
+            cli.hasher.assert_not_awaited()
+            assert cli.scopes == [str(configured)]
+        with admin.connect() as connection:
+            assert (
+                connection.scalar(
+                    sa.text("SELECT count(*) FROM users WHERE email = :email"),
+                    {"email": email},
+                )
+                == 0
+            )
+    finally:
+        admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_create_admin_real_producer_rejects_unconfigured_tenant(
+    rls_schema, monkeypatch
+):
+    async with _admin_cli(rls_schema, monkeypatch, configured=None) as cli:
+        with pytest.raises(ValueError, match="configured tenant"):
+            await cli.run(f"{uuid.uuid4()}@admin.invalid")
+        assert cli.sessions == []
+        assert cli.scopes == []
+        cli.hasher.assert_not_awaited()

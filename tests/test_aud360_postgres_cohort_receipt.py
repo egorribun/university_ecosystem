@@ -35,6 +35,17 @@ MFA_CASES = (
 )
 
 
+ADMIN_CASES = (
+    "test_create_admin_real_producer_scopes_create_and_reset[empty]",
+    "test_create_admin_real_producer_scopes_create_and_reset[foreign]",
+    "test_create_admin_real_producer_rejects_foreign_email[foreign]",
+    "test_create_admin_real_producer_rejects_foreign_email[null]",
+    "test_create_admin_real_producer_requires_active_tenant[missing]",
+    "test_create_admin_real_producer_requires_active_tenant[inactive]",
+    "test_create_admin_real_producer_rejects_unconfigured_tenant",
+)
+
+
 def validator():
     runner = RUNNER.read_text()
     marker = "$receiptValidator = @'\n"
@@ -58,7 +69,7 @@ def receipt():
     for classname, names in expected.items():
         # The required target cohort is independent of the validator's contents.
         if classname == TENANT_CLASS:
-            names = (*PREVIOUS_TENANT_CASES, *MFA_CASES)
+            names = (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES)
         for name in names:
             ElementTree.SubElement(root, "testcase", classname=classname, name=name)
     return source, root
@@ -75,17 +86,17 @@ def execute(source, root, tmp_path, monkeypatch):
 
 def test_tenant_cohort_preserves_all_previous_names_and_adds_exact_mfa_cases():
     _, expected = validator()
-    assert expected[TENANT_CLASS] == (*PREVIOUS_TENANT_CASES, *MFA_CASES)
-    assert sum(map(len, expected.values())) == 45
+    assert expected[TENANT_CLASS] == (*PREVIOUS_TENANT_CASES, *MFA_CASES, *ADMIN_CASES)
+    assert sum(map(len, expected.values())) == 52
 
 
 def test_complete_expanded_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 45\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 52\n"
 
 
-@pytest.mark.parametrize("name", MFA_CASES)
+@pytest.mark.parametrize("name", (*MFA_CASES, *ADMIN_CASES))
 @pytest.mark.parametrize(
     "mutation",
     ["missing", "skipped", "failure", "error", "duplicate", "wrong-name", "extra-case"],
@@ -122,6 +133,6 @@ def test_same_length_duplicate_cannot_replace_missing_mfa_case(tmp_path, monkeyp
     source, root = receipt()
     cases = [case for case in root if case.get("classname") == TENANT_CLASS]
     cases[-1].set("name", cases[-2].get("name"))
-    assert len(cases) == 18
+    assert len(cases) == 25
     with pytest.raises(SystemExit, match=TENANT_CLASS):
         execute(source, root, tmp_path, monkeypatch)
