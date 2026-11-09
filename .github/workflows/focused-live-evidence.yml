@@ -1,7 +1,8 @@
 name: Focused live evidence
 
 # AUD-178, AUD-432, AUD-454 and AUD-501 need a result named per spec, and the full
-# live suite prints only totals. This runs each spec alone on one owned full stand.
+# live suite prints only totals. This runs each spec alone on one owned Core stand,
+# the same stack the full suite uses.
 # It is finding evidence, not a required check. Spec selection is diagnostic-only
 # in the stand runner, so this does not replace the full suite.
 on:
@@ -71,13 +72,13 @@ jobs:
           printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-focused\n' \
             "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
 
-      - name: Start the owned full live stand
+      - name: Start the owned Core live stand
         id: start-stand
         env:
           STAND_REF: ${{ github.sha }}
         run: >-
           uv run --frozen --no-sync python -m scripts.live_stand up
-          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF" --stack full
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF" --stack core
 
       - name: Run each spec alone and require every case to pass
         timeout-minutes: 75
