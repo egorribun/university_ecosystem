@@ -143,6 +143,25 @@ describe("chatQueryOptions", () => {
     }
   )
 
+  it("queryFn reports a denial to its caller and only a denial", async () => {
+    const onDenied = vi.fn()
+    const query = (chatId: string) =>
+      (
+        chatQueryOptions(chatId, onDenied).queryFn as (ctx: {
+          signal: AbortSignal
+        }) => Promise<unknown>
+      )({
+        signal: new AbortController().signal,
+      })
+    vi.spyOn(chatApi, "getChat").mockRejectedValueOnce(httpError(503))
+    await expect(query("chat-x")).rejects.toBeInstanceOf(AxiosError)
+    expect(onDenied).not.toHaveBeenCalled()
+
+    vi.spyOn(chatApi, "getChat").mockRejectedValueOnce(httpError(403))
+    await expect(query("chat-x")).resolves.toBeNull()
+    expect(onDenied).toHaveBeenCalledExactlyOnceWith("chat-x")
+  })
+
   it("queryFn rethrows other failures so the cached chat survives them", async () => {
     const failure = httpError(503)
     vi.spyOn(chatApi, "getChat").mockRejectedValue(failure)

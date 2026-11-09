@@ -69,12 +69,12 @@ function httpError(status: number): AxiosError {
 let queryClient: QueryClient
 
 // Restore the cache a reload brings back from IndexedDB, then answer as the server does.
-function renderRestored(status: number) {
+function renderRestored(status: number, ageMs = 60 * 60_000) {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   // Restored data carries its original age, so it is stale and the hook refetches it.
-  const restoredAt = Date.now() - 60 * 60_000
+  const restoredAt = Date.now() - ageMs
   queryClient.setQueryData(["chats", "chat-1"], cachedChat, { updatedAt: restoredAt })
   queryClient.setQueryData(["messages", "chat-1"], cachedPage, { updatedAt: restoredAt })
   mocks.chatApi.getChat.mockRejectedValue(httpError(status))
@@ -111,6 +111,17 @@ describe("a chat the server no longer shows to this user", () => {
       next_cursor: null,
     })
     expect(result.current.messagesError).toBe(false)
+    unmount()
+  })
+
+  it("drops a restored chat that is still fresh when the server list lacks it", async () => {
+    // A reload seconds after removal restores data younger than the stale time.
+    const { result, unmount } = renderRestored(403, 0)
+
+    await waitFor(() => expect(queryClient.getQueryData(["chats", "chat-1"])).toBeNull())
+    await waitFor(() => expect(result.current.messages).toEqual([]))
+    expect(result.current.activeChat).toBeNull()
+    expect(mocks.chatApi.getChat).toHaveBeenCalled()
     unmount()
   })
 

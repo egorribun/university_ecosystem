@@ -220,7 +220,10 @@ export function deniesChatAccess(error: unknown): boolean {
   return status === 403 || status === 404
 }
 
-export const chatQueryOptions = (chatId: string | undefined) => ({
+export const chatQueryOptions = (
+  chatId: string | undefined,
+  onDenied?: (chatId: string) => void
+) => ({
   queryKey: chatQueryKey(chatId ?? ""),
   queryFn: async ({ signal }: QueryFunctionContext<ChatQueryKey>): Promise<Chat | null> => {
     if (!chatId) {
@@ -232,8 +235,9 @@ export const chatQueryOptions = (chatId: string | undefined) => ({
     try {
       return await chatApi.getChat(chatId, signal)
     } catch (error) {
-      if (deniesChatAccess(error)) return null
-      throw error
+      if (!deniesChatAccess(error)) throw error
+      onDenied?.(chatId)
+      return null
     }
   },
   staleTime: QUERY_STALE_TIME_MS,

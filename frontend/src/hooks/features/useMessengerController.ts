@@ -468,9 +468,19 @@ export const useMessengerController = () => {
   // in list) + `retry: false` override (chat-not-found should surface quickly
   // without exponential backoff, matching pre-W180 line 78 behaviour).
   const { data: singleChatData } = useQuery({
-    ...chatQueryOptions(chatId),
+    ...chatQueryOptions(chatId, (deniedChatId) => {
+      // The server denied the chat: its restored history must not stay readable either.
+      queryClient.setQueryData<MessagesListResponse>(["messages", deniedChatId], {
+        items: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    }),
     enabled: !!chatId && !(canonicalChats?.items ?? []).some((c) => c.id === chatId),
     retry: false,
+    // This runs only when the server's list lacks the chat, so a cached copy, even a
+    // fresh one restored on reload, may belong to a chat this user has just lost.
+    staleTime: 0,
   })
   const singleChatPage = useMemo(
     () =>
