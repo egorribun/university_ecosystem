@@ -4,6 +4,10 @@ import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 
 test.describe.configure({ retries: 0 })
+// The spec proves what the edge and the network do, and it already rejects any
+// response a service worker produced. A worker registered by the first page could
+// otherwise take over the later legacy navigations in this context at random.
+test.use({ serviceWorkers: "block" })
 
 function reportNamesResetDocument(body: string | null, expectedOrigin: string) {
   try {

@@ -28,6 +28,7 @@ import {
 import {
   CHAT_LIST_PAGE_SIZE,
   chatQueryOptions,
+  deniesChatAccess,
   chatsQueryKey,
   chatsQueryOptions,
   fetchLoadedChats,
@@ -497,7 +498,14 @@ export const useMessengerController = () => {
       const editRefresh = selectedChatId
         ? beginMessengerEditRefresh(queryClient, selectedChatId)
         : new Map<string, object>()
-      const fetched = await messageQueryOptions.queryFn(context)
+      let fetched: MessagesListResponse
+      try {
+        fetched = await messageQueryOptions.queryFn(context)
+      } catch (error) {
+        // A removed member must not keep reading the persisted history.
+        if (deniesChatAccess(error)) return { items: [], has_more: false, next_cursor: null }
+        throw error
+      }
       const liveCache = queryClient.getQueryData<MessagesListResponse>(messageQueryOptions.queryKey)
       const refreshed =
         selectedChatId && !context.signal.aborted
