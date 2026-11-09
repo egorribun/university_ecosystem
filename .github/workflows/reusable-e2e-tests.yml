@@ -417,10 +417,9 @@ jobs:
           BROWSER: ${{ inputs.browser }}
           SHARD_INDEX: ${{ inputs.shard-index }}
           SHARD_TOTAL: ${{ inputs.shard-total }}
-          # AUD-429: this job starts the real backend on 127.0.0.1:8000, which the
-          # chat real-time specs need. Without this flag they skip, so the
-          # WebSocket reconnect, typing and sent-status suites never executed in CI.
-          REALTIME_E2E: "true"
+          # Real-time chat runs in the live suite (live-realtime-visual), which has
+          # ws-hub, the gateway and Caddy. This job starts only the backend, so it
+          # cannot carry a chat WebSocket.
         run: |
           BASE_URL="$INPUT_BASE_URL"
           if [[ -z "$BASE_URL" ]]; then

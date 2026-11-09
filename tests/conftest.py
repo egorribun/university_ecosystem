@@ -382,6 +382,33 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+def _wait_for_s3_bucket(
+    cell: Mapping[str, str], bucket: str, timeout: float = 60.0
+) -> None:
+    """SeaweedFS answers before it has created S3_BUCKET; wait for the bucket itself."""
+    import boto3
+    from botocore.config import Config
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=f"http://{cell['endpoint']}",
+        aws_access_key_id=cell["access_key"],
+        aws_secret_access_key=cell["secret_key"],
+        region_name="us-east-1",
+        config=Config(retries={"max_attempts": 1}, connect_timeout=2, read_timeout=2),
+    )
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            client.head_bucket(Bucket=bucket)
+            return
+        except (BotoCoreError, ClientError):
+            if time.monotonic() >= deadline:
+                pytest.fail(f"The disposable S3 cell never created bucket {bucket!r}")
+            time.sleep(0.5)
+
+
 @pytest.fixture(scope="session")
 def minio_container() -> dict[str, str]:
     """Start a disposable SeaweedFS S3 cell for opt-in integration tests."""
@@ -408,11 +435,13 @@ def minio_container() -> dict[str, str]:
     with container as started:
         host = started.get_container_host_ip()
         port = started.get_exposed_port(9000)
-        yield {
+        cell = {
             "endpoint": f"{host}:{port}",
             "access_key": "minioadmin",
             "secret_key": "minioadminsecret",  # pragma: allowlist secret
         }
+        _wait_for_s3_bucket(cell, "quality-tests")
+        yield cell
 
 
 @pytest.fixture(scope="session")

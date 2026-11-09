@@ -309,14 +309,20 @@ def test_trivy_vulnerability_dispositions_are_path_and_expiry_bounded() -> None:
 # AUD-429 wiring --------------------------------------------------------------
 
 
-def test_e2e_run_enables_realtime_specs_against_the_started_backend() -> None:
+def test_e2e_run_targets_the_started_backend_without_a_skippable_realtime_lane() -> (
+    None
+):
+    # Real-time chat needs ws-hub, the gateway and Caddy, which only the live
+    # stand has; it is proven by live-realtime-visual. No spec in this job may
+    # depend on a flag that would let it skip.
     workflow = _load_workflow("reusable-e2e-tests.yml")
     job = next(iter(workflow["jobs"].values()))
     step = _step(job, "Run E2E tests")
 
-    assert step["env"]["REALTIME_E2E"] == "true"
+    assert "REALTIME_E2E" not in step["env"]
     assert step["env"]["VITE_BACKEND_ORIGIN"] == "http://127.0.0.1:8000"
     assert "continue-on-error" not in step
+    assert not (REPOSITORY_ROOT / "frontend/tests/e2e/chat-realtime.spec.ts").exists()
 
 
 def test_e2e_run_step_follows_the_backend_readiness_gate() -> None:

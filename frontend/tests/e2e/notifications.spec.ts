@@ -199,7 +199,17 @@ async function setupMockServiceWorker(page: Page) {
 
       if (data.type === "in-app") {
         try {
-          dispatchMessage({ type: "PUSH_NOTIFICATION", toast })
+          // Mirror src/sw/push.ts: the page accepts an in-app toast only for
+          // the account named by recipientUserId.
+          const recipientUserId =
+            typeof data.recipientUserId === "string" && data.recipientUserId.length > 0
+              ? data.recipientUserId
+              : undefined
+          dispatchMessage({
+            type: "PUSH_NOTIFICATION",
+            ...(recipientUserId ? { recipientUserId } : {}),
+            toast,
+          })
         } catch (e) {
           console.error("Dispatch failed", e)
         }
@@ -355,6 +365,7 @@ test.describe("Push notifications", () => {
           data: {
             type: "in-app",
             severity: "success",
+            recipientUserId: mock.state.profile.id,
           },
         },
       }

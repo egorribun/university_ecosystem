@@ -2,15 +2,16 @@
 
 ## Current reconciliation — 2026-11-09
 
-The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
-**13S / 9P / 0U / 0N**. Only AUD-360, AUD-373, AUD-428 and AUD-429 are accepted in
-this update, each for its own stated criterion. Twelve scope additions since 478/34
-are AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428,
-AUD-429, AUD-478 and AUD-480. The prior 486/26 and 485/27 complements remain dated
-history below.
+The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. Only AUD-164, AUD-178, AUD-454 and AUD-501 are accepted in
+this update, each for its own stated criterion. Sixteen scope additions since 478/34
+are AUD-164, AUD-178, AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416,
+AUD-420, AUD-428, AUD-429, AUD-454, AUD-478, AUD-480 and AUD-501. The prior 490/22,
+486/26 and 485/27 complements remain dated history below.
 
 [Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09)
-record those four decisions. [ADR-054](../adr/ADR-054-mvp-docker-compose-deployment-target.md)
+record those four decisions; the [AUD-360, AUD-373, AUD-428 and AUD-429 decisions](AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09)
+are dated history. [ADR-054](../adr/ADR-054-mvp-docker-compose-deployment-target.md)
 makes Docker Compose the MVP target: AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438
 stay open until a Kubernetes target exists.
 
@@ -24,17 +25,29 @@ This decision left the then 506 dispositions, 242 baseline identities, 27 Gitlea
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
 quality floors unchanged. The current policy inventory is 509 dispositions.
 
+<a id="current-18-finding-reconciliation--2026-11-09"></a>
+
+### Current 18-finding complement
+
+- **S (9):** AUD-154, AUD-169, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-438.
+- **P (9):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-381, AUD-432, AUD-483, AUD-484.
+- **U (0):** none.
+- **N (0):** none.
+
+This is exactly the previous 22-ID complement minus AUD-164, AUD-178, AUD-454
+and AUD-501. All other finding-specific acceptance requirements remain.
+
 <a id="current-22-finding-reconciliation--2026-11-09"></a>
 
-### Current 22-finding complement
+### Dated 22-finding complement (490/22; superseded)
 
 - **S (13):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-438, AUD-454, AUD-501.
 - **P (9):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-381, AUD-432, AUD-483, AUD-484.
 - **U (0):** none.
 - **N (0):** none.
 
-This is exactly the previous 26-ID complement minus AUD-360, AUD-373, AUD-428
-and AUD-429. All other finding-specific acceptance requirements remain.
+That was exactly the previous 26-ID complement minus AUD-360, AUD-373, AUD-428
+and AUD-429.
 
 <a id="current-26-finding-reconciliation--2026-11-09"></a>
 
