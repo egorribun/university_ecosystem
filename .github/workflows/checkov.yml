@@ -296,7 +296,7 @@ jobs:
       - name: Run full-framework Checkov scan
         id: checkov_all
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c3e106d5f8f4253a6de5110efb41a080f83db294 # v12.3135.0
+        uses: bridgecrewio/checkov-action@45edc9d8856b664db2ec251f5f8632361f0a67aa # v12.3139.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -310,7 +310,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for university chart
         id: checkov_helm_university
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c3e106d5f8f4253a6de5110efb41a080f83db294 # v12.3135.0
+        uses: bridgecrewio/checkov-action@45edc9d8856b664db2ec251f5f8632361f0a67aa # v12.3139.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -324,7 +324,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for revocation chart
         id: checkov_helm_revocation
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c3e106d5f8f4253a6de5110efb41a080f83db294 # v12.3135.0
+        uses: bridgecrewio/checkov-action@45edc9d8856b664db2ec251f5f8632361f0a67aa # v12.3139.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -338,7 +338,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for Redis compatibility chart
         id: checkov_helm_redis_compat
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c3e106d5f8f4253a6de5110efb41a080f83db294 # v12.3135.0
+        uses: bridgecrewio/checkov-action@45edc9d8856b664db2ec251f5f8632361f0a67aa # v12.3139.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
