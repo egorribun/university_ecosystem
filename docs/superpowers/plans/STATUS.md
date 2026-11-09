@@ -2,11 +2,11 @@
 
 ## Current reconciliation — 2026-11-09
 
-The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
-**13S / 9P / 0U / 0N**. Twelve scope additions since the **478/34** checkpoint are
-AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-478 and AUD-480.
-Only AUD-360, AUD-373, AUD-428 and AUD-429 are added by this update, each for its
-own stated criterion. The prior **486/26**, **485/27**, **484/28**, **478/34** and
+The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. Sixteen scope additions since the **478/34** checkpoint are AUD-164, AUD-178, AUD-208, AUD-226,
+AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-454, AUD-478, AUD-480 and AUD-501.
+Only AUD-164, AUD-178, AUD-454 and AUD-501 are added by this update, each for its
+own stated criterion. The prior **490/22**, **486/26**, **485/27**, **484/28**, **478/34** and
 **476/36** checkpoints remain dated history.
 
 [Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09).

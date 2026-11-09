@@ -2,11 +2,11 @@
 
 ## Current reconciliation — 2026-11-09
 
-The current formal total is **490/512 (95.7%) accepted or resolved, 22 open**:
-**13S / 9P / 0U / 0N**. Twelve scope additions since the **478/34** checkpoint are
-AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-478 and AUD-480.
-Only AUD-360, AUD-373, AUD-428 and AUD-429 are added by this update, each for its
-own stated criterion. The prior **486/26**, **485/27**, **484/28**, **478/34** and
+The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. Sixteen scope additions since the **478/34** checkpoint are AUD-164, AUD-178, AUD-208, AUD-226,
+AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-454, AUD-478, AUD-480 and AUD-501.
+Only AUD-164, AUD-178, AUD-454 and AUD-501 are added by this update, each for its
+own stated criterion. The prior **490/22**, **486/26**, **485/27**, **484/28**, **478/34** and
 **476/36** checkpoints remain dated history.
 
 [Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09).
@@ -89,7 +89,8 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-09 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 490 / 512 accepted or resolved (95.7%), 22 open; 37 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-09 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 494 / 512 accepted or resolved (96.5%), 18 open; 41 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 490 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09) — 22 open (13S / 9P / 0U / 0N), retained as history.
 - [Dated 486 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-486-26-scoped-supplement--2026-11-09) — 26 open (14S / 12P / 0U / 0N), retained as history.
 - [Dated 485 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 27 open (15S / 12P / 0U / 0N), retained as history.
 - [Dated 484 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-484-28-scoped-supplement--2026-11-07) — 28 open (16S / 12P / 0U / 0N), retained as history.
@@ -153,7 +154,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 22-finding complement, 2026-11-09 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-22-finding-reconciliation--2026-11-09)                 |
+| Current open findings                         | [Current 18-finding complement, 2026-11-09 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-18-finding-reconciliation--2026-11-09)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable
