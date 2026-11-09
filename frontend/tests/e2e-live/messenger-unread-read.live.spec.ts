@@ -657,7 +657,6 @@ test("a real DM read receipt clears only that chat's unread state", async ({
           null
       )
       .toBe(false)
-    await expect(secondReceiverChatRow.getByLabel(/1 непрочитано/u)).toHaveCount(1)
 
     await expect
       .poll(() => readFramesForChat(senderSocket, activeChatId))
@@ -668,11 +667,12 @@ test("a real DM read receipt clears only that chat's unread state", async ({
       )
       .toBe(1)
 
-    // A phone shows the open chat full-screen; the list returns through the back button.
+    // A phone removes the list while a chat is open; it returns through the back button.
     if (mobile) {
       await receiverPage.getByRole("button", { name: "Назад к чатам", exact: true }).click()
     }
     await expect(secondReceiverChatRow).toBeVisible()
+    await expect(secondReceiverChatRow.getByLabel(/1 непрочитано/u)).toHaveCount(1)
 
     const secondMarkReadResponsePromise = receiverPage.waitForResponse((response) => {
       const request = response.request()

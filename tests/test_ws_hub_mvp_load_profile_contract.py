@@ -141,8 +141,13 @@ def test_profile_fails_closed_on_fixture_target_and_source_ip_requirements() -> 
     assert "console.log" not in source
     assert "console.error" not in source
 
+    # The source-IP requirement above follows from this budget per client IP.
     hub_source = WS_HUB_PATH.read_text(encoding="utf-8")
-    assert "NewWSUpgradeRateLimiter(10, 60)" in hub_source
+    assert "NewWSUpgradeRateLimiter(wsUpgradeRatePerMinute(cfg), 60)" in hub_source
+    config_source = (WS_HUB_PATH.parents[1] / "config" / "config.go").read_text(
+        encoding="utf-8"
+    )
+    assert "const DefaultWSUpgradeRatePerMinute = 10" in config_source
 
 
 def test_run_requires_a_compose_project_bound_to_its_synthetic_run_id() -> None:
