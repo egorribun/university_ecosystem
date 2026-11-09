@@ -17983,11 +17983,11 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     policy = json.loads(policy_bytes.decode("utf-8"))
     records = policy.get("records")
     if isinstance(records, list) and len(records) == 506:
-        assert len(policy_bytes) == 495847, "live disposition bytes changed"
+        assert len(policy_bytes) == 495844, "live disposition bytes changed"
         assert hashlib.sha256(policy_bytes).digest() == (
             _AUD428_ROW13_ACTIVE_POLICY_SHA256
         ), "live disposition policy digest changed"
-        assert hashlib.sha256(policy_bytes[:494910]).digest() == (
+        assert hashlib.sha256(policy_bytes[:494907]).digest() == (
             _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
         ), "prior 505 policy bytes changed"
     return policy
@@ -30909,8 +30909,8 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495847
-    assert hashlib.sha256(policy_bytes[:494910]).digest() == (
+    assert len(policy_bytes) == 495844
+    assert hashlib.sha256(policy_bytes[:494907]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
     reconstructed = ledger_bytes.replace(
@@ -31057,7 +31057,7 @@ def test_aud428_row13_approved_506_rejects_scope_drift(mutation: str) -> None:
 
 
 _AUD380_APPROVED_OWNER_ADDITIONS_SHA256 = bytes.fromhex(
-    "f5 4a 55 43 bc af 8b e9 37 39 95 ae 0b ae d6 97 b0 a8 24 a6 e6 ac c8 fe 81 b7 a0 81 63 47 49 b3"
+    "e9 9e 32 8c a7 da f8 24 d3 1a 37 15 38 1e 59 d1 e9 74 29 ab b5 8c d0 df b5 bc fe 15 fb f0 b1 c1"
 )
 _AUD380_CONDITIONAL_RECORDSET_SHA256 = bytes.fromhex(
     "33 bb 64 66 8e a1 56 10 60 1d bf 36 2c 80 6f c3 ae 3f e4 4a 49 50 46 b8 fb 3b 2b 7b ef 7c a9 4a"
@@ -31084,7 +31084,7 @@ _AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
     "00 b8 46 5a 51 45 63 26 f0 e1 ae 1b f7 bf 38 de 84 2b e7 1e 51 88 23 53 cc bc ad 7d e6 49 06 7e"
 )
 _AUD380_APPROVED_OWNER_ADDITIONS_SHA256 = bytes.fromhex(
-    "f5 4a 55 43 bc af 8b e9 37 39 95 ae 0b ae d6 97 b0 a8 24 a6 e6 ac c8 fe 81 b7 a0 81 63 47 49 b3"
+    "e9 9e 32 8c a7 da f8 24 d3 1a 37 15 38 1e 59 d1 e9 74 29 ab b5 8c d0 df b5 bc fe 15 fb f0 b1 c1"
 )
 _AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
     "3f 00 15 23 ef b0 55 ea 19 47 63 9c 39 11 72 94 b7 8d bc 53 ef 2d c3 80 ae cc 7a 85 f2 e2 2f 0f"
@@ -31105,22 +31105,22 @@ _AUD380_PENDING_NEW_ADDITIONS_SHA256 = bytes.fromhex(
     "23 9a 58 4c 08 1f 3f 20 5d 9f 11 4c f4 f0 d6 a1 1e 06 b7 ff 51 8c 13 25 a4 9f b1 bb 75 20 1a d9"
 )
 _AUD380_APPROVED_OWNER_ADDITIONS_SHA256 = bytes.fromhex(
-    "f5 4a 55 43 bc af 8b e9 37 39 95 ae 0b ae d6 97 b0 a8 24 a6 e6 ac c8 fe 81 b7 a0 81 63 47 49 b3"
+    "e9 9e 32 8c a7 da f8 24 d3 1a 37 15 38 1e 59 d1 e9 74 29 ab b5 8c d0 df b5 bc fe 15 fb f0 b1 c1"
 )
 _AUD380_APPROVED_NEW_ADDITIONS_SHA256 = bytes.fromhex(
     "3d 26 78 00 a3 1d 82 5a fe 25 cc 5f cd 0f b7 be db 72 09 4d 50 ba f9 46 ff 9b 30 cd 89 06 47 80"
 )
 _AUD380_CONDITIONAL_RECORDSET_SHA256 = bytes.fromhex(
-    "96 68 bf 6b 1b 90 14 2f ac 6f 55 f1 16 07 95 bd f2 46 5a 2a ec d3 c6 7f c8 2c 22 cf e2 cc 13 19"
+    "ae da 32 32 cd 24 04 5d 78 41 d1 13 ec d1 8c ea 02 f5 ba 30 c5 e9 70 da 33 df cf 72 02 45 28 d3"
 )
 _AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = bytes.fromhex(
     "07 d6 17 24 28 ac 5b 66 b1 a5 e6 1f e4 48 fd e6 24 b5 f3 e5 18 76 01 32 0a 11 07 5f 53 4b d3 1e"
 )
 _AUD380_N3_PENDING_493_RECORDSET_SHA256 = bytes.fromhex(
-    "c7 a3 67 80 86 ad 54 74 af 50 0a b7 d2 af 93 da 7e 01 42 72 24 48 66 6e 0c 9d 86 eb b3 d8 55 69"
+    "51 4d 6e 29 c8 e6 bd 2d 54 58 d7 72 7d 83 cd a8 0c 5b 92 2f 37 c0 33 3c 66 3c 31 56 d9 a5 99 ce"
 )
 _AUD380_N3_CONDITIONAL_493_RECORDSET_SHA256 = bytes.fromhex(
-    "f2 40 b5 da d8 e4 09 82 c6 28 2f a9 e2 7f 32 3a 79 cd f0 a4 96 c8 10 2f dd 22 29 0a 1b 8b 00 42"
+    "96 4b eb 57 ae 3e f2 03 09 48 de 07 69 17 84 b2 16 2c 75 60 63 f6 1d 0d 6a ac 13 73 1d 98 61 62"
 )
 _AUD380_N6_PENDING_ADDITIONS_SHA256 = bytes.fromhex(
     "f6 39 ce 05 59 e9 bb 5c cb d5 82 06 63 5d 56 f2 ce f8 6d 6a 07 89 ac 33 f1 fa 63 21 08 94 9c 71"
@@ -31132,13 +31132,13 @@ _AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
 
 # Exact policy and ledger digests after the 2026-11-08 companion rebinds.
 _AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
-    "cd 29 b4 65 9a e7 26 d1 75 8c 17 86 7e 53 8c 18 57 35 36 7e f9 0d b5 24 f3 e4 3a 53 a0 c0 2c 8f"
+    "ec 27 bc 3a fa 53 62 6f 5c 99 8f 66 eb d3 d8 b8 f0 b1 0f 6a 2f d1 9a c8 fe 42 b1 84 c6 0c 7f 6f"
 )
 _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256 = bytes.fromhex(
-    "63 c4 61 e2 65 a0 77 76 68 85 d0 3f 20 3d 06 60 2e da 6e 67 db d5 a9 39 1e 8c 84 78 ad 66 b7 56"
+    "9f ff 4d cb 70 93 3e 4f 08 df 4e 51 86 6b 8a 77 53 14 f5 95 67 0d a2 6f ba 25 91 1d 4f 91 56 4a"
 )
 _AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
-    "3d 36 11 f0 3e 7d 8b a4 ce 29 a6 c0 bf b6 a3 d2 9b 56 b4 c8 da 4f 18 b3 68 a5 b4 a8 9b 60 ea 80"
+    "7f 53 e4 94 75 7f 3b a0 52 83 f1 7d 02 89 19 b3 ff 7e 94 1d 3a e1 c0 a2 97 70 9e f2 b3 0a 32 4c"
 )
 # End of 2026-11-08 policy digests.
 
@@ -31158,7 +31158,7 @@ _AUD380_NOV8_SOURCE_REBINDS = {
         "74 68 11 ca 97 89 b0 e8 1c 6d 1e 95 d3 09 81 9c ce a5 9e 32 ab 48 28 d8 74 07 e0 af 0b bf 24 a3"
     ),
     "quality/semgrep-dispositions.json": bytes.fromhex(
-        "3d 36 11 f0 3e 7d 8b a4 ce 29 a6 c0 bf b6 a3 d2 9b 56 b4 c8 da 4f 18 b3 68 a5 b4 a8 9b 60 ea 80"
+        "7f 53 e4 94 75 7f 3b a0 52 83 f1 7d 02 89 19 b3 ff 7e 94 1d 3a e1 c0 a2 97 70 9e f2 b3 0a 32 4c"
     ),
     "scripts/kind/aud373_internal_mtls_proof.sh": bytes.fromhex(
         "df f2 11 ea a4 bb 49 1b 37 0d cd 1f b7 d4 90 b5 c1 a8 79 0f 61 2e cb 30 53 7d de 7d 99 41 26 55"
@@ -31184,11 +31184,11 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
 }
 # End of 2026-11-08 source rebinds.
 _AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = bytes.fromhex(
-    "ec ff 84 f0 ca f4 d0 7b 6a 4a 41 d4 d2 cb 07 9a 18 c1 99 13 08 f1 aa d7 26 3a df c6 58 1a e8 02"
+    "8d 18 db a9 04 86 de ba 57 a5 cb ad 2d af 79 59 2c 6e c9 a0 33 86 71 f8 59 78 e8 2a 20 c9 0d b6"
 )
 _AUD380_N6_PENDING_ADDITIONS_SHA256 = bytes.fromhex(
     "65 92 d3 b5 be 44 c5 b7 55 ca 79 33 41 94 41 d8 4d 7d 36 21 fd 17 a6 69 c7 6a 66 af c0 3e 89 32"
 )
 _AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
-    "72 b5 f2 49 db 7c 88 d0 e7 89 a5 40 82 0f 46 0f b1 e9 25 92 c7 b8 fe ed 11 64 50 10 9c 3a 91 38"
+    "71 95 bf c2 0c 26 77 00 73 e3 1a 66 17 4e d1 15 84 aa ae 1c f9 93 44 45 0d 43 de 85 67 0b af 4d"
 )

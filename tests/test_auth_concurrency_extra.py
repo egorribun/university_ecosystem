@@ -387,17 +387,29 @@ class TestEnsureChallengeNotLocked:
     @pytest.mark.asyncio
     async def test_under_limit_noop(self):
         from app.auth.mfa.challenge import _ensure_challenge_not_locked
+        from app.models.auth import ChallengeState
 
         db = AsyncMock()
         challenge = MagicMock()
         challenge.attempt_count = 2
-        await _ensure_challenge_not_locked(
+        challenge.consumed_at = None
+        challenge.state = ChallengeState.PENDING
+        result = await _ensure_challenge_not_locked(
             db, challenge, method="totp", limit=5, locale="en"
         )
 
+        assert result is None
+        assert challenge.attempt_count == 2
+        assert challenge.consumed_at is None
+        assert challenge.state == ChallengeState.PENDING
+        db.flush.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_at_limit_locks(self):
+        from fastapi import HTTPException
+
         from app.auth.mfa.challenge import _ensure_challenge_not_locked
+        from app.models.auth import ChallengeState
 
         db = AsyncMock()
         challenge = MagicMock()
@@ -405,14 +417,19 @@ class TestEnsureChallengeNotLocked:
         challenge.user_id = uuid.uuid4()
         challenge.id = uuid.uuid4()
         challenge.consumed_at = None
+        challenge.state = ChallengeState.PENDING
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(HTTPException) as caught:
             await _ensure_challenge_not_locked(
                 db, challenge, method="totp", limit=5, locale="en"
             )
 
-            db.execute.assert_not_awaited()
-            db.flush.assert_not_awaited()
+        assert caught.value.status_code == 429
+        assert challenge.state == ChallengeState.LOCKED
+        assert challenge.consumed_at is not None
+        assert challenge.locked_at == challenge.consumed_at
+        db.execute.assert_not_awaited()
+        db.flush.assert_awaited_once()
 
 
 class TestRegisterFailedAttempt:

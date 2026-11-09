@@ -418,7 +418,7 @@
         },
         {
           "path": "tests/test_auth_concurrency_extra.py",
-          "sha256": "a38a021d4726eebab0171d0b6bfe543a31cb52423b7a22ad14b64cbd5e5153c7"
+          "sha256": "196fb670491c5db1fc99c80b67a918d7ee8ea3422d3cc74900cacb1f7e17dc10"
         }
       ],
       "expires": "2027-01-10",
