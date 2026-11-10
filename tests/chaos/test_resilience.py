@@ -137,6 +137,7 @@ def _post_chaos_message(
     content: str,
     *,
     idempotency_key: str | None = None,
+    timeout: float | None = None,
 ) -> httpx.Response:
     headers = _csrf_headers(client)
     if idempotency_key is not None:
@@ -145,7 +146,15 @@ def _post_chaos_message(
         f"/api/v1/chats/{chat_id}/messages",
         files={"content": (None, content)},
         headers=headers,
+        timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
     )
+
+
+# A send during a Valkey outage makes several sequential Redis calls (rate limit,
+# session cache, idempotency cache); each waits out its own connection attempt
+# before failing open. One local run measured 20 seconds in total, mostly
+# resolver waits for the stopped host, so the outage send gets its own bound.
+_VALKEY_OUTAGE_SEND_TIMEOUT_SECONDS = 60.0
 
 
 def _outbox_engine(db_url: str):
@@ -285,15 +294,23 @@ def _wait_for_outbox_event_processed(
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
-def _provision_chaos_identity(patch: pytest.MonkeyPatch) -> None:
-    """Create the chaos user and its chat unless the caller supplied a user.
+def _configured_chaos_credentials() -> dict[str, str]:
+    return {
+        "username": os.getenv("CHAOS_TEST_USER", "chaos@test.local"),
+        "password": os.getenv("CHAOS_TEST_PASSWORD", "chaos-test-password"),
+    }
+
+
+def _provision_chaos_identity() -> dict[str, str]:
+    """Return the chaos credentials, creating the user and chat when none is set.
 
     AUD-322: the disposable chaos stack starts with no accounts. Register a
     fresh user, a peer and their chat through the public API, and fail the
-    module (never skip it) when any step is refused.
+    module (never skip it) when any step is refused. A caller-supplied
+    CHAOS_TEST_USER is used as it is.
     """
     if os.getenv("CHAOS_TEST_USER"):
-        return
+        return _configured_chaos_credentials()
     email = f"chaos-{uuid.uuid4().hex[:16]}@university.dev"
     # The password policy requires upper, lower, digit and symbol classes.
     password = f"Ch4os-{secrets.token_hex(24)}"
@@ -304,19 +321,22 @@ def _provision_chaos_identity(patch: pytest.MonkeyPatch) -> None:
             f"Could not provision the chaos user under CHAOS_TESTS=1: {error}",
             pytrace=False,
         )
-    patch.setenv("CHAOS_TEST_USER", email)
-    patch.setenv("CHAOS_TEST_PASSWORD", password)
+    return {"username": email, "password": password}
 
 
 @pytest.fixture(scope="module")
 def setup_chaos_env():
-    """Ensure docker compose environment is up before the module runs."""
+    """Bring the stack up and yield the per-test chaos credential provisioner.
+
+    The shared pytest database harness truncates every mapped table after each
+    test, and in the nightly job that database is the chaos stack's own. A user
+    created once per module is therefore gone by the second test, so each
+    signed-in case provisions its own user and chat through the yielded callable.
+    """
     if os.getenv("GITHUB_ACTIONS") != "true":
         _run_docker_compose("up -d --no-build --no-recreate")
         time.sleep(3)  # Wait for services to initialise
-    with pytest.MonkeyPatch.context() as patch:
-        _provision_chaos_identity(patch)
-        yield
+    yield _provision_chaos_identity
     # Restore any services that a test may have stopped
     _run_docker_compose("start valkey nats ws-hub gateway")
     time.sleep(2)
@@ -326,13 +346,15 @@ def setup_chaos_env():
 def authenticated_client(setup_chaos_env) -> httpx.Client:
     """Return a synchronous httpx client pre-authenticated against the live API.
 
-    setup_chaos_env provisions the credentials and chat unless CHAOS_TEST_USER
-    already names a user with a chat.
+    setup_chaos_env yields a provisioner that creates a fresh user and chat for
+    this test unless CHAOS_TEST_USER already names one; without it (as in the
+    runtime contract tests) the configured environment credentials are used.
     """
-    credentials = {
-        "username": os.getenv("CHAOS_TEST_USER", "chaos@test.local"),
-        "password": os.getenv("CHAOS_TEST_PASSWORD", "chaos-test-password"),
-    }
+    credentials = (
+        setup_chaos_env()
+        if callable(setup_chaos_env)
+        else _configured_chaos_credentials()
+    )
     with httpx.Client(base_url=BASE_URL, timeout=10.0) as client:
         response = client.get("/api/v1/auth/csrf-cookie")
         if response.status_code != 200:
@@ -437,6 +459,7 @@ def test_valkey_outage_idempotency_fail_open(setup_chaos_env, authenticated_clie
             chat_id,
             content,
             idempotency_key=idempotency_key,
+            timeout=_VALKEY_OUTAGE_SEND_TIMEOUT_SECONDS,
         )
         assert response.status_code in (201, 200), (
             f"Expected 2xx (fail-open) but got {response.status_code}: {response.text}"
@@ -536,8 +559,11 @@ def test_ws_hub_down_gateway_proxy_fallback(setup_chaos_env):
 
     try:
         # 2. Try to connect to WS or proxy endpoint and assert it returns 502 Bad Gateway
+        # The gateway bounds its upstream dial, DNS lookup included, at five
+        # seconds (services/gateway/cmd/gateway/main.go), so a stopped ws-hub
+        # yields 502 only after that bound. Wait past it, but not indefinitely.
         with httpx.Client(base_url=GATEWAY_URL) as client:
-            res = client.get("/ws/chat", timeout=3.0)
+            res = client.get("/ws/chat", timeout=10.0)
             assert res.status_code == 502, (
                 f"Expected 502 while ws-hub is stopped, got {res.status_code}"
             )

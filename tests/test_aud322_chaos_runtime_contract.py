@@ -551,17 +551,19 @@ def test_chaos_module_provisions_its_own_user_unless_one_is_supplied(
 
     monkeypatch.setattr(resilience, "provision", fake_provision)
     monkeypatch.delenv("CHAOS_TEST_USER", raising=False)
-    with pytest.MonkeyPatch.context() as patch:
-        resilience._provision_chaos_identity(patch)
-        email, password = created[0]
-        assert re.fullmatch(r"chaos-[0-9a-f]{16}@university\.dev", email)
-        assert os.environ["CHAOS_TEST_USER"] == email
-        assert os.environ["CHAOS_TEST_PASSWORD"] == password
+    credentials = resilience._provision_chaos_identity()
+    email, password = created[0]
+    assert re.fullmatch(r"chaos-[0-9a-f]{16}@university\.dev", email)
+    assert credentials == {"username": email, "password": password}
     assert "CHAOS_TEST_USER" not in os.environ
 
+    supplied = secrets.token_urlsafe(24)
     monkeypatch.setenv("CHAOS_TEST_USER", "owned@university.dev")
-    with pytest.MonkeyPatch.context() as patch:
-        resilience._provision_chaos_identity(patch)
+    monkeypatch.setenv("CHAOS_TEST_PASSWORD", supplied)
+    assert resilience._provision_chaos_identity() == {
+        "username": "owned@university.dev",
+        "password": supplied,
+    }
     assert len(created) == 1
 
 
@@ -575,9 +577,8 @@ def test_chaos_module_fails_when_provisioning_is_refused(
 
     monkeypatch.setattr(resilience, "provision", refuse)
     monkeypatch.delenv("CHAOS_TEST_USER", raising=False)
-    with pytest.MonkeyPatch.context() as patch:
-        with pytest.raises(pytest.fail.Exception, match="HTTP 429"):
-            resilience._provision_chaos_identity(patch)
+    with pytest.raises(pytest.fail.Exception, match="HTTP 429"):
+        resilience._provision_chaos_identity()
 
 
 def test_chat_lookup_uses_the_unslashed_list_route(
