@@ -108,7 +108,6 @@ test("email verification retries, rotates its code on resend, and rejects replay
   const address = `live-email-otp-${identity}@university.dev`
   const fullName = `Live email OTP acceptance ${testInfo.project.name} ${identity}`
   const password = freshPassword()
-  let createdUserId: string | null = null
   let registrationAttempted = false
   let registrationRequestObserved = false
   let registrationStatus: number | null = null
@@ -191,13 +190,10 @@ test("email verification retries, rotates its code on resend, and rejects replay
     }
     reportLiveHttpStatus(testInfo.project.name, "email-otp-register", registered.status())
     expect(registered.ok()).toBe(true)
-    const registrationBody = (await registered.json()) as { id?: unknown }
-    if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
-      throw new Error("Synthetic account registration returned no account id")
-    }
-    // This id came from this test's unique synthetic account registration and
-    // is retained only so the finally block can remove that exact account.
-    createdUserId = registrationBody.id
+    // Registration answers {"status": "ok"} for new and existing addresses alike
+    // (no account enumeration), so it carries no id. The finally block resolves
+    // this test's unique synthetic account through the admin directory instead.
+    expect(await registered.json()).toEqual({ status: "ok" })
 
     await loginWith(page, address, password)
     await page.goto("/settings?tab=2")
@@ -450,7 +446,7 @@ test("email verification retries, rotates its code on resend, and rejects replay
   } finally {
     page.off("request", observeRegistrationRequest)
     page.off("response", observeRegistrationResponse)
-    if (createdUserId) {
+    if (registrationAttempted) {
       const cleanupContext = await browser.newContext({
         baseURL: process.env.LIVE_BASE_URL,
         ignoreHTTPSErrors: true,
@@ -459,25 +455,41 @@ test("email verification retries, rotates its code on resend, and rejects replay
       try {
         const cleanupPage = await cleanupContext.newPage()
         await loginAs(cleanupPage, "admin")
-        const cleanup = await cleanupPage.evaluate(async (userId) => {
-          const csrfCookie = document.cookie
-            .split(";")
-            .map((part) => part.trim())
-            .find((part) => part.startsWith("csrf_token="))
-          if (!csrfCookie) return { status: 0 }
+        const query = new URLSearchParams({ search: fullName, limit: "200" })
+        const directory = await cleanupPage.request.get(`/api/v1/users?${query.toString()}`)
+        expect(directory.status(), "admin locates the synthetic account for exact cleanup").toBe(
+          200
+        )
+        const matches = (
+          (await directory.json()) as Array<{ id: string; email: string; full_name: string | null }>
+        ).filter((entry) => entry.email === address && entry.full_name === fullName)
+        expect(
+          matches.length,
+          "cleanup resolves at most one exact synthetic identity"
+        ).toBeLessThanOrEqual(1)
+        // A rejected registration leaves nothing to delete; never return from
+        // this finally block, which would discard the test's own failure.
+        for (const { id: createdUserId } of matches) {
+          const cleanup = await cleanupPage.evaluate(async (userId) => {
+            const csrfCookie = document.cookie
+              .split(";")
+              .map((part) => part.trim())
+              .find((part) => part.startsWith("csrf_token="))
+            if (!csrfCookie) return { status: 0 }
 
-          const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
-            method: "DELETE",
-            credentials: "same-origin",
-            headers: {
-              Accept: "application/json",
-              "X-CSRF-Token": decodeURIComponent(csrfCookie.slice("csrf_token=".length)),
-              "X-Requested-With": "XMLHttpRequest",
-            },
-          })
-          return { status: response.status }
-        }, createdUserId)
-        expect(cleanup.status).toBe(200)
+            const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
+              method: "DELETE",
+              credentials: "same-origin",
+              headers: {
+                Accept: "application/json",
+                "X-CSRF-Token": decodeURIComponent(csrfCookie.slice("csrf_token=".length)),
+                "X-Requested-With": "XMLHttpRequest",
+              },
+            })
+            return { status: response.status }
+          }, createdUserId)
+          expect(cleanup.status).toBe(200)
+        }
       } finally {
         await cleanupContext.close()
       }
