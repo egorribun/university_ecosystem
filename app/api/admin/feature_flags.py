@@ -14,12 +14,10 @@ from app.schemas import schemas
 
 router = APIRouter(prefix="/feature-flags", tags=["admin-feature-flags"])
 
+_ADMIN_ONLY = combine(UNAUTHENTICATED, ADMIN_FORBIDDEN)
 
-@router.get(
-    "",
-    response_model=list[schemas.FeatureFlagOut],
-    responses=combine(UNAUTHENTICATED, ADMIN_FORBIDDEN),
-)
+
+@router.get("", response_model=list[schemas.FeatureFlagOut], responses=_ADMIN_ONLY)
 async def list_feature_flags(
     _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> list[FeatureFlagSnapshot]:
