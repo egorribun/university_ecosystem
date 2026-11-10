@@ -154,7 +154,7 @@
       "companions": [
         {
           "path": "scripts/owned_nats_outage_cli.py",
-          "sha256": "6c038864aca8c97f0442d25c3abfb337eb9585db498f75ccb6f4424f8dfb73d5"
+          "sha256": "f75d4dff6070e1c109ad07670fc95fa471711940f8de5ae1b50d02490fb6d9f1"
         },
         {
           "path": "scripts/owned_nats_failure_diagnostic.py",
@@ -174,7 +174,7 @@
         },
         {
           "path": "scripts/owned_nats_transport_port.py",
-          "sha256": "cb6948b7e7087c7e890d195aba44d26d1e3bc10ef4edb573fb818e43eebd943c"
+          "sha256": "5e30b02007afc67fa77004cb9429a1dc2f9a7402c8f882443e202bd94f4ce7a5"
         },
         {
           "path": "scripts/owned_nats_runtime_adapter.py",

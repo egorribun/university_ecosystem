@@ -30917,8 +30917,8 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495838
-    assert hashlib.sha256(policy_bytes[:494903]).digest() == (
+    assert len(policy_bytes) == 495839
+    assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
     reconstructed = ledger_bytes.replace(
@@ -31512,7 +31512,7 @@ def _nov9_historical_506_from_live_policy(
     )
     historical = {**policy, "records": copy.deepcopy(records[:506])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert len(historical_bytes) == 495838, "prior 506 policy bytes changed"
+    assert len(historical_bytes) == 495839, "prior 506 policy bytes changed"
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
@@ -31524,7 +31524,7 @@ def _nov9_historical_506_from_live_policy(
 
 
 def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
-    assert len(policy_bytes) == 498820, "live disposition bytes changed"
+    assert len(policy_bytes) == 498821, "live disposition bytes changed"
     assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
         "live disposition policy digest changed"
     )
@@ -31532,8 +31532,8 @@ def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     # Everything before the former closing list is byte-identical, including
     # the row13 companion and each old approval's evidence, dates, and owner.
-    assert policy_bytes[:495808] == historical_bytes[:495808]
-    assert hashlib.sha256(policy_bytes[:494903]).digest() == (
+    assert policy_bytes[:495809] == historical_bytes[:495809]
+    assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     ), "prior 505 policy bytes changed"
 
@@ -31967,3 +31967,124 @@ def test_nats_row11_rebind_preserves_two_existing_approvals() -> None:
     }
     assert set(changed) <= historical
     assert not set(_NATS_ROW11_IDENTITY_REBINDS.values()) & historical
+
+
+# Exact owned NATS subprocess companion rebinds after the 2026-11-10 attempt
+# evidence change. Two existing companion pins in the scripts/owned_nats_process.py
+# subprocess-injection disposition, and their two existing approved identities,
+# are rebound one-to-one; every approval field and historical snapshot stays.
+_NATS_PROCESS_PRE_REBIND_POLICY_SHA256 = _NOV9_WASM_CLI_POLICY_SHA256
+_NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
+
+# path -> (previous companion SHA-256, previous identity, current identity)
+_NATS_PROCESS_COMPANION_REBINDS = {
+    "scripts/owned_nats_outage_cli.py": (
+        bytes.fromhex(
+            "6c 03 88 64 ac a8 c9 7f 04 42 d2 5c 3a bf b3 37 eb 95 85 db 49 8f 75 cc b6 f4 42 4f 8d fb 73 d5"
+        ),
+        bytes.fromhex("e4 9b 75 0f 6a db e3 69 09 83 65 4e d3 a9 02 b1 25 85 e8 34"),
+        bytes.fromhex("14 43 f9 e4 75 1b 3a b6 62 87 af 4b f0 e1 fa ec 11 73 9a b2"),
+    ),
+    "scripts/owned_nats_transport_port.py": (
+        bytes.fromhex(
+            "cb 69 48 b7 e7 08 7c 7e 89 0d 19 5a ba 44 d2 6d 1e 3b c1 0e f4 ed b5 73 fb 81 8e 43 ee bd 94 3c"
+        ),
+        bytes.fromhex("06 d0 98 7c 54 c4 90 dc 72 80 d2 5b 21 b4 78 28 f5 d7 6c f9"),
+        bytes.fromhex("99 71 53 f5 10 0c 74 0e 8a 68 f4 a9 22 60 a8 6f d0 d7 75 c9"),
+    ),
+}
+
+_NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
+    "aa 03 b0 78 43 1f 10 92 6f 13 18 3b 71 9b 46 09 34 89 a6 db ea 2a da 8e 92 3a dc 5b 65 7c 15 11"
+)
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "35 d2 78 a7 9b 22 dc 91 4a d1 f4 9c 8d 13 e9 bc da 22 61 22 7b 48 34 2c ca c0 30 87 50 79 f0 18"
+)
+_AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256 = bytes.fromhex(
+    "6e 64 de d0 0e 80 ce dc 90 31 87 13 7e 4a 0e e4 d6 38 19 95 ff d4 11 43 d2 e9 be a2 30 16 80 c5"
+)
+_AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = bytes.fromhex(
+    "9e 83 f6 ae 2e 3e e9 e2 20 d7 d7 20 8c ea 8e 9c a4 77 a1 9a 00 cf 08 f3 45 c0 51 e2 77 8e db e7"
+)
+_AUD380_APPROVED_OWNER_ADDITIONS_SHA256 = bytes.fromhex(
+    "46 aa b9 b1 c1 c5 8c 6b 7b a2 47 19 6e 89 1a 47 83 29 6e 2d 23 78 f3 86 82 86 77 66 22 ea 5e 08"
+)
+_AUD380_CONDITIONAL_RECORDSET_SHA256 = bytes.fromhex(
+    "6a ce 88 16 89 4a df ca d1 bc b6 b9 2e dd 97 9e f9 c1 32 d6 15 5f be ea f7 4f 05 39 5b 06 df b8"
+)
+_AUD380_N3_PENDING_493_RECORDSET_SHA256 = bytes.fromhex(
+    "0d 64 21 26 54 fb eb aa 70 3e 4e 95 9a 9d 58 77 bb 1a c4 ee 81 bd f1 b2 0c 0e 0e 01 62 ef e8 5a"
+)
+_AUD380_N3_CONDITIONAL_493_RECORDSET_SHA256 = bytes.fromhex(
+    "c5 70 bc ca d4 31 0a a4 c6 c7 96 ff 15 f3 03 89 e7 64 9f c8 46 81 b5 a3 86 58 88 4c 92 79 a3 32"
+)
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "ec 87 39 fa f1 3a e8 30 86 b7 c7 52 14 af 88 b3 f3 77 43 12 95 00 d5 7c 16 fc 15 21 ea e7 d9 9f"
+)
+_AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
+    "20 dc ea e9 26 fa fe d4 6e a8 16 cd 44 2f 96 ca e1 9a 38 34 f5 7e c0 b0 26 2c b8 24 0c fa f0 51"
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+
+
+def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy_bytes = (
+        root / "quality/security-false-positive-dispositions.json"
+    ).read_bytes()
+    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    assert len(_NATS_PROCESS_COMPANION_REBINDS) == 2
+    disposition = json.loads(ledger_bytes.decode("utf-8"))["dispositions"][6]
+    assert disposition["path"] == "scripts/owned_nats_process.py"
+    assert disposition["check_id"].endswith("subprocess-injection.subprocess-injection")
+    companions = {item["path"]: item["sha256"] for item in disposition["companions"]}
+    previous_ledger = ledger_bytes
+    rebinds = {}
+    for path, rebind in _NATS_PROCESS_COMPANION_REBINDS.items():
+        old_companion, old_identity, new_identity = rebind
+        old_hex = old_companion.hex()
+        current_hex = hashlib.sha256((root / path).read_bytes()).hexdigest()
+        assert companions[path] == current_hex
+        assert old_hex != current_hex
+        old_digest = hashlib.sha1(old_hex.encode("ascii"), usedforsecurity=False)
+        assert old_digest.digest() == old_identity
+        new_digest = hashlib.sha1(current_hex.encode("ascii"), usedforsecurity=False)
+        assert new_digest.digest() == new_identity
+        assert ledger_bytes.count(current_hex.encode("ascii")) == 1
+        previous_ledger = previous_ledger.replace(
+            current_hex.encode("ascii"), old_hex.encode("ascii"), 1
+        )
+        rebinds[new_identity] = old_identity
+    assert hashlib.sha256(previous_ledger).digest() == (
+        _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256
+    )
+
+    policy = json.loads(policy_bytes.decode("utf-8"))
+    restored = copy.deepcopy(policy)
+    changed = []
+    for index, record in enumerate(restored["records"]):
+        identity = record["identity"]
+        digest = bytes(identity["hashed_secret_bytes"])
+        assert digest not in rebinds.values(), "previous identity is still live"
+        if digest not in rebinds:
+            continue
+        assert identity["path"] == "quality/semgrep-dispositions.json"
+        assert identity["type"] == "Hex High Entropy String"
+        assert record["category"] == "public_integrity_digest"
+        assert record["approval_status"] == "approved"
+        identity["hashed_secret_bytes"] = list(rebinds[digest])
+        changed.append(index)
+    assert changed == [389, 394]
+    restored_bytes = (json.dumps(restored, sort_keys=True, indent=2) + "\n").encode(
+        "utf-8"
+    )
+    assert hashlib.sha256(restored_bytes).digest() == (
+        _NATS_PROCESS_PRE_REBIND_POLICY_SHA256
+    ), "anything besides the two companion identities changed"
