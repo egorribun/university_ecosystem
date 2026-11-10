@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { JSDOM } from "jsdom"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { runInContext } from "node:vm"
+import { constants as vmConstants, runInContext } from "node:vm"
 
 import {
   applyDocumentLanguage,
@@ -186,6 +186,52 @@ describe("AUD-101 prepaint theme selection", () => {
       expect(Reflect.get(dom.window, "__UE_THEME_INIT_SCRIPT_RAN__")).toBe(true)
     } finally {
       dom.window.close()
+    }
+  })
+
+  it("localizes only the static SPA shell metadata and leaves SSR page metadata intact", async () => {
+    const scriptPath = path.join(publicDir, "theme-init.js")
+    const script = await fs.readFile(scriptPath, "utf-8")
+    const documentFor = (renderMode: string) =>
+      new JSDOM(
+        `<!doctype html><html${renderMode}><head>
+          <meta property="og:title" content="Sign in | University Ecosystem" />
+          <meta name="twitter:title" content="Sign in | University Ecosystem" />
+        </head><body></body></html>`,
+        { url: "https://example.test/", runScripts: "outside-only" }
+      )
+    const ssr = documentFor("")
+    const staticShell = documentFor(' data-render-mode="static-spa"')
+
+    try {
+      for (const dom of [ssr, staticShell]) {
+        Object.defineProperty(dom.window, "matchMedia", {
+          configurable: true,
+          value: () => ({ matches: false }),
+        })
+        dom.window.document.cookie = "ue:language=en"
+      }
+      // The SSR document runs first. Its import, had it happened, would settle
+      // no later than the static shell's import of the same module.
+      for (const dom of [ssr, staticShell]) {
+        runInContext(script, dom.getInternalVMContext(), {
+          filename: scriptPath,
+          importModuleDynamically: vmConstants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+          timeout: 1000,
+        })
+      }
+
+      const ogTitle = (dom: JSDOM) =>
+        dom.window.document.querySelector('meta[property="og:title"]')?.getAttribute("content")
+      await vi.waitFor(() => expect(ogTitle(staticShell)).toBe("GUU Ecosystem"))
+      expect(ogTitle(ssr)).toBe("Sign in | University Ecosystem")
+      expect(
+        ssr.window.document.querySelector('meta[name="twitter:title"]')?.getAttribute("content")
+      ).toBe("Sign in | University Ecosystem")
+      expect(ssr.window.document.documentElement.getAttribute("lang")).toBe("en")
+    } finally {
+      ssr.window.close()
+      staticShell.window.close()
     }
   })
 

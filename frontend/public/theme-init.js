@@ -31,7 +31,11 @@
   html.setAttribute("lang", lang)
   window.__UE_SELECTED_LANG__ = lang
 
-  // 3. Static Shell Hooks
+  // 3. Static Shell Hooks. Only the static SPA shell carries the build-time
+  // brand metadata that needs localizing here. An SSR document already has the
+  // request's localized page metadata; rewriting it made React insert a second
+  // og:/twitter: set beside the overwritten one during hydration.
+  if (html.getAttribute("data-render-mode") !== "static-spa") return
   import("./static-shell-i18n.js")
     .then(function (mod) {
       mod.applyDocumentLanguage(document, lang)
