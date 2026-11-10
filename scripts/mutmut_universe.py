@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tarfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from importlib import metadata as importlib_metadata
@@ -385,6 +386,55 @@ def validate_configured_paths(config: Any) -> None:
             _validate_repository_tree(copy_root, label="mutmut also_copy path")
 
 
+def _is_helm_dependency_archive(root: Path, path: Path) -> bool:
+    """Return whether *path* is a ``charts/*.tgz`` archive of a chart root."""
+    relative_parts = path.relative_to(root).parts
+    return (
+        len(relative_parts) == 2
+        and relative_parts[0] == "charts"
+        and path.name.endswith(".tgz")
+        and (root / "Chart.yaml").is_file()
+    )
+
+
+def _sha256_helm_dependency_archive(path: Path) -> str:
+    """Hash a Helm dependency archive by member names and bytes.
+
+    ``helm dependency build`` packs ``file://`` dependencies with the mtimes of
+    the current checkout, so two runners on one commit write different archive
+    bytes for identical chart content. Tar and gzip metadata (mtimes, owners,
+    modes) are left out; every member name, type and file byte is kept.
+    """
+    digest = hashlib.sha256(b"helm-dependency-archive/v1\0")
+    try:
+        with tarfile.open(path, mode="r:gz") as archive:
+            members = sorted(archive.getmembers(), key=lambda member: member.name)
+            for member in members:
+                if not (member.isfile() or member.isdir()):
+                    raise UniverseValidationError(
+                        f"unexpected Helm dependency archive member: {member.name}"
+                    )
+                name = member.name.encode("utf-8")
+                digest.update(len(name).to_bytes(8, "big") + name + member.type)
+                if member.isdir():
+                    continue
+                stream = archive.extractfile(member)
+                if stream is None:
+                    raise UniverseValidationError(
+                        f"unreadable Helm dependency archive member: {member.name}"
+                    )
+                content = hashlib.sha256()
+                with stream:
+                    while chunk := stream.read(1024 * 1024):
+                        content.update(chunk)
+                digest.update(content.digest())
+    except (OSError, tarfile.TarError, EOFError) as exc:
+        raise UniverseValidationError(
+            f"unable to hash Helm dependency archive {path}"
+        ) from exc
+    return digest.hexdigest()
+
+
 def _is_ephemeral_copy_file(root: Path, path: Path) -> bool:
     relative_parts = path.relative_to(root).parts
     return bool(
@@ -453,7 +503,11 @@ def _also_copy_inventory(config: Any) -> dict[str, dict[str, Any]]:
             if not child.is_file() or _is_ephemeral_copy_file(candidate, child):
                 continue
             relative = _normalize_path(child.relative_to(candidate))
-            files[relative] = _sha256_file(child)
+            files[relative] = (
+                _sha256_helm_dependency_archive(child)
+                if _is_helm_dependency_archive(candidate, child)
+                else _sha256_file(child)
+            )
         inventory[normalized] = {"kind": "directory", "files": files}
 
     return inventory
