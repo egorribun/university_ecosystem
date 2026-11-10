@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from pydantic import ConfigDict
 
 import app.models as models
 from app.core.cache import schedule_cache
@@ -15,36 +14,25 @@ from app.repositories.base import BaseRepository
 from app.repositories.schedule_repository import (
     GroupRepository,
     ScheduleRepository,
-    _restore_cached,
 )
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 
 @pytest.mark.asyncio
-async def test_group_repository_rebuilds_dtos_from_the_cache():
-    """A cache hit must return DTOs, not the dicts the cache actually holds.
-
-    The cache stores ``model_dump(mode="json")`` output so orjson can
-    serialize it for L2 -- the sibling cache-miss tests below pin that.  These
-    tests used to seed a sentinel string and assert it came back untouched,
-    which described a pass-through that silently handed every caller ``dict``
-    where it read DTO attributes.
-    """
-
-    repo = GroupRepository(MagicMock())
+async def test_group_repository_returns_database_dtos_not_cached_dicts():
     group_id = uuid4()
-    cached = [
-        GroupDTO(
-            id=group_id, name="Group Alpha", created_at=datetime(2026, 1, 1, 9, 0)
-        ).model_dump(mode="json")
-    ]
+    row = models.Group(id=group_id, name="Current group")
+    database_result = MagicMock()
+    database_result.scalars.return_value.all.return_value = [row]
+    db = MagicMock(execute=AsyncMock(return_value=database_result))
+    stale = [GroupDTO(id=uuid4(), name="Foreign group").model_dump(mode="json")]
 
-    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)):
-        result = await repo.list_groups()
+    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=stale)):
+        result = await GroupRepository(db).list_groups()
 
     assert [type(item) for item in result] == [GroupDTO]
     assert result[0].id == group_id
-    assert result[0].name == "Group Alpha"
+    assert result[0].name == "Current group"
 
 
 @pytest.mark.asyncio
@@ -107,54 +95,34 @@ async def test_schedule_repository_ignores_stale_process_cache(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cached", [{"items": []}, "invalid-cache-payload", False])
-async def test_non_list_group_cache_hit_returns_empty_collection(cached):
-    """Malformed group-cache containers must not leak mappings or scalars."""
-
-    db = MagicMock(execute=AsyncMock())
+async def test_malformed_group_cache_does_not_replace_database_result(cached):
+    row = models.Group(id=uuid4(), name="Visible group")
+    database_result = MagicMock()
+    database_result.scalars.return_value.all.return_value = [row]
+    db = MagicMock(execute=AsyncMock(return_value=database_result))
     with (
         patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)) as get,
         patch.object(schedule_cache, "set", new=AsyncMock()) as set_cache,
     ):
         result = await GroupRepository(db).list_groups()
-        get.assert_awaited_once_with("schedule:groups")
 
-    assert result == []
-    db.execute.assert_not_awaited()
+    assert [(group.id, group.name) for group in result] == [(row.id, "Visible group")]
+    db.execute.assert_awaited_once()
+    get.assert_not_awaited()
     set_cache.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_cached_dtos_are_passed_through_untouched():
-    """An L1 hit can hand back the DTO objects themselves; do not re-validate."""
-
-    repo = GroupRepository(MagicMock())
-    dto = GroupDTO(id=uuid4(), name="Group Beta")
+async def test_cached_group_dto_does_not_override_empty_database_result():
+    database_result = MagicMock()
+    database_result.scalars.return_value.all.return_value = []
+    db = MagicMock(execute=AsyncMock(return_value=database_result))
+    dto = GroupDTO(id=uuid4(), name="Foreign group")
 
     with patch.object(schedule_cache, "get", new=AsyncMock(return_value=[dto])):
-        result = await repo.list_groups()
+        result = await GroupRepository(db).list_groups()
 
-    assert result[0] is dto
-
-
-def test_cached_instances_preserve_identity_with_revalidating_model() -> None:
-    """The generic cache helper must not replace already-created DTOs."""
-
-    class RevalidatingGroupDTO(GroupDTO):
-        model_config = ConfigDict(revalidate_instances="always")
-
-    dto = RevalidatingGroupDTO(id=uuid4(), name="Group Gamma")
-    payload = {"id": uuid4(), "name": "Group Delta"}
-
-    # This real Pydantic policy rebuilds even a valid existing instance.
-    assert RevalidatingGroupDTO.model_validate(dto) is not dto
-
-    result = _restore_cached(RevalidatingGroupDTO, [dto, payload])
-
-    assert result[0] is dto
-    assert result[0].name == "Group Gamma"
-    assert result[1].id == payload["id"]
-    assert result[1].name == "Group Delta"
-    assert isinstance(result[1], RevalidatingGroupDTO)
+    assert result == []
 
 
 @pytest.mark.asyncio
@@ -194,11 +162,10 @@ def test_repository_model_and_dto_properties():
 
 
 @pytest.mark.asyncio
-async def test_group_repository_cache_miss_queries_and_serializes():
+async def test_group_repository_queries_without_populating_shared_cache():
     repo = GroupRepository(MagicMock())
     group = MagicMock()
     dto = MagicMock()
-    dto.model_dump.return_value = {"name": "Group Alpha"}
     result = MagicMock()
     result.scalars.return_value.all.return_value = [group]
     repo.db.execute = AsyncMock(return_value=result)
@@ -211,7 +178,8 @@ async def test_group_repository_cache_miss_queries_and_serializes():
         result_dtos = await repo.list_groups()
 
     assert result_dtos == [dto]
-    set_cache.assert_awaited_once_with("schedule:groups", [{"name": "Group Alpha"}])
+    repo.db.execute.assert_awaited_once()
+    set_cache.assert_not_awaited()
 
 
 @pytest.mark.asyncio

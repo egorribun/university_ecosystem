@@ -118,6 +118,16 @@ expected = {'tests.integration.test_mvp_baseline_schema_equivalence': ('test_pro
                                                            'test_receipt_owned_fixture_never_uses_default_database',
                                                            'test_notification_pair_claims_commit_conflict_and_rollback_on_owned_postgres',
                                                            'test_notification_pair_ledger_is_unique_without_attempt_constraint'),
+ 'tests.integration.test_group_list_tenant_http_postgres': ('test_mixed_scope_group_http_a_then_b',
+                                                            'test_mixed_scope_group_http_a_then_unscoped[anonymous]',
+                                                            'test_mixed_scope_group_http_a_then_unscoped[unsigned-hint]',
+                                                            'test_mixed_scope_group_http_a_then_unscoped[bad-signature]',
+                                                            'test_mixed_scope_group_http_unscoped_then_a',
+                                                            'test_group_http_ignores_legacy_foreign_cache',
+                                                            'test_group_http_observes_committed_change[rename]',
+                                                            'test_group_http_observes_committed_change[delete]',
+                                                            'test_mvp_group_http_anonymous_uses_configured_tenant',
+                                                            'test_mvp_group_http_foreign_identity_rejected_before_session'),
  'tests.integration.test_dlq_retry_postgres': ('test_retry_completed_job_waits_for_worker_and_preserves_state',
                                                'test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller')}
 root = ElementTree.parse(sys.argv[1]).getroot()

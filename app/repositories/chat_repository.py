@@ -33,7 +33,7 @@ from app.models.chat import (
 )
 from app.models.chat_send_receipt import ChatSendReceipt
 from app.repositories.base import BaseRepository
-from app.schemas.dtos.chat import ChatDTO, MessageDTO
+from app.schemas.dtos.chat import ChatDTO, ChatParticipantDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 # SQL CTE aliases are case-insensitive across supported dialects; a case-only
@@ -85,6 +85,17 @@ class LockedChatMembership:
 def _receipt_utc(value: datetime) -> datetime:
     """SQLite returns naive timestamps; receipt comparisons are always UTC."""
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _message_dto_without_senders(message: Message) -> MessageDTO:
+    """Do not read ORM User attributes before the explicit sender projection."""
+    fields = MessageDTO.model_fields.keys() - {"sender", "replied_to"}
+    payload = {name: getattr(message, name) for name in fields}
+    if message.replied_to is not None:
+        payload["replied_to"] = {
+            name: getattr(message.replied_to, name) for name in fields
+        }
+    return MessageDTO.model_validate(payload)
 
 
 class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any]]):
@@ -528,16 +539,44 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             query = query.where(Message.deleted_at.is_(None))
         result = await self.db.execute(
             query.options(
-                selectinload(Message.sender),
                 selectinload(Message.attachments),
-                # Wave 207 — replied_to + its sender so the send response can build
-                # the reply preview (chat-list last-message keeps it lightweight).
-                selectinload(Message.replied_to).selectinload(Message.sender),
+                selectinload(Message.replied_to),
             )
         )
-        return {
-            msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()
+        messages = [_message_dto_without_senders(msg) for msg in result.scalars().all()]
+        await self._hydrate_message_senders(messages, include_root_senders=True)
+        return {msg.id: msg for msg in messages}
+
+    async def _hydrate_message_senders(
+        self, messages: list[MessageDTO], *, include_root_senders: bool
+    ) -> None:
+        """Project sender DTOs in one batch without loading profile relationships.
+
+        Names live on UserProfile, not User. Read the existing sender fields plus
+        that name directly so noload, deferred, or dirty ORM profiles cannot hide
+        it or be overwritten. Only already-selected messages and their immediate
+        reply targets contribute IDs; message-page root senders retain their
+        separate public-field projection in the query service.
+        """
+        targets = list(messages) if include_root_senders else []
+        targets.extend(msg.replied_to for msg in messages if msg.replied_to is not None)
+        sender_ids = {msg.sender_id for msg in targets}
+        if not sender_ids:
+            return
+        result = await self.db.execute(
+            select(User.id, User.email, User.is_active, UserProfile.full_name)
+            .outerjoin(UserProfile, UserProfile.user_id == User.id)
+            .where(User.id.in_(sender_ids))
+        )
+        senders = {
+            user_id: ChatParticipantDTO(
+                id=user_id, email=email, is_active=is_active, full_name=full_name
+            )
+            for user_id, email, is_active, full_name in result.all()
         }
+        for message in targets:
+            sender = senders.get(message.sender_id)
+            message.sender = sender.model_copy() if sender is not None else None
 
     async def get_user_display_names(
         self, user_ids: list[uuid.UUID]
@@ -797,10 +836,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 # Wave 206 — one extra SELECT … WHERE message_id IN (…) per page;
                 # the query service aggregates these into ReactionAggregate.
                 selectinload(Message.reactions),
-                # Wave 207 — load the replied-to message + its sender for the quote
-                # preview (one extra SELECT … WHERE id IN (…) per page). The nested
-                # replied_to.replied_to stays noload → no deep nesting.
-                selectinload(Message.replied_to).selectinload(Message.sender),
+                # Load immediate quote targets; sender fields are projected in a
+                # separate bounded batch below, not from the full User entity.
+                selectinload(Message.replied_to),
             )
         )
 
@@ -838,7 +876,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 oldest_message.created_at, str(oldest_message.id)
             )
 
-        return [MessageDTO.model_validate(m) for m in rows], has_more, next_cursor
+        messages = [_message_dto_without_senders(m) for m in rows]
+        await self._hydrate_message_senders(messages, include_root_senders=False)
+        return messages, has_more, next_cursor
 
     async def create_message(self, message: Message) -> MessageDTO:
         """
@@ -1240,14 +1280,17 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         if chat_id is not None:
             stmt = stmt.where(Message.chat_id == chat_id)
         stmt = stmt.options(
-            selectinload(Message.sender),
             selectinload(Message.attachments),
             # Wave 207 — replied_to for the idempotent-resend reply preview.
-            selectinload(Message.replied_to).selectinload(Message.sender),
+            selectinload(Message.replied_to),
         )
         result = await self.db.execute(stmt)
         msg = result.scalars().first()
-        return MessageDTO.model_validate(msg) if msg else None
+        if msg is None:
+            return None
+        message = _message_dto_without_senders(msg)
+        await self._hydrate_message_senders([message], include_root_senders=True)
+        return message
 
     # P2-fix (audit 2026-02-26): Without a LIMIT the presence audience query is
     # O(chats × participants) and can load tens-of-thousands of UUIDs into memory

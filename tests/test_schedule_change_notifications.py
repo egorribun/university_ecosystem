@@ -71,10 +71,18 @@ async def test_change_notifies_active_group_members_once(
         "app.services.notifications.delivery._is_push_configured", return_value=False
     ):
         created = await notify_about_schedule_change(
-            db_session, schedule_id=schedule_id, previous=previous, current=current
+            db_session,
+            event_id="change-1",
+            schedule_id=schedule_id,
+            previous=previous,
+            current=current,
         )
         repeated = await notify_about_schedule_change(
-            db_session, schedule_id=schedule_id, previous=previous, current=current
+            db_session,
+            event_id="change-1",
+            schedule_id=schedule_id,
+            previous=previous,
+            current=current,
         )
 
     assert created == 2
@@ -107,18 +115,21 @@ async def test_cancellation_and_group_move_reach_every_affected_group(
     ):
         moved = await notify_about_schedule_change(
             db_session,
+            event_id="change-1",
             schedule_id=uuid.uuid4(),
             previous=_state(before.id),
             current=_state(after.id),
         )
         cancelled = await notify_about_schedule_change(
             db_session,
+            event_id="change-1",
             schedule_id=uuid.uuid4(),
             previous=_state(after.id),
             current=None,
         )
         unchanged = await notify_about_schedule_change(
             db_session,
+            event_id="change-1",
             schedule_id=uuid.uuid4(),
             previous=_state(after.id),
             current=_state(after.id),
@@ -169,6 +180,7 @@ async def test_handler_forwards_snapshots(event, expected_current) -> None:
     notify.assert_awaited_once_with(
         session,
         schedule_id="s-1",
+        event_id=event.event_id,
         previous={"room": "101"},
         current=expected_current,
     )
@@ -217,19 +229,28 @@ async def test_changes_without_a_reachable_group_or_member_notify_nobody(
 
     assert (
         await notify_about_schedule_change(
-            db_session, schedule_id="s-1", previous=unknown, current=None
-        )
-        == 0
-    )
-    assert (
-        await notify_about_schedule_change(
-            db_session, schedule_id="s-2", previous={"subject": "Physics"}, current=None
+            db_session,
+            event_id="change-1",
+            schedule_id="s-1",
+            previous=unknown,
+            current=None,
         )
         == 0
     )
     assert (
         await notify_about_schedule_change(
             db_session,
+            event_id="change-1",
+            schedule_id="s-2",
+            previous={"subject": "Physics"},
+            current=None,
+        )
+        == 0
+    )
+    assert (
+        await notify_about_schedule_change(
+            db_session,
+            event_id="change-1",
             schedule_id="s-3",
             previous=_state(empty_group.id),
             current=None,
@@ -254,7 +275,11 @@ async def test_unparseable_times_and_unknown_weekdays_are_left_out(
         "app.services.notifications.delivery._is_push_configured", return_value=False
     ):
         created = await notify_about_schedule_change(
-            db_session, schedule_id="s-4", previous=previous, current=current
+            db_session,
+            event_id="change-1",
+            schedule_id="s-4",
+            previous=previous,
+            current=current,
         )
 
     assert created == 1
@@ -276,6 +301,7 @@ async def test_start_only_time_is_rendered_without_a_range(
     ):
         await notify_about_schedule_change(
             db_session,
+            event_id="change-1",
             schedule_id="s-5",
             previous=_state(group.id),
             current=_state(group.id, end_time=None),
@@ -286,15 +312,6 @@ async def test_start_only_time_is_rendered_without_a_range(
     assert "–" not in (row.body_en or "")
 
 
-def _fingerprint(previous: object, current: object) -> str:
-    import hashlib
-    import json
-
-    return hashlib.sha256(
-        json.dumps({"previous": previous, "current": current}, sort_keys=True).encode()
-    ).hexdigest()[:16]
-
-
 async def _capture_delivery(db_session, *, previous, current, schedule_id):
     deliver = AsyncMock(return_value=1)
     with patch(
@@ -302,7 +319,11 @@ async def _capture_delivery(db_session, *, previous, current, schedule_id):
         deliver,
     ):
         created = await notify_about_schedule_change(
-            db_session, schedule_id=schedule_id, previous=previous, current=current
+            db_session,
+            event_id="change-1",
+            schedule_id=schedule_id,
+            previous=previous,
+            current=current,
         )
     assert created == 1
     deliver.assert_awaited_once()
@@ -339,9 +360,7 @@ async def test_delivery_carries_the_exact_localized_change(
         "type": "schedule.change",
         "url": "/schedule",
         "tag": f"schedule-change:{schedule_id}",
-        "dedupe_key": (
-            f"schedule-change:{schedule_id}:{_fingerprint(previous, current)}"
-        ),
+        "dedupe_key": (f"schedule-change:{schedule_id}:event:change-1"),
         "payload_data": {
             "url": "/schedule",
             "category": "schedule",
@@ -368,10 +387,7 @@ async def test_cancellation_describes_the_previous_lesson(
     assert kwargs["body_translations"]["en"] == (
         "The class was cancelled\nMonday 09:00–10:30 · room 101 · Dr. Curie"
     )
-    assert (
-        kwargs["dedupe_key"]
-        == f"schedule-change:s-9:{_fingerprint(_state(group.id), None)}"
-    )
+    assert kwargs["dedupe_key"] == "schedule-change:s-9:event:change-1"
 
 
 @pytest.mark.asyncio

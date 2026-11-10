@@ -226,3 +226,21 @@ def test_openapi_info_block_is_complete(openapi_schema: dict) -> None:
     info = openapi_schema.get("info", {})
     assert info.get("title"), "OpenAPI info.title must not be empty"
     assert info.get("version"), "OpenAPI info.version must not be empty"
+
+
+def test_every_operation_documents_a_client_error(openapi_schema: dict) -> None:
+    """Mirror the Spectral operation-4xx-response rule as an executable contract.
+
+    Each documented 4xx must be one the route can really return, so new routes
+    attach the matching entries from app.api.openapi_responses.
+    """
+    missing = [
+        f"{method.upper()} {path}"
+        for path, item in openapi_schema["paths"].items()
+        for method, operation in item.items()
+        if method in _HTTP_METHODS
+        and not any(
+            str(code).startswith("4") for code in operation.get("responses", {})
+        )
+    ]
+    assert missing == []

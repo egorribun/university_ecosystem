@@ -127,13 +127,13 @@ def test_tenant_cohort_preserves_all_previous_names_and_adds_exact_mfa_cases():
         *WEEKLY_CASES,
         *SCHEDULE_CASES,
     )
-    assert sum(map(len, expected.values())) == 72
+    assert sum(map(len, expected.values())) == 82
 
 
 def test_complete_expanded_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 72\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 82\n"
 
 
 @pytest.mark.parametrize(

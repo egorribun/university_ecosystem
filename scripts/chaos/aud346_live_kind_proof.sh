@@ -338,9 +338,24 @@ run_bounded kubectl rollout status --context "$CONTEXT" --namespace "$TARGET_NAM
   deployment/aud346-chaos-target --timeout=90s
 
 PORT="$(run_bounded python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
-kubectl --context "$CONTEXT" --namespace "$TARGET_NAMESPACE" \
-  port-forward --address 127.0.0.1 "service/${TARGET_SERVICE}" "${PORT}:80" \
-  >"${DIAG_DIR}/port-forward.log" 2>&1 &
+# kubectl ends a port-forward after the first refused in-pod connection, which
+# the injected fault causes by design. Keep forwarding the same local port so
+# requests fail while the target is down and succeed again after recovery. The
+# TERM trap stops the current kubectl when cleanup stops this supervisor.
+supervise_port_forward() {
+  local child=""
+  trap '[[ -n "$child" ]] && kill "$child" >/dev/null 2>&1; exit 0' TERM
+  while true; do
+    kubectl --context "$CONTEXT" --namespace "$TARGET_NAMESPACE" \
+      port-forward --address 127.0.0.1 "service/${TARGET_SERVICE}" "${PORT}:80" &
+    child=$!
+    wait "$child" || true
+    child=""
+    echo "port-forward exited; restarting"
+    sleep 0.5
+  done
+}
+supervise_port_forward >"${DIAG_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
 for _attempt in $(seq 1 30); do
   run_bounded true || exit 1
@@ -359,8 +374,9 @@ curl --noproxy '*' --fail --silent --show-error --max-time 2 \
   "http://127.0.0.1:${PORT}/health" >/dev/null
 
 # Preserve the nightly offline validation; this second phase is the bounded live proof.
-# In a 5-second window every request succeeded although Chaos Mesh reported the fault
-# injected; swapping the container image can take longer than that. Observe for 25 s,
+# Earlier 5 s and 25 s windows saw every request succeed although Chaos Mesh reported
+# the fault injected: the target ignored SIGTERM as PID 1 and served through the 30 s
+# default grace. The fixture now exits on SIGTERM within a 2 s grace. Observe for 25 s,
 # inside the 45-second PodChaos lifetime.
 uv_python_bounded "${ROOT_DIR}/scripts/chaos/run_chaos_loadtest.py" \
   --manifest "${ROOT_DIR}/k8s/chaos/aud346-pod-failure.yaml" \

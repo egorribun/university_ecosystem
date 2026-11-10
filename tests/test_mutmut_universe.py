@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -481,6 +483,115 @@ def test_also_copy_inventory_accepts_valid_nested_repository_path(
         "kind": "directory",
         "files": {"settings.toml": hashlib.sha256(fixture.read_bytes()).hexdigest()},
     }
+
+
+def _write_chart_archive(
+    path: Path, members: dict[str, bytes], *, mtime: int, symlink: str | None = None
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mtime = mtime
+            archive.addfile(info, io.BytesIO(data))
+        if symlink is not None:
+            link = tarfile.TarInfo(symlink)
+            link.type = tarfile.SYMTYPE
+            link.linkname = "/etc/passwd"
+            link.mtime = mtime
+            archive.addfile(link)
+
+
+def _chart_inventory(repo: Path) -> dict[str, str]:
+    inventory = _also_copy_inventory(SimpleNamespace(also_copy=[Path("chart")]))
+    return inventory["chart"]["files"]
+
+
+def test_helm_dependency_archive_is_fingerprinted_by_content_not_mtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each nightly job runs `helm dependency build`, which repacks file://
+    # dependencies with that checkout's mtimes: equal content, different bytes.
+    repo = tmp_path / "repo"
+    chart = repo / "chart"
+    chart.mkdir(parents=True)
+    (chart / "Chart.yaml").write_text("name: chart\n", encoding="utf-8")
+    archive = chart / "charts" / "redis-0.1.0.tgz"
+    members = {"redis/Chart.yaml": b"name: redis\n", "redis/values.yaml": b"a: 1\n"}
+    monkeypatch.chdir(repo)
+
+    _write_chart_archive(archive, members, mtime=1_700_000_000)
+    first_bytes = archive.read_bytes()
+    first = _chart_inventory(repo)
+    _write_chart_archive(archive, members, mtime=1_800_000_000)
+    assert archive.read_bytes() != first_bytes
+    assert _chart_inventory(repo) == first
+
+    changed = {**members, "redis/values.yaml": b"a: 2\n"}
+    _write_chart_archive(archive, changed, mtime=1_800_000_000)
+    assert (
+        _chart_inventory(repo)["charts/redis-0.1.0.tgz"]
+        != (first["charts/redis-0.1.0.tgz"])
+    )
+    renamed = {"redis/Chart.yaml": b"name: redis\n", "redis/other.yaml": b"a: 1\n"}
+    _write_chart_archive(archive, renamed, mtime=1_700_000_000)
+    assert (
+        _chart_inventory(repo)["charts/redis-0.1.0.tgz"]
+        != (first["charts/redis-0.1.0.tgz"])
+    )
+
+
+def test_tgz_outside_a_chart_dependency_directory_keeps_its_byte_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    archive = repo / "chart" / "charts" / "plain.tgz"
+    _write_chart_archive(archive, {"x": b"x"}, mtime=1_700_000_000)
+    nested = repo / "chart" / "templates" / "nested.tgz"
+    _write_chart_archive(nested, {"y": b"y"}, mtime=1_700_000_000)
+    monkeypatch.chdir(repo)
+
+    files = _chart_inventory(repo)
+
+    # No Chart.yaml at the root, so this is not a Helm dependency archive.
+    assert files["charts/plain.tgz"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert (
+        files["templates/nested.tgz"] == hashlib.sha256(nested.read_bytes()).hexdigest()
+    )
+
+
+def test_helm_dependency_archive_rejects_link_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    chart = repo / "chart"
+    chart.mkdir(parents=True)
+    (chart / "Chart.yaml").write_text("name: chart\n", encoding="utf-8")
+    _write_chart_archive(
+        chart / "charts" / "redis-0.1.0.tgz",
+        {"redis/Chart.yaml": b"name: redis\n"},
+        mtime=1_700_000_000,
+        symlink="redis/escape",
+    )
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(UniverseValidationError, match="archive member"):
+        _chart_inventory(repo)
+
+
+def test_corrupt_helm_dependency_archive_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    chart = repo / "chart"
+    (chart / "charts").mkdir(parents=True)
+    (chart / "Chart.yaml").write_text("name: chart\n", encoding="utf-8")
+    (chart / "charts" / "redis-0.1.0.tgz").write_bytes(b"not a gzip archive")
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(UniverseValidationError, match="unable to hash Helm"):
+        _chart_inventory(repo)
 
 
 def test_configured_source_root_rejects_intermediate_symlink_escape(

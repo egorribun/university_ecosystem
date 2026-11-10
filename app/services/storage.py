@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import threading
+from bisect import bisect_right
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -173,14 +174,14 @@ class StaticFSStorage(StorageBackend):
             )
 
     @staticmethod
-    def _encode_quarantine_cursor(stack: list[tuple[str, int]]) -> str:
+    def _encode_quarantine_cursor(stack: list[tuple[str, str | None]]) -> str:
         payload = json.dumps(
-            {"version": 1, "stack": [[path, offset] for path, offset in stack]},
+            {"version": 2, "stack": [[path, last_name] for path, last_name in stack]},
             separators=(",", ":"),
         ).encode("utf-8")
         return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
-    def _decode_quarantine_cursor(self, cursor: str) -> list[tuple[str, int]]:
+    def _decode_quarantine_cursor(self, cursor: str) -> list[tuple[str, str | None]]:
         try:
             encoded = cursor.encode("ascii")
             payload = base64.b64decode(
@@ -191,19 +192,17 @@ class StaticFSStorage(StorageBackend):
             raise ValueError("Invalid quarantine inventory cursor") from exc
         if (
             not isinstance(decoded, dict)
-            or decoded.get("version") != 1
+            or type(decoded.get("version")) is not int
+            or decoded["version"] not in (1, 2)
             or not isinstance(decoded.get("stack"), list)
         ):
             raise ValueError("Invalid quarantine inventory cursor")
-        stack: list[tuple[str, int]] = []
+        stack: list[tuple[str, str | None]] = []
         for frame in decoded["stack"]:
             if (
                 not isinstance(frame, list)
                 or len(frame) != 2
                 or not isinstance(frame[0], str)
-                or isinstance(frame[1], bool)
-                or not isinstance(frame[1], int)
-                or frame[1] < 0
             ):
                 raise ValueError("Invalid quarantine inventory cursor")
             relative = self._normalize_relative_path(frame[0]).as_posix()
@@ -211,7 +210,35 @@ class StaticFSStorage(StorageBackend):
                 relative == "quarantine" or relative.startswith("quarantine/")
             ):
                 raise ValueError("Invalid quarantine inventory cursor")
-            stack.append((relative, frame[1]))
+            marker = frame[1]
+            if decoded["version"] == 1:
+                if (
+                    isinstance(marker, bool)
+                    or not isinstance(marker, int)
+                    or marker < 0
+                ):
+                    raise ValueError("Invalid quarantine inventory cursor")
+                continue
+            if marker is not None:
+                if not isinstance(marker, str):
+                    raise ValueError("Invalid quarantine inventory cursor")
+                # Validate in the same path context as emitted child keys:
+                # a leading space in a filename is not leading path whitespace.
+                relative_name = f"quarantine/{marker}"
+                name = self._normalize_relative_path(relative_name)
+                if (
+                    name.as_posix() != relative_name
+                    or len(name.parts) != 2
+                    or _has_control_chars(marker)
+                ):
+                    raise ValueError("Invalid quarantine inventory cursor")
+            stack.append((relative, marker))
+        if decoded["version"] == 1:
+            # Old offsets cannot be safely resumed after cleanup. Restart the
+            # bounded walk; inventory upserts preserve existing ledger charges.
+            return [("quarantine", None)]
+        if not stack:
+            raise ValueError("Invalid quarantine inventory cursor")
         return stack
 
     @staticmethod
@@ -247,24 +274,31 @@ class StaticFSStorage(StorageBackend):
                 return QuarantineStoragePage((), None)
             if not await asyncio.to_thread(root.is_dir):
                 raise RuntimeError("Quarantine root is not a directory")
-            stack = [("quarantine", 0)]
+            stack: list[tuple[str, str | None]] = [("quarantine", None)]
         else:
             stack = self._decode_quarantine_cursor(cursor)
 
         objects: list[QuarantineObject] = []
         steps = 0
         while stack and len(objects) < limit and steps < _QUARANTINE_SCAN_STEPS_MAX:
-            relative_dir, offset = stack[-1]
+            relative_dir, last_name = stack[-1]
             directory = self._resolve_validated_path(Path(relative_dir))
             entries = await asyncio.to_thread(
                 self._read_quarantine_directory, directory
+            )
+            # Cleanup may remove earlier entries between pages. Resume after
+            # their stable name, never at an index in a newly sorted listing.
+            offset = (
+                bisect_right(entries, last_name, key=lambda entry: entry[0])
+                if last_name is not None
+                else 0
             )
             if offset >= len(entries):
                 stack.pop()
                 continue
 
             name, kind = entries[offset]
-            stack[-1] = (relative_dir, offset + 1)
+            stack[-1] = (relative_dir, name)
             steps += 1
             relative_child = f"{relative_dir}/{name}"
             try:
@@ -284,7 +318,7 @@ class StaticFSStorage(StorageBackend):
             if kind in {"symlink", "other"}:
                 continue
             if kind == "directory":
-                stack.append((relative_child, 0))
+                stack.append((relative_child, None))
                 continue
 
             child_path = self._resolve_validated_path(Path(relative_child))

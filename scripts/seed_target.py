@@ -169,6 +169,9 @@ def require_owned_live_stand_target() -> str:
     if (
         target.get_backend_name() != "postgresql"
         or target.host != OWNED_STAND_DATABASE_HOST
+        # Owned Compose URLs have no query options. Drivers can override the
+        # authority host (and other connection fields) from the query string.
+        or target.query
     ):
         raise RuntimeError(
             "seed database must be the postgres service in the owned live stand project"

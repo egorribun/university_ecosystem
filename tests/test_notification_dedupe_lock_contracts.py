@@ -63,6 +63,7 @@ async def test_schedule_changes_lock_their_change_key(db_session, user_factory) 
     group = await _group(db_session, "LOCK-KEY")
     await user_factory(group_id=group.id)
     schedule_id = uuid.uuid4()
+    event_id = str(uuid.uuid4())
     lock = AsyncMock()
 
     with (
@@ -75,13 +76,14 @@ async def test_schedule_changes_lock_their_change_key(db_session, user_factory) 
         await schedule_changes.notify_about_schedule_change(
             db_session,
             schedule_id=schedule_id,
+            event_id=event_id,
             previous=_state(group.id),
             current=_state(group.id, room="303"),
         )
 
     session, key = lock.await_args.args
     assert session is db_session
-    assert key.startswith(f"schedule-change:{schedule_id}:")
+    assert key == f"schedule-change:{schedule_id}:event:{event_id}"
 
 
 class _StopAfterLock(Exception):

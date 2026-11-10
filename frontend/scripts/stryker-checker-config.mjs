@@ -10,9 +10,9 @@ export const canonicalTypeScriptCheckerConfig = Object.freeze({
 export const canonicalTypeScriptCheckerToolchain = Object.freeze({
   checkerPackageName: "@stryker-mutator/typescript-checker",
   checkerPluginName: "typescript",
-  checkerDependencySpec: "10.0.0",
-  checkerPackageVersion: "10.0.0",
-  checkerLockVersion: "10.0.0",
+  checkerDependencySpec: "10.1.1",
+  checkerPackageVersion: "10.1.1",
+  checkerLockVersion: "10.1.1",
   typescriptDependencySpec: "npm:@typescript/typescript6@^6.0.2",
   typescriptPackageName: "@typescript/typescript6",
   typescriptPackageVersion: "6.0.2",

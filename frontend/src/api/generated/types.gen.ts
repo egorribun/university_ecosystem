@@ -3392,6 +3392,13 @@ export type GetRootGetData = {
   url: "/"
 }
 
+export type GetRootGetErrors = {
+  /**
+   * The Host header is not one of the allowed hosts
+   */
+  400: unknown
+}
+
 export type GetRootGetResponses = {
   /**
    * Successful Response
@@ -3514,6 +3521,17 @@ export type ListFeatureFlagsAdminFeatureFlagsGetData = {
   path?: never
   query?: never
   url: "/admin/feature-flags"
+}
+
+export type ListFeatureFlagsAdminFeatureFlagsGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The authenticated user lacks the global admin permission
+   */
+  403: unknown
 }
 
 export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
@@ -3643,6 +3661,17 @@ export type ListFeatureFlagsApiV1AdminFeatureFlagsGetData = {
   path?: never
   query?: never
   url: "/api/v1/admin/feature-flags"
+}
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The authenticated user lacks the global admin permission
+   */
+  403: unknown
 }
 
 export type ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses = {
@@ -4286,6 +4315,13 @@ export type GetCampusConfigApiV1CampusConfigGetData = {
   path?: never
   query?: never
   url: "/api/v1/campus/config"
+}
+
+export type GetCampusConfigApiV1CampusConfigGetErrors = {
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
 }
 
 export type GetCampusConfigApiV1CampusConfigGetResponses = {
@@ -5039,6 +5075,21 @@ export type ReceiveCspReportApiV1CspReportPostData = {
   url: "/api/v1/csp-report"
 }
 
+export type ReceiveCspReportApiV1CspReportPostErrors = {
+  /**
+   * The body is not a valid CSP violation report
+   */
+  400: unknown
+  /**
+   * The report body exceeds the accepted size
+   */
+  413: unknown
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
+}
+
 export type ReceiveCspReportApiV1CspReportPostResponses = {
   /**
    * Successful Response
@@ -5765,6 +5816,13 @@ export type GetGroupsApiV1GroupsGetData = {
   url: "/api/v1/groups"
 }
 
+export type GetGroupsApiV1GroupsGetErrors = {
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
+}
+
 export type GetGroupsApiV1GroupsGetResponses = {
   /**
    * Response Get Groups Api V1 Groups Get
@@ -6267,6 +6325,17 @@ export type ClearNotificationsApiV1NotificationsDeleteData = {
   url: "/api/v1/notifications"
 }
 
+export type ClearNotificationsApiV1NotificationsDeleteErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
+}
+
 export type ClearNotificationsApiV1NotificationsDeleteResponses = {
   /**
    * Response Clear Notifications Api V1 Notifications Delete
@@ -6476,6 +6545,17 @@ export type MarkAllReadApiV1NotificationsReadAllPostData = {
   path?: never
   query?: never
   url: "/api/v1/notifications/read-all"
+}
+
+export type MarkAllReadApiV1NotificationsReadAllPostErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
 }
 
 export type MarkAllReadApiV1NotificationsReadAllPostResponses = {
@@ -6866,6 +6946,13 @@ export type GetPushTopicsApiV1PushTopicsGetData = {
   url: "/api/v1/push/topics"
 }
 
+export type GetPushTopicsApiV1PushTopicsGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+}
+
 export type GetPushTopicsApiV1PushTopicsGetResponses = {
   /**
    * Successful Response
@@ -6912,6 +6999,13 @@ export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetData = {
   path?: never
   query?: never
   url: "/api/v1/push/vapid-public-key"
+}
+
+export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetErrors = {
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
 }
 
 export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses = {
@@ -7151,6 +7245,13 @@ export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetData = {
   url: "/api/v1/spotify/auth-url"
 }
 
+export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+}
+
 export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses = {
   /**
    * Successful Response
@@ -7209,6 +7310,17 @@ export type DisconnectApiV1SpotifyDisconnectPostData = {
   url: "/api/v1/spotify/disconnect"
 }
 
+export type DisconnectApiV1SpotifyDisconnectPostErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
+}
+
 export type DisconnectApiV1SpotifyDisconnectPostResponses = {
   /**
    * Response Disconnect Api V1 Spotify Disconnect Post
@@ -7230,6 +7342,21 @@ export type NowPlayingApiV1SpotifyNowPlayingGetData = {
   url: "/api/v1/spotify/now-playing"
 }
 
+export type NowPlayingApiV1SpotifyNowPlayingGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * Spotify rate-limited the token refresh; retry after the Retry-After interval
+   */
+  429: unknown
+  /**
+   * Spotify could not refresh the access token
+   */
+  503: unknown
+}
+
 export type NowPlayingApiV1SpotifyNowPlayingGetResponses = {
   /**
    * Successful Response
@@ -7245,6 +7372,21 @@ export type ListPlaylistsApiV1SpotifyPlaylistsGetData = {
   path?: never
   query?: never
   url: "/api/v1/spotify/playlists"
+}
+
+export type ListPlaylistsApiV1SpotifyPlaylistsGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * Spotify rate-limited the token refresh; retry after the Retry-After interval
+   */
+  429: unknown
+  /**
+   * Spotify could not refresh the access token
+   */
+  503: unknown
 }
 
 export type ListPlaylistsApiV1SpotifyPlaylistsGetResponses = {
@@ -7701,6 +7843,13 @@ export type MeApiV1UsersMeGetData = {
   url: "/api/v1/users/me"
 }
 
+export type MeApiV1UsersMeGetErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+}
+
 export type MeApiV1UsersMeGetResponses = {
   /**
    * Successful Response
@@ -7742,6 +7891,21 @@ export type DeleteAvatarApiV1UsersMeAvatarDeleteData = {
   path?: never
   query?: never
   url: "/api/v1/users/me/avatar"
+}
+
+export type DeleteAvatarApiV1UsersMeAvatarDeleteErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
 }
 
 export type DeleteAvatarApiV1UsersMeAvatarDeleteResponses = {
@@ -7786,6 +7950,21 @@ export type DeleteCoverApiV1UsersMeCoverDeleteData = {
   path?: never
   query?: never
   url: "/api/v1/users/me/cover"
+}
+
+export type DeleteCoverApiV1UsersMeCoverDeleteErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
 }
 
 export type DeleteCoverApiV1UsersMeCoverDeleteResponses = {
@@ -7913,6 +8092,25 @@ export type ExportCurrentUserDataApiV1UsersMeExportPostData = {
   url: "/api/v1/users/me/export"
 }
 
+export type ExportCurrentUserDataApiV1UsersMeExportPostErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie; or The request has no active session for MFA step-up
+   */
+  403: unknown
+  /**
+   * A fresh MFA verification is required first
+   */
+  428: unknown
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
+}
+
 export type ExportCurrentUserDataApiV1UsersMeExportPostResponses = {
   /**
    * Successful Response
@@ -8025,6 +8223,13 @@ export type LivenessHealthLiveGetData = {
   url: "/health/live"
 }
 
+export type LivenessHealthLiveGetErrors = {
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
+}
+
 export type LivenessHealthLiveGetResponses = {
   /**
    * Response Liveness Health Live Get
@@ -8044,6 +8249,13 @@ export type ReadyHealthReadyGetData = {
   path?: never
   query?: never
   url: "/health/ready"
+}
+
+export type ReadyHealthReadyGetErrors = {
+  /**
+   * Rate limit exceeded; retry after the Retry-After interval
+   */
+  429: unknown
 }
 
 export type ReadyHealthReadyGetResponses = {
@@ -8097,6 +8309,13 @@ export type ReadyReadyGetData = {
   url: "/ready"
 }
 
+export type ReadyReadyGetErrors = {
+  /**
+   * The Host header is not one of the allowed hosts
+   */
+  400: unknown
+}
+
 export type ReadyReadyGetResponses = {
   /**
    * Response Ready Ready Get
@@ -8115,6 +8334,17 @@ export type IssueWsUpgradeTicketWsTicketPostData = {
   path?: never
   query?: never
   url: "/ws/ticket"
+}
+
+export type IssueWsUpgradeTicketWsTicketPostErrors = {
+  /**
+   * Not authenticated, or the session is invalid or expired
+   */
+  401: unknown
+  /**
+   * The CSRF token is missing or does not match the cookie
+   */
+  403: unknown
 }
 
 export type IssueWsUpgradeTicketWsTicketPostResponses = {

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
+from app.api.openapi_responses import RATE_LIMITED
 from app.core.config import settings
 
 
@@ -23,6 +24,7 @@ router = APIRouter(tags=["public"])
     "/campus/config",
     response_model=PublicCampusConfig,
     summary="Get the campus timezone",
+    responses=RATE_LIMITED,
 )
 async def get_campus_config() -> PublicCampusConfig:
     """Return the single validated server timezone used by campus features."""

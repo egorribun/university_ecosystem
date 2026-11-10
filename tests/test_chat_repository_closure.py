@@ -12,7 +12,7 @@ import pytest
 import app.repositories.chat_repository as chat_module
 from app.models import User
 from app.repositories.chat_repository import ChatRepository
-from app.schemas.dtos.chat import ChatDTO
+from app.schemas.dtos.chat import ChatDTO, ChatParticipantDTO, MessageDTO
 
 CHAT_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79")
 USER_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7a")
@@ -160,17 +160,49 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
 
 async def test_message_and_user_lookup_helpers() -> None:
     repo, db = _repo()
-    message_a = SimpleNamespace(id=CHAT_ID)
-    message_b = SimpleNamespace(id=OTHER_ID)
-    db.execute.return_value = _result(rows=[message_a, message_b])
-
-    with patch.object(chat_module, "MessageDTO", _FakeMessageDTO):
-        assert await repo.get_last_messages([]) == {}
-        result = await repo.get_last_messages([CHAT_ID])
+    message_a = MessageDTO(
+        id=CHAT_ID, chat_id=CHAT_ID, sender_id=USER_ID, content="A", created_at=NOW
+    )
+    message_b = MessageDTO(
+        id=OTHER_ID, chat_id=CHAT_ID, sender_id=OTHER_ID, content="B", created_at=NOW
+    )
+    db.execute.side_effect = [
+        _result(rows=[message_a, message_b]),
+        _result(
+            rows=[
+                (USER_ID, "alice@example.test", True, "Alice"),
+                (OTHER_ID, "bob@example.test", False, None),
+            ]
+        ),
+    ]
+    assert await repo.get_last_messages([]) == {}
+    result = await repo.get_last_messages([CHAT_ID, OTHER_ID])
     assert result == {
-        CHAT_ID: ("message-dto", message_a),
-        OTHER_ID: ("message-dto", message_b),
+        CHAT_ID: message_a.model_copy(
+            update={
+                "sender": ChatParticipantDTO(
+                    id=USER_ID,
+                    email="alice@example.test",
+                    is_active=True,
+                    full_name="Alice",
+                )
+            }
+        ),
+        OTHER_ID: message_b.model_copy(
+            update={
+                "sender": ChatParticipantDTO(
+                    id=OTHER_ID,
+                    email="bob@example.test",
+                    is_active=False,
+                    full_name=None,
+                )
+            }
+        ),
     }
+    assert message_a.sender is None and message_b.sender is None
+    assert result[CHAT_ID].sender.full_name == "Alice"
+    assert result[OTHER_ID].sender.is_active is False
+    db.execute.side_effect = None
 
     user_a = SimpleNamespace(id=USER_ID)
     user_b = SimpleNamespace(id=OTHER_ID)
@@ -362,13 +394,17 @@ async def test_get_messages_covers_rls_cursor_and_next_cursor() -> None:
     repo, db = _repo()
     repo._set_message_rls_user = AsyncMock()  # type: ignore[method-assign]
     messages = [
-        SimpleNamespace(id=CHAT_ID, created_at=NOW),
-        SimpleNamespace(id=OTHER_ID, created_at=NOW),
-        SimpleNamespace(id=uuid.UUID(int=6), created_at=NOW),
+        MessageDTO(
+            id=message_id,
+            chat_id=CHAT_ID,
+            sender_id=USER_ID,
+            content="Page",
+            created_at=NOW,
+        )
+        for message_id in [CHAT_ID, OTHER_ID, uuid.UUID(int=6)]
     ]
     db.execute.return_value = _result(rows=messages)
     with (
-        patch.object(chat_module, "MessageDTO", _FakeMessageDTO),
         patch.object(
             chat_module, "decode_datetime_cursor", return_value=(NOW, str(CHAT_ID))
         ),
@@ -379,7 +415,7 @@ async def test_get_messages_covers_rls_cursor_and_next_cursor() -> None:
         result, has_more, next_cursor = await repo.get_messages(
             CHAT_ID, "cursor", 2, user_id=USER_ID
         )
-    assert result == [("message-dto", messages[0]), ("message-dto", messages[1])]
+    assert result == messages[:2]
     assert has_more is True
     assert next_cursor == "cursor-next"
     encode.assert_called_once_with(NOW, str(OTHER_ID))
@@ -584,12 +620,28 @@ async def test_participants_receipts_type_message_and_presence() -> None:
     db.execute.return_value = _result(scalar_one_or_none="group")
     assert await repo.get_chat_type(CHAT_ID) == "group"
 
-    with patch.object(chat_module, "MessageDTO", _FakeMessageDTO):
-        db.execute.return_value = _result(scalar_one_or_none=None)
-        assert await repo.get_message_by_id(CHAT_ID) is None
-        message = SimpleNamespace(id=CHAT_ID)
-        db.execute.return_value = _result(scalar_one_or_none=message)
-        assert await repo.get_message_by_id(CHAT_ID) == ("message-dto", message)
+    db.execute.return_value = _result(scalar_one_or_none=None)
+    assert await repo.get_message_by_id(CHAT_ID) is None
+    message = MessageDTO(
+        id=CHAT_ID, chat_id=CHAT_ID, sender_id=USER_ID, content="Single", created_at=NOW
+    )
+    db.execute.side_effect = [
+        _result(scalar_one_or_none=message),
+        _result(rows=[(USER_ID, "alice@example.test", True, "Alice")]),
+    ]
+    result = await repo.get_message_by_id(CHAT_ID)
+    assert result == message.model_copy(
+        update={
+            "sender": ChatParticipantDTO(
+                id=USER_ID,
+                email="alice@example.test",
+                is_active=True,
+                full_name="Alice",
+            )
+        }
+    )
+    assert message.sender is None
+    db.execute.side_effect = None
 
     db.execute.return_value = _result(rows=[(USER_ID,), (OTHER_ID,), (USER_ID,)])
     assert await repo.get_presence_audience(USER_ID) == {OTHER_ID}

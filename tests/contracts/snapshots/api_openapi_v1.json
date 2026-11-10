@@ -6803,6 +6803,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "The Host header is not one of the allowed hosts"
           }
         },
         "summary": "Root",
@@ -7071,6 +7074,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The authenticated user lacks the global admin permission"
           }
         },
         "security": [
@@ -7345,6 +7354,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The authenticated user lacks the global admin permission"
           }
         },
         "security": [
@@ -8264,6 +8279,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Get the campus timezone",
@@ -9515,6 +9533,15 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "The body is not a valid CSP violation report"
+          },
+          "413": {
+            "description": "The report body exceeds the accepted size"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Receive Csp Report",
@@ -10962,6 +10989,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Get Groups",
@@ -11830,6 +11860,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
           }
         },
         "security": [
@@ -12156,6 +12192,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
           }
         },
         "security": [
@@ -12787,6 +12829,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
           }
         },
         "security": [
@@ -12876,6 +12921,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Get Vapid Public Key",
@@ -13239,6 +13287,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
           }
         },
         "security": [
@@ -13331,6 +13382,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
           }
         },
         "security": [
@@ -13358,6 +13415,15 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "429": {
+            "description": "Spotify rate-limited the token refresh; retry after the Retry-After interval"
+          },
+          "503": {
+            "description": "Spotify could not refresh the access token"
           }
         },
         "security": [
@@ -13385,6 +13451,15 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "429": {
+            "description": "Spotify rate-limited the token refresh; retry after the Retry-After interval"
+          },
+          "503": {
+            "description": "Spotify could not refresh the access token"
           }
         },
         "security": [
@@ -14240,6 +14315,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
           }
         },
         "security": [
@@ -14312,6 +14390,15 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "security": [
@@ -14384,6 +14471,15 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "security": [
@@ -14597,6 +14693,18 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie; or The request has no active session for MFA step-up"
+          },
+          "428": {
+            "description": "A fresh MFA verification is required first"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "security": [
@@ -14783,6 +14891,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Liveness Probe",
@@ -14809,6 +14920,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "429": {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
           }
         },
         "summary": "Readiness Probe",
@@ -14879,6 +14993,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "The Host header is not one of the allowed hosts"
           }
         },
         "summary": "Legacy Readiness Check",
@@ -14901,6 +15018,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated, or the session is invalid or expired"
+          },
+          "403": {
+            "description": "The CSRF token is missing or does not match the cookie"
           }
         },
         "security": [

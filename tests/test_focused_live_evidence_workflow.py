@@ -89,8 +89,8 @@ docker() {
     evidence = [
         line for line in completed.outlines if line.startswith("AUD-313 seed evidence ")
     ]
-    # Failure must not prevent collecting evidence for the remaining four specs.
-    assert len(evidence) == 5
+    # Failure must not prevent collecting evidence for the remaining five specs.
+    assert len(evidence) == 6
     expected_outcome = "failed" if expected_status else "passed"
     assert all(line.endswith(f"outcome={expected_outcome}") for line in evidence)
     if not containers and inventory_status == 0:

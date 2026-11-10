@@ -115,6 +115,17 @@ async def _read_body_with_limit(request: Request, limit: int) -> bytes | None:
     "",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(sensitive_route_limit(limit=30, window_sec=60))],
+    # Inline on purpose: the sqlmap gate accepts this operation as untestable
+    # only while this module imports nothing that can reach SQL, so it keeps
+    # its reviewed import set. tests/test_openapi_responses.py keeps the 429
+    # text equal to app.api.openapi_responses.RATE_LIMITED.
+    responses={
+        400: {"description": "The body is not a valid CSP violation report"},
+        413: {"description": "The report body exceeds the accepted size"},
+        429: {
+            "description": "Rate limit exceeded; retry after the Retry-After interval"
+        },
+    },
 )
 async def receive_csp_report(request: Request) -> Response:
     """

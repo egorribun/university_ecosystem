@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.api.openapi_responses import INVALID_HOST, RATE_LIMITED
 from app.core.config import settings
 from app.core.database import engine, get_pool_health_metrics, wait_db
 from app.core.metrics import record_health_probe
@@ -224,7 +225,7 @@ async def _probe_storage() -> tuple[str, float]:
         return status_value, latency_seconds
 
 
-@router.get("/health/live", summary="Liveness Probe")
+@router.get("/health/live", summary="Liveness Probe", responses=RATE_LIMITED)
 async def liveness() -> dict[str, str]:
     # MOD-06 (audit 2026-03-15 Wave 7): Liveness probe MUST NOT check
     # external dependencies.  If the DB is down and K8s restarts all pods,
@@ -447,8 +448,10 @@ async def public_healthz(
     return await healthz(brief=True)
 
 
-@router.get("/ready", summary="Legacy Readiness Check")
-@router.get("/health/ready", summary="Readiness Probe")
+# /ready is exempt from rate limiting (RateLimitMiddleware._HEALTH_PATHS);
+# /health/ready is not.
+@router.get("/ready", summary="Legacy Readiness Check", responses=INVALID_HOST)
+@router.get("/health/ready", summary="Readiness Probe", responses=RATE_LIMITED)
 async def ready() -> dict[str, str]:
     # MOD-06 (audit 2026-03-15 Wave 7): Return 503 immediately during shutdown
     # so K8s removes this pod from the service endpoints before killing it.

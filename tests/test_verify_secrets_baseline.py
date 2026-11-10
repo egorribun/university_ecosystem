@@ -30917,7 +30917,7 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495839
+    assert len(policy_bytes) == 495840
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
@@ -31512,7 +31512,7 @@ def _nov9_historical_506_from_live_policy(
     )
     historical = {**policy, "records": copy.deepcopy(records[:506])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert len(historical_bytes) == 495839, "prior 506 policy bytes changed"
+    assert len(historical_bytes) == 495840, "prior 506 policy bytes changed"
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
@@ -31524,7 +31524,7 @@ def _nov9_historical_506_from_live_policy(
 
 
 def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
-    assert len(policy_bytes) == 498821, "live disposition bytes changed"
+    assert len(policy_bytes) == 498822, "live disposition bytes changed"
     assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
         "live disposition policy digest changed"
     )
@@ -31532,7 +31532,7 @@ def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     # Everything before the former closing list is byte-identical, including
     # the row13 companion and each old approval's evidence, dates, and owner.
-    assert policy_bytes[:495809] == historical_bytes[:495809]
+    assert policy_bytes[:495810] == historical_bytes[:495810]
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     ), "prior 505 policy bytes changed"
@@ -32088,3 +32088,48 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     assert hashlib.sha256(restored_bytes).digest() == (
         _NATS_PROCESS_PRE_REBIND_POLICY_SHA256
     ), "anything besides the two companion identities changed"
+
+
+# Exact existing row13 companion rebind for group-list tenant receipt coverage.
+# Preserve all 509 approvals, including the three WASM suffix identities.
+_AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
+    "50 f8 59 22 de 8f d9 96 2b be f0 1a f0 1f b6 a8 7a 18 a0 04 c4 d6 e8 71 6d 50 b8 11 fd 0f 95 69"
+)
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "ea 7b 99 95 17 3f 0a 1d e8 42 ba 0f 29 9b f6 80 c7 c9 56 9f f3 c9 f5 da 07 d5 dc 3d 8b c7 b4 6e"
+)
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "31 19 01 94 86 bc 49 58 14 50 6b de 5f 01 14 3a ae cf d8 bb d0 e5 37 54 f0 b4 02 f6 70 3d b4 a3"
+)
+_AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
+    "06 36 53 51 61 3b 5d 4f 1f b0 4e 5a ba 47 a9 38 4e ea d2 b6 6a 69 e6 cb 06 c5 e1 84 4c 0e 3f 09"
+)
+_AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
+    "e1 7e 57 80 51 64 9c 1d fb 10 07 02 45 27 4d 1a 2a a5 98 1c 1a 17 9c 5a 52 21 a6 04 40 5a 69 ea"
+)
+_AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
+    "b2 71 1a 01 41 ae bb ae 5d d3 ed 83 05 a6 9f 6e 0d a0 e2 ac 5f 56 94 bd 8e f4 a0 59 3a 7a 40 51"
+)
+_AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
+_AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
+    bytes.fromhex("77 27 54 5e e8 71 51 7b ff 6a a2 83 54 d0 0a 7f b0 c7 e9 b1")
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+
+
+_NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
+    "95 4d dd 0d 5d 7a 23 bd a3 c7 cd 64 28 51 71 53 60 d8 57 24 4b 6c d1 db e5 ad 29 8e ea 00 23 48"
+)
+_NATS_PROCESS_PRE_REBIND_POLICY_SHA256 = bytes.fromhex(
+    "a2 b9 47 57 e1 56 24 88 f6 c7 b3 33 fb 1d f5 65 25 02 81 f7 85 28 c0 31 b0 16 78 57 33 00 1d a6"
+)
+_NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
+    "14 d3 80 b2 5e 1c 0a 4f b7 42 78 98 35 cf 66 cf 4b f3 bf 73 7e 42 2f 1a 51 65 e6 7f 08 7f e9 54"
+)

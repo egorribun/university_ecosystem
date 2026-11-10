@@ -337,6 +337,9 @@ export const handlers = [
         await getDeleteAvatarApiV1UsersMeAvatarDelete200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -363,6 +366,9 @@ export const handlers = [
         await getDeleteCoverApiV1UsersMeCoverDelete200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -987,6 +993,10 @@ export const handlers = [
         await getExportCurrentUserDataApiV1UsersMeExportPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
+      [undefined, { status: 428 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1099,6 +1109,8 @@ export const handlers = [
         await getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1176,6 +1188,7 @@ export const handlers = [
         await getGetCampusConfigApiV1CampusConfigGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1224,6 +1237,7 @@ export const handlers = [
 
     const resultArray = [
       [await getGetPushTopicsApiV1PushTopicsGet200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1250,6 +1264,7 @@ export const handlers = [
         await getGetVapidPublicKeyApiV1PushVapidPublicKeyGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1305,6 +1320,7 @@ export const handlers = [
         await getSpotifyAuthUrlApiV1SpotifyAuthUrlGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1363,6 +1379,9 @@ export const handlers = [
         await getNowPlayingApiV1SpotifyNowPlayingGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 429 }],
+      [undefined, { status: 503 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1389,6 +1408,9 @@ export const handlers = [
         await getListPlaylistsApiV1SpotifyPlaylistsGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 429 }],
+      [undefined, { status: 503 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1520,6 +1542,7 @@ export const handlers = [
 
     const resultArray = [
       [await getMeApiV1UsersMeGet200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1825,6 +1848,8 @@ export const handlers = [
         await getMarkAllReadApiV1NotificationsReadAllPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2015,6 +2040,8 @@ export const handlers = [
         await getDisconnectApiV1SpotifyDisconnectPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2097,6 +2124,8 @@ export const handlers = [
         await getClearNotificationsApiV1NotificationsDelete200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2199,6 +2228,7 @@ export const handlers = [
 
     const resultArray = [
       [await getGetGroupsApiV1GroupsGet200Response(), { status: 200 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2370,10 +2400,12 @@ export const handlers = [
       }
     }
 
-    const resultArray = [[undefined, { status: 204 }]] as [
-      any,
-      { status: number },
-    ][];
+    const resultArray = [
+      [undefined, { status: 204 }],
+      [undefined, { status: 400 }],
+      [undefined, { status: 413 }],
+      [undefined, { status: 429 }],
+    ] as [any, { status: number }][];
 
     const [body, init] =
       resultArray[next(`post /api/v1/csp-report`) % resultArray.length];
@@ -2567,6 +2599,8 @@ export const handlers = [
         await getListFeatureFlagsAdminFeatureFlagsGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2590,6 +2624,7 @@ export const handlers = [
 
     const resultArray = [
       [await getLivenessHealthLiveGet200Response(), { status: 200 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2613,6 +2648,7 @@ export const handlers = [
 
     const resultArray = [
       [await getReadyHealthReadyGet200Response(), { status: 200 }],
+      [undefined, { status: 429 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2636,6 +2672,8 @@ export const handlers = [
 
     const resultArray = [
       [await getIssueWsUpgradeTicketWsTicketPost201Response(), { status: 201 }],
+      [undefined, { status: 401 }],
+      [undefined, { status: 403 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -2682,6 +2720,7 @@ export const handlers = [
 
     const resultArray = [
       [await getReadyReadyGet200Response(), { status: 200 }],
+      [undefined, { status: 400 }],
     ] as [any, { status: number }][];
 
     const [body, init] = resultArray[next(`get /ready`) % resultArray.length];
@@ -2704,6 +2743,7 @@ export const handlers = [
 
     const resultArray = [
       [await getGetRootGet200Response(), { status: 200 }],
+      [undefined, { status: 400 }],
     ] as [any, { status: number }][];
 
     const [body, init] = resultArray[next(`get /`) % resultArray.length];

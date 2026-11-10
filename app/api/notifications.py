@@ -25,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 
 from app.api.deps import get_current_user_from_dishka
+from app.api.openapi_responses import CSRF_REJECTED, UNAUTHENTICATED, combine
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import localized_text, resolve_locale, translate
@@ -542,7 +543,7 @@ async def mark_read_single(
     return {"ok": True}
 
 
-@router.post("/read-all")
+@router.post("/read-all", responses=combine(UNAUTHENTICATED, CSRF_REJECTED))
 @inject
 async def mark_all_read(
     db: FromDishka[AsyncDatabaseSession],
@@ -583,7 +584,7 @@ async def delete_notification(
     return {"ok": True}
 
 
-@router.delete("")
+@router.delete("", responses=combine(UNAUTHENTICATED, CSRF_REJECTED))
 @inject
 async def clear_notifications(
     db: FromDishka[AsyncDatabaseSession],

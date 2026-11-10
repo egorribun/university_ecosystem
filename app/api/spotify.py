@@ -17,6 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user_from_dishka
+from app.api.openapi_responses import (
+    CSRF_REJECTED,
+    UNAUTHENTICATED,
+    ResponseDocs,
+    combine,
+)
 from app.api.validation import (
     raise_http_error,
     raise_unauthorized,
@@ -363,7 +369,18 @@ async def _ensure_access_token(
     return str(user.spotify.access_token) if user.spotify.access_token else None
 
 
-@router.get("/auth-url", response_model=SpotifyAuthURL)
+# Token refresh in _ensure_access_token: Spotify throttling is relayed with its
+# Retry-After, and other non-revoking refresh failures report the upstream outage.
+_SPOTIFY_REFRESH_FAILURES: ResponseDocs = {
+    429: {
+        "description": "Spotify rate-limited the token refresh; retry after the "
+        "Retry-After interval"
+    },
+    503: {"description": "Spotify could not refresh the access token"},
+}
+
+
+@router.get("/auth-url", response_model=SpotifyAuthURL, responses=UNAUTHENTICATED)
 async def spotify_auth_url(
     request: Request,
     user: User = Depends(get_current_user_from_dishka),
@@ -500,7 +517,11 @@ async def spotify_callback(
     return RedirectResponse(target, status_code=302)
 
 
-@router.get("/now-playing", response_model=SpotifyNowPlayingOut)
+@router.get(
+    "/now-playing",
+    response_model=SpotifyNowPlayingOut,
+    responses=combine(UNAUTHENTICATED, _SPOTIFY_REFRESH_FAILURES),
+)
 @inject
 async def now_playing(
     request: Request,
@@ -614,7 +635,7 @@ async def now_playing(
     )
 
 
-@router.post("/disconnect")
+@router.post("/disconnect", responses=combine(UNAUTHENTICATED, CSRF_REJECTED))
 @inject
 async def disconnect(
     db: FromDishka[AsyncDatabaseSession],
@@ -625,7 +646,7 @@ async def disconnect(
     return {"ok": True}
 
 
-@router.get("/playlists")
+@router.get("/playlists", responses=combine(UNAUTHENTICATED, _SPOTIFY_REFRESH_FAILURES))
 @inject
 async def list_playlists(
     request: Request,

@@ -651,7 +651,11 @@ async def handle_schedule_changed(event: ScheduleUpdated | ScheduleDeleted) -> N
         return
     async with async_session() as db:
         await notify_about_schedule_change(
-            db, schedule_id=event.schedule_id, previous=previous, current=current
+            db,
+            schedule_id=event.schedule_id,
+            event_id=event.event_id,
+            previous=previous,
+            current=current,
         )
         await db.commit()
 

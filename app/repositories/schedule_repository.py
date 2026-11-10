@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from pydantic import BaseModel
 from sqlalchemy import or_, select, text
 
 import app.models as models
@@ -12,29 +11,6 @@ from app.core.cache import schedule_cache
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
-
-if TYPE_CHECKING:
-    pass
-
-
-def _restore_cached[DTOModel: BaseModel](
-    model: type[DTOModel], cached: object
-) -> list[DTOModel]:
-    """Rebuild DTOs from whatever the cache handed back.
-
-    The cache stores ``model_dump(mode="json")`` dicts so orjson can serialize
-    them for L2.  A hit therefore yields dicts, not DTOs, and every caller of
-    these methods reads DTO attributes -- a cached read used to hand them
-    ``dict`` and silently produce empty results.  Re-validating on the way out
-    keeps the return type honest whichever layer answered.
-    """
-
-    if not isinstance(cached, list):
-        return []
-    return [
-        item if isinstance(item, model) else model.model_validate(item)
-        for item in cached
-    ]
 
 
 class GroupRepository(
@@ -53,19 +29,12 @@ class GroupRepository(
     _MAX_GROUPS: int = 1000
 
     async def list_groups(self) -> Sequence[GroupDTO]:
-        """List all groups with caching."""
-        cache_key = "schedule:groups"
-        cached = await schedule_cache.get(cache_key)
-        if cached is not None:
-            return _restore_cached(GroupDTO, cached)
-
+        """Read groups through the current database session's tenant boundary."""
+        # A process-wide result cache bypasses database RLS on a hit, including
+        # when a different tenant or an unscoped request reuses the same worker.
         stmt = select(self.model).order_by(self.model.name).limit(self._MAX_GROUPS)
         result = await self.db.execute(stmt)
-        groups = list(result.scalars().all())
-        dtos = [self._to_dto(g) for g in groups]
-        # Serialize to dicts for orjson compatibility in L2 cache
-        await schedule_cache.set(cache_key, [d.model_dump(mode="json") for d in dtos])
-        return dtos
+        return [self._to_dto(group) for group in result.scalars().all()]
 
 
 class ScheduleRepository(
@@ -181,7 +150,7 @@ class ScheduleRepository(
 
         result = await super().create(data)
 
-        # Clear legacy per-group keys and refresh the group-list cache.
+        # Clear legacy per-group and group-list cache entries.
         group_id = data.get("group_id")
         if group_id is not None:
             await schedule_cache.delete(f"schedule:group:{group_id}")

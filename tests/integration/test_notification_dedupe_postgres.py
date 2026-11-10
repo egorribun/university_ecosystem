@@ -122,6 +122,7 @@ async def test_concurrent_schedule_change_creates_one_notification(
     schedule_id = uuid.uuid4()
     previous = {"group_id": str(group.id), "room": "101"}
     current = {"group_id": str(group.id), "room": "202"}
+    event_id = str(uuid.uuid4())
     read = schedule_changes._already_notified
 
     async def announce() -> int:
@@ -129,6 +130,7 @@ async def test_concurrent_schedule_change_creates_one_notification(
             result = await schedule_changes.notify_about_schedule_change(
                 session,
                 schedule_id=schedule_id,
+                event_id=event_id,
                 previous=previous,
                 current=current,
             )
