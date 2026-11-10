@@ -36,6 +36,7 @@ from app.core.di.infrastructure import InfrastructureProvider
 from app.core.middleware.tenant import TenantContextMiddleware
 from app.core.protocols import AsyncDatabaseSession
 from app.core.tenant import bypass_rls_ctx, get_current_tenant, tenant_id_ctx
+from app.services.group_service import GroupService
 from tests.fixtures import owned_baseline_postgres as owned
 
 initialize_database_for_tests = owned.initialize_database_for_tests
@@ -137,8 +138,11 @@ class _Evidence:
 
 
 class _GroupHTTPProvider(Provider):
-    # Reuse production construction rather than a fake GroupService/repository.
-    group_service = ContentProvider.group_service
+    @provide(scope=Scope.REQUEST)
+    def group_service(self, db: AsyncDatabaseSession) -> GroupService:
+        # Wrap the production factory: copying its Dishka descriptor through
+        # class access binds dependency metadata twice and loses the db argument.
+        return ContentProvider().group_service(db)
 
     def __init__(self, sessions, role: str, evidence: _Evidence) -> None:
         super().__init__()

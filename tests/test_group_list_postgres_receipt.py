@@ -160,3 +160,77 @@ async def test_group_http_provider_graph_constructs_without_opening_a_database()
         assert evidence.opened == 0
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+async def test_group_http_provider_resolves_production_service_per_request(monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.config import settings
+    from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
+    from app.repositories.schedule_repository import GroupRepository
+    from app.services.group_service import GroupService
+    from tests.integration.test_group_list_tenant_http_postgres import (
+        _Evidence,
+        _GroupHTTPProvider,
+    )
+
+    # Only the PostgreSQL probe results are simulated. Resolve the actual HTTP
+    # provider, production session generator, service and repository through
+    # Dishka's compiled factory, which graph construction alone does not call.
+    monkeypatch.setattr(settings, "mvp_tenant_id", None)
+    sessions = []
+
+    def session_factory():
+        session = AsyncSession()
+        role = ("reader", "reader", False, False, False, False, False, False, False)
+        boundary = (
+            True,
+            True,
+            True,
+            False,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            42,
+            "",
+        )
+        session.execute = AsyncMock(
+            side_effect=[Mock(one=Mock(return_value=row)) for row in (role, boundary)]
+        )
+        session.close = AsyncMock(wraps=session.close)
+        sessions.append(session)
+        return session
+
+    evidence = _Evidence()
+    container = make_async_container(
+        _GroupHTTPProvider(session_factory, "reader", evidence)
+    )
+    tenant_token = tenant_id_ctx.set("")
+    bypass_token = bypass_rls_ctx.set(False)
+    services = []
+    try:
+        for _ in range(2):
+            async with container() as request:
+                service = await request.get(GroupService)
+                services.append(service)
+                assert type(service) is GroupService
+                assert type(service.repo) is GroupRepository
+                assert service.db is service.repo.db is sessions[-1]
+                assert await request.get(GroupService) is service
+                sessions[-1].close.assert_not_awaited()
+            sessions[-1].close.assert_awaited_once()
+            assert sessions[-1].execute.await_count == 2
+        assert services[0] is not services[1]
+        assert sessions[0] is not sessions[1]
+        assert evidence.opened == 2
+        assert evidence.sessions == sessions
+    finally:
+        await container.close()
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
