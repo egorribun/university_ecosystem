@@ -206,6 +206,12 @@ describe("Routes layouts and boilerplate", () => {
     const NewsComp = NewsRoute.options.component as any
     const ScheduleComp = ScheduleRoute.options.component as any
     const SettingsComp = SettingsRoute.options.component as any
+    // The router preloads lazyRouteComponent pages before rendering them.
+    await Promise.all(
+      [NewsDetailComp, ProfileComp, EventsDetailComp, EventsComp, NewsComp, ScheduleComp].map(
+        (component) => component.preload?.()
+      )
+    )
 
     const views = [
       render(<MessengerChatComp />),

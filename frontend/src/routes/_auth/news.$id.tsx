@@ -1,11 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { lazy, Suspense } from "react"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
+import { Suspense } from "react"
 
 import { newsDetailQueryOptions } from "@/api/hooks/news"
 import { FeatureErrorBoundary } from "@/components/error"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
-const NewsDetail = lazy(() => import("@/pages/NewsDetail"))
+// lazyRouteComponent exposes preload(), which the router awaits for matched
+// routes before hydration. With React.lazy the page suspended during
+// hydration and React re-inserted its page <title>/<meta> beside the
+// server-rendered set, duplicating the document head.
+const NewsDetail = lazyRouteComponent(() => import("@/pages/NewsDetail"))
 
 function NewsDetailRoute() {
   return (
@@ -16,6 +20,8 @@ function NewsDetailRoute() {
     </FeatureErrorBoundary>
   )
 }
+// The router preloads route.options.component; forward it to the page chunk.
+NewsDetailRoute.preload = NewsDetail.preload
 
 export const Route = createFileRoute("/_auth/news/$id")({
   // Wave 129 SW5 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
