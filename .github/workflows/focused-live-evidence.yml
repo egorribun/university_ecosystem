@@ -91,7 +91,8 @@ jobs:
             tests/e2e-live/auth-login-lockout.live.spec.ts \
             tests/e2e-live/register-double-submit.live.spec.ts \
             tests/e2e-live/messenger-membership-revocation.live.spec.ts \
-            tests/e2e-live/story-viewer-keyboard.live.spec.ts
+            tests/e2e-live/story-viewer-keyboard.live.spec.ts \
+            tests/e2e-live/ssr-hydration-i18n.live.spec.ts
           do
             raw="$RUNNER_TEMP/focused-live-raw.txt"
             uv run --frozen --no-sync python -m scripts.live_stand e2e \
