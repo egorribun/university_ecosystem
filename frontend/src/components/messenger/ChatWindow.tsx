@@ -759,8 +759,8 @@ export const ChatWindow = memo(function ChatWindow({
                           <div
                             className={
                               message.isMe
-                                ? "mb-1.5 flex items-center gap-1 text-micro font-semibold italic text-[color:var(--text-inverse)]"
-                                : "mb-1.5 flex items-center gap-1 text-micro font-semibold italic text-(--brand-main)"
+                                ? "mb-1.5 flex items-center gap-1 pr-2 text-micro font-semibold italic text-[color:var(--text-inverse)]"
+                                : "mb-1.5 flex items-center gap-1 pr-2 text-micro font-semibold italic text-(--brand-main)"
                             }
                           >
                             <Forward
@@ -770,7 +770,10 @@ export const ChatWindow = memo(function ChatWindow({
                             />
                             {/* min-w-0 lets the flex item shrink so truncate can
                                 ellipsize; otherwise a long label overflows the bubble
-                                and white text lands on the light page background. */}
+                                and white text lands on the light page background.
+                                pr-2 keeps this first line clear of the 3rem top
+                                corner: at the label's top edge that curve reaches
+                                about 19px in, past the 16px bubble padding. */}
                             <span className="min-w-0 truncate">
                               {t("messenger:forwardedFrom", {
                                 name: message.forwardedFromName,
