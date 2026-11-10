@@ -22,7 +22,7 @@ ARG CADDY_VERSION
 # not serve; the locked graph itself is fetched through the module proxy.
 RUN apk add --no-cache \
       ca-certificates=20260909-r0 \
-      git=2.54.0-r0
+      git=2.54.1-r0
 
 WORKDIR /src
 COPY go.mod go.sum main.go ./
