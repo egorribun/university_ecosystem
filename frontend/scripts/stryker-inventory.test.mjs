@@ -32,9 +32,9 @@ const checkerToolchain = {
   typescriptChecker: {
     packageName: "@stryker-mutator/typescript-checker",
     pluginName: "typescript",
-    dependencySpec: "10.0.0",
-    packageVersion: "10.0.0",
-    lockVersion: "10.0.0",
+    dependencySpec: "10.1.1",
+    packageVersion: "10.1.1",
+    lockVersion: "10.1.1",
     lockIntegrity:
       "sha512-GLvC0LVd8RJ5SxR3eFcgb7DFKmw07DYtPXs942z6Qh7l6p7YBnFyd7lPw7nvA9UKEYDd22embrFmLlyC1XJjXw==", //  -- public npm package integrity checksum
   },
@@ -117,8 +117,8 @@ test("exports the shared exact checker configuration and validates locked toolch
   const checkerIntegrity = checkerToolchain.typescriptChecker.lockIntegrity
   const packageManifest = {
     devDependencies: {
-      "@stryker-mutator/core": "^10.0.0",
-      "@stryker-mutator/typescript-checker": "10.0.0",
+      "@stryker-mutator/core": "^10.1.1",
+      "@stryker-mutator/typescript-checker": "10.1.1",
       typescript: "npm:@typescript/typescript6@^6.0.2",
     },
   }
@@ -126,14 +126,14 @@ test("exports the shared exact checker configuration and validates locked toolch
     packages: {
       "": {
         devDependencies: {
-          "@stryker-mutator/core": "^10.0.0",
-          "@stryker-mutator/typescript-checker": "10.0.0",
+          "@stryker-mutator/core": "^10.1.1",
+          "@stryker-mutator/typescript-checker": "10.1.1",
           typescript: "npm:@typescript/typescript6@^6.0.2",
         },
       },
-      "node_modules/@stryker-mutator/core": { version: "10.0.0" },
+      "node_modules/@stryker-mutator/core": { version: "10.1.1" },
       "node_modules/@stryker-mutator/typescript-checker": {
-        version: "10.0.0",
+        version: "10.1.1",
         integrity: checkerIntegrity,
       },
       "node_modules/typescript": {
@@ -147,12 +147,12 @@ test("exports the shared exact checker configuration and validates locked toolch
     packageLock,
     checkerPackage: {
       name: "@stryker-mutator/typescript-checker",
-      version: "10.0.0",
-      peerDependencies: { "@stryker-mutator/core": "10.0.0" },
+      version: "10.1.1",
+      peerDependencies: { "@stryker-mutator/core": "10.1.1" },
     },
     typescriptPackage: { name: "@typescript/typescript6", version: "6.0.2" },
     typescriptRuntimeVersion: "6.0.3",
-    strykerCoreVersion: "10.0.0",
+    strykerCoreVersion: "10.1.1",
   })
 
   assert.deepEqual(canonicalTypeScriptCheckerConfig, checkerConfig)
@@ -174,12 +174,12 @@ test("exports the shared exact checker configuration and validates locked toolch
         },
         checkerPackage: {
           name: "@stryker-mutator/typescript-checker",
-          version: "10.0.0",
-          peerDependencies: { "@stryker-mutator/core": "10.0.0" },
+          version: "10.1.1",
+          peerDependencies: { "@stryker-mutator/core": "10.1.1" },
         },
         typescriptPackage: { name: "@typescript/typescript6", version: "6.0.2" },
         typescriptRuntimeVersion: "6.0.3",
-        strykerCoreVersion: "10.0.0",
+        strykerCoreVersion: "10.1.1",
       }),
     /differs from the source lock/u
   )
