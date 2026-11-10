@@ -429,9 +429,10 @@ class OutboxWorker:
                             event_type=se.event_type, status="success"
                         ).inc()
                     except DurableEventDeferred:
-                        # A live external delivery lease is not a failed send.
-                        # Keep the row pending without burning the DLQ budget;
-                        # the normal poll will retry after the lease expires.
+                        # A live external delivery lease, or a broker that is
+                        # still reconnecting, is not a failed send. Keep the row
+                        # pending without burning the DLQ budget; the normal poll
+                        # retries after the lease expires or the broker returns.
                         _OUTBOX_BATCH_RETRY_PENDING.set(True)
                         deferred_count += 1
                     except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)

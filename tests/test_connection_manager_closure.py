@@ -395,8 +395,14 @@ def test_connection_manager_dependency_prefers_app_state_then_global() -> None:
 
 
 @pytest.mark.asyncio
-async def test_outbox_broadcast_propagates_nats_disconnect() -> None:
+async def test_outbox_broadcast_defers_while_nats_is_disconnected() -> None:
+    """A disconnected broker defers the outbox event instead of failing it.
+
+    AUD-322: counting the disconnect as a failure spent the five-attempt budget
+    within seconds and dead-lettered messages sent during a short NATS outage.
+    """
     from app.api.ws import connection_manager as module
+    from app.core.events import DurableEventDeferred
     from app.core.nats_broker import NatsTaskBroker
 
     manager = module.ConnectionManager()
@@ -411,7 +417,7 @@ async def test_outbox_broadcast_propagates_nats_disconnect() -> None:
         patch.object(manager, "_get_chat_participants", participant_lookup),
         patch.object(manager, "send_to_user", local_send),
         patch("app.core.nats_broker.broker", broker),
-        pytest.raises(ConnectionError),
+        pytest.raises(DurableEventDeferred),
     ):
         await manager.broadcast_to_chat(
             chat_id,

@@ -158,9 +158,14 @@ async def test_publish_core_strict_mode_propagates_retryable_failure(
         mock_nc.publish = AsyncMock(side_effect=ConnectionError("nats unavailable"))
     broker._nc = mock_nc
 
-    with pytest.raises(ConnectionError):
+    with pytest.raises(ConnectionError) as raised:
         await broker.publish_core(
             "chat.abc",
             {"type": "message_edited", "room": "abc"},
             strict=True,
         )
+    # Only a missing connection is the reconnect-owned outage that the outbox
+    # defers; a failed publish on a live connection stays an ordinary failure.
+    assert isinstance(raised.value, nats_broker_module.NatsNotConnectedError) is (
+        failure_kind == "disconnected"
+    )

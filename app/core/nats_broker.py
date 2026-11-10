@@ -45,6 +45,10 @@ _logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
+class NatsNotConnectedError(ConnectionError):
+    """A strict publish found no live connection; the background reconnect owns recovery."""
+
+
 def _worker_stacktrace_without_broker_vars(stacktrace: Any) -> Any:
     """Copy one native SDK stacktrace without broker-frame local variables."""
     if type(stacktrace) is not dict:
@@ -494,7 +498,7 @@ class NatsTaskBroker:
                 subject=subject,
             )
             if strict:
-                raise ConnectionError("NATS core publisher is not connected")
+                raise NatsNotConnectedError("NATS core publisher is not connected")
             return
 
         with tracer.start_as_current_span(
