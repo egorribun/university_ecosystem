@@ -338,10 +338,16 @@ jobs:
         # the single path authenticated-visual-audit.mjs checks. The Linux backend
         # serves it at the same path as Caddy-fronted dev compose.
         run: |
-          if ! curl -sf http://127.0.0.1:8000/.well-known/jwks.json | python -c "import sys, json; d = json.load(sys.stdin); keys = d.get('keys', []); assert len(keys) > 0, 'JWKS empty'; print(f'OK: JWKS has {len(keys)} key(s)')"; then
+          # Save the response, then parse it as data: no fetched bytes reach an
+          # interpreter. A missing or non-array "keys" member fails like an empty set.
+          jwks="$RUNNER_TEMP/jwks.json"
+          if ! curl -sf -o "$jwks" http://127.0.0.1:8000/.well-known/jwks.json \
+            || ! keys="$(jq -er '.keys | arrays | length' "$jwks")" \
+            || [[ "$keys" -lt 1 ]]; then
             echo "::error::JWKS endpoint not serving keys (RS256 backend setup broken)"
             exit 1
           fi
+          echo "OK: JWKS has ${keys} key(s)"
 
       - name: Seed test user
         # Idempotent registration: 409 means user exists from prior run reuse.
