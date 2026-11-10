@@ -84,7 +84,7 @@ async def test_chat_list_resolves_uuid_last_message_without_coercion(
     db_session, user_factory, deleted
 ):
     owner = await user_factory()
-    peer = await user_factory()
+    peer = await user_factory(full_name="Peer")
     outsider = await user_factory()
     chat = Chat(participants=[owner, peer], created_at=_NOW, updated_at=_NOW)
     empty = Chat(participants=[owner], created_at=_NOW, updated_at=_NOW)
@@ -167,7 +167,7 @@ async def test_chat_list_resolves_uuid_last_message_without_coercion(
     assert message.sender is not None
     assert (message.sender.id, message.sender.full_name, message.sender.avatar_url) == (
         peer.id,
-        None,
+        "Peer",
         None,
     )
     public_sender = message.model_dump()["sender"]
