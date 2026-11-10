@@ -25,6 +25,15 @@ def test_combine_does_not_mutate_the_shared_entries() -> None:
     assert docs.CSRF_REJECTED[403] == before
 
 
+def test_csp_report_inline_rate_limit_doc_matches_the_shared_entry() -> None:
+    # csp_report.py documents its responses inline to keep the import set the
+    # sqlmap gate reviews; its 429 text must still match the shared entry.
+    from app.api.internal.csp_report import router
+
+    (route,) = router.routes
+    assert route.responses[429] == docs.RATE_LIMITED[429]
+
+
 def test_every_shared_entry_is_a_client_error() -> None:
     for entry in (
         docs.INVALID_HOST,
