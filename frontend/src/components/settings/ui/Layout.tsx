@@ -358,7 +358,9 @@ export function Tab({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
         selected
           ? "text-text-primary"
-          : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]"
+          : // Inactive labels stay fully opaque: text-secondary at 70% opacity
+            // over the glass tablist measured 3.5:1, below WCAG AA 4.5:1.
+            "text-(--text-secondary) hover:text-text-primary hover:bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]"
       )}
     >
       {selected && (
