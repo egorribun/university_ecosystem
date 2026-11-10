@@ -151,6 +151,22 @@ def test_static_classifier_normalizes_separators_after_decoding(path: str) -> No
     assert is_private_static_path(path)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "..%5cstatic/chat_uploads/chat_x/file.txt",
+        "..%255cstatic%255cchat_uploads%255cfile.txt",
+        "avatars%5c..%5c..%5cstatic/chat_uploads/file.txt",
+    ],
+)
+def test_static_classifier_rejects_traversal_from_decoded_separators(
+    path: str,
+) -> None:
+    # A decoded backslash is a separator for the traversal check too, so a
+    # parent segment cannot hide behind an encoded separator spelling.
+    assert is_private_static_path(path)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("base_url", "alias"),

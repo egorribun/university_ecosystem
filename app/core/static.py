@@ -33,15 +33,15 @@ def is_private_static_path(path: str) -> bool:
         if decoded == normalized:
             break
         normalized = decoded
+    # Decoding can introduce separators that were absent in the raw input.
+    # Normalize them before the traversal check and the private root prefixes.
+    normalized = normalized.replace("\\", "/").lstrip("/")
     # A parent segment can leave the mounted directory and then re-enter it
     # under a different spelling (for example ``../static/chat_uploads``).
     # Reject traversal before Starlette resolves the path against its mount
     # directory, so private prefixes cannot be hidden behind that alias.
     if ".." in normalized.split("/"):
         return True
-    # Decoding can introduce separators that were absent in the raw input.
-    # Normalize them before comparing the private root prefixes.
-    normalized = normalized.replace("\\", "/").lstrip("/")
     normalized = posixpath.normpath(normalized)
     if normalized.startswith("static/"):
         normalized = normalized[len("static/") :]
