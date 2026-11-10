@@ -118,7 +118,7 @@ jobs:
         # repo since v0.14.0 (2026-01-20) but install-action doesn't auto-
         # follow. Replaced with the official wasm-pack curl installer from
         # rustwasm.github.io (same fix already in visual-audit.yml line 180).
-        uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: wasm-pack@0.15.0
 
@@ -150,7 +150,7 @@ jobs:
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
-        uses: chromaui/action@80379940a37537422d4419aa4c9578673b8bcd34 # v18.13.9
+        uses: chromaui/action@5bcadb5104b09e360e210c54f95a7437c2d82bab # v18.13.3
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
