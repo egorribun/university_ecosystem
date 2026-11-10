@@ -68,6 +68,7 @@ _DELEGATED_METHODS = frozenset(
         "send_message_once",
         "read_correlation",
         "outbox_state",
+        "deferred_event",
         "start_container",
         "broker_last_message",
     }

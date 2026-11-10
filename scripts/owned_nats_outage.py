@@ -298,15 +298,22 @@ def _valid_exact_stored_event_state(
 
 
 def classify_outage_attempt(
-    expected_event_id: str, state: StoredEventState | None
+    expected_event_id: str,
+    state: StoredEventState | None,
+    *,
+    deferred_event_id: str | None = None,
 ) -> OutboxVerdict:
     """Classify retry evidence for the exact retained StoredEvent row."""
-    if state is None or not _valid_exact_stored_event_state(expected_event_id, state):
+    if (
+        (deferred_event_id is not None and deferred_event_id != expected_event_id)
+        or state is None
+        or not _valid_exact_stored_event_state(expected_event_id, state)
+    ):
         return OutboxVerdict.INVALID
 
     if state.processed_at_present or state.dlq_count > 0 or state.error_count >= 5:
         return OutboxVerdict.TERMINAL
-    if state.error_count == 0:
+    if state.error_count == 0 and deferred_event_id is None:
         return OutboxVerdict.WAIT
     return OutboxVerdict.RETRYABLE
 
@@ -315,12 +322,17 @@ def classify_outbox_drain(
     expected_event_id: str,
     observed_retry_count: int,
     state: StoredEventState | None,
+    *,
+    deferred_event_id: str | None = None,
 ) -> OutboxVerdict:
     """Classify completion for the same row without accepting counter reset."""
     if (
         state is None
         or type(observed_retry_count) is not int
-        or not 1 <= observed_retry_count < 5
+        or (deferred_event_id is not None and deferred_event_id != expected_event_id)
+        or not (0 if deferred_event_id == expected_event_id else 1)
+        <= observed_retry_count
+        < 5
         or not _valid_exact_stored_event_state(expected_event_id, state)
     ):
         return OutboxVerdict.INVALID

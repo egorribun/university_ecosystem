@@ -112,12 +112,16 @@ jobs:
             # read-only mount; afterwards the record and one-off seed containers are gone.
             mounts=$(grep -Ec '^AUD-313 seed target verified for ue-live-[0-9a-f]{16}: owner record is one exact read-only mount$' "$raw")
             oneoff=$(docker ps -aq --filter label=com.docker.compose.oneoff=True | wc -l)
+            inventory_status=$?
+            if [[ "$inventory_status" -ne 0 ]]; then
+              oneoff=unknown
+            fi
             if [[ -e "$LIVE_STATE_DIR/.secrets/owned-stand-seed.json" ]]; then
               record=present
             else
               record=removed
             fi
-            if [[ "$mounts" -eq 3 && "$record" == removed && "$oneoff" -eq 0 ]]; then
+            if [[ "$mounts" -eq 3 && "$record" == removed && "$inventory_status" -eq 0 && "$oneoff" -eq 0 ]]; then
               echo "AUD-313 seed evidence spec=$spec readonly_mounts=$mounts record=$record oneoff_containers=$oneoff outcome=passed"
             else
               echo "AUD-313 seed evidence spec=$spec readonly_mounts=$mounts record=$record oneoff_containers=$oneoff outcome=failed"

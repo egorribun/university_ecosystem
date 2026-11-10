@@ -741,3 +741,70 @@ def test_owned_diagnostic_discards_exception_snapshot_without_breaking_logging(
         assert exported(sink, name).body == expected
         assert json.loads(output.getvalue()) == expected
         assert len(sink.get_finished_logs()) == 1
+
+
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize("otel_first", [True, False], ids=["otel-first", "otel-last"])
+def test_outbox_deferral_receipt_has_closed_schema_on_every_sink(
+    json_output: bool, otel_first: bool
+) -> None:
+    name = "app.workers.outbox"
+    event_id = "10000000-0000-4000-8000-000000000005"
+    expected = {
+        "message": "outbox_event_deferred",
+        "logger": name,
+        "stored_event_id": event_id,
+    }
+    with pipeline(json_output=json_output, otel_first=otel_first) as (sink, console):
+        try:
+            raise ValueError("private-exception")
+        except ValueError:
+            logging_mod.get_logger(name).bind(
+                payload="private-content", user_id="private-user"
+            ).info("outbox_event_deferred", stored_event_id=event_id, exc_info=True)
+        record = exported(sink, name)
+        assert record.body == expected
+        assert json.loads(console.getvalue()) == expected
+        assert not any(key.startswith("exception.") for key in record.attributes)
+        wire = encode_logs(sink.get_finished_logs()).SerializeToString()
+        for private in (b"private-content", b"private-user", b"private-exception"):
+            assert private not in wire
+
+
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize("otel_first", [True, False], ids=["otel-first", "otel-last"])
+def test_outbox_native_record_drops_real_exception_attributes(
+    json_output: bool, otel_first: bool
+) -> None:
+    name = "app.workers.outbox"
+    expected = {
+        "message": "outbox_event_deferred",
+        "logger": name,
+        "stored_event_id": "10000000-0000-4000-8000-000000000005",
+    }
+    with pipeline(json_output=json_output, otel_first=otel_first) as (sink, console):
+        try:
+            raise ValueError("private-native-exception")
+        except ValueError as error:
+            record = logging.LogRecord(
+                name,
+                logging.INFO,
+                __file__,
+                1,
+                dict(expected),
+                (),
+                (ValueError, error, error.__traceback__),
+            )
+        record.__dict__.update(
+            _logger=logging.getLogger(name),
+            _name="info",
+            payload="private-native-extra",
+        )
+        logging.getLogger().handle(record)
+        emitted = exported(sink, name)
+        assert emitted.body == expected
+        assert not any(key.startswith("exception.") for key in emitted.attributes)
+        assert json.loads(console.getvalue()) == expected
+        wire = encode_logs(sink.get_finished_logs()).SerializeToString()
+        assert b"private-native-exception" not in wire
+        assert b"private-native-extra" not in wire

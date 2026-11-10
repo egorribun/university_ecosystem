@@ -3,6 +3,7 @@
 import contextlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -305,6 +306,12 @@ async def test_singleton_membership_retry_preempts_lower_uuid_ordinary_event(
     retry.aggregate_id_uuid = retry_aggregate
     retry.sequence_number = 1
     retry.payload["chat_id"] = str(retry_aggregate)
+    # The immutable scheduling key is now (created_at, stored row ID), not
+    # aggregate ID. Keep the ordinary competitor ahead of the retry in that
+    # key so the second poll still proves reserved membership preemption.
+    first.id = uuid.UUID(int=1)
+    competing.id = uuid.UUID(int=2)
+    retry.id = uuid.UUID(int=3)
     db_session.add_all([first, competing, retry])
     await db_session.flush()
 
@@ -324,3 +331,288 @@ async def test_singleton_membership_retry_preempts_lower_uuid_ordinary_event(
     assert competing.error_count == 0
     assert retry.processed_at is None
     assert retry.error_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [1, 2, 20])
+@pytest.mark.parametrize("worker_count", [1, 2])
+async def test_deferred_heads_rotate_without_starving_independent_mfa(
+    db_session, outbox_bus, monkeypatch, batch_size, worker_count
+):
+    from app.core.events import DurableEventDeferred
+
+    log = MagicMock()
+    monkeypatch.setattr("app.workers.outbox._deferred_logger", log)
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    messages = [
+        StoredEvent(
+            id=uuid.uuid4(),
+            event_type="chat.message_sent",
+            aggregate_type="Message",
+            aggregate_id=str(uuid.UUID(int=index + 1)),
+            sequence_number=1,
+            payload={},
+            created_at=timestamp,
+            error_count=0,
+        )
+        for index in range(3 * batch_size)
+    ]
+    successor = StoredEvent(
+        id=uuid.uuid4(),
+        event_type="chat.message_sent",
+        aggregate_type="Message",
+        aggregate_id=messages[0].aggregate_id,
+        sequence_number=2,
+        payload={},
+        created_at=timestamp,
+        error_count=0,
+    )
+    mfa = StoredEvent(
+        id=uuid.uuid4(),
+        event_type="auth.mfa_email.requested",
+        aggregate_type="MfaChallenge",
+        aggregate_id=str(uuid.uuid4()),
+        payload={},
+        created_at=timestamp,
+        error_count=0,
+    )
+    db_session.add_all([*messages, successor, mfa])
+    await db_session.flush()
+    delivered = []
+    attempted = []
+    disconnected = True
+
+    async def dispatch(event):
+        attempted.append(event.id)
+        if event.aggregate_type == "Message" and disconnected:
+            raise DurableEventDeferred()
+        delivered.append(event.id)
+
+    workers = [OutboxWorker(batch_size=batch_size) for _ in range(worker_count)]
+    for worker in workers:
+        monkeypatch.setattr(worker, "_dispatch_event", dispatch)
+    for index in range(4 * worker_count):
+        await workers[index % worker_count].process_batch()
+    assert delivered == [mfa.id]
+    assert successor.id not in attempted
+    assert log.info.call_count == len(attempted) - 1
+    for call in log.info.call_args_list:
+        assert call.args == ("outbox_event_deferred",)
+        assert set(call.kwargs) == {"stored_event_id"}
+        assert call.kwargs["stored_event_id"] in {str(row.id) for row in messages}
+    assert set(row.id for row in messages) <= set(attempted)
+    for row in messages:
+        await db_session.refresh(row)
+        assert row.processed_at is None
+        assert row.error_count == 0
+        assert row.last_error is None
+
+    disconnected = False
+    # A replacement worker starts with no cursor and still drains persisted rows.
+    replacement = OutboxWorker(batch_size=batch_size)
+    monkeypatch.setattr(replacement, "_dispatch_event", dispatch)
+    for _ in range(5):
+        await replacement.process_batch()
+    assert set(delivered) == {row.id for row in [*messages, successor, mfa]}
+    assert len(delivered) == len(messages) + 2
+    assert delivered.index(messages[0].id) < delivered.index(successor.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [1, 2, 20])
+async def test_new_message_ingress_does_not_starve_older_mfa(
+    db_session, outbox_bus, monkeypatch, batch_size
+):
+    from app.core.events import DurableEventDeferred
+
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    mfa = StoredEvent(
+        id=uuid.uuid4(),
+        event_type="auth.mfa_email.requested",
+        aggregate_type="MfaChallenge",
+        aggregate_id=str(uuid.uuid4()),
+        payload={},
+        created_at=timestamp,
+        error_count=0,
+    )
+    db_session.add(mfa)
+    delivered = []
+
+    async def dispatch(event):
+        if event.aggregate_type == "Message":
+            raise DurableEventDeferred()
+        delivered.append(event.id)
+
+    worker = OutboxWorker(batch_size=batch_size)
+    monkeypatch.setattr(worker, "_dispatch_event", dispatch)
+    for poll in range(8):
+        db_session.add_all(
+            StoredEvent(
+                id=uuid.uuid4(),
+                event_type="chat.message_sent",
+                aggregate_type="Message",
+                aggregate_id=str(uuid.UUID(int=1 + poll * batch_size + index)),
+                payload={},
+                created_at=timestamp + timedelta(seconds=1 + poll),
+                error_count=0,
+            )
+            for index in range(batch_size)
+        )
+        await db_session.flush()
+        await worker.process_batch()
+    assert delivered == [mfa.id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("late_kind", ["mfa", "causal_successor"])
+async def test_bounded_sweep_revisits_old_keys_during_continuous_ingress(
+    db_session, outbox_bus, monkeypatch, late_kind
+):
+    from app.core.events import DurableEventDeferred
+
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def message(index, *, created_at, sequence_number=1, aggregate_id=None):
+        return StoredEvent(
+            id=uuid.UUID(int=100 + index),
+            event_type="chat.message_sent",
+            aggregate_type="Message",
+            aggregate_id=aggregate_id or str(uuid.UUID(int=100 + index)),
+            sequence_number=sequence_number,
+            payload={},
+            created_at=created_at,
+            error_count=0,
+        )
+
+    predecessor = message(0, created_at=timestamp)
+    guard = message(1, created_at=timestamp + timedelta(seconds=1))
+    db_session.add_all([predecessor, guard])
+    await db_session.flush()
+    recovered = False
+    delivered = []
+
+    async def dispatch(event):
+        if event.id == predecessor.id and not recovered:
+            raise DurableEventDeferred()
+        if event.id not in {predecessor.id, late.id}:
+            raise DurableEventDeferred()
+        delivered.append(event.id)
+
+    late = message(
+        2,
+        created_at=timestamp - timedelta(seconds=1),
+        sequence_number=2,
+        aggregate_id=predecessor.aggregate_id,
+    )
+    if late_kind == "mfa":
+        late.event_type = "auth.mfa_email.requested"
+        late.aggregate_type = "MfaChallenge"
+        late.aggregate_id = str(uuid.uuid4())
+
+    worker = OutboxWorker(batch_size=1)
+    monkeypatch.setattr(worker, "_dispatch_event", dispatch)
+    assert await worker.process_batch() == 0
+    # Simulate an older transaction becoming visible after the cursor passed
+    # its key; alternatively, this row is a successor with an older timestamp.
+    db_session.add(late)
+    await db_session.flush()
+    recovered = True
+    for poll in range(12):
+        db_session.add(
+            message(3 + poll, created_at=timestamp + timedelta(seconds=2 + poll))
+        )
+        await db_session.flush()
+        await worker.process_batch()
+    assert predecessor.id in delivered
+    assert late.id in delivered
+    assert len(delivered) == 2
+    if late_kind == "causal_successor":
+        assert delivered.index(predecessor.id) < delivered.index(late.id)
+    for row in (predecessor, late):
+        await db_session.refresh(row)
+        assert row.processed_at is not None
+        assert row.error_count == 0
+        assert row.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_fresh_membership_failure_consumes_ordinary_sweep_slot(
+    db_session, outbox_bus
+):
+    async def fail(_event):
+        raise RuntimeError("membership unavailable")
+
+    outbox_bus.subscribe(ChatParticipantRemoved.EVENT_TYPE, fail)
+    row = membership_retry(created_at=datetime(2026, 1, 1, tzinfo=UTC), error_count=0)
+    db_session.add(row)
+    await db_session.flush()
+    worker = OutboxWorker(batch_size=1)
+    assert await worker.process_batch() == 0
+    assert row.error_count == 1
+    assert worker._ordinary_sweep_remaining is None
+    assert worker._ordinary_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_failed_commit_does_not_advance_cursor_or_sweep_budget(
+    db_session, outbox_bus, monkeypatch
+):
+    row = user_created(created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    db_session.add(row)
+    await db_session.flush()
+    worker = OutboxWorker(batch_size=1)
+    cursor = (datetime(2025, 1, 1, tzinfo=UTC), uuid.UUID(int=1))
+    worker._ordinary_cursor = cursor
+    worker._ordinary_sweep_remaining = 7
+    monkeypatch.setattr(worker, "_dispatch_event", AsyncMock())
+    monkeypatch.setattr(
+        db_session, "commit", AsyncMock(side_effect=RuntimeError("commit failed"))
+    )
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await worker.process_batch()
+    assert worker._ordinary_cursor == cursor
+    assert worker._ordinary_sweep_remaining == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit_fails", [False, True])
+async def test_empty_snapshot_resets_scheduling_only_after_commit(
+    db_session, outbox_bus, monkeypatch, commit_fails
+):
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    worker = OutboxWorker(batch_size=1)
+    cursor = (timestamp, uuid.UUID(int=1))
+    worker._ordinary_cursor = cursor
+    worker._ordinary_sweep_remaining = 1_000_000
+    if commit_fails:
+        monkeypatch.setattr(
+            db_session, "commit", AsyncMock(side_effect=RuntimeError("commit failed"))
+        )
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await worker.process_batch()
+        assert worker._ordinary_cursor == cursor
+        assert worker._ordinary_sweep_remaining == 1_000_000
+        return
+
+    assert await worker.process_batch() == 0
+    assert worker._ordinary_cursor is None
+    assert worker._ordinary_sweep_remaining is None
+    # Another worker drained the old backlog. A refill with an older key must
+    # not inherit a large stale sweep while newer messages keep arriving.
+    older = user_created(created_at=timestamp - timedelta(seconds=1))
+    db_session.add(older)
+    delivered = []
+
+    async def dispatch(event):
+        from app.core.events import DurableEventDeferred
+
+        if event.id != older.id:
+            raise DurableEventDeferred()
+        delivered.append(event.id)
+
+    monkeypatch.setattr(worker, "_dispatch_event", dispatch)
+    for poll in range(3):
+        db_session.add(user_created(created_at=timestamp + timedelta(seconds=1 + poll)))
+        await db_session.flush()
+        await worker.process_batch()
+    assert delivered == [older.id]

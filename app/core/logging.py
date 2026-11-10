@@ -581,6 +581,32 @@ REQUEST_FAILURE_DIAGNOSTIC_FIELDS: tuple[str, ...] = (
 )
 
 
+OUTBOX_DEFERRED_DIAGNOSTIC_FIELDS: tuple[str, ...] = (
+    "message",
+    "logger",
+    "stored_event_id",
+)
+
+
+def _outbox_deferred_diagnostic_event(
+    event: Mapping[str, Any],
+) -> dict[str, str] | None:
+    """Project the exact-row receipt identically for console and OTEL sinks."""
+    if (
+        event.get("logger") != "app.workers.outbox"
+        or event.get("message") != "outbox_event_deferred"
+    ):
+        return None
+    diagnostic = {
+        "message": "outbox_event_deferred",
+        "logger": "app.workers.outbox",
+    }
+    event_id = event.get("stored_event_id")
+    if type(event_id) is str and _UUID_RE.fullmatch(event_id):
+        diagnostic["stored_event_id"] = event_id
+    return diagnostic
+
+
 def _format_safe_positional_args(
     logger: Any, method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
@@ -721,6 +747,9 @@ def configure_logging(
                     if key in event_dict
                 }
             )
+        deferred = _outbox_deferred_diagnostic_event(event_dict)
+        if deferred is not None:
+            return _orjson_serializer(deferred)
         handshake = _handshake_diagnostic_event(event_dict)
         if handshake is not None:
             return _orjson_serializer(handshake)

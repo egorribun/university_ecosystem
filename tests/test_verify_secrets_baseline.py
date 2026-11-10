@@ -8448,6 +8448,16 @@ def _assert_conditional_owner_source_bindings(
         for path, finding_type, digest, _category, _line in _AUD380_N21_HISTORICAL_IDENTITY_SOURCE_LINES
     }
     n21_identity_keys = set(_AUD380_PENDING_OWNER_IDENTITIES)
+    historical_identity_keys = {
+        (
+            path,
+            finding_type,
+            tuple(_NATS_ROW11_IDENTITY_REBINDS.get(bytes(digest), bytes(digest))),
+        )
+        if path == "quality/semgrep-dispositions.json"
+        else (path, finding_type, digest)
+        for path, finding_type, digest in historical_identity_keys
+    }
     assert historical_identity_keys == n21_identity_keys
     replaced_locations = set(_AUD380_N21_REPLACED_COMPANION_LOCATIONS)
     replaced_keys = {
@@ -30907,8 +30917,8 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495840
-    assert hashlib.sha256(policy_bytes[:494905]).digest() == (
+    assert len(policy_bytes) == 495838
+    assert hashlib.sha256(policy_bytes[:494903]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
     reconstructed = ledger_bytes.replace(
@@ -31502,7 +31512,7 @@ def _nov9_historical_506_from_live_policy(
     )
     historical = {**policy, "records": copy.deepcopy(records[:506])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert len(historical_bytes) == 495840, "prior 506 policy bytes changed"
+    assert len(historical_bytes) == 495838, "prior 506 policy bytes changed"
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
@@ -31514,7 +31524,7 @@ def _nov9_historical_506_from_live_policy(
 
 
 def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
-    assert len(policy_bytes) == 498822, "live disposition bytes changed"
+    assert len(policy_bytes) == 498820, "live disposition bytes changed"
     assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
         "live disposition policy digest changed"
     )
@@ -31522,8 +31532,8 @@ def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     # Everything before the former closing list is byte-identical, including
     # the row13 companion and each old approval's evidence, dates, and owner.
-    assert policy_bytes[:495810] == historical_bytes[:495810]
-    assert hashlib.sha256(policy_bytes[:494905]).digest() == (
+    assert policy_bytes[:495808] == historical_bytes[:495808]
+    assert hashlib.sha256(policy_bytes[:494903]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     ), "prior 505 policy bytes changed"
 
@@ -31784,3 +31794,176 @@ def test_nov9_wasm_cli_trusted_scan_rejects_unmatched_findings(
         assert "1 exact false-positive finding(s)" in output.out
     else:
         assert "new finding" in output.err
+
+
+# Exact existing NATS logging bindings. Two row11 companion identities are
+# rebound one-to-one; all approval metadata and historical snapshots are retained.
+
+_NATS_ROW11_IDENTITY_REBINDS = {
+    bytes.fromhex(
+        "cd ad 8f c0 d7 36 cd 7c d1 11 3b 50 e5 53 06 32 5c f6 6f 53"
+    ): bytes.fromhex("a7 67 b5 3a 9e c6 4d 44 82 4f 03 46 d4 1b fc 53 96 3f 31 8a"),
+    bytes.fromhex(
+        "29 e2 30 c2 f6 4d 4c fe 7a 8e 8b b7 35 cd 85 1e 0b 2e d7 94"
+    ): bytes.fromhex("27 10 b8 1a a6 2d fa 13 62 e5 8d 8c fc 5d d7 e4 29 b3 48 ad"),
+}
+
+_NATS_PRE_REBIND_OWNER_RECORDS = copy.deepcopy(_AUD380_PENDING_OWNER_RECORDS)
+_AUD380_PENDING_OWNER_RECORDS = copy.deepcopy(_AUD380_PENDING_OWNER_RECORDS)
+for _record in _AUD380_PENDING_OWNER_RECORDS:
+    _old_digest = bytes(_record["identity"]["hashed_secret_bytes"])
+    if (
+        _record["identity"]["path"] == "quality/semgrep-dispositions.json"
+        and _old_digest in _NATS_ROW11_IDENTITY_REBINDS
+    ):
+        _record["identity"]["hashed_secret_bytes"] = list(
+            _NATS_ROW11_IDENTITY_REBINDS[_old_digest]
+        )
+_AUD380_PENDING_OWNER_IDENTITIES = frozenset(
+    _aud380_identity_key(record) for record in _AUD380_PENDING_OWNER_RECORDS
+)
+_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = tuple(
+    (
+        path,
+        finding_type,
+        tuple(_NATS_ROW11_IDENTITY_REBINDS.get(bytes(digest), bytes(digest))),
+        category,
+        line,
+    )
+    if path == "quality/semgrep-dispositions.json"
+    else (path, finding_type, digest, category, line)
+    for path, finding_type, digest, category, line in _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES
+)
+
+_NATS_CURRENT_SOURCE_REBINDS = {
+    "app/core/logging.py": bytes.fromhex(
+        "4f 80 22 87 7e c6 43 23 4d 8b 3f a9 65 15 15 16 77 1e e9 34 a4 75 93 2b b1 f6 b4 aa b4 e8 c3 f7"
+    ),
+    "app/core/otel_logging.py": bytes.fromhex(
+        "f6 94 57 c7 be 88 bf af 73 ee 9c cb ba 41 0f 36 d6 35 5a d6 ca fe 46 49 67 d8 a4 ac 65 a2 f5 ba"
+    ),
+    "tests/test_otel_logging_bridge.py": bytes.fromhex(
+        "4b 2a 7f 17 3c 78 ed df 51 c1 60 c3 db 9c 91 e3 eb 5a 20 ba e6 10 95 f8 38 75 d0 52 d3 93 af a7"
+    ),
+    "scripts/owned_nats_outage_cli.py": bytes.fromhex(
+        "f7 5d 4d ff 60 70 e1 c1 09 ad 07 67 0f c9 5f a4 71 71 19 40 f8 de 5a e1 b5 0d 02 49 0f b6 d9 f1"
+    ),
+    "scripts/owned_nats_transport_port.py": bytes.fromhex(
+        "5e 30 b0 20 07 af c6 7f a7 70 04 cb 94 29 a1 dc 2f 9a 74 02 c8 f8 82 44 3e 20 2b d9 4f 4c e7 a5"
+    ),
+    "quality/semgrep-dispositions.json": bytes.fromhex(
+        "0f 61 39 9a a8 7c 4d 32 74 aa de b1 61 f6 0a 24 dc 7b 1d ab 14 01 7f 2f ba f4 2b 4f 01 f7 83 78"
+    ),
+}
+
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    **_NATS_CURRENT_SOURCE_REBINDS,
+}
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    **{
+        path: digest
+        for path, digest in _NATS_CURRENT_SOURCE_REBINDS.items()
+        if path in _AUD380_N6_FINAL_SOURCE_SHA256
+    },
+}
+
+_NATS_ROW11_LINE_REBINDS = {
+    313: (
+        bytes.fromhex(
+            "70 fc 65 82 07 e9 b1 74 03 bd 89 f0 86 61 96 8c 8d bf 03 19 78 5e 5b d6 66 ef d8 81 bd 80 a7 47"
+        ),
+        bytes.fromhex(
+            "02 a4 71 2a 3e cd 24 ed 91 99 c3 c9 a1 4a 03 b4 3b 7f e4 cb 0f 1c ba c9 89 5b 17 44 24 3a 8b ca"
+        ),
+    ),
+    329: (
+        bytes.fromhex(
+            "21 cb d6 1c bb 40 cb 2b 65 61 c4 35 b4 48 f5 5c ce 1a 24 38 40 ca e7 cb 61 6e e0 e5 8a 7e 65 36"
+        ),
+        bytes.fromhex(
+            "1c 29 10 2b cc fd c5 74 c1 be 2d 1a 40 5d b1 c9 18 d3 46 4b 0c a8 9e 83 2d 3f a8 36 37 75 a2 69"
+        ),
+    ),
+}
+
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = tuple(
+    (path, line, *_NATS_ROW11_LINE_REBINDS[line])
+    if path == "quality/semgrep-dispositions.json" and line in _NATS_ROW11_LINE_REBINDS
+    else (path, line, line_hash, context_hash)
+    for path, line, line_hash, context_hash in _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES
+)
+
+_AUD380_PENDING_NEW_ADDITIONS_SHA256 = bytes.fromhex(
+    "d9 68 3c 5f 69 35 3e ca 3e c0 a1 d7 3a 4d 27 c9 76 d2 77 71 4d 9b dd 01 09 19 31 80 bd 2f f9 0e"
+)
+
+_AUD380_APPROVED_NEW_ADDITIONS_SHA256 = bytes.fromhex(
+    "3d 76 e3 7e 0d 95 de 2d 1d 87 59 0e 3e 44 4d 25 74 45 a9 67 b7 bf 61 66 7c 75 b0 65 37 9a 30 71"
+)
+
+_AUD380_CONDITIONAL_RECORDSET_SHA256 = bytes.fromhex(
+    "ad 81 e5 1c b6 49 2e 31 fb 82 04 31 b1 6a 88 82 89 d4 08 32 47 f0 06 b1 e9 0b 79 f7 d8 e6 fb 44"
+)
+
+_AUD380_N3_PENDING_493_RECORDSET_SHA256 = bytes.fromhex(
+    "55 85 bd b7 33 73 ed f8 6b 10 63 b3 1f d3 a6 17 c0 91 4d 7b f3 34 a2 61 76 41 ae 1e 09 81 11 49"
+)
+
+_AUD380_N3_CONDITIONAL_493_RECORDSET_SHA256 = bytes.fromhex(
+    "8e 0c 85 3d 59 c5 03 3d f8 96 be 64 38 9c 5d a6 48 36 e0 f8 5d 5d bb ca 9e e2 38 db a1 c1 24 53"
+)
+
+_AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = bytes.fromhex(
+    "52 a7 f6 d1 da 30 39 f3 99 65 99 5d 5f 53 dc 3a b6 2d 08 32 30 5c 0e 87 74 23 48 51 7c 2f d4 a1"
+)
+
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
+    "f9 b5 48 e8 6b c5 ed fd b0 ab 5d 41 17 c0 ed d4 5e 91 94 81 15 d1 66 9b 2d 87 63 6d 8d cc 90 bc"
+)
+
+_AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256 = bytes.fromhex(
+    "3e e6 7e 51 7a fc c7 a8 20 b2 77 f2 d0 3b a6 70 8b 30 cc 7f 49 e3 11 9d c9 07 59 f5 0c 52 57 94"
+)
+
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
+    "0f 61 39 9a a8 7c 4d 32 74 aa de b1 61 f6 0a 24 dc 7b 1d ab 14 01 7f 2f ba f4 2b 4f 01 f7 83 78"
+)
+
+_AUD428_ROW13_BASE_LEDGER_SHA256 = bytes.fromhex(
+    "9d 27 96 70 42 37 84 92 67 77 b5 e1 ca c5 e8 2b 39 7d 11 39 32 8d b8 65 5b 9a c8 8f fa ac 1b 7e"
+)
+
+_NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
+    "fa ad 8c e3 b1 0c 43 dc 6b 59 e9 b8 6f 47 be 70 2a e4 90 d0 e5 09 bd 8a 65 9e 7b 60 c6 4c 49 07"
+)
+
+
+def test_nats_row11_rebind_preserves_two_existing_approvals() -> None:
+    assert len(_NATS_ROW11_IDENTITY_REBINDS) == 2
+    assert len(set(_NATS_ROW11_IDENTITY_REBINDS.values())) == 2
+    changed = []
+    for before, after in zip(
+        _NATS_PRE_REBIND_OWNER_RECORDS, _AUD380_PENDING_OWNER_RECORDS, strict=True
+    ):
+        if before == after:
+            continue
+        expected = copy.deepcopy(before)
+        old_digest = bytes(expected["identity"]["hashed_secret_bytes"])
+        assert expected["identity"]["path"] == "quality/semgrep-dispositions.json"
+        assert expected["identity"]["type"] == "Hex High Entropy String"
+        assert expected["category"] == "public_integrity_digest"
+        expected["identity"]["hashed_secret_bytes"] = list(
+            _NATS_ROW11_IDENTITY_REBINDS[old_digest]
+        )
+        assert after == expected
+        changed.append(old_digest)
+    assert set(changed) == set(_NATS_ROW11_IDENTITY_REBINDS)
+    historical = {
+        bytes(row[2])
+        for row in _AUD380_N21_HISTORICAL_IDENTITY_SOURCE_LINES
+        if row[0] == "quality/semgrep-dispositions.json"
+    }
+    assert set(changed) <= historical
+    assert not set(_NATS_ROW11_IDENTITY_REBINDS.values()) & historical

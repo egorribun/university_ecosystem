@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
-from app.core.logging import get_logger
+from app.core.logging import configure_logging, get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,7 @@ from app.core.tenant import bypass_rls_ctx, canonical_tenant_id, tenant_id_ctx
 from app.models.domain_events import StoredEvent
 
 logger = get_logger(__name__)
+_deferred_logger = get_logger("app.workers.outbox")
 tracer = trace.get_tracer(__name__)
 
 # Per-task signal for run_forever; keeps overlapping process_batch calls isolated.
@@ -126,6 +127,8 @@ class OutboxWorker:
         self._is_running = False
         self._wakeup_event = asyncio.Event()
         self._prefer_membership_retry_next = False
+        self._ordinary_cursor: tuple[datetime, uuid.UUID] | None = None
+        self._ordinary_sweep_remaining: int | None = None
 
     async def run_forever(self) -> None:
         self._is_running = True
@@ -364,15 +367,33 @@ class OutboxWorker:
                         .asc()
                         .nulls_last(),
                     ]
+                # Rotate eligible heads by immutable recording age across polls.
+                # Cross-aggregate type/ID order is not a causality requirement.
+                # Deferrals do not
+                # consume the error budget, so fixed lexical ordering would let
+                # a full batch of disconnected chat rows starve SMTP and other
+                # independent deliveries forever. This is only a fairness hint:
+                # the persisted predecessor predicate still enforces causality,
+                # and SKIP LOCKED still arbitrates concurrent workers. A restart
+                # resets the rotation but never removes or skips pending rows.
+                rotation_order = []
+                if self._ordinary_cursor is not None:
+                    cursor_created_at, cursor_id = self._ordinary_cursor
+                    after_cursor = or_(
+                        StoredEvent.created_at > cursor_created_at,
+                        and_(
+                            StoredEvent.created_at == cursor_created_at,
+                            StoredEvent.id > cursor_id,
+                        ),
+                    )
+                    rotation_order = [case((after_cursor, 0), else_=1)]
                 stmt = (
                     stmt.where(or_(membership_retry, normal_pending))
                     .where(~has_pending_predecessor)
                     .order_by(
                         sort_priority,
                         *retry_age_order,
-                        StoredEvent.aggregate_type,
-                        StoredEvent.aggregate_id,
-                        StoredEvent.sequence_number.asc().nulls_last(),
+                        *rotation_order,
                         StoredEvent.created_at,
                         StoredEvent.id,
                     )
@@ -408,13 +429,28 @@ class OutboxWorker:
                     .select_from(StoredEvent)
                     .where(StoredEvent.processed_at.is_(None))
                 )
-                OUTBOX_PENDING_EVENTS.set(pending_count_result.scalar_one() or 0)
+                pending_count = pending_count_result.scalar_one() or 0
+                OUTBOX_PENDING_EVENTS.set(pending_count)
 
                 if not events:
+                    await db.commit()
+                    self._ordinary_cursor = None
+                    self._ordinary_sweep_remaining = None
                     span.set_attribute("outbox.events_count", 0)
                     return 0
 
                 span.set_attribute("outbox.events_count", len(events))
+                # Capture slot admission before dispatch can increment counters.
+                # Fresh membership failures consumed ordinary capacity; only
+                # already-retrying membership rows used reserved retry slots.
+                ordinary = [
+                    event
+                    for event in events
+                    if not (
+                        event.event_type in critical_chat_events
+                        and event.error_count > 0
+                    )
+                ]
                 deferred_count = 0
                 for se in events:
                     _t0 = time.perf_counter()
@@ -435,6 +471,9 @@ class OutboxWorker:
                         # retries after the lease expires or the broker returns.
                         _OUTBOX_BATCH_RETRY_PENDING.set(True)
                         deferred_count += 1
+                        _deferred_logger.info(
+                            "outbox_event_deferred", stored_event_id=str(se.id)
+                        )
                     except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
                         last_error = (
@@ -477,7 +516,24 @@ class OutboxWorker:
                                 event_type=se.event_type, status="failed"
                             ).inc()
 
+                # Bound each sweep by its initial backlog, not future arrivals.
+                # Otherwise a never-ending stream newer than the cursor can
+                # prevent older deferred or late-committed rows from retrying.
+                sweep_remaining = (
+                    pending_count
+                    if self._ordinary_sweep_remaining is None
+                    else self._ordinary_sweep_remaining
+                ) - len(ordinary)
+                next_cursor = (
+                    (ordinary[-1].created_at, ordinary[-1].id)
+                    if ordinary
+                    else self._ordinary_cursor
+                )
                 await db.commit()
+                self._ordinary_cursor = next_cursor if sweep_remaining > 0 else None
+                self._ordinary_sweep_remaining = (
+                    sweep_remaining if sweep_remaining > 0 else None
+                )
                 # Returning below the batch size also makes the worker wait
                 # instead of hot-spinning when a full batch is deferred.
                 return len(events) - deferred_count
@@ -642,6 +698,7 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
+    configure_logging()
     runtime_dir = Path(
         os.environ.get("OUTBOX_WORKER_RUNTIME_DIR") or tempfile.gettempdir()
     )

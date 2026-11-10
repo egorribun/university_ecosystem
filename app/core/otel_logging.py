@@ -14,6 +14,7 @@ from app.core.logging import (
     _ExceptionSnapshot,
     _format_safe_exc_info,
     _orjson_serializer,
+    _outbox_deferred_diagnostic_event,
     _redact_nested,
     _redact_pii,
     _render_safe_exception,
@@ -117,6 +118,14 @@ class RedactingLoggingHandler(LoggingHandler):
                     if key in event
                 }
                 has_snapshot = False
+            deferred = _outbox_deferred_diagnostic_event(event)
+            if deferred is not None:
+                event = deferred
+                has_snapshot = False
+                safe_record.exc_text = None
+                for key in (*extras, *exception_attributes):
+                    safe_record.__dict__.pop(key, None)
+                exception_attributes = {}
             safe_record.msg = _redacted_value(event)
             safe_record.args = ()
         else:
