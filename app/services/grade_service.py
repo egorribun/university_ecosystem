@@ -34,8 +34,15 @@ class GradeService:
     def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
 
-    async def get_grade(self, grade_id: uuid.UUID) -> Grade | None:
-        result = await self.db.execute(select(Grade).where(Grade.id == grade_id))
+    async def get_grade(
+        self, grade_id: uuid.UUID, *, for_update: bool = False
+    ) -> Grade | None:
+        stmt = select(Grade).where(Grade.id == grade_id)
+        if for_update:
+            # The API's authorization read may already hold a stale ORM row.
+            # Refresh only under the write lock, held until the caller commits.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def assign_grade(
@@ -99,7 +106,7 @@ class GradeService:
         reason: str | None = None,
         modified_by: uuid.UUID | None = None,
     ) -> Grade:
-        grade = await self.get_grade(grade_id)
+        grade = await self.get_grade(grade_id, for_update=True)
         if grade is None:
             raise GradeNotFoundError(str(grade_id))
 
