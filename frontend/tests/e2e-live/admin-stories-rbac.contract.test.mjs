@@ -11,6 +11,76 @@ const storyApiUrl = new URL("../../../app/api/stories.py", import.meta.url)
 const storySchemaUrl = new URL("../../../app/schemas/stories.py", import.meta.url)
 const authDependenciesUrl = new URL("../../../app/api/deps/auth.py", import.meta.url)
 
+function assertStoryCreateSchema(storySchema) {
+  const createSchema = storySchema.match(
+    /^class StoryCreate\((BaseModel|_StoryInput)\):\r?\n((?:^[ \t].*(?:\r?\n|$)|^\r?\n)*)/mu
+  )
+  assert.ok(createSchema, "StoryCreate must inherit the validated input model")
+  if (createSchema[1] === "_StoryInput") {
+    assert.match(
+      storySchema,
+      /^class _StoryInput\(BaseModel\):$/mu,
+      "the shared story input must retain the BaseModel validation contract"
+    )
+  }
+  for (const field of ["title", "short_text"]) {
+    assert.match(
+      createSchema[2],
+      new RegExp(`^ {4}${field}: str$`, "mu"),
+      `StoryCreate must declare ${field} as a required string without a default`
+    )
+  }
+}
+
+for (const base of ["BaseModel", "_StoryInput"]) {
+  const validSchema = `class _StoryInput(BaseModel):
+    pass
+
+class StoryCreate(${base}):
+    title: str
+    short_text: str
+
+class StoryOut(OrmModel):
+    title: str
+    short_text: str
+`
+
+  test(`story create contract accepts required strings through ${base}`, () => {
+    assert.doesNotThrow(() => assertStoryCreateSchema(validSchema))
+  })
+
+  for (const field of ["title", "short_text"]) {
+    for (const [change, replacement] of [
+      ["missing", ""],
+      ["nullable", `    ${field}: str | None\n`],
+      ["defaulted", `    ${field}: str = ""\n`],
+      ["wrong type", `    ${field}: int\n`],
+    ]) {
+      test(`story create contract rejects ${change} ${field} through ${base}`, () => {
+        const invalidSchema = validSchema.replace(`    ${field}: str\n`, replacement)
+        assert.notEqual(invalidSchema, validSchema)
+        assert.throws(() => assertStoryCreateSchema(invalidSchema), assert.AssertionError)
+      })
+    }
+  }
+}
+
+for (const [name, schema] of [
+  [
+    "unrelated parent",
+    "class StoryCreate(UnvalidatedInput):\n    title: str\n    short_text: str\n",
+  ],
+  ["missing shared base", "class StoryCreate(_StoryInput):\n    title: str\n    short_text: str\n"],
+  [
+    "broken shared base",
+    "class _StoryInput(object):\n    pass\n\nclass StoryCreate(_StoryInput):\n    title: str\n    short_text: str\n",
+  ],
+]) {
+  test(`story create contract rejects ${name}`, () => {
+    assert.throws(() => assertStoryCreateSchema(schema), assert.AssertionError)
+  })
+}
+
 test("admin story management is denied to both non-admin live roles", async () => {
   let spec
   try {
@@ -114,10 +184,7 @@ test("admin story management is denied to both non-admin live roles", async () =
   )
   assert.match(adminGuard, /if not is_admin_user:\s*raise_forbidden\(/u)
   assert.doesNotMatch(adminGuard, /if\s+user\.role\s*(?:==|!=)/u)
-  assert.match(
-    storySchema,
-    /class StoryCreate\(BaseModel\)[\s\S]*?title: str[\s\S]*?short_text: str/u
-  )
+  assertStoryCreateSchema(storySchema)
   assert.match(config, /testDir: "\.\/tests\/e2e-live"/u)
   assert.match(config, /name: "desktop"/u)
   assert.match(config, /name: "mobile"/u)
