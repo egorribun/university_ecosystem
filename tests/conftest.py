@@ -843,10 +843,22 @@ def mock_health_checks(monkeypatch):
         return None
 
     monkeypatch.setattr("app.api.health.wait_db", mock_wait_db)
-    from app.api.health import reset_shutdown_flag
+    from app.api.health import (
+        reset_health_cache,
+        reset_shutdown_flag,
+        reset_storage_probe_cache,
+    )
 
+    # Cached probe results outlive monkeypatched dependencies. Isolate both
+    # cache layers so an earlier failure cannot poison another test's healthz.
+    reset_health_cache()
+    reset_storage_probe_cache()
     reset_shutdown_flag()
-    yield
+    try:
+        yield
+    finally:
+        reset_health_cache()
+        reset_storage_probe_cache()
 
 
 @pytest.fixture(autouse=True)
