@@ -60,6 +60,8 @@ def _escape(value: str | None) -> str:
         return ""
     return (
         str(value)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
         .replace("\\", "\\\\")
         .replace(";", "\\;")
         .replace(",", "\\,")
