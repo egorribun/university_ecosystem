@@ -8,8 +8,6 @@ every affected group once per meaningful change.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import uuid
 from collections.abc import Mapping
 from datetime import datetime
@@ -130,6 +128,7 @@ async def notify_about_schedule_change(
     db: AsyncDatabaseSession,
     *,
     schedule_id: uuid.UUID | str,
+    event_id: str,
     previous: Mapping[str, Any],
     current: Mapping[str, Any] | None,
 ) -> int:
@@ -143,13 +142,9 @@ async def notify_about_schedule_change(
     if not members:
         return 0
     identifier = str(schedule_id)
-    # One notification per distinct change: a redelivered outbox event finds
-    # the key it already wrote and notifies nobody twice.  The snapshots are
-    # JSON already (they travel through the outbox), so no encoder fallback.
-    fingerprint = hashlib.sha256(
-        json.dumps({"previous": previous, "current": current}, sort_keys=True).encode()
-    ).hexdigest()[:16]
-    dedupe_key = f"schedule-change:{identifier}:{fingerprint}"
+    # Deduplicate retries of the same persisted event, not repeated transitions.
+    # A later A -> B change after B -> A must notify the affected members again.
+    dedupe_key = f"schedule-change:{identifier}:event:{event_id}"
     await lock_notification_dedupe(db, dedupe_key)
     notified = await _already_notified(db, members, dedupe_key)
     user_ids = [user_id for user_id in members if user_id not in notified]
