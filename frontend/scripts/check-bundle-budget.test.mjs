@@ -38,6 +38,55 @@ const routeStyleBoundaries = [
   ["StoriesAdmin", "admin", "_admin/admin.stories.tsx"],
 ]
 
+// These full-SSR pages must avoid nested React.lazy during hydration. Keep this
+// list explicit: inheriting SSR alone does not require changing other routes.
+const staticSsrPages = new Set([
+  "Dashboard",
+  "News",
+  "NewsDetail",
+  "Events",
+  "EventDetail",
+  "Schedule",
+  "Profile",
+])
+
+function assertRoutePageBoundary(pageName, routeSource, parentSource) {
+  if (staticSsrPages.has(pageName)) {
+    assert.match(parentSource, /^\s*ssr:\s*true\b/mu)
+    assert.doesNotMatch(routeSource, /^\s*ssr:\s*(?!true\b)\S/mu)
+    assert.match(routeSource, new RegExp(`^import ${pageName} from "@/pages/${pageName}"`, "mu"))
+    assert.doesNotMatch(routeSource, /\blazy\s*\(/u)
+  } else {
+    assert.match(routeSource, new RegExp(`lazy\\(\\(\\) => import\\("@/pages/${pageName}"\\)\\)`))
+    assert.doesNotMatch(routeSource, new RegExp(`^import .* from "@/pages/${pageName}"`, "mu"))
+  }
+}
+
+test("locks inherited SSR page imports without relaxing other lazy boundaries", () => {
+  const parent = "  ssr: true,"
+  const staticNews = 'import News from "@/pages/News"'
+  assert.doesNotThrow(() => assertRoutePageBoundary("News", staticNews, parent))
+  for (const restriction of ["false", '"data-only"']) {
+    assert.throws(() => assertRoutePageBoundary("News", staticNews, `  ssr: ${restriction},`))
+    assert.throws(() =>
+      assertRoutePageBoundary("News", `${staticNews}\n  ssr: ${restriction},`, parent)
+    )
+  }
+  assert.throws(() =>
+    assertRoutePageBoundary("News", 'const News = lazy(() => import("@/pages/News"))', parent)
+  )
+  assert.throws(() =>
+    assertRoutePageBoundary("Settings", 'import Settings from "@/pages/Settings"', parent)
+  )
+  assert.doesNotThrow(() =>
+    assertRoutePageBoundary(
+      "Settings",
+      'const Settings = lazy(() => import("@/pages/Settings"))',
+      parent
+    )
+  )
+})
+
 async function createBundleFixture({ mainBytes = 16, lazyBytes = 16, initialCssBytes } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "bundle-budget-test-"))
   const assetsDir = path.join(distDir, "client", "assets")
@@ -71,7 +120,7 @@ test("locks baseline-aware initial and general lazy ratchets", () => {
   assert.equal(BUNDLE_BUDGETS.passwordDictionaryRawKb, 1250)
 })
 
-test("keeps feature token CSS inside the matching lazy route boundary", async () => {
+test("keeps feature token CSS inside the matching route boundary", async () => {
   const themeSource = await readFile(new URL("../src/styles/theme.css", import.meta.url), "utf8")
 
   assert.doesNotMatch(
@@ -81,27 +130,18 @@ test("keeps feature token CSS inside the matching lazy route boundary", async ()
 
   await Promise.all(
     routeStyleBoundaries.map(async ([pageName, tokenName, routePath]) => {
-      const [pageSource, routeSource] = await Promise.all([
+      const [pageSource, routeSource, parentSource] = await Promise.all([
         readFile(new URL(`../src/pages/${pageName}.tsx`, import.meta.url), "utf8"),
         readFile(new URL(`../src/routes/${routePath}`, import.meta.url), "utf8"),
+        readFile(new URL(`../src/routes/${routePath.split("/")[0]}.tsx`, import.meta.url), "utf8"),
       ])
 
       assert.match(pageSource, new RegExp(`import "@/styles/tokens/${tokenName}\\.css"`))
 
-      // Routes that explicitly opt into SSR must keep their page in the
-      // server entry graph. Requiring a lazy import for every route made the
-      // contract reject the dashboard's intentional SSR boundary and caused
-      // bundle analysis to fail before it could inspect the actual artifact.
-      // Non-SSR routes remain lazy so their feature chunks stay out of the
-      // initial delivery graph.
-      if (/^\s*ssr:\s*true\b/mu.test(routeSource)) {
-        assert.match(routeSource, new RegExp(`import ${pageName} from "@/pages/${pageName}"`))
-      } else {
-        assert.match(
-          routeSource,
-          new RegExp(`lazy\\(\\(\\) => import\\("@/pages/${pageName}"\\)\\)`)
-        )
-      }
+      // TanStack Start splits full-SSR route components itself. Requiring
+      // React.lazy here reintroduced suspension and duplicate head tags.
+      // All other routes retain their existing explicit lazy boundaries.
+      assertRoutePageBoundary(pageName, routeSource, parentSource)
     })
   )
 })
