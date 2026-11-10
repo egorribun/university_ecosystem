@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from redis.exceptions import RedisError
 
 from app.api.deps.auth import get_current_user_from_dishka
+from app.api.openapi_responses import CSRF_REJECTED, UNAUTHENTICATED, combine
 from app.api.validation import raise_unauthorized
 from app.core.config import settings
 from app.core.localization import resolve_locale
@@ -62,6 +63,7 @@ class WsTicketResponse(BaseModel):
     response_model=WsTicketResponse,
     status_code=201,
     summary="Issue a WebSocket upgrade ticket",
+    responses=combine(UNAUTHENTICATED, CSRF_REJECTED),
     description=(
         "Issues a short-lived, single-use WebSocket upgrade ticket. "
         "The client must be authenticated via HttpOnly cookie or Bearer token. "

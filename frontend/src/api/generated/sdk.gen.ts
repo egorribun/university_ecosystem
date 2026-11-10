@@ -57,6 +57,7 @@ import type {
   ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
   ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
   ClearNotificationsApiV1NotificationsDeleteData,
+  ClearNotificationsApiV1NotificationsDeleteErrors,
   ClearNotificationsApiV1NotificationsDeleteResponses,
   CommentOnNewsApiV1NewsIdCommentPostData,
   CommentOnNewsApiV1NewsIdCommentPostErrors,
@@ -86,6 +87,7 @@ import type {
   CreateUserApiV1UsersPostErrors,
   CreateUserApiV1UsersPostResponses,
   DeleteAvatarApiV1UsersMeAvatarDeleteData,
+  DeleteAvatarApiV1UsersMeAvatarDeleteErrors,
   DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
   DeleteChatApiV1ChatsChatIdDeleteData,
   DeleteChatApiV1ChatsChatIdDeleteErrors,
@@ -94,6 +96,7 @@ import type {
   DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
   DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
   DeleteCoverApiV1UsersMeCoverDeleteData,
+  DeleteCoverApiV1UsersMeCoverDeleteErrors,
   DeleteCoverApiV1UsersMeCoverDeleteResponses,
   DeleteCurrentUserAccountApiV1UsersMeDeletePostData,
   DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
@@ -135,6 +138,7 @@ import type {
   DisableUserPushApiV1PushAdminDisableUserPostErrors,
   DisableUserPushApiV1PushAdminDisableUserPostResponses,
   DisconnectApiV1SpotifyDisconnectPostData,
+  DisconnectApiV1SpotifyDisconnectPostErrors,
   DisconnectApiV1SpotifyDisconnectPostResponses,
   DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetData,
   DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors,
@@ -152,6 +156,7 @@ import type {
   ExportAccessAuditApiV1UsersAuditExportGetErrors,
   ExportAccessAuditApiV1UsersAuditExportGetResponses,
   ExportCurrentUserDataApiV1UsersMeExportPostData,
+  ExportCurrentUserDataApiV1UsersMeExportPostErrors,
   ExportCurrentUserDataApiV1UsersMeExportPostResponses,
   ForgotPasswordApiV1PasswordForgotPostData,
   ForgotPasswordApiV1PasswordForgotPostErrors,
@@ -163,6 +168,7 @@ import type {
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
   GetCampusConfigApiV1CampusConfigGetData,
+  GetCampusConfigApiV1CampusConfigGetErrors,
   GetCampusConfigApiV1CampusConfigGetResponses,
   GetChatApiV1ChatsChatIdGetData,
   GetChatApiV1ChatsChatIdGetErrors,
@@ -180,6 +186,7 @@ import type {
   GetEventFilesApiV1EventsEventIdFilesGetErrors,
   GetEventFilesApiV1EventsEventIdFilesGetResponses,
   GetGroupsApiV1GroupsGetData,
+  GetGroupsApiV1GroupsGetErrors,
   GetGroupsApiV1GroupsGetResponses,
   GetMessagesApiV1ChatsChatIdMessagesGetData,
   GetMessagesApiV1ChatsChatIdMessagesGetErrors,
@@ -191,11 +198,13 @@ import type {
   GetNewsInteractApiV1NewsIdInteractionsGetErrors,
   GetNewsInteractApiV1NewsIdInteractionsGetResponses,
   GetPushTopicsApiV1PushTopicsGetData,
+  GetPushTopicsApiV1PushTopicsGetErrors,
   GetPushTopicsApiV1PushTopicsGetResponses,
   GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetData,
   GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors,
   GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses,
   GetRootGetData,
+  GetRootGetErrors,
   GetRootGetResponses,
   GetScheduleApiV1ScheduleIdGetData,
   GetScheduleApiV1ScheduleIdGetErrors,
@@ -213,6 +222,7 @@ import type {
   GetUsersApiV1UsersGetErrors,
   GetUsersApiV1UsersGetResponses,
   GetVapidPublicKeyApiV1PushVapidPublicKeyGetData,
+  GetVapidPublicKeyApiV1PushVapidPublicKeyGetErrors,
   GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
   GradeSummaryApiV1StatsGradesGetData,
   GradeSummaryApiV1StatsGradesGetErrors,
@@ -224,6 +234,7 @@ import type {
   IngestCwvObservationApiV1CwvObservationsPostErrors,
   IngestCwvObservationApiV1CwvObservationsPostResponses,
   IssueWsUpgradeTicketWsTicketPostData,
+  IssueWsUpgradeTicketWsTicketPostErrors,
   IssueWsUpgradeTicketWsTicketPostResponses,
   LikeNewsApiV1NewsIdLikePostData,
   LikeNewsApiV1NewsIdLikePostErrors,
@@ -235,8 +246,10 @@ import type {
   ListAuditLogsApiV1AdminAuditGetErrors,
   ListAuditLogsApiV1AdminAuditGetResponses,
   ListFeatureFlagsAdminFeatureFlagsGetData,
+  ListFeatureFlagsAdminFeatureFlagsGetErrors,
   ListFeatureFlagsAdminFeatureFlagsGetResponses,
   ListFeatureFlagsApiV1AdminFeatureFlagsGetData,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetErrors,
   ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
   ListNotificationDeadLettersData,
   ListNotificationDeadLettersErrors,
@@ -245,6 +258,7 @@ import type {
   ListNotificationsApiV1NotificationsGetErrors,
   ListNotificationsApiV1NotificationsGetResponses,
   ListPlaylistsApiV1SpotifyPlaylistsGetData,
+  ListPlaylistsApiV1SpotifyPlaylistsGetErrors,
   ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
   ListSessionsApiV1AuthSessionsGetData,
   ListSessionsApiV1AuthSessionsGetErrors,
@@ -256,6 +270,7 @@ import type {
   ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
   ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
   LivenessHealthLiveGetData,
+  LivenessHealthLiveGetErrors,
   LivenessHealthLiveGetResponses,
   LoginApiV1AuthLoginPostData,
   LoginApiV1AuthLoginPostErrors,
@@ -267,6 +282,7 @@ import type {
   LogoutApiV1AuthLogoutPostErrors,
   LogoutApiV1AuthLogoutPostResponses,
   MarkAllReadApiV1NotificationsReadAllPostData,
+  MarkAllReadApiV1NotificationsReadAllPostErrors,
   MarkAllReadApiV1NotificationsReadAllPostResponses,
   MarkReadApiV1ChatsChatIdReadPostData,
   MarkReadApiV1ChatsChatIdReadPostErrors,
@@ -275,6 +291,7 @@ import type {
   MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
   MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
   MeApiV1UsersMeGetData,
+  MeApiV1UsersMeGetErrors,
   MeApiV1UsersMeGetResponses,
   ModifyGradeApiV1GradesGradeIdPatchData,
   ModifyGradeApiV1GradesGradeIdPatchErrors,
@@ -289,6 +306,7 @@ import type {
   NewsListApiV1NewsGetErrors,
   NewsListApiV1NewsGetResponses,
   NowPlayingApiV1SpotifyNowPlayingGetData,
+  NowPlayingApiV1SpotifyNowPlayingGetErrors,
   NowPlayingApiV1SpotifyNowPlayingGetResponses,
   ParticipationSummaryApiV1StatsParticipationGetData,
   ParticipationSummaryApiV1StatsParticipationGetErrors,
@@ -300,10 +318,13 @@ import type {
   PurgeNotificationDeadLettersErrors,
   PurgeNotificationDeadLettersResponses,
   ReadyHealthReadyGetData,
+  ReadyHealthReadyGetErrors,
   ReadyHealthReadyGetResponses,
   ReadyReadyGetData,
+  ReadyReadyGetErrors,
   ReadyReadyGetResponses,
   ReceiveCspReportApiV1CspReportPostData,
+  ReceiveCspReportApiV1CspReportPostErrors,
   ReceiveCspReportApiV1CspReportPostResponses,
   RegisterApiV1AuthRegisterPostData,
   RegisterApiV1AuthRegisterPostErrors,
@@ -348,6 +369,7 @@ import type {
   SendTestApiV1PushTestPostErrors,
   SendTestApiV1PushTestPostResponses,
   SpotifyAuthUrlApiV1SpotifyAuthUrlGetData,
+  SpotifyAuthUrlApiV1SpotifyAuthUrlGetErrors,
   SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
   SpotifyCallbackApiV1SpotifyCallbackGetData,
   SpotifyCallbackApiV1SpotifyCallbackGetErrors,
@@ -454,8 +476,8 @@ export type Options<
  */
 export const getRootGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetRootGetData, ThrowOnError>
-): RequestResult<GetRootGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetRootGetResponses, unknown, ThrowOnError>({
+): RequestResult<GetRootGetResponses, GetRootGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<GetRootGetResponses, GetRootGetErrors, ThrowOnError>({
     responseType: "json",
     url: "/",
     ...options,
@@ -514,10 +536,14 @@ export const getTimeTravelStateAdminAuditTimeTravelGet = <ThrowOnError extends b
  */
 export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListFeatureFlagsAdminFeatureFlagsGetData, ThrowOnError>
-): RequestResult<ListFeatureFlagsAdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ListFeatureFlagsAdminFeatureFlagsGetResponses,
+  ListFeatureFlagsAdminFeatureFlagsGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListFeatureFlagsAdminFeatureFlagsGetResponses,
-    unknown,
+    ListFeatureFlagsAdminFeatureFlagsGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -581,10 +607,14 @@ export const getTimeTravelStateApiV1AdminAuditTimeTravelGet = <
  */
 export const listFeatureFlagsApiV1AdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListFeatureFlagsApiV1AdminFeatureFlagsGetData, ThrowOnError>
-): RequestResult<ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
-    unknown,
+    ListFeatureFlagsApiV1AdminFeatureFlagsGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -1129,10 +1159,14 @@ export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError exten
  */
 export const getCampusConfigApiV1CampusConfigGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetCampusConfigApiV1CampusConfigGetData, ThrowOnError>
-): RequestResult<GetCampusConfigApiV1CampusConfigGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  GetCampusConfigApiV1CampusConfigGetResponses,
+  GetCampusConfigApiV1CampusConfigGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     GetCampusConfigApiV1CampusConfigGetResponses,
-    unknown,
+    GetCampusConfigApiV1CampusConfigGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -1701,10 +1735,14 @@ export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
  */
 export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean = false>(
   options?: Options<ReceiveCspReportApiV1CspReportPostData, ThrowOnError>
-): RequestResult<ReceiveCspReportApiV1CspReportPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ReceiveCspReportApiV1CspReportPostResponses,
+  ReceiveCspReportApiV1CspReportPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     ReceiveCspReportApiV1CspReportPostResponses,
-    unknown,
+    ReceiveCspReportApiV1CspReportPostErrors,
     ThrowOnError
   >({ url: "/api/v1/csp-report", ...options })
 
@@ -2190,8 +2228,12 @@ export const modifyGradeApiV1GradesGradeIdPatch = <ThrowOnError extends boolean 
  */
 export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetGroupsApiV1GroupsGetData, ThrowOnError>
-): RequestResult<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError>({
+): RequestResult<GetGroupsApiV1GroupsGetResponses, GetGroupsApiV1GroupsGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetGroupsApiV1GroupsGetResponses,
+    GetGroupsApiV1GroupsGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     url: "/api/v1/groups",
     ...options,
@@ -2513,10 +2555,14 @@ export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false
  */
 export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends boolean = false>(
   options?: Options<ClearNotificationsApiV1NotificationsDeleteData, ThrowOnError>
-): RequestResult<ClearNotificationsApiV1NotificationsDeleteResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ClearNotificationsApiV1NotificationsDeleteResponses,
+  ClearNotificationsApiV1NotificationsDeleteErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).delete<
     ClearNotificationsApiV1NotificationsDeleteResponses,
-    unknown,
+    ClearNotificationsApiV1NotificationsDeleteErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -2657,10 +2703,14 @@ export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
  */
 export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends boolean = false>(
   options?: Options<MarkAllReadApiV1NotificationsReadAllPostData, ThrowOnError>
-): RequestResult<MarkAllReadApiV1NotificationsReadAllPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  MarkAllReadApiV1NotificationsReadAllPostResponses,
+  MarkAllReadApiV1NotificationsReadAllPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     MarkAllReadApiV1NotificationsReadAllPostResponses,
-    unknown,
+    MarkAllReadApiV1NotificationsReadAllPostErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -2998,8 +3048,16 @@ export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
  */
 export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetPushTopicsApiV1PushTopicsGetData, ThrowOnError>
-): RequestResult<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError>({
+): RequestResult<
+  GetPushTopicsApiV1PushTopicsGetResponses,
+  GetPushTopicsApiV1PushTopicsGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GetPushTopicsApiV1PushTopicsGetResponses,
+    GetPushTopicsApiV1PushTopicsGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/push/topics",
@@ -3040,10 +3098,14 @@ export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean
  */
 export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetVapidPublicKeyApiV1PushVapidPublicKeyGetData, ThrowOnError>
-): RequestResult<GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
+  GetVapidPublicKeyApiV1PushVapidPublicKeyGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
-    unknown,
+    GetVapidPublicKeyApiV1PushVapidPublicKeyGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3202,10 +3264,14 @@ export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false
  */
 export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolean = false>(
   options?: Options<SpotifyAuthUrlApiV1SpotifyAuthUrlGetData, ThrowOnError>
-): RequestResult<SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
+  SpotifyAuthUrlApiV1SpotifyAuthUrlGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
-    unknown,
+    SpotifyAuthUrlApiV1SpotifyAuthUrlGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3244,10 +3310,14 @@ export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends bool
  */
 export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolean = false>(
   options?: Options<DisconnectApiV1SpotifyDisconnectPostData, ThrowOnError>
-): RequestResult<DisconnectApiV1SpotifyDisconnectPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  DisconnectApiV1SpotifyDisconnectPostResponses,
+  DisconnectApiV1SpotifyDisconnectPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     DisconnectApiV1SpotifyDisconnectPostResponses,
-    unknown,
+    DisconnectApiV1SpotifyDisconnectPostErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3263,10 +3333,14 @@ export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolea
  */
 export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean = false>(
   options?: Options<NowPlayingApiV1SpotifyNowPlayingGetData, ThrowOnError>
-): RequestResult<NowPlayingApiV1SpotifyNowPlayingGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  NowPlayingApiV1SpotifyNowPlayingGetResponses,
+  NowPlayingApiV1SpotifyNowPlayingGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     NowPlayingApiV1SpotifyNowPlayingGetResponses,
-    unknown,
+    NowPlayingApiV1SpotifyNowPlayingGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3282,10 +3356,14 @@ export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean
  */
 export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListPlaylistsApiV1SpotifyPlaylistsGetData, ThrowOnError>
-): RequestResult<ListPlaylistsApiV1SpotifyPlaylistsGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
+  ListPlaylistsApiV1SpotifyPlaylistsGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
-    unknown,
+    ListPlaylistsApiV1SpotifyPlaylistsGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3594,8 +3672,12 @@ export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends b
  */
 export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
   options?: Options<MeApiV1UsersMeGetData, ThrowOnError>
-): RequestResult<MeApiV1UsersMeGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<MeApiV1UsersMeGetResponses, unknown, ThrowOnError>({
+): RequestResult<MeApiV1UsersMeGetResponses, MeApiV1UsersMeGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    MeApiV1UsersMeGetResponses,
+    MeApiV1UsersMeGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/users/me",
@@ -3632,10 +3714,14 @@ export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
  */
 export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteAvatarApiV1UsersMeAvatarDeleteData, ThrowOnError>
-): RequestResult<DeleteAvatarApiV1UsersMeAvatarDeleteResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
+  DeleteAvatarApiV1UsersMeAvatarDeleteErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).delete<
     DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
-    unknown,
+    DeleteAvatarApiV1UsersMeAvatarDeleteErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3679,10 +3765,14 @@ export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean 
  */
 export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteCoverApiV1UsersMeCoverDeleteData, ThrowOnError>
-): RequestResult<DeleteCoverApiV1UsersMeCoverDeleteResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  DeleteCoverApiV1UsersMeCoverDeleteResponses,
+  DeleteCoverApiV1UsersMeCoverDeleteErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).delete<
     DeleteCoverApiV1UsersMeCoverDeleteResponses,
-    unknown,
+    DeleteCoverApiV1UsersMeCoverDeleteErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3809,10 +3899,14 @@ export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError exten
  */
 export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends boolean = false>(
   options?: Options<ExportCurrentUserDataApiV1UsersMeExportPostData, ThrowOnError>
-): RequestResult<ExportCurrentUserDataApiV1UsersMeExportPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ExportCurrentUserDataApiV1UsersMeExportPostResponses,
+  ExportCurrentUserDataApiV1UsersMeExportPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     ExportCurrentUserDataApiV1UsersMeExportPostResponses,
-    unknown,
+    ExportCurrentUserDataApiV1UsersMeExportPostErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -3905,8 +3999,12 @@ export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolea
  */
 export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
   options?: Options<LivenessHealthLiveGetData, ThrowOnError>
-): RequestResult<LivenessHealthLiveGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<LivenessHealthLiveGetResponses, unknown, ThrowOnError>({
+): RequestResult<LivenessHealthLiveGetResponses, LivenessHealthLiveGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    LivenessHealthLiveGetResponses,
+    LivenessHealthLiveGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     url: "/health/live",
     ...options,
@@ -3919,8 +4017,12 @@ export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
  */
 export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyHealthReadyGetData, ThrowOnError>
-): RequestResult<ReadyHealthReadyGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<ReadyHealthReadyGetResponses, unknown, ThrowOnError>({
+): RequestResult<ReadyHealthReadyGetResponses, ReadyHealthReadyGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ReadyHealthReadyGetResponses,
+    ReadyHealthReadyGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     url: "/health/ready",
     ...options,
@@ -3951,8 +4053,8 @@ export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
  */
 export const readyReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyReadyGetData, ThrowOnError>
-): RequestResult<ReadyReadyGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<ReadyReadyGetResponses, unknown, ThrowOnError>({
+): RequestResult<ReadyReadyGetResponses, ReadyReadyGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<ReadyReadyGetResponses, ReadyReadyGetErrors, ThrowOnError>({
     responseType: "json",
     url: "/ready",
     ...options,
@@ -3965,10 +4067,14 @@ export const readyReadyGet = <ThrowOnError extends boolean = false>(
  */
 export const issueWsUpgradeTicketWsTicketPost = <ThrowOnError extends boolean = false>(
   options?: Options<IssueWsUpgradeTicketWsTicketPostData, ThrowOnError>
-): RequestResult<IssueWsUpgradeTicketWsTicketPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  IssueWsUpgradeTicketWsTicketPostResponses,
+  IssueWsUpgradeTicketWsTicketPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     IssueWsUpgradeTicketWsTicketPostResponses,
-    unknown,
+    IssueWsUpgradeTicketWsTicketPostErrors,
     ThrowOnError
   >({
     responseType: "json",

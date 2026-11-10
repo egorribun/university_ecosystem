@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 import app.models as models
 from app.api.deps import get_current_admin_user_from_dishka
+from app.api.openapi_responses import ADMIN_FORBIDDEN, UNAUTHENTICATED, combine
 from app.core.feature_flags import (
     FEATURE_FLAG_CONFIG_PATH,
     FeatureFlagSnapshot,
@@ -14,7 +15,11 @@ from app.schemas import schemas
 router = APIRouter(prefix="/feature-flags", tags=["admin-feature-flags"])
 
 
-@router.get("", response_model=list[schemas.FeatureFlagOut])
+@router.get(
+    "",
+    response_model=list[schemas.FeatureFlagOut],
+    responses=combine(UNAUTHENTICATED, ADMIN_FORBIDDEN),
+)
 async def list_feature_flags(
     _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> list[FeatureFlagSnapshot]:

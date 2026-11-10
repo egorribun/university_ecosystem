@@ -29,6 +29,12 @@ from app.api.deps import (
     require_fresh_mfa,
 )
 from app.api.deps.auth import get_permission_checker
+from app.api.openapi_responses import (
+    CSRF_REJECTED,
+    RATE_LIMITED,
+    UNAUTHENTICATED,
+    combine,
+)
 from app.api.validation import raise_validation_error
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
@@ -178,7 +184,9 @@ async def reset_password(
     return {"ok": True}
 
 
-@users_router.get("/me", response_model=schemas.UserOut, summary="Me")
+@users_router.get(
+    "/me", response_model=schemas.UserOut, summary="Me", responses=UNAUTHENTICATED
+)
 @inject
 async def me(
     request: Request,
@@ -274,6 +282,13 @@ async def change_password(
     "/me/export",
     response_model=schemas.DataExportOut,
     dependencies=[Depends(sensitive_route_limit())],
+    responses=combine(
+        UNAUTHENTICATED,
+        CSRF_REJECTED,
+        {403: {"description": "The request has no active session for MFA step-up"}},
+        {428: {"description": "A fresh MFA verification is required first"}},
+        RATE_LIMITED,
+    ),
 )
 @inject
 async def export_current_user_data(
@@ -347,6 +362,7 @@ async def upload_cover(
     dependencies=[
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
+    responses=combine(UNAUTHENTICATED, CSRF_REJECTED, RATE_LIMITED),
 )
 @inject
 async def delete_avatar(
@@ -364,6 +380,7 @@ async def delete_avatar(
     dependencies=[
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
+    responses=combine(UNAUTHENTICATED, CSRF_REJECTED, RATE_LIMITED),
 )
 @inject
 async def delete_cover(
@@ -559,7 +576,7 @@ async def delete_user_admin(
     return await service.admin_delete_user(user_id, request, user)
 
 
-@groups_router.get("", response_model=list[schemas.GroupOut])
+@groups_router.get("", response_model=list[schemas.GroupOut], responses=RATE_LIMITED)
 @inject
 async def get_groups(service: FromDishka[GroupService]) -> list[schemas.GroupOut]:
     groups = await service.get_groups()

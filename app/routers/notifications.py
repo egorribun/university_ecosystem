@@ -19,6 +19,7 @@ from app.api.deps import (
     get_current_admin_user_from_dishka,
     get_current_user_from_dishka,
 )
+from app.api.openapi_responses import RATE_LIMITED, UNAUTHENTICATED
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
@@ -230,7 +231,7 @@ async def _validate_subscription_payload(
     return endpoint, p256dh, auth
 
 
-@router.get("/vapid-public-key")
+@router.get("/vapid-public-key", responses=RATE_LIMITED)
 # nosec: public_endpoint
 async def get_vapid_public_key() -> dict[str, str | None]:
     """Return configured VAPID public key."""
@@ -542,7 +543,7 @@ async def unsubscribe(
     return {"ok": True, "removed": True}
 
 
-@router.get("/topics", response_model=PushTopicsResponse)
+@router.get("/topics", response_model=PushTopicsResponse, responses=UNAUTHENTICATED)
 @inject
 async def get_push_topics(
     db: FromDishka[AsyncDatabaseSession],

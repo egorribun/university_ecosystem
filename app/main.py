@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.admin import router as admin_api_router
 from app.api.health import router as health_router
 from app.api.internal import router as internal_api_router
+from app.api.openapi_responses import INVALID_HOST
 from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
 from app.api.well_known import router as well_known_router
@@ -138,7 +139,7 @@ app.mount("/static", PublicStaticFiles(directory=static_dir), name="static")
 _logger = get_logger(__name__)
 
 
-@app.get("/", response_class=JSONResponse, summary="Root")
+@app.get("/", response_class=JSONResponse, summary="Root", responses=INVALID_HOST)
 async def get_root() -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ok"})
 

@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 from fastapi import APIRouter, Request, Response, status
 from fastapi.params import Depends
 
+from app.api.openapi_responses import RATE_LIMITED, combine
 from app.core.logging import get_logger
 from app.core.metrics import record_csp_report
 from app.core.ratelimit import sensitive_route_limit
@@ -115,6 +116,11 @@ async def _read_body_with_limit(request: Request, limit: int) -> bytes | None:
     "",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(sensitive_route_limit(limit=30, window_sec=60))],
+    responses=combine(
+        {400: {"description": "The body is not a valid CSP violation report"}},
+        {413: {"description": "The report body exceeds the accepted size"}},
+        RATE_LIMITED,
+    ),
 )
 async def receive_csp_report(request: Request) -> Response:
     """
