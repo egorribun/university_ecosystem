@@ -187,6 +187,51 @@ def test_fixture_liveness_does_not_mask_the_bounded_chaos_fault() -> None:
     assert window + 15 <= duration
 
 
+def test_fixture_stops_promptly_when_pod_failure_swaps_the_image() -> None:
+    # The server runs as PID 1, where an unhandled SIGTERM is ignored: three
+    # nightlies saw 100% success under an injected fault because the old
+    # container served through the 30 s default grace, longer than the window.
+    documents = list(
+        yaml.safe_load_all((ROOT / "k8s/chaos/fixtures/aud346-target.yaml").read_text())
+    )
+    deployment = next(
+        document for document in documents if document["kind"] == "Deployment"
+    )
+    pod = deployment["spec"]["template"]["spec"]
+    (container,) = pod["containers"]
+    assert container["command"] == ["python", "-B", "-c"]
+    (program,) = container["args"]
+    assert "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))" in program
+    assert program.index("signal.signal(") < program.index("serve_forever()")
+    script = (ROOT / "scripts/chaos/aud346_live_kind_proof.sh").read_text(
+        encoding="utf-8"
+    )
+    window = int(re.search(r"--duration (\d+) \\", script).group(1))
+    assert 1 <= pod["terminationGracePeriodSeconds"] <= 2
+    assert pod["terminationGracePeriodSeconds"] * 5 <= window
+
+
+def test_live_proof_keeps_forwarding_through_the_fault_and_recovery() -> None:
+    script = (ROOT / "scripts/chaos/aud346_live_kind_proof.sh").read_text(
+        encoding="utf-8"
+    )
+    start = script.index("supervise_port_forward() {")
+    body = script[start : script.index("\n}\n", start)]
+    # kubectl exits on the first refused in-pod connection; the supervisor
+    # restarts it on the same local port so recovery stays observable.
+    assert "while true; do" in body
+    assert 'port-forward --address 127.0.0.1 "service/${TARGET_SERVICE}"' in body
+    assert 'wait "$child" || true' in body
+    assert (
+        'trap \'[[ -n "$child" ]] && kill "$child" >/dev/null 2>&1; exit 0\' TERM'
+        in body
+    )
+    launch = 'supervise_port_forward >"${DIAG_DIR}/port-forward.log" 2>&1 &\n'
+    assert script.count(launch) == 1
+    assert script.index(launch) < script.index("--require-fault-impact")
+    assert 'kill "$PORT_FORWARD_PID"' in script
+
+
 def test_fixture_network_policy_is_exact_and_default_deny() -> None:
     documents = list(
         yaml.safe_load_all((ROOT / "k8s/chaos/fixtures/aud346-target.yaml").read_text())

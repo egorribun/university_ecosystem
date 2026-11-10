@@ -23,6 +23,10 @@ spec:
         app.kubernetes.io/name: aud346-chaos-target
     spec:
       automountServiceAccountToken: false
+      # PodChaos pod-failure swaps the image, so the kubelet must stop this
+      # container. The server is PID 1, so it handles SIGTERM itself (below);
+      # the short grace period bounds the stop even if that ever regresses.
+      terminationGracePeriodSeconds: 2
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -35,7 +39,12 @@ spec:
           command: ["python", "-B", "-c"]
           args:
             - |
+              import signal
+              import sys
               from http.server import BaseHTTPRequestHandler, HTTPServer
+              # As PID 1 the kernel ignores an unhandled SIGTERM, and the old
+              # container kept serving through the whole 30 s default grace.
+              signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
               class Handler(BaseHTTPRequestHandler):
                   def do_GET(self):
                       status = 200 if self.path == "/health" else 404
