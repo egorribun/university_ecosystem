@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { persistOptions } from "@/app/queryClient"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import type { UserState } from "@/types/Auth"
@@ -177,6 +178,16 @@ describe("useNotifications — list query", () => {
     expect(result.current.unreadCount).toBe(1)
     expect(result.current.hasMore).toBe(true)
     expect(result.current.nextCursor).toBe("cursor-2")
+  })
+
+  it("keeps the notification list out of the persisted query cache", async () => {
+    vi.mocked(fetchNotificationsList).mockResolvedValue(listResult([entry("1")]))
+    const { qc, result } = setup()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const query = qc.getQueryCache().find({ queryKey: ["notifications", "list"], exact: true })
+    expect(query?.state.status).toBe("success")
+    expect(persistOptions.dehydrateOptions?.shouldDehydrateQuery?.(query!)).toBe(false)
   })
 
   it("checks the schedule exactly once on mount", async () => {
