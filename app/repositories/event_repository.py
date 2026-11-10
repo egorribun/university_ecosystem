@@ -107,7 +107,14 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         revalidate fields and the row stays locked for the transaction duration.
         """
         event_id = self._cast_id(event_id)
-        stmt = select(Event).where(Event.id == event_id).with_for_update()
+        # The attendance endpoint may already hold this row in its identity map.
+        # Recheck the locked database state rather than the earlier unlocked read.
+        stmt = (
+            select(Event)
+            .where(Event.id == event_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
