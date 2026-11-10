@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ from app.core.localization import (  # LOW-W19: moved from deferred inline impor
     translate_lesson_type,
 )
 from app.cqrs.base import Query, QueryHandler
-from app.deps.cache import BaseCache, format_etag
+from app.deps.cache import BaseCache, etag_matches, format_etag
 from app.repositories.schedule_repository import (
     ScheduleRepository,  # LOW-W19: moved from deferred inline import
 )
@@ -119,7 +120,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         self.analytics_service = analytics_service
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
-        # 1. Try cache
+        stats = None
         if not query.skip_cache and self.cache.enabled:
             cached = await stats_cache.get_cached_stats(
                 cache=self.cache,
@@ -128,43 +129,33 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 period_key=query.period_key,
                 skip_cache=query.skip_cache,
             )
-            if cached:
-                if query.if_none_match and cached.etag == query.if_none_match.strip(
-                    '"'
-                ):
-                    return QueryResult(
-                        payload=None, etag=format_etag(cached.etag), not_modified=True
-                    )
+            if cached is not None:
+                stats = cached.payload
 
-                payload = self._enrich_stats(cached.payload, query)
-                return QueryResult(payload=payload, etag=format_etag(cached.etag))
-
-        # 2. Compute stats via AnalyticsService
-        compute_map = {
-            "attendance": self.analytics_service.get_attendance_stats,
-            "grades": self.analytics_service.get_grade_stats,
-            "participation": self.analytics_service.get_participation_stats,
-        }
-
-        compute_fn = compute_map.get(query.kind)
-        if not compute_fn:
-            # LOW-W19: was ValueError (500); now 400 so the client gets a meaningful error
-            raise HTTPException(
-                status_code=400, detail=f"Unknown stats kind: {query.kind}"
+        if stats is None:
+            compute_map = {
+                "attendance": self.analytics_service.get_attendance_stats,
+                "grades": self.analytics_service.get_grade_stats,
+                "participation": self.analytics_service.get_participation_stats,
+            }
+            compute_fn = compute_map.get(query.kind)
+            if not compute_fn:
+                raise HTTPException(
+                    status_code=400, detail=f"Unknown stats kind: {query.kind}"
+                )
+            stats = await compute_fn(
+                user_id=query.user_id,
+                period_days=query.period_days,
+                period_key=query.period_key,
+                cache=self.cache,
+                skip_cache=query.skip_cache,
             )
 
-        # They all share the same signature now thanks to AnalyticsService unification
-        stats = await compute_fn(
-            user_id=query.user_id,
-            period_days=query.period_days,
-            period_key=query.period_key,
-            cache=self.cache,
-            skip_cache=query.skip_cache,
-        )
-
+        # Validators belong to the localized response, not the raw cache entry.
         payload = self._enrich_stats(stats, query)
         etag = self._compute_etag(payload)
-
+        if etag_matches(etag, query.if_none_match):
+            return QueryResult(payload=None, etag=format_etag(etag), not_modified=True)
         return QueryResult(payload=payload, etag=format_etag(etag))
 
     def _enrich_stats(
@@ -180,11 +171,15 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         payload = dict(stats)
         payload["period_key"] = stats.get("period_key") or query.period_key
         payload["period_label"] = label
-        return payload
+        # Cache round-trips sort nested keys; keep cold and warm response bytes
+        # identical before assigning a strong representation validator.
+        canonical: dict[str, Any] = json.loads(
+            json.dumps(jsonable_encoder(payload), sort_keys=True)
+        )
+        return canonical
 
     def _compute_etag(self, payload: dict[str, Any]) -> str:
         import hashlib
-        import json
 
         serialized = json.dumps(
             payload,
