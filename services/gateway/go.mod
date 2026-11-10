@@ -1,19 +1,19 @@
 module github.com/university-ecosystem/gateway
 
-go 1.26.4
+go 1.26.10
 
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/getsentry/sentry-go/gin v0.50.0
-	github.com/gin-contrib/cors v1.7.9
+	github.com/gin-contrib/cors v1.7.10
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.25.0
-	github.com/quic-go/quic-go v0.64.1
+	github.com/quic-go/quic-go v0.65.0
 	github.com/redis/go-redis/extra/redisprometheus/v9 v9.23.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0
@@ -31,7 +31,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 )
 
 require (
