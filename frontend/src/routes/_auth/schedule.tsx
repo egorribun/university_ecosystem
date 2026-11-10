@@ -11,6 +11,7 @@ import { scheduleSearchSchema } from "@/features/schedule/schema"
 import Schedule from "@/pages/Schedule"
 
 export const Route = createFileRoute("/_auth/schedule")({
+  ssr: true,
   // Wave 130 SW2 / Wave 133 SW3 — full SSR via sequential prefetch chain.
   // Inherits parent _auth.tsx ssr:true (W128 SW2). Schedule.tsx is
   // verified SSR-safe per W130 plan exploration: all browser APIs

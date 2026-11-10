@@ -12,6 +12,7 @@ import { resolveLoaderLang } from "@/utils/loaderLang"
 import Events from "@/pages/Events"
 
 export const Route = createFileRoute("/_auth/events/")({
+  ssr: true,
   // Wave 129 SW1 — per-route SSR enabled. Inherits `_auth.tsx` `ssr: true`
   // (per TanStack Start v1 inheritance contract; child can ONLY make MORE
   // restrictive — `false > 'data-only' > true`). Loader prefetches first

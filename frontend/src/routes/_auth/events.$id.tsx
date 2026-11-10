@@ -28,6 +28,7 @@ function EventDetailRoute() {
 }
 
 export const Route = createFileRoute("/_auth/events/$id")({
+  ssr: true,
   // Wave 129 SW2 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader pre-fetches the event by id into per-request
   // QueryClient so the SSR HTML emits with hero + body + about content

@@ -61,7 +61,7 @@ vi.mock("@tanstack/react-router", () => ({
 /* Events query hooks — module-mocked, the orchestrator reads their fields. */
 const listQuery = vi.hoisted(() => ({
   events: [] as unknown[],
-  isLoading: false,
+  isPending: false,
   isFetching: false,
   isFetchingNextPage: false,
   hasNextPage: false,
@@ -262,7 +262,7 @@ beforeEach(() => {
   search.params = {}
   navigateSpy.fn = vi.fn((..._a: unknown[]) => undefined)
   listQuery.events = []
-  listQuery.isLoading = false
+  listQuery.isPending = false
   listQuery.isFetching = false
   listQuery.isFetchingNextPage = false
   listQuery.hasNextPage = false
@@ -413,11 +413,19 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
   })
 
   it("reflects list loading flags on the active tab (159-160 active side)", () => {
-    listQuery.isLoading = true
+    listQuery.isPending = true
     listQuery.isFetching = true
     render(<EventsFeature />)
     expect(screen.getByTestId("list-initial-loading")).toHaveTextContent("true")
     expect(screen.getByTestId("list-fetching")).toHaveTextContent("true")
+  })
+
+  it("keeps the offline fallback available while an uncached feed is pending", () => {
+    online.value = false
+    listQuery.isPending = true
+    listQuery.isFetching = false
+    render(<EventsFeature />)
+    expect(screen.getByTestId("list-initial-loading")).toHaveTextContent("false")
   })
 
   it("maps tab 'archive' to is_active=false without error (121 archive branch)", () => {
@@ -662,11 +670,11 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
   it("does not prefetch an incomplete filtered dataset while loading, fetching, or offline", () => {
     search.params = { cat: "lecture" }
     listQuery.hasNextPage = true
-    listQuery.isLoading = true
+    listQuery.isPending = true
     render(<EventsFeature />)
     expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
 
-    listQuery.isLoading = false
+    listQuery.isPending = false
     listQuery.isFetchingNextPage = true
     render(<EventsFeature />)
     expect(listQuery.fetchNextPage).not.toHaveBeenCalled()

@@ -22,6 +22,7 @@ function NewsDetailRoute() {
 }
 
 export const Route = createFileRoute("/_auth/news/$id")({
+  ssr: true,
   // Wave 129 SW5 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader pre-fetches the article body + metadata into the
   // per-request QueryClient so SSR HTML emits with NewsDetailHero +

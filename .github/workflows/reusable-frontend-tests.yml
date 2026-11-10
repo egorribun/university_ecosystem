@@ -1666,7 +1666,7 @@ jobs:
           digest-mismatch: error
 
       - name: Test bundle analyzer
-        run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs
+        run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs scripts/static-ssr-route-boundaries.test.mjs
 
       - name: Analyze bundle size
         env:

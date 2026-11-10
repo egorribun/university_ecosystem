@@ -12,6 +12,7 @@ import { resolveLoaderLang } from "@/utils/loaderLang"
 import News from "@/pages/News"
 
 export const Route = createFileRoute("/_auth/news/")({
+  ssr: true,
   // Wave 129 SW4 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader prefetches first page of cursor-paginated news
   // articles into per-request QueryClient (SsrRoot W128 SW3) so SSR

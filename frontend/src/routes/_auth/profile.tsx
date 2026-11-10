@@ -10,6 +10,7 @@ import { profileSearchSchema } from "@/features/profile/schema"
 import Profile from "@/pages/Profile"
 
 export const Route = createFileRoute("/_auth/profile")({
+  ssr: true,
   validateSearch: (search: Record<string, unknown>) => v.parse(profileSearchSchema, search),
   // Wave 133 SW4 — SSR enabled by inheriting parent _auth.tsx ssr:true
   // (W128 SW2). The page is verified SSR-safe per W133 SW3 plan
