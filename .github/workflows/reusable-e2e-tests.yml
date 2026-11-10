@@ -510,6 +510,8 @@ jobs:
 
       # Phase 7.4: exercise the production Node SSR wrapper and assert that
       # hashed assets are immutable while the HTML shell is never shared.
+      # AUD-432: the list reporter writes each named SSR outcome to the job log;
+      # the HTML report alone is overwritten by the next auxiliary suite.
       - name: Run production SSR cache-control contract
         if: inputs.browser == 'chromium' && inputs.shard-index == 1
         working-directory: frontend
@@ -520,11 +522,11 @@ jobs:
           npx playwright test ssr-caching.spec.ts \
             --project=chromium \
             --output=test-results/ssr-caching \
-            --reporter=html
+            --reporter=list,html
           npx playwright test --config=playwright.ssr.config.ts \
             --project=chromium \
             --output=test-results/ssr-document-render \
-            --reporter=html
+            --reporter=list,html
 
       - name: Run authenticated accessibility E2E tests (cross-env auto-managed)
         if: inputs.browser == 'chromium' && inputs.shard-index == 1

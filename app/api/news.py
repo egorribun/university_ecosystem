@@ -71,6 +71,13 @@ _NEWS_LIST_CACHE_PREFIX = news_cache_version.prefix
 _CACHE_LOCALES = frozenset(SUPPORTED_LOCALES)
 
 
+def _comment_author_name(user: models.User) -> str:
+    if user.profile is None:
+        return str(user.email)
+    full_name = user.profile.full_name
+    return full_name if full_name and full_name.strip() else "User"
+
+
 def _normalized_cache_locale(locale: str | None) -> str:
     """Normalize locale string for cache key purposes."""
     if locale is None:
@@ -363,7 +370,7 @@ async def comment_on_news(
         "id": comment.id,
         "content": comment.content,
         "user_id": comment.user_id,
-        "user_name": user.profile.full_name if user.profile else str(user.email),
+        "user_name": _comment_author_name(user),
         "created_at": comment.created_at,
     }
 
@@ -438,13 +445,15 @@ async def update_comment(
     user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
+    if not data.content.strip():
+        raise_validation_error("errors.validation.required", locale)
     try:
         comment = await service.update_comment(comment_id, user.id, data.content)
         return {
             "id": comment.id,
             "content": comment.content,
             "user_id": comment.user_id,
-            "user_name": user.profile.full_name if user.profile else str(user.email),
+            "user_name": _comment_author_name(user),
             "created_at": comment.created_at,
         }
     except LookupError:

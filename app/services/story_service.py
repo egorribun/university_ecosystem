@@ -1,9 +1,35 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from app.core.localization import localized_text, normalize_locale
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
+
+
+class InvalidStoryPeriod(ValueError):
+    """The effective publication interval is missing or nonpositive."""
+
+
+def _validate_story_period(
+    published_at: datetime | None, expires_at: datetime | None
+) -> None:
+    if published_at is None or expires_at is None:
+        raise InvalidStoryPeriod("story_period_invalid")
+    # SQLite removes timezone metadata; compare instants using the same UTC
+    # interpretation as the input schemas and repository.
+    published = (
+        published_at.replace(tzinfo=UTC)
+        if published_at.tzinfo is None
+        else published_at.astimezone(UTC)
+    )
+    expires = (
+        expires_at.replace(tzinfo=UTC)
+        if expires_at.tzinfo is None
+        else expires_at.astimezone(UTC)
+    )
+    if expires <= published:
+        raise InvalidStoryPeriod("story_period_invalid")
 
 
 class StoryService:
@@ -49,12 +75,14 @@ class StoryService:
         self, data: schemas.StoryCreate, created_by: uuid.UUID
     ) -> StoryDTO:
         payload = data.model_dump(exclude_unset=True)
-
-        if payload.get("published_at"):
-            payload["published_at"] = self.repo._ensure_utc(payload["published_at"])
-        if payload.get("expires_at"):
-            payload["expires_at"] = self.repo._ensure_utc(payload["expires_at"])
-
+        published_at = data.published_at or datetime.now(UTC)
+        try:
+            expires_at = data.expires_at or published_at + timedelta(hours=24)
+        except OverflowError as exc:
+            raise InvalidStoryPeriod("story_period_invalid") from exc
+        _validate_story_period(published_at, expires_at)
+        payload["published_at"] = published_at
+        payload["expires_at"] = expires_at
         payload["created_by"] = created_by
 
         # We stick to repo.create if it fits, or manual add
@@ -69,23 +97,23 @@ class StoryService:
     async def update_story(
         self, story_id: uuid.UUID, data: schemas.StoryUpdate
     ) -> StoryDTO:
-        story = await self.repo.get(story_id)
-        if not story:
-            raise ValueError("story_not_found")
-        # LOW-W19: removed `assert story is not None` — it is dead code because
-        # the `raise` on the line above unconditionally exits when story is falsy.
-
         updates = data.model_dump(exclude_unset=True)
-
-        if updates.get("published_at"):
-            updates["published_at"] = self.repo._ensure_utc(updates["published_at"])
-        if updates.get("expires_at"):
-            updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
-
-        updated_story = await self.repo.update(story.id, updates)
-        assert updated_story is not None  # noqa: S101
-
         async with self.uow:
+            changes_time = bool({"published_at", "expires_at"} & updates.keys())
+            story = (
+                await self.repo.get_for_time_update(story_id)
+                if changes_time
+                else await self.repo.get(story_id)
+            )
+            if story is None:
+                raise ValueError("story_not_found")
+            if changes_time:
+                _validate_story_period(
+                    updates.get("published_at", story.published_at),
+                    updates.get("expires_at", story.expires_at),
+                )
+            updated_story = await self.repo.update(story.id, updates)
+            assert updated_story is not None  # noqa: S101
             await self.uow.commit()
 
         # Cover URLs can be shared across story rows. Retain the prior object

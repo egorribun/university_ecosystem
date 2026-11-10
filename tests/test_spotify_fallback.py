@@ -175,7 +175,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
         headers: typing.ClassVar[dict[str, typing.Any]] = {}
 
         def json(self) -> dict[str, Any]:
-            return {}
+            return {"error": "invalid_grant"}
 
     original_post = httpx.AsyncClient.post
 

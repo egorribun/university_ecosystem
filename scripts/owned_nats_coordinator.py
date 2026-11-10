@@ -561,6 +561,11 @@ class OutagePorts(Protocol):
         deadline: Deadline,
     ) -> CorrelationRows: ...
 
+    def deferred_event(
+        self, owner: OwnerEvidence, event_id: str, *, deadline: Deadline
+    ) -> str | None:
+        """Return the exact attempted row ID, or no authenticated deferral proof."""
+
     def outbox_state(
         self,
         owner: OwnerEvidence,
@@ -947,7 +952,9 @@ class _Coordinator:
             self._wait(recovery)
         self._complete_inventory(context, recovery)
 
-    def _send_and_observe(self, context: _Context) -> tuple[MessageEvidence, str, int]:
+    def _send_and_observe(
+        self, context: _Context
+    ) -> tuple[MessageEvidence, str, int, str | None]:
         self.stage = OutageStage.SEND
         content = "owned NATS acceptance probe"
         self.checkpoint = OutageCheckpoint.SEND_MESSAGE
@@ -1003,9 +1010,16 @@ class _Coordinator:
                 context.postgres,
                 event_id,
             )
-            verdict = classify_outage_attempt(event_id, state)
+            deferred = None
+            if classify_outage_attempt(event_id, state) is OutboxVerdict.WAIT:
+                deferred = _call(
+                    retry, self.ports.deferred_event, context.owner, event_id
+                )
+            verdict = classify_outage_attempt(
+                event_id, state, deferred_event_id=deferred
+            )
             if verdict is OutboxVerdict.RETRYABLE and state is not None:
-                return message, event_id, state.error_count
+                return message, event_id, state.error_count, deferred
             _require(verdict is OutboxVerdict.WAIT)
             self._wait(retry)
 
@@ -1015,6 +1029,7 @@ class _Coordinator:
         message: MessageEvidence,
         event_id: str,
         retry_count: int,
+        deferred_event_id: str | None,
     ) -> None:
         self.stage = OutageStage.DRAIN
         drain = self.primary.child(60)
@@ -1026,7 +1041,9 @@ class _Coordinator:
                 context.postgres,
                 event_id,
             )
-            verdict = classify_outbox_drain(event_id, retry_count, state)
+            verdict = classify_outbox_drain(
+                event_id, retry_count, state, deferred_event_id=deferred_event_id
+            )
             if verdict is OutboxVerdict.DRAINED:
                 break
             _require(verdict is OutboxVerdict.WAIT)
@@ -1100,7 +1117,9 @@ class _Coordinator:
                 _live(stop_deadline)
                 _require(_command_succeeded(command))
                 self._stopped(context)
-                message, event_id, retry_count = self._send_and_observe(context)
+                message, event_id, retry_count, deferred = self._send_and_observe(
+                    context
+                )
             finally:
                 if stop_attempted:
                     previous_stage = self.stage
@@ -1108,7 +1127,7 @@ class _Coordinator:
                     self._restore(context)
                     self.stage = previous_stage
             _live(self.primary)
-            self._delivery(context, message, event_id, retry_count)
+            self._delivery(context, message, event_id, retry_count, deferred)
             self.checkpoint = None
             self.stage = OutageStage.FINAL_REVALIDATION
             self._complete_inventory(context, self.primary)

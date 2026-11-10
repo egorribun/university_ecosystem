@@ -30,6 +30,17 @@ class StoryRepository(BaseRepository[Story, StoryDTO, dict[str, Any], dict[str, 
     def dto_class(self) -> type[StoryDTO]:
         return StoryDTO
 
+    async def get_for_time_update(self, story_id: uuid.UUID) -> StoryDTO | None:
+        """Read current timestamps while serializing partial interval updates."""
+        result = await self.db.execute(
+            select(Story)
+            .where(Story.id == story_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        story = result.scalar_one_or_none()
+        return self._to_dto(story) if story is not None else None
+
     async def get_active(self, *, skip: int = 0, limit: int = 20) -> list[StoryDTO]:
         """Get active, non-expired stories ordered by published_at descending."""
         now = datetime.now(UTC)

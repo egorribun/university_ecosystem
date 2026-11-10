@@ -84,6 +84,7 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
     prefs = getattr(user, "preferences", None)
     out.update(
         {
+            "preferences": prefs,
             "dnd_enabled": get_attr(prefs, "dnd_enabled", False),
             "dnd_start": get_attr(prefs, "dnd_start"),
             "dnd_end": get_attr(prefs, "dnd_end"),

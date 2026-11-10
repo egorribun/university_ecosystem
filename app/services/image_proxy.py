@@ -99,16 +99,21 @@ async def get_transformed_image(
             # A deleted user image must not remain publicly retrievable merely
             # because its transformed bytes are still present in Redis.
             source_path = _backend_source_path(backend, path)
-            if not await backend.exists(source_path):
+            if " " in source_path or not await backend.exists(source_path):
                 try:
                     await redis_client.delete(redis_key)
                 except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
                     logger.warning("Redis stale image eviction failed: %s", exc)
-                raise ValueError(f"Could not load image: {path}")
-            # Safe JSON deserialization — no code execution risk.
-            data, mime = _cache_decode(cached_payload)
-            _validate_image_payload(data, max_pixels=_configured_image_max_pixels())
-            return data, mime
+                if " " not in source_path:
+                    raise ValueError(f"Could not load image: {path}")
+                # A space alias can resolve to two different objects. Re-fetch
+                # it below rather than letting either candidate's existence
+                # authorize cached bytes from a deleted original or fallback.
+            else:
+                # Safe JSON deserialization — no code execution risk.
+                data, mime = _cache_decode(cached_payload)
+                _validate_image_payload(data, max_pixels=_configured_image_max_pixels())
+                return data, mime
     except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
         logger.warning("Redis cache read failed for %s: %s", path, exc)

@@ -12,6 +12,7 @@ from fastapi import (
     Request,
     Response,
     UploadFile,
+    status,
 )
 
 import app.models as models
@@ -20,7 +21,7 @@ from app.api.deps import (
 )
 from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
-from app.api.validation import ensure_exists
+from app.api.validation import ensure_exists, raise_http_error
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import (
@@ -33,7 +34,7 @@ from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import get_cache
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
-from app.services.story_service import StoryService
+from app.services.story_service import InvalidStoryPeriod, StoryService
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,14 @@ async def create_story(
     user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
-    record = await service.create_story(data, created_by=user.id)
+    try:
+        record = await service.create_story(data, created_by=user.id)
+    except InvalidStoryPeriod:
+        raise_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "validation.stories.expires_after_publish",
+            locale,
+        )
     # Note: Explicitly invalidating wildcard keys because the inline keys generator was removed
     cache = get_cache()
     await cache.invalidate("ue:stories:list:*", _STORIES_LIST_CACHE_KEY)
@@ -122,6 +130,12 @@ async def update_story(
 
     try:
         updated = await service.update_story(story_id, data or schemas.StoryUpdate())
+    except InvalidStoryPeriod:
+        raise_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "validation.stories.expires_after_publish",
+            locale,
+        )
     except ValueError:
         ensure_exists(None, "stories", locale)
 

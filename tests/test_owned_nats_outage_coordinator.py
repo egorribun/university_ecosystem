@@ -958,3 +958,27 @@ def test_backend_diagnostic_never_overrides_restoration_or_cleanup(
     )
     assert result.backend_diagnostic == (projected if cleanup is None else None)
     assert "42501" not in repr(result)
+
+
+def test_zero_count_requires_exact_deferred_event_before_recovery() -> None:
+    ports = FakePorts()
+    ports.script["outbox_state"] = [
+        StoredEventState(EVENT, False, 0, 0),
+        StoredEventState(EVENT, True, 0, 0),
+    ]
+    ports.script["deferred_event"] = [EVENT]
+    assert run(ports).outcome is OutageOutcome.ACCEPTED
+    trace = names(ports)
+    assert (
+        trace.index("deferred_event")
+        < trace.index("start_container")
+        < trace.index("broker_last_message")
+    )
+
+
+def test_wrong_event_deferral_does_not_prove_attempt() -> None:
+    ports = FakePorts()
+    ports.script["outbox_state"] = [StoredEventState(EVENT, False, 0, 0)]
+    ports.script["deferred_event"] = [OTHER]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.RETRY

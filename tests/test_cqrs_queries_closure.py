@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -121,11 +123,27 @@ async def test_stats_handler_uses_cached_payload_and_etag_not_modified():
         result = await handler.handle(query)
 
     assert result.payload["period_key"] == "month"
-    assert result.etag == '"stats-etag"'
+    representation_hash = hashlib.sha256(
+        json.dumps(
+            result.payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+    ).hexdigest()
+    assert result.etag == f'"{representation_hash}"'
+    assert result.etag != f'"{entry.etag}"'
     get_cached.assert_awaited_once()
     analytics.get_grade_stats.assert_not_awaited()
 
-    query.if_none_match = '"stats-etag"'
+    query.if_none_match = f'"{entry.etag}"'
+    with patch(
+        "app.cqrs.queries.stats_cache.get_cached_stats",
+        new=AsyncMock(return_value=entry),
+    ):
+        legacy_validator = await handler.handle(query)
+    assert legacy_validator.not_modified is False
+    assert legacy_validator.payload == result.payload
+    assert legacy_validator.etag == result.etag
+
+    query.if_none_match = result.etag
     with patch(
         "app.cqrs.queries.stats_cache.get_cached_stats",
         new=AsyncMock(return_value=entry),

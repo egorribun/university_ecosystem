@@ -17,7 +17,7 @@ from app.core.localization import resolve_locale
 from app.core.middleware import _ensure_vary_header
 from app.core.ratelimit import sensitive_route_limit
 from app.cqrs.queries import GetStatsHandler, GetStatsQuery
-from app.deps.cache import format_etag
+from app.deps.cache import etag_matches, format_etag
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -221,9 +221,9 @@ async def stats_summary(
 
     # Build a combined ETag from the three sub-ETags.
     sub_etags = "".join(r.etag or "" for r in (attendance_r, grades_r, participation_r))
-    combined_etag = f'"{hashlib.sha256(sub_etags.encode()).hexdigest()[:16]}"'
+    combined_etag = hashlib.sha256(sub_etags.encode()).hexdigest()[:16]
 
-    if if_none_match == combined_etag:
+    if etag_matches(combined_etag, if_none_match):
         not_modified = Response(status_code=304)
         _set_stats_headers(not_modified, locale=locale, etag=combined_etag)
         return not_modified

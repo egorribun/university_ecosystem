@@ -16,7 +16,10 @@ def _group() -> None:
 def reindex(
     batch_size: int = typer.Option(200, min=1, max=1000, help="Rows per bulk request"),
 ) -> None:
-    """Rebuild search during maintenance with content writes/outbox paused."""
+    """Rebuild search with writes/outbox paused and an active MVP_TENANT_ID.
+
+    Use the ordinary RLS application database role, never migration credentials.
+    """
     counts = asyncio.run(reindex_all(batch_size=batch_size))
     for index, total in counts.items():
         typer.echo(f"{index}: {total} documents indexed")

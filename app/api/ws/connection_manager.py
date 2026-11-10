@@ -421,6 +421,15 @@ class ConnectionManager:
                 exc,
             )
             if propagate_nats_failure:
+                from app.core.events import DurableEventDeferred
+                from app.core.nats_broker import NatsNotConnectedError
+
+                if isinstance(exc, NatsNotConnectedError):
+                    # The broker is reconnecting on its own. Keep the outbox event
+                    # pending instead of spending its retry budget: the worker
+                    # retries every few seconds, so a NATS outage of a few seconds
+                    # used to dead-letter the frame (AUD-322).
+                    raise DurableEventDeferred() from None
                 raise
 
         return sum(r for r in results if isinstance(r, int))

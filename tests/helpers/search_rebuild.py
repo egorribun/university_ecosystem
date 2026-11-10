@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Coroutine
 from typing import Any
+
+
+async def provision_search_tenant(db: Any, monkeypatch: Any) -> None:
+    """Give rebuild fixtures a real active organization for their preflight."""
+    from app.core.config import settings
+    from app.models import Tenant
+
+    tenant_id = uuid.UUID("c3333333-3333-4333-8333-333333333333")
+    db.add(Tenant(id=tenant_id, name="Search tests", slug=f"search-{tenant_id}"))
+    await db.flush()
+    monkeypatch.setattr(settings, "mvp_tenant_id", tenant_id)
 
 
 class RebuildProgress:

@@ -128,3 +128,36 @@ def test_retry_counter_reset_or_decrease_does_not_prove_drain(
     state = replace(PENDING, processed_at_present=processed, error_count=current)
 
     assert classify_outbox_drain(EVENT, 2, state) is OutboxVerdict.INVALID
+
+
+def test_exact_deferral_proves_zero_error_attempt_and_drain() -> None:
+    assert (
+        classify_outage_attempt(EVENT, PENDING, deferred_event_id=EVENT)
+        is OutboxVerdict.RETRYABLE
+    )
+    assert (
+        classify_outbox_drain(
+            EVENT,
+            0,
+            replace(PENDING, processed_at_present=True),
+            deferred_event_id=EVENT,
+        )
+        is OutboxVerdict.DRAINED
+    )
+
+
+@pytest.mark.parametrize("identity", [OTHER, "", True])
+def test_deferral_for_another_event_is_not_proof(identity) -> None:
+    assert (
+        classify_outage_attempt(EVENT, PENDING, deferred_event_id=identity)
+        is OutboxVerdict.INVALID
+    )
+    assert (
+        classify_outbox_drain(
+            EVENT,
+            0,
+            replace(PENDING, processed_at_present=True),
+            deferred_event_id=identity,
+        )
+        is OutboxVerdict.INVALID
+    )

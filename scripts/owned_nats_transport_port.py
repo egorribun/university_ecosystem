@@ -17,6 +17,7 @@ from scripts import owned_nats_broker_control as broker_control
 from scripts import owned_nats_docker as docker
 from scripts import owned_nats_http_adapter as http_adapter
 from scripts import owned_nats_process as process
+from scripts.owned_nats_attempt_evidence import capture_deferred_event
 from scripts.owned_nats_coordinator import (
     AdmissionEvidence,
     BackendCaptureRecorder,
@@ -835,6 +836,27 @@ class OwnedNatsTransportPort:
                 deadline=deadline,
             ),
         )
+
+    def deferred_event(
+        self, owner: OwnerEvidence, event_id: str, *, deadline: Deadline
+    ) -> str | None:
+        try:
+            if self._owner_port.read_signed_owner(deadline=deadline) != owner:
+                _not_ready()
+            result = capture_deferred_event(
+                owner,
+                self._docker_pins,
+                self._compose_pins,
+                event_id,
+                deadline=deadline,
+            )
+            if self._owner_port.read_signed_owner(
+                deadline=deadline
+            ) != owner or not _deadline_live(deadline):
+                _not_ready()
+            return result
+        except Exception:
+            _not_ready()
 
     def outbox_state(
         self,

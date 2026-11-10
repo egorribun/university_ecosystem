@@ -7,9 +7,13 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.core.static import is_private_static_path
-from app.services.image_proxy import _sanitize_path_input, get_transformed_image
+from app.services.image_proxy import (
+    _backend_source_path,
+    _sanitize_path_input,
+    get_transformed_image,
+)
 from app.services.private_attachments import is_private_attachment_path
-from app.services.storage import S3Storage
+from app.services.storage import S3Storage, StaticFSStorage
 from app.utils.files import _get_storage_backend
 from app.utils.images import ImagePixelLimitError
 
@@ -87,7 +91,26 @@ async def proxy_image(
         raise_not_found("image", "en", resource_id=path)
 
     backend = _get_storage_backend()
-    media_path = normalized_path
+    media_paths = [normalized_path]
+    if isinstance(backend, StaticFSStorage):
+        try:
+            source_path = _backend_source_path(backend, normalized_path)
+        except ValueError:
+            raise_not_found("image", "en", resource_id=path)
+        media_paths = []
+        # Match both reads in _fetch_source_bytes: the original path and its
+        # legacy space-to-underscore fallback. Resolve the configured public
+        # prefix and whitespace exactly as storage does, before cache access.
+        for candidate in (source_path, source_path.replace(" ", "_")):
+            relative = backend._extract_relative_path(candidate)
+            if relative is None:
+                raise_not_found("image", "en", resource_id=path)
+            storage_key = relative.as_posix()
+            if is_private_attachment_path(storage_key) or is_private_static_path(
+                storage_key
+            ):
+                raise_not_found("image", "en", resource_id=path)
+            media_paths.append(storage_key)
     if isinstance(backend, S3Storage):
         try:
             public_path = _sanitize_path_input(normalized_path).lstrip("/")
@@ -95,7 +118,7 @@ async def proxy_image(
             raise_not_found("image", "en", resource_id=path)
         if "\\" in public_path or not public_path.startswith(_PUBLIC_S3_IMAGE_PREFIXES):
             raise_not_found("image", "en", resource_id=path)
-        media_path = public_path
+        media_paths = [public_path]
     try:
         data, mime = await get_transformed_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
@@ -103,7 +126,9 @@ async def proxy_image(
 
         # ETag: 16 hex chars of SHA-256 (64 bits) — sufficient for cache discrimination.
         etag = f'"{hashlib.sha256(data).hexdigest()[:16]}"'
-        is_user_content = media_path.startswith(_USER_CONTENT_PREFIXES)
+        is_user_content = any(
+            media_path.startswith(_USER_CONTENT_PREFIXES) for media_path in media_paths
+        )
         cache_control = (
             "private, no-cache, must-revalidate"
             if is_user_content

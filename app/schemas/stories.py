@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import (
+    field_validator,
     model_validator,
 )
 
@@ -15,7 +16,24 @@ from app.schemas.common import BaseModel, OrmModel
 from app.schemas.validators import SanitizedInput
 
 
-class StoryCreate(BaseModel):
+class _StoryInput(BaseModel):
+    @field_validator("published_at", "expires_at", check_fields=False)
+    @classmethod
+    def _normalize_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        # Match repository persistence: naive story timestamps denote UTC.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        try:
+            return value.astimezone(UTC)
+        except OverflowError as exc:
+            raise ValueError(
+                translate("validation.stories.expires_after_publish")
+            ) from exc
+
+
+class StoryCreate(_StoryInput):
     title: str
     title_en: SanitizedInput = None
     short_text: str
@@ -35,7 +53,7 @@ class StoryCreate(BaseModel):
         return self
 
 
-class StoryUpdate(BaseModel):
+class StoryUpdate(_StoryInput):
     title: str | None = None
     title_en: SanitizedInput = None
     short_text: str | None = None

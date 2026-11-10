@@ -6,6 +6,7 @@ from typing import Any
 
 import aiofiles
 import maxminddb
+from maxminddb.errors import InvalidDatabaseError
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -47,6 +48,8 @@ class GeolocationService:
                 self.reader = maxminddb.Reader(
                     io.BytesIO(buffer), mode=maxminddb.MODE_FD
                 )
+            except InvalidDatabaseError:
+                logger.warning("GeoIP database is invalid; geolocation disabled")
             except (
                 FileNotFoundError,
                 OSError,

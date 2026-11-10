@@ -4,8 +4,10 @@ import base64
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Response
 from sqlalchemy.exc import IntegrityError, NoSuchTableError, SQLAlchemyError
@@ -20,6 +22,7 @@ import app.core.observability as observability_core
 
 # Target imports
 import app.routers.notifications as push_router
+from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from app.models import PushSubscription, UserPushTopic
 from app.models.enums import UserRole
 from tests.conftest import call_injected
@@ -1118,30 +1121,98 @@ async def test_spotify_refresh_circuit_breaker_open():
         assert res is None
 
 
+@pytest.fixture
+def expired_spotify_runtime_user(monkeypatch):
+    monkeypatch.setattr(
+        spotify_api,
+        "_spotify_circuit_breaker",
+        CircuitBreaker("synthetic-runtime-refresh", config=CircuitBreakerConfig()),
+    )
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        spotify=SimpleNamespace(
+            access_token=uuid.uuid4().hex,
+            refresh_token=uuid.uuid4().hex,
+            token_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            scope="user-read-currently-playing",
+            is_connected=True,
+            is_playing=True,
+        ),
+    )
+
+
 @pytest.mark.asyncio
-async def test_spotify_refresh_status_not_200():
-    user = MagicMock()
-    user.spotify = MagicMock()
-    user.spotify.access_token = "old_token"
-    user.spotify.token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    user.spotify.refresh_token = "refresh_token"
-
+@pytest.mark.parametrize("provider_status", [400, 401])
+async def test_spotify_refresh_status_not_200(
+    expired_spotify_runtime_user, provider_status
+):
+    """Only an explicit invalid_grant revokes persisted user authorization."""
+    user = expired_spotify_runtime_user
     db = AsyncMock()
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 400
+    provider_response = httpx.Response(provider_status, json={"error": "invalid_grant"})
 
     with (
         patch(
             "app.api.spotify._spotify_http_client.post",
-            AsyncMock(return_value=mock_resp),
+            AsyncMock(return_value=provider_response),
         ),
-        patch("app.api.spotify._disconnect_user") as mock_disconnect,
+        patch(
+            "app.api.spotify._disconnect_user", wraps=spotify_api._disconnect_user
+        ) as disconnect,
     ):
         with pytest.raises(HTTPException) as exc:
             await spotify_api._ensure_access_token(db, user)
         assert exc.value.status_code == 401
-        mock_disconnect.assert_called_once()
+        disconnect.assert_called_once_with(user, clear_refresh=True)
+    db.commit.assert_awaited_once()
+    assert user.spotify.access_token is None
+    assert user.spotify.refresh_token is None
+    assert user.spotify.scope is None
+    assert user.spotify.token_expires_at is None
+    assert user.spotify.is_connected is False
+    assert user.spotify.is_playing is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_status", "body", "expected_status"),
+    [
+        (400, {}, 503),
+        (400, {"error": "invalid_client"}, 503),
+        (401, {"error": "invalid_client"}, 503),
+        (429, {"error": "invalid_grant"}, 429),
+        (500, {"error": "invalid_grant"}, 503),
+        (503, {"error": "temporarily_unavailable"}, 503),
+    ],
+)
+async def test_spotify_refresh_provider_failures_preserve_authorization(
+    expired_spotify_runtime_user, provider_status, body, expected_status
+):
+    user = expired_spotify_runtime_user
+    before = vars(user.spotify).copy()
+    db = AsyncMock()
+    provider_response = httpx.Response(
+        provider_status, json=body, headers={"Retry-After": "7"}
+    )
+
+    with (
+        patch(
+            "app.api.spotify._spotify_http_client.post",
+            AsyncMock(return_value=provider_response),
+        ),
+        patch(
+            "app.api.spotify._disconnect_user", wraps=spotify_api._disconnect_user
+        ) as disconnect,
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await spotify_api._ensure_access_token(db, user)
+        assert exc.value.status_code == expected_status
+        assert (exc.value.headers or {}).get("Retry-After") == (
+            "7" if expected_status == 429 else None
+        )
+        disconnect.assert_not_called()
+    db.commit.assert_not_awaited()
+    assert vars(user.spotify) == before
 
 
 @pytest.mark.asyncio

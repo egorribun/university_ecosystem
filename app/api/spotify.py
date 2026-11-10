@@ -297,10 +297,30 @@ async def _ensure_access_token(
     except httpx.TransportError:
         # Preserve stored credentials and let the caller use cached playback.
         return None
+    if r.status_code == 429:
+        try:
+            retry_after = max(1, int(float(r.headers.get("Retry-After", "5"))))
+        except (TypeError, ValueError, OverflowError):
+            retry_after = 5
+        raise HTTPException(
+            status_code=429,
+            detail=translate("errors.spotify.rate_limited", locale=locale or "en"),
+            headers={"Retry-After": str(retry_after)},
+        )
     if r.status_code != 200:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
-        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
+        # Spotify identifies expired/revoked refresh tokens with invalid_grant.
+        # Other failures (including invalid_client) do not revoke user consent.
+        # https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens
+        if r.status_code in {400, 401}:
+            try:
+                error = r.json()
+            except ValueError:
+                error = None
+            if isinstance(error, dict) and error.get("error") == "invalid_grant":
+                _disconnect_user(user, clear_refresh=True)
+                await db.commit()
+                raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
+        raise_http_error(503, "errors.spotify.service_unavailable", locale or "en")
     data = r.json()
     access_token = data.get("access_token")
     if not access_token:
