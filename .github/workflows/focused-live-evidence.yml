@@ -107,6 +107,22 @@ jobs:
               echo "focused live result spec=$spec outcome=failed"
               status=1
             fi
+            # AUD-313: every run seeds first through all three seed scripts. The seed
+            # gate prints its line only after it found the owner record as one exact
+            # read-only mount; afterwards the record and one-off seed containers are gone.
+            mounts=$(grep -Ec '^AUD-313 seed target verified for ue-live-[0-9a-f]{16}: owner record is one exact read-only mount$' "$raw")
+            oneoff=$(docker ps -aq --filter label=com.docker.compose.oneoff=True | wc -l)
+            if [[ -e "$LIVE_STATE_DIR/.secrets/owned-stand-seed.json" ]]; then
+              record=present
+            else
+              record=removed
+            fi
+            if [[ "$mounts" -eq 3 && "$record" == removed && "$oneoff" -eq 0 ]]; then
+              echo "AUD-313 seed evidence spec=$spec readonly_mounts=$mounts record=$record oneoff_containers=$oneoff outcome=passed"
+            else
+              echo "AUD-313 seed evidence spec=$spec readonly_mounts=$mounts record=$record oneoff_containers=$oneoff outcome=failed"
+              status=1
+            fi
           done
           exit "$status"
 

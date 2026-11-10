@@ -115,21 +115,30 @@ def test_env_flags_alone_are_refused_without_the_owner_record(
 
 
 def test_matching_owner_record_accepts_the_owned_stand(
-    stand_environment: Path,
+    stand_environment: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _write_record(stand_environment, _record())
 
     assert seed_target.require_owned_live_stand_target() == PROJECT
+    # The hosted AUD-313 evidence line the focused live workflow counts.
+    assert capsys.readouterr().out == (
+        f"AUD-313 seed target verified for {PROJECT}: "
+        "owner record is one exact read-only mount\n"
+    )
 
 
 def test_matching_ordinary_file_is_refused_without_exact_readonly_mount(
-    stand_environment: Path, monkeypatch: pytest.MonkeyPatch
+    stand_environment: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_record(stand_environment, _record())
     monkeypatch.setattr(seed_target, "_read_mountinfo_text", lambda: "")
 
     with pytest.raises(RuntimeError, match="owner-issued live stand record"):
         seed_target.require_owned_live_stand_target()
+    # A refused target never prints the evidence line.
+    assert "AUD-313 seed target verified" not in capsys.readouterr().out
 
 
 def test_record_mount_must_be_exact_unique_and_read_only(

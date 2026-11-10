@@ -189,4 +189,11 @@ def require_owned_live_stand_target() -> str:
     ):
         raise RuntimeError("live stand seed record does not match the owned stand")
 
+    # AUD-313 evidence: printed only after the mount check and record match above,
+    # so a hosted log line proves the record really was one exact read-only mount.
+    print(
+        f"AUD-313 seed target verified for {project}: "
+        "owner record is one exact read-only mount",
+        flush=True,
+    )
     return project
