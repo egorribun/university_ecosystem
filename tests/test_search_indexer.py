@@ -15,7 +15,7 @@ from typer.testing import CliRunner
 import app.models as models
 from app.cli import search as search_cli
 from app.services import event_handlers, search_indexer
-from tests.helpers.search_rebuild import RebuildProgress
+from tests.helpers.search_rebuild import RebuildProgress, provision_search_tenant
 from tests.helpers.synthetic_credentials import make_test_password
 
 
@@ -39,7 +39,9 @@ def service():
 
 
 @pytest.fixture
-def session(db_session):
+async def session(db_session, monkeypatch):
+    await provision_search_tenant(db_session, monkeypatch)
+
     @asynccontextmanager
     async def factory():
         yield db_session

@@ -19,11 +19,19 @@ from typing import Any
 
 import elasticsearch
 from sqlalchemy import select
+from sqlalchemy.sql.elements import ColumnElement
 
 import app.models as models
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
+from app.core.protocols import AsyncDatabaseSession
+from app.core.tenant import (
+    get_bypass_rls,
+    get_current_tenant,
+    require_mvp_tenant,
+    tenant_id_ctx,
+)
 from app.services.search import (
     EVENTS_MAPPINGS,
     NEWS_MAPPINGS,
@@ -138,9 +146,31 @@ async def reindex_all(*, batch_size: int = 200) -> dict[str, int]:
 
     Run during a maintenance window with content writes and outbox delivery paused:
     this recovery operation does not replay changes made while the scan is running.
+    The configured active MVP tenant is required before any index is changed.
     """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+    tenant_id = settings.mvp_tenant_id
+    if tenant_id is None:
+        raise ValueError("MVP_TENANT_ID is required to rebuild search indices")
+    if get_bypass_rls() or get_current_tenant() not in ("", str(tenant_id)):
+        raise ValueError("Search rebuild requires the configured tenant scope")
+
+    token = tenant_id_ctx.set(str(tenant_id))
+    try:
+        async with async_session() as db:
+            # A missing/inactive tenant must not look like a successful empty
+            # scan: publishing that scan would replace the live search indices.
+            await require_mvp_tenant(db)
+            return await _reindex_scoped(db, batch_size=batch_size)
+    finally:
+        tenant_id_ctx.reset(token)
+
+
+async def _reindex_scoped(
+    db: AsyncDatabaseSession, *, batch_size: int
+) -> dict[str, int]:
+    """Build replacements in the caller's already validated tenant session."""
     counts = {NEWS_INDEX: 0, EVENTS_INDEX: 0}
     service = build_search_service()
     replacements = {name: f"{name}-rebuild-{uuid.uuid4().hex}" for name in counts}
@@ -148,31 +178,23 @@ async def reindex_all(*, batch_size: int = 200) -> dict[str, int]:
     try:
         await service.ensure_index(replacements[NEWS_INDEX], NEWS_MAPPINGS)
         await service.ensure_index(replacements[EVENTS_INDEX], EVENTS_MAPPINGS)
-        async with async_session() as db:
-            for index, model, builder, condition in (
-                (NEWS_INDEX, models.News, news_document, None),
-                (EVENTS_INDEX, models.Event, event_document, models.Event.is_active),
-            ):
-                statement = select(model).order_by(model.id)
-                if condition is not None:
-                    statement = statement.where(condition.is_(True))
-                last_id = None
-                while True:
-                    page = statement.limit(batch_size)
-                    if last_id is not None:
-                        page = page.where(model.id > last_id)
-                    rows = (await db.execute(page)).scalars().all()
-                    if not rows:
-                        break
-                    ok, failed = await service.bulk_index(
-                        replacements[index], [builder(row) for row in rows]
-                    )
-                    if failed or ok != len(rows):
-                        raise RuntimeError(
-                            f"Search rebuild bulk failed for {index}: {ok} indexed, {failed} failed"
-                        )
-                    counts[index] += ok
-                    last_id = rows[-1].id
+        counts[NEWS_INDEX] = await _reindex_model(
+            db,
+            service,
+            replacements[NEWS_INDEX],
+            models.News,
+            news_document,
+            batch_size=batch_size,
+        )
+        counts[EVENTS_INDEX] = await _reindex_model(
+            db,
+            service,
+            replacements[EVENTS_INDEX],
+            models.Event,
+            event_document,
+            batch_size=batch_size,
+            condition=models.Event.is_active.is_(True),
+        )
         publication_started = True
         await service.publish_rebuilt_indices(replacements)
     finally:
@@ -188,3 +210,36 @@ async def reindex_all(*, batch_size: int = 200) -> dict[str, int]:
                     )
         await service.close()
     return counts
+
+
+async def _reindex_model[T: (models.News, models.Event)](
+    db: AsyncDatabaseSession,
+    service: SearchService,
+    index: str,
+    model: type[T],
+    builder: Callable[[T], dict[str, Any]],
+    *,
+    batch_size: int,
+    condition: ColumnElement[bool] | None = None,
+) -> int:
+    """Keep each model paired with its serializer while paging its rows."""
+    statement = select(model).order_by(model.id)
+    if condition is not None:
+        statement = statement.where(condition)
+    last_id = None
+    count = 0
+    while True:
+        page = statement.limit(batch_size)
+        if last_id is not None:
+            page = page.where(model.id > last_id)
+        rows = (await db.execute(page)).scalars().all()
+        if not rows:
+            break
+        ok, failed = await service.bulk_index(index, [builder(row) for row in rows])
+        if failed or ok != len(rows):
+            raise RuntimeError(
+                f"Search rebuild bulk failed for {index}: {ok} indexed, {failed} failed"
+            )
+        count += ok
+        last_id = rows[-1].id
+    return count

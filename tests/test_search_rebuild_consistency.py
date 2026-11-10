@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Event, News
 from app.services import search_indexer
 from app.services.search import SearchService
-from tests.helpers.search_rebuild import RebuildProgress
+from tests.helpers.search_rebuild import RebuildProgress, provision_search_tenant
 
 
 class SearchCluster:
@@ -98,7 +98,8 @@ class SearchCluster:
 
 
 @pytest.fixture
-def cluster(db_session, monkeypatch):
+async def cluster(db_session, monkeypatch):
+    await provision_search_tenant(db_session, monkeypatch)
     cluster = SearchCluster()
     service = SearchService()
     service._client = cluster
