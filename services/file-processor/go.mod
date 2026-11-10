@@ -6,13 +6,13 @@ require (
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/graph-gophers/graphql-go v1.10.3
+	github.com/graph-gophers/graphql-go v1.11.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/moby/moby/api v1.56.1
 	github.com/nats-io/nats.go v1.55.0
-	github.com/pact-foundation/pact-go/v2 v2.8.0
+	github.com/pact-foundation/pact-go/v2 v2.9.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spf13/viper v1.21.0
@@ -27,12 +27,12 @@ require (
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
-	go.temporal.io/api v1.64.0
+	go.temporal.io/api v1.64.1
 	go.temporal.io/sdk v1.50.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 )
 
 require (
@@ -74,6 +74,7 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
+	github.com/ulikunitz/xz v0.5.17 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
