@@ -1,15 +1,15 @@
-import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import * as v from "valibot"
 
 import { EVENTS_PAGE_SIZE, prefetchEventsListQuery } from "@/api/hooks/events"
 import { eventsSearchSchema } from "@/features/events/schema"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
-// lazyRouteComponent exposes preload(), which the router awaits for matched
-// routes before hydration. With React.lazy the page suspended during
-// hydration and React re-inserted its page <title>/<meta> beside the
-// server-rendered set, duplicating the document head.
-const Events = lazyRouteComponent(() => import("@/pages/Events"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import Events from "@/pages/Events"
 
 export const Route = createFileRoute("/_auth/events/")({
   // Wave 129 SW1 — per-route SSR enabled. Inherits `_auth.tsx` `ssr: true`

@@ -1,13 +1,13 @@
-import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import * as v from "valibot"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import { profileSearchSchema } from "@/features/profile/schema"
 
-// lazyRouteComponent exposes preload(), which the router awaits for matched
-// routes before hydration. With React.lazy the page suspended during
-// hydration and React re-inserted its page <title>/<meta> beside the
-// server-rendered set, duplicating the document head.
-const Profile = lazyRouteComponent(() => import("@/pages/Profile"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import Profile from "@/pages/Profile"
 
 export const Route = createFileRoute("/_auth/profile")({
   validateSearch: (search: Record<string, unknown>) => v.parse(profileSearchSchema, search),

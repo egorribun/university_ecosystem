@@ -21,8 +21,6 @@ describe("Route Components", () => {
   it("renders EventsDetailRoute successfully using lazy import", async () => {
     const Component = EventsDetailRoute.options.component as any
     expect(Component).toBeDefined()
-    // The router preloads lazyRouteComponent pages before rendering them.
-    await Component.preload()
 
     render(<Component />)
 
@@ -35,8 +33,6 @@ describe("Route Components", () => {
   it("renders ScheduleRoute successfully using lazy import", async () => {
     const Component = ScheduleRoute.options.component as any
     expect(Component).toBeDefined()
-    // The router preloads lazyRouteComponent pages before rendering them.
-    await Component.preload()
 
     render(<Component />)
 
