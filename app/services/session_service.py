@@ -8,7 +8,9 @@ from uuid import UUID, uuid4
 
 import jwt
 from fastapi import BackgroundTasks
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
@@ -27,7 +29,7 @@ async def register_session_bg(
     ip_address: str | None,
     user_agent: str | None,
 ) -> None:
-    """Background task to register session in Redis."""
+    """Best-effort cache registration for a durably persisted database session."""
     try:
         session_backend = await get_session_backend()
         await session_backend.register_session(
@@ -39,10 +41,12 @@ async def register_session_bg(
                 "user_agent": user_agent,
             },
         )
-    except (ConnectionError, TimeoutError, OSError):
-        # RZ-20-04: Narrowed — Redis session registration is fire-and-forget.
+    except (RedisConnectionError, RedisTimeoutError, OSError):
+        # Cache connection failures (including cache credentials) must not discard
+        # a committed login. Redis driver exceptions are not built-in OSErrors.
+        # Mandatory revocation checks and writes remain fail-closed elsewhere.
         logger.warning(
-            "Failed to register session in Redis (background)",
+            "Failed to cache session in Redis",
             exc_info=True,
             extra={
                 "user_id": str(user_id),
@@ -201,7 +205,7 @@ class SessionService:
         # 4. Mint JWT (RZ-002: Stable access token creation)
         token = self._mint_jwt(user_id, jti, now, expires_at, token_claims)
 
-        # 5. Register in Redis backend (durable sync outside database lock)
+        # 5. Best-effort cache registration outside the database lock
         await self._sync_to_redis(session, user_id, jti, expires_at, bg_tasks)
 
         return token, session
@@ -285,12 +289,9 @@ class SessionService:
         expires_at: datetime,
         bg_tasks: BackgroundTasks | None,  # kept for API compat; no longer used
     ) -> None:
-        # AUTH-1 (audit 2026-03): Always await Redis session registration before
-        # returning the JWT to the client.  Using bg_tasks.add_task() meant the
-        # session wasn't visible in Redis until after the response was sent,
-        # causing 401s on immediate follow-up requests (login → token refresh
-        # race window).  The DB record is committed first, so latency here is
-        # bounded by a single Redis SET (~1ms on localhost, <5ms in prod).
+        # Await the cache attempt before returning the JWT. The DB record is
+        # already committed; cache transport failures must not strand it without
+        # delivering the token. Auth still checks durable revocations and the DB.
         args = (user_id, jti, expires_at, session.ip_address, session.user_agent)
         await register_session_bg(*args)
 
