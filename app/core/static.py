@@ -39,6 +39,9 @@ def is_private_static_path(path: str) -> bool:
     # directory, so private prefixes cannot be hidden behind that alias.
     if ".." in normalized.split("/"):
         return True
+    # Decoding can introduce separators that were absent in the raw input.
+    # Normalize them before comparing the private root prefixes.
+    normalized = normalized.replace("\\", "/").lstrip("/")
     normalized = posixpath.normpath(normalized)
     if normalized.startswith("static/"):
         normalized = normalized[len("static/") :]
