@@ -9,6 +9,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
+from sqlalchemy.engine import make_url
 
 from scripts import live_stand, seed_target
 from tests.symlink_support import FILE_SYMLINKS_SUPPORTED
@@ -231,6 +233,50 @@ def test_database_host_still_must_be_the_compose_postgres_service(
         "_configured_database_url",
         lambda: "postgresql+asyncpg://tester@remote-db:5432/demo",
     )
+
+    with pytest.raises(RuntimeError, match="postgres service"):
+        seed_target.require_owned_live_stand_target()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "host=outside.invalid",
+        "host=postgres:5432&host=outside.invalid:5432",
+        "host=%2Ftmp%2Fpostgres",
+        "hostaddr=192.0.2.1",
+        "port=6543",
+        "database=other_database",
+        "dbname=other_database",
+        "user=other_user",
+        "password=synthetic",
+        "service=other_service",
+        "dsn=postgresql%3A%2F%2Foutside.invalid%2Fother_database",
+        "sslmode=require",
+    ],
+)
+def test_owned_seed_rejects_database_query_options(
+    stand_environment: Path, monkeypatch: pytest.MonkeyPatch, query: str
+) -> None:
+    _write_record(stand_environment, _record())
+    monkeypatch.setattr(
+        seed_target, "_configured_database_url", lambda: f"{DATABASE_URL}?{query}"
+    )
+
+    with pytest.raises(RuntimeError, match="postgres service"):
+        seed_target.require_owned_live_stand_target()
+
+
+def test_owned_seed_rejects_effective_driver_host_override(
+    stand_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_record(stand_environment, _record())
+    url = make_url(f"{DATABASE_URL}?host=outside.invalid")
+    # Resolve arguments only: never instantiate an engine or contact a database.
+    _, arguments = PGDialect_asyncpg().create_connect_args(url)
+    assert url.host == "postgres"
+    assert arguments["host"] == "outside.invalid"
+    monkeypatch.setattr(seed_target, "_configured_database_url", lambda: str(url))
 
     with pytest.raises(RuntimeError, match="postgres service"):
         seed_target.require_owned_live_stand_target()
