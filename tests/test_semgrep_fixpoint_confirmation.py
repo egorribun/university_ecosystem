@@ -277,6 +277,8 @@ def test_docker_confirmation_scan_uses_one_job_and_exact_files(tmp_path: Path) -
 
     assert status == 0
     scan = next(command for command in commands if command[:2] == ["docker", "run"])
+    assert scan[scan.index("--timeout") + 1] == "10"
+    assert "--timeout-threshold" not in scan
     assert scan[scan.index("--jobs") + 1] == "1"
     assert scan[-1] == SLOW
     assert "--scan-unknown-extensions" not in scan

@@ -102,8 +102,8 @@ test("live password-settings acceptance proves invalid-change rollback and persi
   )
   assert.match(
     spec,
-    /const passwordErrorIsCleared = \(await page\.getByRole\("alert"\)\.count\(\)\) === 0[\s\S]*?const currentPasswordErrorIsCleared = await currentPasswordField\.evaluate\([\s\S]*?const passwordFormRestoredAfterReload =[\s\S]*?passwordErrorIsCleared &&[\s\S]*?currentPasswordErrorIsCleared &&/u,
-    "reload retains the global no-alert check and the current-password field association check"
+    /const passwordErrorIsCleared = \(await passwordSection\.getByRole\("alert"\)\.count\(\)\) === 0[\s\S]*?const currentPasswordErrorIsCleared = await currentPasswordField\.evaluate\([\s\S]*?const passwordFormRestoredAfterReload =[\s\S]*?passwordErrorIsCleared &&[\s\S]*?currentPasswordErrorIsCleared &&/u,
+    "reload checks the password section for alerts and retains the current-password field association check"
   )
   assert.match(
     spec,
@@ -123,4 +123,17 @@ test("live password-settings acceptance proves invalid-change rollback and persi
   assert.match(spec, /X-CSRF-Token/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)\(/u)
   assert.doesNotMatch(spec, /page\.route\(["']\*\*\/api|routeWebSocket/u)
+})
+
+test("password rollback ignores the persistent global live region without ignoring form errors", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const liveRegion = await read("frontend/src/components/ui/LiveRegionProvider.tsx")
+  assert.match(liveRegion, /role="alert"[^>]*>[\s\S]*?\{assertiveMessage\}/u)
+  assert.doesNotMatch(spec, /page\.getByRole\("alert"\)\.count\(\)/u)
+  assert.match(spec, /passwordSection\.getByRole\("alert"\)\.count\(\)/u)
+  assert.match(
+    spec,
+    /describedIds\.every\([\s\S]*?document\.getElementById\(id\)\?\.getAttribute\("role"\) !== "alert"/u
+  )
+  assert.match(spec, /currentPasswordField\.getAttribute\("aria-invalid"\)\) !== "true"/u)
 })

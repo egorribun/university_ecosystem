@@ -405,7 +405,7 @@ async def test_seed_owned_matching_source_content_backfills_translation_only_onc
 
 
 @pytest.mark.asyncio
-async def test_archived_demo_events_are_past_inactive_ordered_and_idempotent(
+async def test_archived_demo_events_are_past_visible_ordered_and_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime(2026, 10, 9, 12, tzinfo=UTC)
@@ -420,7 +420,7 @@ async def test_archived_demo_events_are_past_inactive_ordered_and_idempotent(
     assert len(seed_demo_data.ARCHIVE_EVENTS_DATA) == 9
     assert len(rows) == 9
     assert all(row.created_by == user.id for row in rows)
-    assert all(row.is_active is False for row in rows)
+    assert all(row.is_active is True for row in rows)
     assert all(seed_demo_data._event_datetime_utc(row.ends_at) < now for row in rows)
     assert [row.title for row in rows] == [
         item["title"] for item in seed_demo_data.ARCHIVE_EVENTS_DATA
@@ -434,7 +434,9 @@ async def test_archived_demo_events_are_past_inactive_ordered_and_idempotent(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("is_active", [False, True])
 async def test_archived_demo_event_seed_preserves_foreign_natural_key_collision(
+    is_active: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime(2026, 10, 9, 12, tzinfo=UTC)
@@ -445,7 +447,7 @@ async def test_archived_demo_event_seed_preserves_foreign_natural_key_collision(
         starts_at=item["starts_at"],
         ends_at=item["ends_at"],
         created_by=uuid4(),
-        is_active=True,
+        is_active=is_active,
         description="user-owned event copy",
         title_en=None,
     )
@@ -461,9 +463,79 @@ async def test_archived_demo_event_seed_preserves_foreign_natural_key_collision(
     ]
     assert len(owned) == len(seed_demo_data.ARCHIVE_EVENTS_DATA) - 1
     assert foreign.created_by != user.id
-    assert foreign.is_active is True
+    assert foreign.is_active is is_active
     assert foreign.description == "user-owned event copy"
     assert foreign.title_en is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "custom_field",
+    [
+        None,
+        "description",
+        "location",
+        "event_type",
+        "ends_at",
+        "image_url",
+        "title_en",
+        "description_en",
+        "location_en",
+        "event_type_en",
+    ],
+)
+async def test_archived_demo_event_seed_repairs_only_own_canonical_visibility(
+    custom_field: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        seed_demo_data, "_event_now_utc", lambda: datetime(2026, 10, 9, 12, tzinfo=UTC)
+    )
+    user = SimpleNamespace(id=uuid4())
+    item = seed_demo_data.ARCHIVE_EVENTS_DATA[0]
+    existing = Event(**item, created_by=user.id, is_active=False)
+    if custom_field == "ends_at":
+        existing.ends_at = datetime(2027, 1, 1, 12, tzinfo=UTC)
+    elif custom_field is not None:
+        setattr(existing, custom_field, "custom event content")
+    original = {field: getattr(existing, field) for field in item}
+    database = DemoContentSession([existing])
+
+    await seed_demo_data.seed_archived_events(database, user)
+    await seed_demo_data.seed_archived_events(database, user)
+
+    assert existing.is_active is (custom_field is None)
+    assert {field: getattr(existing, field) for field in item} == original
+    assert len(database.added) == 8
+    assert len(database.content_rows) == 9
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_translation", [None, ""])
+async def test_archived_demo_event_seed_repairs_missing_translations_and_naive_dates(
+    missing_translation: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        seed_demo_data, "_event_now_utc", lambda: datetime(2026, 10, 9, 12, tzinfo=UTC)
+    )
+    user = SimpleNamespace(id=uuid4())
+    item = seed_demo_data.ARCHIVE_EVENTS_DATA[0]
+    existing = Event(**item, created_by=user.id, is_active=False)
+    existing.ends_at = existing.ends_at.replace(tzinfo=None)
+    for field in ("title_en", "description_en", "location_en", "event_type_en"):
+        setattr(existing, field, missing_translation)
+    database = DemoContentSession([existing])
+
+    await seed_demo_data.seed_archived_events(database, user)
+    await seed_demo_data.seed_archived_events(database, user)
+
+    assert existing.is_active is True
+    assert existing.ends_at == item["ends_at"].replace(tzinfo=None)
+    for field in item:
+        if field != "ends_at":
+            assert getattr(existing, field) == item[field]
+    assert len(database.added) == 8
 
 
 @pytest.mark.asyncio

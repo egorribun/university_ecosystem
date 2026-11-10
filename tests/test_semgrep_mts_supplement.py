@@ -627,6 +627,8 @@ def test_docker_mts_scan_uses_exact_roots_and_deterministic_cli_flags(
 
     assert status == 0
     scan = calls[0]
+    assert scan[scan.index("--timeout") + 1] == "10"
+    assert "--timeout-threshold" not in scan
     assert "--scan-unknown-extensions" in scan
     assert "--disable-version-check" in scan
     assert scan[scan.index("--metrics") + 1] == "off"

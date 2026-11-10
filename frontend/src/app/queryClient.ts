@@ -313,7 +313,16 @@ const withoutSensitiveQueries = (client: PersistedClient): PersistedClient => ({
   clientState: {
     ...client.clientState,
     queries: client.clientState.queries.filter(
-      (query) => query.meta?.persist !== false && !isCurrentUserProfileQuery(query)
+      (query) =>
+        query.meta?.persist !== false &&
+        !isCurrentUserProfileQuery(query) &&
+        // Older snapshots predate the notification hook's persist:false flag.
+        // Remove that exact private list from disk and hydration on upgrade.
+        !(
+          query.queryKey.length === 2 &&
+          query.queryKey[0] === "notifications" &&
+          query.queryKey[1] === "list"
+        )
     ),
   },
 })

@@ -1389,6 +1389,21 @@ async def seed_archived_events(db: AsyncSession, user: User) -> None:
             )
         )
         if existing_seed is not None:
+            if (
+                _event_source_matches(existing_seed, item)
+                and _event_datetime_utc(existing_seed.ends_at) == ends_at
+                and existing_seed.image_url == item["image_url"]
+                and all(
+                    getattr(existing_seed, field) in (None, "", item[field])
+                    for field in (
+                        "title_en",
+                        "description_en",
+                        "location_en",
+                        "event_type_en",
+                    )
+                )
+            ):
+                existing_seed.is_active = True
             _backfill_event_translations(existing_seed, item)
             continue
 
@@ -1414,7 +1429,8 @@ async def seed_archived_events(db: AsyncSession, user: User) -> None:
                 starts_at=starts_at,
                 ends_at=ends_at,
                 image_url=item["image_url"],
-                is_active=False,
+                # Archive membership comes from ends_at, not the manual-hide flag.
+                is_active=True,
                 created_by=user.id,
             )
         )
