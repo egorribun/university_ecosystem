@@ -7451,9 +7451,10 @@ def _assert_backend_integration_helper(
         "tests.integration.test_mvp_baseline_schema_equivalence": 10,
         "tests.integration.test_aud277_360_450_tenant_rls_postgres": 45,
         "tests.integration.test_aud262_receipt_schema_postgres": 15,
+        "tests.integration.test_group_list_tenant_http_postgres": 10,
         "tests.integration.test_dlq_retry_postgres": 2,
     }
-    assert sum(map(len, expected.values())) == 72
+    assert sum(map(len, expected.values())) == 82
     assert (
         "test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller"
         in expected["tests.integration.test_dlq_retry_postgres"]
