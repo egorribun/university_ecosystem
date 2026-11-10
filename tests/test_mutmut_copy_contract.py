@@ -16,6 +16,7 @@ REQUIRED_ALSO_COPY = {
     "security/audit-allowlist.yaml",
     ".agents/hooks",
     ".agents/hooks/stop_quality_gate.py",
+    "verify_harness.py",
     ".secrets.baseline",
     ".husky",
     "start-docker.ps1",
