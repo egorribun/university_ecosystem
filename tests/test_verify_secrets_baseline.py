@@ -32560,6 +32560,7 @@ _AUD154_SOURCE_INSERTIONS = {
 
 
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _aud375_historical_source_bytes(path, actual)
     if path not in _AUD154_SOURCE_PINS:
         return actual
     previous_sha, current_sha = _AUD154_SOURCE_PINS[path]
@@ -32583,7 +32584,7 @@ def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _aud375_historical_policy(policy)
     assert len(restored["records"]) == 511, "live disposition count changed"
     replacements = {
         hashlib.sha1(
@@ -32655,3 +32656,123 @@ def test_aud154_policy_projection_rejects_scope_drift(index: int, field: str) ->
         row[key] += " changed"
     with pytest.raises(AssertionError):
         _aud154_historical_policy(policy)
+
+
+# AUD375 adds only the exact PR-wide coverage and test prefix. Keep AUD154 pins
+# immutable and verify this one-to-one transition before its historical inverse.
+_AUD375_PACKAGE_SHA256 = bytes.fromhex(
+    "fc 9d 71 db 42 9c fc 88 dc 6d b3 1a b9 9d 73 a1 5e 3d 0f 4e 55 b4 fe 6a c5 23 68 48 d1 7e cf c2"
+)
+_AUD375_LEDGER_SHA256 = bytes.fromhex(
+    "d2 a4 ea c7 1c c9 0a 94 cc de 27 35 cf 7e c1 24 1a 90 8c 81 bf 48 3c b1 3a 9a 9e 0a 61 66 fb 10"
+)
+_AUD375_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "88 d8 85 cc 45 07 1c 93 bd ab 2a f3 80 f1 0b 90 c1 b3 c0 2f 88 59 25 ec 9d ca bd 77 b3 a6 a3 4a"
+)
+_AUD375_PACKAGE_PREFIX = (
+    b"node --experimental-test-coverage"
+    b" --test-coverage-include=scripts/aud375-evidence.mjs"
+    b" --test-coverage-lines=100 --test-coverage-branches=100"
+    b" --test-coverage-functions=100 --test scripts/aud375-evidence.test.mjs"
+    b" && node --test scripts/aud375-coverage.contract.test.mjs"
+    b" scripts/playwright-report-preservation.test.mjs"
+)
+
+
+def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path not in {"frontend/package.json", "quality/semgrep-dispositions.json"}:
+        return actual
+    current_sha = (
+        _AUD375_PACKAGE_SHA256
+        if path == "frontend/package.json"
+        else _AUD375_LEDGER_SHA256
+    )
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    if path == "frontend/package.json":
+        anchor = b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX
+        assert actual.count(anchor) == 1
+        historical = actual.replace(anchor, b'"test:wasm": "node --test', 1)
+    else:
+        current = _AUD375_PACKAGE_SHA256.hex().encode("ascii")
+        previous = _AUD154_SOURCE_PINS["frontend/package.json"][1]
+        assert actual.count(current) == 1
+        historical = actual.replace(current, previous.hex().encode("ascii"), 1)
+    assert hashlib.sha256(historical).digest() == _AUD154_SOURCE_PINS[path][1]
+    return historical
+
+
+def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    row = restored["records"][451]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _AUD375_PACKAGE_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    )
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _AUD154_SOURCE_PINS["frontend/package.json"][1].hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _AUD375_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_aud375_package_projection_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/package.json").read_bytes()
+    historical = _aud375_historical_source_bytes("frontend/package.json", actual)
+    assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
+    assert actual == historical.replace(
+        b'"test:wasm": "node --test',
+        b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX,
+        1,
+    )
+    assert (
+        hashlib.sha256(historical).digest()
+        == _AUD154_SOURCE_PINS["frontend/package.json"][1]
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "reordered", "unrelated"])
+def test_aud375_package_projection_rejects_command_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/package.json").read_bytes()
+    insertion = _AUD375_PACKAGE_PREFIX
+    if mutation == "missing":
+        actual = actual.replace(insertion, b"", 1)
+    elif mutation == "duplicate":
+        actual = actual.replace(insertion, insertion * 2, 1)
+    elif mutation == "reordered":
+        actual = actual.replace(insertion, b" ".join(reversed(insertion.split())), 1)
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _aud375_historical_source_bytes("frontend/package.json", actual)
+
+
+@pytest.mark.parametrize("index", [0, 451, 495, 510])
+@pytest.mark.parametrize(
+    "field", ["owner", "expires_on", "evidence", "approval_status", "reviewed_on"]
+)
+def test_aud375_policy_projection_rejects_metadata_drift(
+    index: int, field: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    policy["records"][index][field] += " changed"
+    with pytest.raises(AssertionError, match="approval metadata changed"):
+        _aud375_historical_policy(policy)

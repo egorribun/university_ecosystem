@@ -478,7 +478,7 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "4c4b8fe5a0b2acaa2dad167f4e004c34cfdf1078c81b4d28dd0b50fe06731df2"
+          "sha256": "fc9d71db429cfc88dc6db31ab99d73a15e3d0f4e55b4fe6ac5236848d17ecfc2"
         },
         {
           "path": "frontend/package-lock.json",

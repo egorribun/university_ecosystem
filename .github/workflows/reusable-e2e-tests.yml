@@ -426,11 +426,42 @@ jobs:
             BASE_URL="http://127.0.0.1:5173"
           fi
 
-          npx playwright test "$TEST_PATTERN" \
+          # Both directories are cleaned per invocation. Use sibling suite
+          # directories; targeting either parent root erases earlier evidence.
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/main npx playwright test "$TEST_PATTERN" \
             --project="$BROWSER" \
             --shard="$SHARD_INDEX/$SHARD_TOTAL" \
             --workers=1 \
+            --output=test-results/main \
             --reporter=html
+
+      # Named evidence is separate from the generic shard, with no retry credit.
+      # The existing nightly caller remains protected-main-only; this does not
+      # provide arbitrary-ref or current-branch execution.
+      - name: Record source-bound AUD-375 Chromium evidence
+        id: aud375-receipt
+        if: inputs.browser == 'chromium' && inputs.shard-index == 1
+        working-directory: frontend
+        run: node scripts/aud375-evidence.mjs
+
+      - name: Archive source-bound AUD-375 evidence
+        id: aud375-archive
+        if: ${{ always() && steps.aud375-receipt.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aud375-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frontend/playwright-report/aud375/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record AUD-375 archive identity
+        if: ${{ steps.aud375-archive.outcome == 'success' }}
+        env:
+          ARTIFACT_ID: ${{ steps.aud375-archive.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.aud375-archive.outputs.artifact-digest }}
+        run: |
+          test -n "$ARTIFACT_ID" && test -n "$ARTIFACT_DIGEST"
+          printf 'AUD-375 artifact id=%s digest=%s\n' "$ARTIFACT_ID" "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
       # Wave 122 SW3: cross-env URL_STATE_E2E auto-managed mode.
       # Playwright's webServer.command (per playwright.config.ts:73-110)
@@ -483,7 +514,7 @@ jobs:
           # invocation. Keep auxiliary suites in separate subdirectories so
           # the coverage merger can still see the regular shard output and
           # every auxiliary suite's report.
-          npx playwright test url-state-persistence.spec.ts messenger-heartbeat-blackhole.spec.ts \
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/url-state npx playwright test url-state-persistence.spec.ts messenger-heartbeat-blackhole.spec.ts \
             --project=chromium \
             --output=test-results/url-state \
             --reporter=html
@@ -503,7 +534,7 @@ jobs:
           URL_STATE_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
-          npx playwright test login-flow.spec.ts \
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/login-flow npx playwright test login-flow.spec.ts \
             --project=chromium \
             --output=test-results/login-flow \
             --reporter=html
@@ -511,7 +542,7 @@ jobs:
       # Phase 7.4: exercise the production Node SSR wrapper and assert that
       # hashed assets are immutable while the HTML shell is never shared.
       # AUD-432: the list reporter writes each named SSR outcome to the job log;
-      # the HTML report alone is overwritten by the next auxiliary suite.
+      # each invocation also retains its own HTML report through final upload.
       - name: Run production SSR cache-control contract
         if: inputs.browser == 'chromium' && inputs.shard-index == 1
         working-directory: frontend
@@ -519,11 +550,11 @@ jobs:
           PRODUCTION_SERVER_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
-          npx playwright test ssr-caching.spec.ts \
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/ssr-caching npx playwright test ssr-caching.spec.ts \
             --project=chromium \
             --output=test-results/ssr-caching \
             --reporter=list,html
-          npx playwright test --config=playwright.ssr.config.ts \
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/ssr-document-render npx playwright test --config=playwright.ssr.config.ts \
             --project=chromium \
             --output=test-results/ssr-document-render \
             --reporter=list,html
@@ -535,7 +566,7 @@ jobs:
           URL_STATE_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
-          npx playwright test accessibility.spec.ts \
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/accessibility npx playwright test accessibility.spec.ts \
             --project=chromium \
             --output=test-results/accessibility \
             --reporter=html

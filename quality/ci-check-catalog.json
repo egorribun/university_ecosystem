@@ -3638,6 +3638,12 @@
           "needs": [],
           "artifacts": [
             {
+              "name_pattern": "aud375-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "frontend/playwright-report/aud375/",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
               "name_pattern": "frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
               "path_pattern": "frontend/coverage/e2e/",
               "required": false,
