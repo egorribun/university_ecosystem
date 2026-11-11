@@ -32085,29 +32085,29 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     ), "anything besides the two companion identities changed"
 
 
-# Exact existing row13 companion rebind for fail-closed Go fuzz and security pins.
+# Exact existing row13 companion rebind for private Pact Go build isolation.
 # Preserve all 509 approvals, including the three WASM suffix identities.
 _AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
-    "35 4d b4 ed 59 7c 8c cb 8f d9 e7 3f 1c 59 61 1d b4 0a 76 ad 39 f0 79 b8 83 9c e5 69 86 09 1e 27"
+    "b6 88 0e 4f 27 06 40 dc 5b 1e fc a7 05 8e 48 84 86 f4 a6 6d 06 50 c5 6a 74 61 46 02 d9 dc 06 fd"
 )
 _AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
-    "25 c8 ff fa 2c 88 a0 27 58 82 93 6b a3 a6 60 53 75 53 f3 51 bc 25 20 b8 46 b8 7f f4 ff f9 39 be"
+    "81 2c 1d cb ed 8a c6 3b 4c df 66 86 51 5a 45 ab 57 d2 57 88 f9 25 4b 20 57 de 82 5b cd d4 44 36"
 )
 _AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
-    "77 be 3e bb d7 34 57 b3 01 7f 99 0e b8 9f bb 10 7e 73 c5 5a bc 0a cc 98 68 19 66 6d 78 c4 0e b4"
+    "2f 45 11 e6 61 01 0c 99 35 f9 71 91 57 fe 8c 28 6f 2f 8f ea 98 11 70 f0 a5 8d 07 51 07 fe db f5"
 )
 _AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
-    "be 00 b1 ef 79 a9 41 5c cb bd 41 d3 eb 34 c1 72 8e bf 6e ab 1e 67 47 4d 3b 33 22 78 9a 69 c5 72"
+    "8e d1 2b 2e ef 00 93 b4 67 ee b2 64 c4 5d 1b c5 98 60 5c db 2a 99 84 31 69 64 a0 95 fa 6d 8b be"
 )
 _AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
-    "26 45 b6 7c 77 a6 10 c5 a3 c6 52 d6 86 c5 9a 4e 63 d6 b0 0f 5f c4 2f 16 18 67 a4 2e 47 9c 1c a8"
+    "04 f3 47 28 cf f0 40 28 7e 6f 4d 16 d9 5b 96 7e 6e 0a 14 34 5f 4b 40 d2 f0 52 a4 d2 a5 9b bf 37"
 )
 _AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
-    "8e 8d 1b 05 3e f2 c2 36 ea 31 2b 69 f1 8b 74 4c 6b 68 79 0e 39 60 0a 71 f4 c4 6a 09 4d 16 dd 92"
+    "e1 65 93 75 ac 64 94 92 e0 c2 ae 6f 47 f9 f6 24 a9 2d 3e eb cd 80 38 b7 6e 1a 1a 57 b4 64 d1 94"
 )
 _AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
 _AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
-    bytes.fromhex("13 44 2b d0 c8 18 2d 15 b5 68 79 a8 b1 1d ad 7f d9 f5 63 f8")
+    bytes.fromhex("b2 da 70 92 17 e3 b4 8d 27 24 95 62 ee 31 33 81 38 76 33 7e")
 )
 _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
@@ -32120,13 +32120,13 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
 
 
 _NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
-    "25 3d 6c cb 87 eb 97 ee 31 7f 59 a9 08 a4 e4 a6 00 b4 df 97 5e c9 83 55 9f 8a c5 53 a4 23 dd b4"
+    "8d fd d3 02 18 61 98 5c 5f 61 d1 74 77 72 15 49 01 f9 96 19 78 dc ec 7a 82 03 6c 91 fe fd 72 db"
 )
 _NATS_PROCESS_PRE_REBIND_POLICY_SHA256 = bytes.fromhex(
-    "e3 b3 6f e9 40 90 5a bf ae a5 5e a0 59 92 9f 35 fb f4 35 5a 65 4c 71 52 cc c2 db 2c 9b 08 8e 51"
+    "76 ad 5b d3 3c 58 68 72 bc 8a 36 e5 03 ca 6b 24 3f 7c ca ab b3 45 b4 0e d7 fb 8b 03 fc 6b 12 2e"
 )
 _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
-    "ab 74 30 f7 7c a1 16 b4 ab 6a a3 dc d1 24 2a 45 01 c9 2d d6 30 ea 54 4c 06 cd 87 8a 28 74 6b dc"
+    "2c 86 cd ea bb 47 2f 0d 03 57 db ad c3 dd 42 e9 e3 1b f6 45 9c 1a de 28 d9 a4 e9 25 ff 06 4f fe"
 )
 
 

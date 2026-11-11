@@ -1061,6 +1061,46 @@ def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
     assert "sudo go run" not in command
 
 
+def test_pact_go_build_directory_is_outside_native_library_search_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Isolate Go archives without disabling native linker-input validation."""
+
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["message-provider-verify"]
+    steps = job["steps"]
+    prepare = next(
+        step for step in steps if step.get("name") == "Prepare Go build directory"
+    )
+    # runner context is not valid in job-level env. Configure later steps via
+    # GITHUB_ENV after the runner has provided its actual temporary directory.
+    assert "GITHUB_ENV" in prepare["run"]
+    runner_temp = tmp_path / "runner temporary files"
+    runner_temp.mkdir()
+    env_file = tmp_path / "github-env"
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    monkeypatch.setenv("GITHUB_ENV", str(env_file))
+    monkeypatch.delenv("GOTMPDIR", raising=False)
+    result = _run_coverage_shape_checks(prepare["run"], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    go_tmpdir = runner_temp / "pact-go-build-123-2"
+    assert env_file.read_text(encoding="utf-8") == f"GOTMPDIR={go_tmpdir}\n"
+    assert go_tmpdir.is_dir()
+    assert go_tmpdir.stat().st_mode & 0o777 == 0o700
+
+    install = next(
+        step for step in steps if step.get("name") == "Install Pact FFI library"
+    )
+    assert steps.index(prepare) < steps.index(install)
+    assert 'GOTMPDIR="$GOTMPDIR"' in install["run"]
+    for env in (job.get("env", {}), *(step.get("env", {}) for step in steps)):
+        assert "GOTMPDIR" not in env
+        assert "TMPDIR" not in env
+        assert "CGO_LDFLAGS_ALLOW" not in env
+
+
 def test_cross_browser_e2e_is_nightly_while_live_pr_smoke_remains() -> None:
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))

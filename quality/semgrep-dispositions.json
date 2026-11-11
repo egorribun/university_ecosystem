@@ -378,7 +378,7 @@
         },
         {
           "path": "tests/test_quality_workflow_contract.py",
-          "sha256": "354db4ed597c8ccb8fd9e73f1c59611db40a76ad39f079b8839ce56986091e27"
+          "sha256": "b6880e4f270640dc5b1efca7058e488486f4a66d0650c56a74614602d9dc06fd"
         }
       ],
       "expires": "2027-01-10",
