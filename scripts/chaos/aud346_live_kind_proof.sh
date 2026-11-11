@@ -74,6 +74,8 @@ CLUSTER_CREATE_STARTED=0
 CLUSTER_OWNED=0
 KIND_CREATE_PID=""
 PORT_FORWARD_PID=""
+PROOF_STARTED=0
+PROOF_FINISHED=0
 
 log() { printf '%s\n' "$*" >&2; }
 
@@ -145,9 +147,63 @@ apply_owned_node_limits() {
   [[ "$limits" == "2000000000|4294967296|4294967296" ]]
 }
 
+# Diagnostics never use the cleanup reserve or issue recovery traffic. Raw probe
+# data stays bounded and base64-encoded in private shell memory (including NUL
+# bytes), then goes only to the normalizer. No raw snapshots are written to disk.
+diagnostic_bounded() {
+  local remaining=$((DIAGNOSTIC_DEADLINE - SECONDS))
+  (( remaining > 0 )) || return 124
+  # Redirect the shell group as well: Bash can print the EXIT-triggering
+  # command when timeout itself is killed after a TERM-resistant child.
+  { timeout --signal=TERM --kill-after=1s "${remaining}s" "$@"; } 2>/dev/null
+}
+
+emit_failure_diagnostics() {
+  local status="$1" phase=proof supervisor=not_started snapshot input_status
+  local DIAGNOSTIC_DEADLINE=$((SECONDS + 3))
+  # Leave two seconds for timeout's kill grace and scheduling before cleanup.
+  if (( DIAGNOSTIC_DEADLINE > WORK_DEADLINE - 2 )); then
+    DIAGNOSTIC_DEADLINE=$((WORK_DEADLINE - 2))
+  fi
+  if (( DIAGNOSTIC_DEADLINE <= SECONDS )); then
+    return 124
+  fi
+  [[ "$PROOF_FINISHED" == 1 ]] && phase=post_proof_health
+  if [[ -n "$PORT_FORWARD_PID" ]]; then
+    supervisor=not_running
+    kill -0 "$PORT_FORWARD_PID" >/dev/null 2>&1 && supervisor=alive
+  fi
+  local helper="${ROOT_DIR}/scripts/chaos/aud346_failure_diagnostics.py"
+  local -a binding=(--run-id "$RUN_ID" --exit-status "$status" --phase "$phase")
+  diagnostic_bounded python3 -I "$helper" transport "${binding[@]}" \
+    --directory "$DIAG_DIR" --supervisor "$supervisor" || return 1
+  input_status=unavailable
+  if snapshot="$(diagnostic_bounded kubectl --context "$CONTEXT" \
+    --namespace "$TARGET_NAMESPACE" --request-timeout=1s get pods \
+    --selector=app.kubernetes.io/name=aud346-chaos-target --output=json | head -c 65537 2>/dev/null | base64 --wrap=0 2>/dev/null)"; then
+    input_status=ok
+  fi
+  printf '%s' "$snapshot" | diagnostic_bounded python3 -I "$helper" target \
+    "${binding[@]}" --input-status "$input_status" || return 1
+  input_status=unavailable
+  if snapshot="$(diagnostic_bounded kubectl --context "$CONTEXT" \
+    --namespace "$TARGET_NAMESPACE" --request-timeout=1s get \
+    podchaos.chaos-mesh.org aud346-live-pod-failure --ignore-not-found --output=json | head -c 65537 2>/dev/null | base64 --wrap=0 2>/dev/null)"; then
+    input_status=ok
+  fi
+  printf '%s' "$snapshot" | diagnostic_bounded python3 -I "$helper" fault \
+    "${binding[@]}" --input-status "$input_status"
+}
+
 cleanup() {
-  local status=$? cleanup_failed=0
+  local status=$? cleanup_failed=0 diagnostic_failure=0
   set +e
+  if [[ "$status" != 0 && "$PROOF_STARTED" == 1 ]]; then
+    diagnostic_failure=1
+    if ! emit_failure_diagnostics "$status"; then
+      printf 'AUD346_FAILURE_DIAGNOSTIC {"schema":"university-ecosystem/aud346-failure-diagnostic/v1","kind":"collection","run_id":"%s","harness_exit_status":%d,"observation":"unavailable"}\n' "$RUN_ID" "$status" >&2
+    fi
+  fi
   if [[ -n "$PORT_FORWARD_PID" ]]; then
     kill "$PORT_FORWARD_PID" >/dev/null 2>&1
     wait "$PORT_FORWARD_PID" >/dev/null 2>&1
@@ -193,6 +249,11 @@ cleanup() {
       log "cleanup refused unexpected private work directory ${WORK_DIR}"
       cleanup_failed=1
     fi
+  fi
+  if [[ "$diagnostic_failure" == 1 ]]; then
+    local cleanup_outcome=completed
+    [[ "$cleanup_failed" != 0 ]] && cleanup_outcome=failed
+    printf 'AUD346_FAILURE_DIAGNOSTIC {"schema":"university-ecosystem/aud346-failure-diagnostic/v1","kind":"cleanup","run_id":"%s","harness_exit_status":%d,"cleanup":"%s"}\n' "$RUN_ID" "$status" "$cleanup_outcome" >&2
   fi
   if [[ "$cleanup_failed" != 0 && "$status" == 0 ]]; then
     status=1
@@ -378,11 +439,13 @@ curl --noproxy '*' --fail --silent --show-error --max-time 2 \
 # the fault injected: the target ignored SIGTERM as PID 1 and served through the 30 s
 # default grace. The fixture now exits on SIGTERM within a 2 s grace. Observe for 25 s,
 # inside the 45-second PodChaos lifetime.
+PROOF_STARTED=1
 uv_python_bounded "${ROOT_DIR}/scripts/chaos/run_chaos_loadtest.py" \
   --manifest "${ROOT_DIR}/k8s/chaos/aud346-pod-failure.yaml" \
   --duration 25 \
   --target-url "http://127.0.0.1:${PORT}/health" \
   --require-fault-impact
+PROOF_FINISHED=1
 curl --noproxy '*' --fail --silent --show-error --max-time 2 \
   "http://127.0.0.1:${PORT}/health" >/dev/null
 log "AUD-346 live fault and recovery assertions passed for run ${RUN_ID}"

@@ -2402,6 +2402,28 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Verify AUD-346 diagnostic helper coverage
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          coverage_root="$(mktemp -d "$RUNNER_TEMP/aud346-coverage.XXXXXX")"
+          export COVERAGE_FILE="$coverage_root/.coverage"
+          export PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+          uv run --frozen --no-sync python -m coverage run --branch \
+            --source=scripts.chaos.aud346_failure_diagnostics,scripts.quality.verify_aud346_diagnostic_coverage \
+            -m pytest --noconftest -o addopts='' -p no:cacheprovider -p pytest_asyncio.plugin \
+            --basetemp="$coverage_root/pytest" \
+            tests/test_aud346_failure_diagnostics.py tests/test_aud346_diagnostic_coverage_gate.py \
+            -k 'not configured_gate' -q
+          uv run --frozen --no-sync python -m coverage json --fail-under=100 -o "$coverage_root/coverage.json"
+          uv run --frozen --no-sync python scripts/quality/verify_aud346_diagnostic_coverage.py "$coverage_root/coverage.json"
+          # Exercise the configured gate against isolated negative controls.
+          uv run --frozen --no-sync python -m pytest --noconftest -o addopts='' \
+            -p no:cacheprovider -p pytest_asyncio.plugin \
+            --basetemp="$coverage_root/negative-pytest" \
+            tests/test_aud346_diagnostic_coverage_gate.py::test_configured_gate_negatives -q
+
       - name: Run contract tests (consumer-side)
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
