@@ -288,10 +288,51 @@ def test_target_is_masked_and_not_left_in_staging_file(source, monkeypatch, caps
     assert not work.with_name(work.name + "-target.txt").exists()
 
 
-def test_native_runner_keeps_ajax_explicit():
+def test_native_runner_executes_the_exact_full_scan_command():
+    import ast
+
     from scripts.quality.zap_runner import _CONTAINER_ENTRY
 
-    assert "'--ajax-spider'" in _CONTAINER_ENTRY
+    # The container entry is Python source; inspect its syntax tree so the
+    # scan mode, rules file, AJAX spider, timeout and origin hook stay exact.
+    tree = ast.parse(_CONTAINER_ENTRY)
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "os.execvp"
+    ]
+    assert len(calls) == 1
+    program, argv = calls[0].args
+    assert ast.literal_eval(program) == "zap-full-scan.py"
+    assert isinstance(argv, ast.List)
+    assert [
+        element.id if isinstance(element, ast.Name) else ast.literal_eval(element)
+        for element in argv.elts
+    ] == [
+        "zap-full-scan.py",
+        "-t",
+        "target",
+        "-c",
+        "/zap/rules.tsv",
+        "-J",
+        "report_json.json",
+        "-a",
+        "-j",
+        "--ajax-spider",
+        "-T",
+        "60",
+        "--hook=/zap/origin-hook.py",
+    ]
+    assignments = {
+        target.id: ast.unparse(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    assert assignments == {
+        "target": "Path('/zap/target.txt').read_text(encoding='utf-8')"
+    }
 
 
 def test_source_receipt_binds_repository(source):

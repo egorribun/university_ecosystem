@@ -452,9 +452,20 @@ test("receipt accepts real JSON reporter output and rejects altered evidence", a
       writeFileSync(spec, originalSpec)
       const outside = path.join(root, `outside-${entry}`)
       writeFileSync(outside, "untouched")
+      // The teardown module is constant code; the paths it links travel as JSON
+      // data, so no fixture value is ever spliced into executable source.
+      writeFileSync(
+        path.join(root, "frontend/teardown-target.json"),
+        JSON.stringify({ target: outside, link: path.join(archived, entry) })
+      )
       writeFileSync(
         path.join(root, "frontend/teardown.mjs"),
-        `import { symlinkSync } from "node:fs"; export default () => symlinkSync(${JSON.stringify(outside)}, ${JSON.stringify(path.join(archived, entry))}, "file");`
+        'import { readFileSync, symlinkSync } from "node:fs"\n' +
+          "export default () => {\n" +
+          '  const source = new URL("./teardown-target.json", import.meta.url)\n' +
+          '  const { target, link } = JSON.parse(readFileSync(source, "utf8"))\n' +
+          '  symlinkSync(target, link, "file")\n' +
+          "}\n"
       )
       writeFileSync(
         path.join(root, "frontend/playwright.config.ts"),
@@ -465,7 +476,8 @@ test("receipt accepts real JSON reporter output and rejects altered evidence", a
         "add",
         "frontend/tests/e2e/audit375-service-worker.spec.ts",
         "frontend/playwright.config.ts",
-        "frontend/teardown.mjs"
+        "frontend/teardown.mjs",
+        "frontend/teardown-target.json"
       )
       git(
         root,
