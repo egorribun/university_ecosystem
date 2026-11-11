@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -187,3 +188,19 @@ def test_ci_fuzz_uploads_package_crash_corpus() -> None:
     )
     assert upload["if"] == "failure()"
     assert upload["with"]["path"] == "services/ws-hub/pkg/hub/testdata/fuzz/"
+
+
+def test_fuzz_workflow_contract_preserves_reviewed_companion_binding() -> None:
+    ledger = json.loads((ROOT / "quality/semgrep-dispositions.json").read_text())
+    path = "tests/test_quality_workflow_contract.py"
+    companions = [
+        companion
+        for disposition in ledger["dispositions"]
+        for companion in disposition["companions"]
+        if companion["path"] == path
+    ]
+    assert len(companions) == 1
+    assert (
+        companions[0]["sha256"]
+        == hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+    )

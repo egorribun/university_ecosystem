@@ -529,7 +529,7 @@ jobs:
       - name: Set up Go for source-pinned actionlint
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: false
 
       - name: Install and Run actionlint
@@ -549,7 +549,7 @@ jobs:
           tar --extract --gzip --file "$actionlint_archive" \
             --directory "$actionlint_source_dir" --strip-components=1
           cd "$actionlint_source_dir"
-          test "$(go env GOVERSION)" = "go1.26.10"
+          test "$(go env GOVERSION)" = "go1.26.11"
           go build -buildvcs=false -trimpath \
             -ldflags "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}" \
             -o "$RUNNER_TEMP/actionlint" ./cmd/actionlint
@@ -901,7 +901,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.10"
+      go-version: "1.26.11"
       coverage-threshold: ${{ matrix.coverage-threshold }}
       coverage-component: ${{ matrix.coverage-component }}
       coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
@@ -922,16 +922,16 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # Go 1.27.3 contains the upstream fix for golang/go#75804.  Pin the
+          # Go 1.27.4 contains the upstream fix for golang/go#75804.  Pin the
           # patched toolchain so the bounded fuzz smoke cannot report a false
           # context-deadline failure during normal deadline shutdown.
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache-dependency-path: services/ws-hub/go.sum
 
       - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory. Go 1.27.3 contains
+          # Serialize fuzz workers to bound runner memory. Go 1.27.4 contains
           # the upstream fix for golang/go#75804, so the full bounded smoke
           # budget is retained without masking or ignoring failures.
           bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
@@ -953,7 +953,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   go-integration-file-processor:
     name: Go Integration Tests (file-processor)
@@ -961,7 +961,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   go-integration-gateway:
     name: Go Integration Tests (gateway)
@@ -969,7 +969,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   frontend-tests:
     name: Frontend Tests
@@ -4164,7 +4164,7 @@ jobs:
             --job "$GITHUB_JOB" \
             --artifact go-shared-coverage-aggregate \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            --tool-version go=1.26.10 \
+            --tool-version go=1.26.11 \
             --tool-version quality-provenance=2.0.0 \
             --report "go-shared|go-coverprofile|artifacts/coverage/go/shared/coverage.out|artifacts/coverage/go/shared/coverage.out"
 

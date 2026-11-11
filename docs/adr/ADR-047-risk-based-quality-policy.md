@@ -2486,3 +2486,27 @@ measured score and only moves up.
 ### ADR-052
 
 The owner accepted ADR-052. AUD-373 still needs its hosted kind proof.
+
+## Decisions recorded on 2026-11-11
+
+### Exact Go security update and public image digest
+
+The owner approved early Go 1.26.11 and fuzz-toolchain Go 1.27.4 adoption to
+address GO-2026-6859 / CVE-2026-97054, including the corresponding official
+Alpine 3.24 and Bookworm images. The releases are dated 2026-11-10. This bounded
+exception does not change the global seven-day dependency maturity policy.
+See the [exception record](../DEPENDENCY_COOLDOWN_EMERGENCY.md#exact-go-security-exception-2026-11-11).
+
+The owner separately approved one additional `public_integrity_digest`
+disposition for the official Go Alpine image checksum in
+`tests/test_docker_startup_contracts.py`, with type `Hex High Entropy String`,
+review date 2026-11-11 and finite expiry 2027-01-10. The policy grows from 509
+to 510 records; the 242 baseline identities and all existing approval metadata
+and expiry dates remain unchanged. Exact source-bound contracts preserve the
+historical records and reject changed or unmatched findings. This inventory is
+not evidence of a passing scanner or hosted check.
+
+The existing AUD-428 row13 companion is rebound one-to-one to the combined
+Go fuzz-contract and toolchain-pin source. Only that public companion digest
+and its existing scanner identity change; the path, type, line, category,
+owner, evidence and expiry remain the same. No new Semgrep row is added.

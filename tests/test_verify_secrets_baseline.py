@@ -1071,11 +1071,22 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert _RETIRED_DISPOSITION_PATHS == verifier._RETIRED_DISPOSITION_SOURCE_PATHS
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
-    validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 9)
+    validated = verifier.validate_false_positive_dispositions(
+        _nov11_historical_509_from_live_policy(policy), today=verifier.date(2026, 11, 9)
     )
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
+    live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=root, today=verifier.date(2026, 11, 11)
+    )
+    assert len(live_validated) == 510
+    assert all(
+        finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range is invalid"):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=root, today=verifier.date(2026, 11, 9)
+        )
 
 
 def _spire_chart_record_index(records: list[dict[str, Any]]) -> int:
@@ -10580,30 +10591,7 @@ def test_public_compose_sentinel_identity_matches_fixed_source_literal() -> None
 def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     root = Path(__file__).resolve().parents[1]
     path = "tests/test_docker_startup_contracts.py"
-    expected_digest = bytes(
-        (
-            246,
-            29,
-            95,
-            9,
-            239,
-            28,
-            164,
-            164,
-            87,
-            181,
-            67,
-            85,
-            104,
-            249,
-            102,
-            110,
-            149,
-            79,
-            94,
-            167,
-        )
-    )
+    expected_digest = _NOV11_GO_IMAGE_SCANNER_DIGEST
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_text(
             encoding="utf-8"
@@ -10620,12 +10608,12 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     record = records[0]
     assert record["category"] == "public_integrity_digest"
     assert record["owner"] == "egorribun"
-    assert record["reviewed_on"] == "2026-10-21"
+    assert record["reviewed_on"] == "2026-11-11"
     assert record["expires_on"] == "2027-01-10"
     assert record["approval_status"] == "approved"
 
     source = ast.parse((root / path).read_text(encoding="utf-8"))
-    prefix = "golang:1.26.10-alpine3.24@sha256:"
+    prefix = "golang:1.26.11-alpine3.24@sha256:"
     values = {
         node.value.removeprefix(prefix)
         for node in ast.walk(source)
@@ -10639,7 +10627,7 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     actual_digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
     assert actual_digest == expected_digest
     assert verifier.validate_false_positive_dispositions(
-        _disposition_document(record), today=verifier.date(2026, 10, 21)
+        _disposition_document(record), today=verifier.date(2026, 11, 11)
     ) == {
         verifier.FindingIdentity(
             path,
@@ -17992,7 +17980,7 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     policy_bytes = policy_path.read_bytes()
     policy = json.loads(policy_bytes.decode("utf-8"))
     _nov9_assert_live_policy_bytes(policy_bytes)
-    return policy
+    return _nov11_historical_509_from_live_policy(policy)
 
 
 def _aud380_assert_live_policy_is_exact_505(
@@ -30917,7 +30905,7 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495840
+    assert len(policy_bytes) == 495838
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
@@ -31504,6 +31492,8 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
+    if len(policy.get("records", [])) == 510:
+        policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
     assert len(records) == 509, "live disposition row count changed"
@@ -31512,7 +31502,7 @@ def _nov9_historical_506_from_live_policy(
     )
     historical = {**policy, "records": copy.deepcopy(records[:506])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert len(historical_bytes) == 495840, "prior 506 policy bytes changed"
+    assert len(historical_bytes) == 495838, "prior 506 policy bytes changed"
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
@@ -31524,7 +31514,8 @@ def _nov9_historical_506_from_live_policy(
 
 
 def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
-    assert len(policy_bytes) == 498822, "live disposition bytes changed"
+    policy_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
+    assert len(policy_bytes) == 498820, "live disposition bytes changed"
     assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
         "live disposition policy digest changed"
     )
@@ -31532,7 +31523,7 @@ def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     # Everything before the former closing list is byte-identical, including
     # the row13 companion and each old approval's evidence, dates, and owner.
-    assert policy_bytes[:495810] == historical_bytes[:495810]
+    assert policy_bytes[:495808] == historical_bytes[:495808]
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     ), "prior 505 policy bytes changed"
@@ -32066,7 +32057,9 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
         _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256
     )
 
-    policy = json.loads(policy_bytes.decode("utf-8"))
+    policy = _nov11_historical_509_from_live_policy(
+        json.loads(policy_bytes.decode("utf-8"))
+    )
     restored = copy.deepcopy(policy)
     changed = []
     for index, record in enumerate(restored["records"]):
@@ -32090,29 +32083,29 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     ), "anything besides the two companion identities changed"
 
 
-# Exact existing row13 companion rebind for group-list tenant receipt coverage.
+# Exact existing row13 companion rebind for fail-closed Go fuzz and security pins.
 # Preserve all 509 approvals, including the three WASM suffix identities.
 _AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
-    "50 f8 59 22 de 8f d9 96 2b be f0 1a f0 1f b6 a8 7a 18 a0 04 c4 d6 e8 71 6d 50 b8 11 fd 0f 95 69"
+    "35 4d b4 ed 59 7c 8c cb 8f d9 e7 3f 1c 59 61 1d b4 0a 76 ad 39 f0 79 b8 83 9c e5 69 86 09 1e 27"
 )
 _AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
-    "ea 7b 99 95 17 3f 0a 1d e8 42 ba 0f 29 9b f6 80 c7 c9 56 9f f3 c9 f5 da 07 d5 dc 3d 8b c7 b4 6e"
+    "25 c8 ff fa 2c 88 a0 27 58 82 93 6b a3 a6 60 53 75 53 f3 51 bc 25 20 b8 46 b8 7f f4 ff f9 39 be"
 )
 _AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
-    "31 19 01 94 86 bc 49 58 14 50 6b de 5f 01 14 3a ae cf d8 bb d0 e5 37 54 f0 b4 02 f6 70 3d b4 a3"
+    "77 be 3e bb d7 34 57 b3 01 7f 99 0e b8 9f bb 10 7e 73 c5 5a bc 0a cc 98 68 19 66 6d 78 c4 0e b4"
 )
 _AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
-    "06 36 53 51 61 3b 5d 4f 1f b0 4e 5a ba 47 a9 38 4e ea d2 b6 6a 69 e6 cb 06 c5 e1 84 4c 0e 3f 09"
+    "be 00 b1 ef 79 a9 41 5c cb bd 41 d3 eb 34 c1 72 8e bf 6e ab 1e 67 47 4d 3b 33 22 78 9a 69 c5 72"
 )
 _AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
-    "e1 7e 57 80 51 64 9c 1d fb 10 07 02 45 27 4d 1a 2a a5 98 1c 1a 17 9c 5a 52 21 a6 04 40 5a 69 ea"
+    "26 45 b6 7c 77 a6 10 c5 a3 c6 52 d6 86 c5 9a 4e 63 d6 b0 0f 5f c4 2f 16 18 67 a4 2e 47 9c 1c a8"
 )
 _AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
-    "b2 71 1a 01 41 ae bb ae 5d d3 ed 83 05 a6 9f 6e 0d a0 e2 ac 5f 56 94 bd 8e f4 a0 59 3a 7a 40 51"
+    "8e 8d 1b 05 3e f2 c2 36 ea 31 2b 69 f1 8b 74 4c 6b 68 79 0e 39 60 0a 71 f4 c4 6a 09 4d 16 dd 92"
 )
 _AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
 _AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
-    bytes.fromhex("77 27 54 5e e8 71 51 7b ff 6a a2 83 54 d0 0a 7f b0 c7 e9 b1")
+    bytes.fromhex("13 44 2b d0 c8 18 2d 15 b5 68 79 a8 b1 1d ad 7f d9 f5 63 f8")
 )
 _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
@@ -32125,11 +32118,165 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
 
 
 _NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
-    "95 4d dd 0d 5d 7a 23 bd a3 c7 cd 64 28 51 71 53 60 d8 57 24 4b 6c d1 db e5 ad 29 8e ea 00 23 48"
+    "25 3d 6c cb 87 eb 97 ee 31 7f 59 a9 08 a4 e4 a6 00 b4 df 97 5e c9 83 55 9f 8a c5 53 a4 23 dd b4"
 )
 _NATS_PROCESS_PRE_REBIND_POLICY_SHA256 = bytes.fromhex(
-    "a2 b9 47 57 e1 56 24 88 f6 c7 b3 33 fb 1d f5 65 25 02 81 f7 85 28 c0 31 b0 16 78 57 33 00 1d a6"
+    "e3 b3 6f e9 40 90 5a bf ae a5 5e a0 59 92 9f 35 fb f4 35 5a 65 4c 71 52 cc c2 db 2c 9b 08 8e 51"
 )
 _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
-    "14 d3 80 b2 5e 1c 0a 4f b7 42 78 98 35 cf 66 cf 4b f3 bf 73 7e 42 2f 1a 51 65 e6 7f 08 7f e9 54"
+    "ab 74 30 f7 7c a1 16 b4 ab 6a a3 dc d1 24 2a 45 01 c9 2d d6 30 ea 54 4c 06 cd 87 8a 28 74 6b dc"
 )
+
+
+# Owner-approved 2026-11-11 Go image identity. The older contracts operate on
+# the exact 509-record prefix; the live document must append only this record.
+_NOV11_GO_IMAGE_SCANNER_DIGEST = bytes.fromhex(
+    "c8 64 20 19 43 35 0a eb 96 c2 e1 67 52 e3 9a f0 6a bb 45 e7"
+)
+_NOV11_GO_IMAGE_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": (
+        "Official golang:1.26.11-alpine3.24 image manifest SHA-256, verified against "
+        "https://github.com/docker-library/repo-info/blob/"
+        "2d1d058f9dd4c2772834f3c0b3e81c4f599c7ba1/"
+        "repos/golang/remote/1.26.11-alpine3.24.md; exact source path "
+        "tests/test_docker_startup_contracts.py; owner approved this finite public "
+        "integrity identity on 2026-11-11; not credential material."
+    ),
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV11_GO_IMAGE_SCANNER_DIGEST),
+        "path": "tests/test_docker_startup_contracts.py",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-11",
+}
+
+
+def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    records = policy.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    assert len(records) == 510, "live disposition row count changed"
+    assert records[509:] == [_NOV11_GO_IMAGE_APPROVED_RECORD], (
+        "live disposition approved Go suffix changed"
+    )
+    historical = {**policy, "records": copy.deepcopy(records[:509])}
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    assert hashlib.sha256(historical_bytes).digest() == _NOV9_WASM_CLI_POLICY_SHA256, (
+        "live disposition prior 509 records or header changed"
+    )
+    return historical
+
+
+def _nov11_historical_509_policy_bytes(policy_bytes: bytes) -> bytes:
+    policy = json.loads(policy_bytes)
+    assert policy_bytes == _nov9_historical_506_policy_bytes(policy), (
+        "live disposition noncanonical bytes changed"
+    )
+    historical = _nov11_historical_509_from_live_policy(policy)
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    assert policy_bytes[:498790] == historical_bytes[:498790], (
+        "live disposition prior 509 byte prefix changed"
+    )
+    return historical_bytes
+
+
+def test_nov11_go_image_appends_one_exact_approval() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy_bytes = (
+        root / "quality/security-false-positive-dispositions.json"
+    ).read_bytes()
+    historical_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
+    assert len(json.loads(historical_bytes)["records"]) == 509
+    accepted = verifier.validate_false_positive_dispositions(
+        json.loads(policy_bytes), today=verifier.date(2026, 11, 11)
+    )
+    assert len(accepted) == 510
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "extra", "old_identity", "old_expiry", "header", "new_metadata"],
+)
+def test_nov11_go_image_projection_refuses_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    if mutation == "missing":
+        policy["records"].pop()
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    elif mutation == "old_identity":
+        policy["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "old_expiry":
+        policy["records"][0]["expires_on"] = "2027-01-11"
+    elif mutation == "header":
+        policy["schema_version"] = 2
+    else:
+        policy["records"][-1]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov11_go_image_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV11_GO_IMAGE_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            "tests/test_docker_startup_contracts.py",
+            "Hex High Entropy String",
+            _NOV11_GO_IMAGE_SCANNER_DIGEST.hex(),
+            1,
+        )
+    }
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(document, today=today)
+            == expected
+        )
+    for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)
+
+
+@pytest.mark.parametrize("mutation", ["exact", "path", "digest", "type"])
+def test_nov11_go_image_trusted_scan_refuses_unmatched_findings(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, [_NOV11_GO_IMAGE_APPROVED_RECORD])
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    path = "tests/test_docker_startup_contracts.py"
+    digest = _NOV11_GO_IMAGE_SCANNER_DIGEST.hex()
+    finding_type = "Hex High Entropy String"
+    if mutation == "path":
+        path = f"unapproved/{path}"
+    elif mutation == "digest":
+        digest = "0" * 40
+    elif mutation == "type":
+        finding_type = "Secret Keyword"
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(
+        tmp_path / "current.json", _document((path, finding_type, digest, 999))
+    )
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+    output = capsys.readouterr()
+    assert result == (0 if mutation == "exact" else 1)
+    if mutation == "exact":
+        assert "1 exact false-positive finding(s)" in output.out
+    else:
+        assert "new finding" in output.err
