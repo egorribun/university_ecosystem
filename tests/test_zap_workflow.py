@@ -269,6 +269,7 @@ def test_new_cli_process_verifies_and_gates_without_target(source, monkeypatch, 
         "https://x.invalid/\n::warning::secret",
         "https://x.invalid/?token=secret",
     ],
+    ids=["empty", "randomized-userinfo", "newline", "query-token"],
 )
 def test_invalid_target_fails_before_creating_private_files(source, target):
     root, env, work, public = source

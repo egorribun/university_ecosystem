@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
 
 import pytest
+
+from scripts.quality import zap_run_provenance
 
 IDENTITY = {
     "source_sha": "a" * 40,
@@ -21,14 +22,8 @@ IDENTITY = {
 TARGET = "https://stage.example.test"
 
 
-def _module():
-    spec = importlib.util.find_spec("scripts.quality.zap_run_provenance")
-    assert spec is not None, "missing current-run provenance contract"
-    return importlib.import_module("scripts.quality.zap_run_provenance")
-
-
 def _start(tmp_path: Path):
-    module = _module()
+    module = zap_run_provenance
     work = tmp_path / "run"
     nonce = module.start_run(work, IDENTITY)
     report = work / "scan" / "report_json.json"
@@ -143,7 +138,7 @@ def test_symlinked_evidence_is_rejected(tmp_path: Path, target: str) -> None:
     ],
 )
 def test_invalid_identity_cannot_start(tmp_path: Path, field: str, value: str) -> None:
-    module = _module()
+    module = zap_run_provenance
     identity = {**IDENTITY, field: value}
     with pytest.raises(ValueError):
         module.start_run(tmp_path / "run", identity)

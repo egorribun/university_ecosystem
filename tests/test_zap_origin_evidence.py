@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from scripts.quality import zap_origin_evidence
+
 TARGET = "https://stage.example.test/private"
 REQUEST = "GET https://stage.example.test/private HTTP/1.1\r\nHost: stage.example.test\r\n\r\n"
 RESPONSE = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
-
-
-def _module():
-    spec = importlib.util.find_spec("scripts.quality.zap_origin_evidence")
-    assert spec is not None, "missing authorized-origin response verifier"
-    return importlib.import_module("scripts.quality.zap_origin_evidence")
 
 
 def _proof(request: str = REQUEST, response: str = RESPONSE):
@@ -30,12 +25,12 @@ def _proof(request: str = REQUEST, response: str = RESPONSE):
 
 
 def test_exact_origin_and_real_2xx_response_are_accepted() -> None:
-    _module().validate_proof(_proof(), TARGET)
+    zap_origin_evidence.validate_proof(_proof(), TARGET)
 
 
 def test_default_port_and_case_normalization_preserve_origin() -> None:
     request = "GET https://STAGE.example.test:443/path HTTP/1.1\r\nHost: stage.example.test:443\r\n\r\n"
-    _module().validate_proof(_proof(request), TARGET)
+    zap_origin_evidence.validate_proof(_proof(request), TARGET)
 
 
 @pytest.mark.parametrize(
@@ -63,7 +58,7 @@ def test_default_port_and_case_normalization_preserve_origin() -> None:
 )
 def test_ambiguous_or_unauthorized_request_is_rejected(request_header: str) -> None:
     with pytest.raises(ValueError):
-        _module().validate_proof(_proof(request_header), TARGET)
+        zap_origin_evidence.validate_proof(_proof(request_header), TARGET)
 
 
 @pytest.mark.parametrize(
@@ -83,13 +78,13 @@ def test_no_response_proxy_errors_and_non2xx_do_not_prove_execution(
     response: str,
 ) -> None:
     with pytest.raises(ValueError):
-        _module().validate_proof(_proof(response=response), TARGET)
+        zap_origin_evidence.validate_proof(_proof(response=response), TARGET)
 
 
 def test_hook_captures_only_headers_from_zap_api(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text(TARGET)
     monkeypatch.setattr(module, "TARGET_PATH", target)
@@ -114,7 +109,7 @@ def test_hook_captures_only_headers_from_zap_api(
 def test_hook_requires_zap_response_not_just_site_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text(TARGET)
     monkeypatch.setattr(module, "TARGET_PATH", target)
@@ -129,7 +124,7 @@ def test_hook_requires_zap_response_not_just_site_name(
 def test_hook_does_not_use_raw_prefix_to_select_normalized_origins(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text("https://STAGE.example.test:443/private")
     monkeypatch.setattr(module, "TARGET_PATH", target)
@@ -148,7 +143,7 @@ def test_hook_does_not_use_raw_prefix_to_select_normalized_origins(
 def test_hook_uses_one_based_pagination_through_last_bounded_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text(TARGET)
     monkeypatch.setattr(module, "TARGET_PATH", target)
@@ -181,7 +176,7 @@ def test_hook_uses_one_based_pagination_through_last_bounded_record(
 )
 def test_invalid_expected_origin_is_rejected(target) -> None:
     with pytest.raises(ValueError):
-        _module().validate_proof(_proof(), target)
+        zap_origin_evidence.validate_proof(_proof(), target)
 
 
 @pytest.mark.parametrize(
@@ -196,7 +191,7 @@ def test_invalid_expected_origin_is_rejected(target) -> None:
 )
 def test_malformed_headers_are_not_origin_evidence(header: str) -> None:
     with pytest.raises(ValueError):
-        _module().validate_proof(_proof(header), TARGET)
+        zap_origin_evidence.validate_proof(_proof(header), TARGET)
 
 
 @pytest.mark.parametrize(
@@ -211,7 +206,7 @@ def test_malformed_headers_are_not_origin_evidence(header: str) -> None:
 )
 def test_invalid_proof_shape_is_rejected(proof) -> None:
     with pytest.raises(ValueError):
-        _module().validate_proof(proof, TARGET)
+        zap_origin_evidence.validate_proof(proof, TARGET)
 
 
 @pytest.mark.parametrize(
@@ -220,7 +215,7 @@ def test_invalid_proof_shape_is_rejected(proof) -> None:
 def test_unexpected_api_shape_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, records
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text(TARGET)
     monkeypatch.setattr(module, "TARGET_PATH", target)
@@ -235,7 +230,7 @@ def test_unexpected_api_shape_is_rejected(
 def test_history_search_is_bounded_and_cannot_fall_back_to_site_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    module = _module()
+    module = zap_origin_evidence
     target, proof = tmp_path / "target", tmp_path / "proof.json"
     target.write_text(TARGET)
     monkeypatch.setattr(module, "TARGET_PATH", target)

@@ -30,7 +30,13 @@ args = sys.argv[1:]
 with open(os.environ["FAKE_COMMANDS"], "a") as log:
     log.write(json.dumps(args) + "\\n")
 if args[:2] == ["rm", "--force"]:
-    time.sleep(float(os.environ.get("FAKE_REMOVE_SLEEP", "0")))
+    if os.environ.get("FAKE_REMOVE_RELEASE"):
+        release = pathlib.Path(os.environ["FAKE_REMOVE_RELEASE"])
+        deadline = time.monotonic() + 15
+        while not release.exists():
+            if time.monotonic() >= deadline:
+                sys.exit(98)
+            time.sleep(0.01)  # Bounded by the 15-second monotonic deadline above.
     if os.environ.get("FAKE_REMOVED"):
         pathlib.Path(os.environ["FAKE_REMOVED"]).write_text("done")
     sys.exit(int(os.environ.get("FAKE_REMOVE_EXIT", "0")))
@@ -42,7 +48,7 @@ target = next(item.split("src=", 1)[1].split(",", 1)[0] for item in mounts if "d
 print(pathlib.Path(target).read_text(), flush=True)
 print("private-zap-marker", file=sys.stderr, flush=True)
 if os.environ.get("FAKE_SLEEP"):
-    time.sleep(60)
+    time.sleep(60)  # Fixed upper bound; runner timeout/cancellation must kill this child.
 if not os.environ.get("FAKE_NO_REPORT"):
     pathlib.Path(scan, "report_json.json").write_text(json.dumps({"@version":"2.16.1","site":[{"@name": "https://private-zap-marker.invalid", "alerts":[{"pluginid":"10055", "riskcode":"2"}]}]}))
 mode = os.environ.get("FAKE_ORIGIN_MODE", "valid")
@@ -145,7 +151,8 @@ def test_cancellation_during_cleanup_waits_for_removal(
 ) -> None:
     module = importlib.import_module("scripts.quality.zap_runner")
     monkeypatch.setenv("FAKE_SLEEP", "1")
-    monkeypatch.setenv("FAKE_REMOVE_SLEEP", "0.3")
+    release = tmp_path / "release-removal"
+    monkeypatch.setenv("FAKE_REMOVE_RELEASE", str(release))
     removed = tmp_path / "removed"
     monkeypatch.setenv("FAKE_REMOVED", str(removed))
     target, rules, identity, work, commands = runner_inputs
@@ -163,8 +170,12 @@ def test_cancellation_during_cleanup_waits_for_removal(
         assert not task.done(), "runner returned before cleanup completed"
         assert (work / "target.txt").exists()
         task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done(), "repeated cancellation bypassed blocked cleanup"
+        assert not removed.exists()
+        release.touch()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, 3)
         assert removed.is_file()
         assert not (work / "target.txt").exists()
         assert not (work / "receipt.json").exists()
@@ -262,10 +273,10 @@ def test_startup_cancellation_waits_for_launch_then_removes_container(
 
 
 def test_stuck_container_removal_has_a_terminal_timeout(
-    runner_inputs, monkeypatch: pytest.MonkeyPatch
+    runner_inputs, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("FAKE_SLEEP", "1")
-    monkeypatch.setenv("FAKE_REMOVE_SLEEP", "60")
+    monkeypatch.setenv("FAKE_REMOVE_RELEASE", str(tmp_path / "never-released"))
     with pytest.raises(TimeoutError):
         _run(runner_inputs, timeout=0.1)
     assert not (runner_inputs[3] / "receipt.json").exists()
