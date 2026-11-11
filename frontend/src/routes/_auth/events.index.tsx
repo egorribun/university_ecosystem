@@ -13,23 +13,20 @@ import Events from "@/pages/Events"
 
 export const Route = createFileRoute("/_auth/events/")({
   ssr: true,
-  // Wave 129 SW1 — per-route SSR enabled. Inherits `_auth.tsx` `ssr: true`
-  // (per TanStack Start v1 inheritance contract; child can ONLY make MORE
-  // restrictive — `false > 'data-only' > true`). Loader prefetches first
-  // page of cursor-paginated events into the per-request QueryClient
-  // (SsrRoot W128 SW3) so SSR HTML ships with real event content cards
-  // rather than skeletons. `prefetchEventsListQuery` factory is the
-  // pre-existing W128 export at `events.ts:261-272` — drop-in.
   loader: async ({ context }) => {
-    // Promise.allSettled — best-effort prefetch. If backend is unreachable
-    // (LHCI dev, network failures), the query throws → catch → loader
-    // resolves anyway. Route still renders with skeleton placeholders;
-    // client useInfiniteQuery refetches on mount. Prevents NO_FCP per
-    // W128 SW3-followup lesson.
+    // Private event lists are not transferred by the router's dashboard-only
+    // hydration allowlist. Keep SSR pending instead of fetching unusable data
+    // or warming an empty server projection that the client cannot reproduce.
+    if (import.meta.env.SSR) return
+
+    // Best-effort browser warmup for the default active/newest feed. The query
+    // factory enforces confirmed ownership before and after its request.
     await Promise.allSettled([
       prefetchEventsListQuery(context.queryClient, {
         language: resolveLoaderLang(),
         limit: EVENTS_PAGE_SIZE,
+        is_active: true,
+        order: "starts_at_desc",
       }),
     ])
   },
