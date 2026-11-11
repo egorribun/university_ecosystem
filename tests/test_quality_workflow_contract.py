@@ -2966,11 +2966,11 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     assert "FuzzEstimateQueryDepth" in text
     assert "FuzzJWTValidation" in text
     assert "FuzzParseMessage" in text
-    assert "FuzzExtractAlgFromHeader" in text
+    assert "FuzzParseResumeToken" in text
     fuzz_commands = [
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("go test") and "-fuzz=" in line
+        if line.strip().startswith("bash ../../scripts/ci/run-go-fuzz.sh ")
     ]
     assert len(fuzz_commands) == 4
     # Go 1.27.3 includes the upstream fix for golang/go#75804, so retain the
@@ -2995,7 +2995,7 @@ def test_ci_ws_hub_fuzz_uses_deadline_margin() -> None:
     fuzz_commands = [
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("go test") and "-fuzz=" in line
+        if line.strip().startswith("bash ../../scripts/ci/run-go-fuzz.sh ")
     ]
     assert len(fuzz_commands) == 2
     assert all("-fuzztime=20s" in command for command in fuzz_commands)

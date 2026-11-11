@@ -1054,7 +1054,7 @@
           "artifacts": [
             {
               "name_pattern": "fuzz-crash-corpus",
-              "path_pattern": "services/ws-hub/testdata/fuzz/",
+              "path_pattern": "services/ws-hub/pkg/hub/testdata/fuzz/",
               "required": false,
               "provenance": "none"
             }

@@ -934,15 +934,15 @@ jobs:
           # Serialize fuzz workers to bound runner memory. Go 1.27.3 contains
           # the upstream fix for golang/go#75804, so the full bounded smoke
           # budget is retained without masking or ignoring failures.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
+          bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
+          bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseResumeToken -fuzztime=20s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: fuzz-crash-corpus
-          path: services/ws-hub/testdata/fuzz/
+          path: services/ws-hub/pkg/hub/testdata/fuzz/
           retention-days: 30
 
   # ADR-022: required Go integration tests against real testcontainers-go
