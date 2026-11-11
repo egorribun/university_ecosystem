@@ -1,5 +1,17 @@
 # University Ecosystem documentation
 
+## Exact-source review note — 2026-11-11
+
+The formal total remains **494/512 (96.5%) accepted or resolved, 18 open**
+(9S / 9P / 0U / 0N). [Current source-bound CI and candidate review](audits/AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
+records source 307cfb7a4ea2ca53543fc7a191282e26e9390668, tested merge
+3ca365f071438a5dba2c9b3e9d65dea06f3ba71c and Matrix run 43018326180:
+77 required successes plus Checkov neutral, not 78 successes. No audit closure
+is added; the held 497/512 proposal remains unpublished. AUD-154 has verified
+current named-case desktop/mobile proof, but its original criterion remains
+unfulfilled and it stays open. Historical checkpoints
+below retain their source dates. A later documentation commit needs its own checks.
+
 ## Current reconciliation — 2026-11-09
 
 The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
@@ -18,7 +30,7 @@ historical, not a current-index or coverage assertion; the working index has
 since advanced, and no checks are claimed for the later index or these doc
 updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
-Inventory remains **509 dispositions / 242 baseline identities / 27 Gitleaks
+Current inventory is **511 dispositions / 242 baseline identities / 27 Gitleaks
 fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.
 
@@ -130,7 +142,7 @@ handoffs are intentionally not part of the canonical index.
   for rows #7–#10 and exactly two `public_integrity_digest` identities. At the N6 integration snapshot, the working tree contained 505 approved disposition records;
   expiry values remain unchanged, and the two additions expire 2027-01-10. The
   baseline remains at 242 identities and Gitleaks at 27 historical fingerprints.
-  After the owner-approved AUD-428 row13 integration and WASM CLI integrity update, the working tree contains 509 approved records; the row13 public-integrity identity follows the unchanged 505-record prefix, the three WASM CLI checksum identities follow it, and all four expire 2027-01-10.
+  After the owner-approved AUD-428 row13 integration and WASM CLI integrity update, the working tree contained 509 approved records; the row13 public-integrity identity follows the unchanged 505-record prefix, the three WASM CLI checksum identities follow it, and all four expire 2027-01-10. After the owner-approved Go image integrity update on 2026-11-11, the working tree contained 510 approved records; the additional Go Alpine image checksum identity in `tests/test_docker_startup_contracts.py` expires 2027-01-10. Authorized helper and row13 one-to-one rebinds retain that 510 count and existing scope and expiry. With the exact owner-approved ZAP image identity appended, the working tree contains 511 approved records; all 510 latest published pre-ZAP records remain unchanged, and the ZAP record expires 2027-01-10.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
@@ -165,4 +177,4 @@ and decisions while removing superseded handoffs and duplicate snapshots.
 The vendored skill catalog under `.agents/skills/` retains upstream guidance;
 current task and repository instructions determine how it applies here.
 
-The current inventory includes the eight unchanged, previously approved zlib APK integrity identities restored after the merge omission. Their owner, exact scope and 2027-01-10 expiry are unchanged; the preceding 497 records are preserved. The owner-approved AUD-428 row13 public-integrity identity is appended at record index 505, preserving all 505 prior records. The three owner-approved WASM CLI checksum identities follow at record indexes 506-508, preserving those 506 records and bringing the total to 509.
+At the earlier zlib restoration checkpoint, eight previously approved APK integrity identities followed the 497-record prefix at indexes 497–504. The AUD-428 row13 public-integrity identity then followed at index 505; three WASM CLI checksum identities followed at indexes 506–508, bringing that checkpoint inventory to 509. The approved Go Alpine image identity followed at index 509, bringing the inventory to 510. Subsequent authorized helper and row13 one-to-one rebinds retain the count, existing scope and expiry. The exact ZAP image identity now follows at index 510 and preserves all 510 latest published records unchanged, bringing the current total to 511. All five WASM, Go and ZAP additions expire 2027-01-10.

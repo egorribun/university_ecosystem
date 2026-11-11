@@ -335,7 +335,9 @@ test("password settings reject a wrong current password and persist a corrected 
       confirmPasswordField.inputValue(),
     ])
     const passwordInputsAreCleared = reloadedPasswordInputValues.every((value) => value === "")
-    const passwordErrorIsCleared = (await page.getByRole("alert").count()) === 0
+    // The application keeps an empty global assertive live region mounted.
+    // Only password-section alerts represent errors in this reset form.
+    const passwordErrorIsCleared = (await passwordSection.getByRole("alert").count()) === 0
     const currentPasswordErrorIsCleared = await currentPasswordField.evaluate((input) => {
       const describedIds = (input.getAttribute("aria-describedby") ?? "")
         .split(/\s+/u)

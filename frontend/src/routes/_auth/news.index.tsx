@@ -1,14 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { lazy } from "react"
 import * as v from "valibot"
 
 import { NEWS_PAGE_SIZE, prefetchNewsListQuery } from "@/api/hooks/news"
 import { newsSearchSchema } from "@/features/news/schema"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
-const News = lazy(() => import("@/pages/News"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import News from "@/pages/News"
 
 export const Route = createFileRoute("/_auth/news/")({
+  ssr: true,
   // Wave 129 SW4 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader prefetches first page of cursor-paginated news
   // articles into per-request QueryClient (SsrRoot W128 SW3) so SSR

@@ -216,7 +216,26 @@ describe("Activity data-only SEO document hydration", () => {
     document.close()
 
     import.meta.env.SSR = false
-    clientRouter = createActivityRouter(false, language, serverI18n)
+    // A fresh lazy page that resolves only when released keeps the hydrated
+    // root-fallback state observable. The production lazy component may already
+    // be resolved in a reused worker (Stryker), which rendered the page inside
+    // act() and replaced the fallback before it could be asserted.
+    let releaseActivityPage!: () => void
+    const activityPageReleased = new Promise<void>((resolve) => {
+      releaseActivityPage = resolve
+    })
+    const ControlledActivityPage = lazy(async () => {
+      await activityPageReleased
+      return import("@/pages/Activity")
+    })
+    clientRouter = createActivityRouter(
+      false,
+      language,
+      serverI18n,
+      false,
+      "/activity",
+      ControlledActivityPage
+    )
     await clientRouter.load()
     expect(
       clientRouter.state.matches.map(({ routeId, status }) => [routeId, status])
@@ -226,6 +245,10 @@ describe("Activity data-only SEO document hydration", () => {
     })
     expectRootFallbackMetadata(document.head)
 
+    await act(async () => {
+      releaseActivityPage()
+      await activityPageReleased
+    })
     await waitFor(() =>
       expect(document.querySelector('[data-testid="activity-feature"]')).toBeInTheDocument()
     )

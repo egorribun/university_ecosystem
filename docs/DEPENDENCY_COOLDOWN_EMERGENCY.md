@@ -482,3 +482,25 @@ was run.
 
 This establishes lock consistency, not hosted test, vulnerability-scan or
 release readiness. All ordinary advisory checks and required CI remain blocking.
+
+## Exact Go security exception, 2026-11-11
+
+For PR #1380, owner egorribun explicitly approved early adoption of Go 1.26.11
+for the primary toolchain and Go 1.27.4 for fuzzing, including the corresponding
+official Alpine 3.24 and Bookworm images. Both releases were published on
+2026-11-10 and had not completed the normal seven-day maturity period.
+The exception is limited to these versions; the global maturity rule remains.
+
+[GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), also tracked as
+CVE-2026-97054, reports a net/http HTTP/1 response-header race involving
+MaxBytesReader. The official advisory fixes the affected Go 1.26 and 1.27
+branches in these releases. The previous PR source's govulncheck found reachable
+symbols with Go 1.26.10. This does not establish exploitation or exposure of a
+live deployment.
+
+The update changes compiler and image pins, their exact contract expectations,
+and one separately owner-approved public-integrity disposition. Go module
+minimum versions and dependency graphs remain unchanged. The ordinary tests,
+vulnerability checks, immutable image verification and all final-source hosted
+checks remain required. No advisory suppression, scanner bypass, merge or
+deployment is authorized by this exception.

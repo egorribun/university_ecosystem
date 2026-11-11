@@ -76,11 +76,15 @@ test.describe("Production SSR document render", () => {
         expect(document.querySelector('meta[property="csp-nonce"]')?.getAttribute("content")).toBe(
           nonce
         )
+        // The pinned TanStack producer emits a classic inline self.$_TSR initializer.
+        // Its stream boundary and completion scripts cannot bootstrap hydration.
         const trustedBootstrap = Array.from(document.querySelectorAll("script")).some(
           (script) =>
             !script.hasAttribute("src") &&
+            script.type === "" &&
+            !script.hasAttribute("nomodule") &&
             script.getAttribute("nonce") === nonce &&
-            (script.textContent?.trim().length ?? 0) > 0
+            /(?:^|;)\s*self\.\$_TSR\s*=\s*\{/u.test(script.textContent ?? "")
         )
         expect(trustedBootstrap).toBe(true)
         expect(response.headers()["cache-control"]).toBe("no-store, private, max-age=0")

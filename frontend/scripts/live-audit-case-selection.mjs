@@ -5,6 +5,12 @@ const CASES = Object.freeze({
     grep: /a message is delivered, edited, and tombstoned in the other authenticated session/u,
     projects: Object.freeze(["desktop"]),
   }),
+  "aud154-enter-sent-confirmation": Object.freeze({
+    file: "tests/e2e-live/messenger-realtime.live.spec.ts",
+    title: "shows sent confirmation after the server accepts the message",
+    grep: /shows sent confirmation after the server accepts the message/u,
+    projects: Object.freeze(["desktop", "mobile"]),
+  }),
   "aud454-membership-revocation": Object.freeze({
     file: "tests/e2e-live/messenger-membership-revocation.live.spec.ts",
     title: "a removed member loses detail, history, reactor, attachment, send, and live access",

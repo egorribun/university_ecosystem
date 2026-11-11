@@ -130,7 +130,23 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     await page.getByLabel("Повторите пароль", { exact: true }).fill(password)
     await withLiveRegistrationAdmission(page, 1, async () => {
       registrationAttempted = true
-      await page.getByRole("button", { name: "Зарегистрироваться" }).click()
+      const expectedOrigin = new URL(page.url()).origin
+      // The form checks the password before it posts, so the click resolves
+      // first. Wait for the POST so admission records the request it caused.
+      const registrationResponse = page.waitForResponse((response) => {
+        const responseUrl = new URL(response.url())
+        return (
+          response.request().method() === "POST" &&
+          responseUrl.origin === expectedOrigin &&
+          responseUrl.pathname === "/api/v1/auth/register" &&
+          responseUrl.search === "" &&
+          responseUrl.hash === ""
+        )
+      })
+      await Promise.all([
+        page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+        registrationResponse,
+      ])
     })
     await expect(page).toHaveURL(/\/login$/u)
     await loginWith(page, email, password)

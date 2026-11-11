@@ -1994,3 +1994,15 @@ def test_fixpoint_message_summary_remains_a_fatal_scan_error(tmp_path: Path) -> 
     assert f'"first_rule_id_sha256":"{rule_hash}"' in failure
     assert first_rule_id not in failure
     assert "private-location" not in failure
+
+
+def test_rule_timeout_remains_fatal_even_without_findings(tmp_path: Path) -> None:
+    error = {
+        "code": 2,
+        "level": "warn",
+        "type": "Timeout",
+        "rule_id": "dangerous-system-call-tainted-env-args",
+        "path": "scripts/live_stand.py",
+    }
+    with pytest.raises(gate.GateError, match="results are not authoritative"):
+        gate.load_findings(_results(tmp_path, [], errors=[error]))

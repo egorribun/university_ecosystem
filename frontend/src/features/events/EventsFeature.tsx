@@ -174,7 +174,9 @@ export const EventsFeature = () => {
 
   const {
     events: rawEventsList,
-    isLoading: listIsLoading,
+    // Persistence restoration pauses fetching, not the initial pending state.
+    // Keep SSR skeletons until data or a terminal error is available.
+    isPending: listIsPending,
     isFetching: listIsFetching,
     isFetchingNextPage,
     hasNextPage,
@@ -199,7 +201,8 @@ export const EventsFeature = () => {
     return tab === "my" ? (filterUnavailable ? [] : (myEventsData?.items ?? [])) : rawEventsList
   }, [tab, rawEventsList, myEventsData, filterUnavailable])
 
-  const isInitialLoading = tab === "my" ? myEventsPending && !filterUnavailable : listIsLoading
+  const isInitialLoading =
+    tab === "my" ? myEventsPending && !filterUnavailable : listIsPending && isOnline
   const isFetching = tab === "my" ? myEventsFetching : listIsFetching
 
   /* ── Client-side filter + sort ── */
@@ -253,7 +256,7 @@ export const EventsFeature = () => {
     if (
       requiresCompleteDataset &&
       hasNextPage &&
-      !listIsLoading &&
+      !listIsPending &&
       !isFetchingNextPage &&
       isOnline
     ) {
@@ -264,7 +267,7 @@ export const EventsFeature = () => {
     hasNextPage,
     isFetchingNextPage,
     isOnline,
-    listIsLoading,
+    listIsPending,
     requiresCompleteDataset,
   ])
 

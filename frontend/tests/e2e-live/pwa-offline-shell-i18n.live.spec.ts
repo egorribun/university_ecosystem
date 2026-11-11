@@ -19,12 +19,24 @@ async function ensureServiceWorkerControlsPage(page: Page) {
 }
 
 type Language = "en" | "ru"
+// The hydrated shell renders /register, whose page metadata (PageRouteSEO)
+// replaces the root brand title with the localized register page title.
 const offlineLocaleCopy: Record<
   Language,
   { signIn: string; signUp: string; name: string; title: string }
 > = {
-  en: { signIn: "Sign in", signUp: "Sign up", name: "Name", title: "GUU Ecosystem" },
-  ru: { signIn: "Вход", signUp: "Регистрация", name: "Имя", title: "Экосистема ГУУ" },
+  en: {
+    signIn: "Sign in",
+    signUp: "Sign up",
+    name: "Name",
+    title: "Sign up | University Ecosystem",
+  },
+  ru: {
+    signIn: "Вход",
+    signUp: "Регистрация",
+    name: "Имя",
+    title: "Регистрация | University Ecosystem",
+  },
 }
 
 for (const language of ["en", "ru"] as const) {

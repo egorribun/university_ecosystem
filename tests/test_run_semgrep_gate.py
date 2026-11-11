@@ -228,6 +228,10 @@ def _runner_for_scan(
                 stdout=_cat_file_output(requested, index_blobs),
             )
         if command[:2] == ["docker", "run"]:
+            # Enforce the same finite rule budget for primary and supplement scans.
+            assert command.count("--timeout") == 1
+            assert command[command.index("--timeout") + 1] == "10"
+            assert "--timeout-threshold" not in command
             scan_timeouts.append(kwargs.get("timeout"))
             output_directory = _output_mount(command)
             scan_root = _source_mount(command)

@@ -1052,13 +1052,53 @@ def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
         step for step in steps if step.get("name") == "Install Pact FFI library"
     )
 
-    assert setup_go["with"]["go-version"] == "1.26.10"
+    assert setup_go["with"]["go-version"] == "1.26.11"
     assert setup_go["with"]["cache"] is True
     command = str(install["run"])
     assert "sudo env" in command
     assert 'PATH="$PATH"' in command
     assert "GOTOOLCHAIN=local" in command
     assert "sudo go run" not in command
+
+
+def test_pact_go_build_directory_is_outside_native_library_search_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Isolate Go archives without disabling native linker-input validation."""
+
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["message-provider-verify"]
+    steps = job["steps"]
+    prepare = next(
+        step for step in steps if step.get("name") == "Prepare Go build directory"
+    )
+    # runner context is not valid in job-level env. Configure later steps via
+    # GITHUB_ENV after the runner has provided its actual temporary directory.
+    assert "GITHUB_ENV" in prepare["run"]
+    runner_temp = tmp_path / "runner temporary files"
+    runner_temp.mkdir()
+    env_file = tmp_path / "github-env"
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    monkeypatch.setenv("GITHUB_ENV", str(env_file))
+    monkeypatch.delenv("GOTMPDIR", raising=False)
+    result = _run_coverage_shape_checks(prepare["run"], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    go_tmpdir = runner_temp / "pact-go-build-123-2"
+    assert env_file.read_text(encoding="utf-8") == f"GOTMPDIR={go_tmpdir}\n"
+    assert go_tmpdir.is_dir()
+    assert go_tmpdir.stat().st_mode & 0o777 == 0o700
+
+    install = next(
+        step for step in steps if step.get("name") == "Install Pact FFI library"
+    )
+    assert steps.index(prepare) < steps.index(install)
+    assert 'GOTMPDIR="$GOTMPDIR"' in install["run"]
+    for env in (job.get("env", {}), *(step.get("env", {}) for step in steps)):
+        assert "GOTMPDIR" not in env
+        assert "TMPDIR" not in env
+        assert "CGO_LDFLAGS_ALLOW" not in env
 
 
 def test_cross_browser_e2e_is_nightly_while_live_pr_smoke_remains() -> None:
@@ -2014,12 +2054,12 @@ def test_cargo_audit_validator_has_no_runtime_pyyaml_dependency() -> None:
 def test_active_go_toolchain_pins_use_current_security_patch() -> None:
     """Executable Go surfaces use a pinned security-patched toolchain.
 
-    The bounded fuzz workflows intentionally use Go 1.27.3 because it carries
+    The bounded fuzz workflows intentionally use Go 1.27.4 because it carries
     the upstream fix for the fuzz deadline race; all other Go surfaces remain
-    on the repository-wide 1.26.10 security patch.
+    on the repository-wide 1.26.11 security patch.
     """
 
-    expected_version = "1.26.10"
+    expected_version = "1.26.11"
     manifest_expected_version = "1.26.4"
     manifests = (
         "go.mod",
@@ -2066,16 +2106,18 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
         assert '"1.26.4"' not in workflow_text, workflow_name
         assert '"1.26.5"' not in workflow_text, workflow_name
         assert '"1.26.9"' not in workflow_text, workflow_name
+        assert '"1.26.10"' not in workflow_text, workflow_name
+        assert '"1.27.3"' not in workflow_text, workflow_name
         assert '"1.27.2"' not in workflow_text, workflow_name
         if workflow_name == "go-fuzz.yml":
-            assert '"1.26.10"' not in workflow_text, workflow_name
-            assert '"1.27.3"' in workflow_text, workflow_name
+            assert '"1.26.11"' not in workflow_text, workflow_name
+            assert '"1.27.4"' in workflow_text, workflow_name
         else:
             assert f'"{expected_version}"' in workflow_text, workflow_name
 
     assert BENCHMARK_GO_IMAGE == (
-        "docker.io/library/golang:1.26.10-bookworm@"
-        "sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51"
+        "docker.io/library/golang:1.26.11-bookworm@"
+        "sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0"
     )
 
 
@@ -2957,7 +2999,7 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
         for step in workflow["jobs"]["fuzz"]["steps"]
         if step.get("name") == "Set up Go"
     )
-    assert setup_go["with"]["go-version"] == "1.27.3"
+    assert setup_go["with"]["go-version"] == "1.27.4"
     text = "\n".join(
         step.get("run", "")
         for step in workflow["jobs"]["fuzz"]["steps"]
@@ -2966,14 +3008,14 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     assert "FuzzEstimateQueryDepth" in text
     assert "FuzzJWTValidation" in text
     assert "FuzzParseMessage" in text
-    assert "FuzzExtractAlgFromHeader" in text
+    assert "FuzzParseResumeToken" in text
     fuzz_commands = [
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("go test") and "-fuzz=" in line
+        if line.strip().startswith("bash ../../scripts/ci/run-go-fuzz.sh ")
     ]
     assert len(fuzz_commands) == 4
-    # Go 1.27.3 includes the upstream fix for golang/go#75804, so retain the
+    # Go 1.27.4 includes the upstream fix for golang/go#75804, so retain the
     # full bounded smoke budget without relying on retries or ignored failures.
     assert all("-fuzztime=20s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
@@ -2988,14 +3030,14 @@ def test_ci_ws_hub_fuzz_uses_deadline_margin() -> None:
         for step in job["steps"]
         if step.get("uses", "").startswith("actions/setup-go@")
     )
-    assert setup_go["with"]["go-version"] == "1.27.3"
+    assert setup_go["with"]["go-version"] == "1.27.4"
     text = "\n".join(
         step.get("run", "") for step in job["steps"] if isinstance(step, dict)
     )
     fuzz_commands = [
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("go test") and "-fuzz=" in line
+        if line.strip().startswith("bash ../../scripts/ci/run-go-fuzz.sh ")
     ]
     assert len(fuzz_commands) == 2
     assert all("-fuzztime=20s" in command for command in fuzz_commands)

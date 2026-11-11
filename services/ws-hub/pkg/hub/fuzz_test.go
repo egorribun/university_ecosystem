@@ -9,15 +9,18 @@
 //
 //	go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s
 //
-// CI budget (30s, see .github/workflows/ci.yml go-fuzz job):
+// CI budget (20s per target, see .github/workflows/ci.yml go-fuzz job):
 //
-//	go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s
+//	bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
+//	bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseResumeToken -fuzztime=20s -parallel=1 -timeout=3m
 //
 // Crash corpora are stored in testdata/fuzz/FuzzParseMessage/ and replayed
 // automatically by `go test ./pkg/hub/...` without the -fuzz flag.
 package hub
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -52,5 +55,67 @@ func FuzzParseMessage(f *testing.F) {
 		_ = msg.From
 		_ = msg.To
 		_ = len(msg.Payload)
+	})
+}
+
+// FuzzParseResumeToken exercises the current replay-token parser, including
+// authenticated payload decoding. Random tokens alone almost always stop at the
+// signature check and would leave the JSON claims parser unexplored.
+func FuzzParseResumeToken(f *testing.F) {
+	// Each run uses a fresh test-only signing key; all assertions are key-independent.
+	var key [32]byte
+	if _, err := rand.Read(key[:]); err != nil {
+		f.Fatal(err)
+	}
+	secret := string(key[:])
+	for _, seed := range []string{
+		`{"v":1,"uid":"user","room":"room","stream":"CHAT_EVENTS","inc":"generation","seq":7,"exp":2000000000}`,
+		`{"seq":18446744073709551615,"exp":-1}`,
+		`{"seq":-1}`, `{"seq":1.5}`, `{"seq":"7"}`, `{"exp":9223372036854775808}`,
+		`{}`, `null`, `[]`, ``, `not-json`, `.`, `payload.%%%`, `payload.signature.extra`,
+		strings.Repeat("x", 4097),
+		"%%%",
+		base64.RawURLEncoding.EncodeToString([]byte(`{"seq":7}`)),
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		claims, err := parseResumeToken(string(data), secret)
+		if err != nil && claims != (resumeTokenClaims{}) {
+			t.Fatal("invalid token returned partial claims")
+		}
+		if len(data) > 4096 {
+			if err == nil {
+				t.Fatal("oversized token was accepted")
+			}
+			return
+		}
+
+		// Sign both arbitrary encoded payloads and encoded JSON input with the
+		// worker's own key, so signature checks cannot hide decoder paths.
+		for _, payloadPart := range []string{string(data), base64.RawURLEncoding.EncodeToString(data)} {
+			token := signedTokenPart(secret, payloadPart)
+			payload, decodeErr := base64.RawURLEncoding.DecodeString(payloadPart)
+			var want resumeTokenClaims
+			if decodeErr == nil {
+				decodeErr = json.Unmarshal(payload, &want)
+			}
+			got, parseErr := parseResumeToken(token, secret)
+			if len(token) > 4096 || decodeErr != nil {
+				if parseErr == nil || got != (resumeTokenClaims{}) {
+					t.Fatal("invalid authenticated payload was accepted")
+				}
+			} else if parseErr != nil || got != want {
+				t.Fatalf("valid authenticated payload changed: got %+v, want %+v, error %v", got, want, parseErr)
+			}
+
+			if _, err := parseResumeToken(token, secret+"."); err == nil {
+				t.Fatal("token authenticated with the wrong key")
+			}
+			if _, err := parseResumeToken(token+".extra", secret); err == nil {
+				t.Fatal("token with an extra segment was accepted")
+			}
+		}
 	})
 }

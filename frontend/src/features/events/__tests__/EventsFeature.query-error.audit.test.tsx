@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const auth = vi.hoisted(() => ({ user: { id: "student-1", role: "student" } }))
 const listQuery = vi.hoisted(() => ({
   events: [] as unknown[],
-  isLoading: false,
+  isPending: false,
   isFetching: false,
   isFetchingNextPage: false,
   hasNextPage: false,
@@ -82,7 +82,7 @@ import { EventsFeature } from "@/features/events/EventsFeature"
 describe("AUD-214 events list query state", () => {
   beforeEach(() => {
     listQuery.events = []
-    listQuery.isLoading = false
+    listQuery.isPending = false
     listQuery.isFetching = false
     listQuery.isFetchingNextPage = false
     listQuery.hasNextPage = false

@@ -367,7 +367,7 @@ def test_reconnect_workflow_drops_diagnostics_on_success_without_changing_grade(
     tmp_path,
 ):
     raw, safe = tmp_path / "raw.txt", tmp_path / "safe.txt"
-    summary = "live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n"
+    summary = "live E2E counts passed=18\nlive E2E outcome=passed exit_code=0\n"
     raw.write_text(summary + _line(retained=True), encoding="utf-8")
     result = _execute_guard(
         _embedded_python("Exercise real realtime sessions without skips"),

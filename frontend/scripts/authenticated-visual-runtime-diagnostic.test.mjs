@@ -281,3 +281,102 @@ test("stateful getters cannot swap allowed values for private payloads during pr
   assert.equal(record.width, 390)
   assert.deepEqual(reads, { capped: 1, locale: 1, theme: 1, width: 1 })
 })
+
+test("minified React diagnostics retain only known numeric codes from errors", () => {
+  const diagnostics = audit.summarizeAuthenticatedVisualDiagnostics({
+    consoleMessages: [
+      {
+        type: "error",
+        text: "Minified React error #418; visit https://react.dev/errors/418?args[]=private-marker",
+      },
+      { type: "pageerror", text: "Minified React error #423; private-marker" },
+      { type: "warning", text: "Minified React error #418; private-marker" },
+      ...["#4180;", "#0418;", "#418private-marker", "#999;", "#418.1;"].map((suffix) => ({
+        type: "error",
+        text: `Minified React error ${suffix}`,
+      })),
+    ],
+  })
+  assert.equal(diagnostics.reactErrorCodeCounts[418], 1)
+  assert.equal(diagnostics.reactErrorCodeCounts[423], 1)
+  assert.equal(diagnostics.reactErrorCodeCounts.other, 5)
+  diagnostics.reactErrorCodeCounts.private = "private-marker"
+  const lines = []
+  audit.emitAuthenticatedVisualRuntimeDiagnostics("/events", capture, diagnostics, (line) =>
+    lines.push(line)
+  )
+  const record = JSON.parse(lines[0].slice("visual-runtime-diagnostics ".length))
+  assert.equal(record.reactErrorCodeCounts[418], 1)
+  assert.equal(record.reactErrorCodeCounts[423], 1)
+  assert.equal(record.consoleErrorClassCounts.react_minified_error, 7)
+  assert.ok(lines[0].length <= 4096)
+  assert.doesNotMatch(lines[0], /private|react\.dev|args|999|4180|0418/)
+})
+
+test("React code projection rejects malformed counts and caps saturated input", () => {
+  const diagnostics = audit.summarizeAuthenticatedVisualDiagnostics({
+    consoleMessages: Array.from({ length: 10000 }, () => ({
+      type: "error",
+      text: "Minified React error #418;",
+    })),
+  })
+  assert.equal(diagnostics.reactErrorCodeCounts[418], 9999)
+  assert.equal(diagnostics.capped, true)
+  for (const value of [-1, 1.5, Infinity, 10000, "private-marker"]) {
+    diagnostics.reactErrorCodeCounts[418] = value
+    let calls = 0
+    audit.emitAuthenticatedVisualRuntimeDiagnostics("/events", capture, diagnostics, () => calls++)
+    assert.equal(calls, 0)
+  }
+})
+
+test("closed React code inventory matches the locked installed client runtime", async () => {
+  const root = new URL("../", import.meta.url)
+  const lock = JSON.parse(await readFile(new URL("package-lock.json", root), "utf8"))
+  const installed = JSON.parse(
+    await readFile(new URL("node_modules/react-dom/package.json", root), "utf8")
+  )
+  assert.equal(installed.version, lock.packages["node_modules/react-dom"].version)
+  assert.equal(installed.version, "19.3.1")
+  const source = await readFile(
+    new URL("node_modules/react-dom/cjs/react-dom-client.production.js", root),
+    "utf8"
+  )
+  const codes = [
+    ...new Set([...source.matchAll(/formatProdErrorMessage\(\s*(\d+)/gu)].map((match) => match[1])),
+  ].sort()
+  const actual = Object.keys(audit.summarizeAuthenticatedVisualDiagnostics().reactErrorCodeCounts)
+    .filter((code) => code !== "other")
+    .sort()
+  assert.deepEqual(actual, codes)
+})
+
+test("React numeric identity survives earlier classifier words in decoder arguments", () => {
+  for (const [argument, expectedClass] of [
+    ["object%20with%20keys%20%7Bhydration%7D", "react_hydration"],
+    ["each child in a list should have a unique key prop", "react_key_warning"],
+    ["server rendered html did not match", "react_hydration"],
+  ]) {
+    for (const type of ["error", "pageerror"]) {
+      const diagnostics = audit.summarizeAuthenticatedVisualDiagnostics({
+        consoleMessages: [
+          {
+            type,
+            text: `Minified React error #31; visit https://react.dev/errors/31?args[]=${argument}&args[]=private-marker`,
+          },
+        ],
+      })
+      assert.equal(diagnostics.reactErrorCodeCounts[31], 1)
+      assert.equal(diagnostics.reactErrorCodeCounts.other, 0)
+      assert.equal(diagnostics.consoleErrorClassCounts[expectedClass], 1)
+      const lines = []
+      audit.emitAuthenticatedVisualRuntimeDiagnostics("/events", capture, diagnostics, (line) =>
+        lines.push(line)
+      )
+      const record = JSON.parse(lines[0].slice("visual-runtime-diagnostics ".length))
+      assert.equal(record.reactErrorCodeCounts[31], 1)
+      assert.equal(record.consoleErrorClassCounts[expectedClass], 1)
+      assert.doesNotMatch(lines[0], /private-marker|react\.dev|args\[\]|object%20|unique key/)
+    }
+  }
+})

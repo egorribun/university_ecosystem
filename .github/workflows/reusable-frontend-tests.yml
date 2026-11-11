@@ -1668,6 +1668,9 @@ jobs:
       - name: Test bundle analyzer
         run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs
 
+      - name: Test SSR route boundaries
+        run: node --test scripts/static-ssr-route-boundaries.test.mjs
+
       - name: Analyze bundle size
         env:
           NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"

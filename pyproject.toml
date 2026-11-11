@@ -623,6 +623,9 @@ also_copy = [
     # for both the hook and its shared helpers.
     ".agents/hooks",
     ".agents/hooks/stop_quality_gate.py",
+    # tests/contracts/test_aud310_409_hooks.py also imports the root-level
+    # hook harness verifier beside those hooks.
+    "verify_harness.py",
     ".gitignore",
     ".gitleaks.toml",
     ".dockerignore",

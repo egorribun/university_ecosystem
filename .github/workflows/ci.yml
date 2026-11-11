@@ -529,7 +529,7 @@ jobs:
       - name: Set up Go for source-pinned actionlint
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: false
 
       - name: Install and Run actionlint
@@ -549,7 +549,7 @@ jobs:
           tar --extract --gzip --file "$actionlint_archive" \
             --directory "$actionlint_source_dir" --strip-components=1
           cd "$actionlint_source_dir"
-          test "$(go env GOVERSION)" = "go1.26.10"
+          test "$(go env GOVERSION)" = "go1.26.11"
           go build -buildvcs=false -trimpath \
             -ldflags "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}" \
             -o "$RUNNER_TEMP/actionlint" ./cmd/actionlint
@@ -901,7 +901,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.10"
+      go-version: "1.26.11"
       coverage-threshold: ${{ matrix.coverage-threshold }}
       coverage-component: ${{ matrix.coverage-component }}
       coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
@@ -922,27 +922,27 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # Go 1.27.3 contains the upstream fix for golang/go#75804.  Pin the
+          # Go 1.27.4 contains the upstream fix for golang/go#75804.  Pin the
           # patched toolchain so the bounded fuzz smoke cannot report a false
           # context-deadline failure during normal deadline shutdown.
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache-dependency-path: services/ws-hub/go.sum
 
       - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory. Go 1.27.3 contains
+          # Serialize fuzz workers to bound runner memory. Go 1.27.4 contains
           # the upstream fix for golang/go#75804, so the full bounded smoke
           # budget is retained without masking or ignoring failures.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
+          bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
+          bash ../../scripts/ci/run-go-fuzz.sh ./pkg/hub FuzzParseResumeToken -fuzztime=20s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: fuzz-crash-corpus
-          path: services/ws-hub/testdata/fuzz/
+          path: services/ws-hub/pkg/hub/testdata/fuzz/
           retention-days: 30
 
   # ADR-022: required Go integration tests against real testcontainers-go
@@ -953,7 +953,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   go-integration-file-processor:
     name: Go Integration Tests (file-processor)
@@ -961,7 +961,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   go-integration-gateway:
     name: Go Integration Tests (gateway)
@@ -969,7 +969,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.10"
+      go-version: "1.26.11"
 
   frontend-tests:
     name: Frontend Tests
@@ -2373,6 +2373,58 @@ jobs:
           fi
           exit "$receipt_status"
 
+  # Keep the supplemental proof off the existing Contract Tests runner budget.
+  # Its 5-minute job covers setup plus the unchanged 2-minute execution step.
+  # Contract Tests retains default success() dependency gating; CI Success
+  # already rejects a skipped/cancelled/failed Contract Tests result.
+  aud346-diagnostic-coverage:
+    name: AUD-346 Diagnostic Coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Verify AUD-346 diagnostic helper coverage
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          coverage_root="$(mktemp -d "$RUNNER_TEMP/aud346-coverage.XXXXXX")"
+          export COVERAGE_FILE="$coverage_root/.coverage"
+          export PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+          uv run --frozen --no-sync python -m coverage run --branch \
+            --source=scripts.chaos.aud346_failure_diagnostics,scripts.quality.verify_aud346_diagnostic_coverage \
+            -m pytest --noconftest -o addopts='' -p no:cacheprovider -p pytest_asyncio.plugin \
+            --basetemp="$coverage_root/pytest" \
+            tests/test_aud346_failure_diagnostics.py tests/test_aud346_diagnostic_coverage_gate.py \
+            -k 'not configured_gate' -q
+          uv run --frozen --no-sync python -m coverage json --fail-under=100 -o "$coverage_root/coverage.json"
+          uv run --frozen --no-sync python scripts/quality/verify_aud346_diagnostic_coverage.py "$coverage_root/coverage.json"
+          # Exercise the configured gate against isolated negative controls.
+          uv run --frozen --no-sync python -m pytest --noconftest -o addopts='' \
+            -p no:cacheprovider -p pytest_asyncio.plugin \
+            --basetemp="$coverage_root/negative-pytest" \
+            tests/test_aud346_diagnostic_coverage_gate.py::test_configured_gate_negatives -q
+
   # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
   # Runs lightweight Python consumer contract tests (no Go/FFI needed).
   # The full Go provider verification continues in contract-tests.yml.
@@ -2380,6 +2432,8 @@ jobs:
     name: Contract Tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
+    needs: [aud346-diagnostic-coverage]
 
     steps:
       - name: Checkout
@@ -4164,7 +4218,7 @@ jobs:
             --job "$GITHUB_JOB" \
             --artifact go-shared-coverage-aggregate \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            --tool-version go=1.26.10 \
+            --tool-version go=1.26.11 \
             --tool-version quality-provenance=2.0.0 \
             --report "go-shared|go-coverprofile|artifacts/coverage/go/shared/coverage.out|artifacts/coverage/go/shared/coverage.out"
 

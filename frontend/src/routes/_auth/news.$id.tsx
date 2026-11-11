@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { lazy, Suspense } from "react"
+import { Suspense } from "react"
 
 import { newsDetailQueryOptions } from "@/api/hooks/news"
 import { FeatureErrorBoundary } from "@/components/error"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
-const NewsDetail = lazy(() => import("@/pages/NewsDetail"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import NewsDetail from "@/pages/NewsDetail"
 
 function NewsDetailRoute() {
   return (
@@ -18,6 +22,7 @@ function NewsDetailRoute() {
 }
 
 export const Route = createFileRoute("/_auth/news/$id")({
+  ssr: true,
   // Wave 129 SW5 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader pre-fetches the article body + metadata into the
   // per-request QueryClient so SSR HTML emits with NewsDetailHero +

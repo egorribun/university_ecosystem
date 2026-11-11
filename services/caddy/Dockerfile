@@ -14,15 +14,15 @@
 ARG CADDY_VERSION=2.11.7
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
+FROM golang:1.26.11-alpine3.24@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS builder
 
 ARG CADDY_VERSION
 
 # git serves the go command's direct VCS fallback for any module the proxy does
 # not serve; the locked graph itself is fetched through the module proxy.
 RUN apk add --no-cache \
-      ca-certificates=20260909-r0 \
-      git=2.54.0-r0
+      ca-certificates=20261020-r0 \
+      git=2.54.1-r0
 
 WORKDIR /src
 COPY go.mod go.sum main.go ./

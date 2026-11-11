@@ -152,13 +152,18 @@ const enableAllDayQuietHours = async (page: Page, expectedEmail: string): Promis
   const endTime = page.getByLabel("До", { exact: true })
   await expect(startTime).toBeEnabled()
   await expect(endTime).toBeEnabled()
+  // The fields save on blur. On desktop Chromium, Tab from a filled time input
+  // only moves to its minute segment, while mobile emulation ignores blur(); do
+  // both so each field is left exactly once on either project.
   const startSave = waitForProfileUpdate(page)
   await startTime.fill("00:00")
   await startTime.press("Tab")
+  await startTime.blur()
   expect((await startSave).status(), "the all-day quiet-hours start persists").toBe(200)
   const endSave = waitForProfileUpdate(page)
   await endTime.fill("00:00")
   await endTime.press("Tab")
+  await endTime.blur()
   expect((await endSave).status(), "the all-day quiet-hours end persists").toBe(200)
 
   const profileResponse = await page.request.get("/api/v1/users/me")

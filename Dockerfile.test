@@ -27,7 +27,7 @@ ENV RUSTUP_HOME="/usr/local/rustup" \
 
 # Python quality contracts execute real Go benchmarks in this full test runner.
 # Match the isolated benchmark compiler and prevent implicit toolchain downloads.
-COPY --from=docker.io/library/golang:1.26.10-bookworm@sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51 /usr/local/go /usr/local/go
+COPY --from=docker.io/library/golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 /usr/local/go /usr/local/go
 ENV GOTOOLCHAIN="local" \
     PATH="/usr/local/go/bin:$PATH"
 

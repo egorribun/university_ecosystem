@@ -385,7 +385,7 @@ class DocsSourceAlignmentTests(unittest.TestCase):
             (
                 "3.14.8-slim-bookworm",
                 "24.21.0-alpine",
-                "1.26.10-alpine3.24",
+                "1.26.11-alpine3.24",
             ),
         )
         for tag in exact_tags:
@@ -397,7 +397,7 @@ class DocsSourceAlignmentTests(unittest.TestCase):
         self.assertNotIn("закреплённом по digest `node:24-alpine`", deploy_ru)
         self.assertTrue(
             all(
-                "golang:1.26.10-alpine3.24@sha256:" in dockerfile
+                "golang:1.26.11-alpine3.24@sha256:" in dockerfile
                 for dockerfile in go_dockerfiles
             )
         )

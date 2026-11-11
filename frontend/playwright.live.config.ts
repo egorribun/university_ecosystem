@@ -24,7 +24,7 @@ export default defineConfig({
   failOnFlakyTests: Boolean(process.env.CI),
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  reporter: "list",
+  reporter: [["list"], ["./scripts/live-aud154-reporter.mjs"]],
   outputDir: resolveLiveE2EOutputDirectory(),
   use: {
     baseURL: BASE_URL,

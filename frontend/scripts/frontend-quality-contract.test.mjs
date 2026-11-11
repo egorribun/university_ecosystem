@@ -1138,14 +1138,26 @@ const auditNodeSuites = [
   "scripts/validate-css-token-closure.test.mjs",
 ]
 
+const auditCoverageStage = [
+  "node",
+  "--experimental-test-coverage",
+  "--test-coverage-include=scripts/aud375-evidence.mjs",
+  "--test-coverage-lines=100",
+  "--test-coverage-branches=100",
+  "--test-coverage-functions=100",
+  "--test",
+  "scripts/aud375-evidence.test.mjs",
+].join(" ")
+
 function assertAuditNodeSelection(scripts) {
   const command = scripts["test:wasm"]
   assert.equal(typeof command, "string")
   assert.doesNotMatch(command, /[\r\n\t]/u)
   const stages = command.split(" && ")
-  assert.equal(stages.length, 2, "audit checks need exactly two blocking stages")
-  assert.equal(stages[1], "npm run tokens:check")
-  const args = stages[0].split(" ")
+  assert.equal(stages.length, 3, "audit checks need exactly three blocking stages")
+  assert.equal(stages[0], auditCoverageStage)
+  assert.equal(stages[2], "npm run tokens:check")
+  const args = stages[1].split(" ")
   assert.deepEqual(args.slice(0, 2), ["node", "--test"])
   const suites = args.slice(2)
   for (const suite of suites) {
@@ -1165,13 +1177,14 @@ function assertAuditNodeSelection(scripts) {
   assert.equal(scripts["tokens:check"], "node ./scripts/validate-css-token-closure.mjs")
 }
 
-test("canonical Node gate executes the AUD-151 and AUD-308 checks", async () => {
+test("canonical Node gate executes strict AUD-375 coverage and the AUD-151 and AUD-308 checks", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
   assertAuditNodeSelection(packageJson.scripts)
 })
 
 test("audit selection rejects omissions, filters and nonblocking substitutes", () => {
-  const command = ["node", "--test", ...auditNodeSuites].join(" ") + " && npm run tokens:check"
+  const nodeStage = ["node", "--test", ...auditNodeSuites].join(" ")
+  const command = [auditCoverageStage, nodeStage, "npm run tokens:check"].join(" && ")
   const scripts = {
     "test:wasm": command,
     "tokens:check": "node ./scripts/validate-css-token-closure.mjs",
@@ -1179,6 +1192,52 @@ test("audit selection rejects omissions, filters and nonblocking substitutes", (
   assert.doesNotThrow(() => assertAuditNodeSelection(scripts))
 
   const commands = [
+    ...auditCoverageStage
+      .split(" ")
+      .map((argument, index, args) => [
+        "missing coverage argument " + argument,
+        [
+          args.filter((_, position) => position !== index).join(" "),
+          nodeStage,
+          "npm run tokens:check",
+        ].join(" && "),
+      ]),
+    ...["lines", "branches", "functions"].map((metric) => [
+      "lower coverage " + metric,
+      command.replace(`--test-coverage-${metric}=100`, `--test-coverage-${metric}=99`),
+    ]),
+    [
+      "wrong coverage source",
+      command.replace("include=scripts/aud375-evidence.mjs", "include=scripts/nonexistent.mjs"),
+    ],
+    [
+      "wrong coverage suite",
+      command.replace("scripts/aud375-evidence.test.mjs", auditNodeSuites[0]),
+    ],
+    [
+      "filtered coverage",
+      command.replace(
+        "--experimental-test-coverage",
+        "--experimental-test-coverage --test-name-pattern=none"
+      ),
+    ],
+    [
+      "extra coverage flag",
+      command.replace(
+        "--experimental-test-coverage",
+        "--experimental-test-coverage --test-coverage-exclude=**"
+      ),
+    ],
+    ["missing coverage stage", [nodeStage, "npm run tokens:check"].join(" && ")],
+    ["missing Node stage", [auditCoverageStage, "npm run tokens:check"].join(" && ")],
+    ["missing token stage", [auditCoverageStage, nodeStage].join(" && ")],
+    [
+      "reordered coverage stage",
+      [nodeStage, auditCoverageStage, "npm run tokens:check"].join(" && "),
+    ],
+    ["reordered token stage", [auditCoverageStage, "npm run tokens:check", nodeStage].join(" && ")],
+    ["duplicate coverage stage", auditCoverageStage + " && " + command],
+    ["unknown stage", command + " && echo done"],
     ...auditNodeSuites.map((suite) => ["missing " + suite, command.replace(" " + suite, "")]),
     ["duplicate", command.replace("node --test ", "node --test " + auditNodeSuites[0] + " ")],
     ["name filter", command.replace("node --test ", "node --test --test-name-pattern=none ")],
@@ -1188,7 +1247,8 @@ test("audit selection rejects omissions, filters and nonblocking substitutes", (
     ["semicolon", command.replace(" && ", "; ")],
     ["or", command.replace(" && ", " || ")],
     ["background", command.replace(" && ", " & ")],
-    ["masked Node failure", command.replace(" && ", " || true && ")],
+    ["masked coverage failure", command.replace(" && ", " || true && ")],
+    ["masked Node failure", command.replace(nodeStage + " && ", nodeStage + " || true && ")],
     ["masked final failure", command + " || true"],
     ["tokens sync", command.replace("npm run tokens:check", "npm run tokens:sync")],
   ]

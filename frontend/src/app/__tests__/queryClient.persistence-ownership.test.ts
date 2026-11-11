@@ -626,6 +626,47 @@ describe("profile persistence boundaries", () => {
     source.clear()
   })
 
+  it("purges legacy notification lists before restore while retaining neighboring offline queries", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const source = createQueryClient()
+    const notificationKey = ["notifications", "list"]
+    const allowedKeys = [
+      ["notifications"],
+      ["notifications", "preferences"],
+      ["notifications", "list", "other"],
+      ["other", "list"],
+    ]
+    source.setQueryData(notificationKey, { privateText: "legacy-notification-sentinel" })
+    for (const key of allowedKeys) source.setQueryData(key, "offline value")
+    const legacy = { timestamp: Date.now(), buster: "1.0.0", clientState: dehydrate(source) }
+    await set(accountKey("A"), legacy)
+    await set(accountKey("B"), legacy)
+
+    const restored = await idbPersister.restoreClient()
+    expect(restored).toBeDefined()
+    const client = createQueryClient()
+    hydrate(client, restored!.clientState)
+    expect(client.getQueryData(notificationKey)).toBeUndefined()
+    for (const key of allowedKeys) expect(client.getQueryData(key)).toBe("offline value")
+    for (const owner of ["A", "B"]) {
+      const saved = await get<PersistedClient>(accountKey(owner))
+      expect(saved).toBeDefined()
+      expect(JSON.stringify(saved)).not.toContain("legacy-notification-sentinel")
+      expect(saved!.clientState.queries.map((query) => query.queryKey)).toEqual(allowedKeys)
+    }
+
+    // A direct inclusive dehydration must not reintroduce the old payload either.
+    await idbPersister.persistClient(legacy)
+    expect(JSON.stringify(await get(accountKey("A")))).not.toContain("legacy-notification-sentinel")
+    expect(source.getQueryData(notificationKey)).toEqual({
+      privateText: "legacy-notification-sentinel",
+    })
+    source.clear()
+    client.clear()
+  })
+
   it("rejects malformed news list states before hydrate and preserves valid owner data", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")

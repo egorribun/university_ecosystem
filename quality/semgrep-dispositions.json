@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "c2d8959a488cb77e001ad3b75afb7bf99002a91a789c67a4fa4770ed02b77c2c"
+          "sha256": "312456fe9457dbe9e9a91e9e88444c9d3688925146c1dca65cec90def3721ed4"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -378,7 +378,7 @@
         },
         {
           "path": "tests/test_quality_workflow_contract.py",
-          "sha256": "50f85922de8fd9962bbef01af01fb6a87a18a004c4d6e8716d50b811fd0f9569"
+          "sha256": "b6880e4f270640dc5b1efca7058e488486f4a66d0650c56a74614602d9dc06fd"
         }
       ],
       "expires": "2027-01-10",
@@ -446,7 +446,7 @@
         },
         {
           "path": "frontend/scripts/server-csp.mjs",
-          "sha256": "c2156221068aa40bb14bbea7c80b4c8ee7c0e3b4f2650a34954263c4931e81c4"
+          "sha256": "58c5e451cf68e3a091140c57fa32e87f130c564216704a0f05f083052e626243"
         },
         {
           "path": "frontend/WASM_SOURCE_PROVENANCE.json",
@@ -478,7 +478,7 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "c637a646140b9825170067f05828c37784c05779623da7f6584dd5ad1defdd56"
+          "sha256": "fc9d71db429cfc88dc6db31ab99d73a15e3d0f4e55b4fe6ac5236848d17ecfc2"
         },
         {
           "path": "frontend/package-lock.json",

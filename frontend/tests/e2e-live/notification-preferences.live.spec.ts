@@ -510,9 +510,13 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     await expect(startTime).toHaveValue("22:00")
     await expect(endTime).toHaveValue("07:00")
 
+    // The fields save on blur. On desktop Chromium, Tab from a filled time input
+    // only moves to its minute segment, while mobile emulation ignores blur(); do
+    // both so each field is left exactly once on either project.
     const startSave = waitForProfileUpdate(page)
     await startTime.fill("21:35")
     await startTime.press("Tab")
+    await startTime.blur()
     const startResponse = await startSave
     reportAuthHttpStatus(
       diagnosticProject(testInfo.project.name),
@@ -525,6 +529,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     const endSave = waitForProfileUpdate(page)
     await endTime.fill("06:45")
     await endTime.press("Tab")
+    await endTime.blur()
     const endResponse = await endSave
     reportAuthHttpStatus(
       diagnosticProject(testInfo.project.name),
@@ -549,6 +554,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     const equalStartSave = waitForProfileUpdate(page)
     await startTime.fill("00:00")
     await startTime.press("Tab")
+    await startTime.blur()
     const equalStartResponse = await equalStartSave
     reportAuthHttpStatus(
       diagnosticProject(testInfo.project.name),
@@ -560,6 +566,7 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     const equalEndSave = waitForProfileUpdate(page)
     await endTime.fill("00:00")
     await endTime.press("Tab")
+    await endTime.blur()
     const equalEndResponse = await equalEndSave
     reportAuthHttpStatus(
       diagnosticProject(testInfo.project.name),

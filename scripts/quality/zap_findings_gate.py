@@ -140,6 +140,11 @@ def run_gate(report_path: Path, summary_path: Path | None) -> int:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
+    return evaluate_alerts(alerts, summary_path)
+
+
+def evaluate_alerts(alerts: list[tuple[int, str]], summary_path: Path | None) -> int:
+    """Apply the existing threshold to alerts already parsed from bounded input."""
     counts = Counter(risk for risk, _ in alerts)
     blocking_rules = sorted(
         {rule for risk, rule in alerts if risk >= BLOCKING_RISKCODE}, key=int

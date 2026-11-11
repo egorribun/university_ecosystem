@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_DISPOSITION_RECORDS = 509
+EXPECTED_DISPOSITION_RECORDS = 511
 
 
 def _baseline_identities() -> int:
@@ -82,6 +82,14 @@ def test_audit_summaries_state_the_current_policy_inventory() -> None:
         "docs/audits/AUDIT-2026-11-06-full-reassessment.md",
     ):
         assert inventory in _text(relative), relative
+    assert (
+        f"Inventory is **{_disposition_records()} dispositions / "
+        f"{_baseline_identities()} baseline identities / 27 Gitleaks fingerprints / "
+        "15 Semgrep rows**"
+    ) in _text("docs/audits/AUDIT-2026-10.md")
+    assert (
+        f"The current policy inventory is {_disposition_records()} dispositions."
+    ) in _text("docs/audits/AUDIT-2026-10-30-reconciliation.md")
 
 
 def test_count_census_detects_a_stale_claim() -> None:

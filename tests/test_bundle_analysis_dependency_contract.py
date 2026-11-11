@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 WORKFLOW = (
@@ -131,6 +132,7 @@ def test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_down
     install_index, _ = _step(analysis, "Install dependencies")
     download_index, download = _step(analysis, "Download production bundle")
     test_index, test = _step(analysis, "Test bundle analyzer")
+    ssr_index, ssr_test = _step(analysis, "Test SSR route boundaries")
     analyze_index, analyze = _step(analysis, "Analyze bundle size")
     upload_index, _ = _step(analysis, "Upload bundle report")
 
@@ -144,14 +146,45 @@ def test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_down
     assert "if" not in analysis
     assert "if" not in download
     assert not download.get("continue-on-error", False)
-    assert install_index < test_index < analyze_index < upload_index
+    assert install_index < test_index < ssr_index < analyze_index < upload_index
     assert download_index < test_index
     assert test["run"] == (
         "node --test scripts/check-bundle-budget.test.mjs "
         "scripts/maplibre-build-metadata.test.mjs"
     )
+    assert ssr_test["run"] == "node --test scripts/static-ssr-route-boundaries.test.mjs"
     assert analyze["run"] == "node scripts/check-bundle-budget.mjs"
-    for step in (test, analyze):
+    for step in (test, ssr_test, analyze):
         assert "if" not in step
         assert not step.get("continue-on-error", False)
     assert not analysis.get("continue-on-error", False)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing-step", "missing-command", "conditional", "nonblocking", "after-analysis"],
+)
+def test_bundle_analysis_contract_rejects_bypassed_ssr_tests(
+    defect: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = _workflow()
+    analysis = workflow["jobs"]["bundle-analysis"]
+    _, ssr_test = _step(analysis, "Test SSR route boundaries")
+    if defect == "missing-step":
+        analysis["steps"].remove(ssr_test)
+    elif defect == "missing-command":
+        ssr_test["run"] = "node --test"
+    elif defect == "conditional":
+        ssr_test["if"] = "false"
+    elif defect == "nonblocking":
+        ssr_test["continue-on-error"] = True
+    else:
+        analysis["steps"].remove(ssr_test)
+        analyze_index, _ = _step(analysis, "Analyze bundle size")
+        analysis["steps"].insert(analyze_index + 1, ssr_test)
+    mutated_workflow = tmp_path / "frontend-tests.yml"
+    mutated_workflow.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+    monkeypatch.setattr(f"{__name__}.WORKFLOW", mutated_workflow)
+
+    with pytest.raises(AssertionError):
+        test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_download()

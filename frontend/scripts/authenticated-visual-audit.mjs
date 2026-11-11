@@ -1401,6 +1401,101 @@ const VISUAL_CONSOLE_CLASSES = [
   "react_other",
   "other",
 ]
+// Closed numeric inventory from react-dom 19.3.1 client production errors.
+// This records identity, not semantics; never publish error messages or URL arguments.
+const VISUAL_REACT_ERROR_CODES = [
+  "31",
+  "33",
+  "60",
+  "61",
+  "62",
+  "90",
+  "91",
+  "92",
+  "93",
+  "130",
+  "137",
+  "150",
+  "151",
+  "153",
+  "156",
+  "160",
+  "161",
+  "162",
+  "163",
+  "166",
+  "177",
+  "185",
+  "188",
+  "189",
+  "190",
+  "191",
+  "231",
+  "268",
+  "284",
+  "299",
+  "300",
+  "301",
+  "306",
+  "308",
+  "310",
+  "311",
+  "314",
+  "317",
+  "318",
+  "321",
+  "327",
+  "329",
+  "331",
+  "340",
+  "341",
+  "345",
+  "349",
+  "387",
+  "407",
+  "409",
+  "418",
+  "419",
+  "422",
+  "423",
+  "424",
+  "435",
+  "438",
+  "440",
+  "443",
+  "444",
+  "446",
+  "451",
+  "452",
+  "453",
+  "454",
+  "459",
+  "460",
+  "461",
+  "462",
+  "467",
+  "468",
+  "474",
+  "476",
+  "479",
+  "482",
+  "483",
+  "485",
+  "519",
+  "520",
+  "525",
+  "527",
+  "528",
+  "529",
+  "542",
+  "544",
+  "557",
+  "558",
+  "559",
+  "566",
+  "600",
+  "other",
+]
 const VISUAL_REQUEST_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "other"]
 const VISUAL_REQUEST_ORIGINS = ["same_origin", "external", "invalid"]
 const VISUAL_REQUEST_ENDPOINTS = [
@@ -1534,6 +1629,7 @@ export function summarizeAuthenticatedVisualDiagnostics({
   const consoleTypeCounts = createDiagnosticCounts(VISUAL_CONSOLE_TYPES)
   const consoleClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
   const consoleErrorClassCounts = createDiagnosticCounts(VISUAL_CONSOLE_CLASSES)
+  const reactErrorCodeCounts = createDiagnosticCounts(VISUAL_REACT_ERROR_CODES)
   const cspErrorKindCounts = createDiagnosticCounts(VISUAL_CSP_ERROR_KINDS)
   const requestMethodCounts = createDiagnosticCounts(VISUAL_REQUEST_METHODS)
   const requestOriginCounts = createDiagnosticCounts(VISUAL_REQUEST_ORIGINS)
@@ -1554,6 +1650,13 @@ export function summarizeAuthenticatedVisualDiagnostics({
     capped = incrementDiagnosticCount(consoleClassCounts, messageClass) || capped
     if (type === "error" || type === "pageerror") {
       capped = incrementDiagnosticCount(consoleErrorClassCounts, messageClass) || capped
+      // Decoder arguments may contain words matched by an earlier class.
+      // Numeric identity is independent of that wording classification.
+      if (typeof message?.text === "string" && /minified react error #\d+/iu.test(message.text)) {
+        const code = /\bminified react error #([1-9]\d{0,2});/iu.exec(message.text)?.[1]
+        const key = VISUAL_REACT_ERROR_CODES.includes(code) ? code : "other"
+        capped = incrementDiagnosticCount(reactErrorCodeCounts, key) || capped
+      }
       if (messageClass === "content_security_policy") {
         capped =
           incrementDiagnosticCount(cspErrorKindCounts, classifyVisualCspError(message?.text)) ||
@@ -1585,6 +1688,7 @@ export function summarizeAuthenticatedVisualDiagnostics({
     consoleClassCounts,
     consoleErrorClassCounts,
     cspErrorKindCounts,
+    reactErrorCodeCounts,
     requestFailureCount: Math.min(requestFailures.length, DIAGNOSTIC_COUNT_LIMIT),
     requestMethodCounts,
     requestOriginCounts,
@@ -1626,6 +1730,7 @@ export function emitAuthenticatedVisualRuntimeDiagnostics(
       capped,
       consoleTypeCounts: counts(diagnostics.consoleTypeCounts, VISUAL_CONSOLE_TYPES),
       consoleErrorClassCounts: counts(diagnostics.consoleErrorClassCounts, VISUAL_CONSOLE_CLASSES),
+      reactErrorCodeCounts: counts(diagnostics.reactErrorCodeCounts, VISUAL_REACT_ERROR_CODES),
       cspErrorKindCounts: counts(diagnostics.cspErrorKindCounts, VISUAL_CSP_ERROR_KINDS),
       requestFailureCount: count(diagnostics.requestFailureCount),
       requestMethodCounts: counts(diagnostics.requestMethodCounts, VISUAL_REQUEST_METHODS),

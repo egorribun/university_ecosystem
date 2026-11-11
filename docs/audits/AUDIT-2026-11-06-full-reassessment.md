@@ -1,5 +1,169 @@
 # Full audit reassessment — 2026-11-09 UTC
 
+## Exact-source CI review — 2026-11-11 (preparation only)
+
+The formal audit total remains **494/512 (96.5%) accepted or resolved, 18 open**,
+**9S / 9P / 0U / 0N**. This review adds no acceptance. The previously held
+497/512 proposal was never published and is not the current formal count.
+Historical finding evidence and current hosted checks are separate decisions.
+
+### Current hosted provenance
+
+The reviewed source is `307cfb7a4ea2ca53543fc7a191282e26e9390668`,
+the tested PR merge is `3ca365f071438a5dba2c9b3e9d65dea06f3ba71c`,
+and the main/base source is `16bce8a44da0b8a88e5c4d78d83ff04a2ac0f253`.
+[CI - Matrix Expansion run 43018326180](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180)
+completed successfully. The reviewed 78 required context/app pairs contain
+**77 success and one neutral: Checkov, app 57789**. This is not 78 successful
+checks. The complete terminal inventory is **147 checks: 121 success,
+24 non-required skipped and two neutral**. No missing/pending/failed required
+pair is present in the reviewed snapshot. The active main ruleset 8335285,
+blocking CodeQL, hooks and quality floors are unchanged.
+
+Named successful jobs:
+
+- [CI Success (130529202005)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130529202005).
+- [Coverage & Quality Policy Gate (130528318807)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130528318807).
+- [SLSA Provenance Dry-Run (130523728850)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130523728850).
+- [Frontend Tests / Bundle Analysis (130519220454)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130519220454).
+- [Semgrep SAST (130517119477)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130517119477).
+- [live-realtime-visual / Full-stand realtime and visual E2E (130514932852)](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/job/130514932852).
+- [Owned live Core acceptance (pull_request) (130514929376)](https://github.com/egorribun/university_ecosystem/actions/runs/43018325754/job/130514929376).
+
+Core reports 52 passed and two skipped, plus NATS success; it is not the full
+nightly suite. Full-stand realtime reports 16 passed, zero skipped, and visual
+reports 24 passed. These focused selections do not establish the named AUD-321
+or AUD-375 acceptance cases. Artifact identities, upload digests and job/source
+metadata were checked. Core/realtime/visual/bundle ZIP payloads were not
+independently inspected; the AUD-154 ZIP below was inspected. Backend results
+report 31,389 passed and 441 skipped across 31,830 nodes, not 31,830 passes.
+
+- `core-live-receipt-3ca365f071438a5dba2c9b3e9d65dea06f3ba71c-43018325754-1`: artifact [13855230815](https://github.com/egorribun/university_ecosystem/actions/runs/43018325754/artifacts/13855230815), digest `sha256:0dc339fdae9390447e6d73fc78ee73813d1c3fd7e42bb70cd147255b2e3ff2f6`.
+- `bundle-report`: artifact [13854811259](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/artifacts/13854811259), digest `sha256:d946b944ffe698e3ecddfcc7caf74e48e9070ea67ac49d0f3e12fcace2530e94`.
+- `full-stand-visual-3ca365f071438a5dba2c9b3e9d65dea06f3ba71c-43018326180-1`: artifact [13854119993](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/artifacts/13854119993), digest `sha256:961b335b844153eb1e8381c9d6fdb2c21e49a4627a0d43fc83a92a863c13cc50`.
+- `full-stand-realtime-3ca365f071438a5dba2c9b3e9d65dea06f3ba71c-43018326180-1`: artifact [13854059837](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/artifacts/13854059837), digest `sha256:59f303e9791f86a267bf89bb6216bb57403bb118ef367c61c9c3ff7cd593e382`.
+
+A later documentation commit requires its own checks. This preparation is not
+merge, release, deployment or universal UI acceptance.
+
+### AUD-154 current named-case progress, not original-criterion acceptance
+
+[AUD-154 artifact 13855262219](https://github.com/egorribun/university_ecosystem/actions/runs/43018326180/artifacts/13855262219)
+was downloaded and its ZIP SHA-256 verified as
+`986f6341aeead3cd1dc1724772b308bfd6d64d5cba249e52a7314cc865b9506c`.
+Its JSON payload is bound to tested merge
+`3ca365f071438a5dba2c9b3e9d65dea06f3ba71c`, tree
+`a101f72d8961ffe25cece2f4dba562fce81fd9ae`, run 43018326180, attempt 1.
+All eight source/test binding blobs and SHA-256 values match the reviewed source.
+Desktop and mobile each passed the named case
+`a message is delivered, edited, and tombstoned in the other authenticated session`,
+with retry 0 and no skips. The source verifies the exact successful message POST
+response and the scoped Sent/Read indicator assertion chain.
+
+The receipt's `accepted=true` accepts only `current-live-delivery-case-only`.
+It explicitly records `original_criterion_satisfied=false`. Its historical title
+`shows delivery confirmation after message is sent` names the pre-repair case.
+The repaired final pre-deletion title was
+`shows sent confirmation after the server accepts the message`; neither
+historical case was executed by this current named-case receipt. AUD-154
+remains S; its original criterion and the formal 494/512 total are unchanged.
+This payload review does not imply inspection of other current CI ZIP payloads.
+
+### Historical candidates, not new closures
+
+The following historical portability review was completed at e3fe278e, before
+307cfb7a. Since then `scripts/live_stand.py`, the realtime workflow and frontend
+reporting/package/configuration surfaces changed for named-receipt retention.
+Historical blob equality and the 109 local seed/guard passes below remain dated
+e3fe278e evidence, not newly executed 307cfb7a runtime proof. The complete
+existing criterion rows below remain operative; none is narrowed
+by the current green result. Historical evidence dates remain historical, not
+new runtime executions on e3fe278e.
+
+- **AUD-313 remains P; stronger historical candidate.** Independently fetched
+  [Focused live spec evidence job 129844573103](https://github.com/egorribun/university_ecosystem/runs/129844573103)
+  logs bind the 2026-11-10 execution to tested merge
+  `69788e54164ebebb74f78626574cd19f5965f814`. Five actual receipt lines report
+  `readonly_mounts=3`, `record=removed`, `oneoff_containers=0` and `outcome=passed`.
+  Direct historical file reads verify unchanged launcher, administrator seeder,
+  authorization seeder and administrator tests through e3fe278e. The seed-target
+  change adds fail-closed query-option rejection; the focused workflow adds one
+  SSR spec without changing the receipt logic. The earlier local seed/guard modules
+  passed 109 tests at e3fe278e, including gate rejection and administrator preservation controls.
+  These are local tests, not new live historical-stand executions. The broader
+  application, seed-demo and fixture trees have changed; complete runtime
+  portability has not been established. Keep the mounted-seed/cleanup and
+  administrator-password requirements together rather than treating generic CI
+  as a replacement for their source-bound proof.
+- **AUD-322 remains P.** Independently fetched
+  [Load and chaos resilience job 129861480435](https://github.com/egorribun/university_ecosystem/actions/runs/42825460025/job/129861480435)
+  binds its 2026-11-10 execution to main source
+  `bcee023a81d775d96a01684f594bc0d7a0ebb2f7`. All five named resilience cases pass.
+  Downloaded artifact 13770480193 contains `chaos-resilience.xml`; its ZIP
+  SHA-256 is `b6555b7b2b46f8e85daf28a26e9b10d4599f60efb9709dcdb861b6ead8290742`,
+  matching the retained digest. Offline inspection and the current validator
+  confirm five named passes with no failures/errors/skips; the complete suite
+  is 11 passed, two separate S3 skips. Workflow, CRUD test, resilience test,
+  identity helper and validator match e3fe278e. However chat repository,
+  application/fixture code and Go build images changed. Full runtime portability
+  and exact-current configured execution are not established; complete prior
+  event-CRUD runtime proof has not been independently located. No closure.
+- **AUD-347 remains S.** Independently fetched
+  [Chaos Engineering (ToxiProxy) job 129255089864](https://github.com/egorribun/university_ecosystem/actions/runs/42629302615/job/129255089864)
+  binds its 2026-11-09 execution to main source
+  `248d4ec11b5ed0349e530870bb5638a4595c35be`. Downloaded artifact 13686929990
+  contains `chaos-s3.xml`; its ZIP SHA-256 is
+  `e177a25f18417104acc762e180b92d921dfc27008bdb027f73e108111febebe7`.
+  Offline inspection and the current validator confirm
+  `test_s3_no_such_bucket_error_is_propagated` and
+  `test_s3_outage_blocks_avatar_upload_and_preserves_state` exactly once each,
+  without skips/failures/errors. The full suite is eight passed and six other
+  skipped cases, not fourteen passes. Workflow, MinIO test and validator match
+  e3fe278e. Broader application and fixture code changed, including S3 fixture
+  readiness and health-cache isolation; complete runtime portability is not
+  established. The source-bound/main/nightly acceptance requirement remains
+  open despite strong historical proof of the original environment-variable fix.
+
+The five AUD-322 named cases retained for receipt matching are
+`test_nats_outage_outbox_durability`,
+`test_valkey_outage_idempotency_fail_open`,
+`test_valkey_redis_down_resilience`,
+`test_ws_hub_down_gateway_proxy_fallback` and
+`test_nats_down_outbox_queue_resilience`.
+
+### Other open boundaries
+
+- AUD-321 remains S. The historical main-source Chromium proof from run
+  42979401251/job 130391093912 includes both named cases and the retry timing
+  attachment, but it is not exact-current named-case execution or a complete
+  tracked-source preflight. Historical source is 16bce8a44da0, not 307cfb7a.
+- AUD-375 remains S. Generic visual passes are not the named service-worker
+  acceptance proof.
+- AUD-346 remains S. Historical injection/degradation/cleanup/recovery evidence
+  explicitly states `Data loss: NOT VERIFIED`. The complete original criterion
+  was not located; it is not silently reconstructed or narrowed.
+- AUD-378 remains S. A successful historical push or current PR SLSA dry-run
+  is not the final reviewed-source push artifact criterion.
+- AUD-483 and AUD-484 remain P. Denied alert endpoints were not retried;
+  current alert reconciliation remains unavailable.
+- The remaining complement and all original requirements are unchanged in the
+  [current 18-finding complement](AUDIT-2026-10-30-reconciliation.md#current-18-finding-reconciliation--2026-11-09).
+
+ZAP source preparation and the exact owner-approved image identity were
+published before the tests-only e3fe278e repair. An actual authorized-target
+scan, pinned-container runtime and GitHub SARIF ingestion acceptance have not
+been established. Green source checks are not completion of those runtime steps.
+
+The current inventory remains **511 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. Approved Go/ZAP identities,
+expiry values and historical authorized one-to-one rebinds are preserved.
+At 307cfb7a, two exact owner-authorized facade/package companion identities
+were rebound one-to-one; all other disposition records and all approval metadata
+remain unchanged. The inventory count did not increase.
+This review changes no policy, threshold, scanner disposition or baseline.
+
+---
+
 ## Current scoped supplement — 2026-11-09
 
 The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
@@ -324,11 +488,15 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **509 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The 509 total preserves all previous 506 records, including the eight
+current policy-file inventory is **511 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 511 total includes the previous 506 approved records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,
-and appends three owner-approved wasm-bindgen CLI checksum identities. All new rows expire 2027-01-10. These are inventory counts only and do
+plus three owner-approved wasm-bindgen CLI checksum identities, one Go Alpine
+image checksum identity and one ZAP image checksum identity. All five appended
+rows expire 2027-01-10. The latest published 510-record pre-ZAP state already
+includes the authorized helper and row13 one-to-one rebinds; ZAP appends only
+its exact image identity and preserves all 510 records unchanged. These are inventory counts only and do
 not establish passing scanner results or required checks.
 All 78 required context/app pairs, blocking CodeQL, hooks and quality floors
 remain in force.

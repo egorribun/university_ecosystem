@@ -290,6 +290,8 @@ describe("Route Loaders & validateSearch validation", () => {
   })
 
   describe("events.index.tsx Route", () => {
+    beforeEach(() => vi.stubEnv("SSR", false))
+    afterEach(() => vi.unstubAllEnvs())
     it("validates search query parameters correctly", () => {
       const validateSearch = EventsIndexRoute.options.validateSearch
       expect(validateSearch).toBeTypeOf("function")
@@ -327,7 +329,7 @@ describe("Route Loaders & validateSearch validation", () => {
       const { prefetchEventsListQuery } = await import("@/api/hooks/events")
       expect(prefetchEventsListQuery).toHaveBeenCalledWith(
         mockQueryClient,
-        expect.objectContaining({ limit: 10 })
+        expect.objectContaining({ limit: 10, is_active: true, order: "starts_at_desc" })
       )
     })
   })

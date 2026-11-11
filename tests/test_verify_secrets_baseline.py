@@ -1071,11 +1071,22 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert _RETIRED_DISPOSITION_PATHS == verifier._RETIRED_DISPOSITION_SOURCE_PATHS
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
-    validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 9)
+    validated = verifier.validate_false_positive_dispositions(
+        _nov11_historical_509_from_live_policy(policy), today=verifier.date(2026, 11, 9)
     )
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
+    live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=root, today=verifier.date(2026, 11, 11)
+    )
+    assert len(live_validated) == 511
+    assert all(
+        finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range is invalid"):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=root, today=verifier.date(2026, 11, 9)
+        )
 
 
 def _spire_chart_record_index(records: list[dict[str, Any]]) -> int:
@@ -8491,7 +8502,9 @@ def _assert_conditional_owner_source_bindings(
     source_lines: dict[str, list[bytes]] = {}
     source_bytes_by_path: dict[str, bytes] = {}
     for relative_path, expected_digest in source_sha256.items():
-        source_bytes = (repository_root / relative_path).read_bytes()
+        source_bytes = _aud154_historical_source_bytes(
+            relative_path, (repository_root / relative_path).read_bytes()
+        )
         assert hashlib.sha256(source_bytes).digest() == expected_digest, (
             f"conditional disposition source file SHA-256 changed: {relative_path}"
         )
@@ -10580,30 +10593,7 @@ def test_public_compose_sentinel_identity_matches_fixed_source_literal() -> None
 def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     root = Path(__file__).resolve().parents[1]
     path = "tests/test_docker_startup_contracts.py"
-    expected_digest = bytes(
-        (
-            246,
-            29,
-            95,
-            9,
-            239,
-            28,
-            164,
-            164,
-            87,
-            181,
-            67,
-            85,
-            104,
-            249,
-            102,
-            110,
-            149,
-            79,
-            94,
-            167,
-        )
-    )
+    expected_digest = _NOV11_GO_IMAGE_SCANNER_DIGEST
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_text(
             encoding="utf-8"
@@ -10620,12 +10610,12 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     record = records[0]
     assert record["category"] == "public_integrity_digest"
     assert record["owner"] == "egorribun"
-    assert record["reviewed_on"] == "2026-10-21"
+    assert record["reviewed_on"] == "2026-11-11"
     assert record["expires_on"] == "2027-01-10"
     assert record["approval_status"] == "approved"
 
     source = ast.parse((root / path).read_text(encoding="utf-8"))
-    prefix = "golang:1.26.10-alpine3.24@sha256:"
+    prefix = "golang:1.26.11-alpine3.24@sha256:"
     values = {
         node.value.removeprefix(prefix)
         for node in ast.walk(source)
@@ -10639,7 +10629,7 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     actual_digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
     assert actual_digest == expected_digest
     assert verifier.validate_false_positive_dispositions(
-        _disposition_document(record), today=verifier.date(2026, 10, 21)
+        _disposition_document(record), today=verifier.date(2026, 11, 11)
     ) == {
         verifier.FindingIdentity(
             path,
@@ -10725,7 +10715,9 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             for node in ast.walk(source)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
         }
-        assert expected_digests <= actual, path
+        assert {
+            _NOV11_HELPER_REBINDS[digest] for digest in expected_digests
+        } <= actual, path
 
     assert verifier.validate_false_positive_dispositions(
         {"schema_version": 1, "records": records},
@@ -17992,7 +17984,7 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     policy_bytes = policy_path.read_bytes()
     policy = json.loads(policy_bytes.decode("utf-8"))
     _nov9_assert_live_policy_bytes(policy_bytes)
-    return policy
+    return _nov11_historical_509_from_live_policy(policy)
 
 
 def _aud380_assert_live_policy_is_exact_505(
@@ -30904,7 +30896,9 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
     ledger_path = repository_root / "quality/semgrep-dispositions.json"
     companion_path = repository_root / "tests/test_quality_workflow_contract.py"
     policy_path = repository_root / "quality/security-false-positive-dispositions.json"
-    ledger_bytes = ledger_path.read_bytes()
+    ledger_bytes = _aud154_historical_source_bytes(
+        "quality/semgrep-dispositions.json", ledger_path.read_bytes()
+    )
     companion_bytes = companion_path.read_bytes()
     live_policy_bytes = policy_path.read_bytes()
     _nov9_assert_live_policy_bytes(live_policy_bytes)
@@ -30917,7 +30911,7 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
         hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
     )
     assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
-    assert len(policy_bytes) == 495840
+    assert len(policy_bytes) == 495838
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     )
@@ -31504,6 +31498,8 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
+    if len(policy.get("records", [])) == 511:
+        policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
     assert len(records) == 509, "live disposition row count changed"
@@ -31512,7 +31508,7 @@ def _nov9_historical_506_from_live_policy(
     )
     historical = {**policy, "records": copy.deepcopy(records[:506])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert len(historical_bytes) == 495840, "prior 506 policy bytes changed"
+    assert len(historical_bytes) == 495838, "prior 506 policy bytes changed"
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
@@ -31524,7 +31520,8 @@ def _nov9_historical_506_from_live_policy(
 
 
 def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
-    assert len(policy_bytes) == 498822, "live disposition bytes changed"
+    policy_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
+    assert len(policy_bytes) == 498820, "live disposition bytes changed"
     assert hashlib.sha256(policy_bytes).digest() == (_NOV9_WASM_CLI_POLICY_SHA256), (
         "live disposition policy digest changed"
     )
@@ -31532,7 +31529,7 @@ def _nov9_assert_live_policy_bytes(policy_bytes: bytes) -> None:
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     # Everything before the former closing list is byte-identical, including
     # the row13 companion and each old approval's evidence, dates, and owner.
-    assert policy_bytes[:495810] == historical_bytes[:495810]
+    assert policy_bytes[:495808] == historical_bytes[:495808]
     assert hashlib.sha256(policy_bytes[:494904]).digest() == (
         _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
     ), "prior 505 policy bytes changed"
@@ -32039,7 +32036,10 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     policy_bytes = (
         root / "quality/security-false-positive-dispositions.json"
     ).read_bytes()
-    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger_bytes = _aud154_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
     assert len(_NATS_PROCESS_COMPANION_REBINDS) == 2
     disposition = json.loads(ledger_bytes.decode("utf-8"))["dispositions"][6]
     assert disposition["path"] == "scripts/owned_nats_process.py"
@@ -32066,7 +32066,9 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
         _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256
     )
 
-    policy = json.loads(policy_bytes.decode("utf-8"))
+    policy = _nov11_historical_509_from_live_policy(
+        json.loads(policy_bytes.decode("utf-8"))
+    )
     restored = copy.deepcopy(policy)
     changed = []
     for index, record in enumerate(restored["records"]):
@@ -32090,29 +32092,29 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     ), "anything besides the two companion identities changed"
 
 
-# Exact existing row13 companion rebind for group-list tenant receipt coverage.
+# Exact existing row13 companion rebind for private Pact Go build isolation.
 # Preserve all 509 approvals, including the three WASM suffix identities.
 _AUD428_ROW13_COMPANION_SHA256 = bytes.fromhex(
-    "50 f8 59 22 de 8f d9 96 2b be f0 1a f0 1f b6 a8 7a 18 a0 04 c4 d6 e8 71 6d 50 b8 11 fd 0f 95 69"
+    "b6 88 0e 4f 27 06 40 dc 5b 1e fc a7 05 8e 48 84 86 f4 a6 6d 06 50 c5 6a 74 61 46 02 d9 dc 06 fd"
 )
 _AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = bytes.fromhex(
-    "ea 7b 99 95 17 3f 0a 1d e8 42 ba 0f 29 9b f6 80 c7 c9 56 9f f3 c9 f5 da 07 d5 dc 3d 8b c7 b4 6e"
+    "81 2c 1d cb ed 8a c6 3b 4c df 66 86 51 5a 45 ab 57 d2 57 88 f9 25 4b 20 57 de 82 5b cd d4 44 36"
 )
 _AUD428_ROW13_ACTIVE_POLICY_SHA256 = bytes.fromhex(
-    "31 19 01 94 86 bc 49 58 14 50 6b de 5f 01 14 3a ae cf d8 bb d0 e5 37 54 f0 b4 02 f6 70 3d b4 a3"
+    "2f 45 11 e6 61 01 0c 99 35 f9 71 91 57 fe 8c 28 6f 2f 8f ea 98 11 70 f0 a5 8d 07 51 07 fe db f5"
 )
 _AUD428_ROW13_LINE_SHA256 = bytes.fromhex(
-    "06 36 53 51 61 3b 5d 4f 1f b0 4e 5a ba 47 a9 38 4e ea d2 b6 6a 69 e6 cb 06 c5 e1 84 4c 0e 3f 09"
+    "8e d1 2b 2e ef 00 93 b4 67 ee b2 64 c4 5d 1b c5 98 60 5c db 2a 99 84 31 69 64 a0 95 fa 6d 8b be"
 )
 _AUD428_ROW13_CONTEXT_SHA256 = bytes.fromhex(
-    "e1 7e 57 80 51 64 9c 1d fb 10 07 02 45 27 4d 1a 2a a5 98 1c 1a 17 9c 5a 52 21 a6 04 40 5a 69 ea"
+    "04 f3 47 28 cf f0 40 28 7e 6f 4d 16 d9 5b 96 7e 6e 0a 14 34 5f 4b 40 d2 f0 52 a4 d2 a5 9b bf 37"
 )
 _AUD428_ROW13_APPROVED_RECORDSET_SHA256 = bytes.fromhex(
-    "b2 71 1a 01 41 ae bb ae 5d d3 ed 83 05 a6 9f 6e 0d a0 e2 ac 5f 56 94 bd 8e f4 a0 59 3a 7a 40 51"
+    "e1 65 93 75 ac 64 94 92 e0 c2 ae 6f 47 f9 f6 24 a9 2d 3e eb cd 80 38 b7 6e 1a 1a 57 b4 64 d1 94"
 )
 _AUD428_ROW13_APPROVED_RECORD = copy.deepcopy(_AUD428_ROW13_APPROVED_RECORD)
 _AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"] = list(
-    bytes.fromhex("77 27 54 5e e8 71 51 7b ff 6a a2 83 54 d0 0a 7f b0 c7 e9 b1")
+    bytes.fromhex("b2 da 70 92 17 e3 b4 8d 27 24 95 62 ee 31 33 81 38 76 33 7e")
 )
 _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
@@ -32125,11 +32127,782 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
 
 
 _NOV9_WASM_CLI_POLICY_SHA256 = bytes.fromhex(
-    "95 4d dd 0d 5d 7a 23 bd a3 c7 cd 64 28 51 71 53 60 d8 57 24 4b 6c d1 db e5 ad 29 8e ea 00 23 48"
+    "8d fd d3 02 18 61 98 5c 5f 61 d1 74 77 72 15 49 01 f9 96 19 78 dc ec 7a 82 03 6c 91 fe fd 72 db"
 )
 _NATS_PROCESS_PRE_REBIND_POLICY_SHA256 = bytes.fromhex(
-    "a2 b9 47 57 e1 56 24 88 f6 c7 b3 33 fb 1d f5 65 25 02 81 f7 85 28 c0 31 b0 16 78 57 33 00 1d a6"
+    "76 ad 5b d3 3c 58 68 72 bc 8a 36 e5 03 ca 6b 24 3f 7c ca ab b3 45 b4 0e d7 fb 8b 03 fc 6b 12 2e"
 )
 _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
-    "14 d3 80 b2 5e 1c 0a 4f b7 42 78 98 35 cf 66 cf 4b f3 bf 73 7e 42 2f 1a 51 65 e6 7f 08 7f e9 54"
+    "2c 86 cd ea bb 47 2f 0d 03 57 db ad c3 dd 42 e9 e3 1b f6 45 9c 1a de 28 d9 a4 e9 25 ff 06 4f fe"
 )
+
+
+# Owner-approved 2026-11-11 Go image identity. The older contracts operate on
+# the exact 509-record prefix; the live document appends only Go and ZAP.
+_NOV11_GO_IMAGE_SCANNER_DIGEST = bytes.fromhex(
+    "c8 64 20 19 43 35 0a eb 96 c2 e1 67 52 e3 9a f0 6a bb 45 e7"
+)
+_NOV11_GO_IMAGE_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": (
+        "Official golang:1.26.11-alpine3.24 image manifest SHA-256, verified against "
+        "https://github.com/docker-library/repo-info/blob/"
+        "2d1d058f9dd4c2772834f3c0b3e81c4f599c7ba1/"
+        "repos/golang/remote/1.26.11-alpine3.24.md; exact source path "
+        "tests/test_docker_startup_contracts.py; owner approved this finite public "
+        "integrity identity on 2026-11-11; not credential material."
+    ),
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV11_GO_IMAGE_SCANNER_DIGEST),
+        "path": "tests/test_docker_startup_contracts.py",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-11",
+}
+
+
+def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    policy = _nov11_restore_helper_identities(policy)
+    records = policy.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    assert len(records) == 511, "live disposition row count changed"
+    assert records[509:] == [
+        _NOV11_GO_IMAGE_APPROVED_RECORD,
+        _NOV11_ZAP_IMAGE_APPROVED_RECORD,
+    ], "live disposition approved Go and ZAP suffix changed"
+    historical = {**policy, "records": copy.deepcopy(records[:509])}
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    assert hashlib.sha256(historical_bytes).digest() == _NOV9_WASM_CLI_POLICY_SHA256, (
+        "live disposition prior 509 records or header changed"
+    )
+    return historical
+
+
+def _nov11_historical_509_policy_bytes(policy_bytes: bytes) -> bytes:
+    policy = json.loads(policy_bytes)
+    assert policy_bytes == _nov9_historical_506_policy_bytes(policy), (
+        "live disposition noncanonical bytes changed"
+    )
+    historical = _nov11_historical_509_from_live_policy(policy)
+    historical_bytes = _nov9_historical_506_policy_bytes(historical)
+    restored_bytes = _nov9_historical_506_policy_bytes(
+        _nov11_restore_helper_identities(policy)
+    )
+    assert restored_bytes[:498790] == historical_bytes[:498790], (
+        "live disposition prior 509 byte prefix changed"
+    )
+    return historical_bytes
+
+
+def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy_bytes = (
+        root / "quality/security-false-positive-dispositions.json"
+    ).read_bytes()
+    historical_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
+    assert len(json.loads(historical_bytes)["records"]) == 509
+    accepted = verifier.validate_false_positive_dispositions(
+        json.loads(policy_bytes), today=verifier.date(2026, 11, 11)
+    )
+    assert len(accepted) == 511
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "extra", "old_identity", "old_expiry", "header", "new_metadata"],
+)
+def test_nov11_go_image_projection_refuses_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    if mutation == "missing":
+        policy["records"].pop()
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    elif mutation == "old_identity":
+        policy["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "old_expiry":
+        policy["records"][0]["expires_on"] = "2027-01-11"
+    elif mutation == "header":
+        policy["schema_version"] = 2
+    else:
+        policy["records"][-1]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov11_go_image_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV11_GO_IMAGE_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            "tests/test_docker_startup_contracts.py",
+            "Hex High Entropy String",
+            _NOV11_GO_IMAGE_SCANNER_DIGEST.hex(),
+            1,
+        )
+    }
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(document, today=today)
+            == expected
+        )
+    for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)
+
+
+@pytest.mark.parametrize("mutation", ["exact", "path", "digest", "type"])
+def test_nov11_go_image_trusted_scan_refuses_unmatched_findings(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    trusted_sha = _commit_dispositions(repository, [_NOV11_GO_IMAGE_APPROVED_RECORD])
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts" / "verify_secrets_baseline.py")
+    )
+    path = "tests/test_docker_startup_contracts.py"
+    digest = _NOV11_GO_IMAGE_SCANNER_DIGEST.hex()
+    finding_type = "Hex High Entropy String"
+    if mutation == "path":
+        path = f"unapproved/{path}"
+    elif mutation == "digest":
+        digest = "0" * 40
+    elif mutation == "type":
+        finding_type = "Secret Keyword"
+    baseline_path = _write(tmp_path / "baseline.json", _document())
+    current_path = _write(
+        tmp_path / "current.json", _document((path, finding_type, digest, 999))
+    )
+    result = verifier.main(
+        [
+            str(baseline_path),
+            str(current_path),
+            "--trusted-base-source-sha",
+            trusted_sha,
+        ]
+    )
+    output = capsys.readouterr()
+    assert result == (0 if mutation == "exact" else 1)
+    if mutation == "exact":
+        assert "1 exact false-positive finding(s)" in output.out
+    else:
+        assert "new finding" in output.err
+
+
+# Exact owner-authorized 1:1 provenance rebind; no new scanner approvals.
+_NOV11_HELPER_REBINDS = {
+    bytes.fromhex(
+        "bd 96 23 45 d8 3f 8a e2 62 8a 44 4a 55 19 96 bf 60 bc 0c f4"
+    ): bytes.fromhex("d1 57 6c bf 10 53 44 4c fd 3d b4 a2 06 bf 42 de 1f c5 5f e6"),
+    bytes.fromhex(
+        "dd 0f ba 1b b2 74 86 6f 7a a4 d4 e6 fa 2a 59 a1 c0 17 a3 2f"
+    ): bytes.fromhex("fd 04 92 54 22 9e 1b 63 bd 5c c4 d0 5d 58 a6 8c cc c3 1f 00"),
+    bytes.fromhex(
+        "64 dc 49 53 d6 87 19 db 9b 43 88 34 35 2f c9 a6 bc f7 a2 40"
+    ): bytes.fromhex("9a d3 26 dd 83 03 59 85 b3 02 fd 7e 96 8b 8d 06 5a c2 ca 74"),
+    bytes.fromhex(
+        "aa d3 f1 02 d9 8c a2 30 c0 ed 9e bf 50 41 4f b3 56 a1 42 70"
+    ): bytes.fromhex("b2 38 76 16 97 f1 2f 10 96 f1 ec 38 a3 59 cd f4 a8 45 e7 e8"),
+    bytes.fromhex(
+        "60 74 a1 24 44 38 78 1b 15 ea 8a 25 00 68 93 a6 a6 53 cd b8"
+    ): bytes.fromhex("71 d7 aa 50 9d e8 0f bf 22 0f 7b 6f e9 be 4e 0a b4 17 26 41"),
+}
+_NOV11_HELPER_PATHS = (
+    "scripts/quality/benchmark_capture_activation.py",
+    "tests/test_benchmark_capture_activation_workflow.py",
+)
+_NOV11_HELPER_REBIND_EVIDENCE = (
+    " Existing identity rebound 1:1 under owner standing authorization on "
+    "2026-11-11; original approval and expiry unchanged."
+)
+
+
+def _nov11_restore_helper_identities(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _aud154_historical_policy(policy)
+    records = restored.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    expected = {
+        (path, new): old
+        for path in _NOV11_HELPER_PATHS
+        for old, new in _NOV11_HELPER_REBINDS.items()
+    }
+    seen = set()
+    for record in records:
+        identity = record["identity"]
+        key = (identity["path"], bytes(identity["hashed_secret_bytes"]))
+        if key not in expected:
+            continue
+        assert key not in seen, "live disposition duplicate helper rebind"
+        assert identity["type"] == "Hex High Entropy String"
+        assert record["evidence"].endswith(_NOV11_HELPER_REBIND_EVIDENCE)
+        assert record["evidence"].count("checkpoint 0fe40908") == 1
+        seen.add(key)
+        identity["hashed_secret_bytes"] = list(expected[key])
+        record["evidence"] = (
+            record["evidence"]
+            .removesuffix(_NOV11_HELPER_REBIND_EVIDENCE)
+            .replace("checkpoint 0fe40908", "checkpoint ca6d7117")
+        )
+    assert seen == set(expected), "live disposition helper rebind set changed"
+    return restored
+
+
+@pytest.mark.parametrize("index", range(10))
+@pytest.mark.parametrize(
+    "mutation", ["digest", "path", "type", "expiry", "evidence", "old_checkpoint"]
+)
+def test_nov11_helper_rebind_rejects_scope_drift(index: int, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    records = [
+        row
+        for row in policy["records"]
+        if row["identity"]["path"] in _NOV11_HELPER_PATHS
+        and bytes(row["identity"]["hashed_secret_bytes"])
+        in _NOV11_HELPER_REBINDS.values()
+    ]
+    assert len(records) == 10
+    record = records[index]
+    if mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "path":
+        record["identity"]["path"] = "scripts/quality/other.py"
+    elif mutation == "type":
+        record["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "old_checkpoint":
+        record["evidence"] = record["evidence"].replace(
+            "checkpoint 0fe40908", "checkpoint ca6d7117"
+        )
+    else:
+        record["evidence"] += " changed"
+    with pytest.raises(AssertionError):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+# Exact approved ZAP suffix; preserve all 510 published records and expiries.
+_NOV11_ZAP_IMAGE_SCANNER_DIGEST = bytes.fromhex(
+    "0e 68 5f 46 61 f2 21 37 b3 fe 6d cb ff 55 1c 62 17 a4 28 e2"
+)
+_NOV11_ZAP_IMAGE_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": "Official ghcr.io/zaproxy/zaproxy image SHA-256 pin in .zap/image.txt:1; owner approved this exact public integrity identity on 2026-11-11; not credential material. The image digest does not freeze dynamically updated ZAP add-ons.",
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV11_ZAP_IMAGE_SCANNER_DIGEST),
+        "path": ".zap/image.txt",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-11",
+}
+_NOV11_PRE_ZAP_POLICY_SHA256 = bytes.fromhex(
+    "cc 56 ef 06 33 3c db 43 f1 2f 6a 29 f3 53 9f da 0b 53 07 c9 11 ea 34 ed dc 56 df c6 b1 d5 51 f0"
+)
+
+
+def test_nov11_zap_image_preserves_published_policy_and_source_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    _nov11_historical_509_from_live_policy(policy)
+    policy = _aud154_historical_policy(policy)
+    previous = {**policy, "records": policy["records"][:510]}
+    assert (
+        hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
+        == _NOV11_PRE_ZAP_POLICY_SHA256
+    )
+    image = (root / ".zap/image.txt").read_text()
+    assert image.count("\n") == 1 and image.endswith("\n")
+    prefix = "ghcr.io/zaproxy/zaproxy@sha256:"
+    assert image.startswith(prefix)
+    digest = image.removeprefix(prefix).strip()
+    assert len(digest) == 64
+    assert (
+        hashlib.sha1(digest.encode("ascii"), usedforsecurity=False).digest()
+        == _NOV11_ZAP_IMAGE_SCANNER_DIGEST
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "digest",
+        "type",
+        "category",
+        "owner",
+        "review",
+        "expiry",
+        "evidence",
+        "go_record",
+    ],
+)
+def test_nov11_zap_image_projection_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    record = policy["records"][-1]
+    if mutation == "path":
+        record["identity"]["path"] = ".zap/other.txt"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "synthetic_test_fixture"
+    elif mutation == "owner":
+        record["owner"] = "someone_else"
+    elif mutation == "review":
+        record["reviewed_on"] = "2026-11-10"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        record["evidence"] += " changed"
+    else:
+        policy["records"][509]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov11_zap_image_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV11_ZAP_IMAGE_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            ".zap/image.txt",
+            "Hex High Entropy String",
+            _NOV11_ZAP_IMAGE_SCANNER_DIGEST.hex(),
+            1,
+        )
+    }
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(document, today=today)
+            == expected
+        )
+    for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)
+
+
+# AUD154 changes source provenance only. Pin current bytes before projecting
+# the exact immutable predecessor for the older audit contracts.
+_AUD154_SOURCE_PINS = {
+    "scripts/live_stand.py": (
+        bytes.fromhex(
+            "c2 d8 95 9a 48 8c b7 7e 00 1a d3 b7 5a fb 7b f9 90 02 a9 1a 78 9c 67 a4 fa 47 70 ed 02 b7 7c 2c"
+        ),
+        bytes.fromhex(
+            "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+        ),
+    ),
+    "frontend/package.json": (
+        bytes.fromhex(
+            "c6 37 a6 46 14 0b 98 25 17 00 67 f0 58 28 c3 77 84 c0 57 79 62 3d a7 f6 58 4d d5 ad 1d ef dd 56"
+        ),
+        bytes.fromhex(
+            "4c 4b 8f e5 a0 b2 ac aa 2d ad 16 7f 4e 00 4c 34 cf df 10 78 c8 1b 4d 28 dd 0b 50 fe 06 73 1d f2"
+        ),
+    ),
+    "quality/semgrep-dispositions.json": (
+        bytes.fromhex(
+            "81 2c 1d cb ed 8a c6 3b 4c df 66 86 51 5a 45 ab 57 d2 57 88 f9 25 4b 20 57 de 82 5b cd d4 44 36"
+        ),
+        bytes.fromhex(
+            "e3 f4 4e 5d 5a 24 5a f4 32 d5 d2 f7 8e 72 57 b0 ba 7e f8 e3 6b 46 fa 3c ff ce 26 09 de 7c 12 c0"
+        ),
+    ),
+}
+_AUD154_COMPANION_REBINDS = {
+    "scripts/live_stand.py": (
+        bytes.fromhex(
+            "c2 d8 95 9a 48 8c b7 7e 00 1a d3 b7 5a fb 7b f9 90 02 a9 1a 78 9c 67 a4 fa 47 70 ed 02 b7 7c 2c"
+        ),
+        bytes.fromhex(
+            "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+        ),
+    ),
+    "frontend/package.json": (
+        bytes.fromhex(
+            "c6 37 a6 46 14 0b 98 25 17 00 67 f0 58 28 c3 77 84 c0 57 79 62 3d a7 f6 58 4d d5 ad 1d ef dd 56"
+        ),
+        bytes.fromhex(
+            "4c 4b 8f e5 a0 b2 ac aa 2d ad 16 7f 4e 00 4c 34 cf df 10 78 c8 1b 4d 28 dd 0b 50 fe 06 73 1d f2"
+        ),
+    ),
+}
+_AUD154_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "73 49 d8 d7 01 17 ef b4 e5 24 c2 30 df 62 21 b2 ae 41 10 b6 c7 09 81 bb 99 a3 78 76 09 df b6 0a"
+)
+
+
+_AUD154_SOURCE_INSERTIONS = {
+    "frontend/package.json": (b" scripts/live-aud154-reporter.test.mjs",),
+    "scripts/live_stand.py": (
+        b"from scripts.aud154_receipt import project_case_records\n",
+        b"    delivery_cases = project_case_records(stdout)\n",
+        b'    for record in delivery_cases:\n        print(\n            "live E2E AUD154 " + json.dumps(record, separators=(",", ":")), flush=True\n        )\n',
+    ),
+}
+
+
+def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _aud375_historical_source_bytes(path, actual)
+    if path not in _AUD154_SOURCE_PINS:
+        return actual
+    previous_sha, current_sha = _AUD154_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    if path == "quality/semgrep-dispositions.json":
+        historical = actual
+        for previous, current in _AUD154_COMPANION_REBINDS.values():
+            assert historical.count(current.hex().encode("ascii")) == 1
+            historical = historical.replace(
+                current.hex().encode("ascii"), previous.hex().encode("ascii"), 1
+            )
+    else:
+        historical = actual
+        for inserted in _AUD154_SOURCE_INSERTIONS[path]:
+            assert historical.count(inserted) == 1
+            historical = historical.replace(inserted, b"", 1)
+    assert hashlib.sha256(historical).digest() == previous_sha
+    return historical
+
+
+def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _aud375_historical_policy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    replacements = {
+        hashlib.sha1(
+            current.hex().encode("ascii"), usedforsecurity=False
+        ).digest(): hashlib.sha1(
+            previous.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+        for previous, current in _AUD154_COMPANION_REBINDS.values()
+    }
+    changed = []
+    for index, record in enumerate(restored["records"]):
+        identity = record["identity"]
+        digest = bytes(identity["hashed_secret_bytes"])
+        if (
+            identity["path"] != "quality/semgrep-dispositions.json"
+            or digest not in replacements
+        ):
+            continue
+        assert identity["type"] == "Hex High Entropy String"
+        assert record["category"] == "public_integrity_digest"
+        identity["hashed_secret_bytes"] = list(replacements[digest])
+        changed.append(index)
+    assert changed == [451, 495], "live disposition AUD154 rebind set changed"
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _AUD154_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    for index, path in ((6, "scripts/live_stand.py"), (14, "frontend/package.json")):
+        companions = ledger["dispositions"][index]["companions"]
+        bound = [item["sha256"] for item in companions if item["path"] == path]
+        assert bound == [hashlib.sha256((root / path).read_bytes()).hexdigest()]
+    for path in _AUD154_SOURCE_PINS:
+        _aud154_historical_source_bytes(path, (root / path).read_bytes())
+    _aud154_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+    )
+
+
+@pytest.mark.parametrize("path", tuple(_AUD154_SOURCE_PINS))
+def test_aud154_source_projection_rejects_changes(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _aud154_historical_source_bytes(path, (root / path).read_bytes() + b"\n")
+
+
+@pytest.mark.parametrize("index", [451, 495])
+@pytest.mark.parametrize(
+    "field", ["digest", "path", "type", "category", "expiry", "evidence"]
+)
+def test_aud154_policy_projection_rejects_scope_drift(index: int, field: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][index]
+    if field == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif field in {"path", "type"}:
+        row["identity"][field] += " changed"
+    else:
+        key = "expires_on" if field == "expiry" else field
+        row[key] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
+
+
+# AUD375 adds only the exact PR-wide coverage and test prefix. Keep AUD154 pins
+# immutable and verify this one-to-one transition before its historical inverse.
+_AUD375_PACKAGE_SHA256 = bytes.fromhex(
+    "fc 9d 71 db 42 9c fc 88 dc 6d b3 1a b9 9d 73 a1 5e 3d 0f 4e 55 b4 fe 6a c5 23 68 48 d1 7e cf c2"
+)
+_AUD375_LEDGER_SHA256 = bytes.fromhex(
+    "d2 a4 ea c7 1c c9 0a 94 cc de 27 35 cf 7e c1 24 1a 90 8c 81 bf 48 3c b1 3a 9a 9e 0a 61 66 fb 10"
+)
+_AUD375_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "88 d8 85 cc 45 07 1c 93 bd ab 2a f3 80 f1 0b 90 c1 b3 c0 2f 88 59 25 ec 9d ca bd 77 b3 a6 a3 4a"
+)
+_AUD375_PACKAGE_PREFIX = (
+    b"node --experimental-test-coverage"
+    b" --test-coverage-include=scripts/aud375-evidence.mjs"
+    b" --test-coverage-lines=100 --test-coverage-branches=100"
+    b" --test-coverage-functions=100 --test scripts/aud375-evidence.test.mjs"
+    b" && node --test scripts/aud375-coverage.contract.test.mjs"
+    b" scripts/playwright-report-preservation.test.mjs"
+)
+
+
+def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov12_csp_historical_source_bytes(path, actual)
+    if path not in {"frontend/package.json", "quality/semgrep-dispositions.json"}:
+        return actual
+    current_sha = (
+        _AUD375_PACKAGE_SHA256
+        if path == "frontend/package.json"
+        else _AUD375_LEDGER_SHA256
+    )
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    if path == "frontend/package.json":
+        anchor = b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX
+        assert actual.count(anchor) == 1
+        historical = actual.replace(anchor, b'"test:wasm": "node --test', 1)
+    else:
+        current = _AUD375_PACKAGE_SHA256.hex().encode("ascii")
+        previous = _AUD154_SOURCE_PINS["frontend/package.json"][1]
+        assert actual.count(current) == 1
+        historical = actual.replace(current, previous.hex().encode("ascii"), 1)
+    assert hashlib.sha256(historical).digest() == _AUD154_SOURCE_PINS[path][1]
+    return historical
+
+
+def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _nov12_csp_historical_policy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    row = restored["records"][451]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _AUD375_PACKAGE_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    )
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _AUD154_SOURCE_PINS["frontend/package.json"][1].hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _AUD375_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_aud375_package_projection_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/package.json").read_bytes()
+    historical = _aud375_historical_source_bytes("frontend/package.json", actual)
+    assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
+    assert actual == historical.replace(
+        b'"test:wasm": "node --test',
+        b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX,
+        1,
+    )
+    assert (
+        hashlib.sha256(historical).digest()
+        == _AUD154_SOURCE_PINS["frontend/package.json"][1]
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "reordered", "unrelated"])
+def test_aud375_package_projection_rejects_command_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/package.json").read_bytes()
+    insertion = _AUD375_PACKAGE_PREFIX
+    if mutation == "missing":
+        actual = actual.replace(insertion, b"", 1)
+    elif mutation == "duplicate":
+        actual = actual.replace(insertion, insertion * 2, 1)
+    elif mutation == "reordered":
+        actual = actual.replace(insertion, b" ".join(reversed(insertion.split())), 1)
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _aud375_historical_source_bytes("frontend/package.json", actual)
+
+
+@pytest.mark.parametrize("index", [0, 451, 495, 510])
+@pytest.mark.parametrize(
+    "field", ["owner", "expires_on", "evidence", "approval_status", "reviewed_on"]
+)
+def test_aud375_policy_projection_rejects_metadata_drift(
+    index: int, field: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    policy["records"][index][field] += " changed"
+    with pytest.raises(AssertionError, match="approval metadata changed"):
+        _aud375_historical_policy(policy)
+
+
+# NOV12 adds only the owner-approved map tile origin to the Node CSP. The
+# SafeHtml Semgrep companion and its public digest identity are rebound
+# one-to-one; restore the exact predecessor before the AUD375 inverse.
+_NOV12_CSP_SOURCE_SHA256 = bytes.fromhex(
+    "58 c5 e4 51 cf 68 e3 a0 91 14 0c 57 fa 32 e8 7f 13 0c 56 42 16 70 4a 0f 05 f0 83 05 2e 62 62 43"
+)
+_NOV12_CSP_PREVIOUS_SOURCE_SHA256 = bytes.fromhex(
+    "c2 15 62 21 06 8a a4 0b b1 4b be a7 c8 0b 4c 8e e7 c0 e3 b4 f2 65 0a 34 95 42 63 c4 93 1e 81 c4"
+)
+_NOV12_LEDGER_SHA256 = bytes.fromhex(
+    "50 05 3a 0f 31 7b 2e ee 4d 71 54 53 76 2a cf f3 f4 cb 17 11 da ec e1 5f a2 96 5d 2d e2 58 2e cf"
+)
+_NOV12_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "f2 d9 52 c8 dd 89 3e 25 c9 4b 9c 43 1d d2 ff ac d1 b9 17 e9 cc 2b 93 1f 99 a9 ef 40 e3 55 d7 88"
+)
+_NOV12_CSP_INSERTION = b'  "https://tiles.openfreemap.org",\n'
+_NOV12_CSP_ROW = 443
+
+
+def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == "frontend/scripts/server-csp.mjs":
+        assert hashlib.sha256(actual).digest() == _NOV12_CSP_SOURCE_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        assert actual.count(_NOV12_CSP_INSERTION) == 1
+        historical = actual.replace(_NOV12_CSP_INSERTION, b"", 1)
+        assert hashlib.sha256(historical).digest() == _NOV12_CSP_PREVIOUS_SOURCE_SHA256
+        return historical
+    if path != "quality/semgrep-dispositions.json":
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV12_LEDGER_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _NOV12_CSP_SOURCE_SHA256.hex().encode("ascii")
+    assert actual.count(current) == 1
+    historical = actual.replace(
+        current, _NOV12_CSP_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"), 1
+    )
+    assert hashlib.sha256(historical).digest() == _AUD375_LEDGER_SHA256
+    return historical
+
+
+def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    row = restored["records"][_NOV12_CSP_ROW]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV12_CSP_SOURCE_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    )
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV12_CSP_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _NOV12_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    companions = ledger["dispositions"][14]["companions"]
+    bound = [
+        item["sha256"]
+        for item in companions
+        if item["path"] == "frontend/scripts/server-csp.mjs"
+    ]
+    source = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    assert bound == [hashlib.sha256(source).hexdigest()]
+    historical = _nov12_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    )
+    assert source == historical.replace(
+        b'  "https://fcmregistrations.googleapis.com",\n',
+        b'  "https://fcmregistrations.googleapis.com",\n' + _NOV12_CSP_INSERTION,
+        1,
+    )
+    _nov12_csp_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
+    _nov12_csp_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "unrelated"])
+def test_nov12_map_csp_projection_rejects_source_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    if mutation == "missing":
+        actual = actual.replace(_NOV12_CSP_INSERTION, b"", 1)
+    elif mutation == "duplicate":
+        actual = actual.replace(_NOV12_CSP_INSERTION, _NOV12_CSP_INSERTION * 2, 1)
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _nov12_csp_historical_source_bytes("frontend/scripts/server-csp.mjs", actual)
+
+
+@pytest.mark.parametrize("field", ["digest", "path", "type", "category", "evidence"])
+def test_nov12_map_csp_policy_projection_rejects_scope_drift(field: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_NOV12_CSP_ROW]
+    if field == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif field in {"path", "type"}:
+        row["identity"][field] += " changed"
+    else:
+        row[field] += " changed"
+    with pytest.raises(AssertionError):
+        _nov12_csp_historical_policy(policy)

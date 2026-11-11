@@ -1,26 +1,19 @@
 import { fireEvent, render, waitFor } from "@testing-library/react"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 // Motion captures requestAnimationFrame when its frame batcher is evaluated.
+// Use jsdom's native frame scheduler, whose callbacks are cancelled when the
+// environment closes. In Vitest, window.setTimeout is a Node-owned timer.
 let Motion!: typeof import("framer-motion")
 let Spotlight!: typeof import("@/components/ui/Spotlight").Spotlight
 
 beforeAll(async () => {
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
-    window.setTimeout(() => callback(window.performance.now()), 16)
-  )
-  vi.stubGlobal("cancelAnimationFrame", (id: number) => window.clearTimeout(id))
-
   Motion = await import("framer-motion")
   ;({ Spotlight } = await import("@/components/ui/Spotlight"))
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-afterAll(() => {
-  vi.unstubAllGlobals()
 })
 
 describe("Spotlight with real Framer Motion", () => {
@@ -66,5 +59,26 @@ describe("Spotlight with real Framer Motion", () => {
     fireEvent.mouseMove(wrapper, { clientX: 101, clientY: 117 })
     expect(getBounds).toHaveBeenCalledTimes(2)
     await waitFor(() => expectGradientAt(90, 100))
+  })
+
+  it("cancels pending gradient writes when the wrapper unmounts", async () => {
+    const { container, unmount } = render(
+      <Motion.LazyMotion features={Motion.domAnimation}>
+        <Spotlight className="spotlight-unmount-regression" />
+      </Motion.LazyMotion>
+    )
+    const wrapper = container.querySelector<HTMLDivElement>(".spotlight-unmount-regression")
+    const overlay = wrapper?.querySelector<HTMLDivElement>(".pointer-events-none")
+    if (!wrapper || !overlay) throw new Error("Spotlight was not rendered")
+    const backgroundWrite = vi.spyOn(overlay.style, "background", "set")
+
+    fireEvent.mouseMove(wrapper, { clientX: 41, clientY: 67 })
+    unmount()
+    // Let the shared Motion batch run, including any next-frame follow-up.
+    // Component work must be cancelled, even if the scheduler itself is awake.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+    expect(backgroundWrite).not.toHaveBeenCalled()
   })
 })

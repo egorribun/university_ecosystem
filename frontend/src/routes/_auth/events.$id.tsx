@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { lazy, Suspense } from "react"
+import { Suspense } from "react"
 
 import { eventDetailQueryOptions } from "@/api/hooks/events"
 import { FeatureErrorBoundary } from "@/components/error"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
-const EventDetail = lazy(() => import("@/pages/EventDetail"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import EventDetail from "@/pages/EventDetail"
 
 function EventDetailRoute() {
   return (
@@ -24,6 +28,7 @@ function EventDetailRoute() {
 }
 
 export const Route = createFileRoute("/_auth/events/$id")({
+  ssr: true,
   // Wave 129 SW2 — per-route SSR enabled. Inherits `_auth.tsx` ssr:true
   // (W128 SW2). Loader pre-fetches the event by id into per-request
   // QueryClient so the SSR HTML emits with hero + body + about content

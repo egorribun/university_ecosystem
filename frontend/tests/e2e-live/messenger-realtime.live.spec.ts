@@ -257,6 +257,161 @@ async function deleteOwnedForwardedLiveMessage(
 test.use({ trace: "off", screenshot: "off" })
 
 test.describe("live messenger delivery", () => {
+  test("shows sent confirmation after the server accepts the message", async ({
+    browser,
+    page,
+  }, testInfo) => {
+    const mobile = testInfo.project.name === "mobile"
+    const receiverContext = await browser.newContext({
+      ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
+      baseURL: LIVE_BASE_URL,
+      locale: "ru-RU",
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    })
+
+    let ownedMessage: CreatedLiveMessage | undefined
+    let ownedChatId: string | undefined
+    let ownedLog: Locator | undefined
+    try {
+      const receiverPage = await receiverContext.newPage()
+      const message = `live-enter-${crypto.randomUUID()}`
+
+      await loginAs(page, "student")
+      await loginAs(receiverPage, "teacher")
+      const studentResponse = await page.request.get("/api/v1/users/me")
+      expect(studentResponse.ok()).toBe(true)
+      const student = (await studentResponse.json()) as { id: string; role: string }
+      expect(student.role).toBe("student")
+
+      const teacherResponse = await receiverPage.request.get("/api/v1/users/me")
+      expect(teacherResponse.ok()).toBe(true)
+      const teacher = (await teacherResponse.json()) as {
+        id: string
+        full_name: string | null
+        role: string
+      }
+      expect(teacher.role).toBe("teacher")
+      expect(teacher.full_name).toBeTruthy()
+      expect(teacher.id).not.toBe(student.id)
+
+      await page.goto("/messenger")
+      await page.getByRole("button", { name: "Новый чат", exact: true }).click()
+      await page.getByRole("textbox", { name: "Поиск пользователей" }).fill(teacher.full_name!)
+      const teacherOption = page.getByRole("option").filter({ hasText: teacher.full_name! })
+      await expect(teacherOption).toHaveCount(1)
+      await teacherOption.click()
+      await expect(page).toHaveURL(/\/messenger\/[^/]+\/?$/)
+
+      const chatId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)
+      expect(chatId).toBeTruthy()
+      if (!chatId) throw new Error("New direct chat route did not contain a chat id")
+
+      ownedChatId = chatId
+
+      let receiverSocketCount = 0
+      let receiverRoomJoinCount = 0
+      const receiverMessages: ReceivedMessageFrame[] = []
+      receiverPage.on("websocket", (socket) => {
+        receiverSocketCount += 1
+        socket.on("framesent", (payload) => {
+          if (hasRoomJoin(parseFrame(payload), chatId)) receiverRoomJoinCount += 1
+        })
+        socket.on("framereceived", (payload) => {
+          const frame = parseFrame(payload)
+          receiverMessages.push(...findNewMessageFrames(frame))
+        })
+      })
+
+      const senderLog = page.getByRole("log", { name: /Сообщения чата/i })
+      ownedLog = senderLog
+      await expect(senderLog).toBeVisible()
+      await receiverPage.goto(`/messenger/${chatId}`)
+      const receiverLog = receiverPage.getByRole("log", { name: /Сообщения чата/i })
+      await expect(receiverLog).toBeVisible()
+      await expect.poll(() => receiverSocketCount).toBeGreaterThan(0)
+      await expect.poll(() => receiverRoomJoinCount).toBeGreaterThan(0)
+
+      const messageResponsePromise = page.waitForResponse((response) => {
+        const request = response.request()
+        return (
+          request.method() === "POST" &&
+          new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
+        )
+      })
+      await page.locator("#chat-message-input").fill(message)
+      await page.locator("#chat-message-input").press("Enter")
+      const messageResponse = await messageResponsePromise
+      if (!messageResponse.ok()) {
+        reportLiveHttpStatus(
+          testInfo.project.name,
+          "messenger-message-send",
+          messageResponse.status()
+        )
+      }
+      expect(messageResponse.ok()).toBe(true)
+      const created = (await messageResponse.json()) as {
+        id: string
+        chat_id: string
+        sender_id: string
+        content: string
+      }
+      ownedMessage = { id: created.id, content: message }
+      expect(created).toMatchObject({
+        chat_id: chatId,
+        sender_id: student.id,
+        content: message,
+      })
+      expect(created.id).toBeTruthy()
+      expect(created.content).toBe(message)
+
+      const expectedFrame = {
+        chatId,
+        message: {
+          id: created.id,
+          chatId,
+          senderId: student.id,
+          content: message,
+        },
+      }
+      await expect
+        .poll(() =>
+          receiverMessages.some(
+            (frame) =>
+              frame.chatId === expectedFrame.chatId &&
+              frame.message.id === created.id &&
+              frame.message.chatId === expectedFrame.message.chatId &&
+              frame.message.senderId === expectedFrame.message.senderId &&
+              frame.message.content === expectedFrame.message.content
+          )
+        )
+        .toBe(true)
+      expect(receiverMessages).toContainEqual(expect.objectContaining(expectedFrame))
+      const renderedMessage = receiverLog.getByText(message, { exact: true })
+      await expect(renderedMessage).toHaveCount(1)
+      await expect(renderedMessage).toBeVisible()
+
+      const senderText = senderLog.getByText(message, { exact: true })
+      await expect(senderText).toHaveCount(1)
+      await expect(senderText).toBeVisible()
+      const senderRow = senderText.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+      )
+      await expect(
+        senderRow.getByRole("img", {
+          name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u,
+        })
+      ).toBeVisible()
+    } finally {
+      try {
+        if (ownedLog && ownedChatId && ownedMessage) {
+          await deleteOwnedLiveMessage(page, ownedLog, ownedChatId, ownedMessage)
+        }
+      } finally {
+        await receiverContext.close()
+      }
+    }
+  })
+
   test("a message is delivered, edited, and tombstoned in the other authenticated session", async ({
     browser,
     page,

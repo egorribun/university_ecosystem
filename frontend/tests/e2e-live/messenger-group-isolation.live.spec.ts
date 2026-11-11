@@ -469,7 +469,9 @@ test.describe("live messenger group isolation", () => {
         expect(deleteIndex).toBeGreaterThan(editIndex)
       }
       for (const log of [teacherLog, secondMemberLog]) {
-        await expect(log.getByText("Сообщение удалено", { exact: true })).toBeVisible()
+        // The reused isolation group keeps earlier tombstones (the desktop and
+        // mobile projects share it); this message is the newest row.
+        await expect(log.getByText("Сообщение удалено", { exact: true }).last()).toBeVisible()
         await expect(log.getByText(editedContent, { exact: true })).toHaveCount(0)
       }
 

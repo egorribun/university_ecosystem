@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { lazy } from "react"
 import * as v from "valibot"
 import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import { scheduleSearchSchema } from "@/features/schedule/schema"
 
-const Schedule = lazy(() => import("@/pages/Schedule"))
+// TanStack Start code-splits route components and preloads the matched
+// route chunk before hydration, so the page is imported statically, as in
+// /dashboard. A nested React.lazy suspended during hydration and React
+// re-inserted the page <title>/<meta> beside the server-rendered set.
+import Schedule from "@/pages/Schedule"
 
 export const Route = createFileRoute("/_auth/schedule")({
+  ssr: true,
   // Wave 130 SW2 / Wave 133 SW3 — full SSR via sequential prefetch chain.
   // Inherits parent _auth.tsx ssr:true (W128 SW2). Schedule.tsx is
   // verified SSR-safe per W130 plan exploration: all browser APIs

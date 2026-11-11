@@ -306,6 +306,10 @@ export function useNotifications() {
     refetchInterval: 60000,
     refetchIntervalInBackground: false,
     staleTime: 30000,
+    // Not persisted: a restored page younger than staleTime skipped the reload
+    // fetch, so the unread badge stayed stale for up to a minute, and the rows
+    // carry private chat and account text that need not sit in IndexedDB.
+    meta: { persist: false },
   })
 
   // Check for upcoming classes on mount to ensure notifications are generated

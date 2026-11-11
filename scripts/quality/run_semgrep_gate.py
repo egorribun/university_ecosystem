@@ -41,6 +41,9 @@ IMAGE_PATTERN = re.compile(
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
 GIT_TIMEOUT_SECONDS = 300
 SCAN_TIMEOUT_SECONDS = 900
+# The pinned 1.179.0 default is 5s per rule/file; live_stand.py can exceed 5s.
+# Keep a finite execution budget without accepting incomplete scan diagnostics.
+RULE_TIMEOUT_SECONDS = 10
 FIXPOINT_CONFIRMATION_TIMEOUT_SECONDS = 300
 FIXPOINT_CONFIRMATION_MAX_TARGETS = 64
 HELM_ARCHIVE_MAX_BYTES = 128 * 1024 * 1024
@@ -3729,6 +3732,8 @@ def _docker_scan(
         "--max-target-bytes=0",
         "--jobs",
         str(jobs),
+        "--timeout",
+        str(RULE_TIMEOUT_SECONDS),
         "--config",
         f"/out/{config_name}",
     ]

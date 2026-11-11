@@ -1327,6 +1327,71 @@ export function assertFinalLocalInputs(localDirectories, localFiles) {
   return true
 }
 
+const REGISTRY_FAILURE_CODES = new Set([
+  "EAI_AGAIN",
+  "ENOTFOUND",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ESOCKETTIMEDOUT",
+  "CERT_HAS_EXPIRED",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "E401",
+  "E403",
+  "E404",
+  "E408",
+  "E429",
+  "E500",
+  "E502",
+  "E503",
+  "E504",
+  "ENOBUFS",
+  "EACCES",
+  "ENOENT",
+  "EINTEGRITY",
+  "EJSONPARSE",
+  "ERR_ARCHIVE_HTTP",
+  "ERR_ARCHIVE_SIZE",
+  "ERR_ARCHIVE_TIMEOUT",
+])
+
+export function summarizeRegistryFailure(result) {
+  let registryCode = null
+  if (typeof result.stdout === "string" && Buffer.byteLength(result.stdout) <= 65536) {
+    try {
+      const code = JSON.parse(result.stdout)?.error?.code
+      if (REGISTRY_FAILURE_CODES.has(code)) registryCode = code
+    } catch {
+      // Raw registry output, paths and messages are never diagnostic evidence.
+    }
+  }
+  return {
+    status:
+      Number.isInteger(result.status) && result.status >= 0 && result.status <= 255
+        ? result.status
+        : null,
+    signal: ["SIGTERM", "SIGKILL", "SIGINT"].includes(result.signal) ? result.signal : null,
+    processCode: REGISTRY_FAILURE_CODES.has(result.error?.code) ? result.error.code : null,
+    registryCode,
+    httpStatus:
+      Number.isInteger(result.httpStatus) && result.httpStatus >= 100 && result.httpStatus <= 599
+        ? result.httpStatus
+        : null,
+  }
+}
+
+export function assertRegistryCommandResult(result) {
+  if (result.error || result.signal || result.status !== 0) {
+    console.error(
+      "FINAL_COMPILER_REGISTRY_FAILURE " + JSON.stringify(summarizeRegistryFailure(result))
+    )
+  }
+  assert(!result.error && !result.signal && result.status === 0)
+  return result.stdout
+}
+
 export async function runFinalCompilerGenerator() {
   let stage = "preflight"
   let scratch
@@ -1415,6 +1480,7 @@ export async function runFinalCompilerGenerator() {
           "FINAL_COMPILER_STRICT_LIST_FAILURE " + JSON.stringify(summarizeStrictListFailure(result))
         )
       }
+      if (options.registryDiagnostic) return assertRegistryCommandResult(result)
       assert(!result.error && !result.signal && result.status === 0)
       return result.stdout
     }
@@ -1536,12 +1602,14 @@ export async function runFinalCompilerGenerator() {
       else assertFinalNpmCommand(operation, args, paths)
       return command(process.execPath, [cli, ...args], cwd, {
         env,
+        registryDiagnostic: ["toolMetadata", "targetMetadata"].includes(operation),
         strictDiagnostic: operation === "strictGenerate",
         strictListDiagnostic: operation === "strictList",
       })
     }
     assert.equal(npm(bootstrap, "version", generation).trim(), "11.19.0")
-    async function verifiedArchive(meta, destination, limit) {
+    async function verifiedArchive(meta, destination, limit, label) {
+      stage = label + " archive download"
       const timeout = remaining(30000)
       const bytes = await new Promise((resolveBytes, rejectArchive) => {
         const chunks = []
@@ -1552,23 +1620,45 @@ export async function runFinalCompilerGenerator() {
           (response) => {
             if (response.statusCode !== 200) {
               response.destroy()
-              rejectArchive(new Error("Non-200 archive response"))
+              rejectArchive(
+                Object.assign(new Error("Non-200 archive response"), {
+                  code: "ERR_ARCHIVE_HTTP",
+                  httpStatus: response.statusCode,
+                })
+              )
               return
             }
             response.on("data", (chunk) => {
               size += chunk.length
-              if (size > limit) request.destroy(new Error("Archive size exceeded"))
+              if (size > limit)
+                request.destroy(
+                  Object.assign(new Error("Archive size exceeded"), { code: "ERR_ARCHIVE_SIZE" })
+                )
               else chunks.push(chunk)
             })
             response.on("error", rejectArchive)
             response.on("end", () => resolveBytes(Buffer.concat(chunks)))
           }
         )
-        const timer = setTimeout(() => request.destroy(new Error("Archive timeout")), timeout)
+        const timer = setTimeout(
+          () =>
+            request.destroy(
+              Object.assign(new Error("Archive timeout"), { code: "ERR_ARCHIVE_TIMEOUT" })
+            ),
+          timeout
+        )
         request.on("close", () => clearTimeout(timer))
         request.on("error", rejectArchive)
+      }).catch((error) => {
+        console.error(
+          "FINAL_COMPILER_REGISTRY_FAILURE " +
+            JSON.stringify(summarizeRegistryFailure({ error, httpStatus: error.httpStatus }))
+        )
+        throw error
       })
+      stage = label + " archive hash verification"
       verifyArchiveBytes(meta, bytes, limit)
+      stage = label + " verified archive storage"
       writeFileSync(destination, bytes, { flag: "wx", mode: 0o600 })
       return {
         verified: true,
@@ -1584,12 +1674,14 @@ export async function runFinalCompilerGenerator() {
       sourceLock: lock,
       runStage: async (name, state) => {
         if (name === "toolMetadata") {
-          stage = "npm tool metadata and archive verification"
-          return JSON.parse(npm(bootstrap, "toolMetadata", generation))
+          stage = "npm tool metadata query"
+          const metadata = JSON.parse(npm(bootstrap, "toolMetadata", generation))
+          stage = "npm tool metadata validation"
+          return metadata
         }
         if (name === "toolArchive") {
           const path = join(scratch, "npm-11.17.0.tgz")
-          return await verifiedArchive(state.toolMetadata.data, path, 16 * 1024 * 1024)
+          return await verifiedArchive(state.toolMetadata.data, path, 16 * 1024 * 1024, "npm tool")
         }
         if (name === "toolInstall") {
           stage = "isolated npm tool installation"
@@ -1605,26 +1697,41 @@ export async function runFinalCompilerGenerator() {
           return { cli }
         }
         if (name === "engineMetadata") {
-          stage = "mature patched engine metadata and archive verification"
-          return JSON.parse(npm(state.cli, "targetMetadata", generation))
+          stage = "mature patched engine metadata query"
+          const metadata = JSON.parse(npm(state.cli, "targetMetadata", generation))
+          stage = "mature patched engine metadata validation"
+          return metadata
         }
         if (name === "engineArchive") {
           const path = join(scratch, "zod-4.6.7.tgz")
-          return await verifiedArchive(state.engine.data, path, 4 * 1024 * 1024)
+          return await verifiedArchive(
+            state.engine.data,
+            path,
+            4 * 1024 * 1024,
+            "mature patched engine"
+          )
         }
         if (name === "formatterMetadata") {
-          stage = "mature formatter metadata and archive verification"
-          return JSON.parse(
+          stage = "mature formatter metadata query"
+          const metadata = JSON.parse(
             command(
               process.execPath,
               [state.cli, "view", "zod-validation-error@4.0.2", "--json", ...NPM_TRANSPORT_ARGS],
-              generation
+              generation,
+              { registryDiagnostic: true }
             )
           )
+          stage = "mature formatter metadata validation"
+          return metadata
         }
         if (name === "formatterArchive") {
           const path = join(scratch, "zod-validation-error-4.0.2.tgz")
-          return await verifiedArchive(state.formatter.data, path, 4 * 1024 * 1024)
+          return await verifiedArchive(
+            state.formatter.data,
+            path,
+            4 * 1024 * 1024,
+            "mature formatter"
+          )
         }
         if (name === "overrideSelector") {
           stage = "pinned npm override selector diagnostic"

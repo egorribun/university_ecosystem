@@ -1,5 +1,17 @@
 # Audit trail
 
+## Exact-source review note — 2026-11-11
+
+The formal total remains **494/512 (96.5%) accepted or resolved, 18 open**
+(9S / 9P / 0U / 0N). [Current source-bound CI and candidate review](AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
+records source 307cfb7a4ea2ca53543fc7a191282e26e9390668, tested merge
+3ca365f071438a5dba2c9b3e9d65dea06f3ba71c and Matrix run 43018326180:
+77 required successes plus Checkov neutral, not 78 successes. No audit closure
+is added; the held 497/512 proposal remains unpublished. AUD-154 has verified
+current named-case desktop/mobile proof, but its original criterion remains
+unfulfilled and it stays open. Historical checkpoints
+below retain their source dates. A later documentation commit needs its own checks.
+
 ## Current reconciliation — 2026-11-09
 
 The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
@@ -20,11 +32,15 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **509 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The 509 total preserves all previous 506 records, including the eight
+current policy-file inventory is **511 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 511 total includes the previous 506 approved records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,
-and appends three owner-approved wasm-bindgen CLI checksum identities. All new rows expire 2027-01-10. These are inventory counts only and do
+plus three owner-approved wasm-bindgen CLI checksum identities, one Go Alpine
+image checksum identity and one ZAP image checksum identity. All five appended
+rows expire 2027-01-10. The latest published 510-record pre-ZAP state already
+includes the authorized helper and row13 one-to-one rebinds; ZAP appends only
+its exact image identity and preserves all 510 records unchanged. These are inventory counts only and do
 not establish passing scanner results or required checks.
 All 78 required context/app pairs (78 is the count from the live GitHub ruleset; the repository holds no script deriving it), blocking CodeQL, hooks and quality floors
 remain in force.

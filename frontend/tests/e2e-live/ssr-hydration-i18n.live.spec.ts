@@ -4,19 +4,21 @@ import { extractSeoMetadata, normalizeMetadataText } from "./seo-metadata.mjs"
 import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
 import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
 import enActivity from "../../src/i18n/locales/en/activity.json" with { type: "json" }
+import enAuth from "../../src/i18n/locales/en/auth.json" with { type: "json" }
 import enCommon from "../../src/i18n/locales/en/common.json" with { type: "json" }
 import enDashboard from "../../src/i18n/locales/en/dashboard.json" with { type: "json" }
 import enNavigation from "../../src/i18n/locales/en/navigation.json" with { type: "json" }
 import ruCommon from "../../src/i18n/locales/ru/common.json" with { type: "json" }
 import ruDashboard from "../../src/i18n/locales/ru/dashboard.json" with { type: "json" }
 import ruActivity from "../../src/i18n/locales/ru/activity.json" with { type: "json" }
+import ruAuth from "../../src/i18n/locales/ru/auth.json" with { type: "json" }
 import ruNavigation from "../../src/i18n/locales/ru/navigation.json" with { type: "json" }
 import enNews from "../../src/i18n/locales/en/news.json" with { type: "json" }
 import ruNews from "../../src/i18n/locales/ru/news.json" with { type: "json" }
 import { expect, loginAs, test } from "./fixtures"
 
 type Language = "ru" | "en"
-type TitleLandmark = "activity" | "dashboard" | "news"
+type TitleLandmark = "activity" | "dashboard" | "login" | "news"
 
 const MAIN_SKIP_LINK_CATALOGS = {
   en: enCommon.skipToMain,
@@ -26,6 +28,7 @@ const MAIN_SKIP_LINK_CATALOGS = {
 const PAGE_TITLE_CATALOGS = {
   activity: { en: enActivity.title, ru: ruActivity.title },
   dashboard: { en: enDashboard.pageTitle, ru: ruDashboard.pageTitle },
+  login: { en: enAuth.login.title, ru: ruAuth.login.title },
   news: { en: enNews.pageTitle, ru: ruNews.pageTitle },
 } satisfies Record<TitleLandmark, Record<Language, string>>
 
@@ -37,12 +40,14 @@ const NEWS_SEARCH_PLACEHOLDER_CATALOGS = {
 const PAGE_DESCRIPTION_CATALOGS = {
   activity: { en: enActivity.pageDescription, ru: ruActivity.pageDescription },
   dashboard: { en: enNavigation.brandDescription, ru: ruNavigation.brandDescription },
+  login: { en: enNavigation.brandDescription, ru: ruNavigation.brandDescription },
   news: { en: enNews.pageDescription, ru: ruNews.pageDescription },
 } satisfies Record<TitleLandmark, Record<Language, string>>
 
 const PAGE_SOCIAL_DESCRIPTION_CATALOGS = {
   activity: { en: enActivity.pageDescription, ru: ruActivity.pageDescription },
   dashboard: { en: enNavigation.socialDescription, ru: ruNavigation.socialDescription },
+  login: { en: enNavigation.socialDescription, ru: ruNavigation.socialDescription },
   news: { en: enNews.pageDescription, ru: ruNews.pageDescription },
 } satisfies Record<TitleLandmark, Record<Language, string>>
 
@@ -161,7 +166,9 @@ async function assertSingleClientHead(
   description: string
 ): Promise<void> {
   await expect(page.locator("head title")).toHaveCount(1)
-  await expect(page.locator("head title")).toHaveText(title)
+  // Playwright text matching skips every element inside <head>, so read the
+  // title's own text node through the retrying DOM-property assertion.
+  await expect(page.locator("head title")).toHaveJSProperty("textContent", title)
   await expect(page.locator('head meta[name="description"]')).toHaveCount(1)
   await expect(page.locator('head meta[name="description"]')).toHaveAttribute(
     "content",
@@ -184,11 +191,6 @@ async function assertSingleClientHead(
     await expect(locator).toHaveCount(1)
     await expect(locator).toHaveAttribute("content", content)
   }
-}
-
-async function assertSingleRootClientHead(page: Page, language: Language): Promise<void> {
-  const headMarkup = await page.locator("head").evaluate((head) => head.outerHTML)
-  expect(extractSeoMetadata(headMarkup)).toEqual(expectedRootHeadSnapshot(language))
 }
 
 const HYDRATION_DIAGNOSTIC =
@@ -442,7 +444,12 @@ test("English dashboard SSR hydrates and preserves i18n across News navigation",
   await assertDashboardHydratesAndNavigatesInLanguage(page, context, "en")
 })
 
-test("a public route retains one localized root metadata fallback", async ({ page, context }) => {
+// Public routes render their own page metadata, which suppresses the root
+// fallback (PageRouteSEO). /activity above still covers the root fallback.
+test("a public route renders one localized page metadata set instead of the root fallback", async ({
+  page,
+  context,
+}) => {
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
 
@@ -450,8 +457,14 @@ test("a public route retains one localized root metadata fallback", async ({ pag
   const response = await page.goto("/login", { waitUntil: "domcontentloaded" })
   expect(response?.status()).toBe(200)
   const serverMarkup = await response?.text()
-  expect(readHeadSnapshot(serverMarkup ?? null)).toEqual(expectedRootHeadSnapshot("en"))
+  expect(readHeadSnapshot(serverMarkup ?? null)).toEqual(expectedPageHeadSnapshot("en", "login"))
 
   await page.waitForFunction(() => window.__APP_HYDRATED === true)
-  await assertSingleRootClientHead(page, "en")
+  await assertSingleClientHead(
+    page,
+    "en",
+    "login",
+    expectedDocumentTitle("en", "login"),
+    PAGE_DESCRIPTION_CATALOGS.login.en
+  )
 })

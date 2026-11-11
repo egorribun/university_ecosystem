@@ -16,6 +16,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { isDeepStrictEqual } from "node:util"
 import { fileURLToPath } from "node:url"
+import * as finalGenerator from "./generate-react-compiler-final-lock-candidate.mjs"
 import {
   assertFinalInstalledGraph,
   assertFinalLockScope,
@@ -1963,4 +1964,109 @@ test("import is inert and direct execution produces no false candidate evidence"
   assert.equal(imported.status, 0)
   assert.equal(imported.stdout, "")
   assert.equal(imported.stderr, "")
+})
+
+test("registry failure diagnostics allow only bounded reviewed transport facts", () => {
+  assert.equal(typeof finalGenerator.summarizeRegistryFailure, "function")
+  assert.deepEqual(
+    finalGenerator.summarizeRegistryFailure({
+      status: 1,
+      signal: "SIGTERM",
+      error: { code: "ETIMEDOUT", message: "/private/credential" },
+      stdout: JSON.stringify({ error: { code: "EAI_AGAIN", summary: "/private/credential" } }),
+      stderr: "secret",
+      httpStatus: 503,
+    }),
+    {
+      status: 1,
+      signal: "SIGTERM",
+      processCode: "ETIMEDOUT",
+      registryCode: "EAI_AGAIN",
+      httpStatus: 503,
+    }
+  )
+  for (const code of [
+    "ECONNRESET",
+    "E429",
+    "EINTEGRITY",
+    "ERR_ARCHIVE_HTTP",
+    "ERR_ARCHIVE_SIZE",
+    "ERR_ARCHIVE_TIMEOUT",
+  ]) {
+    assert.equal(finalGenerator.summarizeRegistryFailure({ error: { code } }).processCode, code)
+  }
+})
+
+test("registry failure diagnostics discard raw data and malformed or oversized values", () => {
+  assert.equal(typeof finalGenerator.summarizeRegistryFailure, "function")
+  const empty = {
+    status: null,
+    signal: null,
+    processCode: null,
+    registryCode: null,
+    httpStatus: null,
+  }
+  for (const stdout of [
+    undefined,
+    null,
+    Buffer.from("secret"),
+    "secret",
+    "null",
+    "[]",
+    "7",
+    JSON.stringify({ error: { code: "secret" } }),
+    " ".repeat(65537),
+    "€".repeat(21846),
+  ]) {
+    assert.deepEqual(
+      finalGenerator.summarizeRegistryFailure({
+        status: Infinity,
+        signal: "secret",
+        error: { code: "secret", message: "secret" },
+        stdout,
+        httpStatus: 600,
+      }),
+      empty
+    )
+  }
+  for (const status of [-1, 256, 1.5, "1"])
+    assert.equal(finalGenerator.summarizeRegistryFailure({ status }).status, null)
+  for (const httpStatus of [99, 600, 200.5, "503"])
+    assert.equal(finalGenerator.summarizeRegistryFailure({ httpStatus }).httpStatus, null)
+  for (const status of [0, 255])
+    assert.equal(finalGenerator.summarizeRegistryFailure({ status }).status, status)
+  for (const httpStatus of [100, 599])
+    assert.equal(finalGenerator.summarizeRegistryFailure({ httpStatus }).httpStatus, httpStatus)
+})
+
+test("registry command rejection remains blocking and never prints raw npm output", () => {
+  assert.equal(typeof finalGenerator.assertRegistryCommandResult, "function")
+  const messages = []
+  const original = console.error
+  console.error = (message) => messages.push(message)
+  try {
+    assert.equal(
+      finalGenerator.assertRegistryCommandResult({ status: 0, signal: null, stdout: "payload" }),
+      "payload"
+    )
+    assert.equal(messages.length, 0)
+    for (const result of [
+      {
+        status: 1,
+        stdout: JSON.stringify({ error: { code: "E503", summary: "secret" } }),
+        stderr: "secret",
+      },
+      { status: 0, error: { code: "ENOBUFS", message: "secret" } },
+      { status: null, signal: "SIGKILL" },
+    ])
+      assert.throws(() => finalGenerator.assertRegistryCommandResult(result))
+    assert.equal(messages.length, 3)
+    for (const message of messages) {
+      assert(message.startsWith("FINAL_COMPILER_REGISTRY_FAILURE "))
+      assert(!message.includes("secret"))
+      assert(Buffer.byteLength(message) < 512)
+    }
+  } finally {
+    console.error = original
+  }
 })

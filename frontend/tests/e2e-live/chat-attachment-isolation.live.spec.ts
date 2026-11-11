@@ -433,16 +433,35 @@ test.describe("live private chat attachment isolation", () => {
             })
             await bubble.evaluate(async (element) => {
               const row = element.closest(".group") ?? element
-              const opacityTransitions = row
-                .getAnimations({ subtree: true })
-                .filter((animation) => {
-                  const transition = animation as Animation & { transitionProperty?: string }
-                  return (
-                    animation.playState === "running" && transition.transitionProperty === "opacity"
-                  )
-                })
+              // The sampled opacity multiplies every ancestor layer, so wait for
+              // finite opacity transitions and keyframe animations on the row's
+              // subtree and on its ancestors (for example a list entrance fade).
+              const animatesOpacity = (animation: Animation) => {
+                const transition = animation as Animation & { transitionProperty?: string }
+                if (typeof transition.transitionProperty === "string") {
+                  return transition.transitionProperty === "opacity"
+                }
+                return (
+                  animation.effect instanceof KeyframeEffect &&
+                  animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)
+                )
+              }
+              const affectsRow = (animation: Animation) => {
+                const target =
+                  animation.effect instanceof KeyframeEffect ? animation.effect.target : null
+                return target instanceof Element && (target.contains(row) || row.contains(target))
+              }
+              const opacityAnimations = document.getAnimations().filter((animation) => {
+                const endTime = Number(animation.effect?.getComputedTiming().endTime)
+                return (
+                  animation.playState === "running" &&
+                  Number.isFinite(endTime) &&
+                  affectsRow(animation) &&
+                  animatesOpacity(animation)
+                )
+              })
               await Promise.all(
-                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+                opacityAnimations.map((animation) => animation.finished.catch(() => undefined))
               )
             })
             const rendered = await bubble.evaluate((element) => {

@@ -1054,7 +1054,7 @@
           "artifacts": [
             {
               "name_pattern": "fuzz-crash-corpus",
-              "path_pattern": "services/ws-hub/testdata/fuzz/",
+              "path_pattern": "services/ws-hub/pkg/hub/testdata/fuzz/",
               "required": false,
               "provenance": "none"
             }
@@ -1366,13 +1366,31 @@
             "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
           }
         },
+        "aud346-diagnostic-coverage": {
+          "profile": "internal",
+          "check_name_template": "AUD-346 Diagnostic Coverage",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "Blocking prerequisite of Contract Tests; CI Success rejects its downstream non-success without adding a branch-protection context. The five-minute job includes setup and a two-minute coverage step."
+          }
+        },
         "contract-tests": {
           "profile": "required-pr-main",
           "check_name_template": "Contract Tests",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
-          "needs": [],
+          "needs": [
+            "aud346-diagnostic-coverage"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2043,8 +2061,8 @@
           ],
           "artifacts": [
             {
-              "name_pattern": "zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
-              "path_pattern": "zap-sarif-provenance.json",
+              "name_pattern": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "zap-public/zap-results.sarif\nzap-public/zap-evidence.txt\nzap-public/zap-sarif-provenance.json\n",
               "required": false,
               "provenance": "run_id_attempt"
             }
@@ -3597,7 +3615,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.10\",\"description\":\"Go version\",\"required\":false,\"type\":\"string\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"node-cache-hit\":{\"description\":\"Whether Node.js cache was hit\",\"value\":\"${{ jobs.cache.outputs.node-cache-hit }}\"},\"python-cache-hit\":{\"description\":\"Whether Python cache was hit\",\"value\":\"${{ jobs.cache.outputs.python-cache-hit }}\"}}}"
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.11\",\"description\":\"Go version\",\"required\":false,\"type\":\"string\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"node-cache-hit\":{\"description\":\"Whether Node.js cache was hit\",\"value\":\"${{ jobs.cache.outputs.node-cache-hit }}\"},\"python-cache-hit\":{\"description\":\"Whether Python cache was hit\",\"value\":\"${{ jobs.cache.outputs.python-cache-hit }}\"}}}"
         }
       ],
       "jobs": {
@@ -3637,6 +3655,12 @@
           "guard": "workflow trigger",
           "needs": [],
           "artifacts": [
+            {
+              "name_pattern": "aud375-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "frontend/playwright-report/aud375/",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
               "path_pattern": "frontend/coverage/e2e/",
@@ -3960,7 +3984,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.10\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.11\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
         }
       ],
       "jobs": {
@@ -3995,7 +4019,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"coverage-canonical-path\":{\"description\":\"Repository-relative path used after artifact download\",\"required\":true,\"type\":\"string\"},\"coverage-component\":{\"description\":\"Canonical quality-contract component for this report\",\"required\":true,\"type\":\"string\"},\"coverage-threshold\":{\"default\":80,\"description\":\"Minimum Go test coverage percentage\",\"required\":false,\"type\":\"number\"},\"go-version\":{\"default\":\"1.26.10\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"run-mutation-diagnostic\":{\"default\":false,\"description\":\"Run the bounded advisory mutation diagnostic (scheduled/manual only)\",\"required\":false,\"type\":\"boolean\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"coverage-canonical-path\":{\"description\":\"Repository-relative path used after artifact download\",\"required\":true,\"type\":\"string\"},\"coverage-component\":{\"description\":\"Canonical quality-contract component for this report\",\"required\":true,\"type\":\"string\"},\"coverage-threshold\":{\"default\":80,\"description\":\"Minimum Go test coverage percentage\",\"required\":false,\"type\":\"number\"},\"go-version\":{\"default\":\"1.26.11\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"run-mutation-diagnostic\":{\"default\":false,\"description\":\"Run the bounded advisory mutation diagnostic (scheduled/manual only)\",\"required\":false,\"type\":\"boolean\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
         }
       ],
       "jobs": {
@@ -4083,6 +4107,12 @@
             {
               "name_pattern": "full-stand-realtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "${{ runner.temp }}/aud429-realtime-summary.txt",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
+              "name_pattern": "aud154-named-case-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/aud154-named-case-receipt.json",
               "required": false,
               "provenance": "sha"
             },

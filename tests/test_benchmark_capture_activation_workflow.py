@@ -59,21 +59,21 @@ def test_candidate_activation_is_bound_to_the_reviewed_helper_checkpoint() -> No
         == "scripts/quality/capture_isolated_benchmarks.py"
     )
     assert activation_template.PINNED_HELPER_COMMIT == (
-        "ca6d7117e3ccf22e42f484c3b9ff032091415f94"  #  -- public helper commit
+        "0fe40908e97c7104f88c18aa5650ad0fb07c8459"  #  -- public helper commit
     )
     assert activation_template.PINNED_HELPER_PARENT == (
-        "133f87d22575b954b32d8ed7df03c6d1834842ea"  #  -- public helper parent
+        "4b123b2165cfb4d6a2a34cd949684f119cafc002"  #  -- public helper parent
     )
     assert activation_template.PINNED_HELPER_TREE == (
-        "14bebdac6f4ae5492b263c2960a35d80b732b9a2"  #  -- public helper tree
+        "05005df7688c5a9bec5329f932d8031821487f63"  #  -- public helper tree
     )
     assert activation_template.PINNED_HELPER_BLOB == (
-        "1da31bffb46fb13faa49547d18056c63a64d32bd"  #  -- public helper blob
+        "1d6a9feb2d07bf81725194a4c3d1276ee219d8c7"  #  -- public helper blob
     )
     assert (
         activation_template.PINNED_HELPER_SHA256
         == (
-            "d55098c2f52ca5489e7d8469376fbcde6085100bb8425a8e9c3b9d360df8a4bb"  #  -- public helper SHA-256
+            "92cce990bc3e99820320f088c088247039e2d8a87a58b3241da0af251e84f93d"  #  -- public helper SHA-256
         )
     )
     assert activation_template.PINNED_HELPER_SIZE == "52219"

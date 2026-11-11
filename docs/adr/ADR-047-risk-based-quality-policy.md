@@ -2486,3 +2486,62 @@ measured score and only moves up.
 ### ADR-052
 
 The owner accepted ADR-052. AUD-373 still needs its hosted kind proof.
+
+## Decisions recorded on 2026-11-11
+
+### Exact Go security update and public image digest
+
+The owner approved early Go 1.26.11 and fuzz-toolchain Go 1.27.4 adoption to
+address GO-2026-6859 / CVE-2026-97054, including the corresponding official
+Alpine 3.24 and Bookworm images. The releases are dated 2026-11-10. This bounded
+exception does not change the global seven-day dependency maturity policy.
+See the [exception record](../DEPENDENCY_COOLDOWN_EMERGENCY.md#exact-go-security-exception-2026-11-11).
+
+The owner separately approved one additional `public_integrity_digest`
+disposition for the official Go Alpine image checksum in
+`tests/test_docker_startup_contracts.py`, with type `Hex High Entropy String`,
+review date 2026-11-11 and finite expiry 2027-01-10. The policy grows from 509
+to 510 records; the 242 baseline identities and all existing approval metadata
+and expiry dates remain unchanged. Exact source-bound contracts preserve the
+historical records and reject changed or unmatched findings. This inventory is
+not evidence of a passing scanner or hosted check.
+
+The existing AUD-428 row13 companion is rebound one-to-one to the combined
+Go fuzz-contract and toolchain-pin source. Only that public companion digest
+and its existing scanner identity change; the path, type, line, category,
+owner, evidence and expiry remain the same. No new Semgrep row is added.
+
+### Exact ZAP public image digest
+
+The owner approved one additional `public_integrity_digest` disposition for
+the official `ghcr.io/zaproxy/zaproxy` image checksum at `.zap/image.txt:1`,
+with detector `Hex High Entropy String`, review date 2026-11-11 and finite
+expiry 2027-01-10. Its exact scanner digest is recorded in the policy and
+source-bound contract. The policy grows from 510 to 511 records; all prior
+510 latest published records and expiry values remain unchanged, including
+the Go approval, authorized benchmark-helper provenance rebinds and existing
+one-to-one Semgrep companion bindings. Baseline identities remain
+242, Gitleaks fingerprints 27 and Semgrep rows 15.
+
+This approval adds no other identity or suppression and changes no scanner
+threshold, required check or audit status. The pinned image digest does not
+freeze dynamically updated ZAP add-ons. Offline fixture and source checks do
+not establish real-container compatibility, completed active scans, complete
+scan coverage or successful GitHub SARIF ingestion; those require separate
+authorized runtime evidence and current source-bound checks.
+
+## Decisions recorded on 2026-11-12
+
+### Map tile connections
+
+The owner approved exactly one more `connect-src` origin,
+`https://tiles.openfreemap.org`, in the backend default, the Node SSR policy and
+the shared contract. MapLibre fetches the map style, vector tiles, glyphs and
+sprites from that host. The policy blocked those requests, so the campus map
+rendered no base layer. No other directive or origin changes.
+
+`frontend/scripts/server-csp.mjs` is a companion of the existing SafeHtml Semgrep
+disposition. That companion digest and its existing public-integrity scanner
+identity are rebound one-to-one; path, type, category, owner, evidence and
+expiry stay the same, and the inventory remains 511 dispositions and 15
+Semgrep rows.
