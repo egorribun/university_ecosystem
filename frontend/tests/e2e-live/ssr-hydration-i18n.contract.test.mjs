@@ -2,11 +2,14 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import process from "node:process"
-import { fileURLToPath, URL } from "node:url"
+import { fileURLToPath, pathToFileURL, URL } from "node:url"
+import { runInThisContext } from "node:vm"
 import test from "node:test"
 import { createInstance } from "i18next"
 import sharp from "sharp"
+import typescript from "typescript"
 import { createServer } from "vite"
 import { applyNodeCspToHtmlResponse } from "../../scripts/server-csp.mjs"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
@@ -399,3 +402,131 @@ test("production document suite is collected without skips and rejects preview o
     assert.deepEqual(test.annotations, [], "production SSR tests must carry no skip annotations")
   }
 })
+
+// Execute the document assertions against controlled response bytes. These checks
+// prove bootstrap presence/nonce validation, not browser execution or hydration.
+const ssrRequire = createRequire(import.meta.url)
+const { expect: ssrExpect } = ssrRequire("@playwright/test")
+const { createHydrationScripts } = ssrRequire(
+  fileURLToPath(
+    new URL(
+      "dist/cjs/ssr/hydrationScripts.cjs",
+      pathToFileURL(ssrRequire.resolve("@tanstack/router-core/package.json"))
+    )
+  )
+)
+const documentNonce = "document-bootstrap-test-nonce"
+const scriptOwner = createHydrationScripts(documentNonce)
+scriptOwner.pushSerializedSource("{matches:[],manifest:{routes:{}}}", true, false)
+const producerTags = scriptOwner.takeInitialHydrationScriptTags()
+const renderScript = ({ attrs, children }) =>
+  `<script${Object.entries(attrs)
+    .map(([name, value]) => ` ${name}="${value}"`)
+    .join("")}>${children}</script>`
+const initializerMarkup = producerTags.before.map(renderScript).join("")
+const boundaryMarkup = renderScript(producerTags.boundary)
+const bootstrapMarkup = initializerMarkup + boundaryMarkup
+const authCatalogs = {
+  en: await readJson(new URL("../../src/i18n/locales/en/auth.json", import.meta.url)),
+  ru: await readJson(new URL("../../src/i18n/locales/ru/auth.json", import.meta.url)),
+}
+const documentCallbacks = []
+const collectDocumentTest = (name, run) => documentCallbacks.push({ name, run })
+collectDocumentTest.describe = (_name, define) => define()
+const documentSource = await readFile(ssrDocumentSpecUrl, "utf8")
+const compiledDocumentSpec = typescript.transpileModule(documentSource, {
+  fileName: fileURLToPath(ssrDocumentSpecUrl),
+  compilerOptions: {
+    module: typescript.ModuleKind.CommonJS,
+    target: typescript.ScriptTarget.ES2022,
+    inlineSourceMap: true,
+    inlineSources: true,
+  },
+}).outputText
+const loadDocumentSpec = runInThisContext(
+  `(function(exports, require, process) {\n${compiledDocumentSpec}\n})`,
+  { filename: fileURLToPath(ssrDocumentSpecUrl) }
+)
+loadDocumentSpec(
+  {},
+  (id) =>
+    id === "../../e2e/test" ? { expect: ssrExpect, test: collectDocumentTest } : ssrRequire(id),
+  { cwd: () => fileURLToPath(new URL("../../", import.meta.url)) }
+)
+
+function documentRequest(scripts, requestedLocale = true) {
+  return {
+    async get(path, { headers, maxRedirects }) {
+      assert.equal(maxRedirects, 0)
+      const language = headers.cookie.slice("ue:language=".length)
+      assert.ok(language === "en" || language === "ru")
+      const route = path.slice(1)
+      assert.ok(route === "login" || route === "register")
+      const catalog = authCatalogs[requestedLocale ? language : language === "ru" ? "en" : "ru"]
+      const text = route === "login" ? catalog.actions.signIn : catalog.actions.signUp
+      const html = `<!doctype html><html lang="${language}"><head>
+        <meta property="csp-nonce" content="${documentNonce}">
+        </head><body><div id="root"><section class="auth-shell--${route}"><form>
+        <input id="email" disabled><input id="password" disabled>
+        <button id="${route}-submit" type="submit" disabled>${text}</button>
+        </form></section></div>${scripts}</body></html>`
+      return {
+        status: () => 200,
+        headers: () => ({
+          "content-type": "text/html",
+          "content-security-policy": `script-src 'self' 'nonce-${documentNonce}'`,
+          "cache-control": "no-store, private, max-age=0",
+        }),
+        text: async () => html,
+      }
+    },
+  }
+}
+
+test("document bootstrap contract executes all four route/locales and the wrong-locale check", async () => {
+  assert.deepEqual(
+    documentCallbacks.map(({ name }) => name),
+    [
+      "/login renders ru on the server with a bootstrap for hydration",
+      "/register renders ru on the server with a bootstrap for hydration",
+      "/login renders en on the server with a bootstrap for hydration",
+      "/register renders en on the server with a bootstrap for hydration",
+      "the requested language decides the server markup and not the other locale",
+    ]
+  )
+  for (const { run } of documentCallbacks) {
+    await run({ request: documentRequest(bootstrapMarkup) })
+    await assert.rejects(run({ request: documentRequest(bootstrapMarkup, false) }))
+  }
+})
+
+for (const [name, scripts] of [
+  ["removed initializer with the genuine stream boundary retained", boundaryMarkup],
+  [
+    "wrong initializer nonce with the genuine stream boundary retained",
+    initializerMarkup.replaceAll(`nonce="${documentNonce}"`, 'nonce="wrong-nonce"') +
+      boundaryMarkup,
+  ],
+  [
+    "non-executable initializer-shaped data block",
+    initializerMarkup.replaceAll("<script", '<script type="application/json"') + boundaryMarkup,
+  ],
+  [
+    "nomodule initializer skipped by modern browsers",
+    initializerMarkup.replaceAll("<script", "<script nomodule") + boundaryMarkup,
+  ],
+  ["completion-only script", `<script nonce="${documentNonce}">$_TSR.e()</script>`],
+  ["unrelated inline script", `<script nonce="${documentNonce}">window.other = true</script>`],
+  [
+    "external script with initializer-shaped text",
+    initializerMarkup.replaceAll("<script", '<script src="/entry.js"'),
+  ],
+  ["empty inline script", `<script nonce="${documentNonce}"></script>`],
+  ["no scripts", ""],
+]) {
+  test(`document bootstrap contract rejects ${name} for every route and locale`, async () => {
+    for (const { run } of documentCallbacks.slice(0, 4)) {
+      await assert.rejects(run({ request: documentRequest(scripts) }))
+    }
+  })
+}
