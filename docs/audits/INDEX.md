@@ -1,5 +1,17 @@
 # Audit trail
 
+## Exact-source review note — 2026-11-11
+
+The formal total remains **494/512 (96.5%) accepted or resolved, 18 open**
+(9S / 9P / 0U / 0N). [Current source-bound CI and candidate review](AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
+records source 307cfb7a4ea2ca53543fc7a191282e26e9390668, tested merge
+3ca365f071438a5dba2c9b3e9d65dea06f3ba71c and Matrix run 43018326180:
+77 required successes plus Checkov neutral, not 78 successes. No audit closure
+is added; the held 497/512 proposal remains unpublished. AUD-154 has verified
+current named-case desktop/mobile proof, but its original criterion remains
+unfulfilled and it stays open. Historical checkpoints
+below retain their source dates. A later documentation commit needs its own checks.
+
 ## Current reconciliation — 2026-11-09
 
 The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
