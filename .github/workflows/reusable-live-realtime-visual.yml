@@ -74,6 +74,12 @@ jobs:
           printf 'VISUAL_OUT_DIR=%s/aud429-visual-%s-%s\n' \
             "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
 
+      - name: Bind AUD-154 source before execution
+        id: aud154-source
+        run: >-
+          uv run --frozen --no-sync python -m scripts.aud154_receipt snapshot
+          --output "$RUNNER_TEMP/aud154-source-before.json"
+
       - name: Start the owned full live stand
         id: start-stand
         env:
@@ -96,6 +102,7 @@ jobs:
           else
             run_result=$?
           fi
+          echo "exit_code=$run_result" >> "$GITHUB_OUTPUT"
           # Eight real scenarios must execute on each of desktop and mobile.
           # Seed output is not part of the uploaded, allowlisted summary.
           python - "$RUNNER_TEMP/aud429-realtime-raw.txt" \
@@ -130,6 +137,27 @@ jobs:
         with:
           name: full-stand-realtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aud429-realtime-summary.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Validate AUD-154 named-case receipt
+        id: aud154-receipt
+        if: ${{ !cancelled() && steps.aud154-source.outcome == 'success' && steps.realtime.outcome != 'skipped' }}
+        env:
+          REALTIME_EXIT_CODE: ${{ steps.realtime.outputs.exit_code }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.aud154_receipt receipt
+          --before "$RUNNER_TEMP/aud154-source-before.json"
+          --input "$RUNNER_TEMP/aud429-realtime-raw.txt"
+          --exit-code "$REALTIME_EXIT_CODE"
+          --output "$RUNNER_TEMP/aud154-named-case-receipt.json"
+
+      - name: Upload AUD-154 named-case receipt
+        if: ${{ !cancelled() && steps.aud154-receipt.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aud154-named-case-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aud154-named-case-receipt.json
           if-no-files-found: error
           retention-days: 14
 

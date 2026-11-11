@@ -4087,6 +4087,12 @@
               "provenance": "sha"
             },
             {
+              "name_pattern": "aud154-named-case-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/aud154-named-case-receipt.json",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
               "name_pattern": "full-stand-visual-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "${{ env.VISUAL_OUT_DIR }}/**/*.png",
               "required": false,

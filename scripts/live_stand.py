@@ -59,6 +59,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from scripts import fast_preflight
+from scripts.aud154_receipt import project_case_records
 from scripts.live_stand_playwright_evidence import (
     _PASSWORD_FORGOT_COUNTS as _PASSWORD_FORGOT_COUNTS,
 )
@@ -5817,7 +5818,12 @@ def _run_live_playwright(
     reconnect_diagnostics = (
         _live_playwright_reconnect_diagnostics(stdout) if return_code != 0 else []
     )
+    delivery_cases = project_case_records(stdout)
     del output, stdout, stderr
+    for record in delivery_cases:
+        print(
+            "live E2E AUD154 " + json.dumps(record, separators=(",", ":")), flush=True
+        )
     for record in reconnect_diagnostics:
         print(
             "live E2E reconnect " + json.dumps(record, separators=(",", ":")),

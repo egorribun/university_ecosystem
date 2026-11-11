@@ -290,7 +290,7 @@ test("live admin password resolver fails closed when TEST_PASSWORD is missing or
 test("live Playwright fails CI runs that pass only after retrying and disables retained artifacts", async () => {
   const config = await readFile(new URL("../playwright.live.config.ts", import.meta.url), "utf8")
   assert.match(config, /failOnFlakyTests:\s*Boolean\(process\.env\.CI\)/u)
-  assert.match(config, /reporter:\s*["']list["']/u)
+  assert.match(config, /reporter:\s*\[\["list"\], \["\.\/scripts\/live-aud154-reporter\.mjs"\]\]/u)
   assert.doesNotMatch(config, /["']html["']/u)
   assert.match(config, /trace:\s*["']off["']/u)
   assert.match(config, /screenshot:\s*["']off["']/u)

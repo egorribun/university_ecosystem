@@ -8502,7 +8502,9 @@ def _assert_conditional_owner_source_bindings(
     source_lines: dict[str, list[bytes]] = {}
     source_bytes_by_path: dict[str, bytes] = {}
     for relative_path, expected_digest in source_sha256.items():
-        source_bytes = (repository_root / relative_path).read_bytes()
+        source_bytes = _aud154_historical_source_bytes(
+            relative_path, (repository_root / relative_path).read_bytes()
+        )
         assert hashlib.sha256(source_bytes).digest() == expected_digest, (
             f"conditional disposition source file SHA-256 changed: {relative_path}"
         )
@@ -30894,7 +30896,9 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
     ledger_path = repository_root / "quality/semgrep-dispositions.json"
     companion_path = repository_root / "tests/test_quality_workflow_contract.py"
     policy_path = repository_root / "quality/security-false-positive-dispositions.json"
-    ledger_bytes = ledger_path.read_bytes()
+    ledger_bytes = _aud154_historical_source_bytes(
+        "quality/semgrep-dispositions.json", ledger_path.read_bytes()
+    )
     companion_bytes = companion_path.read_bytes()
     live_policy_bytes = policy_path.read_bytes()
     _nov9_assert_live_policy_bytes(live_policy_bytes)
@@ -32032,7 +32036,10 @@ def test_nats_process_companion_rebind_changes_only_two_identities() -> None:
     policy_bytes = (
         root / "quality/security-false-positive-dispositions.json"
     ).read_bytes()
-    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger_bytes = _aud154_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
     assert len(_NATS_PROCESS_COMPANION_REBINDS) == 2
     disposition = json.loads(ledger_bytes.decode("utf-8"))["dispositions"][6]
     assert disposition["path"] == "scripts/owned_nats_process.py"
@@ -32318,7 +32325,7 @@ _NOV11_HELPER_REBIND_EVIDENCE = (
 
 
 def _nov11_restore_helper_identities(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _aud154_historical_policy(policy)
     records = restored.get("records")
     assert isinstance(records, list), "live disposition records changed"
     expected = {
@@ -32411,6 +32418,7 @@ def test_nov11_zap_image_preserves_published_policy_and_source_identity() -> Non
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
     _nov11_historical_509_from_live_policy(policy)
+    policy = _aud154_historical_policy(policy)
     previous = {**policy, "records": policy["records"][:510]}
     assert (
         hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
@@ -32488,3 +32496,162 @@ def test_nov11_zap_image_approval_has_finite_review_and_expiry() -> None:
     for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
             verifier.validate_false_positive_dispositions(document, today=today)
+
+
+# AUD154 changes source provenance only. Pin current bytes before projecting
+# the exact immutable predecessor for the older audit contracts.
+_AUD154_SOURCE_PINS = {
+    "scripts/live_stand.py": (
+        bytes.fromhex(
+            "c2 d8 95 9a 48 8c b7 7e 00 1a d3 b7 5a fb 7b f9 90 02 a9 1a 78 9c 67 a4 fa 47 70 ed 02 b7 7c 2c"
+        ),
+        bytes.fromhex(
+            "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+        ),
+    ),
+    "frontend/package.json": (
+        bytes.fromhex(
+            "c6 37 a6 46 14 0b 98 25 17 00 67 f0 58 28 c3 77 84 c0 57 79 62 3d a7 f6 58 4d d5 ad 1d ef dd 56"
+        ),
+        bytes.fromhex(
+            "4c 4b 8f e5 a0 b2 ac aa 2d ad 16 7f 4e 00 4c 34 cf df 10 78 c8 1b 4d 28 dd 0b 50 fe 06 73 1d f2"
+        ),
+    ),
+    "quality/semgrep-dispositions.json": (
+        bytes.fromhex(
+            "81 2c 1d cb ed 8a c6 3b 4c df 66 86 51 5a 45 ab 57 d2 57 88 f9 25 4b 20 57 de 82 5b cd d4 44 36"
+        ),
+        bytes.fromhex(
+            "e3 f4 4e 5d 5a 24 5a f4 32 d5 d2 f7 8e 72 57 b0 ba 7e f8 e3 6b 46 fa 3c ff ce 26 09 de 7c 12 c0"
+        ),
+    ),
+}
+_AUD154_COMPANION_REBINDS = {
+    "scripts/live_stand.py": (
+        bytes.fromhex(
+            "c2 d8 95 9a 48 8c b7 7e 00 1a d3 b7 5a fb 7b f9 90 02 a9 1a 78 9c 67 a4 fa 47 70 ed 02 b7 7c 2c"
+        ),
+        bytes.fromhex(
+            "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+        ),
+    ),
+    "frontend/package.json": (
+        bytes.fromhex(
+            "c6 37 a6 46 14 0b 98 25 17 00 67 f0 58 28 c3 77 84 c0 57 79 62 3d a7 f6 58 4d d5 ad 1d ef dd 56"
+        ),
+        bytes.fromhex(
+            "4c 4b 8f e5 a0 b2 ac aa 2d ad 16 7f 4e 00 4c 34 cf df 10 78 c8 1b 4d 28 dd 0b 50 fe 06 73 1d f2"
+        ),
+    ),
+}
+_AUD154_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "73 49 d8 d7 01 17 ef b4 e5 24 c2 30 df 62 21 b2 ae 41 10 b6 c7 09 81 bb 99 a3 78 76 09 df b6 0a"
+)
+
+
+_AUD154_SOURCE_INSERTIONS = {
+    "frontend/package.json": (b" scripts/live-aud154-reporter.test.mjs",),
+    "scripts/live_stand.py": (
+        b"from scripts.aud154_receipt import project_case_records\n",
+        b"    delivery_cases = project_case_records(stdout)\n",
+        b'    for record in delivery_cases:\n        print(\n            "live E2E AUD154 " + json.dumps(record, separators=(",", ":")), flush=True\n        )\n',
+    ),
+}
+
+
+def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path not in _AUD154_SOURCE_PINS:
+        return actual
+    previous_sha, current_sha = _AUD154_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    if path == "quality/semgrep-dispositions.json":
+        historical = actual
+        for previous, current in _AUD154_COMPANION_REBINDS.values():
+            assert historical.count(current.hex().encode("ascii")) == 1
+            historical = historical.replace(
+                current.hex().encode("ascii"), previous.hex().encode("ascii"), 1
+            )
+    else:
+        historical = actual
+        for inserted in _AUD154_SOURCE_INSERTIONS[path]:
+            assert historical.count(inserted) == 1
+            historical = historical.replace(inserted, b"", 1)
+    assert hashlib.sha256(historical).digest() == previous_sha
+    return historical
+
+
+def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    replacements = {
+        hashlib.sha1(
+            current.hex().encode("ascii"), usedforsecurity=False
+        ).digest(): hashlib.sha1(
+            previous.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+        for previous, current in _AUD154_COMPANION_REBINDS.values()
+    }
+    changed = []
+    for index, record in enumerate(restored["records"]):
+        identity = record["identity"]
+        digest = bytes(identity["hashed_secret_bytes"])
+        if (
+            identity["path"] != "quality/semgrep-dispositions.json"
+            or digest not in replacements
+        ):
+            continue
+        assert identity["type"] == "Hex High Entropy String"
+        assert record["category"] == "public_integrity_digest"
+        identity["hashed_secret_bytes"] = list(replacements[digest])
+        changed.append(index)
+    assert changed == [451, 495], "live disposition AUD154 rebind set changed"
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _AUD154_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    for index, path in ((6, "scripts/live_stand.py"), (14, "frontend/package.json")):
+        companions = ledger["dispositions"][index]["companions"]
+        bound = [item["sha256"] for item in companions if item["path"] == path]
+        assert bound == [hashlib.sha256((root / path).read_bytes()).hexdigest()]
+    for path in _AUD154_SOURCE_PINS:
+        _aud154_historical_source_bytes(path, (root / path).read_bytes())
+    _aud154_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+    )
+
+
+@pytest.mark.parametrize("path", tuple(_AUD154_SOURCE_PINS))
+def test_aud154_source_projection_rejects_changes(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _aud154_historical_source_bytes(path, (root / path).read_bytes() + b"\n")
+
+
+@pytest.mark.parametrize("index", [451, 495])
+@pytest.mark.parametrize(
+    "field", ["digest", "path", "type", "category", "expiry", "evidence"]
+)
+def test_aud154_policy_projection_rejects_scope_drift(index: int, field: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][index]
+    if field == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif field in {"path", "type"}:
+        row["identity"][field] += " changed"
+    else:
+        key = "expires_on" if field == "expiry" else field
+        row[key] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
