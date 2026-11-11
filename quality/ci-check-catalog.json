@@ -1366,13 +1366,31 @@
             "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
           }
         },
+        "aud346-diagnostic-coverage": {
+          "profile": "internal",
+          "check_name_template": "AUD-346 Diagnostic Coverage",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "Blocking prerequisite of Contract Tests; CI Success rejects its downstream non-success without adding a branch-protection context. The five-minute job includes setup and a two-minute coverage step."
+          }
+        },
         "contract-tests": {
           "profile": "required-pr-main",
           "check_name_template": "Contract Tests",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
-          "needs": [],
+          "needs": [
+            "aud346-diagnostic-coverage"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",

@@ -2373,13 +2373,14 @@ jobs:
           fi
           exit "$receipt_status"
 
-  # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
-  # Runs lightweight Python consumer contract tests (no Go/FFI needed).
-  # The full Go provider verification continues in contract-tests.yml.
-  contract-tests:
-    name: Contract Tests
+  # Keep the supplemental proof off the existing Contract Tests runner budget.
+  # Its 5-minute job covers setup plus the unchanged 2-minute execution step.
+  # Contract Tests retains default success() dependency gating; CI Success
+  # already rejects a skipped/cancelled/failed Contract Tests result.
+  aud346-diagnostic-coverage:
+    name: AUD-346 Diagnostic Coverage
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -2423,6 +2424,37 @@ jobs:
             -p no:cacheprovider -p pytest_asyncio.plugin \
             --basetemp="$coverage_root/negative-pytest" \
             tests/test_aud346_diagnostic_coverage_gate.py::test_configured_gate_negatives -q
+
+  # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
+  # Runs lightweight Python consumer contract tests (no Go/FFI needed).
+  # The full Go provider verification continues in contract-tests.yml.
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    needs: [aud346-diagnostic-coverage]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
 
       - name: Run contract tests (consumer-side)
         # Contract coverage includes test_file_processor_contract.py (ProcessResult

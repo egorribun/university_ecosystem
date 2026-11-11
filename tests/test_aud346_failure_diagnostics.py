@@ -455,7 +455,15 @@ if [[ "$*" == *"get pods"* || "{mode}" == binary ]]; then cat '{fixture}'; fi
         helper = binary / "python3"
         helper.write_text(f"#!/bin/bash\nprintf '%s\\n' '{PRIVATE}' >&2\nexit 9\n")
         helper.chmod(0o700)
+    # Functional records must not depend on host scheduling latency. Keep the
+    # real clock for the three integration cases that assert deadline behavior.
+    clock = (
+        ""
+        if mode in ("deadline", "kubectl_timeout", "term_resistant")
+        else "unset SECONDS; SECONDS=0"
+    )
     program = f"""set -euo pipefail
+{clock}
 export PATH='{binary}':"$PATH"
 RUN_ID=aaaaaaaaaaaa
 ROOT_DIR='{ROOT}'
@@ -528,3 +536,68 @@ trap cleanup EXIT
             assert records[2]["observation"] == {"observation": "unavailable"}
         if mode == "post_proof":
             assert records[0]["failure_phase"] == "post_proof_health"
+
+
+def test_actual_diagnostic_bounded_consumes_shared_clock() -> None:
+    program = f"""set -euo pipefail
+unset SECONDS
+SECONDS=0
+DIAGNOSTIC_DEADLINE=3
+timeout() {{
+  [[ "$1" == --signal=TERM && "$2" == --kill-after=1s ]]
+  printf '%s\\n' "$3"
+  SECONDS=$((SECONDS + 1))
+}}
+{shell_functions()}
+diagnostic_bounded harmless
+diagnostic_bounded harmless
+diagnostic_bounded harmless
+if diagnostic_bounded harmless; then exit 99; else [[ "$?" == 124 ]]; fi
+[[ "$SECONDS" == 3 ]]
+# A controlled clock must not turn command timeout/failure into success.
+SECONDS=0
+timeout() {{ return 124; }}
+if diagnostic_bounded harmless; then exit 98; else [[ "$?" == 124 ]]; fi
+timeout() {{ return 9; }}
+if diagnostic_bounded harmless; then exit 97; else [[ "$?" == 9 ]]; fi
+"""
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=program,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["3s", "2s", "1s"]
+
+
+@pytest.mark.parametrize(
+    "work_deadline, expected", [(100, "3"), (4, "2"), (2, ""), (1, "")]
+)
+def test_actual_collector_caps_clock_before_cleanup_reserve(work_deadline, expected):
+    program = f"""set -euo pipefail
+unset SECONDS
+SECONDS=0
+WORK_DEADLINE={work_deadline}
+PROOF_FINISHED=0
+PORT_FORWARD_PID=""
+ROOT_DIR=/unused
+RUN_ID=aaaaaaaaaaaa
+DIAG_DIR=/unused
+{shell_functions()}
+# Stop at the first actual bounded call: no command or service is launched.
+diagnostic_bounded() {{ printf '%s\\n' "$DIAGNOSTIC_DEADLINE"; return 124; }}
+if emit_failure_diagnostics 1; then exit 99; fi
+"""
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=program,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == expected

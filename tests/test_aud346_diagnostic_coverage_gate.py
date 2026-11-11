@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import runpy
 import sys
 from pathlib import Path
@@ -176,11 +177,153 @@ COVERAGE_STEP = "Verify AUD-346 diagnostic helper coverage"
 NEGATIVE_MARKER = "# Exercise the configured gate against isolated negative controls."
 
 
+def assert_blocking_graph(workflow: dict) -> None:
+    jobs = workflow["jobs"]
+    prerequisite = jobs["aud346-diagnostic-coverage"]
+    contract = jobs["contract-tests"]
+    finalizer = jobs["ci-success"]
+    assert prerequisite.get("needs", []) == []
+    assert "if" not in prerequisite
+    assert "continue-on-error" not in prerequisite
+    assert prerequisite["timeout-minutes"] == 5
+    assert contract["name"] == "Contract Tests"
+    assert contract["timeout-minutes"] == 10
+    assert contract["needs"] == ["aud346-diagnostic-coverage"]
+    # No explicit job condition may override GitHub's default success() on
+    # completed dependencies. Failed/cancelled/skipped prerequisites cannot
+    # dispatch this job; unfinished dependencies cannot make it successful.
+    assert "if" not in contract
+    assert "continue-on-error" not in contract
+    assert all(step["name"] != COVERAGE_STEP for step in contract["steps"])
+    assert finalizer["if"] == "${{ always() }}"
+    assert "contract-tests" in finalizer["needs"]
+    check = next(s for s in finalizer["steps"] if s["name"] == "Check all jobs passed")
+    assert "'contract-tests|${{ needs.contract-tests.result }}'" in check["run"]
+
+
+def test_blocking_graph_has_default_success_dependency_and_strict_finalizer():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    assert_blocking_graph(workflow)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_need",
+        "conditional_bypass",
+        "continue_on_error",
+        "conditional_prerequisite",
+        "optional_prerequisite",
+        "old_budget",
+        "new_budget",
+        "finalizer_skip",
+        "missing_finalizer_need",
+        "missing_result_check",
+    ],
+)
+def test_blocking_graph_rejects_weakened_wiring(mutation):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    jobs = workflow["jobs"]
+    if mutation == "missing_need":
+        jobs["contract-tests"]["needs"] = []
+    elif mutation == "conditional_bypass":
+        jobs["contract-tests"]["if"] = "${{ always() }}"
+    elif mutation == "continue_on_error":
+        jobs["contract-tests"]["continue-on-error"] = True
+    elif mutation == "conditional_prerequisite":
+        jobs["aud346-diagnostic-coverage"]["if"] = "${{ false }}"
+    elif mutation == "optional_prerequisite":
+        jobs["aud346-diagnostic-coverage"]["continue-on-error"] = True
+    elif mutation == "old_budget":
+        jobs["contract-tests"]["timeout-minutes"] = 11
+    elif mutation == "new_budget":
+        jobs["aud346-diagnostic-coverage"]["timeout-minutes"] = 2
+    elif mutation == "finalizer_skip":
+        jobs["ci-success"]["if"] = "${{ success() }}"
+    elif mutation == "missing_finalizer_need":
+        jobs["ci-success"]["needs"].remove("contract-tests")
+    else:
+        step = next(
+            s
+            for s in jobs["ci-success"]["steps"]
+            if s["name"] == "Check all jobs passed"
+        )
+        step["run"] = step["run"].replace(
+            "'contract-tests|${{ needs.contract-tests.result }}'", ""
+        )
+    with pytest.raises(AssertionError):
+        assert_blocking_graph(workflow)
+
+
+@pytest.mark.parametrize(
+    "contract_result",
+    [
+        "success",
+        "failure",
+        "cancelled",
+        "skipped",
+        "",
+        "queued",
+        "in_progress",
+        "unknown",
+    ],
+)
+def test_actual_ci_success_gate_requires_successful_contract_job(contract_result):
+    import os
+    import subprocess
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    assert_blocking_graph(workflow)
+    finalizer = workflow["jobs"]["ci-success"]
+    step = next(s for s in finalizer["steps"] if s["name"] == "Check all jobs passed")
+    # Execute the actual aggregate shell, substituting only the runner's
+    # expression context. No second status evaluator or scheduler is invented.
+    values = {name: "success" for name in finalizer["needs"]}
+    values.update({"contract-tests": contract_result, "codecov-upload": "skipped"})
+    context = {f"needs.{name}.result": result for name, result in values.items()}
+    context.update(
+        {
+            "github.event_name": "pull_request",
+            "github.ref": "refs/pull/1380/merge",
+            "github.base_ref": "main",
+        }
+    )
+
+    def substitute(text):
+        return re.sub(
+            r"\$\{\{\s*([^{}]+?)\s*\}\}", lambda match: context[match[1].strip()], text
+        )
+
+    script = substitute(step["run"])
+    assert "${{" not in script
+    environment = {
+        **os.environ,
+        **{key: substitute(value) for key, value in step["env"].items()},
+    }
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=script,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if contract_result == "success":
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "All required CI checks passed." in result.stdout
+    else:
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "Required CI job 'contract-tests'" in result.stdout
+        assert "All required CI checks passed." not in result.stdout
+
+
 def coverage_step() -> dict:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    job = workflow["jobs"]["contract-tests"]
-    assert job["name"] == "Contract Tests"
-    assert job["timeout-minutes"] == 10
+    assert_blocking_graph(workflow)
+    job = workflow["jobs"]["aud346-diagnostic-coverage"]
+    assert job["name"] == "AUD-346 Diagnostic Coverage"
+    assert job["timeout-minutes"] == 5
     steps = job["steps"]
     step = next(item for item in steps if item["name"] == COVERAGE_STEP)
     assert (
