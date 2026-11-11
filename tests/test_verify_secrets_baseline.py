@@ -10713,7 +10713,9 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             for node in ast.walk(source)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
         }
-        assert expected_digests <= actual, path
+        assert {
+            _NOV11_HELPER_REBINDS[digest] for digest in expected_digests
+        } <= actual, path
 
     assert verifier.validate_false_positive_dispositions(
         {"schema_version": 1, "records": records},
@@ -32156,6 +32158,7 @@ _NOV11_GO_IMAGE_APPROVED_RECORD = {
 
 
 def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
     assert len(records) == 510, "live disposition row count changed"
@@ -32177,7 +32180,10 @@ def _nov11_historical_509_policy_bytes(policy_bytes: bytes) -> bytes:
     )
     historical = _nov11_historical_509_from_live_policy(policy)
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
-    assert policy_bytes[:498790] == historical_bytes[:498790], (
+    restored_bytes = _nov9_historical_506_policy_bytes(
+        _nov11_restore_helper_identities(policy)
+    )
+    assert restored_bytes[:498790] == historical_bytes[:498790], (
         "live disposition prior 509 byte prefix changed"
     )
     return historical_bytes
@@ -32280,3 +32286,97 @@ def test_nov11_go_image_trusted_scan_refuses_unmatched_findings(
         assert "1 exact false-positive finding(s)" in output.out
     else:
         assert "new finding" in output.err
+
+
+# Exact owner-authorized 1:1 provenance rebind; no new scanner approvals.
+_NOV11_HELPER_REBINDS = {
+    bytes.fromhex(
+        "bd 96 23 45 d8 3f 8a e2 62 8a 44 4a 55 19 96 bf 60 bc 0c f4"
+    ): bytes.fromhex("d1 57 6c bf 10 53 44 4c fd 3d b4 a2 06 bf 42 de 1f c5 5f e6"),
+    bytes.fromhex(
+        "dd 0f ba 1b b2 74 86 6f 7a a4 d4 e6 fa 2a 59 a1 c0 17 a3 2f"
+    ): bytes.fromhex("fd 04 92 54 22 9e 1b 63 bd 5c c4 d0 5d 58 a6 8c cc c3 1f 00"),
+    bytes.fromhex(
+        "64 dc 49 53 d6 87 19 db 9b 43 88 34 35 2f c9 a6 bc f7 a2 40"
+    ): bytes.fromhex("9a d3 26 dd 83 03 59 85 b3 02 fd 7e 96 8b 8d 06 5a c2 ca 74"),
+    bytes.fromhex(
+        "aa d3 f1 02 d9 8c a2 30 c0 ed 9e bf 50 41 4f b3 56 a1 42 70"
+    ): bytes.fromhex("b2 38 76 16 97 f1 2f 10 96 f1 ec 38 a3 59 cd f4 a8 45 e7 e8"),
+    bytes.fromhex(
+        "60 74 a1 24 44 38 78 1b 15 ea 8a 25 00 68 93 a6 a6 53 cd b8"
+    ): bytes.fromhex("71 d7 aa 50 9d e8 0f bf 22 0f 7b 6f e9 be 4e 0a b4 17 26 41"),
+}
+_NOV11_HELPER_PATHS = (
+    "scripts/quality/benchmark_capture_activation.py",
+    "tests/test_benchmark_capture_activation_workflow.py",
+)
+_NOV11_HELPER_REBIND_EVIDENCE = (
+    " Existing identity rebound 1:1 under owner standing authorization on "
+    "2026-11-11; original approval and expiry unchanged."
+)
+
+
+def _nov11_restore_helper_identities(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    expected = {
+        (path, new): old
+        for path in _NOV11_HELPER_PATHS
+        for old, new in _NOV11_HELPER_REBINDS.items()
+    }
+    seen = set()
+    for record in records:
+        identity = record["identity"]
+        key = (identity["path"], bytes(identity["hashed_secret_bytes"]))
+        if key not in expected:
+            continue
+        assert key not in seen, "live disposition duplicate helper rebind"
+        assert identity["type"] == "Hex High Entropy String"
+        assert record["evidence"].endswith(_NOV11_HELPER_REBIND_EVIDENCE)
+        assert record["evidence"].count("checkpoint 0fe40908") == 1
+        seen.add(key)
+        identity["hashed_secret_bytes"] = list(expected[key])
+        record["evidence"] = (
+            record["evidence"]
+            .removesuffix(_NOV11_HELPER_REBIND_EVIDENCE)
+            .replace("checkpoint 0fe40908", "checkpoint ca6d7117")
+        )
+    assert seen == set(expected), "live disposition helper rebind set changed"
+    return restored
+
+
+@pytest.mark.parametrize("index", range(10))
+@pytest.mark.parametrize(
+    "mutation", ["digest", "path", "type", "expiry", "evidence", "old_checkpoint"]
+)
+def test_nov11_helper_rebind_rejects_scope_drift(index: int, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    records = [
+        row
+        for row in policy["records"]
+        if row["identity"]["path"] in _NOV11_HELPER_PATHS
+        and bytes(row["identity"]["hashed_secret_bytes"])
+        in _NOV11_HELPER_REBINDS.values()
+    ]
+    assert len(records) == 10
+    record = records[index]
+    if mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "path":
+        record["identity"]["path"] = "scripts/quality/other.py"
+    elif mutation == "type":
+        record["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "old_checkpoint":
+        record["evidence"] = record["evidence"].replace(
+            "checkpoint 0fe40908", "checkpoint ca6d7117"
+        )
+    else:
+        record["evidence"] += " changed"
+    with pytest.raises(AssertionError):
+        _nov11_historical_509_from_live_policy(policy)
