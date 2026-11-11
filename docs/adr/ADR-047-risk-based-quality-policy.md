@@ -2529,3 +2529,19 @@ freeze dynamically updated ZAP add-ons. Offline fixture and source checks do
 not establish real-container compatibility, completed active scans, complete
 scan coverage or successful GitHub SARIF ingestion; those require separate
 authorized runtime evidence and current source-bound checks.
+
+## Decisions recorded on 2026-11-12
+
+### Map tile connections
+
+The owner approved exactly one more `connect-src` origin,
+`https://tiles.openfreemap.org`, in the backend default, the Node SSR policy and
+the shared contract. MapLibre fetches the map style, vector tiles, glyphs and
+sprites from that host. The policy blocked those requests, so the campus map
+rendered no base layer. No other directive or origin changes.
+
+`frontend/scripts/server-csp.mjs` is a companion of the existing SafeHtml Semgrep
+disposition. That companion digest and its existing public-integrity scanner
+identity are rebound one-to-one; path, type, category, owner, evidence and
+expiry stay the same, and the inventory remains 511 dispositions and 15
+Semgrep rows.

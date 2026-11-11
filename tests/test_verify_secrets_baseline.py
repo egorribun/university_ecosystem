@@ -32680,6 +32680,7 @@ _AUD375_PACKAGE_PREFIX = (
 
 
 def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov12_csp_historical_source_bytes(path, actual)
     if path not in {"frontend/package.json", "quality/semgrep-dispositions.json"}:
         return actual
     current_sha = (
@@ -32704,7 +32705,7 @@ def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov12_csp_historical_policy(policy)
     assert len(restored["records"]) == 511, "live disposition count changed"
     row = restored["records"][451]
     identity = row["identity"]
@@ -32776,3 +32777,132 @@ def test_aud375_policy_projection_rejects_metadata_drift(
     policy["records"][index][field] += " changed"
     with pytest.raises(AssertionError, match="approval metadata changed"):
         _aud375_historical_policy(policy)
+
+
+# NOV12 adds only the owner-approved map tile origin to the Node CSP. The
+# SafeHtml Semgrep companion and its public digest identity are rebound
+# one-to-one; restore the exact predecessor before the AUD375 inverse.
+_NOV12_CSP_SOURCE_SHA256 = bytes.fromhex(
+    "58 c5 e4 51 cf 68 e3 a0 91 14 0c 57 fa 32 e8 7f 13 0c 56 42 16 70 4a 0f 05 f0 83 05 2e 62 62 43"
+)
+_NOV12_CSP_PREVIOUS_SOURCE_SHA256 = bytes.fromhex(
+    "c2 15 62 21 06 8a a4 0b b1 4b be a7 c8 0b 4c 8e e7 c0 e3 b4 f2 65 0a 34 95 42 63 c4 93 1e 81 c4"
+)
+_NOV12_LEDGER_SHA256 = bytes.fromhex(
+    "50 05 3a 0f 31 7b 2e ee 4d 71 54 53 76 2a cf f3 f4 cb 17 11 da ec e1 5f a2 96 5d 2d e2 58 2e cf"
+)
+_NOV12_PREVIOUS_POLICY_SHA256 = bytes.fromhex(
+    "f2 d9 52 c8 dd 89 3e 25 c9 4b 9c 43 1d d2 ff ac d1 b9 17 e9 cc 2b 93 1f 99 a9 ef 40 e3 55 d7 88"
+)
+_NOV12_CSP_INSERTION = b'  "https://tiles.openfreemap.org",\n'
+_NOV12_CSP_ROW = 443
+
+
+def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == "frontend/scripts/server-csp.mjs":
+        assert hashlib.sha256(actual).digest() == _NOV12_CSP_SOURCE_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        assert actual.count(_NOV12_CSP_INSERTION) == 1
+        historical = actual.replace(_NOV12_CSP_INSERTION, b"", 1)
+        assert hashlib.sha256(historical).digest() == _NOV12_CSP_PREVIOUS_SOURCE_SHA256
+        return historical
+    if path != "quality/semgrep-dispositions.json":
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV12_LEDGER_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _NOV12_CSP_SOURCE_SHA256.hex().encode("ascii")
+    assert actual.count(current) == 1
+    historical = actual.replace(
+        current, _NOV12_CSP_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"), 1
+    )
+    assert hashlib.sha256(historical).digest() == _AUD375_LEDGER_SHA256
+    return historical
+
+
+def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    assert len(restored["records"]) == 511, "live disposition count changed"
+    row = restored["records"][_NOV12_CSP_ROW]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV12_CSP_SOURCE_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    )
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV12_CSP_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+        _NOV12_PREVIOUS_POLICY_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
+def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    companions = ledger["dispositions"][14]["companions"]
+    bound = [
+        item["sha256"]
+        for item in companions
+        if item["path"] == "frontend/scripts/server-csp.mjs"
+    ]
+    source = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    assert bound == [hashlib.sha256(source).hexdigest()]
+    historical = _nov12_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    )
+    assert source == historical.replace(
+        b'  "https://fcmregistrations.googleapis.com",\n',
+        b'  "https://fcmregistrations.googleapis.com",\n' + _NOV12_CSP_INSERTION,
+        1,
+    )
+    _nov12_csp_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
+    _nov12_csp_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "unrelated"])
+def test_nov12_map_csp_projection_rejects_source_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    if mutation == "missing":
+        actual = actual.replace(_NOV12_CSP_INSERTION, b"", 1)
+    elif mutation == "duplicate":
+        actual = actual.replace(_NOV12_CSP_INSERTION, _NOV12_CSP_INSERTION * 2, 1)
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="source file SHA-256 changed"):
+        _nov12_csp_historical_source_bytes("frontend/scripts/server-csp.mjs", actual)
+
+
+@pytest.mark.parametrize("field", ["digest", "path", "type", "category", "evidence"])
+def test_nov12_map_csp_policy_projection_rejects_scope_drift(field: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_NOV12_CSP_ROW]
+    if field == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif field in {"path", "type"}:
+        row["identity"][field] += " changed"
+    else:
+        row[field] += " changed"
+    with pytest.raises(AssertionError):
+        _nov12_csp_historical_policy(policy)

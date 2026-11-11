@@ -414,3 +414,28 @@ def test_browser_weather_requests_are_allowed_by_every_connect_src() -> None:
                 part for part in header.split("; ") if part.startswith("connect-src ")
             )
             assert origin in connect_src.split()
+
+
+def test_map_style_and_tile_requests_are_allowed_by_every_connect_src() -> None:
+    """MapLibre fetches its style, tiles, glyphs and sprites from one host."""
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "frontend/src/components/map/MapLibreMap.tsx").read_text(
+        encoding="utf-8"
+    )
+    # Only the style URLs are fetched; the attribution link is navigation.
+    origins = set(re.findall(r'const STYLE_[A-Z]+ = "(https://[a-z0-9.-]+)/', source))
+    assert origins == {"https://tiles.openfreemap.org"}
+
+    node_policy = (root / "frontend/scripts/server-csp.mjs").read_text(encoding="utf-8")
+    contract = json.loads(
+        (root / "quality/frontend-csp-defaults.json").read_text(encoding="utf-8")
+    )
+    extra = CspSettingsMixin.security_connect_src_extra
+    for origin in origins:
+        assert f'"{origin}"' in node_policy
+        assert origin in extra.split(",")
+        for header in contract["headers"].values():
+            connect_src = next(
+                part for part in header.split("; ") if part.startswith("connect-src ")
+            )
+            assert origin in connect_src.split()

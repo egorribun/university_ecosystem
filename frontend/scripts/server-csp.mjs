@@ -14,6 +14,7 @@ const DEFAULT_CONNECT_SOURCES = Object.freeze([
   "https://api.spotify.com",
   "https://fcm.googleapis.com",
   "https://fcmregistrations.googleapis.com",
+  "https://tiles.openfreemap.org",
   "https://updates.push.services.mozilla.com",
 ])
 

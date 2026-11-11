@@ -23,6 +23,7 @@ class CspSettingsMixin:
         "https://api.spotify.com,"
         "https://fcm.googleapis.com,"
         "https://fcmregistrations.googleapis.com,"
+        "https://tiles.openfreemap.org,"
         "https://*.push.services.mozilla.com,"
         "https://updates.push.services.mozilla.com,"
         "https://*.push.apple.com"
