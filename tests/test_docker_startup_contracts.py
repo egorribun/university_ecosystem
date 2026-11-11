@@ -3083,8 +3083,10 @@ def test_caddy_plugin_dependency_is_version_pinned() -> None:
     # the graph while the image is built.
     assert "xcaddy" not in dockerfile
     assert "go install" not in dockerfile
-    assert "ca-certificates=20260909-r0" in dockerfile
-    assert "git=2.54.1-r0" in dockerfile
+    builder_stage = dockerfile.split("FROM caddy:", maxsplit=1)[0]
+    assert "ca-certificates=20261020-r0" in builder_stage
+    assert "ca-certificates=20260909-r0" not in builder_stage
+    assert "git=2.54.1-r0" in builder_stage
     assert "github.com/mholt/caddy-ratelimit v0.1.0" in go_mod
     assert "github.com/caddyserver/caddy/v2 v2.11.7" in go_mod
     for caddyfile in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
