@@ -17339,6 +17339,40 @@
       },
       "owner": "egorribun",
       "reviewed_on": "2026-11-11"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Official ghcr.io/zaproxy/zaproxy image SHA-256 pin in .zap/image.txt:1; owner approved this exact public integrity identity on 2026-11-11; not credential material. The image digest does not freeze dynamically updated ZAP add-ons.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          14,
+          104,
+          95,
+          70,
+          97,
+          242,
+          33,
+          55,
+          179,
+          254,
+          109,
+          203,
+          255,
+          85,
+          28,
+          98,
+          23,
+          164,
+          40,
+          226
+        ],
+        "path": ".zap/image.txt",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-11"
     }
   ],
   "schema_version": 1

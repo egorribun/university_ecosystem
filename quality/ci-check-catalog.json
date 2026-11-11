@@ -2043,8 +2043,8 @@
           ],
           "artifacts": [
             {
-              "name_pattern": "zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
-              "path_pattern": "zap-sarif-provenance.json",
+              "name_pattern": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "zap-public/zap-results.sarif\nzap-public/zap-evidence.txt\nzap-public/zap-sarif-provenance.json\n",
               "required": false,
               "provenance": "run_id_attempt"
             }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -14,9 +15,6 @@ import yaml
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
 TARGET_EXPRESSION = "${{ inputs.target_url || secrets.DAST_TARGET_URL }}"
-EMPTY_TARGET_ERROR = (
-    "No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
-)
 TRUSTED_REF_ERROR = "DAST scans must run from the protected main ref."
 pytest_plugins = ("pytester",)
 
@@ -29,32 +27,18 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     return triggers
 
 
-def _assert_fail_closed_target_preflight(
-    preflight_script: str, *, private_nuclei: bool = False
-) -> None:
-    """Assert that missing targets fail before a scan can receive one."""
-
+def _assert_fail_closed_target_preflight(preflight_script: str) -> None:
+    """Nuclei rejects missing targets before a scan can receive one."""
     shell_lines = [
         line.strip()
         for line in preflight_script.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
-    if private_nuclei:
-        expected = [
-            "set -euo pipefail",
-            "python3 -m scripts.quality.dast_privacy prepare-target \\",
-            '--output "$RUNNER_TEMP/nuclei-target.txt"',
-        ]
-    else:
-        expected = [
-            'if [ -z "$TARGET_URL" ]; then',
-            f'echo "::error::{EMPTY_TARGET_ERROR}"',
-            "exit 1",
-            "fi",
-            "python3 -m scripts.quality.dast_privacy validate-target",
-            'echo "::add-mask::$TARGET_URL"',
-        ]
-    assert shell_lines == expected
+    assert shell_lines == [
+        "set -euo pipefail",
+        "python3 -m scripts.quality.dast_privacy prepare-target \\",
+        '--output "$RUNNER_TEMP/nuclei-target.txt"',
+    ]
 
 
 def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
@@ -97,130 +81,15 @@ def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
             assert ".zap" in checkout["with"]["sparse-checkout"].split()
 
 
-def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
-    """Both scanners reject absent targets; ZAP masks configured targets."""
-
+def test_nuclei_target_preflight_remains_fail_closed() -> None:
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    scan_steps = {
-        "nuclei": ("Validate Nuclei target URL", "Run Nuclei scan"),
-        "zap": ("Validate ZAP target URL", "ZAP Full Scan"),
-    }
-    for job_name, (preflight_name, scan_name) in scan_steps.items():
-        steps = workflow["jobs"][job_name]["steps"]
-        preflight_index, preflight = next(
-            (index, step)
-            for index, step in enumerate(steps)
-            if step.get("name") == preflight_name
-        )
-        scan_index = next(
-            index for index, step in enumerate(steps) if step.get("name") == scan_name
-        )
-        assert preflight_index < scan_index
-        expected_env = (
-            {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
-            if job_name == "nuclei"
-            else {"TARGET_URL": TARGET_EXPRESSION}
-        )
-        assert preflight["env"] == expected_env
-        assert preflight.get("continue-on-error", False) is False
-        _assert_fail_closed_target_preflight(
-            preflight["run"], private_nuclei=job_name == "nuclei"
-        )
-
-
-@pytest.mark.parametrize(
-    ("target_url", "expected_exit", "expected_events", "expected_error"),
-    [
-        (
-            "https://stage.example.test/private-area",
-            0,
-            ["VALIDATOR_CALLED", "TARGET_MASK_REGISTERED"],
-            None,
-        ),
-        (
-            "ftp://stage.example.test/private-area",
-            1,
-            ["VALIDATOR_CALLED"],
-            "DAST target must be an HTTP(S) URL",
-        ),
-        ("", 1, [], f"::error::{EMPTY_TARGET_ERROR}"),
-    ],
-)
-def test_zap_target_preflight_executes_mask_and_fail_closed_validation(
-    tmp_path: Path,
-    pytester,
-    monkeypatch: pytest.MonkeyPatch,
-    target_url: str,
-    expected_exit: int,
-    expected_events: list[str],
-    expected_error: str | None,
-) -> None:
-    """The real ZAP preflight validates before masking without logging its target."""
-
-    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    step = next(
-        item
-        for item in workflow["jobs"]["zap"]["steps"]
-        if item.get("name") == "Validate ZAP target URL"
-    )
-    monkeypatch.chdir(REPOSITORY_ROOT)
-    monkeypatch.delenv("BASH_ENV", raising=False)
-    monkeypatch.setenv("TARGET_URL", target_url)
-    monkeypatch.setenv("TEST_GATE_PYTHON", Path(sys.executable).as_posix())
-    step_log = tmp_path / "zap-preflight-events.log"
-    monkeypatch.setenv("TEST_STEP_LOG", step_log.as_posix())
-    script = tmp_path / "zap-target-preflight.sh"
-    script.write_text(
-        "\n".join(
-            (
-                "echo() {",
-                '  case "${1-}" in',
-                '    "::add-mask::"*)',
-                '      if [ "$1" = "::add-mask::$TARGET_URL" ]; then',
-                "        printf '%s\\n' 'TARGET_MASK_REGISTERED' >> \"$TEST_STEP_LOG\"",
-                "      else",
-                "        printf '%s\\n' 'TARGET_MASK_MISMATCH' >> \"$TEST_STEP_LOG\"",
-                "      fi",
-                "      ;;",
-                '    *) builtin echo "$@" ;;',
-                "  esac",
-                "}",
-                "python3() {",
-                "  printf '%s\\n' 'VALIDATOR_CALLED' >> \"$TEST_STEP_LOG\"",
-                '  "$TEST_GATE_PYTHON" "$@" >/dev/null',
-                "}",
-                step["run"],
-            )
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
-    bash = (
-        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
-    )
-    assert bash, "Real Bash is required to execute the ZAP target preflight"
-    result = pytester.run(
-        bash,
-        "--noprofile",
-        "--norc",
-        "-e",
-        "-o",
-        "pipefail",
-        script.as_posix(),
-        timeout=20,
-    )
-
-    output = result.stdout.str() + result.stderr.str()
-    assert result.ret == expected_exit
-    observed_events = (
-        step_log.read_text(encoding="utf-8").splitlines() if step_log.exists() else []
-    )
-    assert observed_events == expected_events
-    if expected_error is not None:
-        assert expected_error in output
-    if target_url:
-        assert target_url not in output
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    names = [step["name"] for step in steps]
+    preflight = steps[names.index("Validate Nuclei target URL")]
+    assert names.index("Validate Nuclei target URL") < names.index("Run Nuclei scan")
+    assert preflight["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
+    assert preflight.get("continue-on-error", False) is False
+    _assert_fail_closed_target_preflight(preflight["run"])
 
 
 def test_nuclei_dispatch_target_never_appears_in_a_step_preamble() -> None:
@@ -603,101 +472,203 @@ def test_nuclei_pins_signed_official_template_compatible_release() -> None:
     assert forbidden_options == set()
 
 
-def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> None:
-    """A configured target must not inherit the empty-target failure exit."""
+PUBLIC_FILES = [
+    "zap-public/zap-results.sarif",
+    "zap-public/zap-evidence.txt",
+    "zap-public/zap-sarif-provenance.json",
+]
+VERIFIED_UPLOAD = (
+    "${{ always() && steps.zap_prepare.outcome == 'success' "
+    "&& steps.zap_verify.outcome == 'success' }}"
+)
 
-    escaped_failure_exit = "\n".join(
-        (
-            'if [ -z "$TARGET_URL" ]; then',
-            f'  echo "::error::{EMPTY_TARGET_ERROR}"',
-            "fi",
-            "exit 1",
-            "python3 -m scripts.quality.dast_privacy validate-target",
-        )
+
+def _assert_zap_pipeline(workflow: dict) -> None:
+    """Publication must have one narrow, independently verified producer."""
+    job = workflow["jobs"]["zap"]
+    assert job["permissions"] == {"contents": "read", "security-events": "write"}
+    assert job["needs"] == "verify-trusted-ref"
+    assert job["if"] == "${{ needs.verify-trusted-ref.result == 'success' }}"
+    assert job["timeout-minutes"] == 60
+    assert "env" not in job and "env" not in workflow
+    steps = job["steps"]
+    assert len(steps) == 6
+    checkout, prepare, verify, sarif, artifact, gate = steps
+    assert (
+        checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
     )
-
-    with pytest.raises(AssertionError):
-        _assert_fail_closed_target_preflight(escaped_failure_exit)
-
-
-def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None:
-    """Trusted scheduled/manual scans retain the full active ZAP configuration."""
-
-    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    zap_action = next(
-        step
-        for step in workflow["jobs"]["zap"]["steps"]
-        if step.get("name") == "ZAP Full Scan"
+    assert prepare["id"] == "zap_prepare"
+    assert prepare["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
+    assert "if" not in prepare
+    assert verify["id"] == "zap_verify"
+    assert verify["if"] == "${{ always() && steps.zap_prepare.outcome == 'success' }}"
+    assert gate["name"] == "Fail on medium or high ZAP findings"
+    assert gate["if"] == "${{ always() }}"
+    for step, command in ((prepare, "prepare"), (verify, "verify"), (gate, "gate")):
+        assert step["shell"] == "bash"
+        expected = [
+            "set",
+            "-euo",
+            "pipefail",
+            "python3",
+            "-m",
+            "scripts.quality.zap_workflow",
+            command,
+            "--repo-root",
+            "$GITHUB_WORKSPACE",
+            "--work",
+            "$RUNNER_TEMP/zap-private",
+            "--public",
+            "$GITHUB_WORKSPACE/zap-public",
+        ]
+        if command != "verify":
+            expected += ["--summary-file", "$GITHUB_STEP_SUMMARY"]
+        assert shlex.split(step["run"].replace("\\\n", " ")) == expected
+    for step in steps:
+        preamble = json.dumps({"env": step.get("env"), "with": step.get("with")})
+        assert "inputs.target_url" not in preamble
+        assert "inputs.target_url" not in step.get("run", "")
+        assert step.get("continue-on-error", False) is False
+        if step is not prepare:
+            assert "env" not in step
+        assert "${{" not in step.get("run", "")
+    assert (
+        sarif["uses"]
+        == "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
     )
-
-    assert zap_action.get("continue-on-error", False) is False
-    assert zap_action == {
-        "name": "ZAP Full Scan",
-        "id": "zap_scan",
-        "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c",
-        "env": {"TARGET_URL": TARGET_EXPRESSION},
-        "with": {
-            "target": TARGET_EXPRESSION,
-            "rules_file_name": ".zap/rules.tsv",
-            "cmd_options": "-a -j -T 60",
-            "artifact_name": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
-            "allow_issue_writing": False,
-        },
+    assert (
+        artifact["uses"]
+        == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert sarif["if"] == artifact["if"] == VERIFIED_UPLOAD
+    assert sarif["with"] == {"sarif_file": PUBLIC_FILES[0], "category": "zap-dast"}
+    assert artifact["with"] == {
+        "name": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+        "path": "\n".join(PUBLIC_FILES) + "\n",
+        "retention-days": 90,
+        "if-no-files-found": "error",
     }
 
 
-def test_zap_findings_gate_runs_last_and_blocks_medium_and_high_alerts() -> None:
-    """AUD-381: the ZAP gate fails on medium+ alerts after findings are published."""
+def test_zap_private_prepare_verify_publish_threshold_pipeline() -> None:
+    _assert_zap_pipeline(yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8")))
 
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "raw_upload",
+        "directory_upload",
+        "skip_verify",
+        "ignore_failure",
+        "target_in_verify",
+        "public_work",
+        "gate_before_upload",
+        "issue_permission",
+        "unpin_action",
+        "extra_publisher",
+        "target_in_shell",
+        "target_in_prepare_env",
+        "target_in_action_input",
+    ],
+)
+def test_zap_pipeline_contract_rejects_privacy_and_ordering_regressions(
+    mutation: str,
+) -> None:
+    workflow = copy.deepcopy(
+        yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    )
+    job = workflow["jobs"]["zap"]
+    steps = job["steps"]
+    if mutation == "raw_upload":
+        steps[4]["with"]["path"] += "$RUNNER_TEMP/zap-private/report_json.json\n"
+    elif mutation == "directory_upload":
+        steps[4]["with"]["path"] = "zap-public/"
+    elif mutation == "skip_verify":
+        steps[3]["if"] = "${{ always() }}"
+    elif mutation == "ignore_failure":
+        steps[1]["continue-on-error"] = True
+    elif mutation == "target_in_verify":
+        steps[2]["env"] = {"TARGET_URL": TARGET_EXPRESSION}
+    elif mutation == "public_work":
+        steps[1]["run"] = steps[1]["run"].replace(
+            "$RUNNER_TEMP/zap-private", "$GITHUB_WORKSPACE"
+        )
+    elif mutation == "gate_before_upload":
+        steps[3], steps[5] = steps[5], steps[3]
+    elif mutation == "issue_permission":
+        job["permissions"]["issues"] = "write"
+    elif mutation == "unpin_action":
+        steps[4]["uses"] = "actions/upload-artifact@main"
+    elif mutation == "target_in_prepare_env":
+        steps[1]["env"] = {"TARGET_URL": TARGET_EXPRESSION}
+    elif mutation == "target_in_action_input":
+        steps[3]["with"]["target"] = TARGET_EXPRESSION
+    elif mutation == "extra_publisher":
+        steps.append(copy.deepcopy(steps[4]))
+    else:
+        steps[1]["run"] += "echo " + TARGET_EXPRESSION
+    with pytest.raises(AssertionError):
+        _assert_zap_pipeline(workflow)
+
+
+@pytest.mark.parametrize("command", ["prepare", "verify", "gate"])
+@pytest.mark.parametrize("exit_code", [0, 1, 2, 7])
+def test_zap_real_shell_preserves_cli_arguments_and_failure(
+    tmp_path: Path,
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    exit_code: int,
+) -> None:
+    """Execute actual workflow shell without running Docker or contacting a target."""
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["zap"]["steps"]
-    names = [step.get("name") for step in steps]
-    gate = next(
-        step
-        for step in steps
-        if step.get("name") == "Fail on medium or high ZAP findings"
+    step = workflow["jobs"]["zap"]["steps"][
+        {"prepare": 1, "verify": 2, "gate": 5}[command]
+    ]
+    workspace = tmp_path / "workspace with spaces"
+    private = tmp_path / "private with spaces"
+    summary = tmp_path / "summary with spaces.md"
+    log = tmp_path / "argv.json"
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    for key, value in {
+        "GITHUB_WORKSPACE": str(workspace),
+        "RUNNER_TEMP": str(private),
+        "GITHUB_STEP_SUMMARY": str(summary),
+        "SPY_LOG": str(log),
+        "SPY_EXIT": str(exit_code),
+        "TEST_GATE_PYTHON": sys.executable,
+    }.items():
+        monkeypatch.setenv(key, value)
+    spy = tmp_path / "spy.py"
+    spy.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['SPY_LOG']).write_text(json.dumps(sys.argv[1:]))\n"
+        "raise SystemExit(int(os.environ['SPY_EXIT']))\n",
+        encoding="utf-8",
     )
-
-    assert names.count("Fail on medium or high ZAP findings") == 1
-    assert names[-1] == "Fail on medium or high ZAP findings"
-    assert gate["if"] == "${{ always() }}"
-    assert gate["shell"] == "bash"
-    assert gate.get("continue-on-error", False) is False
-    assert gate.get("id") is None
-    assert "${{" not in gate["run"]
-    assert (
-        'python3 scripts/quality/zap_findings_gate.py "$GITHUB_WORKSPACE/report_json.json"'
-        in gate["run"]
+    monkeypatch.setenv("SPY_SCRIPT", str(spy))
+    script = tmp_path / "workflow.sh"
+    script.write_text(
+        'python3() { "$TEST_GATE_PYTHON" "$SPY_SCRIPT" "$@"; }\n' + step["run"],
+        encoding="utf-8",
     )
-    assert '--summary-file "$GITHUB_STEP_SUMMARY"' in gate["run"]
-    assert "set -euo pipefail" in gate["run"]
-
-
-def test_zap_gate_follows_sarif_provenance_and_both_publication_steps() -> None:
-    """Publication steps keep their conditions and run before the blocking gate."""
-
-    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["zap"]["steps"]
-    names = [step.get("name") for step in steps]
-    gate_index = names.index("Fail on medium or high ZAP findings")
-
-    for earlier in (
-        "ZAP Full Scan",
-        "Validate ZAP SARIF provenance",
-        "Upload ZAP SARIF to GitHub Security",
-        "Upload ZAP provenance receipt",
-    ):
-        assert names.index(earlier) < gate_index
-
-    sarif_upload = steps[names.index("Upload ZAP SARIF to GitHub Security")]
-    assert sarif_upload["if"] == (
-        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
-        "&& hashFiles('zap-results.sarif') != '' }}"
-    )
-    assert sarif_upload["with"]["category"] == "zap-dast"
-    receipt_upload = steps[names.index("Upload ZAP provenance receipt")]
-    assert receipt_upload["if"] == (
-        "${{ always() && steps.zap_sarif_provenance.outcome == 'success' "
-        "&& hashFiles('zap-sarif-provenance.json') != '' }}"
-    )
-    assert receipt_upload["with"]["retention-days"] == 90
+    bash = shutil.which("bash")
+    assert bash
+    result = pytester.run(bash, "--noprofile", "--norc", str(script), timeout=20)
+    assert result.ret == exit_code
+    expected = [
+        "-m",
+        "scripts.quality.zap_workflow",
+        command,
+        "--repo-root",
+        str(workspace),
+        "--work",
+        str(private / "zap-private"),
+        "--public",
+        str(workspace / "zap-public"),
+    ]
+    if command != "verify":
+        expected += ["--summary-file", str(summary)]
+    assert json.loads(log.read_text(encoding="utf-8")) == expected

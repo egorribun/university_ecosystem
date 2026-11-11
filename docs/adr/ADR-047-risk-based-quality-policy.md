@@ -2510,3 +2510,22 @@ The existing AUD-428 row13 companion is rebound one-to-one to the combined
 Go fuzz-contract and toolchain-pin source. Only that public companion digest
 and its existing scanner identity change; the path, type, line, category,
 owner, evidence and expiry remain the same. No new Semgrep row is added.
+
+### Exact ZAP public image digest
+
+The owner approved one additional `public_integrity_digest` disposition for
+the official `ghcr.io/zaproxy/zaproxy` image checksum at `.zap/image.txt:1`,
+with detector `Hex High Entropy String`, review date 2026-11-11 and finite
+expiry 2027-01-10. Its exact scanner digest is recorded in the policy and
+source-bound contract. The policy grows from 510 to 511 records; all prior
+510 latest published records and expiry values remain unchanged, including
+the Go approval, authorized benchmark-helper provenance rebinds and existing
+one-to-one Semgrep companion bindings. Baseline identities remain
+242, Gitleaks fingerprints 27 and Semgrep rows 15.
+
+This approval adds no other identity or suppression and changes no scanner
+threshold, required check or audit status. The pinned image digest does not
+freeze dynamically updated ZAP add-ons. Offline fixture and source checks do
+not establish real-container compatibility, completed active scans, complete
+scan coverage or successful GitHub SARIF ingestion; those require separate
+authorized runtime evidence and current source-bound checks.

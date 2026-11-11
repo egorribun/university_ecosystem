@@ -9,6 +9,7 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -369,17 +370,18 @@ def _register_target_masks(target: str) -> None:
             print(f"::add-mask::{value.replace('%', '%25')}")
 
 
-def prepare_target(output_path: Path) -> int:
+def prepare_target(output_path: Path, env: Mapping[str, str] | None = None) -> int:
     """Mask a dispatch or secret target before writing a private handoff."""
 
+    environment = os.environ if env is None else env
     created = False
     try:
-        event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-        secret = os.environ.get("DAST_SECRET_TARGET", "")
+        event_name = environment.get("GITHUB_EVENT_NAME", "")
+        secret = environment.get("DAST_SECRET_TARGET", "")
         if event_name == "schedule":
             target = secret
         elif event_name == "workflow_dispatch":
-            event_path = Path(os.environ["GITHUB_EVENT_PATH"])
+            event_path = Path(environment["GITHUB_EVENT_PATH"])
             event = json.loads(
                 event_path.read_text(encoding="utf-8"),
                 object_pairs_hook=_reject_duplicate_keys,

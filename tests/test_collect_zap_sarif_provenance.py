@@ -362,96 +362,27 @@ def test_collector_rejects_report_and_workflow_artifact_mismatches(
     assert not external_receipt.exists()
 
 
-def test_current_zap_upload_requires_a_validated_report_producer() -> None:
+def test_current_zap_upload_requires_verified_public_projection() -> None:
+    """The legacy collector is no longer evidence that an action produced SARIF."""
     workflow = yaml.safe_load(
         (REPOSITORY_ROOT / ".github/workflows/dast.yml").read_text(encoding="utf-8")
     )
-    triggers = workflow.get("on", workflow.get(True))
-    assert isinstance(triggers, dict)
-    assert set(triggers) == {"schedule", "workflow_dispatch"}
     steps = workflow["jobs"]["zap"]["steps"]
-    zap_job = workflow["jobs"]["zap"]
-    assert zap_job["needs"] == "verify-trusted-ref"
-    assert zap_job["permissions"] == {
-        "contents": "read",
-        "security-events": "write",
-    }
-    checkout = next(
-        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    assert not any(
+        "zaproxy/action-full-scan@" in step.get("uses", "") for step in steps
     )
-    assert checkout["with"]["ref"] == "${{ github.sha }}"
-    assert checkout["with"]["sparse-checkout"].splitlines() == [
-        ".github/workflows/dast.yml",
-        ".zap",
-        "scripts/quality",
+    assert steps[1]["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
+    assert "scripts.quality.zap_workflow prepare" in steps[1]["run"]
+    assert "scripts.quality.zap_workflow verify" in steps[2]["run"]
+    assert steps[2]["id"] == "zap_verify"
+    for step in steps[3:5]:
+        assert "steps.zap_prepare.outcome == 'success'" in step["if"]
+        assert "steps.zap_verify.outcome == 'success'" in step["if"]
+    assert steps[3]["with"]["sarif_file"] == "zap-public/zap-results.sarif"
+    assert steps[4]["with"]["path"].splitlines() == [
+        "zap-public/zap-results.sarif",
+        "zap-public/zap-evidence.txt",
+        "zap-public/zap-sarif-provenance.json",
     ]
-    target_validation = next(
-        step for step in steps if step.get("name") == "Validate ZAP target URL"
-    )
-    assert target_validation["env"]["TARGET_URL"] == (
-        "${{ inputs.target_url || secrets.DAST_TARGET_URL }}"
-    )
-    assert (
-        "python3 -m scripts.quality.dast_privacy validate-target"
-        in target_validation["run"]
-    )
-    assert 'echo "::add-mask::$TARGET_URL"' in target_validation["run"]
-    scan_index, scan = next(
-        (index, step)
-        for index, step in enumerate(steps)
-        if step.get("name") == "ZAP Full Scan"
-    )
-    check_index, check = next(
-        (index, step)
-        for index, step in enumerate(steps)
-        if step.get("name") == "Validate ZAP SARIF provenance"
-    )
-    upload_index, upload = next(
-        (index, step)
-        for index, step in enumerate(steps)
-        if step.get("name") == "Upload ZAP SARIF to GitHub Security"
-    )
-
-    assert scan["id"] == "zap_scan"
-    assert scan["uses"] == (
-        "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c"
-    )
-    assert scan["with"]["rules_file_name"] == ".zap/rules.tsv"
-    assert scan["with"]["cmd_options"] == "-a -j -T 60"
-    assert scan["with"]["allow_issue_writing"] is False
-    assert check["id"] == "zap_sarif_provenance"
-    assert check["if"] == "${{ always() }}"
-    assert check["env"]["EVENT_SHA"] == "${{ github.sha }}"
-    assert check["env"]["SCAN_OUTCOME"] == "${{ steps.zap_scan.outcome }}"
-    assert check["env"]["RUN_ID"] == "${{ github.run_id }}"
-    assert check["env"]["RUN_ATTEMPT"] == "${{ github.run_attempt }}"
-    assert check["env"]["ARTIFACT_NAME"] == (
-        "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
-    )
-    assert scan["with"]["artifact_name"] == check["env"]["ARTIFACT_NAME"]
-    assert "python3 -m scripts.quality.zap_sarif_provenance" in check["run"]
-    assert '--artifact-name "$ARTIFACT_NAME"' in check["run"]
-    assert '--scan-outcome "$SCAN_OUTCOME"' in check["run"]
-    assert scan_index < check_index < upload_index
-    assert "steps.zap_sarif_provenance.outcome == 'success'" in upload["if"]
-    assert "hashFiles('zap-results.sarif') != ''" in upload["if"]
-
-    receipt_index, receipt_upload = next(
-        (index, step)
-        for index, step in enumerate(steps)
-        if step.get("name") == "Upload ZAP provenance receipt"
-    )
-    assert check_index < upload_index < receipt_index
-    assert "steps.zap_sarif_provenance.outcome == 'success'" in receipt_upload["if"]
-    assert "hashFiles('zap-sarif-provenance.json') != ''" in receipt_upload["if"]
-    assert receipt_upload["with"]["path"] == "zap-sarif-provenance.json"
-    assert receipt_upload["with"]["retention-days"] == 90
-
-    nuclei_steps = workflow["jobs"]["nuclei"]["steps"]
-    nuclei_gate = next(
-        step
-        for step in nuclei_steps
-        if step.get("name") == "Fail on medium, high or critical Nuclei findings"
-    )
-    assert nuclei_gate["if"] == "${{ always() }}"
-    assert "nuclei_findings_gate.py" in nuclei_gate["run"]
+    assert "scripts.quality.zap_workflow gate" in steps[-1]["run"]
+    assert steps[-1]["if"] == "${{ always() }}"

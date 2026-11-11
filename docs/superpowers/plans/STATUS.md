@@ -20,13 +20,15 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **510 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The 510 total includes the previous 506 approved records, including the eight
+current policy-file inventory is **511 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 511 total includes the previous 506 approved records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,
-plus three owner-approved wasm-bindgen CLI checksum identities and one Go Alpine
-image checksum identity approved on 2026-11-11. All four appended rows expire
-2027-01-10. These are inventory counts only and do
+plus three owner-approved wasm-bindgen CLI checksum identities, one Go Alpine
+image checksum identity and one ZAP image checksum identity. All five appended
+rows expire 2027-01-10. The latest published 510-record pre-ZAP state already
+includes the authorized helper and row13 one-to-one rebinds; ZAP appends only
+its exact image identity and preserves all 510 records unchanged. These are inventory counts only and do
 not establish passing scanner results or required checks.
 All 78 required context/app pairs, blocking CodeQL, hooks and quality floors
 remain in force.

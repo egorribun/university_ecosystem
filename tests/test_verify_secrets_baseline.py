@@ -1079,7 +1079,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 11)
     )
-    assert len(live_validated) == 510
+    assert len(live_validated) == 511
     assert all(
         finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
     )
@@ -31494,7 +31494,7 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    if len(policy.get("records", [])) == 510:
+    if len(policy.get("records", [])) == 511:
         policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -32131,7 +32131,7 @@ _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
 
 
 # Owner-approved 2026-11-11 Go image identity. The older contracts operate on
-# the exact 509-record prefix; the live document must append only this record.
+# the exact 509-record prefix; the live document appends only Go and ZAP.
 _NOV11_GO_IMAGE_SCANNER_DIGEST = bytes.fromhex(
     "c8 64 20 19 43 35 0a eb 96 c2 e1 67 52 e3 9a f0 6a bb 45 e7"
 )
@@ -32161,10 +32161,11 @@ def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, 
     policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
-    assert len(records) == 510, "live disposition row count changed"
-    assert records[509:] == [_NOV11_GO_IMAGE_APPROVED_RECORD], (
-        "live disposition approved Go suffix changed"
-    )
+    assert len(records) == 511, "live disposition row count changed"
+    assert records[509:] == [
+        _NOV11_GO_IMAGE_APPROVED_RECORD,
+        _NOV11_ZAP_IMAGE_APPROVED_RECORD,
+    ], "live disposition approved Go and ZAP suffix changed"
     historical = {**policy, "records": copy.deepcopy(records[:509])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     assert hashlib.sha256(historical_bytes).digest() == _NOV9_WASM_CLI_POLICY_SHA256, (
@@ -32189,7 +32190,7 @@ def _nov11_historical_509_policy_bytes(policy_bytes: bytes) -> bytes:
     return historical_bytes
 
 
-def test_nov11_go_image_appends_one_exact_approval() -> None:
+def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
     root = Path(__file__).resolve().parents[1]
     policy_bytes = (
         root / "quality/security-false-positive-dispositions.json"
@@ -32199,7 +32200,7 @@ def test_nov11_go_image_appends_one_exact_approval() -> None:
     accepted = verifier.validate_false_positive_dispositions(
         json.loads(policy_bytes), today=verifier.date(2026, 11, 11)
     )
-    assert len(accepted) == 510
+    assert len(accepted) == 511
 
 
 @pytest.mark.parametrize(
@@ -32380,3 +32381,110 @@ def test_nov11_helper_rebind_rejects_scope_drift(index: int, mutation: str) -> N
         record["evidence"] += " changed"
     with pytest.raises(AssertionError):
         _nov11_historical_509_from_live_policy(policy)
+
+
+# Exact approved ZAP suffix; preserve all 510 published records and expiries.
+_NOV11_ZAP_IMAGE_SCANNER_DIGEST = bytes.fromhex(
+    "0e 68 5f 46 61 f2 21 37 b3 fe 6d cb ff 55 1c 62 17 a4 28 e2"
+)
+_NOV11_ZAP_IMAGE_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": "Official ghcr.io/zaproxy/zaproxy image SHA-256 pin in .zap/image.txt:1; owner approved this exact public integrity identity on 2026-11-11; not credential material. The image digest does not freeze dynamically updated ZAP add-ons.",
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV11_ZAP_IMAGE_SCANNER_DIGEST),
+        "path": ".zap/image.txt",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-11",
+}
+_NOV11_PRE_ZAP_POLICY_SHA256 = bytes.fromhex(
+    "cc 56 ef 06 33 3c db 43 f1 2f 6a 29 f3 53 9f da 0b 53 07 c9 11 ea 34 ed dc 56 df c6 b1 d5 51 f0"
+)
+
+
+def test_nov11_zap_image_preserves_published_policy_and_source_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    _nov11_historical_509_from_live_policy(policy)
+    previous = {**policy, "records": policy["records"][:510]}
+    assert (
+        hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
+        == _NOV11_PRE_ZAP_POLICY_SHA256
+    )
+    image = (root / ".zap/image.txt").read_text()
+    assert image.count("\n") == 1 and image.endswith("\n")
+    prefix = "ghcr.io/zaproxy/zaproxy@sha256:"
+    assert image.startswith(prefix)
+    digest = image.removeprefix(prefix).strip()
+    assert len(digest) == 64
+    assert (
+        hashlib.sha1(digest.encode("ascii"), usedforsecurity=False).digest()
+        == _NOV11_ZAP_IMAGE_SCANNER_DIGEST
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "digest",
+        "type",
+        "category",
+        "owner",
+        "review",
+        "expiry",
+        "evidence",
+        "go_record",
+    ],
+)
+def test_nov11_zap_image_projection_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    record = policy["records"][-1]
+    if mutation == "path":
+        record["identity"]["path"] = ".zap/other.txt"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "synthetic_test_fixture"
+    elif mutation == "owner":
+        record["owner"] = "someone_else"
+    elif mutation == "review":
+        record["reviewed_on"] = "2026-11-10"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        record["evidence"] += " changed"
+    else:
+        policy["records"][509]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov11_zap_image_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV11_ZAP_IMAGE_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            ".zap/image.txt",
+            "Hex High Entropy String",
+            _NOV11_ZAP_IMAGE_SCANNER_DIGEST.hex(),
+            1,
+        )
+    }
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(document, today=today)
+            == expected
+        )
+    for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)

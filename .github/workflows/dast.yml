@@ -198,8 +198,7 @@ jobs:
   # Complements Nuclei (CVE/template-based) with active probing for injection,
   # auth bypass, misconfiguration, and other dynamic vulnerabilities.
   #
-  # SHA pinned to zaproxy/action-full-scan@v0.13.0 — verify with:
-  #   gh api repos/zaproxy/action-full-scan/git/refs/tags/v0.13.0
+  # The pinned official image runs privately; only verified projections publish.
   # ---------------------------------------------------------------------------
   zap:
     name: OWASP ZAP Full Scan
@@ -225,78 +224,61 @@ jobs:
             scripts/quality
           sparse-checkout-cone-mode: false
 
-      - name: Validate ZAP target URL
-        env:
-          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
-        run: |
-          if [ -z "$TARGET_URL" ]; then
-            echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
-            exit 1
-          fi
-          python3 -m scripts.quality.dast_privacy validate-target
-          echo "::add-mask::$TARGET_URL"
-
-      - name: ZAP Full Scan
-        id: zap_scan
-        uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
-        env:
-          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
-        with:
-          target: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
-          # rules_file_name: suppresses known false positives for safe patterns
-          rules_file_name: ".zap/rules.tsv"
-          # -a: active scan, -j: Ajax spider, -T 60: max active scan duration 60 min
-          cmd_options: "-a -j -T 60"
-          # Upload SARIF to Code Scanning
-          artifact_name: zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          allow_issue_writing: false
-
-      - name: Validate ZAP SARIF provenance
-        id: zap_sarif_provenance
-        if: ${{ always() }}
+      # Verify source and image before reading the target, then scan privately.
+      # Read manual input privately from the event file, never a step preamble.
+      # Native reports, context, target and logs never enter the public directory.
+      - name: Prepare private ZAP scan and sanitized evidence
+        id: zap_prepare
         shell: bash
         env:
-          EVENT_SHA: ${{ github.sha }}
-          SCAN_OUTCOME: ${{ steps.zap_scan.outcome }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          ARTIFACT_NAME: zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          DAST_SECRET_TARGET: ${{ secrets.DAST_TARGET_URL }}
         run: |
           set -euo pipefail
-          python3 -m scripts.quality.zap_sarif_provenance \
+          python3 -m scripts.quality.zap_workflow prepare \
             --repo-root "$GITHUB_WORKSPACE" \
-            --expected-sha "$EVENT_SHA" \
-            --run-id "$RUN_ID" \
-            --run-attempt "$RUN_ATTEMPT" \
-            --artifact-name "$ARTIFACT_NAME" \
-            --scan-outcome "$SCAN_OUTCOME" \
-            --sarif "$GITHUB_WORKSPACE/zap-results.sarif" \
-            --output "$GITHUB_WORKSPACE/zap-sarif-provenance.json"
+            --work "$RUNNER_TEMP/zap-private" \
+            --public "$GITHUB_WORKSPACE/zap-public" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify ZAP public evidence and provenance
+        id: zap_verify
+        if: ${{ always() && steps.zap_prepare.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.zap_workflow verify \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --work "$RUNNER_TEMP/zap-private" \
+            --public "$GITHUB_WORKSPACE/zap-public"
 
       - name: Upload ZAP SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
-        if: ${{ always() && steps.zap_sarif_provenance.outcome == 'success' && hashFiles('zap-results.sarif') != '' }}
+        if: ${{ always() && steps.zap_prepare.outcome == 'success' && steps.zap_verify.outcome == 'success' }}
         with:
-          sarif_file: zap-results.sarif
+          sarif_file: zap-public/zap-results.sarif
           category: zap-dast
 
-      - name: Upload ZAP provenance receipt
+      - name: Upload verified ZAP public evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ always() && steps.zap_sarif_provenance.outcome == 'success' && hashFiles('zap-sarif-provenance.json') != '' }}
+        if: ${{ always() && steps.zap_prepare.outcome == 'success' && steps.zap_verify.outcome == 'success' }}
         with:
-          name: zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: zap-sarif-provenance.json
+          name: zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            zap-public/zap-results.sarif
+            zap-public/zap-evidence.txt
+            zap-public/zap-sarif-provenance.json
           retention-days: 90
           if-no-files-found: error
 
-      # AUD-381: the ZAP report is gated after the uploads above, so findings are
-      # published first. Medium and high ZAP alerts (riskcode 2 and 3) fail the
-      # run; informational and low alerts are reported only. A missing, unreadable
-      # or malformed report fails closed because the scan result is then unknown.
+      # AUD-381: publish verified findings before applying the medium/high gate.
+      # No continue-on-error: any earlier failure remains a failed workflow.
       - name: Fail on medium or high ZAP findings
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/zap_findings_gate.py "$GITHUB_WORKSPACE/report_json.json" \
+          python3 -m scripts.quality.zap_workflow gate \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --work "$RUNNER_TEMP/zap-private" \
+            --public "$GITHUB_WORKSPACE/zap-public" \
             --summary-file "$GITHUB_STEP_SUMMARY"
