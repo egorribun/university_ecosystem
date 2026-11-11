@@ -13,7 +13,7 @@ import {
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import test from "node:test"
+import test, { after } from "node:test"
 import { fileURLToPath } from "node:url"
 
 const require = createRequire(import.meta.url)
@@ -25,7 +25,7 @@ const coverageFlags = [
   "--test-coverage-functions=100",
 ]
 const helperDigest = createHash("sha256").update(readFileSync(implementation)).digest("hex")
-test.after(() =>
+after(() =>
   assert.equal(
     createHash("sha256").update(readFileSync(implementation)).digest("hex"),
     helperDigest
