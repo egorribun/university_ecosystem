@@ -65,26 +65,27 @@ def _execute_guard(
 @pytest.mark.parametrize(
     ("summary", "accepted"),
     [
-        ("live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n", True),
+        ("live E2E counts passed=18\nlive E2E outcome=passed exit_code=0\n", True),
         (
-            "live E2E counts passed=15 skipped=1\nlive E2E outcome=passed exit_code=0\n",
+            "live E2E counts passed=17 skipped=1\nlive E2E outcome=passed exit_code=0\n",
             False,
         ),
         (
-            "live E2E counts passed=16 flaky=1\nlive E2E outcome=passed exit_code=0\n",
+            "live E2E counts passed=18 flaky=1\nlive E2E outcome=passed exit_code=0\n",
             False,
         ),
         (
-            "live E2E counts passed=0 skipped=16\nlive E2E outcome=passed exit_code=0\n",
+            "live E2E counts passed=0 skipped=18\nlive E2E outcome=passed exit_code=0\n",
             False,
         ),
-        ("live E2E counts passed=16\n", False),
-        ("live E2E counts passed=16\nlive E2E outcome=failed exit_code=1\n", False),
+        ("live E2E counts passed=18\n", False),
+        ("live E2E counts passed=18\nlive E2E outcome=failed exit_code=1\n", False),
         (
-            "live E2E counts passed=16\nlive E2E counts passed=16\n"
+            "live E2E counts passed=18\nlive E2E counts passed=18\n"
             "live E2E outcome=passed exit_code=0\n",
             False,
         ),
+        ("live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n", False),
         ("", False),
     ],
 )
@@ -109,7 +110,7 @@ def test_realtime_guard_rejects_failed_process_even_with_forged_success_summary(
 ) -> None:
     output = tmp_path / "raw.txt"
     output.write_text(
-        "live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n",
+        "live E2E counts passed=18\nlive E2E outcome=passed exit_code=0\n",
         encoding="utf-8",
     )
     result = _execute_guard(
@@ -126,10 +127,10 @@ def test_realtime_artifact_drops_unrecognized_or_oversized_count_lines(
 ) -> None:
     output = tmp_path / "raw.txt"
     output.write_text(
-        "live E2E counts passed=16 private-content\n"
+        "live E2E counts passed=18 private-content\n"
         "live E2E outcome=passed exit_code=0 private-content\n"
         + "live E2E counts "
-        + "passed=16 " * 40
+        + "passed=18 " * 40
         + "\n",
         encoding="utf-8",
     )

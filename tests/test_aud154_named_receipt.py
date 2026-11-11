@@ -42,7 +42,11 @@ def _summary():
     return (
         _line(retained=True)
         + _line(_record("mobile"), retained=True)
-        + "live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n"
+        + _line(_record(case_id="aud154-enter-sent-confirmation"), retained=True)
+        + _line(
+            _record("mobile", case_id="aud154-enter-sent-confirmation"), retained=True
+        )
+        + "live E2E counts passed=18\nlive E2E outcome=passed exit_code=0\n"
     )
 
 
@@ -164,7 +168,7 @@ def test_receipt_binds_both_projects_to_same_pre_and_post_source(tmp_path):
         _summary(), before, root=root, environment=env, exit_code="0"
     )
     assert receipt["accepted"] is True
-    assert receipt["evidence_scope"] == "current-live-delivery-case-only"
+    assert receipt["evidence_scope"] == "current-live-button-and-enter-cases-only"
     assert receipt["original_criterion_satisfied"] is False
     assert (
         receipt["original_case_title"]
@@ -174,9 +178,15 @@ def test_receipt_binds_both_projects_to_same_pre_and_post_source(tmp_path):
     assert receipt["tested_commit"] == env["GITHUB_SHA"]
     assert receipt["source_tree"] == _git(root, "rev-parse", "HEAD^{tree}")
     assert receipt["run_id"] == 123 and receipt["run_attempt"] == 1
-    assert [case["project"] for case in receipt["cases"]] == ["desktop", "mobile"]
+    assert [(case["case_id"], case["project"]) for case in receipt["cases"]] == [
+        ("aud154-enter-sent-confirmation", "desktop"),
+        ("aud154-enter-sent-confirmation", "mobile"),
+        ("aud154-sent-confirmation", "desktop"),
+        ("aud154-sent-confirmation", "mobile"),
+    ]
+    assert receipt["schema"] == "ue-aud154-named-case-receipt-v2"
     assert (
-        receipt["case_title"]
+        receipt["case_titles"]["aud154-sent-confirmation"]
         == "a message is delivered, edited, and tombstoned in the other authenticated session"
     )
     assert set(receipt["bindings"]) == set(module.SOURCE_PATHS)
@@ -226,7 +236,7 @@ def test_receipt_never_accepts_incomplete_skipped_retried_or_failed_cases(
             '"expected_status":"passed"', '"expected_status":"failed"'
         )
     if defect == "counts":
-        summary = summary.replace("passed=16", "passed=15 skipped=1")
+        summary = summary.replace("passed=18", "passed=15 skipped=1")
     receipt = module.build_receipt(
         summary,
         before,
@@ -276,7 +286,7 @@ def test_binding_rejects_source_drift_and_untrusted_metadata(tmp_path, defect):
         )
 
 
-def test_workflow_adds_a_separate_source_bound_receipt_without_weakening_the_16_case_guard():
+def test_workflow_adds_a_separate_source_bound_receipt_without_weakening_the_18_case_guard():
     from tests.test_aud429_live_workflow import REUSABLE, _step, _workflow
 
     steps = _workflow(REUSABLE)["jobs"]["live-realtime-visual"]["steps"]
@@ -290,7 +300,7 @@ def test_workflow_adds_a_separate_source_bound_receipt_without_weakening_the_16_
         in _step("Bind AUD-154 source before execution")["run"]
     )
     realtime = _step("Exercise real realtime sessions without skips")
-    assert '"live E2E counts passed=16"' in realtime["run"]
+    assert '"live E2E counts passed=18"' in realtime["run"]
     assert '"live E2E outcome=passed exit_code=0"' in realtime["run"]
     assert "exit_code=$run_result" in realtime["run"]
     receipt = _step("Validate AUD-154 named-case receipt")
@@ -396,7 +406,7 @@ def test_cli_snapshot_receipt_failure_and_exclusive_output(
     assert output.read_text() == value
     assert capsys.readouterr().err == "AUD-154 source or receipt validation failed\n"
     output.unlink()
-    raw.write_text(_summary().replace("passed=16", "passed=15"))
+    raw.write_text(_summary().replace("passed=18", "passed=15"))
     assert module.main() == 1
     assert json.loads(output.read_text())["accepted"] is False
     monkeypatch.setattr(sys, "argv", ["aud154", "receipt", "--output", str(output)])
@@ -479,3 +489,69 @@ def test_source_binding_rejects_native_git_hash_failures(tmp_path, monkeypatch, 
     monkeypatch.setattr(module.subprocess, "run", rejected_hash)
     with pytest.raises(ValueError, match="source or receipt validation failed"):
         module.source_snapshot(root, env)
+
+
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "defect", ["missing", "duplicate", "skip", "retry", "teardown"]
+)
+def test_enter_case_must_independently_pass_once(tmp_path, project, defect):
+    module = _module()
+    root, env = _repo(tmp_path)
+    before = module.source_snapshot(root, env)
+    original = _record(project, case_id="aud154-enter-sent-confirmation")
+    replacement = dict(original)
+    if defect == "skip":
+        replacement.update(
+            final_status="skipped",
+            attempts=["skipped"],
+            skipped=True,
+            outcome="skipped",
+        )
+    if defect == "retry":
+        replacement.update(attempts=["failed", "passed"], retry=1, outcome="flaky")
+    if defect == "teardown":
+        replacement.update(
+            final_status="failed", attempts=["failed"], outcome="unexpected"
+        )
+    line = _line(original, retained=True)
+    changed = (
+        ""
+        if defect == "missing"
+        else line * 2
+        if defect == "duplicate"
+        else _line(replacement, retained=True)
+    )
+    receipt = module.build_receipt(
+        _summary().replace(line, changed),
+        before,
+        root=root,
+        environment=env,
+        exit_code="0",
+    )
+    assert receipt["accepted"] is False
+
+
+def test_parser_preserves_distinct_case_ids_within_one_project():
+    enter = _record(case_id="aud154-enter-sent-confirmation")
+    assert _module().project_case_records(_line() + _line(enter)) == [_record(), enter]
+
+
+def test_historical_button_only_projection_cannot_satisfy_v2_receipt(tmp_path):
+    module = _module()
+    root, env = _repo(tmp_path)
+    before = module.source_snapshot(root, env)
+    historical = (
+        _line(retained=True)
+        + _line(_record("mobile"), retained=True)
+        + "live E2E counts passed=16\nlive E2E outcome=passed exit_code=0\n"
+    )
+    receipt = module.build_receipt(
+        historical, before, root=root, environment=env, exit_code="0"
+    )
+    assert receipt["schema"] == "ue-aud154-named-case-receipt-v2"
+    assert receipt["accepted"] is False
+    assert receipt["original_criterion_satisfied"] is False
+    assert receipt["case_titles"]["aud154-enter-sent-confirmation"] == (
+        "shows sent confirmation after the server accepts the message"
+    )

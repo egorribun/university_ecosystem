@@ -103,7 +103,7 @@ jobs:
             run_result=$?
           fi
           echo "exit_code=$run_result" >> "$GITHUB_OUTPUT"
-          # Eight real scenarios must execute on each of desktop and mobile.
+          # Nine real scenarios must execute on each of desktop and mobile.
           # Seed output is not part of the uploaded, allowlisted summary.
           python - "$RUNNER_TEMP/aud429-realtime-raw.txt" \
             "$RUNNER_TEMP/aud429-realtime-summary.txt" "$run_result" <<'PY'
@@ -127,8 +127,8 @@ jobs:
               safe += ["live E2E reconnect " + json.dumps(record, separators=(",", ":"))
                        for record in _live_playwright_reconnect_diagnostics(raw_output, retained=True)]
           Path(sys.argv[2]).write_text("\n".join(safe) + "\n", encoding="utf-8")
-          if sys.argv[3] != "0" or counts != ["live E2E counts passed=16"] or outcomes != ["live E2E outcome=passed exit_code=0"]:
-              raise SystemExit("realtime E2E did not execute all 16 cases without skips or retries")
+          if sys.argv[3] != "0" or counts != ["live E2E counts passed=18"] or outcomes != ["live E2E outcome=passed exit_code=0"]:
+              raise SystemExit("realtime E2E did not execute all 18 cases without skips or retries")
           PY
 
       - name: Upload redacted realtime execution summary

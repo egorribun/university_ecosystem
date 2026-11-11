@@ -15,9 +15,14 @@ from typing import Any
 
 from scripts import fast_preflight
 
-CASE_TITLE = (
-    "a message is delivered, edited, and tombstoned in the other authenticated session"
-)
+CASE_TITLES = {
+    "aud154-sent-confirmation": (
+        "a message is delivered, edited, and tombstoned in the other authenticated session"
+    ),
+    "aud154-enter-sent-confirmation": (
+        "shows sent confirmation after the server accepts the message"
+    ),
+}
 SOURCE_PATHS = (
     "frontend/tests/e2e-live/messenger-realtime.live.spec.ts",
     "frontend/src/components/messenger/ChatWindow.tsx",
@@ -59,7 +64,8 @@ def _valid_record(record: Any) -> bool:
     if (
         type(record["schema"]) is not int
         or record["schema"] != 1
-        or record["case_id"] != "aud154-sent-confirmation"
+        or not isinstance(record["case_id"], str)
+        or record["case_id"] not in CASE_TITLES
         or record["project"] not in ("desktop", "mobile")
         or type(record["retry"]) is not int
         or record["retry"] not in (0, 1)
@@ -99,7 +105,8 @@ def project_case_records(
         except (ValueError, TypeError):
             return []
         if not _valid_record(record) or any(
-            item["project"] == record["project"] for item in records
+            (item["case_id"], item["project"]) == (record["case_id"], record["project"])
+            for item in records
         ):
             return []
         records.append(record)
@@ -190,14 +197,19 @@ def build_receipt(
     ]
     accepted = (
         exit_code == "0"
-        and counts == ["live E2E counts passed=16"]
+        and counts == ["live E2E counts passed=18"]
         and outcomes == ["live E2E outcome=passed exit_code=0"]
-        and sorted(item["project"] for item in records) == ["desktop", "mobile"]
+        and {(item["case_id"], item["project"]) for item in records}
+        == {
+            (case_id, project)
+            for case_id in CASE_TITLES
+            for project in ("desktop", "mobile")
+        }
         and all(
             item
             == {
                 "schema": 1,
-                "case_id": "aud154-sent-confirmation",
+                "case_id": item["case_id"],
                 "project": item["project"],
                 "final_status": "passed",
                 "expected_status": "passed",
@@ -210,18 +222,18 @@ def build_receipt(
         )
     )
     return {
-        "schema": "ue-aud154-named-case-receipt-v1",
+        "schema": "ue-aud154-named-case-receipt-v2",
         "finding": "AUD-154",
-        "evidence_scope": "current-live-delivery-case-only",
+        "evidence_scope": "current-live-button-and-enter-cases-only",
         "original_criterion_satisfied": False,
         "original_case_title": "shows delivery confirmation after message is sent",
         "expected_projects": ["desktop", "mobile"],
-        "case_title": CASE_TITLE,
+        "case_titles": CASE_TITLES,
         "suite": "live messenger delivery",
         "source": SOURCE_PATHS[0],
         "accepted": accepted,
         "process_exit_code": int(exit_code),
-        "cases": sorted(records, key=lambda item: item["project"]),
+        "cases": sorted(records, key=lambda item: (item["case_id"], item["project"])),
         **after,
     }
 

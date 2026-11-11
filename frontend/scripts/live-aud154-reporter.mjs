@@ -2,8 +2,16 @@ import { resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-const CASE_TITLE =
-  "a message is delivered, edited, and tombstoned in the other authenticated session"
+const CASE_IDS = new Map([
+  [
+    "a message is delivered, edited, and tombstoned in the other authenticated session",
+    "aud154-sent-confirmation",
+  ],
+  [
+    "shows sent confirmation after the server accepts the message",
+    "aud154-enter-sent-confirmation",
+  ],
+])
 const CASE_FILE = fileURLToPath(
   new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url)
 )
@@ -24,7 +32,7 @@ export default class Aud154Reporter {
       .filter(
         (item) =>
           resolve(item.location.file) === CASE_FILE &&
-          item.title === CASE_TITLE &&
+          CASE_IDS.has(item.title) &&
           item.parent.title === "live messenger delivery" &&
           ["desktop", "mobile"].includes(item.parent.project()?.name)
       )
@@ -32,13 +40,15 @@ export default class Aud154Reporter {
 
   onEnd() {
     const records = []
-    const projects = new Set()
+    const identities = new Set()
     for (const item of this.tests) {
       const project = item.parent.project().name
+      const caseId = CASE_IDS.get(item.title)
+      const identity = `${caseId}:${project}`
       const attempts = item.results.map((result) => result.status)
       const outcome = item.outcome()
       if (
-        projects.has(project) ||
+        identities.has(identity) ||
         item.results.length < 1 ||
         item.results.length > 2 ||
         item.results.some(
@@ -50,10 +60,10 @@ export default class Aud154Reporter {
         this.write("UE_LIVE_AUD154_V1 invalid\n")
         return
       }
-      projects.add(project)
+      identities.add(identity)
       records.push({
         schema: 1,
-        case_id: "aud154-sent-confirmation",
+        case_id: caseId,
         project,
         final_status: attempts.at(-1),
         expected_status: item.expectedStatus,

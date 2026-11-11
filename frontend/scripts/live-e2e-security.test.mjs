@@ -42,6 +42,7 @@ test("live audit case selection maps exact files, titles, and projects", () => {
   )
   assert.deepEqual(liveAuditCaseIds, [
     "aud154-realtime",
+    "aud154-enter-sent-confirmation",
     "aud454-membership-revocation",
     "aud375-service-worker",
     "aud321-rate-limit-ux",
@@ -49,6 +50,22 @@ test("live audit case selection maps exact files, titles, and projects", () => {
     "aud432-registration",
     "aud501-hidden-clock",
   ])
+})
+
+test("AUD-154 Enter selection preserves the separate button path and both projects", () => {
+  const selection = selectLiveAuditCases(["aud154-enter-sent-confirmation"])
+  assert.deepEqual(selection.files, ["tests/e2e-live/messenger-realtime.live.spec.ts"])
+  assert.deepEqual(selection.projects, ["desktop", "mobile"])
+  assert.deepEqual(
+    selection.grep.map(({ source }) => source),
+    ["shows sent confirmation after the server accepts the message"]
+  )
+  assert.deepEqual(selectLiveAuditCases(["aud154-realtime"]).projects, ["desktop"])
+  assert.throws(
+    () =>
+      selectLiveAuditCases(["aud154-enter-sent-confirmation", "aud154-enter-sent-confirmation"]),
+    TypeError
+  )
 })
 
 test("live audit selection rejects raw paths, raw grep, empty, unknown, and duplicate IDs", () => {
@@ -112,7 +129,7 @@ test("audit Playwright config discovers only the closed case map's exact files",
   assert.doesNotMatch(config, /\*\*\/e2e-live|\.\*\.live/u)
 })
 
-test("audit Playwright collection binds the seven cases to exact files and projects", async (t) => {
+test("audit Playwright collection binds the eight cases to exact files and projects", async (t) => {
   const frontendRoot = await realpath(fileURLToPath(new URL("../", import.meta.url)))
   const require = createRequire(import.meta.url)
   const cli = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js")
@@ -163,6 +180,10 @@ test("audit Playwright collection binds the seven cases to exact files and proje
         "a message is delivered, edited, and tombstoned in the other authenticated session",
       ],
       [
+        "e2e-live/messenger-realtime.live.spec.ts",
+        "shows sent confirmation after the server accepts the message",
+      ],
+      [
         "e2e-live/register-double-submit.live.spec.ts",
         "rapid double submit on a 360px registration form creates one account",
       ],
@@ -177,6 +198,10 @@ test("audit Playwright collection binds the seven cases to exact files and proje
         "synthetic account reaches account lockout after the configured failed-login threshold",
       ],
       [
+        "e2e-live/messenger-realtime.live.spec.ts",
+        "shows sent confirmation after the server accepts the message",
+      ],
+      [
         "e2e-live/register-double-submit.live.spec.ts",
         "rapid double submit on a 360px registration form creates one account",
       ],
@@ -189,7 +214,12 @@ test("audit Playwright collection binds the seven cases to exact files and proje
 
   const projectCases = {
     desktop: liveAuditCaseIds,
-    mobile: ["aud432-login-lockout", "aud432-registration", "aud501-hidden-clock"],
+    mobile: [
+      "aud154-enter-sent-confirmation",
+      "aud432-login-lockout",
+      "aud432-registration",
+      "aud501-hidden-clock",
+    ],
   }
   for (const project of ["desktop", "mobile"]) {
     const environment = {
@@ -265,6 +295,73 @@ test("audit Playwright collection binds the seven cases to exact files and proje
         `${leftFile}\0${leftTitle}`.localeCompare(`${rightFile}\0${rightTitle}`)
       )
     assert.deepEqual(normalizeRows(rows), normalizeRows(expectedRows[project]))
+
+    const realtime = spawnSync(
+      process.execPath,
+      [
+        cli,
+        "test",
+        "--list",
+        "--reporter=json",
+        "--config=playwright.live.config.ts",
+        `--project=${project}`,
+        "tests/e2e-live/messenger-realtime.live.spec.ts",
+        "tests/e2e-live/messenger-reconnect-ordering.live.spec.ts",
+        "tests/e2e-live/messenger-unread-read.live.spec.ts",
+      ],
+      {
+        cwd: frontendRoot,
+        env: environment,
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+        timeout: 60_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    )
+    assert.equal(realtime.error, undefined)
+    assert.equal(realtime.signal, null)
+    assert.equal(realtime.status, 0, realtime.stderr)
+    const realtimeReport = JSON.parse(realtime.stdout)
+    assert.deepEqual(realtimeReport.errors, [])
+    const realtimeRows = []
+    const realtimePending = [...realtimeReport.suites]
+    while (realtimePending.length > 0) {
+      const suite = realtimePending.pop()
+      realtimePending.push(...(suite.suites ?? []))
+      for (const spec of suite.specs) {
+        for (const instance of spec.tests) {
+          assert.equal(instance.projectName, project)
+          assert.equal(instance.expectedStatus, "passed")
+          assert.deepEqual(instance.annotations, [])
+          realtimeRows.push([spec.file.replaceAll("\\", "/"), spec.title])
+        }
+      }
+    }
+    assert.deepEqual(
+      normalizeRows(realtimeRows),
+      normalizeRows([
+        ...[
+          "shows sent confirmation after the server accepts the message",
+          "a message is delivered, edited, and tombstoned in the other authenticated session",
+          "direct-message replay stays ordered and exactly once across receiver reconnect",
+          "a receiver reaction is delivered to the sender over the live WebSocket",
+          "a sender reply preserves its parent identity and reaches the receiver",
+          "forwarding through the current-chat modal preserves attribution and reaches the receiver",
+          "a peer typing indicator appears and expires over the live socket",
+        ].map((title) => ["messenger-realtime.live.spec.ts", title]),
+        [
+          "messenger-reconnect-ordering.live.spec.ts",
+          "two synthetic users receive ordered, exactly-once messages sent during a real reconnect",
+        ],
+        [
+          "messenger-unread-read.live.spec.ts",
+          "a real DM read receipt clears only that chat's unread state",
+        ],
+      ])
+    )
   }
 })
 
@@ -769,4 +866,33 @@ test("ordinary Playwright rejects focused tests in CI during collection", async 
       assert.match(output, /owned focused fixture/u)
     }
   }
+})
+
+test("AUD-154 live Enter acceptance binds real POST, sender visibility, status, peer and cleanup", async () => {
+  const source = await readFile(
+    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const title = 'test("shows sent confirmation after the server accepts the message"'
+  const start = source.indexOf(title)
+  assert.ok(start >= 0, "the independent non-skipped Enter acceptance must exist")
+  const next = source.indexOf('\n  test("', start + title.length)
+  const body = source.slice(start, next < 0 ? source.length : next)
+  assert.match(body, /\.press\("Enter"\)/u)
+  assert.doesNotMatch(body, /#chat-send-btn|test\.skip|test\.fixme|route\.fulfill/u)
+  assert.match(body, /waitForResponse/u)
+  assert.match(body, /method\(\) === "POST"/u)
+  assert.match(body, /\/api\/v1\/chats\/\$\{[^}]+\}\/messages/u)
+  assert.match(body, /expect\([^\n]*\.ok\(\)\)\.toBe\(true\)/u)
+  assert.match(body, /expect\(created\.id\)\.toBeTruthy\(\)/u)
+  assert.match(body, /expect\(created\.content\)\.toBe\(message\)/u)
+  assert.match(body, /expect\(senderText\)\.toHaveCount\(1\)/u)
+  assert.match(body, /expect\(senderText\)\.toBeVisible\(\)/u)
+  assert.match(body, /senderRow\.getByRole\("img",/u)
+  assert.match(body, /Отправлено\|Прочитано получателем/u)
+  assert.match(body, /frame\.message\.id === created\.id/u)
+  assert.match(body, /receiverLog\.getByText\(message, \{ exact: true \}\)/u)
+  assert.match(body, /finally/u)
+  assert.match(body, /deleteOwnedLiveMessage/u)
+  assert.match(body, /receiverContext\.close\(\)/u)
 })

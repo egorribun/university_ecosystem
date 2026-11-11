@@ -8,6 +8,7 @@ import { join } from "node:path"
 
 const module = await import("./live-aud154-reporter.mjs").catch(() => null)
 const title = "a message is delivered, edited, and tombstoned in the other authenticated session"
+const enterTitle = "shows sent confirmation after the server accepts the message"
 const file = fileURLToPath(
   new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url)
 )
@@ -150,7 +151,7 @@ test("actual browser-free Playwright reports final teardown, skip, and retry out
         import { test, expect } from '@playwright/test';
         test.describe('live messenger delivery', () => {
           test.afterEach(() => { if ('${scenario}' === 'teardown') throw new Error('private-teardown'); });
-          test('${title}', async ({}, info) => {
+          for (const title of ${JSON.stringify([title, "shows sent confirmation after the server accepts the message"])}) test(title, async ({}, info) => {
             test.skip('${scenario}' === 'skipped');
             if ('${scenario}' === 'retry' && info.retry === 0) throw new Error('private-first-attempt');
             expect(true).toBe(true);
@@ -176,7 +177,7 @@ test("actual browser-free Playwright reports final teardown, skip, and retry out
         output = error.stdout
       }
       const lines = output.trim().split("\n")
-      assert.equal(lines.length, 2)
+      assert.equal(lines.length, 4)
       assert.doesNotMatch(output, /private/u)
       for (const line of lines) {
         const row = JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length))
@@ -196,4 +197,27 @@ test("actual browser-free Playwright reports final teardown, skip, and retry out
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test("retains Enter and button identities independently in both projects", () => {
+  const rows = collect([
+    subject(),
+    subject("mobile"),
+    subject("desktop", { title: enterTitle }),
+    subject("mobile", { title: enterTitle }),
+  ])
+  assert.equal(rows.length, 4)
+  assert.deepEqual(
+    rows.map((line) => JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length)).case_id),
+    [
+      "aud154-sent-confirmation",
+      "aud154-sent-confirmation",
+      "aud154-enter-sent-confirmation",
+      "aud154-enter-sent-confirmation",
+    ]
+  )
+  assert.deepEqual(
+    collect([subject("desktop", { title: enterTitle }), subject("desktop", { title: enterTitle })]),
+    ["UE_LIVE_AUD154_V1 invalid\n"]
+  )
 })
