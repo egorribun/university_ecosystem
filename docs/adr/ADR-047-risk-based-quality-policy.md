@@ -2629,6 +2629,18 @@ disposition. Its digest and the existing public-integrity identity are rebound
 one-to-one; path, type, category, owner, evidence and expiry stay the same, and the
 inventory remains 512 dispositions and 15 Semgrep rows.
 
+### SPIRE agent RBAC without nodes/proxy
+
+For AUD-251 the owner selected Kubernetes with kubelet fine-grained
+authorization (stable and enabled by default in 1.36; the gate must be set
+explicitly on 1.33 to 1.35). The SPIRE workload attestor only reads the
+kubelet `/pods` endpoint, which then maps to `nodes/pods`, so the
+`spire-agent-role` ClusterRole in `k8s/spire/spire-rbac.yaml` now grants
+`get` on `nodes/pods` instead of `nodes/proxy`. The scoped Trivy exception
+KSV-0047 for that file is removed, which tightens the 2026-11-04 table above.
+The AUD-373 kind job on Kubernetes v1.36.4 remains the functional proof that
+attestation and mTLS still work.
+
 ### Code-scanning alert decisions
 
 On 2026-11-12 the owner decided how the open code-scanning alerts on `main`

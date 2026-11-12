@@ -137,14 +137,15 @@ def test_spire_bundle_rbac_and_agent_mount_are_least_privilege() -> None:
 def test_spire_agent_cluster_role_grants_no_node_list_watch_or_node_object_read() -> (
     None
 ):
-    # AUD-251: default PID attestation needs kubelet access, not API pod reads.
-    # Node object reads, node list/watch and nodes/proxy list/watch are excluded.
+    # AUD-251: default PID attestation needs only the kubelet /pods read, which
+    # KubeletFineGrainedAuthz maps to nodes/pods get. nodes/proxy, node object
+    # reads and node list/watch are excluded.
     role = _documents("k8s/spire/spire-rbac.yaml", "ClusterRole")
     agent_role = next(
         item for item in role if item["metadata"]["name"] == "spire-agent-role"
     )
     assert agent_role["rules"] == [
-        {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]}
+        {"apiGroups": [""], "resources": ["nodes/pods"], "verbs": ["get"]}
     ]
     assert all(rule.get("resourceNames") is None for rule in agent_role["rules"])
 

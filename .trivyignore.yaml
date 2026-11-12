@@ -116,13 +116,6 @@ misconfigurations:
     statement: >-
       Kyverno negative-test fixture intentionally violates this rule to verify
       policy enforcement; no other manifest is covered.
-  - id: KSV-0047
-    paths:
-      - k8s/spire/spire-rbac.yaml
-    expired_at: 2027-01-10
-    statement: >-
-      SPIRE node proxy privileges required by the documented SPIRE RBAC
-      grants; no other manifest is covered.
   - id: KSV-0009
     paths:
       - k8s/spire/spire-agent.yaml
