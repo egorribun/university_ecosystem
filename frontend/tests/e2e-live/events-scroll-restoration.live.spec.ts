@@ -9,14 +9,14 @@ const EVENT_LOCALES = [
     languageOption: /Русский|Russian/u,
     listHeading: "Мероприятия",
     archiveTab: /Прошедшие|Past events/u,
-    eventTitle: /^Архив: Выпускной вечер 2026$/u,
+    eventTitle: /^Архив: Открытая лекция: «Будущее ИИ в образовании»$/u,
   },
   {
     code: "en",
     languageOption: /Английский|English/u,
     listHeading: "Events",
     archiveTab: /Прошедшие|Past events/u,
-    eventTitle: /^Archive: Class of 2026 graduation ceremony$/u,
+    eventTitle: /^Archive: Open lecture: The future of AI in education$/u,
   },
 ] as const
 
@@ -100,8 +100,9 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
   await expect(page).toHaveURL(/\/events\?tab=archive$/u)
   const archiveUrl = page.url()
 
-  // This seeded archive event is the last item in chronological order. The
-  // test reads its details and history without changing or registering it.
+  // The archive grid is newest-first, so the oldest seeded row is the last card.
+  // Its position below the 1440x900 fold makes the scroll restoration observable.
+  // The test reads its details and history without changing or registering it.
   const selectedEvent = page.getByRole("link", { name: locale.eventTitle })
   await expect(selectedEvent).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => undefined))

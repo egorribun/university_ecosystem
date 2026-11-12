@@ -109,15 +109,15 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
   assert.match(spec, /const EVENT_LOCALES = \[/u)
   assert.match(spec, /code: "ru"/u)
   assert.match(spec, /languageOption: \/Русский\|Russian/u)
-  assert.match(spec, /eventTitle: \/\^Архив: Выпускной вечер 2026\$\/u/u)
-  assert.match(spec, /eventTitle: \/\^Archive: Class of 2026 graduation ceremony\$\/u/u)
+  assert.match(spec, /eventTitle: \/\^Архив: Открытая лекция: «Будущее ИИ в образовании»\$\/u/u)
+  assert.match(spec, /eventTitle: \/\^Archive: Open lecture: The future of AI in education\$\/u/u)
   assert.match(
     spec,
     /expect\.poll\(\(\) => new URL\(page\.url\(\)\)\.pathname\)\.toBe\(["']\/events["']\)/u
   )
   assert.match(spec, /code: "en"/u)
   assert.match(spec, /languageOption: \/Английский\|English/u)
-  assert.match(spec, /eventTitle: \/\^Archive: Class of 2026 graduation ceremony\$\/u/u)
+  assert.match(spec, /eventTitle: \/\^Archive: Open lecture: The future of AI in education\$\/u/u)
   assert.match(spec, /async function selectLanguageThroughSettings/u)
   assert.match(spec, /getByRole\("radio", \{ name: locale\.languageOption \}\)/u)
   assert.match(spec, /await page\.reload\(\)/u)
