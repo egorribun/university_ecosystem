@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
+import ts from "typescript"
 import { URL } from "node:url"
 
 const specUrl = new URL("./messenger-realtime.live.spec.ts", import.meta.url)
@@ -257,4 +258,309 @@ test("the live typing scenario observes the peer socket and the rendered expirin
   assert.match(scenario, /socketOpenAtReceipt: !socket\.isClosed\(\)/u)
   assert.match(scenario, /expect\(receiverSession\.socket\.isClosed\(\)\)\.toBe\(false\)/u)
   assert.doesNotMatch(scenario, /dispatchEvent|MessageEvent|routeWebSocket|route\.fulfill/u)
+})
+
+// Parse source only: importing the live spec would register browser work.
+function enterScenario(sourceText) {
+  const source = ts.createSourceFile("messenger.ts", sourceText, ts.ScriptTarget.Latest, true)
+  assert.equal(source.parseDiagnostics.length, 0)
+  const matches = []
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(source) === "test" &&
+      node.arguments[0]?.text === "shows sent confirmation after the server accepts the message"
+    )
+      matches.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  assert.equal(matches.length, 1, "the named Enter case must be unique")
+  const callback = matches[0].arguments[1]
+  const body = callback.body.statements.find(ts.isTryStatement)?.tryBlock
+  assert.ok(body, "the case keeps its cleanup-protected body")
+  const printer = ts.createPrinter({ removeComments: true })
+  const print = (node) => printer.printNode(ts.EmitHint.Unspecified, node, source).trim()
+  return { source, body, print }
+}
+
+function assertEnterSenderContract(sourceText) {
+  const { body, print } = enterScenario(sourceText)
+  const statements = [...body.statements]
+  const texts = statements.map(print)
+  const find = (pattern) => {
+    const index = texts.findIndex((text) => pattern.test(text))
+    assert.notEqual(index, -1, `missing Enter assertion: ${pattern}`)
+    return index
+  }
+  const input = find(
+    /^const input = page\.getByRole\("textbox", \{ name: \/message\|сообщение\/i \}\);$/u
+  )
+  const fill = find(/^await input\.fill\(message\);$/u)
+  const press = find(/^await input\.press\("Enter"\);$/u)
+  assert.ok(input < fill && fill < press, "fill and Enter use the accessible textbox")
+  const accepted = find(/^expect\(created\.content\)\.toBe\(message\);$/u)
+  const sender = find(/^const senderText = senderLog\.getByText\(message, \{ exact: true \}\);$/u)
+  assert.equal(sender, accepted + 1, "sender observation starts immediately after POST validation")
+  const response = find(/^const messageResponse = await messageResponsePromise;$/u)
+  assert.equal(response, press + 1, "await the response immediately after Enter")
+  assert.ok(response < accepted)
+  const pendingWork = []
+  function collectAwaits(node) {
+    assert.ok(
+      !(ts.isForOfStatement(node) && node.awaitModifier),
+      "asynchronous iteration is forbidden in the critical window"
+    )
+    if (ts.isAwaitExpression(node)) pendingWork.push(node)
+    ts.forEachChild(node, collectAwaits)
+  }
+  for (const statement of statements.slice(response + 1, sender)) collectAwaits(statement)
+  assert.equal(
+    pendingWork.length,
+    1,
+    "only response JSON may be awaited before sender observations"
+  )
+  assert.equal(print(pendingWork[0].expression), "messageResponse.json()")
+  const jsonDeclaration = pendingWork[0].parent.parent.parent
+  assert.ok(ts.isVariableDeclaration(jsonDeclaration))
+  assert.equal(
+    jsonDeclaration.name.getText(),
+    "created",
+    "the awaited JSON supplies accepted content"
+  )
+
+  const visible = find(/^await expect\(senderText\)\.toBeVisible\(/u)
+  const row = find(/^const senderRow = senderText\.locator\(/u)
+  const status = find(/^await expect\(senderRow\.getByRole\("img",/u)
+  assert.equal(visible, sender + 1, "no extra count or receiver wait before sender visibility")
+  assert.equal(row, visible + 1)
+  assert.equal(status, row + 1, "no extra wait before scoped sender status")
+  const allowedAwaits = [
+    statements[response].declarationList.declarations[0].initializer,
+    pendingWork[0],
+    statements[visible].expression,
+    statements[status].expression,
+  ]
+  assert.ok(allowedAwaits.every(ts.isAwaitExpression))
+  pendingWork.length = 0
+  for (const statement of statements.slice(press + 1, status + 1)) collectAwaits(statement)
+  assert.ok(
+    pendingWork.length === allowedAwaits.length &&
+      pendingWork.every((node, index) => node === allowedAwaits[index]),
+    "only the response, JSON, visibility and status awaits are allowed in the critical window"
+  )
+  assert.ok(
+    texts[row].includes(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+    )
+  )
+  assert.ok(
+    texts[status].includes("/^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u")
+  )
+  for (const [index, budget] of [
+    [visible, 5000],
+    [status, 10000],
+  ]) {
+    const call = statements[index].expression.expression
+    assert.ok(ts.isCallExpression(call))
+    assert.equal(call.expression.name?.text, "toBeVisible", "sender status must be visible")
+    const options = call.arguments[0]
+    assert.ok(
+      options && ts.isObjectLiteralExpression(options),
+      "explicit historical timeout required"
+    )
+    assert.equal(call.arguments.length, 1)
+    assert.equal(
+      options.properties.length,
+      1,
+      "timeout options cannot override or spread properties"
+    )
+    const timeout = options.properties[0]
+    assert.ok(ts.isPropertyAssignment(timeout), "timeout must be a direct literal property")
+    assert.equal(timeout.name.getText(), "timeout")
+    assert.ok(timeout && ts.isNumericLiteral(timeout.initializer), "literal timeout required")
+    assert.equal(Number(timeout.initializer.text), budget, "retain the historical timeout budget")
+  }
+  const count = find(/^await expect\(senderText\)\.toHaveCount\(1\);$/u)
+  assert.ok(count > status, "uniqueness must not extend sender visibility or status deadlines")
+  const receiver = find(/^await expect\.poll\(/u)
+  // Pre-send room readiness is intentional; inspect only awaits after acceptance.
+  assert.ok(receiver < accepted)
+  for (let index = accepted + 1; index <= status; index++) {
+    assert.doesNotMatch(texts[index], /receiver/u, "sender budgets precede receiver delivery waits")
+  }
+}
+
+test("Enter preserves accessible input and immediate historical sender assertion budgets", () => {
+  assertEnterSenderContract(spec)
+})
+
+test("Enter sender contract rejects weakened disposable source variants", () => {
+  const { body, print } = enterScenario(spec)
+  const senderStart = [...body.statements].find((node) =>
+    print(node).startsWith("const senderText =")
+  )
+  const count = [...body.statements].find((node) =>
+    print(node).startsWith("await expect(senderText).toHaveCount")
+  )
+  const block = spec.slice(senderStart.getStart(), count.end)
+  const variants = [
+    [
+      "ID-only input",
+      spec.replace(
+        'page.getByRole("textbox", { name: /message|сообщение/i })',
+        'page.locator("#chat-message-input")'
+      ),
+    ],
+    ["wrong accessible name", spec.replace("/message|сообщение/i", "/unrelated/i")],
+    [
+      "different Enter input",
+      spec.replace(
+        'await input.press("Enter")',
+        'await page.locator("#chat-message-input").press("Enter")'
+      ),
+    ],
+    [
+      "looser bubble budget",
+      spec.replace(
+        "senderText).toBeVisible({ timeout: 5_000 })",
+        "senderText).toBeVisible({ timeout: 15_000 })"
+      ),
+    ],
+    [
+      "inherited bubble budget",
+      spec.replace("senderText).toBeVisible({ timeout: 5_000 })", "senderText).toBeVisible()"),
+    ],
+    [
+      "looser status budget",
+      spec.replace(").toBeVisible({ timeout: 10_000 })", ").toBeVisible({ timeout: 15_000 })"),
+    ],
+    [
+      "inherited status budget",
+      spec.replace(").toBeVisible({ timeout: 10_000 })", ").toBeVisible()"),
+    ],
+    [
+      "hidden status assertion",
+      spec.replace(").toBeVisible({ timeout: 10_000 })", ").toBeHidden({ timeout: 10_000 })"),
+    ],
+    ["missing uniqueness", spec.replace("await expect(senderText).toHaveCount(1)", "")],
+    [
+      "count before status",
+      spec.replace(
+        block,
+        block
+          .replace("await expect(senderText).toHaveCount(1)", "")
+          .replace(
+            "const senderRow =",
+            "await expect(senderText).toHaveCount(1)\n      const senderRow ="
+          )
+      ),
+    ],
+    [
+      "count before bubble",
+      spec.replace(
+        block,
+        block
+          .replace("await expect(senderText).toHaveCount(1)", "")
+          .replace(
+            "await expect(senderText).toBeVisible",
+            "await expect(senderText).toHaveCount(1)\n      await expect(senderText).toBeVisible"
+          )
+      ),
+    ],
+    [
+      "receiver before sender",
+      spec
+        .replace(block, "")
+        .replace(
+          "await expect(renderedMessage).toBeVisible()",
+          "await expect(renderedMessage).toBeVisible()\n" + block
+        ),
+    ],
+  ]
+  for (const [name, candidate] of variants) {
+    assert.ok(candidate !== spec, `${name} mutation must alter source`)
+    enterScenario(candidate) // A negative control must remain syntactically valid.
+    assert.throws(() => assertEnterSenderContract(candidate), { name: "AssertionError" }, name)
+  }
+})
+
+test("Enter sender contract tolerates formatting, comments and numeric separators", () => {
+  assertEnterSenderContract(
+    spec
+      .replace("timeout: 5_000", "timeout: 5000")
+      .replace(
+        "const senderText = senderLog",
+        "// Sender observations must stay before peer waits.\n      const senderText = senderLog"
+      )
+  )
+})
+
+for (const [name, original, replacement] of [
+  [
+    "receiver delay after Enter",
+    'await input.press("Enter")',
+    'await input.press("Enter")\n      await receiverPage.waitForTimeout(60_000)',
+  ],
+  ["spread overrides bubble timeout", "timeout: 5_000", "timeout: 5_000, ...{ timeout: 60_000 }"],
+  ["duplicate overrides status timeout", "timeout: 10_000", "timeout: 10_000, timeout: 60_000"],
+  [
+    "receiver delay before content validation",
+    "expect(created.content).toBe(message)",
+    "await receiverPage.waitForTimeout(60_000)\n      expect(created.content).toBe(message)",
+  ],
+  [
+    "receiver delay before JSON",
+    "const created = (await messageResponse.json())",
+    "await receiverPage.waitForTimeout(60_000)\n      const created = (await messageResponse.json())",
+  ],
+]) {
+  test(`Enter sender contract rejects ${name}`, () => {
+    const candidate = spec.replace(original, replacement)
+    assert.ok(candidate !== spec)
+    enterScenario(candidate)
+    assert.throws(() => assertEnterSenderContract(candidate), { name: "AssertionError" })
+  })
+}
+
+for (const location of ["row XPath", "status name"]) {
+  test(`Enter sender contract rejects nested await in ${location}`, () => {
+    const { body, print } = enterScenario(spec)
+    const statement = [...body.statements].find((node) =>
+      print(node).startsWith(
+        location === "row XPath" ? "const senderRow =" : 'await expect(senderRow.getByRole("img",'
+      )
+    )
+    const expression =
+      location === "row XPath"
+        ? statement.declarationList.declarations[0].initializer.arguments[0]
+        : statement.expression.expression.expression.expression.arguments[0].arguments[1]
+            .properties[0].initializer
+    const original = spec.slice(expression.getStart(), expression.end)
+    const replacement =
+      location === "row XPath"
+        ? `${original} + (await page.waitForTimeout(60_000), "")`
+        : `(await page.waitForTimeout(60_000), ${original})`
+    const candidate =
+      spec.slice(0, expression.getStart()) + replacement + spec.slice(expression.end)
+    enterScenario(candidate)
+    assert.throws(() => assertEnterSenderContract(candidate), {
+      name: "AssertionError",
+      message:
+        "only the response, JSON, visibility and status awaits are allowed in the critical window",
+    })
+  })
+}
+
+test("Enter sender contract rejects asynchronous iteration in the critical window", () => {
+  const candidate = spec.replace(
+    "expect(created.content).toBe(message)",
+    "for await (const _ of [new Promise(resolve => setTimeout(resolve, 60_000))]) {}\n      expect(created.content).toBe(message)"
+  )
+  assert.ok(candidate !== spec)
+  enterScenario(candidate)
+  assert.throws(() => assertEnterSenderContract(candidate), {
+    name: "AssertionError",
+    message: "asynchronous iteration is forbidden in the critical window",
+  })
 })

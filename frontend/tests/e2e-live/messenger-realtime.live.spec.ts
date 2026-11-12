@@ -338,8 +338,9 @@ test.describe("live messenger delivery", () => {
           new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
         )
       })
-      await page.locator("#chat-message-input").fill(message)
-      await page.locator("#chat-message-input").press("Enter")
+      const input = page.getByRole("textbox", { name: /message|сообщение/i })
+      await input.fill(message)
+      await input.press("Enter")
       const messageResponse = await messageResponsePromise
       if (!messageResponse.ok()) {
         reportLiveHttpStatus(
@@ -363,6 +364,18 @@ test.describe("live messenger delivery", () => {
       })
       expect(created.id).toBeTruthy()
       expect(created.content).toBe(message)
+
+      const senderText = senderLog.getByText(message, { exact: true })
+      await expect(senderText).toBeVisible({ timeout: 5_000 })
+      const senderRow = senderText.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+      )
+      await expect(
+        senderRow.getByRole("img", {
+          name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u,
+        })
+      ).toBeVisible({ timeout: 10_000 })
+      await expect(senderText).toHaveCount(1)
 
       const expectedFrame = {
         chatId,
@@ -389,18 +402,6 @@ test.describe("live messenger delivery", () => {
       const renderedMessage = receiverLog.getByText(message, { exact: true })
       await expect(renderedMessage).toHaveCount(1)
       await expect(renderedMessage).toBeVisible()
-
-      const senderText = senderLog.getByText(message, { exact: true })
-      await expect(senderText).toHaveCount(1)
-      await expect(senderText).toBeVisible()
-      const senderRow = senderText.locator(
-        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
-      )
-      await expect(
-        senderRow.getByRole("img", {
-          name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u,
-        })
-      ).toBeVisible()
     } finally {
       try {
         if (ownedLog && ownedChatId && ownedMessage) {

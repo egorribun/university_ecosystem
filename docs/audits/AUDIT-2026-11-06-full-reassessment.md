@@ -1,9 +1,237 @@
-# Full audit reassessment — 2026-11-09 UTC
+# Full audit reassessment — 2026-11-12 UTC
+
+## Current scoped supplement — 2026-11-12
+
+The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. This update accepts only AUD-313, AUD-321, AUD-322, AUD-346,
+AUD-347, AUD-375, AUD-378 and AUD-483 and preserves the prior 494/18, 490/22, 486/26,
+485/27, 484/28, 478/34 and 476/36 checkpoints as dated history. The
+[current 10-finding complement](AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)
+lists the open findings.
+
+### Sources and runs
+
+PR #1380 merged normally as main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec`, tree
+`f3a3562040a64a9697ad1db812483f2f318321c8`. Three hosted runs checked out that commit:
+
+- [CI - Matrix Expansion push run 43118478638](https://github.com/egorribun/university_ecosystem/actions/runs/43118478638), which completed with success;
+- [SBOM run 43118478552](https://github.com/egorribun/university_ecosystem/actions/runs/43118478552);
+- [Nightly Full Quality Gate run 43118509422](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422), started by `repository_dispatch`.
+
+PR #1382 then merged as main `81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f`, tree
+`4b8df8c90053aa5fef39ea68afe55382fc6f249c`. It changes only
+`.github/workflows/generate-openapi.yml`, `quality/ci-check-catalog.json` and
+`tests/test_generate_openapi_workflow.py`, none of which the evidence below cites.
+[Focused live evidence run 43133299999](https://github.com/egorribun/university_ecosystem/actions/runs/43133299999)
+ran on that commit by `workflow_dispatch`.
+
+Two of these runs are not accepted as a whole. The nightly run was still executing
+mutation shards when this supplement was written; ADR-047 keeps mutation outside the MVP
+gate. Some mutation shards had failed, and the WebKit and mobile WebKit browser jobs were
+cancelled about 43 minutes into their test step. The focused run concluded with failure
+because one of its six specs failed (AUD-432 below). Only the named jobs are evidence. Each
+was checked for its own conclusion, commit and, where one exists, artifact digest.
+
+### AUD-313 — seeding needs the mounted owner record and keeps the administrator password
+
+[Focused live spec evidence job 130902432311](https://github.com/egorribun/university_ecosystem/actions/runs/43133299999/job/130902432311)
+started one owned Core stand from `81ee9ce6c` and reseeded it before each of six specs.
+Every seed ran the three seed scripts. Each script prints
+`AUD-313 seed target verified for ue-live-…: owner record is one exact read-only mount`
+only after it finds the owner record as exactly one read-only mount. All six receipts read
+`readonly_mounts=3 record=removed oneoff_containers=0 outcome=passed`, so after each seed
+the record file and the one-off seed containers were gone.
+
+The first seed created the administrator. The five reseeds printed
+`Admin admin@university.dev already exists`. `scripts/seed_admin_data.py` (blob
+`245136aa6d99`) prints that line only after it has verified the stored hash against the
+stand's password and left the hash unchanged; a mismatch raises instead of rewriting.
+
+The owner accepted the unsigned host-mounted record on 2026-11-04, and its origin still
+relies on the authorized launcher. The receipt for the failed hydration spec also passed,
+so the job's failure does not come from seeding. This is a CI Compose stand, not a
+deployment.
+
+### AUD-321 — both rate-limit cases execute and assert
+
+[Chromium shard 4/4 job 130860633359](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/job/130860633359)
+of the nightly run executed `frontend/tests/e2e/rate-limit-ux.spec.ts`, whose blob
+`7e8c154ec902` equals the reviewed snapshot. Its report artifact
+`playwright-report-chromium-shard-4-of-4`
+([13900293080](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/artifacts/13900293080),
+`sha256:d861fc3281b641079a3ee2ddea47aa6469a6c46af6999448bbda270da8d719c5`) was downloaded
+and read. Both named cases passed on their first attempt:
+
+- `a persistent 429 shows a load error and manual retry recovers`, with the routed 429
+  responses in its captured output;
+- `retries a 429 after Retry-After and renders the successful response`, whose
+  `retry-after-timing` attachment records `retryAfterSeconds` 3, a monotonic delay of
+  3002.9 ms and statuses `[429, 200]`.
+
+The shard reports 30 passed and 22 skipped, with none failed or flaky; the skips belong to
+other specs. The spec routes the 429 responses itself, so this is not a live-backend
+rate-limit test.
+
+### AUD-322 — event CRUD and the five resilience cases run instead of skipping
+
+[Load and chaos resilience job 130852633406](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/job/130852633406)
+ran the five named cases against the owned Compose stack on `eb853a37c`, and each printed
+PASSED: `test_nats_outage_outbox_durability`, `test_valkey_outage_idempotency_fail_open`,
+`test_valkey_redis_down_resilience`, `test_ws_hub_down_gateway_proxy_fallback` and
+`test_nats_down_outbox_queue_resilience`. The suite total is 11 passed and 2 skipped; the
+two skips are the S3 cases that AUD-347 runs in its own job. The validator then printed
+`AUD-322: all five named resilience cases passed; no chaos case was skipped`. The JUnit
+artifact is `nightly-chaos-resilience-eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec-43118509422-1`
+([13900257034](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/artifacts/13900257034),
+`sha256:8fae63e060b47d004440897aeea4352f97c38bcb7a960c7a66841b11282cd0dc`).
+
+For the integration half of the finding,
+[backend integration job 130854540526](https://github.com/egorribun/university_ecosystem/actions/runs/43118478638/job/130854540526)
+of the push run printed
+`tests/integration/test_full_stack_flow.py::test_events_crud_flow PASSED`.
+
+The finding is about silent skips. It does not establish live SpiceDB authorization.
+
+### AUD-346 — the chaos job injects a fault and checks recovery
+
+[Chaos Loadtest Orchestrator job 130852632453](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/job/130852632453)
+ran the owner-authorized live proof with Chaos Mesh on a disposable Kind cluster. After
+three dry-run configuration checks, the live pass recorded:
+
+- `Chaos Mesh confirmed successful injection for every run-owned fault`;
+- `Causal fault-impact assertion passed: Chaos Mesh reported injection and 1220/1220 under-fault requests failed`;
+- `Recovery verification load test: 145 requests, 100.00% success rate`, then
+  `Recovery availability assertion passed`;
+- an `AUD346_SUCCESS_RECEIPT` whose cleanup block lists one deleted fault UID with
+  `uid_preconditioned_delete_verified` true;
+- `AUD-346 live fault and recovery assertions passed for run 1f3017914073`.
+
+The runner's summary also prints `Data loss: NOT VERIFIED`. That field is not part of
+this finding. The original criterion, in the matrix row below, is that the job must send
+target traffic, inject a fault and validate recovery instead of exiting 0 on a dry run.
+Data durability under this fault is not claimed. The receipt exists only in the job log,
+which GitHub keeps for a limited time; no artifact holds it.
+
+### AUD-347 — the S3 chaos cases execute
+
+[Chaos Engineering (ToxiProxy) job 130852632573](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/job/130852632573)
+printed PASSED once each for `test_s3_no_such_bucket_error_is_propagated` and
+`test_s3_outage_blocks_avatar_upload_and_preserves_state`, then
+`AUD-347: both named S3 chaos cases passed without skips`. The suite total is 8 passed and
+6 skipped; the six skips are other cases. The JUnit artifact is
+`nightly-s3-chaos-eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec-43118509422-1`
+([13900725326](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/artifacts/13900725326),
+`sha256:792f427c51d5d5667cd69c29aaf45a246ef50d0dc8a5920fe3cae95d678ee211`).
+
+### AUD-375 — service-worker replay cases
+
+[Chromium shard 1/4 job 130854997954](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/job/130854997954)
+ran `node scripts/aud375-evidence.mjs`, which executed both cases of
+`frontend/tests/e2e/audit375-service-worker.spec.ts` in Chromium:
+
+- `forwards the cookie proof and deletes a terminal 403 while two active workers contend`;
+- `an abandoned worker's lease blocks its successor until forced expiry, then the successor drains the row`.
+
+Artifact `aud375-evidence-eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec-43118509422-1`
+([13899149469](https://github.com/egorribun/university_ecosystem/actions/runs/43118509422/artifacts/13899149469),
+`sha256:8096af918306bb26c788f891715759f42e4e1389a3a5ff769da5755f0942998d`) was downloaded.
+Its `receipt.json` has status `passed` and both cases at retry 0. It records commit
+`eb853a37c` and tree `f3a3562040a6` with a clean tracked tree before and after the run.
+Its blob bindings include the spec `c93471065383` and `frontend/src/sw/offline.ts`
+`13205676d3ee`. The criterion names Chromium; other browsers are not covered.
+
+### AUD-378 — the provenance check verifies the artifact
+
+In the push run on `eb853a37c`,
+[SLSA Provenance Dry-Run job 130864591290](https://github.com/egorribun/university_ecosystem/actions/runs/43118478638/job/130864591290)
+printed `Frontend artifact provenance verified` for `artifact_id=13901020661`,
+`sha256=e3004077fdaaddefbab87f8c996dfdcb3fb4acbfaea974583c875aafbfe05c54`,
+`source_sha=eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec`, `run_id=43118478638` and `attempt=1`. The GitHub API reports the same
+digest for the `frontend-dist` artifact 13901020661 of that run.
+[Frontend Dist Attestation job 130864537451](https://github.com/egorribun/university_ecosystem/actions/runs/43118478638/job/130864537451)
+and [CI Success job 130868743197](https://github.com/egorribun/university_ecosystem/actions/runs/43118478638/job/130868743197) also passed.
+
+The verifier `scripts/quality/verify_frontend_dist_provenance.py` is blob `463ab49eb16f`.
+`tests/test_frontend_dist_provenance_cardinality.py` (blob `5d8d64e83854`) holds the
+regression that accepts a prior-run result only beside the current one and the control that
+rejects ambiguous duplicates. This verifies one frontend archive against its own run. It is
+not a release attestation.
+
+### AUD-483 — Go OSV scan scope and alert reconciliation
+
+[Go SBOM (osv-scanner) job 130852524318](https://github.com/egorribun/university_ecosystem/actions/runs/43118478552/job/130852524318)
+scanned the eight tracked `services/**/go.mod` manifests on `eb853a37c`: gateway, uni-cli,
+file-processor, ws-hub, the three shared packages and caddy. It then printed
+`Verified Go builder stdlib inventory: 1.26.11`, a check against the builder version.
+
+The run's code-scanning analysis 2147931821 has three results. They are alerts 3780, 3781
+and 3782: GHSA-4w3g-jfj2-cw2q, GHSA-mgcc-cww5-fp2q and GHSA-vvm8-gf78-28g4 in
+`github.com/go-jose/go-jose/v3` 3.0.5 of `services/caddy/go.mod`. The owner dismissed
+each as won't fix on 2026-11-10 under the bounded ADR-047 exception, which ends on
+2027-01-10. The osv-scanner inventory is now 0 open, 359 fixed and 53 dismissed alerts,
+against the 75 open alerts the finding reported.
+
+Two manifests sit outside the workflow's `services/**/go.mod` selector. The root `go.mod`
+has no `require` entry. All eight `require` entries of `gen/go/go.mod` appear with the same
+versions in the scanned `services/file-processor/go.mod`.
+
+The matrix row asks for a run bound to tree `20d4a080aeb0`. No commit has that tree; it
+was an uncommitted audit snapshot. This acceptance uses the exact main commit instead.
+The `sbom.yml` blob is `d16639237ec7`; against the snapshot blob `70c1828f464d` the only
+change is the Go 1.26.10 to 1.26.11 bump.
+
+### Not accepted here
+
+**AUD-432 stays open (P).** Three of its four parts now have current evidence:
+
+- `auth-login-lockout.live.spec.ts` passed alone on desktop and mobile in the focused job
+  on `81ee9ce6c` (`live E2E counts passed=2`);
+- `register-double-submit.live.spec.ts` passed the same way (`passed=2`);
+- the production SSR suite (`playwright.ssr.config.ts`, `PRODUCTION_SERVER_E2E=true`)
+  passed 7 of 7 in chromium shard 1/4 job 130854997954 on `eb853a37c`: `/login` and
+  `/register` in both locales, the wrong-locale negative and two CSP cases.
+
+The fourth part fails. `ssr-hydration-i18n.live.spec.ts` reported `passed=2 failed=4` in
+the focused job. The public-route case passed on both projects; the Russian and English
+dashboard cases failed on both. On desktop the document title is not the localized
+Activity title after a full load of `/activity` hydrates (spec line 420). On mobile the
+News page shows no visible `/activity` link (spec line 396). The spec has not passed in a
+focused run since it joined that workflow on 2026-11-10. Whether each failure is a product
+defect or a spec defect is not yet determined.
+
+**AUD-484 stays open (P).** The scans are clean, but the stale alerts are still open:
+
+- All eleven Trivy analyses on `eb853a37c` report 0 results, and so do the eleven on
+  `81ee9ce6c`. The default branch has no open Trivy alert (303 fixed, 3 dismissed).
+- Dependabot has no open alert (318 fixed, 11 dismissed), so no advisory is left to
+  compare with the lock files.
+- Alerts 2995 to 3002 never existed on main. Each is still open on `refs/heads/egorribun`
+  at commit `edebe057f`, from analyses 1578186880 (category `trivy-fs`) and 1578185547
+  (category `docker-security`) of 2026-08-05. Later uploads for that ref use other
+  categories, so nothing supersedes those two.
+- The packages they name are fixed in the lock file: `uv.lock` on `eb853a37c` has
+  aiohttp 3.14.4 and cryptography 50.0.2.
+
+| Alerts | Advisory | Package | Fixed in | Locked |
+| --- | --- | --- | --- | --- |
+| 2995, 2999 | CVE-2026-69244 | aiohttp | 3.14.3 | 3.14.4 |
+| 2996, 3000 | CVE-2026-59881 | aiohttp | 3.14.2 | 3.14.4 |
+| 2997, 3001 | CVE-2026-69243 | aiohttp | 3.14.2 | 3.14.4 |
+| 2998, 3002 | CVE-2026-69247 | cryptography | 50.0.0 | 50.0.2 |
+
+The finding is that stale open alerts do not reflect the lock files, and these eight are
+still open. Closing them means changing GitHub alert state, by deleting the two superseded
+analyses or dismissing the alerts. That is the owner's decision and has not been made.
+
+AUD-154, AUD-167, AUD-169, AUD-188, AUD-189, AUD-251, AUD-381 and AUD-438 are unchanged.
+
+---
 
 ## Exact-source CI review — 2026-11-11 (preparation only)
 
-The formal audit total remains **494/512 (96.5%) accepted or resolved, 18 open**,
-**9S / 9P / 0U / 0N**. This review adds no acceptance. The previously held
+At this dated review the formal audit total remained **494/512 (96.5%) accepted or resolved, 18 open**,
+**9S / 9P / 0U / 0N**. The review added no acceptance and is superseded by the
+[2026-11-12 supplement](#current-scoped-supplement--2026-11-12) above. The previously held
 497/512 proposal was never published and is not the current formal count.
 Historical finding evidence and current hosted checks are separate decisions.
 
@@ -140,14 +368,16 @@ The five AUD-322 named cases retained for receipt matching are
 - AUD-375 remains S. Generic visual passes are not the named service-worker
   acceptance proof.
 - AUD-346 remains S. Historical injection/degradation/cleanup/recovery evidence
-  explicitly states `Data loss: NOT VERIFIED`. The complete original criterion
-  was not located; it is not silently reconstructed or narrowed.
+  explicitly states `Data loss: NOT VERIFIED`. Correction of 2026-11-12: this bullet
+  first said the original criterion was not located. It is the AUD-346 row of the
+  matrix below, which requires target traffic, fault injection and recovery
+  validation and does not name data loss.
 - AUD-378 remains S. A successful historical push or current PR SLSA dry-run
   is not the final reviewed-source push artifact criterion.
 - AUD-483 and AUD-484 remain P. Denied alert endpoints were not retried;
   current alert reconciliation remains unavailable.
 - The remaining complement and all original requirements are unchanged in the
-  [current 18-finding complement](AUDIT-2026-10-30-reconciliation.md#current-18-finding-reconciliation--2026-11-09).
+  [18-finding complement of that date](AUDIT-2026-10-30-reconciliation.md#current-18-finding-reconciliation--2026-11-09).
 
 ZAP source preparation and the exact owner-approved image identity were
 published before the tests-only e3fe278e repair. An actual authorized-target
@@ -164,11 +394,13 @@ This review changes no policy, threshold, scanner disposition or baseline.
 
 ---
 
-## Current scoped supplement — 2026-11-09
+<a id="current-scoped-supplement--2026-11-09"></a>
 
-The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
-**9S / 9P / 0U / 0N**. This update accepts only AUD-164, AUD-178, AUD-454 and
-AUD-501 and preserves the prior 490/22, 486/26, 485/27, 484/28, 478/34 and 476/36
+## Dated 494/18 scoped supplement — 2026-11-09 (superseded)
+
+At this dated checkpoint the total was **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. That update accepted only AUD-164, AUD-178, AUD-454 and
+AUD-501 and preserved the prior 490/22, 486/26, 485/27, 484/28, 478/34 and 476/36
 checkpoints as dated history.
 
 All four rest on one CI generation of PR #1372: source HEAD `7dfa8f5cf`, tested merge
@@ -588,16 +820,16 @@ That dated checkpoint accepted AUD-422 for its configuration-documentation/inven
 
 ## Complete 60-row reassessment matrix (478/34 baseline with 484 overlay)
 
-The Nov 6 class and primary-proof columns preserve the dated baseline. This matrix preserves the 484/512 overlay and records the later AUD-226 acceptance; the AUD-272 and AUD-226 decisions are in their supplements above. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
+The Nov 6 class and primary-proof columns preserve the dated baseline. The Current outcome column also marks the later 490/512, 494/512 and 502/512 acceptances; for those rows the remaining-action text is kept as dated history and the evidence is in the supplements above. This matrix preserves the 484/512 overlay and records the later AUD-226 acceptance; the AUD-272 and AUD-226 decisions are in their supplements above. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
 
 | ID | Original criterion | Nov 6 class | Primary implementation / proof | Current outcome | Current source pointer | Remaining action |
 | --- | --- | --- | --- | --- | --- | --- |
 | AUD-073 | White text on sent messages has insufficient contrast on the light violet gradient. The source contract measures adequate normal-text contrast at WCAG AA 4.5:1. | S | fixed / sufficient | Scoped acceptance; see decision section | `frontend/src/components/messenger/ChatWindow.tsx:746` (snapshot, blob `91c4f11d2b5d`); `frontend/src/styles/tokens/messenger.css:95` (snapshot, blob `2425bc81977c`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-154 | frontend/tests/e2e/chat-realtime.spec.ts:127-128; frontend/src/components/messenger/ChatWindow.tsx:986-994 — the delivery test waits for a marker the status renderer does not produce. | S | fixed / partial | Open (S) | `frontend/tests/e2e/chat-realtime.spec.ts:125` (snapshot, blob `b568a66b29ac`); `frontend/src/components/messenger/ChatWindow.tsx:1008` (snapshot, blob `91c4f11d2b5d`) | Run the named delivery case with REALTIME_E2E=true against the real backend/WebSocket stack on this source tree, and retain the case-level Playwright result and source/test blob binding; confirm the case was not skipped. |
-| AUD-164 | The backend sees the gateway IP, causing anonymous login, registration, MFA, and password-reset requests from different clients to share rate-limit buckets (docs/audits/AUDIT-2026-10.md:191). | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `docs/audits/AUDIT-2026-10.md:191` (snapshot, blob `ce20147fdbee`); `app/core/ratelimit/utils.py:172` (snapshot, blob `afef0bb756c3`) | Source-bind an invocation path for the existing no-mount probe, then perform one owner-leased run against actual Docker-inspected Caddy, gateway, and backend peers. Record named per-route results for two distinct clients plus X-Forwarded-For, X-Real-IP, Forwarded, and direct-backend spoof negatives; bind the observation to this source tree and verify before/after topology witnesses and exact probe cleanup. |
+| AUD-164 | The backend sees the gateway IP, causing anonymous login, registration, MFA, and password-reset requests from different clients to share rate-limit buckets (docs/audits/AUDIT-2026-10.md:191). | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `docs/audits/AUDIT-2026-10.md:191` (snapshot, blob `ce20147fdbee`); `app/core/ratelimit/utils.py:172` (snapshot, blob `afef0bb756c3`) | Historical 490/512 remaining action: Source-bind an invocation path for the existing no-mount probe, then perform one owner-leased run against actual Docker-inspected Caddy, gateway, and backend peers. Record named per-route results for two distinct clients plus X-Forwarded-For, X-Real-IP, Forwarded, and direct-backend spoof negatives; bind the observation to this source tree and verify before/after topology witnesses and exact probe cleanup. Current evidence and its scope limits are in the supplement above. |
 | AUD-167 | AUDIT-2026-10.md:194 — “Rate-limit gateway and ws-hub collapses to one proxy IP.” Distinct clients behind the same explicitly trusted proxy must receive distinct IP rate-limit buckets; untrusted forwarded headers must not allow bucket rotation. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:194` (snapshot, blob `ce20147fdbee`); `services/gateway/cmd/gateway/main.go:604` (snapshot, blob `87d471f684ea`) | With owner-selected trusted proxy peer CIDRs and target topology, run a bounded two-client and forged-forwarded-header check through the actual Caddy-to-Gateway and Caddy-to-ws-hub paths; record source/config-bound results. The previous Compose binder must first satisfy its Docker IpcMode precondition. |
 | AUD-169 | file-processor fails to start in staging/production because NetworkPolicy blocks its connection to revocation Redis (docs/audits/AUDIT-2026-10.md:196). | P | fixed / missing | Open (S) | `charts/university-ecosystem/templates/network-policy.yaml:709` (snapshot, blob `2c11ef6f7464`); `charts/university-ecosystem/templates/file-processor-deployment.yaml:35` (snapshot, blob `f5b8bdc8aee7`) | When an owner-authorized staging/production-equivalent namespace is available, run the AUD-169 portion of the prepared harness against the actual file-processor and dedicated Redis at this source/image digest. Privately confirm their namespace/release identity and the Secret URL host; record same-release TCP/6379 reachability through Pod IP and Service, startup and authenticated PING, plus cross-release/unrelated-source denial with same-destination controls and attributable CNI verdicts. Keep credentials out of the receipt. |
-| AUD-178 | Prevent reset-password bearer tokens in legacy query/path URLs from appearing in access logs via Referer or in CSP reports. | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `services/caddy/Caddyfile:24` (snapshot, blob `330c365dcc73`); `frontend/src/server.ts:126` (snapshot, blob `e7992cd94b47`) | Run the current AUD-178 live Playwright spec through the owned Caddy/SSR stand with synthetic query and path tokens before hydration. Require the browser Referer and CSP assertions plus the current correlated Caddy-log verifier to pass, and retain value-free receipts. A local stand result would not attest a production deployment. |
+| AUD-178 | Prevent reset-password bearer tokens in legacy query/path URLs from appearing in access logs via Referer or in CSP reports. | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `services/caddy/Caddyfile:24` (snapshot, blob `330c365dcc73`); `frontend/src/server.ts:126` (snapshot, blob `e7992cd94b47`) | Historical 490/512 remaining action: Run the current AUD-178 live Playwright spec through the owned Caddy/SSR stand with synthetic query and path tokens before hydration. Require the browser Referer and CSP assertions plus the current correlated Caddy-log verifier to pass, and retain value-free receipts. A local stand result would not attest a production deployment. Current evidence and its scope limits are in the supplement above. |
 | AUD-188 | The file-processor JWKS endpoint is denied by NetworkPolicy, causing RS256 tokens to be rejected after roughly 24 hours (docs/audits/AUDIT-2026-10.md:276). | P | fixed / partial | Open (S) | `charts/university-ecosystem/templates/file-processor-deployment.yaml:2` (snapshot, blob `f5b8bdc8aee7`); `charts/university-ecosystem/templates/network-policy.yaml:515` (snapshot, blob `2c11ef6f7464`) | In an owner-authorized isolated environment matching each target cluster's CNI and resolved chart values, execute the documented AUD-188 protocol: prove direct Pod IP and Service reachability to the actual JWKS URL with HTTP 200 and no redirect from the file-processor namespace; prove same-release allowance and sibling/unrelated denial with same-destination controls and CNI verdicts; then demonstrate per-replica key B refresh without restart using the authentication boundary. Record endpoint, effective policy, CIDR, and DNAT observations. |
 | AUD-189 | The chart NetworkPolicy permits TCP/443 and DNS egress to any destination, including in-cluster services (AUDIT-2026-10.md:277; original source pointer network-policy.yaml:146-148). | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:277` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/network-policy.yaml:734` (snapshot, blob `2c11ef6f7464`) | For the target deployment and source SHA, bind resolved chart values and all additive NetworkPolicies to actual Pod/Service CIDRs and the CNI, then execute the documented same-destination-controlled probes for TCP/443 to private PodIP, ClusterIP, link-local, and approved public listeners, plus UDP/TCP DNS to the real resolver and a controlled non-resolver; retain correlated CNI verdicts. |
 | AUD-208 | The Squawk gate must not pass guard migrations with no lintable SQL and must not be weakened by rule exclusions. | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `.github/workflows/ci.yml:1553` (snapshot, blob `f6ecac56cbf6`); `scripts/quality/render_live_alembic_sql.py:234` (snapshot, blob `27febaf0f99c`) | Historical 478/512 remaining action: Run a named PostgreSQL+Squawk guard case bound to this tree that proves DO/SELECT guard SQL is retained or causes a fail-closed result when no lintable DDL is captured; include an empty/no-op negative control and confirm only the exact documented baseline exclusions apply. Current evidence and its scope limits are in the supplement above. |
@@ -610,20 +842,20 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 | AUD-277 | The AUDIT-2026-10 entry alleges that the historical migration's permissive USING (true) policy on eight tables prevents tenant isolation. Assess whether that unconditional policy itself bypassed the concurrent restrictive tenant policy; NULL-tenant visibility and the user-settable app.bypass_rls GUC are separate concerns under AUD-360/AUD-450. | N | fixed / partial | Scoped acceptance; see decision section | `alembic/versions/202607230001_multi_tenant_rls.py @ historical commit b011221c2:134` (historical, blob `2260227d65fe`); `alembic/versions/202607230001_multi_tenant_rls.py @ historical commit b011221c2:145` (historical, blob `2260227d65fe`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-278 | The upgrade chain drops the GIN index on events.search_vector and does not leave it restored. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:474` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:1531` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-309 | scripts/live_stand.py subprocess calls lack timeouts and lifecycle lock acquisition can wait indefinitely. | S | fixed / sufficient | Scoped acceptance; see decision section | `scripts/live_stand.py:1302` (snapshot, blob `aa4733565860`); `scripts/live_stand.py:3421` (snapshot, blob `aa4733565860`) | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-313 | Owned-stand seeding must not be authorized by environment variables alone, and reseeding must not overwrite the existing administrator password (original audit row: 'Гейт owned-stand основан на переменных окружения; сид переписывает пароль администратора'). | U | partial / partial | Open (P) | `scripts/seed_target.py:85` (snapshot, blob `e8b0d8a7c9cc`); `scripts/live_stand.py:5176` (snapshot, blob `aa4733565860`) | The seed-side check in blob `5f70056b019b` requires one exact read-only record mount and rejects a matching ordinary file. The seed record is unsigned and its origin relies on the authorized launcher. The 91 focused tests cover the seed gate and existing admin handling. Run one source-bound seed through live_stand on an isolated owner-controlled Compose stand to verify the actual read-only mount and cleanup. |
-| AUD-321 | The E2E test has conditional checks with an annotation branch that lets the test pass green. | S | fixed / partial | Open (S) | `docs/audits/AUDIT-2026-10.md:517` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e/rate-limit-ux.spec.ts:45` (snapshot, blob `7e8c154ec902`) | Run the two named Playwright cases from frontend/tests/e2e/rate-limit-ux.spec.ts against this exact snapshot and retain per-case output plus the retry-after-timing attachment and source-tree preflight; confirm the persistent-429 case observes routed rejections and the retry case records statuses [429, 200] with the asserted delay. |
-| AUD-322 | The original AUD-322 finding is that the event CRUD integration test and nightly chaos resilience cases can silently skip after authentication or chaos-user/chat precondition failures. In the configured integration run, those cases must fail visibly rather than count as skipped, and the nightly selector must include the named resilience cases. The criterion does not establish live SpiceDB authorization. | S | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:518` (snapshot, blob `ce20147fdbee`); `tests/integration/test_full_stack_flow.py:140` (snapshot, blob `e4fd08f4dad0`) | Add or identify a seed for the owned chaos account and one visible chat in nightly setup, then execute the five named test_resilience cases on this exact tree against the real owned Compose stack and retain JUnit that the validator accepts (five passed, zero skips/failures). |
+| AUD-313 | Owned-stand seeding must not be authorized by environment variables alone, and reseeding must not overwrite the existing administrator password (original audit row: 'Гейт owned-stand основан на переменных окружения; сид переписывает пароль администратора'). | U | partial / partial | Scoped acceptance at 502/512 (was Open (P) at 494/512) | `scripts/seed_target.py:85` (snapshot, blob `e8b0d8a7c9cc`); `scripts/live_stand.py:5176` (snapshot, blob `aa4733565860`) | Historical 494/512 remaining action: The seed-side check in blob `5f70056b019b` requires one exact read-only record mount and rejects a matching ordinary file. The seed record is unsigned and its origin relies on the authorized launcher. The 91 focused tests cover the seed gate and existing admin handling. Run one source-bound seed through live_stand on an isolated owner-controlled Compose stand to verify the actual read-only mount and cleanup. Current evidence and its scope limits are in the supplement above. |
+| AUD-321 | The E2E test has conditional checks with an annotation branch that lets the test pass green. | S | fixed / partial | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `docs/audits/AUDIT-2026-10.md:517` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e/rate-limit-ux.spec.ts:45` (snapshot, blob `7e8c154ec902`) | Historical 494/512 remaining action: Run the two named Playwright cases from frontend/tests/e2e/rate-limit-ux.spec.ts against this exact snapshot and retain per-case output plus the retry-after-timing attachment and source-tree preflight; confirm the persistent-429 case observes routed rejections and the retry case records statuses [429, 200] with the asserted delay. Current evidence and its scope limits are in the supplement above. |
+| AUD-322 | The original AUD-322 finding is that the event CRUD integration test and nightly chaos resilience cases can silently skip after authentication or chaos-user/chat precondition failures. In the configured integration run, those cases must fail visibly rather than count as skipped, and the nightly selector must include the named resilience cases. The criterion does not establish live SpiceDB authorization. | S | partial / partial | Scoped acceptance at 502/512 (was Open (P) at 494/512) | `docs/audits/AUDIT-2026-10.md:518` (snapshot, blob `ce20147fdbee`); `tests/integration/test_full_stack_flow.py:140` (snapshot, blob `e4fd08f4dad0`) | Historical 494/512 remaining action: Add or identify a seed for the owned chaos account and one visible chat in nightly setup, then execute the five named test_resilience cases on this exact tree against the real owned Compose stack and retain JUnit that the validator accepts (five passed, zero skips/failures). Current evidence and its scope limits are in the supplement above. |
 | AUD-327 | The October audit reports that upgrading through historical revision 148642dd1207 fails on a legacy database with users whose role values are uppercase (original citation: alembic/versions/148642dd1207_fix_missing_tables.py:782-794). | U | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:523` (snapshot, blob `ce20147fdbee`); `docs/adr/ADR-051-mvp-migration-baseline-squash.md:39` (snapshot, blob `905f99cd4ff5`) The cited revision `148642dd1207_fix_missing_tables.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/148642dd1207_fix_missing_tables.py`. | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-332 | The October audit marked tests/test_start_docker_live_owner_key_paths.py:170-177 because the when_supported symlink tests created symlinks without checking whether native symlink creation was supported. Scope: gate those test cases on actual symlink capability. | S | fixed / sufficient | Scoped acceptance; see decision section | `tests/symlink_support.py:28` (snapshot, blob `05b184a700fd`); `tests/test_start_docker_live_owner_key_paths.py:172` (snapshot, blob `75c812b698c7`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-334 | Replay пропускается при rate limit или выключенном replay, пропуск не досылается (replay is skipped on rate limit or when replay is disabled; the missed replay is not sent later). | P | fixed / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `services/ws-hub/pkg/hub/client.go:529` (snapshot, blob `68b0ae5e1a01`); `frontend/src/hooks/useChatWebSocket.ts:767` (snapshot, blob `d6d4568bcefa`) | Historical 478/512 remaining action: Execute the optional JetStream integration tests on this snapshot, including TestIntegrationAUD334RejectedResumeReconnectsAndReplaysFromJetStream, and record the named assertion that the previously missed sequence is delivered after resume recovery. Current evidence and its scope limits are in the supplement above. |
-| AUD-346 | AUD-346: the nightly chaos-loadtest job must evaluate recovery; invoking the runner only with --dry-run lets valid manifests exit 0 without target traffic, fault injection, or recovery validation, so the job can be green without testing resilience. | S | fixed / missing | Open (S) | `.github/workflows/nightly-full-gate.yml` (tree `ea381c19bda1`); `scripts/chaos/run_chaos_loadtest.py`; `tests/test_aud346_candidate_workflow.py`; `tests/test_aud346_live_fault_impact.py` | Run the owner-authorized live nested-cgroup Kind proof with confirmed injection, measured target degradation, guarded cleanup and recovery; retain a named receipt bound to this source tree. The current 43 focused tests are not a live runtime proof.
-| AUD-347 | The nightly MinIO chaos suite never executes because the workflow supplies environment variable names the tests do not consume (docs/audits/AUDIT-2026-10.md:543). | S | fixed / missing | Open (S) | `docs/audits/AUDIT-2026-10.md:543` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-31-review.md:95` (snapshot, blob `5d89d423c58f`) | After the snapshot source is on main, inspect the existing nightly Chaos Engineering (ToxiProxy) job and retain a source-bound JUnit receipt showing the two current S3 case names exactly once with no skips, failures or errors. If an unrelated chaos case blocks artifact upload, retain the exact named-case JUnit/log results and bind them to the same source SHA. |
+| AUD-346 | AUD-346: the nightly chaos-loadtest job must evaluate recovery; invoking the runner only with --dry-run lets valid manifests exit 0 without target traffic, fault injection, or recovery validation, so the job can be green without testing resilience. | S | fixed / missing | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `.github/workflows/nightly-full-gate.yml` (tree `ea381c19bda1`); `scripts/chaos/run_chaos_loadtest.py`; `tests/test_aud346_candidate_workflow.py`; `tests/test_aud346_live_fault_impact.py` | Historical 494/512 remaining action: Run the owner-authorized live nested-cgroup Kind proof with confirmed injection, measured target degradation, guarded cleanup and recovery; retain a named receipt bound to this source tree. The current 43 focused tests are not a live runtime proof. Current evidence and its scope limits are in the supplement above. |
+| AUD-347 | The nightly MinIO chaos suite never executes because the workflow supplies environment variable names the tests do not consume (docs/audits/AUDIT-2026-10.md:543). | S | fixed / missing | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `docs/audits/AUDIT-2026-10.md:543` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-31-review.md:95` (snapshot, blob `5d89d423c58f`) | Historical 494/512 remaining action: After the snapshot source is on main, inspect the existing nightly Chaos Engineering (ToxiProxy) job and retain a source-bound JUnit receipt showing the two current S3 case names exactly once with no skips, failures or errors. If an unrelated chaos case blocks artifact upload, retain the exact named-case JUnit/log results and bind them to the same source SHA. Current evidence and its scope limits are in the supplement above. |
 | AUD-348 | AUDIT-2026-10.md:544: Upgrade 148642dd1207 removes Spotify tokens from users without transferring them. The dated reconciliation narrows the remaining historical loss case to an existing spotify_integrations row that blocks backfill before the legacy user columns are dropped. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:544` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:369` (snapshot, blob `6c8637f0bb3d`) The cited revision `148642dd1207_fix_missing_tables.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/148642dd1207_fix_missing_tables.py`. | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-350 | The historical 202603280001 migration changes stored_events.created_at to TIMESTAMPTZ by altering the existing column, rewriting the outbox table. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:546` (snapshot, blob `ce20147fdbee`); `alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py:622` (historical, blob `f71934a46e83`) The cited revision `202603280001_reconcile_post_uuid_migration_drift.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py`. | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-360 | RLS rows with tenant_id IS NULL are visible to all tenants, and the application does not write tenant_id. | P | partial / missing | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:579` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:103` (snapshot, blob `e4e0679260e8`) | Run the snapshot-bound owned-PostgreSQL AUD-360 cases for NULL-row visibility, the actual NewsService and notification producers, and the bypass scheduler with cross-tenant/NULL negative controls. Confirm every remaining ordinary API insert path has transaction tenant context and every bypass producer supplies tenant ownership explicitly. |
-| AUD-373 | Internal HTTP requests to the backend carry tokens and identity without TLS (original target: gateway-deployment.yaml). | U | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:592` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/gateway-deployment.yaml:95` (snapshot, blob `995929b7e065`) | Obtain owner acceptance of ADR-052 or record the replacement decision; the snapshot still marks this transport proposal unaccepted. Run the hosted Kind proof against the reviewed current source, require A/B/C/D to pass, and retain B's exact certificate-required TLS rejection diagnostic. Do not treat contract tests or a B failure with missing output as that proof. |
-| AUD-375 | Service-worker queue replay can omit the CSRF header, retain a record after HTTP 403, and run without mutual exclusion across replay passes. | P | fixed / partial | Open (S) | `frontend/src/sw/offline.ts:432` (snapshot, blob `13205676d3ee`); `frontend/src/sw/offline.ts:782` (snapshot, blob `13205676d3ee`) | Execute both cases in the snapshot's frontend/tests/e2e/audit375-service-worker.spec.ts in Chromium and archive a receipt bound to this source tree and test blob; this is the smallest discriminating check for actual cookie/header forwarding, 403 removal, worker contention, and takeover recovery. |
-| AUD-378 | The SLSA Provenance Dry-Run included in CI Success checked only whether ci.yml existed; it must verify provenance rather than accept file presence. | U | partial / partial | Open (S) | `docs/audits/AUDIT-2026-10.md:597` (snapshot, blob `ce20147fdbee`); `.github/workflows/ci.yml:1019` (snapshot, blob `f6ecac56cbf6`) | Make the verifier handle multiple gh verification results by selecting the unique result matching the exact current run invocation and artifact claims; add a two-valid-result regression and an ambiguity negative control. Obtain one passing hosted push run from the final reviewed source showing the exact frontend-dist archive digest and verified certificate/run claims, with provenance-check and CI Success passing. |
+| AUD-360 | RLS rows with tenant_id IS NULL are visible to all tenants, and the application does not write tenant_id. | P | partial / missing | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:579` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:103` (snapshot, blob `e4e0679260e8`) | Historical 486/512 remaining action: Run the snapshot-bound owned-PostgreSQL AUD-360 cases for NULL-row visibility, the actual NewsService and notification producers, and the bypass scheduler with cross-tenant/NULL negative controls. Confirm every remaining ordinary API insert path has transaction tenant context and every bypass producer supplies tenant ownership explicitly. Current evidence and its scope limits are in the supplement above. |
+| AUD-373 | Internal HTTP requests to the backend carry tokens and identity without TLS (original target: gateway-deployment.yaml). | U | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:592` (snapshot, blob `ce20147fdbee`); `charts/university-ecosystem/templates/gateway-deployment.yaml:95` (snapshot, blob `995929b7e065`) | Historical 486/512 remaining action: Obtain owner acceptance of ADR-052 or record the replacement decision; the snapshot still marks this transport proposal unaccepted. Run the hosted Kind proof against the reviewed current source, require A/B/C/D to pass, and retain B's exact certificate-required TLS rejection diagnostic. Do not treat contract tests or a B failure with missing output as that proof. Current evidence and its scope limits are in the supplement above. |
+| AUD-375 | Service-worker queue replay can omit the CSRF header, retain a record after HTTP 403, and run without mutual exclusion across replay passes. | P | fixed / partial | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `frontend/src/sw/offline.ts:432` (snapshot, blob `13205676d3ee`); `frontend/src/sw/offline.ts:782` (snapshot, blob `13205676d3ee`) | Historical 494/512 remaining action: Execute both cases in the snapshot's frontend/tests/e2e/audit375-service-worker.spec.ts in Chromium and archive a receipt bound to this source tree and test blob; this is the smallest discriminating check for actual cookie/header forwarding, 403 removal, worker contention, and takeover recovery. Current evidence and its scope limits are in the supplement above. |
+| AUD-378 | The SLSA Provenance Dry-Run included in CI Success checked only whether ci.yml existed; it must verify provenance rather than accept file presence. | U | partial / partial | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `docs/audits/AUDIT-2026-10.md:597` (snapshot, blob `ce20147fdbee`); `.github/workflows/ci.yml:1019` (snapshot, blob `f6ecac56cbf6`) | Historical 494/512 remaining action: Make the verifier handle multiple gh verification results by selecting the unique result matching the exact current run invocation and artifact claims; add a two-valid-result regression and an ambiguity negative control. Obtain one passing hosted push run from the final reviewed source showing the exact frontend-dist archive digest and verified certificate/run claims, with provenance-check and CI Success passing. Current evidence and its scope limits are in the supplement above. |
 | AUD-380 | The October audit says .semgrep.yml claims Semgrep runs in CI, but no Semgrep scanner job exists (.semgrep.yml:20-21). | U | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:599` (snapshot, blob `ce20147fdbee`); `.semgrep.yml:1` (snapshot, blob `94a21ff83822`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-381 | AUD-381: DAST, Scorecard и sqlmap не блокируют и не публикуют находки (scorecard.yml:77). | P | partial / missing | Open (P) | `.github/workflows/dast.yml:188` (snapshot, blob `cf8f833a6be2`); `scripts/quality/nuclei_findings_gate.py:42` (snapshot, blob `5921cf6c4f57`) | Add a real ZAP SARIF producer from the JSON report (or use a pinned producer that emits SARIF) and apply an owner-approved alert threshold; the current pinned action neither emits the expected SARIF file nor fails on alerts by default. Obtain an owner decision on the Scorecard Vulnerabilities floor; value 0 currently allows every valid vulnerability score. After source changes, run the current-source Nuclei, Scorecard, ZAP, and SQLMap flows with clean and known-finding controls, then retain named job outcomes, uploaded reports, and source/workflow SHA bindings. |
 | AUD-384 | AUDIT-2026-10.md says the nightly Slack notification is not sent because the send step reads its own step-level env in if (.github/workflows/nightly-full-gate.yml:1066-1074). | S | fixed / sufficient | Original causal finding retracted as false positive | `docs/audits/AUDIT-2026-10.md:603` (snapshot, blob `ce20147fdbee`); `.github/workflows/nightly-full-gate.yml:1078` (snapshot, blob `d4a5c83ea53d`) | Keep the current output-gate rewrite and any live delivery claim distinct. |
@@ -634,23 +866,23 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. This matr
 | AUD-420 | The rescue bundle and archive inventory referenced by docs/audits/INDEX.md and the MVP plan were absent on disk at the documented local paths. | N | unproven / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `docs/audits/AUDIT-2026-10.md:639` (snapshot, blob `ce20147fdbee`); `docs/audits/INDEX.md:288` (snapshot, blob `96d9ab020205`) | Historical 478/512 remaining action: Root owner decides whether the current repository object store plus the incremental branch-cleanup bundle satisfies the private-retention requirement, and chooses a durable private location before any copy or move. The branch-cleanup bundle alone is not a standalone full-history backup because it requires two prerequisite commits. Current evidence and its scope limits are in the supplement above. |
 | AUD-422 | CONFIGURATION.md covered only 95 of 290 typed Settings fields and omitted some environment variables read outside Settings (docs/audits/AUDIT-2026-10.md:641). | P | fixed / partial | Scoped acceptance; see decision section | `CONFIGURATION.md`; `tests/test_configuration_settings_inventory.py`; `tests/test_configuration_reference.py`; `tests/test_configuration_outside_settings_drift.py` (tree `ea381c19bda1`) | No additional action for this documentation and inventory-contract criterion; limits below remain.
 | AUD-423 | Correct documented numbers, paths, and defaults in README.md, README.ru.md, SECURITY.md, DEPLOY.md, and AGENTS.md that disagree with code; the original finding cites README.md:228 and README.ru.md:226. | P | partial / partial | Scoped acceptance; see decision section | `README.md`; `README.ru.md`; `SECURITY.md`; `AGENTS.md`; `docs/DEPLOY.md`; `docs/DEPLOY.en.md`; `app/auth/security.py`; `tests/test_docs_source_alignment_static.py`; `tests/test_argon2id_variant_enforcement.py` (tree `ea381c19bda1`) | No additional action for the documented source-alignment criterion; limits below remain.
-| AUD-428 | Approximately 140 Python, 17 Go, and about 30 TypeScript test blocks lacked result checks. The criterion is a complete cross-language census and correction of test blocks that do not check results. | P | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:647` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:877` (snapshot, blob `6c8637f0bb3d`) | Produce and preserve a reproducible Python and Go test-block census against this tree, with assertion-free negative controls; enumerate and correct all remaining resultless blocks, then record named runs. Add frontend negative controls for assertion-shaped no-ops and expect calls without matchers, and refine the classifier where they pass. |
-| AUD-429 | E2E realtime suite and visual tests are not executed in CI (frontend/tests/e2e/chat-realtime.spec.ts:21, 24). | P | fixed / missing | Scoped acceptance at 490/512 (was Open (S) at 486/512) | `frontend/tests/e2e/chat-realtime.spec.ts:21` (snapshot, blob `b568a66b29ac`); `.github/workflows/reusable-e2e-tests.yml:420` (snapshot, blob `3d7f580f7641`) | Obtain a successful run of the existing required live-realtime-visual job bound to the exact reviewed source tree, with full-stand startup, 16/16 realtime passes and the complete authenticated visual matrix passing. |
-| AUD-432 | E2E-live contract tests check spec-file text with regular expressions (docs/audits/AUDIT-2026-10.md:651, citing auth-login-lockout.contract.test.mjs:15-60). The dated scoped follow-on work names behavior-level evidence for lockout, full SSR, and registration (docs/superpowers/plans/2026-11-03-audit-evidence/l6.md:20,33-35); those boundaries define what the regex-only checks fail to establish. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:651` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:133` (snapshot, blob `aea09f60fe11`) | Run the current-source auth-login-lockout.live.spec.ts on desktop and mobile against the owned backend/database; retain named results showing the expected pre-threshold 401s, threshold 423, bounded Retry-After, no rate-limit 429 masking, and cleanup. Run register-double-submit.live.spec.ts on desktop and mobile against the owned real stack; retain named results proving two physical inputs produce exactly one real registration request/account and verified cleanup. Run the production SSR suite with playwright.ssr.config.ts and PRODUCTION_SERVER_E2E=true against the managed production server; retain results for login/register in both locales and the wrong-locale negative. Run the hydration scenarios if that behavior remains in the accepted scope. |
+| AUD-428 | Approximately 140 Python, 17 Go, and about 30 TypeScript test blocks lacked result checks. The criterion is a complete cross-language census and correction of test blocks that do not check results. | P | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:647` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:877` (snapshot, blob `6c8637f0bb3d`) | Historical 486/512 remaining action: Produce and preserve a reproducible Python and Go test-block census against this tree, with assertion-free negative controls; enumerate and correct all remaining resultless blocks, then record named runs. Add frontend negative controls for assertion-shaped no-ops and expect calls without matchers, and refine the classifier where they pass. Current evidence and its scope limits are in the supplement above. |
+| AUD-429 | E2E realtime suite and visual tests are not executed in CI (frontend/tests/e2e/chat-realtime.spec.ts:21, 24). | P | fixed / missing | Scoped acceptance at 490/512 (was Open (S) at 486/512) | `frontend/tests/e2e/chat-realtime.spec.ts:21` (snapshot, blob `b568a66b29ac`); `.github/workflows/reusable-e2e-tests.yml:420` (snapshot, blob `3d7f580f7641`) | Historical 486/512 remaining action: Obtain a successful run of the existing required live-realtime-visual job bound to the exact reviewed source tree, with full-stand startup, 16/16 realtime passes and the complete authenticated visual matrix passing. Current evidence and its scope limits are in the supplement above. |
+| AUD-432 | E2E-live contract tests check spec-file text with regular expressions (docs/audits/AUDIT-2026-10.md:651, citing auth-login-lockout.contract.test.mjs:15-60). The dated scoped follow-on work names behavior-level evidence for lockout, full SSR, and registration (docs/superpowers/plans/2026-11-03-audit-evidence/l6.md:20,33-35); those boundaries define what the regex-only checks fail to establish. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:651` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:133` (snapshot, blob `aea09f60fe11`) | Run the current-source auth-login-lockout.live.spec.ts on desktop and mobile against the owned backend/database; retain named results showing the expected pre-threshold 401s, threshold 423, bounded Retry-After, no rate-limit 429 masking, and cleanup. Run register-double-submit.live.spec.ts on desktop and mobile against the owned real stack; retain named results proving two physical inputs produce exactly one real registration request/account and verified cleanup. Run the production SSR suite with playwright.ssr.config.ts and PRODUCTION_SERVER_E2E=true against the managed production server; retain results for login/register in both locales and the wrong-locale negative. Run the hydration scenarios if that behavior remains in the accepted scope. Status on 2026-11-12: the lockout, double-submit and production SSR parts have current evidence; the hydration spec fails on main and is the open part. See the supplement above. |
 | AUD-433 | Fresh-chain intermediate state: notifications has no child partitions and writes fail before migration 202607020001. | U | fixed / sufficient | Scoped acceptance; see decision section | `alembic/versions/202611020000_mvp_baseline.py:31` (snapshot, blob `e4e0679260e8`); `alembic/versions/202611020000_mvp_baseline.py:584` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-434 | The original AUD-434 entry says that alembic check did not compare server defaults and that push_subscriptions.topics diverged from the model. This review tests that named PostgreSQL JSON default against the model and baseline; it does not broaden the finding to every schema object or database workflow. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:653` (snapshot, blob `ce20147fdbee`); `alembic/env.py:199` (snapshot, blob `16edeb9ffd9c`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-436 | live_stand Windows SID resolution searches whoami through PATH, so Git Bash may select its GNU whoami instead of the native Windows utility. | S | fixed / sufficient | Scoped acceptance; see decision section | `scripts/live_stand.py:584` (snapshot, blob `aa4733565860`); `scripts/live_stand.py:608` (snapshot, blob `aa4733565860`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-438 | ws-hub /metrics is reachable without authentication, unlike backend and gateway (services/ws-hub/main.go:485). | P | fixed / partial | Open (S) | `services/ws-hub/pkg/config/config.go:297` (snapshot, blob `718a7c9d736b`); `services/ws-hub/main.go:509` (snapshot, blob `78b12804300a`) | Run a narrowly scoped check on a policy-enforcing test cluster with the chart from this tree: unauthenticated GET /metrics succeeds from monitoring and is denied from an unselected namespace and public ingress; record rendered chart, policy, CNI and source-tree identity. |
 | AUD-447 | Токен сброса пароля хранится открытым текстом в dead_letter_jobs (app/services/auth_service.py:166-176). | P | fixed / sufficient | Scoped acceptance; see decision section | `app/services/auth_service.py:170` (snapshot, blob `425cc1317c51`); `app/tasks/email.py:78` (snapshot, blob `972f7b00d40c`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-450 | Tenant RLS could be bypassed by an ordinary caller setting the user-settable app.bypass_rls GUC to on (latent database-boundary issue), originally cited at alembic/versions/202607230001_multi_tenant_rls.py:156-163. | S | fixed / sufficient | Scoped acceptance; see decision section | `alembic/versions/202611020000_mvp_baseline.py:2681` (snapshot, blob `e4e0679260e8`); `infrastructure/postgres-roles/bootstrap-app-roles.sql:64` (snapshot, blob `fc1c83a10809`) The cited revision `202607230001_multi_tenant_rls.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/202607230001_multi_tenant_rls.py`. | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-454 | A race in the chat participant cache can leave a removed participant in the broadcast roster and deliver local WebSocket frames for up to one hour (app/api/ws/connection_manager.py:283-338). | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `app/api/ws/connection_manager.py:313` (snapshot, blob `6d7d7e81322e`); `app/api/ws/connection_manager.py:354` (snapshot, blob `6d7d7e81322e`) | Run the four skipped source-bound borrowed-session PostgreSQL cases against the owned AUD-363 disposable PostgreSQL fixture and retain their named results. For an end-to-end browser-frame claim, obtain a separate current-source receipt for backend removal through JetStream cache.revoke to Go ws-hub eviction and absence of a subsequent frame; current frontend and Go code do not prove a live subscriber or rollout. |
+| AUD-454 | A race in the chat participant cache can leave a removed participant in the broadcast roster and deliver local WebSocket frames for up to one hour (app/api/ws/connection_manager.py:283-338). | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `app/api/ws/connection_manager.py:313` (snapshot, blob `6d7d7e81322e`); `app/api/ws/connection_manager.py:354` (snapshot, blob `6d7d7e81322e`) | Historical 490/512 remaining action: Run the four skipped source-bound borrowed-session PostgreSQL cases against the owned AUD-363 disposable PostgreSQL fixture and retain their named results. For an end-to-end browser-frame claim, obtain a separate current-source receipt for backend removal through JetStream cache.revoke to Go ws-hub eviction and absence of a subsequent frame; current frontend and Go code do not prove a live subscriber or rollout. Current evidence and its scope limits are in the supplement above. |
 | AUD-474 | The live profile CSRF rejection check must not report that no csrf_token remains by deleting the cookie before it is observed; inspect the browser cookie state after the rejected request and before cleanup. | S | partial / partial | Scoped acceptance; see decision section | `frontend/tests/e2e-live/profile-csrf.live.spec.ts:187` (snapshot, blob `ceb50c39816a`); `frontend/tests/e2e-live/profile-csrf.live.spec.ts:202` (snapshot, blob `ceb50c39816a`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-478 | Configured NATS JetStream consumer settings were not applied, and cache.invalidate replayed the seven-day retained backlog on startup. | P | fixed / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `services/ws-hub/pkg/hub/hub.go:730` (snapshot, blob `da7c6dcbf53c`); `services/ws-hub/pkg/hub/hub.go:1584` (snapshot, blob `da7c6dcbf53c`) | Historical 478/512 remaining action: Run the existing AUD-478 integration case on the snapshot source against real JetStream and inspect ConsumerInfo for both subscriptions, confirming DeliverNew on cache.invalidate, bounded cache.revoke replay, and the configured ack_wait, max_deliver, and inactive_threshold values. Current evidence and its scope limits are in the supplement above. |
 | AUD-480 | PR-гейты не покрывают medium/low npm, dev-зависимости и unfixed (Trivy FS) | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `docs/audits/AUDIT-2026-10.md:564` (snapshot, blob `ce20147fdbee`); `.github/workflows/reusable-security-audit.yml:535` (snapshot, blob `8082923e1ebb`) | Historical 478/512 remaining action: Resolve the node_modules/frontend/node_modules Trivy scope gap retained from the prior P review, using a pinned Trivy 0.75.0 negative-control fixture with an unfixed HIGH or CRITICAL dependency and verifying that the scan surfaces it and the re-assert gate fails; bind the result to the final source tree. Current evidence and its scope limits are in the supplement above. |
 | AUD-482 | The Caddy image resolves Go dependencies during build, has no committed lock, and is outside govulncheck and OSV scanning. | P | fixed / sufficient | Scoped acceptance; see decision section | `services/caddy/Dockerfile:28` (snapshot, blob `8ebb02df163d`); `services/caddy/go.mod:1` (snapshot, blob `5f03608a8324`) | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-483 | `sbom.yml` job `Go SBOM`: osv-scanner (Go) runs only on main; 75 open alerts (12 IDs); standard-library findings are based on the `go 1.26.4` directive, per CI reports. | P | partial / stale | Open (P) | `docs/audits/AUDIT-2026-10.md:567` (snapshot, blob `ce20147fdbee`); `.github/workflows/sbom.yml:90` (snapshot, blob `70c1828f464d`) | Obtain a completed hosted OSV/stdlib run bound to tree 20d4a080aeb0, retain the scanner result/package identities, and refresh the current-ref alert inventory to reconcile the historical 75 alerts/12 IDs. Confirm whether root go.mod and gen/go/go.mod are within the original Go scan scope; include them in the scan/reconciliation if they are. |
-| AUD-484 | Stale open code-scanning and Dependabot alerts do not reflect current lock files (AUDIT-2026-10 reports 8 Trivy alerts on code-scanning, refs/heads/egorribun). | N | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:568` (snapshot, blob `ce20147fdbee`); `uv.lock:111` (snapshot, blob `8e1296d8b407`) | Obtain a Trivy analysis bound to the exact reviewed source SHA/tree and record whether each of IDs 2995-3002 becomes fixed or needs another explicit disposition; preserve the gap that the original audit row omitted IDs unless its original CI artifact supplies them. Requery the current Dependabot alert inventory and compare every relevant open advisory/package version to the exact reviewed lockfiles, then record an item-by-item disposition. The 2026-11-05 Dependabot inventory is historical, not current proof. |
-| AUD-501 | The hidden-tab pause live test must assert that story progress stays frozen during the hidden interval, not merely check the story after returning to the visible tab (AUD-501; frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:84, 90-100). | S | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:97` (snapshot, blob `4aebb26ff391`); `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:114` (snapshot, blob `4aebb26ff391`) | Run the clock-controlled hidden-tab Playwright case against the owned full live stand on the frozen source in both desktop and mobile projects; capture each named result and verify the hidden-visibility negative control executes. |
+| AUD-483 | `sbom.yml` job `Go SBOM`: osv-scanner (Go) runs only on main; 75 open alerts (12 IDs); standard-library findings are based on the `go 1.26.4` directive, per CI reports. | P | partial / stale | Scoped acceptance at 502/512 (was Open (P) at 494/512) | `docs/audits/AUDIT-2026-10.md:567` (snapshot, blob `ce20147fdbee`); `.github/workflows/sbom.yml:90` (snapshot, blob `70c1828f464d`) | Historical 494/512 remaining action: Obtain a completed hosted OSV/stdlib run bound to tree 20d4a080aeb0, retain the scanner result/package identities, and refresh the current-ref alert inventory to reconcile the historical 75 alerts/12 IDs. Confirm whether root go.mod and gen/go/go.mod are within the original Go scan scope; include them in the scan/reconciliation if they are. Current evidence and its scope limits are in the supplement above. |
+| AUD-484 | Stale open code-scanning and Dependabot alerts do not reflect current lock files (AUDIT-2026-10 reports 8 Trivy alerts on code-scanning, refs/heads/egorribun). | N | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:568` (snapshot, blob `ce20147fdbee`); `uv.lock:111` (snapshot, blob `8e1296d8b407`) | Obtain a Trivy analysis bound to the exact reviewed source SHA/tree and record whether each of IDs 2995-3002 becomes fixed or needs another explicit disposition; preserve the gap that the original audit row omitted IDs unless its original CI artifact supplies them. Requery the current Dependabot alert inventory and compare every relevant open advisory/package version to the exact reviewed lockfiles, then record an item-by-item disposition. The 2026-11-05 Dependabot inventory is historical, not current proof. Status on 2026-11-12: exact-SHA Trivy analyses report 0 results and Dependabot has no open alert, but alerts 2995-3002 are still open on refs/heads/egorribun and need an owner disposition. See the supplement above. |
+| AUD-501 | The hidden-tab pause live test must assert that story progress stays frozen during the hidden interval, not merely check the story after returning to the visible tab (AUD-501; frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:84, 90-100). | S | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:97` (snapshot, blob `4aebb26ff391`); `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:114` (snapshot, blob `4aebb26ff391`) | Historical 490/512 remaining action: Run the clock-controlled hidden-tab Playwright case against the owned full live stand on the frozen source in both desktop and mobile projects; capture each named result and verify the hidden-visibility negative control executes. Current evidence and its scope limits are in the supplement above. |
 | AUD-506 | Temporal used HTTP for JWKS key discovery and the noop authorizer, allowing forged or unauthorized JWTs to reach Temporal operations (services/temporal/config.yaml:100-107). | P | fixed / sufficient | Scoped acceptance; see decision section | `services/temporal/config.yaml:104` (snapshot, blob `f8e130aba3aa`); `services/temporal/entrypoint.sh:36` (snapshot, blob `4c1c5e552e7f`) | No additional action for this finding-specific scope; limitations below remain. |
 
 ### AUD-373 — source-bound 1f hosted result
@@ -971,6 +1203,6 @@ The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lo
 
 ## Current scope and continuation
 
-The current decision set contains 41 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **494 / 512 (96.5%) accepted or resolved, with 18 open**. The 14S / 12P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-26-finding-reconciliation--2026-11-09). The prior 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The eight scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
+The current decision set contains 49 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **502 / 512 (98.0%) accepted or resolved, with 10 open**. The 4S / 6P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12). The prior 494/18, 490/22, 486/26, 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The 24 scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
 
 AUD-269's current schema/HNSW results do not establish query performance or a deployed catalog; the expanded candidate flags are not actual execution. AUD-474's synthetic browser oracle does not establish a real backend or full live stand. Git object IDs and SHA-256 public prefixes are shown as abbreviated identifiers; exact bindings remain in private evidence inputs. The package retains the existing 78 required context/app pairs, blocking CodeQL, hooks, quality thresholds, active baselines and disposition matching rules. No passing scanner, full-source check set, hosted all-green run, merge, deployment, or release readiness is claimed.

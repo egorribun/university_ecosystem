@@ -161,7 +161,7 @@ routing tables in lockstep.
 - SSR & Web App: `/sw.js` and default route `/` -> `frontend:3000`.
 
 ### 6.2. Rate Limiting
-- WebSocket upgrades on `/ws/*` are rate-limited to 10 requests per minute per client IP.
+- WebSocket upgrades on `/ws/*` with a `Connection` header matching `*Upgrade*` are rate-limited per client IP (`{http.request.remote.host}`). `WS_UPGRADE_RATE_PER_MINUTE` configures the budget; the default is 120 requests per minute in both Caddyfiles.
 
 ---
 
