@@ -21,26 +21,80 @@ def _workflow(path: Path) -> dict[str, object]:
     return value
 
 
-def test_quality_history_is_sha_addressed_tracked_and_idempotent() -> None:
+def test_quality_history_publishes_artifacts_without_repository_writes() -> None:
     workflow = _workflow(QUALITY_HISTORY)
+    assert workflow["permissions"] == {"actions": "read", "contents": "read"}
     archive = workflow["jobs"]["archive"]
-    scripts = "\n".join(
-        str(step.get("run", "")) for step in archive["steps"] if isinstance(step, dict)
-    )
+    assert archive["permissions"] == {"actions": "read", "contents": "read"}
+    steps = [step for step in archive["steps"] if isinstance(step, dict)]
+    scripts = "\n".join(str(step.get("run", "")) for step in steps)
+    text = QUALITY_HISTORY.read_text(encoding="utf-8")
 
-    assert 'history_path="docs/testing/quality-history/${head_sha}.json"' in scripts
+    # No repository writes: no commit, push, branch or pull request.
+    assert "git push" not in text
+    assert "git commit" not in text
+    assert "git switch -c" not in text
+    assert "gh pr create" not in text
+    assert "gh pr list" not in text
+    assert "contents: write" not in text
+    assert "pull-requests" not in text
+    assert "automation/quality-history" not in text
+    assert "docs/testing/quality-history" not in text
+    assert "docs/testing/dashboard.md" not in scripts
+    checkout = next(
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["persist-credentials"] is False
+    # Secrets-free, injection-safe run blocks: expressions go through env only.
+    assert "${{" not in scripts
+
+    # Trusted source discovery and all manifest validation remain in place.
     assert 'artifact_name="quality-evidence-$head_sha-attempt-$run_attempt"' in scripts
     assert '--expected-commit-sha "$head_sha"' in scripts
+    assert "sha256sum --check" in scripts
+    assert "validate_quality_contract.py" in scripts
+    assert "--expected-workflow-job coverage-policy-gate" in scripts
+    assert "Workflow source is not the current immutable protected-main commit" in text
+
+    # Prior history is validated before it is merged into the render input.
+    assert (
+        "gh run list --workflow quality-history.yml --branch main --status success"
+        in scripts
+    )
+    assert ".commit_sha == $sha" in scripts
     assert "cmp --silent" in scripts
-    assert 'echo "available=false" >> "$GITHUB_OUTPUT"' in scripts
-    assert "${timestamp}-${head_sha}.json" not in scripts
-    assert 'branch="automation/quality-history-${head_sha}"' in scripts
-    assert "quality-history-$(date" not in scripts
-    assert "gh pr list --state all" in scripts
-    assert "git ls-remote --exit-code --heads" in scripts
+
+    # Deterministic render, job summary and 90-day artifact.
+    assert "scripts/quality/generate_dashboard.py" in scripts
+    assert '--history-dir "$publish_root/quality-history"' in scripts
+    assert "--limit 30" in scripts
+    assert (
+        'cat "$RUNNER_TEMP/quality-publish/dashboard.md" >> "$GITHUB_STEP_SUMMARY"'
+        in scripts
+    )
+    uploads = [
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+    assert len(uploads) == 1
+    upload = uploads[0]
+    assert (
+        upload["uses"]
+        == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert (
+        "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
+        in text
+    )
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert upload["with"]["name"].startswith(
+        "quality-history-${{ steps.collect-manifest.outputs.head_sha }}"
+    )
     assert "artifacts/quality/history" not in scripts
-    assert "git add docs/testing/quality-history docs/testing/dashboard.md" in scripts
-    assert "git add -f" not in scripts
 
 
 def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:

@@ -2001,7 +2001,7 @@
         },
         {
           "event": "workflow_dispatch",
-          "guard": "{\"inputs\":{\"target_url\":{\"description\":\"Target URL to scan (overrides DAST_TARGET_URL secret)\",\"required\":false,\"type\":\"string\"}}}"
+          "guard": "any"
         }
       ],
       "jobs": {
@@ -2023,8 +2023,8 @@
         "nuclei": {
           "profile": "nightly",
           "check_name_template": "Nuclei DAST scan",
-          "expected_timeout_minutes": 30,
-          "expected_duration_seconds": 1800,
+          "expected_timeout_minutes": 90,
+          "expected_duration_seconds": 5400,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
           "needs": [
             "verify-trusted-ref"
@@ -2053,8 +2053,8 @@
         "zap": {
           "profile": "nightly",
           "check_name_template": "OWASP ZAP Full Scan",
-          "expected_timeout_minutes": 60,
-          "expected_duration_seconds": 3600,
+          "expected_timeout_minutes": 150,
+          "expected_duration_seconds": 9000,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
           "needs": [
             "verify-trusted-ref"
@@ -3363,7 +3363,14 @@
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "quality-history-${{ steps.collect-manifest.outputs.head_sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/quality-publish",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
