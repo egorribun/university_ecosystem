@@ -29,10 +29,14 @@ spec:
         - protocol: TCP
           port: 8014
   egress:
+    # AUD-189: DNS only to the cluster DNS pods, not every pod in kube-system.
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53

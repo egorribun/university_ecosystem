@@ -90,7 +90,12 @@
   {{- fail "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs must contain owner-verified CIDRs when outboxWorker.env enables embeddings against an external EMBEDDING_API_BASE (AUD-189)" -}}
 {{- end -}}
 {{- if and .Values.outboxWorker.enabled (eq $elasticsearchClass "in-cluster") -}}
-  {{- fail (printf "backend.config.elasticsearchURL %q names an in-cluster service, but this chart has no NetworkPolicy peer for it; use an external HTTPS endpoint for outbox-worker (AUD-189)" .Values.backend.config.elasticsearchURL) -}}
+  {{- if or (eq (len .Values.networkPolicy.elasticsearch.namespaceSelector) 0) (eq (len .Values.networkPolicy.elasticsearch.podSelector) 0) -}}
+    {{- fail (printf "backend.config.elasticsearchURL %q names an in-cluster service; set networkPolicy.elasticsearch.namespaceSelector and podSelector to its pods, or use an external HTTPS endpoint (AUD-189)" .Values.backend.config.elasticsearchURL) -}}
+  {{- end -}}
+  {{- if eq $elasticsearchPort "" -}}
+    {{- fail (printf "backend.config.elasticsearchURL %q is in-cluster and must name an explicit port for its NetworkPolicy peer (AUD-189)" .Values.backend.config.elasticsearchURL) -}}
+  {{- end -}}
 {{- end -}}
 
 ---
@@ -300,12 +305,21 @@ spec:
         - protocol: TCP
           port: {{ .Values.wsHub.service.port }}
     {{- end }}
-    # Prometheus scraping of the scrape-only metrics listener (AUD-438). The
-    # public WebSocket port above is never opened to the monitoring namespace.
+    # Prometheus scraping of the scrape-only metrics listener (AUD-438). Only
+    # the configured Prometheus pods are admitted, not every pod in the
+    # monitoring namespace. The public WebSocket port above is never opened to
+    # the monitoring namespace.
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: monitoring
+              {{- range $k, $v := .Values.networkPolicy.prometheus.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.prometheus.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.wsHub.metrics.port }}
@@ -892,6 +906,25 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
+    # In-cluster Elasticsearch (AUD-189): only the owner-declared pods, on the port
+    # named by backend.config.elasticsearchURL. The Elasticsearch pods themselves
+    # need an ingress rule that admits this workload in their own policy.
+    {{- if eq $elasticsearchClass "in-cluster" }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.elasticsearch.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.elasticsearch.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $elasticsearchPort | int }}
+    {{- end }}
     # TCP 443 only to owner-declared external endpoints (AUD-189), such as an
     # external Elasticsearch HTTPS endpoint used by search indexing. No public
     # destination is granted by default; NATS, PostgreSQL, SpiceDB and OTLP

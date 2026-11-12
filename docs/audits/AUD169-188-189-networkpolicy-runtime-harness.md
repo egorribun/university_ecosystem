@@ -1,11 +1,13 @@
-# Pending enforcing-CNI evidence for AUD-169, AUD-188 and AUD-189
+# Enforcing-CNI evidence for AUD-169, AUD-188 and AUD-189
 
-**Status: not run.** This is a future test protocol, not authorization to
-deploy, alter a workload, attach a debug container, rotate a key or contact a
-cluster. Use only in an owner-authorized, isolated test environment with the
-same CNI and relevant settings as the target environment. Reconcile the evidence
-separately for each target environment and source SHA. Staging and production are
-not assumed to exist.
+**Status: not accepted.** The hosted kind job is defined and contract-tested. A
+local validation run on the uncommitted working tree passed (see "Local validation
+run"), but it is not hosted evidence for any source SHA, and no finding is accepted
+by this document. This is a test protocol, not authorization to deploy, alter a
+workload, attach a debug container, rotate a key or contact a cluster. Use only in an
+owner-authorized, isolated test environment with the same CNI and relevant settings
+as the target environment. Reconcile the evidence separately for each target
+environment and source SHA. Staging and production are not assumed to exist.
 
 The local `tests/test_aud169_188_189_networkpolicy_topology.py` renders two
 synthetic application releases and their revocation stores, checks service and
@@ -17,6 +19,145 @@ cover the listed private, carrier-grade NAT and link-local ranges, not every
 possible cluster or Service CIDR. Operator-verified CIDRs and runtime evidence
 are required, particularly for globally routable cluster ranges and for
 explicitly configured private HTTPS exceptions.
+
+## Hosted kind run (AUD-169, AUD-188, AUD-189, AUD-438)
+
+Owner decision (2026-11-12): a disposable kind cluster with Calico enforcing
+NetworkPolicy is the accepted target environment for these findings. The hosted
+job is `.github/workflows/k8s-networkpolicy-runtime.yml`. It runs on
+`workflow_dispatch`, weekly, and on pull requests that touch `charts/**`,
+`k8s/**`, `backend.Dockerfile`, the job's scripts or the probe test helpers. It is
+not a required check and does not change branch protection.
+
+What the job does, in order:
+
+1. Installs the pinned kind v0.31.0, kubectl v1.36.4 and Helm v4.2.4 binaries,
+   verifying each against its official checksum (same pins as the AUD-373 job).
+2. Creates a uniquely named kind cluster from the digest-pinned
+   `kindest/node:v1.36.4` image with `disableDefaultCNI: true`.
+3. Installs Calico v3.30.3 from a manifest whose sha256 is checked before
+   `kubectl apply`, and waits for calico-node, calico-kube-controllers and CoreDNS.
+4. Runs `scripts/k8s/networkpolicy_runtime_probe.py` (with its helper modules
+   `networkpolicy_runtime_{kube,rows,app,standins}.py`) through
+   `scripts/k8s/networkpolicy_runtime_proof.sh`. The probe renders the
+   university-ecosystem and revocation-store charts for two releases (`probe-a`,
+   `probe-b`) with the staging-contract arguments and asserts the rendered ports it
+   depends on (fails closed on drift).
+5. Deploys the **real revocation Redis** StatefulSet and Services from the store
+   chart in each release namespace, with a generated password Secret
+   (`revocation-redis-credentials`, key `revocation-redis-password`) created for the
+   run. The Redis image is the store chart's pinned digest. The metrics exporter
+   sidecar, its password-file init container and its volume are removed from the
+   rendered StatefulSet. The chart requires that init to use the private backend
+   image, which kind cannot pull. The Redis server and its `redis-auth-acl` init,
+   which installs the password, are unchanged.
+6. Creates stand-in pods with the rendered pod-template labels of the
+   file-processor, backend, ws-hub, gateway, frontend and outbox-worker workloads
+   (the gateway, frontend and outbox-worker stand-ins are in `probe-a` only), plus
+   an unrelated source, an in-cluster 443 decoy, a Prometheus-labelled pod, a
+   non-Prometheus monitoring pod and an ingress-controller-labelled pod. The
+   stand-in base image is read at runtime from the runtime `FROM` line of
+   `backend.Dockerfile`; the probe fails closed unless exactly one such line exists.
+   Stand-ins run only the Python standard library. They are not the application
+   images.
+7. Proves every target and control is reachable before any policy is applied
+   (baseline), and that the authenticated Redis PING succeeds before policy. It
+   then applies the rendered policies and runs the 27-row probe matrix. Each denied
+   attempt is bracketed by a control to the same destination that must succeed
+   before and after it. A timeout without a live control is inconclusive, not a
+   pass.
+8. Runs the application-level checks in the enforced cluster (see below).
+9. Writes `receipt.json` with one row per probe (finding, probe, source,
+   destination, protocol, port, expected, observed, baseline, control, verdict),
+   the resolver check, the `app_level` results, pod UIDs and IPs, policy names and
+   spec hashes, and an explicit `not_run` list. The job exits non-zero on any
+   non-pass verdict, including a failed baseline. No credential or key material is
+   written to the receipt.
+10. Uploads the receipt and diagnostics as the artifact
+    `aud169-188-189-networkpolicy-runtime-receipt` with 90-day retention.
+
+### Application-level checks
+
+- **AUD-169 (revocation Redis).** From a pod with the file-processor's rendered
+  labels, an `AUTH` with the generated password followed by `PING` must return
+  `PONG`. An unauthenticated `PING` must return `NOAUTH`, and a wrong password must
+  return `WRONGPASS`. From the unrelated-labels pod, the same correct password must
+  time out at the network layer, bracketed by successful file-processor controls to
+  the same Redis before and after. The password is supplied on stdin for each exec
+  and is not in a pod spec.
+- **AUD-188 (RS256 JWKS consumer).** The publisher is the backend-labelled stand-in,
+  which serves a JWKS document written by the probe. The consumer is the
+  file-processor-labelled stand-in, which fetches the JWKS over the enforced path and
+  verifies RS256 with an RSA PKCS#1 v1.5 / SHA-256 check in the standard library. The
+  sequence is: key 1 published and its token accepted; key 2 token rejected
+  (`unknown-kid`) before publication; key 1 and key 2 published and key 2 accepted;
+  key 1 still accepted during the transition; a token signed by an unpublished key
+  rejected; a token with a published `kid` but another key's signature rejected
+  (`bad-signature`); an `alg: none` token rejected; key 1 retired and its token
+  rejected; key 2 still accepted. Keys are generated in-process with the project's
+  `cryptography` dependency. Tokens and private keys are never written to the
+  receipt.
+
+### What the job does not prove (receipt `not_run`)
+
+- **Real file-processor process.** Its JWKS refresher, gRPC `ProcessFile`
+  acceptance and startup Redis ping are not run. `services/file-processor/cmd/
+  file-processor/main.go` requires Temporal and NATS at startup, so the process
+  cannot reach serving state in kind. The stand-in consumer exercises the same RS256
+  and JWKS contract, but not the refresher's interval or last-known-good logic.
+- Revoked and unrevoked token pairs through the file-processor (AUD-169).
+- Link-local TCP/443 denial, since kind provides no owned link-local listener.
+- Backup public TCP/443 allowance: `backup.enabled` is `false` in the staging
+  values, so the backup policy is not rendered in this job.
+- Staging or production topology, real NAT, or cloud load balancer behavior.
+- The Redis metrics exporter, which is removed from the rendered workload (see
+  step 5).
+
+### Public TCP/443 exception (AUD-189, ADR-054 addendum 2026-11-12)
+
+Owner-accepted residual risk: the `backend` and `backup` workloads may reach public
+TCP/443 destinations, excluding the private, carrier-grade NAT and link-local
+ranges. The job proves that the backend reaches `1.1.1.1:443` (an allowed row) and
+that the file-processor, ws-hub, gateway, frontend and outbox-worker stand-ins are
+denied the same destination, each with a backend control. Backup is not runnable
+here (see `not_run`). The exception does not count as proof of any specific
+provider.
+
+### Elasticsearch peer (AUD-189, chart contract)
+
+An in-cluster `backend.config.elasticsearchURL` (a single-label host or a host in
+the release namespace) is admitted only through `networkPolicy.elasticsearch`
+selectors and its explicit port. Without them, or without an explicit port, the
+chart fails to render. External endpoints keep their TCP/443 CIDR requirement. These
+rules are checked by the chart contract tests, not by the kind job. The
+Elasticsearch release must admit this workload in its own policy.
+
+Local validation run (2026-11-12, not hosted): the probe was run against a local
+kind v1.36.4 cluster with Calico v3.30.3 on Docker Desktop, using the uncommitted
+working tree. The verdict was `pass`: 27 probe rows, 4 AUD-169 checks, 9 AUD-188
+checks and the resolver check. The shell proof script is Linux-only and was not
+run; its pins and the probe arguments are the same. A first run exposed an invalid
+public-denial row for an unlabelled namespace, which has no chart policy and was
+replaced by denials for the chart workloads. This run is not acceptance evidence.
+
+Current status: the workflow, probe modules and contract tests are in the
+repository. No hosted run is recorded for any source SHA, and this document does
+not accept AUD-169, AUD-188, AUD-189 or AUD-438. Acceptance requires a green hosted
+run of the job for the exact source SHA, with the receipt artifact retained, plus
+owner review of the `not_run` items above. The orchestrator records that acceptance
+after the run; this document does not.
+
+To run it manually: open the "Kubernetes NetworkPolicy runtime proof" workflow in
+GitHub Actions and choose "Run workflow" on the branch under test. Locally, the
+shell script needs Linux x86_64, Docker, and uv, and it creates and deletes its own
+kind cluster:
+
+```sh
+bash scripts/k8s/networkpolicy_runtime_proof.sh
+```
+
+The public denial rows and their controls use `1.1.1.1:443`, so the hosted run
+needs outbound internet access from the runner.
 
 ## Prerequisites and inventory
 
@@ -88,7 +229,7 @@ record those changes and do not treat its result as a production observation.
 
 | Finding | Source and destination | Required observation |
 | --- | --- | --- |
-| AUD-169 | A file-processor to A revocation Redis, direct Pod IP and configured Service | TCP/6379 succeeds through both policy directions; independently confirm application startup and authenticated Redis PING without printing credentials. |
+| AUD-169 | A file-processor to A revocation Redis, direct Pod IP and configured Service | TCP/6379 succeeds through both policy directions; authenticated Redis PING succeeds without printing credentials. |
 | AUD-169 | A file-processor to B revocation Redis; unrelated source to A Redis | Denied with live target controls and attributable policy verdict; B file-processor to B Redis succeeds. |
 | AUD-188 | A file-processor to A backend JWKS, direct Pod IP and configured Service | TCP backend port and HTTP 200 for the actual `/.well-known/jwks.json` URL, no redirect, from the actual file-processor network namespace. |
 | AUD-188 | A file-processor to B backend; unrelated source to A backend | Denied with live target controls and attributable policy verdict; B to B backend succeeds. |
@@ -158,6 +299,10 @@ protected files; if that cannot be arranged, mark the application probe pending.
    application authentication boundary. The revoked token must be rejected
    and the unrevoked token must pass authentication. No real user session is
    needed. Actual secret references, key material and tokens stay private.
+
+The kind job's stand-in RS256 consumer (see "Application-level checks") does not
+replace steps 1 to 4 for the real file-processor. It covers the key-set and
+signature contract on the enforced network path only.
 
 ## Receipt and acceptance limits
 

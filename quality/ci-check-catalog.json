@@ -5377,6 +5377,49 @@
           }
         }
       }
+    },
+    {
+      "path": ".github/workflows/k8s-networkpolicy-runtime.yml",
+      "name": "Kubernetes NetworkPolicy runtime proof",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"charts/**\",\"k8s/**\",\"backend.Dockerfile\",\"scripts/k8s/networkpolicy_runtime_*.py\",\"scripts/k8s/networkpolicy_runtime_proof.sh\",\"tests/test_helm_staging_contract.py\",\".github/workflows/k8s-networkpolicy-runtime.yml\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"41 4 * * 1\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "networkpolicy-kind-proof": {
+          "profile": "advisory",
+          "check_name_template": "NetworkPolicy kind runtime proof",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "aud169-188-189-networkpolicy-runtime-receipt",
+              "path_pattern": "${{ runner.temp }}/aud169-188-189-netpol",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
     }
   ]
 }

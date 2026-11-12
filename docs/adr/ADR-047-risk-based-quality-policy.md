@@ -2545,3 +2545,25 @@ disposition. That companion digest and its existing public-integrity scanner
 identity are rebound one-to-one; path, type, category, owner, evidence and
 expiry stay the same, and the inventory remains 511 dispositions and 15
 Semgrep rows.
+
+### Exact Calico manifest digest
+
+The owner approved one additional `public_integrity_digest` disposition for the
+Calico v3.30.3 manifest SHA-256 checksum pinned at
+`scripts/k8s/networkpolicy_runtime_proof.sh:34`, sourced from
+`https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml`,
+with detector `Hex High Entropy String`, review date 2026-11-12 and finite expiry
+2027-01-10. Calico publishes no checksum for that manifest; the digest was computed
+from that exact file. The policy grows from 511 to 512 records; all prior 511
+records and expiry values remain unchanged. The detect-secrets baseline remains at
+242 identities, Gitleaks fingerprints remain 27 and Semgrep rows remain 15; as in
+the ZAP precedent, the approval is carried by the disposition record without a
+baseline entry.
+
+This approval adds no other identity or suppression and changes no scanner
+threshold, required check or audit status. Offline fixture and source checks do
+not establish a live Kubernetes NetworkPolicy runtime proof, a completed Calico
+download or successful CI; those require separate authorized runtime evidence and
+current source-bound checks.
+
+The same 2026-11-12 step applies the owner's standing 2026-10-31 approval for one-to-one rebinds of existing pins: the `values.yaml` and `values.schema.json` source pins now bind their new bytes, with exact predecessor projection; no new identity is added and the total remains 512.

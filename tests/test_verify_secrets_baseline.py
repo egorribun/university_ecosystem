@@ -1077,9 +1077,9 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
     live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 11)
+        repository_root=root, today=verifier.date(2026, 11, 12)
     )
-    assert len(live_validated) == 511
+    assert len(live_validated) == 512
     assert all(
         finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
     )
@@ -31498,7 +31498,7 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    if len(policy.get("records", [])) == 511:
+    if len(policy.get("records", [])) == 512:
         policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -32138,7 +32138,8 @@ _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
 
 
 # Owner-approved 2026-11-11 Go image identity. The older contracts operate on
-# the exact 509-record prefix; the live document appends only Go and ZAP.
+# the exact 509-record prefix; the live document appends only Go, ZAP and
+# Calico.
 _NOV11_GO_IMAGE_SCANNER_DIGEST = bytes.fromhex(
     "c8 64 20 19 43 35 0a eb 96 c2 e1 67 52 e3 9a f0 6a bb 45 e7"
 )
@@ -32168,11 +32169,12 @@ def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, 
     policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
-    assert len(records) == 511, "live disposition row count changed"
+    assert len(records) == 512, "live disposition row count changed"
     assert records[509:] == [
         _NOV11_GO_IMAGE_APPROVED_RECORD,
         _NOV11_ZAP_IMAGE_APPROVED_RECORD,
-    ], "live disposition approved Go and ZAP suffix changed"
+        _NOV12_CALICO_APPROVED_RECORD,
+    ], "live disposition approved Go, ZAP and Calico suffix changed"
     historical = {**policy, "records": copy.deepcopy(records[:509])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     assert hashlib.sha256(historical_bytes).digest() == _NOV9_WASM_CLI_POLICY_SHA256, (
@@ -32205,9 +32207,9 @@ def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
     historical_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
     assert len(json.loads(historical_bytes)["records"]) == 509
     accepted = verifier.validate_false_positive_dispositions(
-        json.loads(policy_bytes), today=verifier.date(2026, 11, 11)
+        json.loads(policy_bytes), today=verifier.date(2026, 11, 12)
     )
-    assert len(accepted) == 511
+    assert len(accepted) == 512
 
 
 @pytest.mark.parametrize(
@@ -32455,7 +32457,7 @@ def test_nov11_zap_image_projection_rejects_scope_drift(mutation: str) -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    record = policy["records"][-1]
+    record = policy["records"][510]
     if mutation == "path":
         record["identity"]["path"] = ".zap/other.txt"
     elif mutation == "digest":
@@ -32559,7 +32561,54 @@ _AUD154_SOURCE_INSERTIONS = {
 }
 
 
+# NOV12 chart pins: owner standing approval (2026-10-31) for one-to-one rebinds
+# of existing digest identities. The Calico values blocks are inserted into these
+# two chart files; the exact predecessor bytes are restored before the existing
+# AUD-380 source pins are checked. No identity is added; the total stays 512.
+_NOV12_CHART_REBINDS = {
+    "charts/university-ecosystem/values.yaml": (
+        23762,
+        32742,
+        bytes.fromhex(
+            "11 22 e9 99 8c 45 14 6b 82 99 41 ef 13 75 bb 55 c1 a4 fd f7 07 3f 4c e4 d7 75 a1 09 3e 1c 6e 78"
+        ),
+        bytes.fromhex(
+            "c3 da 7a a0 99 2e b6 0c 82 b2 53 b0 81 e7 41 1a ca 3e 4e 55 82 73 17 93 cd 22 de 7e 5e 07 eb d4"
+        ),
+    ),
+    "charts/university-ecosystem/values.schema.json": (
+        50597,
+        70162,
+        bytes.fromhex(
+            "d3 d1 a1 74 36 cd 9b 13 6c b1 05 63 e1 69 d8 48 e8 85 ba 84 5e 76 95 ff 24 bb 44 38 ce 99 93 49"
+        ),
+        bytes.fromhex(
+            "0f 65 6e 5a b4 be 92 51 3e 47 83 68 c0 ca c1 99 de d1 89 5e 3d 6b 40 60 49 c3 77 fc 73 d3 b6 12"
+        ),
+    ),
+}
+
+
+def _nov12_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    rebind = _NOV12_CHART_REBINDS.get(path)
+    if rebind is None:
+        return actual
+    prefix_length, previous_length, previous_sha, current_sha = rebind
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = (
+        actual[:prefix_length]
+        + actual[len(actual) - (previous_length - prefix_length) :]
+    )
+    assert hashlib.sha256(historical).digest() == previous_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov12_chart_historical_source_bytes(path, actual)
     actual = _aud375_historical_source_bytes(path, actual)
     if path not in _AUD154_SOURCE_PINS:
         return actual
@@ -32585,7 +32634,7 @@ def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _aud375_historical_policy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    assert len(restored["records"]) == 512, "live disposition count changed"
     replacements = {
         hashlib.sha1(
             current.hex().encode("ascii"), usedforsecurity=False
@@ -32608,7 +32657,9 @@ def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
         identity["hashed_secret_bytes"] = list(replacements[digest])
         changed.append(index)
     assert changed == [451, 495], "live disposition AUD154 rebind set changed"
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # Predecessor digests cover the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _AUD154_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32706,7 +32757,7 @@ def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _nov12_csp_historical_policy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    assert len(restored["records"]) == 512, "live disposition count changed"
     row = restored["records"][451]
     identity = row["identity"]
     assert identity["path"] == "quality/semgrep-dispositions.json"
@@ -32724,7 +32775,9 @@ def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
             usedforsecurity=False,
         ).digest()
     )
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # Predecessor digests cover the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _AUD375_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32823,7 +32876,7 @@ def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = copy.deepcopy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    assert len(restored["records"]) == 512, "live disposition count changed"
     row = restored["records"][_NOV12_CSP_ROW]
     identity = row["identity"]
     assert identity["path"] == "quality/semgrep-dispositions.json"
@@ -32841,7 +32894,9 @@ def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
             usedforsecurity=False,
         ).digest()
     )
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # The predecessor digest covers the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _NOV12_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32906,3 +32961,122 @@ def test_nov12_map_csp_policy_projection_rejects_scope_drift(field: str) -> None
         row[field] += " changed"
     with pytest.raises(AssertionError):
         _nov12_csp_historical_policy(policy)
+
+
+# Owner-approved 2026-11-12 Calico manifest checksum identity. The live document
+# appends it after the Go and ZAP identities; the 511 prior records are preserved.
+_NOV12_CALICO_PRE_POLICY_SHA256 = bytes.fromhex(
+    "06 c6 fd da bf 3a ba ca c8 9f 4d 17 64 69 87 07 c9 4e f9 85 e8 11 e2 38 a6 e5 dc bc 0a 04 27 6c"
+)
+_NOV12_CALICO_SCANNER_DIGEST = bytes.fromhex(
+    "17 79 ac 26 87 8e 03 4c 7e e1 05 42 f3 d7 e2 e4 96 c6 b4 d9"
+)
+_NOV12_CALICO_SHA256_PATTERN = re.compile(r'readonly CALICO_SHA256="([0-9a-f]{64})"')
+_NOV12_CALICO_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": (
+        "Official Calico v3.30.3 manifest SHA-256 pin at "
+        "scripts/k8s/networkpolicy_runtime_proof.sh:34 for "
+        "https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml; "
+        "computed from that exact file because the upstream project publishes no checksum; "
+        "owner approved this exact public integrity identity on 2026-11-12; "
+        "not credential material."
+    ),
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV12_CALICO_SCANNER_DIGEST),
+        "path": "scripts/k8s/networkpolicy_runtime_proof.sh",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-12",
+}
+
+
+def test_nov12_calico_preserves_published_policy_and_source_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    _nov11_historical_509_from_live_policy(policy)
+    previous = {**policy, "records": policy["records"][:511]}
+    assert (
+        hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
+        == _NOV12_CALICO_PRE_POLICY_SHA256
+    )
+    assert policy["records"][511] == _NOV12_CALICO_APPROVED_RECORD
+    proof = (
+        (root / "scripts/k8s/networkpolicy_runtime_proof.sh")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    match = _NOV12_CALICO_SHA256_PATTERN.fullmatch(proof[33])
+    assert match is not None, "Calico checksum must stay on proof line 34"
+    digest = match.group(1)
+    assert (
+        hashlib.sha1(digest.encode("ascii"), usedforsecurity=False).digest()
+        == _NOV12_CALICO_SCANNER_DIGEST
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "digest",
+        "type",
+        "category",
+        "owner",
+        "review",
+        "expiry",
+        "evidence",
+        "zap_record",
+    ],
+)
+def test_nov12_calico_projection_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    record = policy["records"][511]
+    if mutation == "path":
+        record["identity"]["path"] = "scripts/k8s/other.sh"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "synthetic_test_fixture"
+    elif mutation == "owner":
+        record["owner"] = "someone_else"
+    elif mutation == "review":
+        record["reviewed_on"] = "2026-11-11"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        record["evidence"] += " changed"
+    else:
+        policy["records"][510]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov12_calico_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV12_CALICO_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            "scripts/k8s/networkpolicy_runtime_proof.sh",
+            "Hex High Entropy String",
+            _NOV12_CALICO_SCANNER_DIGEST.hex(),
+            34,
+        )
+    }
+    for today in (verifier.date(2026, 11, 12), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(document, today=today)
+            == expected
+        )
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(document, today=today)

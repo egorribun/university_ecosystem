@@ -50,3 +50,26 @@ backend directly and can try to intercept this traffic.
 
 Revisit this decision before any Kubernetes deployment and before Compose services
 span more than one host. Either change ends the accepted risk above.
+
+## Addendum 2026-11-12: AUD-189 public TCP/443 egress exception (Helm profile)
+
+Scope: the Helm chart's `networkPolicy.httpsEgress` rules, which apply only to the
+`backend` and `backup` workloads. Each may open TCP/443 to public IPv4 and IPv6
+destinations, excluding RFC 1918 private ranges, carrier-grade NAT (100.64.0.0/10),
+and link-local ranges (`169.254.0.0/16`, `fe80::/10`) plus `fc00::/7`. Every other workload
+keeps its explicit allow-list and gets no public TCP/443 egress. The exception does
+not apply to the Compose target described above.
+
+Reason: the owner accepted the residual AUD-189 risk for the backend's declared
+public dependencies (HIBP password checks, Spotify OAuth, and object storage) and
+for the backup job's object-storage upload. A FQDN or proxy allow-list cannot be
+enforced by a standard NetworkPolicy, so the destination set stays broad.
+
+Evidence: the kind runtime proof (`scripts/k8s/networkpolicy_runtime_proof.sh`)
+must show that backend reaches a public TCP/443 control, and that every other
+probed workload is denied the same destination. The exception does not count as
+proof of any specific provider.
+
+Revisit: after MVP, replace the broad public range with an egress proxy or an
+FQDN-aware policy (for example, Cilium FQDN rules or a dedicated egress gateway),
+then remove this addendum.

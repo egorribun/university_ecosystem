@@ -2160,6 +2160,24 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
         for port in rule.get("ports", [])
     }
     assert monitoring_ports == {9108}
+    # AUD-438: the monitoring namespace alone is not enough; only Prometheus pods
+    # may reach the metrics listener.
+    prometheus_sources = [
+        source
+        for rule in policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if source.get("namespaceSelector", {}).get("matchLabels")
+        == {"kubernetes.io/metadata.name": "monitoring"}
+        and rule.get("ports") == [{"protocol": "TCP", "port": 9108}]
+    ]
+    assert prometheus_sources == [
+        {
+            "namespaceSelector": {
+                "matchLabels": {"kubernetes.io/metadata.name": "monitoring"}
+            },
+            "podSelector": {"matchLabels": {"app.kubernetes.io/name": "prometheus"}},
+        }
+    ]
     backend_policy = _component_resource(resources, "NetworkPolicy", "backend")
     backend_sources = [
         source.get("podSelector", {}).get("matchLabels", {})
@@ -3456,3 +3474,85 @@ def test_frontend_service_port_matches_node_listener(port: int) -> None:
     assert all(
         labels[key] == value for key, value in service["spec"]["selector"].items()
     )
+
+
+IN_CLUSTER_ELASTICSEARCH_ARGS = (
+    "--set-string",
+    "backend.config.elasticsearchURL=https://elasticsearch:9200",
+    "--set-string",
+    "networkPolicy.elasticsearch.namespaceSelector.kubernetes\\.io/metadata\\.name=university-ecosystem",
+    "--set-string",
+    "networkPolicy.elasticsearch.podSelector.app\\.kubernetes\\.io/name=elasticsearch",
+)
+
+
+def _outbox_worker_policy(resources: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "staging-contract-outbox-worker-policy"
+    )
+
+
+def test_in_cluster_elasticsearch_admits_only_declared_pods_on_its_port() -> None:
+    """AUD-189: an in-cluster Elasticsearch gets a pod-selected rule on its URL port."""
+    policy = _outbox_worker_policy(_render_staging(*IN_CLUSTER_ELASTICSEARCH_ARGS))
+    peers = [
+        rule
+        for rule in policy["spec"]["egress"]
+        if rule.get("ports") == [{"protocol": "TCP", "port": 9200}]
+    ]
+    assert peers == [
+        {
+            "to": [
+                {
+                    "namespaceSelector": {
+                        "matchLabels": {
+                            "kubernetes.io/metadata.name": "university-ecosystem"
+                        }
+                    },
+                    "podSelector": {
+                        "matchLabels": {"app.kubernetes.io/name": "elasticsearch"}
+                    },
+                }
+            ],
+            "ports": [{"protocol": "TCP", "port": 9200}],
+        }
+    ]
+
+
+def test_external_elasticsearch_keeps_cidr_rules_and_no_pod_peer() -> None:
+    """AUD-189: the external default is unchanged and adds no in-cluster peer."""
+    policy = _outbox_worker_policy(_render_staging())
+    assert not [
+        rule
+        for rule in policy["spec"]["egress"]
+        if rule.get("ports") == [{"protocol": "TCP", "port": 9200}]
+    ]
+    peers = [peer for rule in policy["spec"]["egress"] for peer in rule.get("to", [])]
+    assert {"ipBlock": {"cidr": "192.0.2.0/24"}} in peers
+    release_namespace = {
+        "matchLabels": {"kubernetes.io/metadata.name": "university-ecosystem"}
+    }
+    assert not [
+        peer for peer in peers if peer.get("namespaceSelector") == release_namespace
+    ]
+
+
+def test_in_cluster_elasticsearch_without_declared_peer_fails_render() -> None:
+    """AUD-189: an in-cluster URL with no declared peer must fail closed."""
+    with pytest.raises(subprocess.CalledProcessError):
+        _render_staging(
+            "--set-string", "backend.config.elasticsearchURL=https://elasticsearch:9200"
+        )
+
+
+def test_in_cluster_elasticsearch_requires_an_explicit_port() -> None:
+    """AUD-189: a NetworkPolicy peer needs one port; the chart must not guess it."""
+    with pytest.raises(subprocess.CalledProcessError):
+        _render_staging(
+            "--set-string",
+            "backend.config.elasticsearchURL=https://elasticsearch",
+            *IN_CLUSTER_ELASTICSEARCH_ARGS[2:],
+        )

@@ -17373,6 +17373,40 @@
       },
       "owner": "egorribun",
       "reviewed_on": "2026-11-11"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Official Calico v3.30.3 manifest SHA-256 pin at scripts/k8s/networkpolicy_runtime_proof.sh:34 for https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml; computed from that exact file because the upstream project publishes no checksum; owner approved this exact public integrity identity on 2026-11-12; not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          23,
+          121,
+          172,
+          38,
+          135,
+          142,
+          3,
+          76,
+          126,
+          225,
+          5,
+          66,
+          243,
+          215,
+          226,
+          228,
+          150,
+          198,
+          180,
+          217
+        ],
+        "path": "scripts/k8s/networkpolicy_runtime_proof.sh",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-12"
     }
   ],
   "schema_version": 1

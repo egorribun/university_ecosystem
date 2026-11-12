@@ -25,7 +25,7 @@
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment,
 reconciliation, `AUDIT-2026-10.md`, этот файл и `docs/README.md`.
 
-The current policy-file inventory is **511 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
+The current policy-file inventory is **512 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
 
 ### Открытые находки и текущий план
 
