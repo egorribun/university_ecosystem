@@ -32629,6 +32629,208 @@ _NOV13_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
 _NOV13_COMPANION_ROW = 505
 
 
+# STEP5 loopback CSP exception: the Semgrep companion digest of
+# frontend/scripts/server-csp.mjs and its existing public-integrity identity are
+# rebound one-to-one (owner standing approval 2026-10-31). The predecessor source,
+# ledger and policy bytes are restored before the existing pins are checked. Each
+# source hunk must match exactly once and the reversal must reproduce the
+# predecessor digest; no identity is added and the total stays 512.
+_NOV13_LOOPBACK_SOURCE_CURRENT_SHA256 = bytes.fromhex(
+    "e8 95 6f 34 9a ba 0b 03 44 26 44 e0 be 40 92 9c 75 22 45 5c 44 d2 7b bb d0 3f 61 ca 0a 1e 79 ce"
+)
+_NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256 = bytes.fromhex(
+    "58 c5 e4 51 cf 68 e3 a0 91 14 0c 57 fa 32 e8 7f 13 0c 56 42 16 70 4a 0f 05 f0 83 05 2e 62 62 43"
+)
+_NOV13_LOOPBACK_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "d6 e2 43 e1 ad 53 db 87 b5 28 fd 7e 39 2a 21 7e 5c ae 84 69 59 e3 fd 87 a8 4c 8e 4a 4b 23 b8 9b"
+)
+_NOV13_LOOPBACK_CSP_ROW = 443
+_NOV13_LOOPBACK_CSP_REVERSALS = (
+    (
+        r"""// Loopback literals only. Anchored, so "127.0.0.1.evil.com", "evil.com:127.0.0.1"
+// and "[::1].evil.com" never match. Bare "::1" is accepted because it is the
+// unambiguous IPv6 loopback spelling without a port.
+const LOOPBACK_HOST_PATTERN =
+  /^(?:(?:127\.0\.0\.1|localhost)(?::\d{1,5})?|\[::1\](?::\d{1,5})?|::1)$/iu
+
+function isLoopbackHost(host) {
+  return typeof host === "string" && LOOPBACK_HOST_PATTERN.test(host)
+}
+
+// Only an absent X-Forwarded-Proto or an exact "http" marks a request as plain
+// HTTP. Anything else (https, lists, arrays, empty values) fails closed.
+function isMarkedPlainHttp(forwardedProto) {
+  if (forwardedProto === undefined || forwardedProto === null) return true
+  return typeof forwardedProto === "string" && forwardedProto.trim().toLowerCase() === "http"
+}
+
+/**
+ * Production sits behind Caddy TLS, so `upgrade-insecure-requests` stays for every
+ * real host. It is omitted only for a plain-HTTP request addressed to a loopback
+ * literal, which is the local preview / Playwright lane. WebKit otherwise upgrades
+ * those loopback subresource requests to https and fails the TLS handshake.
+ */
+export function shouldUpgradeInsecureRequests({ host, forwardedProto } = {}) {
+  return !(isLoopbackHost(host) && isMarkedPlainHttp(forwardedProto))
+}
+
+export function buildNodeCspHeaders(nonce, { upgradeInsecureRequests = true } = {}) {
+""",
+        r"""export function buildNodeCspHeaders(nonce) {
+""",
+    ),
+    (
+        r"""  if (typeof upgradeInsecureRequests !== "boolean") {
+    throw new TypeError("upgradeInsecureRequests must be a boolean")
+  }
+""",
+        r"""""",
+    ),
+    (
+        r"""  const enforcingPolicy = policyDirectives
+    .filter((directive) => upgradeInsecureRequests || directive !== "upgrade-insecure-requests")
+    .join("; ")
+""",
+        r"""  const enforcingPolicy = policyDirectives.join("; ")
+""",
+    ),
+    (
+        r"""export function applyNodeCspToHtmlResponse(response, nonce, options = {}) {
+""",
+        r"""export function applyNodeCspToHtmlResponse(response, nonce) {
+""",
+    ),
+    (
+        r"""  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce, options))) {
+""",
+        r"""  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
+""",
+    ),
+)
+
+
+def _nov13_loopback_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == "frontend/scripts/server-csp.mjs":
+        assert (
+            hashlib.sha256(actual).digest() == _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        historical = actual
+        for current, previous in _NOV13_LOOPBACK_CSP_REVERSALS:
+            current_bytes = current.encode("utf-8")
+            assert historical.count(current_bytes) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(current_bytes, previous.encode("utf-8"), 1)
+        assert (
+            hashlib.sha256(historical).digest()
+            == _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert (
+            hashlib.sha256(actual).digest() == _NOV13_LOOPBACK_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        current = _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current, _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"), 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    return actual
+
+
+def _nov13_loopback_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    row = records[_NOV13_LOOPBACK_CSP_ROW]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    ), "live disposition loopback CSP identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
+def test_nov13_loopback_csp_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item["sha256"]
+        for item in ledger["dispositions"][14]["companions"]
+        if item["path"] == "frontend/scripts/server-csp.mjs"
+    ]
+    assert companions == [hashlib.sha256(source).hexdigest()]
+    historical = _nov13_loopback_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    )
+    assert hashlib.sha256(historical).digest() == _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256
+    assert b"upgradeInsecureRequests" not in historical
+    restored_ledger = _nov13_loopback_csp_historical_source_bytes(
+        "quality/semgrep-dispositions.json", ledger_bytes
+    )
+    assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov13_loopback_csp_historical_policy(policy)
+    assert len(restored_policy["records"]) == 512
+    assert (
+        bytes(
+            restored_policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"][
+                "hashed_secret_bytes"
+            ]
+        )
+        == hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+
+
+@pytest.mark.parametrize("mutation", ["source", "ledger", "policy"])
+def test_nov13_loopback_csp_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "source":
+        actual = (root / "frontend/scripts/server-csp.mjs").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_loopback_csp_historical_source_bytes(
+                "frontend/scripts/server-csp.mjs", actual
+            )
+    elif mutation == "ledger":
+        actual = (root / "quality/semgrep-dispositions.json").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_loopback_csp_historical_source_bytes(
+                "quality/semgrep-dispositions.json", actual
+            )
+    else:
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="loopback CSP identity changed"):
+            _nov13_loopback_csp_historical_policy(policy)
+
+
 # STEP4 retired dead mfa_enabled flag: the Semgrep companion digest of
 # app/core/config/mixins/mfa_settings.py and its existing public-integrity identity
 # are rebound one-to-one (owner standing approval 2026-10-31). The exact predecessor
@@ -32652,6 +32854,7 @@ _NOV13_MFA_ANCHOR_LINE = b"    mfa_default_method: str | None = None\n"
 
 
 def _nov13_mfa_settings_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_loopback_csp_historical_source_bytes(path, actual)
     if path == "app/core/config/mixins/mfa_settings.py":
         assert hashlib.sha256(actual).digest() == _NOV13_MFA_CURRENT_SOURCE_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -32683,7 +32886,7 @@ def _nov13_mfa_settings_historical_source_bytes(path: str, actual: bytes) -> byt
 
 
 def _nov13_mfa_settings_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov13_loopback_csp_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     identity = records[_NOV13_MFA_COMPANION_ROW]["identity"]
@@ -33134,7 +33337,9 @@ def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
     historical = _nov12_csp_historical_source_bytes(
         "frontend/scripts/server-csp.mjs", source
     )
-    assert source == historical.replace(
+    assert _nov13_loopback_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    ) == historical.replace(
         b'  "https://fcmregistrations.googleapis.com",\n',
         b'  "https://fcmregistrations.googleapis.com",\n' + _NOV12_CSP_INSERTION,
         1,

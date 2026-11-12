@@ -2612,3 +2612,19 @@ are unchanged.
 disposition for insecure SHA-1 use. Its digest and the existing public-integrity
 identity are rebound one-to-one; path, type, category, owner, evidence and expiry
 stay the same, and the inventory remains 512 dispositions and 15 Semgrep rows.
+
+### Loopback previews omit upgrade-insecure-requests
+
+The Node SSR policy keeps `upgrade-insecure-requests` for every host. It is omitted
+only for a plain-HTTP request whose Host header is a loopback literal (`127.0.0.1`,
+`localhost`, `[::1]` or bare `::1`, with an optional port) and whose
+`X-Forwarded-Proto` is absent or exactly `http`. WebKit upgraded those loopback
+subresource requests to https, so the nightly mocked WebKit lanes failed on roughly
+2500 TLS errors. Production hosts, requests marked https and spoofed hosts such as
+`127.0.0.1.evil.com` keep the directive. The exception applies only to loopback
+literals and is covered by `frontend/scripts/server-csp.test.mjs`.
+
+`frontend/scripts/server-csp.mjs` is a companion of the existing SafeHtml Semgrep
+disposition. Its digest and the existing public-integrity identity are rebound
+one-to-one; path, type, category, owner, evidence and expiry stay the same, and the
+inventory remains 512 dispositions and 15 Semgrep rows.

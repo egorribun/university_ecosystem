@@ -446,7 +446,7 @@
         },
         {
           "path": "frontend/scripts/server-csp.mjs",
-          "sha256": "58c5e451cf68e3a091140c57fa32e87f130c564216704a0f05f083052e626243"
+          "sha256": "e8956f349aba0b03442644e0be40929c7522455c44d27bbbd03f61ca0a1e79ce"
         },
         {
           "path": "frontend/WASM_SOURCE_PROVENANCE.json",
