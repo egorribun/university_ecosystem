@@ -18,6 +18,12 @@ jobs:
   generate:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Importing app.main loads Settings, which requires these values. The spec
+    # needs no database connection; SECRET_KEY gets an ephemeral masked value.
+    env:
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      ENVIRONMENT: testing
+      SECRET_KEY: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,10 +40,36 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Generate OpenAPI spec
+      - name: Configure ephemeral application secret
+        shell: bash
         run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+
+      # The application logs to stdout while importing, so the spec is written
+      # to its file directly rather than through a stdout redirect.
+      - name: Generate OpenAPI spec
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p frontend
-          uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" > frontend/openapi.json
+          uv run --frozen python - <<'PY'
+          import json
+          import pathlib
+
+          from app.main import app
+
+          spec = app.openapi()
+          if not spec.get("paths"):
+              raise SystemExit("OpenAPI spec has no paths")
+          pathlib.Path("frontend/openapi.json").write_text(
+              json.dumps(spec, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          uv run --frozen python -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' frontend/openapi.json
 
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
