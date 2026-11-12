@@ -121,6 +121,16 @@ test("live password-settings acceptance proves invalid-change rollback and persi
   assert.match(spec, /\/api\/v1\/users\/me\/password/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
   assert.match(spec, /X-CSRF-Token/u)
+  assert.doesNotMatch(
+    spec,
+    /page\.getByLabel\("Текущий пароль"/u,
+    "page-level current-password lookups are ambiguous with the email-change form"
+  )
+  assert.match(
+    spec,
+    /correctedPasswordSection\s*\.getByLabel\("Текущий пароль", \{ exact: true \}\)/u,
+    "the corrected password change fills the current-password field inside the password section"
+  )
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)\(/u)
   assert.doesNotMatch(spec, /page\.route\(["']\*\*\/api|routeWebSocket/u)
 })

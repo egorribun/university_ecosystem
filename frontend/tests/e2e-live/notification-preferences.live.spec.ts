@@ -185,25 +185,32 @@ const deleteOnlyCreatedAccount = async (
   const [match] = matches
   if (!match) return
 
-  const deleted = await adminPage.evaluate(async (userId) => {
-    const csrfCookie = document.cookie
-      .split(";")
-      .map((part) => part.trim())
-      .find((part) => part.startsWith("csrf_token="))
-    if (!csrfCookie) return { status: 0, deleted: false }
-
-    const csrfToken = decodeURIComponent(csrfCookie.slice("csrf_token=".length))
-    const result = await fetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-      credentials: "same-origin",
-      headers: { "X-CSRF-Token": csrfToken },
-    })
-    const body = (await result.json().catch(() => null)) as { deleted?: boolean } | null
-    return { status: result.status, deleted: body?.deleted === true }
-  }, match.id)
-  reportAuthHttpStatus(project, "admin_account_delete", deleted.status)
-  expect(deleted.status, "cleanup uses the CSRF-protected admin endpoint").toBe(200)
-  expect(deleted.deleted, "cleanup deletes only the exact generated account id").toBe(true)
+  // Use the same authenticated APIRequestContext transport as the GET above.
+  // An in-page fetch runs through the page's service worker and returned 401
+  // in the live acceptance run, so it cannot prove the cleanup delete.
+  const csrfCookie = (await adminPage.context().cookies()).find(
+    (cookie) => cookie.name === "csrf_token"
+  )
+  expect(csrfCookie, "admin session carries a CSRF cookie before cleanup").toBeDefined()
+  const deletion = await adminPage.request.delete(`/api/v1/users/${encodeURIComponent(match.id)}`, {
+    headers: { "X-CSRF-Token": decodeURIComponent(csrfCookie?.value ?? "") },
+  })
+  reportAuthHttpStatus(project, "admin_account_delete", deletion.status())
+  const deletionBody = await deletion.text()
+  let deleted: unknown
+  try {
+    deleted = (JSON.parse(deletionBody) as { deleted?: unknown } | null)?.deleted
+  } catch {
+    deleted = undefined
+  }
+  expect(
+    deletion.status(),
+    `cleanup DELETE /api/v1/users/${match.id} must use the authenticated admin transport; response body: ${deletionBody}`
+  ).toBe(200)
+  expect(
+    deleted,
+    `cleanup deletes only the exact generated account id; response body: ${deletionBody}`
+  ).toBe(true)
 }
 
 test("notification topics and quiet hours persist across reload and opt-out", async ({

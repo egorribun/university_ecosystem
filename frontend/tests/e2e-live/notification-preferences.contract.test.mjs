@@ -49,6 +49,21 @@ test("live notification acceptance uses an owned account and cleans up only that
   assert.match(spec, /loginWith\(page, email, password\)/u)
   assert.match(spec, /loginAs\(adminPage, "admin"\)/u)
   assert.match(spec, /await page\.reload\(\)/u)
+  assert.doesNotMatch(
+    spec,
+    /adminPage\.evaluate\(async \(userId\)/u,
+    "admin cleanup must not use an in-page fetch (service worker returned 401)"
+  )
+  assert.match(
+    spec,
+    /adminPage\.request\.delete\(\s*`\/api\/v1\/users\/\$\{encodeURIComponent\(match\.id\)\}`/u,
+    "admin cleanup uses the authenticated APIRequestContext transport"
+  )
+  assert.match(
+    spec,
+    /response body: \$\{deletionBody\}/u,
+    "cleanup failures include the response body"
+  )
   assert.match(spec, /dnd_enabled/u)
   assert.match(spec, /dnd_start/u)
   assert.match(spec, /dnd_end/u)
@@ -83,16 +98,11 @@ test("live notification acceptance uses an owned account and cleans up only that
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
   assert.match(
     spec,
-    /fetch\(`\/api\/v1\/users\/\$\{encodeURIComponent\(userId\)\}`,[\s\S]*?method:\s*["']DELETE["']/u,
-    "cleanup must delete the exact synthetic account through the same-origin CSRF-protected API"
+    /adminPage\.request\.delete\([\s\S]*?X-CSRF-Token/u,
+    "cleanup must delete the exact synthetic account through the authenticated CSRF-protected API"
   )
-  assert.match(spec, /document\.cookie[\s\S]*?csrf_token=/u)
-  assert.match(spec, /headers:\s*\{\s*["']X-CSRF-Token["']:\s*csrfToken\s*\}/u)
-  assert.doesNotMatch(
-    spec,
-    /adminPage\.request\.delete\(/u,
-    "APIRequestContext cleanup must not bypass the browser CSRF header"
-  )
+  assert.match(spec, /adminPage\.context\(\)\.cookies\(\)[\s\S]*?csrf_token/u)
+  assert.match(spec, /"X-CSRF-Token":\s*decodeURIComponent\(csrfCookie\?\.value/u)
   assert.doesNotMatch(
     spec,
     /page\.route|routeWebSocket|vi\.mock|push\/test/u,
@@ -291,7 +301,7 @@ test("live notification preferences cover every topic, owner scope, and post-rel
   assert.match(spec, /subscriptionMayExist/u)
   assert.match(spec, /subscription\.unsubscribe\(\)/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)
-  assert.match(spec, /encodeURIComponent\(userId\)/u)
+  assert.match(spec, /encodeURIComponent\(match\.id\)/u)
   assert.match(spec, /X-CSRF-Token/u)
   assert.doesNotMatch(spec, /page\.route\(|vi\.mock|push\/test|sendTest\(/u)
   assert.doesNotMatch(spec, /asyncpg|sqlalchemy|direct database|direct DB/u)
