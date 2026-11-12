@@ -336,10 +336,13 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install openapi-diff
+      - name: Install pinned openapi-diff tool
         # oasdiff detects breaking vs. non-breaking changes.
-        # Pinned to exact npm wrapper and native binary versions for reproducibility.
-        run: npm install --global @oasdiff-js/oasdiff-js@1.0.0
+        # tools/oasdiff/package-lock.json pins the npm wrapper, its native
+        # per-platform binaries and every transitive package by sha512 integrity.
+        # Lifecycle scripts are disabled: the wrapper declares none that are
+        # required, and the native binaries ship prebuilt.
+        run: npm ci --prefix tools/oasdiff --ignore-scripts
 
       - name: Extract OpenAPI snapshot from event baseline
         id: openapi_baseline
@@ -382,7 +385,7 @@ jobs:
         # --fail-on ERR exits non-zero only on breaking changes.
         # Additive changes (new paths, new optional fields) are allowed.
         run: |
-          oasdiff breaking \
+          tools/oasdiff/node_modules/.bin/oasdiff breaking \
             "$BASELINE_OPENAPI" \
             /tmp/pr-openapi.json \
             --fail-on ERR || {
