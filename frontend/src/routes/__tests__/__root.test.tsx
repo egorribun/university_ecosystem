@@ -19,7 +19,9 @@ const mockedFetchCampusTimezone = vi.hoisted(() =>
   vi.fn(() => Promise.resolve<string | null>(null))
 )
 const mockedActivityRouterState = vi.hoisted(() => {
-  const state: { matches: Array<{ routeId: string; status: string }> } = { matches: [] }
+  const state: {
+    matches: Array<{ routeId: string; status: string; ssr?: boolean | "data-only" }>
+  } = { matches: [] }
   const hook = vi.fn((options: any) => options.select({ matches: state.matches }))
   return { state, hook }
 })
@@ -1039,6 +1041,27 @@ describe("__root.tsx components", () => {
     [
       "while the activity route is not successful",
       [{ routeId: "/_auth/activity", status: "pending" }],
+      false,
+      false,
+      false,
+    ],
+    [
+      "during the data-only hydration handoff",
+      [{ routeId: "/_auth/activity", status: "pending", ssr: "data-only" }],
+      false,
+      false,
+      true,
+    ],
+    [
+      "while a client-only route is pending",
+      [{ routeId: "/_auth/activity", status: "pending", ssr: false }],
+      false,
+      false,
+      false,
+    ],
+    [
+      "when the data-only route failed",
+      [{ routeId: "/_auth/activity", status: "error", ssr: "data-only" }],
       false,
       false,
       false,

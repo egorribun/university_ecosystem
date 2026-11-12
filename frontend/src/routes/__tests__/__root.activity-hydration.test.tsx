@@ -9,6 +9,7 @@ import {
   RouterProvider,
   type AnyRoute,
 } from "@tanstack/react-router"
+import { hydrate as hydrateRouter } from "@tanstack/router-core/ssr/client"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { I18nextProvider } from "react-i18next"
@@ -16,6 +17,10 @@ import { lazy } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createI18nInstance } from "@/i18n/config"
 import { SEO, SeoReadinessProvider } from "@/components/ui/SEO"
+import enActivity from "@/i18n/locales/en/activity.json"
+import ruActivity from "@/i18n/locales/ru/activity.json"
+import enNavigation from "@/i18n/locales/en/navigation.json"
+import ruNavigation from "@/i18n/locales/ru/navigation.json"
 import { Route as ActivityFileRoute } from "../_auth/activity"
 import { ActivityRootSeoFallback, Route as ProductionRootRoute } from "../__root"
 
@@ -106,30 +111,22 @@ function metaValue(selector: string): string | null {
   return document.head.querySelector<HTMLMetaElement>(selector)?.content ?? null
 }
 
-function expectRootFallbackMetadata(head: HTMLHeadElement): void {
+function expectRootFallbackMetadata(head: HTMLHeadElement, language: "en" | "ru" = "en"): void {
+  const catalog = language === "en" ? enNavigation : ruNavigation
   const values = [
-    [
-      'meta[name="description"]',
-      "Everything you need—profile, schedule, news, and campus events—in one place.",
-    ],
+    ['meta[name="description"]', catalog.brandDescription],
     ['meta[property="og:type"]', "website"],
-    ['meta[property="og:title"]', "GUU Ecosystem"],
-    [
-      'meta[property="og:description"]',
-      "Your personal account: profile, schedule, news, and campus events.",
-    ],
+    ['meta[property="og:title"]', catalog.brandName],
+    ['meta[property="og:description"]', catalog.socialDescription],
     ['meta[property="og:image"]', "/icon-512.png"],
     ['meta[name="twitter:card"]', "summary_large_image"],
-    ['meta[name="twitter:title"]', "GUU Ecosystem"],
-    [
-      'meta[name="twitter:description"]',
-      "Your personal account: profile, schedule, news, and campus events.",
-    ],
+    ['meta[name="twitter:title"]', catalog.brandName],
+    ['meta[name="twitter:description"]', catalog.socialDescription],
     ['meta[name="twitter:image"]', "/icon-512.png"],
   ] as const
 
   expect(Array.from(head.querySelectorAll("title"), (title) => title.textContent)).toEqual([
-    "GUU Ecosystem",
+    catalog.brandName,
   ])
   expect(head.querySelectorAll('meta[name="title"]')).toHaveLength(0)
   for (const [selector, content] of values) {
@@ -156,11 +153,13 @@ describe("Activity data-only SEO document hydration", () => {
   let serverI18n: ReturnType<typeof createI18nInstance> | undefined
   let previousSsr: boolean | undefined
   let previousHtmlLang: string
+  let previousBootstrap: typeof window.$_TSR
   let previousSelectedLanguage: "en" | "ru" | undefined
   let serverRouter: ReturnType<typeof createActivityRouter> | undefined
   let clientRouter: ReturnType<typeof createActivityRouter> | undefined
 
   beforeEach(() => {
+    previousBootstrap = window.$_TSR
     previousSsr = import.meta.env.SSR
     previousHtmlLang = document.documentElement.lang
     previousSelectedLanguage = window.__UE_SELECTED_LANG__
@@ -175,6 +174,8 @@ describe("Activity data-only SEO document hydration", () => {
       await act(async () => mountedRoot?.unmount())
       mountedRoot = undefined
     }
+    if (previousBootstrap === undefined) Reflect.deleteProperty(window, "$_TSR")
+    else window.$_TSR = previousBootstrap
     serverRouter?.history.destroy()
     clientRouter?.history.destroy()
     serverRouter = undefined
@@ -193,101 +194,125 @@ describe("Activity data-only SEO document hydration", () => {
     }
   })
 
-  it("replaces the server root fallback with one localized Activity metadata set after real hydration", async () => {
-    const language = "en"
-    serverI18n = createI18nInstance(language)
-    vi.stubGlobal("__ssrLangGetter__", () => language)
-    vi.stubGlobal("__ssrI18nGetter__", () => serverI18n)
-    window.__UE_SELECTED_LANG__ = language
+  it.each(["en", "ru"] as const)(
+    "replaces the server root fallback with one %s Activity metadata set after real hydration",
+    async (language) => {
+      const activityCatalog = language === "en" ? enActivity : ruActivity
+      const expectedTitle = `${activityCatalog.title} | University Ecosystem`
+      serverI18n = createI18nInstance(language)
+      vi.stubGlobal("__ssrLangGetter__", () => language)
+      vi.stubGlobal("__ssrI18nGetter__", () => serverI18n)
+      window.__UE_SELECTED_LANG__ = language
 
-    import.meta.env.SSR = true
-    serverRouter = createActivityRouter(false, language, serverI18n)
-    await serverRouter.load()
-    const serverMarkup = renderToString(<RouterProvider router={serverRouter as never} />)
-    const serverDocument = new DOMParser().parseFromString(serverMarkup, "text/html")
+      import.meta.env.SSR = true
+      serverRouter = createActivityRouter(true, language, serverI18n)
+      serverRouter.ssr = { manifest: undefined }
+      await serverRouter.load()
+      const serverMarkup = renderToString(<RouterProvider router={serverRouter as never} />)
+      const serverDocument = new DOMParser().parseFromString(serverMarkup, "text/html")
 
-    expect(ActivityFileRoute.options.ssr).toBe("data-only")
-    expect(serverRouter.state.matches.at(-1)?.ssr).toBe("data-only")
-    expectRootFallbackMetadata(serverDocument.head)
-    expect(serverDocument.querySelector('[data-testid="activity-feature"]')).toBeNull()
+      expect(ActivityFileRoute.options.ssr).toBe("data-only")
+      expect(serverRouter.state.matches.at(-1)?.ssr).toBe("data-only")
+      expectRootFallbackMetadata(serverDocument.head, language)
+      expect(serverDocument.querySelector('[data-testid="activity-feature"]')).toBeNull()
 
-    document.open()
-    document.write(`<!doctype html>${serverMarkup}`)
-    document.close()
+      document.open()
+      document.write(`<!doctype html>${serverMarkup}`)
+      document.close()
 
-    import.meta.env.SSR = false
-    // A fresh lazy page that resolves only when released keeps the hydrated
-    // root-fallback state observable. The production lazy component may already
-    // be resolved in a reused worker (Stryker), which rendered the page inside
-    // act() and replaced the fallback before it could be asserted.
-    let releaseActivityPage!: () => void
-    const activityPageReleased = new Promise<void>((resolve) => {
-      releaseActivityPage = resolve
-    })
-    const ControlledActivityPage = lazy(async () => {
-      await activityPageReleased
-      return import("@/pages/Activity")
-    })
-    clientRouter = createActivityRouter(
-      false,
-      language,
-      serverI18n,
-      false,
-      "/activity",
-      ControlledActivityPage
-    )
-    await clientRouter.load()
-    expect(
-      clientRouter.state.matches.map(({ routeId, status }) => [routeId, status])
-    ).toContainEqual(["/_auth/activity", "success"])
-    await act(async () => {
-      mountedRoot = hydrateRoot(document, <RouterProvider router={clientRouter as never} />)
-    })
-    expectRootFallbackMetadata(document.head)
+      import.meta.env.SSR = false
+      // A fresh lazy page that resolves only when released keeps the hydrated
+      // root-fallback state observable. The production lazy component may already
+      // be resolved in a reused worker (Stryker), which rendered the page inside
+      // act() and replaced the fallback before it could be asserted.
+      let releaseActivityPage!: () => void
+      const activityPageReleased = new Promise<void>((resolve) => {
+        releaseActivityPage = resolve
+      })
+      const ControlledActivityPage = lazy(async () => {
+        await activityPageReleased
+        return import("@/pages/Activity")
+      })
+      clientRouter = createActivityRouter(
+        false,
+        language,
+        serverI18n,
+        false,
+        "/activity",
+        ControlledActivityPage
+      )
+      // Transport the server matches through TanStack's actual hydrate path.
+      // Calling clientRouter.load() here would resolve Activity too early and
+      // miss its pending data-only first render and React's head ownership.
+      window.$_TSR = {
+        router: {
+          manifest: undefined,
+          matches: serverRouter.state.matches.map((match) => ({
+            i: match.id.replaceAll("/", "#"),
+            u: match.updatedAt,
+            s: match.status,
+            ssr: match.ssr,
+            l: match.loaderData,
+          })),
+        },
+        buffer: [],
+        h: () => {},
+        e: () => {},
+        c: () => {},
+        p: (script) => script(),
+      }
+      await hydrateRouter(clientRouter)
+      expect(clientRouter.state.matches.at(-1)?.status).toBe("pending")
+      const recoverableErrors: unknown[] = []
+      await act(async () => {
+        mountedRoot = hydrateRoot(document, <RouterProvider router={clientRouter as never} />, {
+          onRecoverableError: (error) => recoverableErrors.push(error),
+        })
+      })
+      expect(recoverableErrors).toEqual([])
+      expectRootFallbackMetadata(document.head, language)
 
-    await act(async () => {
-      releaseActivityPage()
-      await activityPageReleased
-    })
-    await waitFor(() =>
+      await act(async () => {
+        releaseActivityPage()
+        await activityPageReleased
+      })
+      await waitFor(() =>
+        expect(document.querySelector('[data-testid="activity-feature"]')).toBeInTheDocument()
+      )
+      expect(recoverableErrors).toEqual([])
+      expect(document.title).toBe(expectedTitle)
+      expect(
+        Array.from(document.head.querySelectorAll("title"), (title) => title.textContent)
+      ).toEqual([expectedTitle])
+      expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+      expect(document.head.querySelectorAll('meta[property="og:title"]')).toHaveLength(1)
+      expect(document.head.querySelectorAll('meta[property="og:description"]')).toHaveLength(1)
+      expect(document.head.querySelectorAll('meta[name="twitter:title"]')).toHaveLength(1)
+      expect(document.head.querySelectorAll('meta[name="twitter:description"]')).toHaveLength(1)
+      expect(metaValue('meta[name="description"]')).toBe(activityCatalog.pageDescription)
+      expect(metaValue('meta[property="og:title"]')).toBe(expectedTitle)
+      expect(metaValue('meta[property="og:description"]')).toBe(activityCatalog.pageDescription)
+      expect(metaValue('meta[name="twitter:title"]')).toBe(expectedTitle)
+      expect(metaValue('meta[name="twitter:description"]')).toBe(activityCatalog.pageDescription)
+
+      await act(async () => {
+        await clientRouter?.navigate({ to: "/public" as never })
+      })
+      expect(recoverableErrors).toEqual([])
+      expect(document.querySelector('[data-testid="public-page"]')).toBeInTheDocument()
+      expectRootFallbackMetadata(document.head, language)
+
+      await act(async () => {
+        await clientRouter?.navigate({ to: "/activity" as never })
+      })
       expect(document.querySelector('[data-testid="activity-feature"]')).toBeInTheDocument()
-    )
-    expect(document.title).toBe("Activity | University Ecosystem")
-    expect(
-      Array.from(document.head.querySelectorAll("title"), (title) => title.textContent)
-    ).toEqual(["Activity | University Ecosystem"])
-    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
-    expect(document.head.querySelectorAll('meta[property="og:title"]')).toHaveLength(1)
-    expect(document.head.querySelectorAll('meta[property="og:description"]')).toHaveLength(1)
-    expect(document.head.querySelectorAll('meta[name="twitter:title"]')).toHaveLength(1)
-    expect(document.head.querySelectorAll('meta[name="twitter:description"]')).toHaveLength(1)
-    expect(metaValue('meta[name="description"]')).toBe(
-      "Track your event registrations, grades, and participation"
-    )
-    expect(metaValue('meta[property="og:title"]')).toBe("Activity | University Ecosystem")
-    expect(metaValue('meta[property="og:description"]')).toBe(
-      "Track your event registrations, grades, and participation"
-    )
-    expect(metaValue('meta[name="twitter:title"]')).toBe("Activity | University Ecosystem")
-    expect(metaValue('meta[name="twitter:description"]')).toBe(
-      "Track your event registrations, grades, and participation"
-    )
-
-    await act(async () => {
-      await clientRouter?.navigate({ to: "/public" as never })
-    })
-    expect(document.querySelector('[data-testid="public-page"]')).toBeInTheDocument()
-    expectRootFallbackMetadata(document.head)
-
-    await act(async () => {
-      await clientRouter?.navigate({ to: "/activity" as never })
-    })
-    expect(document.querySelector('[data-testid="activity-feature"]')).toBeInTheDocument()
-    expect(document.title).toBe("Activity | University Ecosystem")
-    expect(document.head.querySelectorAll("title")).toHaveLength(1)
-    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
-    expect(metaValue('meta[property="og:title"]')).toBe("Activity | University Ecosystem")
-  })
+      expect(recoverableErrors).toEqual([])
+      expect(document.title).toBe(expectedTitle)
+      expect(document.head.querySelectorAll("title")).toHaveLength(1)
+      expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+      expect(metaValue('meta[property="og:title"]')).toBe(expectedTitle)
+    }
+  )
 
   it("keeps root metadata while a lazy Activity route follows an SEO page in SPA navigation", async () => {
     const language = "en"

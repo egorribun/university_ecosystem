@@ -289,14 +289,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 export function ActivityRootSeoFallback() {
   const isHydrated = useHydrated()
   const hasPageSeo = usePageSeoReady()
-  const isSuccessfulActivityRoute = useRouterState({
+  const isActivityFallbackRoute = useRouterState({
     select: (state) =>
       state.matches.some(
-        (match) => match.routeId.toString() === ACTIVITY_ROUTE_ID && match.status === "success"
+        (match) =>
+          match.routeId.toString() === ACTIVITY_ROUTE_ID &&
+          (match.status === "success" || (match.status === "pending" && match.ssr === "data-only"))
       ),
   })
 
-  if (!isSuccessfulActivityRoute || (isHydrated && hasPageSeo)) return null
+  // TanStack presents a successful data-only SSR match as pending during
+  // hydration. Keep its fallback in the first client tree so React claims
+  // the server's hoisted tags instead of leaving them orphaned in <head>.
+  if (!isActivityFallbackRoute || (isHydrated && hasPageSeo)) return null
 
   const brandName = getRootMetadataText("navigation:brandName")
   const brandDescription = getRootMetadataText("navigation:brandDescription")
