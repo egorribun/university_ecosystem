@@ -2628,3 +2628,38 @@ literals and is covered by `frontend/scripts/server-csp.test.mjs`.
 disposition. Its digest and the existing public-integrity identity are rebound
 one-to-one; path, type, category, owner, evidence and expiry stay the same, and the
 inventory remains 512 dispositions and 15 Semgrep rows.
+
+### Code-scanning alert decisions
+
+On 2026-11-12 the owner decided how the open code-scanning alerts on `main`
+are handled. The decisions cover exactly these items. They add no suppression
+comment, baseline entry or scanner exclusion, and they change no required
+context, hook, threshold or scanner rule.
+
+- **Temporary actionlint pre-commit pin.** The local `actionlint` hook in
+  `.pre-commit-config.yaml` builds commit `5dc52e8daa4ef51bfd76a648128474bd41d65df0`.
+  That commit is the head of the unmerged upstream change rhysd/actionlint#745,
+  which the workflow-level `cache-mode: none` setting needs. zizmor reports it
+  as `impostor-commit` (#3737). The exception is owned by egorribun and expires
+  on 2027-01-10. The exit criterion is to pin the first upstream release that
+  contains #745. The CI actionlint job keeps verifying its pinned source
+  archive by SHA-256.
+- **`pull_request_target` in `security-policy-integrity.yml` (#3734).** The
+  workflow uses the trigger on purpose, checks out no pull-request code and has
+  read-only permissions. `tests/test_security_policy_integrity_workflow_contract.py`
+  fails if it ever gains a checkout step, a pull-request head reference in
+  `run` or `with`, a write permission or a secret other than `GITHUB_TOKEN`.
+- **Committed WebAssembly packages (#3783, #3615).** The `.wasm` files are
+  required inputs of the source-provenance check
+  (`frontend/WASM_SOURCE_PROVENANCE.json`,
+  `frontend/scripts/verify-wasm-artifacts.mjs`), and the hosted producer lane
+  reproduces them. They are dismissed as required artifacts.
+- **Local action references (25 zizmor `self-repository` notes).** `uses: ./…`
+  resolves to reviewed repository content at the same commit and fetches no
+  third-party code.
+- **Branch protection (Scorecard #266).** The repository has a sole maintainer,
+  so a required human approval could not be satisfied without a bypass.
+  Protection relies on the required status checks and `enforce_admins`.
+
+None of these decisions establishes a passing scan or hosted check; every new
+source SHA still needs its own evidence.
