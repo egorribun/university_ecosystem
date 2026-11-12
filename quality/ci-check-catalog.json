@@ -2266,7 +2266,7 @@
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/**\",\"pyproject.toml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\".github/workflows/generate-openapi.yml\",\"app/**\",\"pyproject.toml\"]}"
         }
       ],
       "jobs": {
