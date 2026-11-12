@@ -9,7 +9,8 @@ AUD-347, AUD-375, AUD-378 and AUD-483, each for its own stated criterion.
 bind them to hosted runs on main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec` and
 `81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f`. Two findings were reviewed and stay open:
 the AUD-432 live hydration spec fails on main, and the eight AUD-484 Trivy alerts
-are still open on the `egorribun` branch ref under two retired SARIF categories. The
+are still open on the [development branch](https://github.com/egorribun/university_ecosystem/tree/egorribun)
+ref under two retired Static Analysis Results Interchange Format categories. The
 [current 10-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)
 lists what each open finding needs. No overall CI, release or deployment
 acceptance is implied; this documentation commit needs its own checks.
