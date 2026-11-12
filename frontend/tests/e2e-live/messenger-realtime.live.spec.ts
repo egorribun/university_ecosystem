@@ -338,7 +338,7 @@ test.describe("live messenger delivery", () => {
           new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
         )
       })
-      const input = page.getByRole("textbox", { name: /message|сообщение/i })
+      const input = page.getByRole("textbox", { name: "Сообщение", exact: true })
       await input.fill(message)
       await input.press("Enter")
       const messageResponse = await messageResponsePromise
@@ -366,6 +366,7 @@ test.describe("live messenger delivery", () => {
       expect(created.content).toBe(message)
 
       const senderText = senderLog.getByText(message, { exact: true })
+      // Explicit budgets are contract-bound in f192ab31c; keep them tight, never inherited.
       await expect(senderText).toBeVisible({ timeout: 5_000 })
       const senderRow = senderText.locator(
         "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"

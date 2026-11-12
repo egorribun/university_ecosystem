@@ -294,7 +294,7 @@ function assertEnterSenderContract(sourceText) {
     return index
   }
   const input = find(
-    /^const input = page\.getByRole\("textbox", \{ name: \/message\|сообщение\/i \}\);$/u
+    /^const input = page\.getByRole\("textbox", \{ name: "Сообщение", exact: true \}\);$/u
   )
   const fill = find(/^await input\.fill\(message\);$/u)
   const press = find(/^await input\.press\("Enter"\);$/u)
@@ -393,6 +393,7 @@ function assertEnterSenderContract(sourceText) {
 
 test("Enter preserves accessible input and immediate historical sender assertion budgets", () => {
   assertEnterSenderContract(spec)
+  assert.match(spec, /contract-bound in f192ab31c/u, "the explicit budgets carry their rationale")
 })
 
 test("Enter sender contract rejects weakened disposable source variants", () => {
@@ -408,11 +409,22 @@ test("Enter sender contract rejects weakened disposable source variants", () => 
     [
       "ID-only input",
       spec.replace(
-        'page.getByRole("textbox", { name: /message|сообщение/i })',
+        'page.getByRole("textbox", { name: "Сообщение", exact: true })',
         'page.locator("#chat-message-input")'
       ),
     ],
-    ["wrong accessible name", spec.replace("/message|сообщение/i", "/unrelated/i")],
+    [
+      "wrong accessible name",
+      spec.replace('{ name: "Сообщение", exact: true }', '{ name: "Unrelated", exact: true }'),
+    ],
+    [
+      "substring accessible name (matches the chat search box)",
+      spec.replace('{ name: "Сообщение", exact: true }', '{ name: "Сообщение" }'),
+    ],
+    [
+      "regex accessible name (matches the chat search box)",
+      spec.replace('{ name: "Сообщение", exact: true }', "{ name: /message|сообщение/i }"),
+    ],
     [
       "different Enter input",
       spec.replace(
