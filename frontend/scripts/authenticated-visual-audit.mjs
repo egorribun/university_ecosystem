@@ -52,7 +52,7 @@
  */
 
 import { Buffer } from "node:buffer"
-import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import process from "node:process"
@@ -2307,6 +2307,26 @@ async function main() {
     origin: ORIGIN,
     onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
     run: async ({ context, ownSession }) => {
+      // Seeded news, event and story covers reference the third-party placeholder CDN
+      // (scripts/seed_demo_data.py). The gate must not depend on that host's uptime, so
+      // exactly this host is answered with a pinned repository fixture (the product's own
+      // missing-image placeholder). Every other external host still reaches the network
+      // and is counted by classifyVisualRequestFailure.
+      const PINNED_EXTERNAL_IMAGE_ROUTE = "https://picsum.photos/**"
+      const PINNED_EXTERNAL_IMAGE_PATH = path.join(
+        PROJECT_ROOT,
+        "public",
+        "fallbacks",
+        "placeholder.png"
+      )
+      const pinnedExternalImage = await readFile(PINNED_EXTERNAL_IMAGE_PATH)
+      await context.route(PINNED_EXTERNAL_IMAGE_ROUTE, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          body: pinnedExternalImage,
+        })
+      )
       const page = await context.newPage()
       page.setDefaultTimeout(30_000)
       page.setDefaultNavigationTimeout(30_000)
@@ -2330,7 +2350,11 @@ async function main() {
           path.join(outputDir, "matrix.json"),
           JSON.stringify(
             {
-              evidenceKind: "real-authenticated-browser-no-route-mocks",
+              evidenceKind: "real-authenticated-browser-pinned-external-image-fixture",
+              externalImageFixture: {
+                route: PINNED_EXTERNAL_IMAGE_ROUTE,
+                source: "frontend/public/fallbacks/placeholder.png",
+              },
               browserTransport: remoteBrowserConnection
                 ? "playwright-websocket"
                 : "local-bundled-chromium",

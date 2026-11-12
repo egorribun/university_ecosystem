@@ -2568,7 +2568,7 @@ current source-bound checks.
 
 The same 2026-11-12 step applies the owner's standing 2026-10-31 approval for one-to-one rebinds of existing pins: the `values.yaml` and `values.schema.json` source pins now bind their new bytes, with exact predecessor projection; no new identity is added and the total remains 512.
 
-### Step-2 Go pin companion rebind
+### Go 1.26.11 workflow-contract companion rebind
 
 The owner's standing 2026-10-31 approval covers one-to-one rebinds of existing
 pins. The workflow-contract companion `tests/test_quality_workflow_contract.py`
@@ -2584,3 +2584,18 @@ existing pins are checked. No other pending Go file is pinned by the verifier or
 the disposition policy. The inventory stays at 512 dispositions, 242 baseline
 identities, 27 Gitleaks fingerprints and 15 Semgrep rows. This adds no scanner
 threshold, required check or audit status and does not establish a passing CI run.
+
+### Visual audit external-image fixture
+
+`frontend/scripts/authenticated-visual-audit.mjs` changes only after its Semgrep
+row-2 anchor (line 423 to 427, `detect-redos`). The new route answers exactly
+`https://picsum.photos/**` with the repository fixture
+`frontend/public/fallbacks/placeholder.png`, so the seeded demo-image CDN no
+longer decides the required live-realtime-visual gate. Every other external host
+still reaches the network and is counted by `classifyVisualRequestFailure`. The
+new constants sit below the anchor, so the reviewed finding keeps its lines.
+No byte digest pins this file or `frontend/scripts/visual-smoke-auth.test.mjs`
+(the only other reference to the audit's name is a prose reason), so no companion
+digest or public-integrity identity is rebound. The inventory stays at 512
+dispositions, 242 baseline identities, 27 Gitleaks fingerprints and 15 Semgrep
+rows. This adds no scanner threshold, required check or audit status.
