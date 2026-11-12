@@ -67,7 +67,7 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   const bootstrapRegistered = spec.indexOf(
     "const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)"
   )
-  const bootstrapStatus = spec.indexOf("expect(csrfBootstrapResponse.status()")
+  const bootstrapStatus = spec.search(/expect\(\s*csrfBootstrapResponse\.status\(\)/u)
   const saveClick = spec.indexOf('getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()')
   const saveRequestCheck = spec.indexOf("saveRequest.postDataJSON()")
   assert.ok(profileSettled >= 0, "the signed-in profile refresh is awaited before the draft")
@@ -97,7 +97,7 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   assert.match(spec, /response\.request\(\)\.method\(\) === "GET"\s*\)/u)
   assert.match(
     spec,
-    /expect\(csrfBootstrapResponse\.status\(\), "the UI reacquires the CSRF cookie before saving"\)\.toBe\(\s*200\s*\)/u
+    /expect\(\s*csrfBootstrapResponse\.status\(\),\s*"the UI reacquires the CSRF cookie before saving"\s*\)\.toBe\(\s*200\s*\)/u
   )
   assert.match(spec, /full_name: acceptedName/u)
   assert.match(spec, /saveRequest\.headers\(\)\["x-csrf-token"\]/u)
