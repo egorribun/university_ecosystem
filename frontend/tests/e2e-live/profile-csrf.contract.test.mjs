@@ -60,15 +60,47 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   assert.match(spec, /loginWith\(page, email, password\)/u)
   assert.match(spec, /cookieNames\).*toContain\(["']access_token_v2["']\)/u)
   assert.match(spec, /cookieNames\).*toContain\(["']csrf_token["']\)/u)
+  // Pinned order: profile settled -> CSRF cookie cleared -> bootstrap observed -> save.
+  const profileSettled = spec.indexOf("const profileSettled = page.waitForResponse(")
+  const profileHydrated = spec.indexOf("await expect(nameInput).toHaveValue(initialName)")
   const csrfCookieClear = spec.indexOf('await page.context().clearCookies({ name: "csrf_token" })')
-  const csrfBootstrapWait = spec.indexOf("waitForCsrfCookieBootstrap(page)", csrfCookieClear)
-  const profileSave = spec.indexOf('getByRole("button", { name: "СОХРАНИТЬ"', csrfBootstrapWait)
-  assert.ok(csrfCookieClear >= 0, "the browser removes only its CSRF cookie before recovery")
-  assert.ok(csrfBootstrapWait > csrfCookieClear, "the UI waits for CSRF cookie bootstrap")
-  assert.ok(profileSave > csrfBootstrapWait, "the profile form submits after CSRF bootstrap")
-  assert.match(spec, /waitForCsrfCookieBootstrap/u)
-  assert.match(spec, /\/api\/v1\/auth\/csrf-cookie/u)
-  assert.match(spec, /the UI reacquires the CSRF cookie before saving/u)
+  const bootstrapRegistered = spec.indexOf(
+    "const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)"
+  )
+  const bootstrapStatus = spec.indexOf("expect(csrfBootstrapResponse.status()")
+  const saveClick = spec.indexOf('getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()')
+  const saveRequestCheck = spec.indexOf("saveRequest.postDataJSON()")
+  assert.ok(profileSettled >= 0, "the signed-in profile refresh is awaited before the draft")
+  assert.ok(
+    profileHydrated > profileSettled,
+    "the editor shows the seeded name after the refresh settles"
+  )
+  assert.ok(
+    csrfCookieClear > profileHydrated,
+    "the CSRF cookie is cleared only after the profile settles"
+  )
+  assert.ok(
+    bootstrapRegistered > csrfCookieClear,
+    "the bootstrap wait is registered after the cookie is cleared"
+  )
+  assert.ok(
+    saveClick > bootstrapRegistered,
+    "the save click happens after the bootstrap wait is registered"
+  )
+  assert.ok(bootstrapStatus > saveClick, "the bootstrap response is asserted after the click")
+  assert.ok(saveRequestCheck > bootstrapStatus, "the PUT is checked after the bootstrap")
+  assert.match(
+    spec,
+    /expect\(requestOrder, "the CSRF bootstrap completes before the profile save"\)\.toEqual\(\[\s*"csrf-cookie",\s*"save",?\s*\]\)/u
+  )
+  assert.match(spec, /const waitForCsrfCookieBootstrap = \(page: Page\) =>/u)
+  assert.match(spec, /response\.request\(\)\.method\(\) === "GET"\s*\)/u)
+  assert.match(
+    spec,
+    /expect\(csrfBootstrapResponse\.status\(\), "the UI reacquires the CSRF cookie before saving"\)\.toBe\(\s*200\s*\)/u
+  )
+  assert.match(spec, /full_name: acceptedName/u)
+  assert.match(spec, /saveRequest\.headers\(\)\["x-csrf-token"\]/u)
   assert.match(spec, /credentials:\s*["']same-origin["']/u)
   assert.match(spec, /missing CSRF header/u)
   assert.match(spec, /invalid signed CSRF proof/u)

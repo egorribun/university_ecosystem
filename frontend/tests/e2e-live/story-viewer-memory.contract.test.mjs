@@ -79,6 +79,33 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
     /storyVisibilityTest\(\s*["']a seeded story viewer reaches a memory plateau after 20 open-close cycles["']/u
   )
   assert.match(spec, /const WARM_UP_CYCLES = 1/u)
+  // Ordering: warm-up cycle -> deferred-overlay readiness wait -> warm snapshot -> 20 measured
+  // cycles, each asserting equality with the warm snapshot.
+  const orderWarmUpLoop = spec.indexOf("for (let cycle = 0; cycle < WARM_UP_CYCLES; cycle += 1)")
+  const orderReadinessWait = spec.indexOf(
+    "__ueDeferredGlobalOverlaysReady === true",
+    orderWarmUpLoop
+  )
+  const orderWarmSnapshot = spec.indexOf(
+    "const warmSnapshot = await settleViewerCleanup(page, cdp)"
+  )
+  const orderMeasuredLoop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")
+  const orderPerCycleEquality = spec.indexOf(
+    "expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)"
+  )
+  assert.ok(orderWarmUpLoop > 0, "the warm-up cycle loop exists")
+  assert.ok(
+    orderReadinessWait > orderWarmUpLoop,
+    "the warm-up precedes the deferred-overlay readiness wait"
+  )
+  assert.ok(orderWarmSnapshot > orderReadinessWait, "the warm snapshot follows the readiness wait")
+  assert.ok(orderMeasuredLoop > orderWarmSnapshot, "the measured cycles follow the warm snapshot")
+  assert.ok(
+    orderPerCycleEquality > orderMeasuredLoop,
+    "every measured cycle asserts equality with the warm snapshot"
+  )
+  assert.match(spec, /deferred global overlays/u)
+  assert.match(spec, /const MEASURED_CYCLES = 20/u)
   assert.match(spec, /const MEASURED_CYCLES = 20/u)
   assert.ok(spec.includes("const STORY_MEMORY_DIAGNOSTIC_SCHEMA = 2"))
   assert.ok(spec.includes('const STORY_MEMORY_DIAGNOSTIC_PREFIX = "STORY_MEMORY_DIAG "'))
@@ -118,12 +145,13 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   assert.match(installPrompt, /window\.addEventListener\("appinstalled"/u)
   assert.match(spec, /DOMDebugger\.getEventListeners[\s\S]*?pierce:\s*false/u)
   assert.match(spec, /Runtime\.releaseObject[\s\S]*?Runtime\.releaseObjectGroup/u)
-  const measuredLoop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")
-  const diagnosticCall = spec.indexOf("emitStoryMemoryDiagnosticRecord(", measuredLoop)
+  const measuredCycleLoop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")
+  const diagnosticCall = spec.indexOf("emitStoryMemoryDiagnosticRecord(", orderMeasuredLoop)
   const strictCounterAssertion = spec.indexOf(
     "expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)"
   )
   assert.match(spec, /if \(cycle === 0\) \{[\s\S]*?emitStoryMemoryDiagnosticRecord\(/u)
+  assert.ok(measuredCycleLoop >= 0 && measuredCycleLoop < strictCounterAssertion)
   assert.ok(diagnosticCall >= 0 && diagnosticCall < strictCounterAssertion)
   assert.match(spec, /await loginAs\(page,\s*["']student["']\)/u)
   assert.match(

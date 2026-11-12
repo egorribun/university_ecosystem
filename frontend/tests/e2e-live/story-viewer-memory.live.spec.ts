@@ -487,6 +487,10 @@ storyVisibilityTest(
         }
 
         markStorySetupStage(page, "baseline")
+        // The warm-up cycle above is the interaction that promotes the deferred global overlays
+        // (SearchDialog, LivePushToasts, InstallPrompt; see DeferredGlobalOverlays.tsx). The
+        // readiness event fires only after those lazy overlays have mounted, so waiting for it
+        // keeps the warm snapshot after promotion. Measured cycles must then match this snapshot.
         await page.waitForFunction(
           () =>
             (window as StoryDeferredOverlaysProbeWindow).__ueDeferredGlobalOverlaysReady === true
