@@ -868,11 +868,7 @@ test("ordinary Playwright rejects focused tests in CI during collection", async 
   }
 })
 
-test("AUD-154 live Enter acceptance binds real POST, sender visibility, status, peer and cleanup", async () => {
-  const source = await readFile(
-    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
-    "utf8"
-  )
+function assertAud154EnterAcceptance(source) {
   const title = 'test("shows sent confirmation after the server accepts the message"'
   const start = source.indexOf(title)
   assert.ok(start >= 0, "the independent non-skipped Enter acceptance must exist")
@@ -887,7 +883,11 @@ test("AUD-154 live Enter acceptance binds real POST, sender visibility, status, 
   assert.match(body, /expect\(created\.id\)\.toBeTruthy\(\)/u)
   assert.match(body, /expect\(created\.content\)\.toBe\(message\)/u)
   assert.match(body, /expect\(senderText\)\.toHaveCount\(1\)/u)
-  assert.match(body, /expect\(senderText\)\.toBeVisible\(\)/u)
+  assert.match(
+    body,
+    /expect\(senderText\)\.toBeVisible\(\{\s*timeout:\s*5_?000\s*\}\)/u,
+    "sender visibility must retain its explicit 5000 ms budget"
+  )
   assert.match(body, /senderRow\.getByRole\("img",/u)
   assert.match(body, /Отправлено\|Прочитано получателем/u)
   assert.match(body, /frame\.message\.id === created\.id/u)
@@ -895,4 +895,31 @@ test("AUD-154 live Enter acceptance binds real POST, sender visibility, status, 
   assert.match(body, /finally/u)
   assert.match(body, /deleteOwnedLiveMessage/u)
   assert.match(body, /receiverContext\.close\(\)/u)
+}
+
+test("AUD-154 live Enter acceptance binds real POST, sender visibility, status, peer and cleanup", async () => {
+  const source = await readFile(
+    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  assertAud154EnterAcceptance(source)
+})
+
+test("AUD-154 live Enter acceptance rejects inherited or widened sender visibility budgets", async () => {
+  const source = await readFile(
+    new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const assertion = "expect(senderText).toBeVisible({ timeout: 5_000 })"
+  for (const options of ["", "{ timeout: 15_000 }", "{ timeout: 0 }"]) {
+    const candidate = source.replace(assertion, `expect(senderText).toBeVisible(${options})`)
+    assert.ok(candidate !== source, "budget mutation must change the live source")
+    assert.throws(() => assertAud154EnterAcceptance(candidate), {
+      name: "AssertionError",
+      message: /sender visibility must retain its explicit 5000 ms budget/u,
+    })
+  }
+  assertAud154EnterAcceptance(
+    source.replace(assertion, "expect(senderText).toBeVisible({ timeout: 5000 })")
+  )
 })
