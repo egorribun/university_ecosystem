@@ -2599,3 +2599,16 @@ No byte digest pins this file or `frontend/scripts/visual-smoke-auth.test.mjs`
 digest or public-integrity identity is rebound. The inventory stays at 512
 dispositions, 242 baseline identities, 27 Gitleaks fingerprints and 15 Semgrep
 rows. This adds no scanner threshold, required check or audit status.
+
+### Retired dead mfa_enabled flag
+
+The unused `mfa_enabled` setting, documented as `MFA_ENABLED`, is removed from the
+configuration mixin, `.env.example`, `CONFIGURATION.md` and both runtime env
+allowlists. Nothing in the application, frontend or services read it, and mandatory
+MFA is outside the MVP scope. The live MFA settings, including `email_mfa_enabled`,
+are unchanged.
+
+`app/core/config/mixins/mfa_settings.py` is a companion of the existing Semgrep
+disposition for insecure SHA-1 use. Its digest and the existing public-integrity
+identity are rebound one-to-one; path, type, category, owner, evidence and expiry
+stay the same, and the inventory remains 512 dispositions and 15 Semgrep rows.

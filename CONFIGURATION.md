@@ -71,7 +71,6 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MFA_ENABLED` | Enable MFA | `false` |
 | `MFA_TOTP_ISSUER` | TOTP app name | `University Ecosystem` |
 | `MFA_TOTP_ENCRYPTION_KEYS` | Comma-separated `kid:Fernet-key` ring for TOTP enrollment ciphertext; non-active entries are legacy decrypt keys | Empty in development; required for API and migrations in staging/production |
 | `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` | Non-secret key ID used to encrypt new TOTP enrollments | Empty in development; required for API and migrations in staging/production |

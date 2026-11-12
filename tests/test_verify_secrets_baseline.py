@@ -32629,7 +32629,148 @@ _NOV13_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
 _NOV13_COMPANION_ROW = 505
 
 
+# STEP4 retired dead mfa_enabled flag: the Semgrep companion digest of
+# app/core/config/mixins/mfa_settings.py and its existing public-integrity identity
+# are rebound one-to-one (owner standing approval 2026-10-31). The exact predecessor
+# source, ledger and policy bytes are restored before the existing pins are checked;
+# no identity is added and the total stays 512.
+_NOV13_MFA_CURRENT_SOURCE_SHA256 = bytes.fromhex(
+    "f2 84 ad a0 ed 1a ad 60 71 7b fe 34 ce 12 40 bd ab 52 9a 6d dd 9d 8a 7b df fe 14 10 7d 94 43 e4"
+)
+_NOV13_MFA_PREVIOUS_SOURCE_SHA256 = bytes.fromhex(
+    "c6 61 0b 73 d9 7d 6c db 87 f3 71 ac 02 85 05 03 28 eb 1e 86 0d 79 4d 14 01 d3 ad 26 70 a6 d6 ce"
+)
+_NOV13_MFA_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "51 c9 7a 40 87 f8 be e7 fd 72 88 19 d3 7b 95 be 7f 16 84 6f d1 be e3 72 65 51 46 86 9a 73 a2 a5"
+)
+_NOV13_MFA_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    "16 11 d6 e3 4f c8 7a 75 79 df 77 dd 66 cf f0 9f 55 af df ef 21 3a b7 e4 6a 81 4e 21 14 39 19 28"
+)
+_NOV13_MFA_COMPANION_ROW = 433
+_NOV13_MFA_DEAD_FLAG_LINE = b"    mfa_enabled: bool = False\n"
+_NOV13_MFA_ANCHOR_LINE = b"    mfa_default_method: str | None = None\n"
+
+
+def _nov13_mfa_settings_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == "app/core/config/mixins/mfa_settings.py":
+        assert hashlib.sha256(actual).digest() == _NOV13_MFA_CURRENT_SOURCE_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        assert actual.count(_NOV13_MFA_ANCHOR_LINE) == 1
+        historical = actual.replace(
+            _NOV13_MFA_ANCHOR_LINE,
+            _NOV13_MFA_DEAD_FLAG_LINE + _NOV13_MFA_ANCHOR_LINE,
+            1,
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_PREVIOUS_SOURCE_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert hashlib.sha256(actual).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current = _NOV13_MFA_CURRENT_SOURCE_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current, _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"), 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_LEDGER_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    return actual
+
+
+def _nov13_mfa_settings_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    identity = records[_NOV13_MFA_COMPANION_ROW]["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_MFA_CURRENT_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    ), "live disposition mfa companion identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
+def test_nov13_mfa_settings_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app/core/config/mixins/mfa_settings.py").read_bytes()
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    companions = [
+        item["sha256"]
+        for item in ledger["dispositions"][13]["companions"]
+        if item["path"] == "app/core/config/mixins/mfa_settings.py"
+    ]
+    assert companions == [hashlib.sha256(source).hexdigest()]
+    historical = _nov13_mfa_settings_historical_source_bytes(
+        "app/core/config/mixins/mfa_settings.py", source
+    )
+    assert b"mfa_enabled" not in source
+    assert historical.count(_NOV13_MFA_DEAD_FLAG_LINE) == 1
+    restored_ledger = _nov13_mfa_settings_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
+    assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_PREVIOUS_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov13_mfa_settings_historical_policy(policy)
+    assert len(restored_policy["records"]) == 512
+    assert (
+        bytes(
+            restored_policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"][
+                "hashed_secret_bytes"
+            ]
+        )
+        == hashlib.sha1(
+            _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+
+
+@pytest.mark.parametrize("mutation", ["source", "ledger", "policy"])
+def test_nov13_mfa_settings_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "source":
+        actual = (root / "app/core/config/mixins/mfa_settings.py").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_mfa_settings_historical_source_bytes(
+                "app/core/config/mixins/mfa_settings.py", actual
+            )
+    elif mutation == "ledger":
+        actual = (root / "quality/semgrep-dispositions.json").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_mfa_settings_historical_source_bytes(
+                "quality/semgrep-dispositions.json", actual
+            )
+    else:
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="mfa companion identity changed"):
+            _nov13_mfa_settings_historical_policy(policy)
+
+
 def _nov13_go_companion_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_mfa_settings_historical_source_bytes(path, actual)
     if path == "tests/test_quality_workflow_contract.py":
         assert hashlib.sha256(actual).digest() == _NOV13_COMPANION_CURRENT_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -32662,7 +32803,7 @@ def _nov13_go_companion_historical_source_bytes(path: str, actual: bytes) -> byt
 
 
 def _nov13_go_companion_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov13_mfa_settings_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     identity = records[_NOV13_COMPANION_ROW]["identity"]

@@ -402,7 +402,7 @@
         },
         {
           "path": "app/core/config/mixins/mfa_settings.py",
-          "sha256": "c6610b73d97d6cdb87f371ac0285050328eb1e860d794d1401d3ad2670a6d6ce"
+          "sha256": "f284ada0ed1aad60717bfe34ce1240bdab529a6ddd9d8a7bdffe14107d9443e4"
         },
         {
           "path": "app/schemas/users.py",
