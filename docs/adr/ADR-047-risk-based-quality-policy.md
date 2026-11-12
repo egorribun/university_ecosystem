@@ -2567,3 +2567,20 @@ download or successful CI; those require separate authorized runtime evidence an
 current source-bound checks.
 
 The same 2026-11-12 step applies the owner's standing 2026-10-31 approval for one-to-one rebinds of existing pins: the `values.yaml` and `values.schema.json` source pins now bind their new bytes, with exact predecessor projection; no new identity is added and the total remains 512.
+
+### Step-2 Go pin companion rebind
+
+The owner's standing 2026-10-31 approval covers one-to-one rebinds of existing
+pins. The workflow-contract companion `tests/test_quality_workflow_contract.py`
+changes by one line: the manifest pin `manifest_expected_version` moves from
+1.26.4 to 1.26.11, matching the approved Go toolchain. Its row-13 companion
+digest in `quality/semgrep-dispositions.json` is rebound to the new file
+SHA-256, and the existing public-integrity identity at
+`quality/security-false-positive-dispositions.json` record index 505 is rebound
+one-to-one to the SHA-1 of that digest. Path, type, category, owner, evidence and
+expiry are unchanged. Exact-predecessor projection layers in
+`tests/test_verify_secrets_baseline.py` restore the prior bytes before the
+existing pins are checked. No other pending Go file is pinned by the verifier or
+the disposition policy. The inventory stays at 512 dispositions, 242 baseline
+identities, 27 Gitleaks fingerprints and 15 Semgrep rows. This adds no scanner
+threshold, required check or audit status and does not establish a passing CI run.

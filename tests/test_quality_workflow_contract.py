@@ -2060,7 +2060,7 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
     """
 
     expected_version = "1.26.11"
-    manifest_expected_version = "1.26.4"
+    manifest_expected_version = "1.26.11"
     manifests = (
         "go.mod",
         "go.work",

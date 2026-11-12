@@ -1,3 +1,3 @@
 module github.com/university-ecosystem/services/pkg/spicedb
 
-go 1.26.4
+go 1.26.11

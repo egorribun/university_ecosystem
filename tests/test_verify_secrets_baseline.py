@@ -30899,7 +30899,9 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
     ledger_bytes = _aud154_historical_source_bytes(
         "quality/semgrep-dispositions.json", ledger_path.read_bytes()
     )
-    companion_bytes = companion_path.read_bytes()
+    companion_bytes = _nov13_go_companion_historical_source_bytes(
+        "tests/test_quality_workflow_contract.py", companion_path.read_bytes()
+    )
     live_policy_bytes = policy_path.read_bytes()
     _nov9_assert_live_policy_bytes(live_policy_bytes)
     policy_bytes = _nov9_historical_506_policy_bytes(
@@ -32607,6 +32609,80 @@ def _nov12_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
     return historical
 
 
+# STEP2 Go/companion rebind: the Semgrep row-13 companion digest for the workflow
+# contract changes with the approved 1.26.4 -> 1.26.11 manifest pin, and the existing
+# public-integrity identity is rebound one-to-one (owner standing approval 2026-10-31).
+# The exact predecessor test and ledger bytes are restored before the existing pins
+# are checked; no identity is added and the total stays 512.
+_NOV13_COMPANION_CURRENT_SHA256 = bytes.fromhex(
+    "e0 d2 df 72 3e a7 cb 3d 82 03 5d 18 a8 70 70 b3 89 4a e0 c9 f7 91 6c 51 58 c9 7c a3 e0 54 7e f5"
+)
+_NOV13_COMPANION_PREVIOUS_SHA256 = bytes.fromhex(
+    "b6 88 0e 4f 27 06 40 dc 5b 1e fc a7 05 8e 48 84 86 f4 a6 6d 06 50 c5 6a 74 61 46 02 d9 dc 06 fd"
+)
+_NOV13_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "16 11 d6 e3 4f c8 7a 75 79 df 77 dd 66 cf f0 9f 55 af df ef 21 3a b7 e4 6a 81 4e 21 14 39 19 28"
+)
+_NOV13_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    "50 05 3a 0f 31 7b 2e ee 4d 71 54 53 76 2a cf f3 f4 cb 17 11 da ec e1 5f a2 96 5d 2d e2 58 2e cf"
+)
+_NOV13_COMPANION_ROW = 505
+
+
+def _nov13_go_companion_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == "tests/test_quality_workflow_contract.py":
+        assert hashlib.sha256(actual).digest() == _NOV13_COMPANION_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current_line = b'    manifest_expected_version = "1.26.11"\n'
+        assert actual.count(current_line) == 1
+        historical = actual.replace(
+            current_line, b'    manifest_expected_version = "1.26.4"\n', 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_COMPANION_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert hashlib.sha256(actual).digest() == _NOV13_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current = _NOV13_COMPANION_CURRENT_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current,
+            _NOV13_COMPANION_PREVIOUS_SHA256.hex().encode("ascii"),
+            1,
+        )
+        assert hashlib.sha256(historical).digest() == _NOV13_LEDGER_PREVIOUS_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    return actual
+
+
+def _nov13_go_companion_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    identity = records[_NOV13_COMPANION_ROW]["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_COMPANION_CURRENT_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    ), "live disposition companion identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_COMPANION_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
     actual = _nov12_chart_historical_source_bytes(path, actual)
     actual = _aud375_historical_source_bytes(path, actual)
@@ -32852,6 +32928,7 @@ _NOV12_CSP_ROW = 443
 
 
 def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_go_companion_historical_source_bytes(path, actual)
     if path == "frontend/scripts/server-csp.mjs":
         assert hashlib.sha256(actual).digest() == _NOV12_CSP_SOURCE_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -32875,7 +32952,7 @@ def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov13_go_companion_historical_policy(policy)
     assert len(restored["records"]) == 512, "live disposition count changed"
     row = restored["records"][_NOV12_CSP_ROW]
     identity = row["identity"]
@@ -33000,7 +33077,8 @@ def test_nov12_calico_preserves_published_policy_and_source_identity() -> None:
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
     _nov11_historical_509_from_live_policy(policy)
-    previous = {**policy, "records": policy["records"][:511]}
+    restored_policy = _nov13_go_companion_historical_policy(policy)
+    previous = {**restored_policy, "records": restored_policy["records"][:511]}
     assert (
         hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
         == _NOV12_CALICO_PRE_POLICY_SHA256
