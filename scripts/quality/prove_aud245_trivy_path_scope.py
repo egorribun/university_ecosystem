@@ -209,8 +209,13 @@ class TrivyPathScopeTests(unittest.TestCase):
         for path in SCOPED_PATHS:
             allowed = {rule for rule, paths in scopes.items() if path in paths}
             observed = {finding[0] for finding in raw[path]}
-            self.assertTrue(allowed & observed, path)
-            exercised.update(allowed & observed)
+            if allowed:
+                self.assertTrue(allowed & observed, path)
+                exercised.update(allowed & observed)
+            else:
+                # No scoped exception remains for this path (the SPIRE RBAC file
+                # after AUD-251 removed KSV-0047), so nothing may be suppressed.
+                self.assertEqual(filtered[path], raw[path], path)
             self.assertEqual(raw[f"probe/{path}"], raw[path])
             self.assertEqual(filtered[f"probe/{path}"], raw[path])
             self.assertEqual(

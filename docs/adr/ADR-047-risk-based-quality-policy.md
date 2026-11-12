@@ -2638,6 +2638,9 @@ kubelet `/pods` endpoint, which then maps to `nodes/pods`, so the
 `spire-agent-role` ClusterRole in `k8s/spire/spire-rbac.yaml` now grants
 `get` on `nodes/pods` instead of `nodes/proxy`. The scoped Trivy exception
 KSV-0047 for that file is removed, which tightens the 2026-11-04 table above.
+The Trivy fixture's ignore-policy digest is rebound one-to-one: the validator
+pins `299aeb3d...` in place of `6f245662...`, and the single existing
+public-integrity record changes only its hashed bytes, with the total still 512.
 The AUD-373 kind job on Kubernetes v1.36.4 remains the functional proof that
 attestation and mTLS still work.
 
