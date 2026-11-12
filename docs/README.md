@@ -1,23 +1,37 @@
 # University Ecosystem documentation
 
-## Exact-source review note — 2026-11-11
+## Current reconciliation — 2026-11-12
 
-The formal total remains **494/512 (96.5%) accepted or resolved, 18 open**
-(9S / 9P / 0U / 0N). [Current source-bound CI and candidate review](audits/AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
+The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. This update accepts AUD-313, AUD-321, AUD-322, AUD-346,
+AUD-347, AUD-375, AUD-378 and AUD-483, each for its own stated criterion.
+[Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12)
+bind them to hosted runs on main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec` and
+`81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f`. Two findings were reviewed and stay open:
+the AUD-432 live hydration spec fails on main, and the eight AUD-484 Trivy alerts
+are still open on the `egorribun` branch ref under two retired SARIF categories. The
+[current 10-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)
+lists what each open finding needs. No overall CI, release or deployment
+acceptance is implied; this documentation commit needs its own checks.
+
+## Dated exact-source review note — 2026-11-11 (superseded)
+
+At this dated review the formal total remained **494/512 (96.5%) accepted or resolved, 18 open**
+(9S / 9P / 0U / 0N). [Source-bound CI and candidate review](audits/AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
 records source 307cfb7a4ea2ca53543fc7a191282e26e9390668, tested merge
 3ca365f071438a5dba2c9b3e9d65dea06f3ba71c and Matrix run 43018326180:
 77 required successes plus Checkov neutral, not 78 successes. No audit closure
-is added; the held 497/512 proposal remains unpublished. AUD-154 has verified
+was added; the held 497/512 proposal was never published. AUD-154 has verified
 current named-case desktop/mobile proof, but its original criterion remains
 unfulfilled and it stays open. Historical checkpoints
 below retain their source dates. A later documentation commit needs its own checks.
 
-## Current reconciliation — 2026-11-09
+## Dated reconciliation — 2026-11-09 (494/18; superseded)
 
-The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
-**9S / 9P / 0U / 0N**. Sixteen scope additions since the **478/34** checkpoint are AUD-164, AUD-178, AUD-208, AUD-226,
+At this dated checkpoint the formal total was **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. Sixteen scope additions since the **478/34** checkpoint were AUD-164, AUD-178, AUD-208, AUD-226,
 AUD-272, AUD-334, AUD-360, AUD-373, AUD-416, AUD-420, AUD-428, AUD-429, AUD-454, AUD-478, AUD-480 and AUD-501.
-Only AUD-164, AUD-178, AUD-454 and AUD-501 are added by this update, each for its
+Only AUD-164, AUD-178, AUD-454 and AUD-501 were added by that update, each for its
 own stated criterion. The prior **490/22**, **486/26**, **485/27**, **484/28**, **478/34** and
 **476/36** checkpoints remain dated history.
 
@@ -86,9 +100,10 @@ handoffs are intentionally not part of the canonical index.
   — the 143 historical Alembic revisions are replaced by one irreversible
   baseline, accepted 2026-11-02; pre-squash databases must be recreated.
 - [ADR-052: Backend SPIFFE identity at the HTTP transport boundary](adr/ADR-052-backend-spiffe-transport.md)
-  — proposed and unaccepted. The transport exists in source; the Helm chart
-  defaults it off and requires it in production. SPIRE issuance/rotation proof
-  and AUD-373 acceptance remain outstanding.
+  — accepted by the owner on 2026-11-09. The transport exists in source; the Helm
+  chart defaults it off and requires it in production. AUD-373 was accepted at
+  490/512 on the hosted kind proof; Compose keeps plaintext gateway-to-backend
+  traffic as an owner-accepted risk recorded in ADR-054.
 - [ADR-053: Operator-scoped single-organization MVP authentication](adr/ADR-053-operator-scoped-mvp-authentication.md)
 - [ADR-054: Docker Compose is the MVP deployment target](adr/ADR-054-mvp-docker-compose-deployment-target.md)
   — scope accepted 2026-11-02 and implemented in source; full source-bound
@@ -101,7 +116,8 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-09 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 494 / 512 accepted or resolved (96.5%), 18 open; 41 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-12 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 502 / 512 accepted or resolved (98.0%), 10 open; 49 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 494 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
 - [Dated 490 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09) — 22 open (13S / 9P / 0U / 0N), retained as history.
 - [Dated 486 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-486-26-scoped-supplement--2026-11-09) — 26 open (14S / 12P / 0U / 0N), retained as history.
 - [Dated 485 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 27 open (15S / 12P / 0U / 0N), retained as history.
@@ -166,7 +182,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 18-finding complement, 2026-11-09 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-18-finding-reconciliation--2026-11-09)                 |
+| Current open findings                         | [Current 10-finding complement, 2026-11-12 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable

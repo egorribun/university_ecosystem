@@ -1,27 +1,41 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Exact-source review note — 2026-11-11
+## Current reconciliation — 2026-11-12
 
-The formal total remains **494/512 (96.5%) accepted or resolved, 18 open**
-(9S / 9P / 0U / 0N). [Current source-bound CI and candidate review](AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
+The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. This update accepts AUD-313, AUD-321, AUD-322, AUD-346,
+AUD-347, AUD-375, AUD-378 and AUD-483, each for its own stated criterion.
+[Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12)
+bind them to hosted runs on main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec` and
+`81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f`. Two findings were reviewed and stay open:
+the AUD-432 live hydration spec fails on main, and the eight AUD-484 Trivy alerts
+are still open on the `egorribun` branch ref under two retired SARIF categories. The
+[current 10-finding complement](AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)
+lists what each open finding needs. No overall CI, release or deployment
+acceptance is implied; this documentation commit needs its own checks.
+
+## Dated exact-source review note — 2026-11-11 (superseded)
+
+At this dated review the formal total remained **494/512 (96.5%) accepted or resolved, 18 open**
+(9S / 9P / 0U / 0N). [Source-bound CI and candidate review](AUDIT-2026-11-06-full-reassessment.md#exact-source-ci-review--2026-11-11-preparation-only)
 records source 307cfb7a4ea2ca53543fc7a191282e26e9390668, tested merge
 3ca365f071438a5dba2c9b3e9d65dea06f3ba71c and Matrix run 43018326180:
 77 required successes plus Checkov neutral, not 78 successes. No audit closure
-is added; the held 497/512 proposal remains unpublished. AUD-154 has verified
+was added; the held 497/512 proposal was never published. AUD-154 has verified
 current named-case desktop/mobile proof, but its original criterion remains
 unfulfilled and it stays open. Historical checkpoints
 below retain their source dates. A later documentation commit needs its own checks.
 
-## Current reconciliation — 2026-11-09
+## Dated reconciliation — 2026-11-09 (494/18; superseded)
 
-The current formal total is **494/512 (96.5%) accepted or resolved, 18 open**:
-**9S / 9P / 0U / 0N**. Only AUD-164, AUD-178, AUD-454 and AUD-501 are accepted in
-this update, each for its own stated criterion. Sixteen scope additions since 478/34
-are AUD-164, AUD-178, AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416,
+At this dated checkpoint the formal total was **494/512 (96.5%) accepted or resolved, 18 open**:
+**9S / 9P / 0U / 0N**. Only AUD-164, AUD-178, AUD-454 and AUD-501 were accepted in
+that update, each for its own stated criterion. Sixteen scope additions since 478/34
+were AUD-164, AUD-178, AUD-208, AUD-226, AUD-272, AUD-334, AUD-360, AUD-373, AUD-416,
 AUD-420, AUD-428, AUD-429, AUD-454, AUD-478, AUD-480 and AUD-501. The prior 490/22,
 486/26 and 485/27 complements remain dated history below.
 
-[Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09)
+[Their decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09)
 record those four decisions; the [AUD-360, AUD-373, AUD-428 and AUD-429 decisions](AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09)
 are dated history. [ADR-054](../adr/ADR-054-mvp-docker-compose-deployment-target.md)
 makes Docker Compose the MVP target: AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438
@@ -37,17 +51,43 @@ This decision left the then 506 dispositions, 242 baseline identities, 27 Gitlea
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
 quality floors unchanged. The current policy inventory is 511 dispositions.
 
+<a id="current-10-finding-reconciliation--2026-11-12"></a>
+
+### Current 10-finding complement
+
+- **S (4):** AUD-154, AUD-169, AUD-188, AUD-438.
+- **P (6):** AUD-167, AUD-189, AUD-251, AUD-381, AUD-432, AUD-484.
+- **U (0):** none.
+- **N (0):** none.
+
+This is exactly the previous 18-ID complement minus AUD-313, AUD-321, AUD-322,
+AUD-346, AUD-347, AUD-375, AUD-378 and AUD-483. All other finding-specific
+acceptance requirements remain. What each open finding still needs:
+
+- AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438 need a Kubernetes target. ADR-054
+  makes Docker Compose the MVP target, so their prepared checks wait for a first
+  Kubernetes deployment.
+- AUD-154 has current named-case proof, but its original criterion is unmet.
+- AUD-167 needs two clients and a forged forwarded header through the real Caddy,
+  to both the gateway and ws-hub.
+- AUD-381 needs a real ZAP scan of an authorized target. The weekly scheduled DAST
+  run on main has failed on every run since at least 2026-09-20.
+- AUD-432 needs `ssr-hydration-i18n.live.spec.ts` to pass; its other three parts
+  have current evidence.
+- AUD-484 needs an owner disposition for eight Trivy alerts that are open only on
+  the `egorribun` branch ref; no current scan reports them.
+
 <a id="current-18-finding-reconciliation--2026-11-09"></a>
 
-### Current 18-finding complement
+### Dated 18-finding complement (494/18; superseded)
 
 - **S (9):** AUD-154, AUD-169, AUD-188, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-438.
 - **P (9):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-381, AUD-432, AUD-483, AUD-484.
 - **U (0):** none.
 - **N (0):** none.
 
-This is exactly the previous 22-ID complement minus AUD-164, AUD-178, AUD-454
-and AUD-501. All other finding-specific acceptance requirements remain.
+That was exactly the previous 22-ID complement minus AUD-164, AUD-178, AUD-454
+and AUD-501.
 
 <a id="current-22-finding-reconciliation--2026-11-09"></a>
 
@@ -971,7 +1011,7 @@ are retained; source repairs and missing execution are distinguished explicitly.
 | AUD-192 | Postgres, Valkey, SpiceDB, Temporal и MinIO подключены к сети public вместе с frontend | partial | Compose frontend_net isolates storage; historical local Docker claim lacks independently verified current source-bound receipt. |
 | AUD-193 | Docker socket смонтирован в Alloy: `:ro` не ограничивает Docker API | partial | Alloy uses a GET-only socket proxy rather than direct socket. Current discovery/log-stream/isolation proof remains unverified. |
 | AUD-208 | Squawk-гейт проверяет пустой SQL для guard-миграций и ослаблен исключениями | partial | Owned renderer/graph exist, but raw37 Squawk warnings remain blocking and full nonhistorical chain is unproved; current source pin is stale. |
-| AUD-226 | Tier-0 миграции (`alembic/versions/**`) выпадают из требования 100% покрытия | partial | Alembic included in coverage; finite131 legacy baseline until2026-11-13 is not proof of all-migration100% merged coverage. |
+| AUD-226 | Tier-0 миграции (`alembic/versions/**`) выпадают из требования 100% покрытия | partial | Alembic included in coverage; finite131 legacy baseline until2026-11-13 is not proof of all-migration100% merged coverage. Historical: ADR-051 retired that 131-file baseline on 2026-11-02 by replacing the chain with one baseline migration, and AUD-226 was later accepted at 486/512. |
 | AUD-231 | SSR-страницы frontend отдаются без CSP, nonce-схема не работает | source-fixed-awaiting-proof | Per-request SSR nonce/header/HTML transform implemented; current actual browser CSP proof absent. |
 | AUD-236 | Вышедшая вкладка остаётся стейл-привязанной и отменяет публичные запросы | source-fixed-awaiting-proof | Credentialless public paths and isolated caches have scoped PASS; complete stale-tab/public-route browser evidence absent. |
 | AUD-244 | `zizmor.yml` отключает 15 аудитов, включая template-injection и dangerous-triggers | unfixed | Fifteen zizmor disable annotations remain; checkout credential hardening does not remove original suppressions. |
