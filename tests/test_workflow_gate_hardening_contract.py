@@ -327,7 +327,9 @@ def test_dast_nuclei_checkout_includes_the_parser_and_the_scan_stays_native() ->
     )
     scan = _step(job, "Run Nuclei scan")["run"]
 
-    assert checkout["with"]["sparse-checkout"].split() == [".github", "scripts/quality"]
+    # The owned stand is built from the full event commit, which includes the parser.
+    assert checkout["with"]["fetch-depth"] == 0
+    assert "sparse-checkout" not in checkout["with"]
     assert '-json-export "$RUNNER_TEMP/nuclei-results.json"' in scan
     assert "-severity critical,high,medium,low,info" in scan
 

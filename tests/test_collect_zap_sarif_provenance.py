@@ -368,21 +368,28 @@ def test_current_zap_upload_requires_verified_public_projection() -> None:
         (REPOSITORY_ROOT / ".github/workflows/dast.yml").read_text(encoding="utf-8")
     )
     steps = workflow["jobs"]["zap"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
     assert not any(
         "zaproxy/action-full-scan@" in step.get("uses", "") for step in steps
     )
-    assert steps[1]["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
-    assert "scripts.quality.zap_workflow prepare" in steps[1]["run"]
-    assert "scripts.quality.zap_workflow verify" in steps[2]["run"]
-    assert steps[2]["id"] == "zap_verify"
-    for step in steps[3:5]:
+    assert "DAST_SECRET_TARGET" not in json.dumps(steps)
+    prepare = by_name["Prepare private ZAP scan and sanitized evidence"]
+    verify = by_name["Verify ZAP public evidence and provenance"]
+    sarif = by_name["Upload ZAP SARIF to GitHub Security"]
+    artifact = by_name["Upload verified ZAP public evidence"]
+    gate = by_name["Fail on medium or high ZAP findings"]
+    assert "scripts.quality.zap_workflow prepare" in prepare["run"]
+    assert "scripts.quality.zap_workflow verify" in verify["run"]
+    assert verify["id"] == "zap_verify"
+    for step in (sarif, artifact):
         assert "steps.zap_prepare.outcome == 'success'" in step["if"]
         assert "steps.zap_verify.outcome == 'success'" in step["if"]
-    assert steps[3]["with"]["sarif_file"] == "zap-public/zap-results.sarif"
-    assert steps[4]["with"]["path"].splitlines() == [
+    assert sarif["with"]["sarif_file"] == "zap-public/zap-results.sarif"
+    assert artifact["with"]["path"].splitlines() == [
         "zap-public/zap-results.sarif",
         "zap-public/zap-evidence.txt",
         "zap-public/zap-sarif-provenance.json",
     ]
-    assert "scripts.quality.zap_workflow gate" in steps[-1]["run"]
-    assert steps[-1]["if"] == "${{ always() }}"
+    assert "scripts.quality.zap_workflow gate" in gate["run"]
+    assert gate["if"] == "${{ always() }}"
+    assert steps[-1] is gate

@@ -158,14 +158,16 @@ def _public_receipt(manifest: dict[str, Any], manifest_bytes: bytes) -> dict[str
     }
 
 
-def prepare(root: Path, env: dict[str, str], work: Path, public: Path) -> None:
+def prepare(
+    root: Path, env: dict[str, str], work: Path, public: Path, status: Path
+) -> None:
     """Execute the private runner and seal a fresh cross-process publication."""
     source = verify_source(root, env)
     _paths(work, public)
     if work.exists() or public.exists():
         raise ValueError("ZAP output directories must be fresh")
     target_file = work.with_name(work.name + "-target.txt")
-    if prepare_target(target_file, env) != 0:
+    if prepare_target(target_file, status) != 0:
         raise ValueError("Invalid ZAP target")
     try:
         target = read_payload(target_file).decode("utf-8")
@@ -253,11 +255,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--work", required=True, type=Path)
     parser.add_argument("--public", required=True, type=Path)
     parser.add_argument("--summary-file", type=Path)
+    parser.add_argument("--status-in", type=Path)
     args = parser.parse_args(argv)
     try:
         env = dict(os.environ)
         if args.command == "prepare":
-            prepare(args.repo_root, env, args.work, args.public)
+            if args.status_in is None:
+                raise ValueError("ZAP prepare requires the owned stand status")
+            prepare(args.repo_root, env, args.work, args.public, args.status_in)
         else:
             alerts = verify_publication(args.repo_root, env, args.work, args.public)
             if args.command == "gate":

@@ -25,7 +25,9 @@ MODULES = (
     "zap_sarif_producer",
     "zap_workflow",
 )
-TARGET = "https://private-stage.invalid"
+TARGET = "http://localhost:20000"
+STATUS_LINE = f"LIVE_BASE_URL={TARGET}\n"
+MASKS = f"::add-mask::{TARGET}\n::add-mask::localhost:20000\n::add-mask::localhost\n"
 
 
 def module():
@@ -100,8 +102,8 @@ def source(tmp_path):
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_RUN_ID": "123",
         "GITHUB_RUN_ATTEMPT": "1",
-        "DAST_SECRET_TARGET": TARGET,
     }
+    (tmp_path / "stand-status.txt").write_text(STATUS_LINE, encoding="utf-8")
     return root, env, tmp_path / "private", root / "zap-public"
 
 
@@ -164,7 +166,7 @@ async def fake_scan(target_file, rules_file, work, identity, timeout_seconds):
     proof = {
         "schema_version": 1,
         "message_id": "1",
-        "request_header": f"GET {target}/ HTTP/1.1\r\nHost: private-stage.invalid\r\n\r\n",
+        "request_header": f"GET {target}/ HTTP/1.1\r\nHost: localhost:20000\r\n\r\n",
         "response_header": "HTTP/1.1 200 OK\r\n\r\n",
     }
     (work / "scan/origin-proof.json").write_text(json.dumps(proof))
@@ -175,13 +177,12 @@ def prepared(source, monkeypatch):
     root, env, work, public = source
     m = module()
     monkeypatch.setattr(m, "run_scan", fake_scan)
-    m.prepare(root, env, work, public)
+    m.prepare(root, env, work, public, root.parent / "stand-status.txt")
     return m, root, env, work, public
 
 
 def test_publication_bound_across_processes(source, monkeypatch):
     m, root, env, work, public = prepared(source, monkeypatch)
-    env.pop("DAST_SECRET_TARGET")
     assert m.verify_publication(root, env, work, public) == [(2, "10055")]
     receipt = json.loads((public / "zap-sarif-provenance.json").read_text())
     assert receipt["identity"]["source_sha"] == env["GITHUB_SHA"]
@@ -221,9 +222,8 @@ def test_public_evidence_tampering_blocks(source, monkeypatch, name):
 def test_source_validation_precedes_target_and_scan(source, monkeypatch):
     root, env, work, public = source
     env["GITHUB_REF"] = "refs/heads/untrusted"
-    env.pop("DAST_SECRET_TARGET")
     with pytest.raises(ValueError, match="trusted"):
-        module().prepare(root, env, work, public)
+        module().prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert not work.exists()
     assert not public.exists()
 
@@ -246,12 +246,11 @@ def test_new_cli_process_verifies_and_gates_without_target(source, monkeypatch, 
 
     monkeypatch.setattr(m, "run_scan", scan)
     root, env, work, public = source
-    m.prepare(root, env, work, public)
+    m.prepare(root, env, work, public, root.parent / "stand-status.txt")
     import os
     import sys
 
     process_env = {**os.environ, **env}
-    process_env.pop("DAST_SECRET_TARGET")
     command = [sys.executable, "-m", "scripts.quality.zap_workflow"]
     flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
     verified = command_output([*command, "verify", *flags], env=process_env)
@@ -273,18 +272,17 @@ def test_new_cli_process_verifies_and_gates_without_target(source, monkeypatch, 
 )
 def test_invalid_target_fails_before_creating_private_files(source, target):
     root, env, work, public = source
-    env["DAST_SECRET_TARGET"] = target
+    (root.parent / "stand-status.txt").write_text(
+        f"LIVE_BASE_URL={target}\n", encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="Invalid ZAP target"):
-        module().prepare(root, env, work, public)
+        module().prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert not work.exists()
 
 
 def test_target_is_masked_and_not_left_in_staging_file(source, monkeypatch, capsys):
     _, _, _, work, _ = prepared(source, monkeypatch)
-    assert (
-        capsys.readouterr().out
-        == f"::add-mask::{TARGET}\n::add-mask::private-stage.invalid\n"
-    )
+    assert capsys.readouterr().out == MASKS
     assert not work.with_name(work.name + "-target.txt").exists()
 
 
@@ -356,7 +354,12 @@ def test_main_commands_and_safe_failure(source, monkeypatch, capsys):
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(m, "run_scan", fake_scan)
     flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
-    assert m.main(["prepare", *flags]) == 0
+    assert (
+        m.main(
+            ["prepare", *flags, "--status-in", str(root.parent / "stand-status.txt")]
+        )
+        == 0
+    )
     assert m.main(["verify", *flags]) == 0
     assert m.main(["gate", *flags]) == 1
     monkeypatch.setenv("GITHUB_SHA", "not-a-sha")
@@ -434,14 +437,14 @@ def test_unsafe_public_paths_rejected(source, relation):
     else:
         public.symlink_to(root, target_is_directory=True)
     with pytest.raises(ValueError):
-        module().prepare(root, env, work, public)
+        module().prepare(root, env, work, public, root.parent / "stand-status.txt")
 
 
 def test_existing_directory_not_reused(source):
     root, env, work, public = source
     work.mkdir()
     with pytest.raises(ValueError, match="fresh"):
-        module().prepare(root, env, work, public)
+        module().prepare(root, env, work, public, root.parent / "stand-status.txt")
 
 
 def test_wrong_raw_digest_in_manifest_rejected(source, monkeypatch):
@@ -494,55 +497,54 @@ def test_committed_initializer_is_bound(source):
     assert name in module().verify_source(root, env)["files"]
 
 
-def test_dispatch_target_is_read_privately_after_source_verification(
+def test_stand_status_is_read_privately_after_source_verification(
     source, monkeypatch, capsys
 ):
     root, env, work, public = source
-    event = work.parent / "event.json"
-    event.write_text(json.dumps({"inputs": {"target_url": TARGET}}))
-    env.pop("DAST_SECRET_TARGET")
-    env["GITHUB_EVENT_PATH"] = str(event)
-    fallback_target = f"https://{secrets.token_hex(8)}.invalid"
-    env["DAST_SECRET_TARGET"] = fallback_target
     m = module()
     monkeypatch.setattr(m, "run_scan", fake_scan)
-    m.prepare(root, env, work, public)
+    m.prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert json.loads((work / "publication.json").read_text())["target"] == TARGET
-    assert (
-        capsys.readouterr().out
-        == f"::add-mask::{TARGET}\n::add-mask::private-stage.invalid\n"
-    )
+    assert capsys.readouterr().out == MASKS
 
 
-def test_shared_target_preparation_accepts_explicit_environment(tmp_path):
+def test_shared_target_preparation_reads_only_the_stand_status(tmp_path):
     from scripts.quality.dast_privacy import prepare_target
 
+    status = tmp_path / "stand-status.txt"
+    status.write_text(STATUS_LINE, encoding="utf-8")
     target = tmp_path / "target"
-    assert (
-        prepare_target(
-            target, {"GITHUB_EVENT_NAME": "schedule", "DAST_SECRET_TARGET": TARGET}
-        )
-        == 0
-    )
+    assert prepare_target(target, status) == 0
     assert target.read_text() == TARGET
 
 
+def test_prepare_requires_the_owned_stand_status(source, monkeypatch):
+    root, env, work, public = source
+    m = module()
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(m, "run_scan", fake_scan)
+    flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
+    assert m.main(["prepare", *flags]) == 1
+    assert not work.exists()
+
+
 @pytest.mark.parametrize("event_name", ["schedule", "workflow_dispatch"])
-def test_empty_dispatch_or_schedule_uses_secret(source, monkeypatch, event_name):
+def test_scheduled_and_manual_scans_share_the_owned_stand_target(
+    source, monkeypatch, event_name
+):
     root, env, work, public = source
     env["GITHUB_EVENT_NAME"] = event_name
-    event = Path(env["GITHUB_EVENT_PATH"])
-    event.write_text(json.dumps({"inputs": {"target_url": ""}}))
     m = module()
     monkeypatch.setattr(m, "run_scan", fake_scan)
-    m.prepare(root, env, work, public)
+    m.prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert json.loads((work / "publication.json").read_text())["target"] == TARGET
 
 
-def test_source_rejection_precedes_event_file_read(source):
+def test_source_rejection_precedes_stand_status_read(source):
     root, env, work, public = source
     env["GITHUB_REF"] = "untrusted"
-    env["GITHUB_EVENT_PATH"] = str(work / "missing-event")
+    (root.parent / "stand-status.txt").unlink()
     with pytest.raises(ValueError, match="trusted"):
-        module().prepare(root, env, work, public)
+        module().prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert not work.with_name(work.name + "-target.txt").exists()

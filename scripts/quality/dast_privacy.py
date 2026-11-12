@@ -9,7 +9,6 @@ import os
 import re
 import sys
 from collections import Counter
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -36,6 +35,10 @@ SARIF_SEVERITY = {
     "unknown": ("none", "9.5"),
 }
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
+MAX_STATUS_BYTES = 1024 * 1024
+# Matches the loopback base URL that scripts/live_stand.py prints for its
+# owned Caddy front; the host and scheme are fixed, only the port varies.
+STAND_BASE_URL_LINE = re.compile(r"(?m)^LIVE_BASE_URL=(http://localhost:(\d{1,5}))$")
 
 
 def target_is_safe(target: str) -> bool:
@@ -370,47 +373,33 @@ def _register_target_masks(target: str) -> None:
             print(f"::add-mask::{value.replace('%', '%25')}")
 
 
-def prepare_target(output_path: Path, env: Mapping[str, str] | None = None) -> int:
-    """Mask a dispatch or secret target before writing a private handoff."""
+def stand_target_from_status(status: str) -> str:
+    """Return the single loopback base URL printed by the owned stand status."""
 
-    environment = os.environ if env is None else env
+    matches: list[tuple[str, str]] = STAND_BASE_URL_LINE.findall(status)
+    if len(matches) != 1:
+        raise PrivacyError("stand status must contain exactly one base URL")
+    target, port = matches[0]
+    if not 0 < int(port) <= 65535 or not target_is_safe(target):
+        raise PrivacyError("stand base URL is not a valid loopback target")
+    return target
+
+
+def prepare_target(output_path: Path, status_path: Path) -> int:
+    """Mask the owned stand target before writing a private handoff."""
+
     created = False
     try:
-        event_name = environment.get("GITHUB_EVENT_NAME", "")
-        secret = environment.get("DAST_SECRET_TARGET", "")
-        if event_name == "schedule":
-            target = secret
-        elif event_name == "workflow_dispatch":
-            event_path = Path(environment["GITHUB_EVENT_PATH"])
-            event = json.loads(
-                event_path.read_text(encoding="utf-8"),
-                object_pairs_hook=_reject_duplicate_keys,
-                parse_constant=_reject_nonfinite_constant,
-            )
-            if not isinstance(event, dict):
-                raise PrivacyError("event must be an object")
-            inputs = event.get("inputs")
-            if inputs is None:
-                inputs = {}
-            if not isinstance(inputs, dict):
-                raise PrivacyError("dispatch inputs must be an object")
-            supplied = inputs.get("target_url")
-            if supplied is None:
-                supplied = ""
-            if not isinstance(supplied, str):
-                raise PrivacyError("dispatch target must be text")
-            target = supplied or secret
-        else:
-            raise PrivacyError("unexpected DAST event")
-        if not target_is_safe(target):
-            raise PrivacyError("invalid DAST target")
+        if status_path.stat().st_size > MAX_STATUS_BYTES:
+            raise PrivacyError("stand status exceeds the size limit")
+        target = stand_target_from_status(status_path.read_text(encoding="utf-8"))
         _register_target_masks(target)
         descriptor = os.open(output_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         created = True
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(target)
         return 0
-    except (KeyError, OSError, UnicodeError, ValueError, ExportError):
+    except (OSError, UnicodeError, ValueError, ExportError):
         if created:
             try:
                 output_path.unlink(missing_ok=True)
@@ -425,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="operation", required=True)
     subparsers.add_parser("validate-target")
     prepare = subparsers.add_parser("prepare-target")
+    prepare.add_argument("--status-in", type=Path, required=True)
     prepare.add_argument("--output", type=Path, required=True)
     sanitize = subparsers.add_parser("sanitize")
     for name in ("json-in", "sarif-in", "json-out", "sarif-out"):
@@ -434,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         verify.add_argument(f"--{name}", type=Path, required=True)
     arguments = parser.parse_args(argv)
     if arguments.operation == "prepare-target":
-        return prepare_target(arguments.output)
+        return prepare_target(arguments.output, arguments.status_in)
     if "DAST_TARGET_FILE" in os.environ:
         try:
             target = Path(os.environ["DAST_TARGET_FILE"]).read_text(encoding="utf-8")
