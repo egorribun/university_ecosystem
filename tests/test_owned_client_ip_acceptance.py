@@ -101,6 +101,31 @@ def test_admission_requires_three_trusted_proxy_sets(peers) -> None:
     assert not _admitted(pins, pins)
 
 
+def _gateway_windows(window_ms: int = 20) -> dict[str, object]:
+    """A passing gateway block: bucket A moves, bucket B stays put, spoofs charge A."""
+    windows = [
+        ("a", "moved", 60, 60),
+        ("b", "unmoved", 60, 1),
+        ("b", "moved", 60, 60),
+        ("a", "unmoved", 61, 1),
+        *[("a", "moved", 12, 12)] * 6,
+    ]
+    return {
+        "rate_limit": 100,
+        "requests": 201,
+        "checks": [
+            {
+                "subject": subject,
+                "expect": expect,
+                "k": count,
+                "drop": drop,
+                "window_ms": window_ms,
+            }
+            for subject, expect, count, drop in windows
+        ],
+    }
+
+
 def _case(name: str, count: int, status: int, elapsed_ms: int) -> dict[str, object]:
     return {
         "case": name,
@@ -117,7 +142,7 @@ def _case(name: str, count: int, status: int, elapsed_ms: int) -> dict[str, obje
 
 def _wire() -> dict[str, object]:
     return {
-        "schema": "ue-owned-client-ip-v3",
+        "schema": "ue-owned-client-ip-v4",
         "source_sha": SHA,
         "run_id": RUN_ID,
         "closed": True,
@@ -127,7 +152,7 @@ def _wire() -> dict[str, object]:
         "source_labels": ["public", "frontend_net"],
         "csrf_ready": [True, True],
         "setup_requests": 2,
-        "http_requests": 229,
+        "http_requests": 430,
         "elapsed_ms": 60000,
         "cases": [
             _case("login", 60, 422, 1000),
@@ -136,6 +161,7 @@ def _wire() -> dict[str, object]:
             _case("forgot", 3, 422, 1000),
             _case("ws_hub", 120, 401, 1000),
         ],
+        "gateway": _gateway_windows(),
     }
 
 
@@ -270,7 +296,7 @@ def test_complete_status_evidence_passes_only_backend_and_ws_hub_subsets():
     verdict = evaluate_observations(observed)
     assert verdict.backend is True
     assert verdict.ws_hub is True
-    assert verdict.gateway == "not_assessed"
+    assert verdict.gateway is True
     assert verdict.deployment == "not_assessed"
 
 

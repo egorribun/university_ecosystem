@@ -5,7 +5,8 @@ reviewed adapter must obtain pins from existing signed-owner/daemon/resource
 verification, execute only the fixed probe, and revalidate after its remote-close
 marker. Local child reaping alone is not remote completion evidence.
 No Docker, HTTP, Redis, credentials, deployment, or audit-ledger wiring belongs
-to this module. Gateway and deployment acceptance remain explicitly unassessed.
+to this module. Deployment acceptance remains explicitly unassessed; the gateway
+verdict covers only per-client bucket keying observed through Caddy.
 """
 
 from __future__ import annotations
@@ -33,7 +34,21 @@ _CASE_BUDGETS_MS = (45000, 45000, 45000, 45000, 5000)
 _TOTAL_BUDGET_MS = 120000
 _MAX_OUTPUT_BYTES = 4096
 _SETUP_REQUESTS = 2
-_HTTP_REQUESTS = _SETUP_REQUESTS + sum(_LIMITS) + 6 * len(_CASES) + 4
+_GATEWAY_BURST = 60
+_GATEWAY_BLOCK = 12
+_GATEWAY_REQUESTS = 9 + 2 * _GATEWAY_BURST + 6 * _GATEWAY_BLOCK
+# Subject, expectation and consumed-token count for each gateway window, in the
+# order the probe emits them: four bursts, then six spoof blocks.
+_GATEWAY_EXPECTED = (
+    ("a", "moved", _GATEWAY_BURST),
+    ("b", "unmoved", _GATEWAY_BURST),
+    ("b", "moved", _GATEWAY_BURST),
+    ("a", "unmoved", _GATEWAY_BURST + 1),
+    *(("a", "moved", _GATEWAY_BLOCK) for _ in range(6)),
+)
+_HTTP_REQUESTS = (
+    _SETUP_REQUESTS + sum(_LIMITS) + 6 * len(_CASES) + 4 + _GATEWAY_REQUESTS
+)
 # 120-token capacity, 120/60 tokens per second, at most five seconds.
 _WS_MAX_ALLOWED = _LIMITS[4] + _LIMITS[4] * _CASE_BUDGETS_MS[4] // 60000
 _MAX_HTTP_REQUESTS = _HTTP_REQUESTS + _WS_MAX_ALLOWED - _LIMITS[4]
@@ -71,8 +86,11 @@ _ROOT_KEYS = frozenset(
         "http_requests",
         "elapsed_ms",
         "cases",
+        "gateway",
     }
 )
+_GATEWAY_KEYS = frozenset({"rate_limit", "requests", "checks"})
+_GATEWAY_CHECK_KEYS = frozenset({"subject", "expect", "k", "drop", "window_ms"})
 _CASE_KEYS = frozenset(
     {
         "case",
@@ -114,6 +132,22 @@ class AdmissionPins:
 
 
 @dataclass(frozen=True, slots=True)
+class GatewayCheck:
+    subject: str
+    expect: str
+    k: int
+    drop: int
+    window_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayObservation:
+    rate_limit: int
+    requests: int
+    checks: tuple[GatewayCheck, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CaseObservation:
     case: str
     allowed: tuple[int, ...]
@@ -130,6 +164,7 @@ class ProbeObservations:
     source_sha: str
     run_id: str
     cases: tuple[CaseObservation, ...]
+    gateway: GatewayObservation
     http_requests: int
     elapsed_ms: int
 
@@ -138,7 +173,7 @@ class ProbeObservations:
 class SubsetVerdict:
     backend: bool
     ws_hub: bool
-    gateway: str = "not_assessed"
+    gateway: bool = False
     deployment: str = "not_assessed"
 
 
@@ -346,13 +381,75 @@ def _case_from_row(row: object, index: int) -> CaseObservation | None:
     )
 
 
+def _gateway_from_row(row: object) -> GatewayObservation | None:
+    if type(row) is not dict or row.keys() != _GATEWAY_KEYS:
+        return None
+    rate = row["rate_limit"]
+    checks = row["checks"]
+    if (
+        not _bounded_integer(rate, 1_000_000)
+        or rate < 1
+        or row["requests"] != _GATEWAY_REQUESTS
+        or type(checks) is not list
+        or len(checks) != len(_GATEWAY_EXPECTED)
+    ):
+        return None
+    parsed: list[GatewayCheck] = []
+    for check, (subject, expect, count) in zip(checks, _GATEWAY_EXPECTED, strict=True):
+        if (
+            type(check) is not dict
+            or check.keys() != _GATEWAY_CHECK_KEYS
+            or check["subject"] != subject
+            or check["expect"] != expect
+            or check["k"] != count
+            or type(check["drop"]) is not int
+            or not -1_000_000 <= check["drop"] <= 1_000_000
+            or not _bounded_integer(check["window_ms"], _TOTAL_BUDGET_MS)
+        ):
+            return None
+        parsed.append(
+            GatewayCheck(
+                subject=subject,
+                expect=expect,
+                k=count,
+                drop=check["drop"],
+                window_ms=check["window_ms"],
+            )
+        )
+    return GatewayObservation(
+        rate_limit=rate,
+        requests=_GATEWAY_REQUESTS,
+        checks=tuple(parsed),
+    )
+
+
+def _gateway_check_passes(check: GatewayCheck, rate_limit: int) -> bool:
+    # Refill can lower a drop but never raise it, so a drop of at least
+    # k - refill - 1 proves the k requests were charged to this bucket. For an
+    # unmoved bucket, a drop above one proves other traffic was charged to it.
+    # The window must be long enough that a shared bucket could not hide.
+    refill = (rate_limit * (check.window_ms + 1) + 999) // 1000
+    slack = check.k - refill - 1
+    if slack < 2:
+        return False
+    if check.expect == "moved":
+        return check.drop >= slack
+    return check.drop <= 1
+
+
+def _gateway_passes(gateway: GatewayObservation) -> bool:
+    return all(
+        _gateway_check_passes(check, gateway.rate_limit) for check in gateway.checks
+    )
+
+
 def _decode_frame(
     wire: object, expected_source_sha: str, expected_run_id: str
 ) -> ProbeObservations | None:
     if type(wire) is not dict or wire.keys() != _ROOT_KEYS:
         return None
     if (
-        wire["schema"] != "ue-owned-client-ip-v3"
+        wire["schema"] != "ue-owned-client-ip-v4"
         or wire["source_sha"] != expected_source_sha
         or wire["run_id"] != expected_run_id
         or wire["closed"] is not True
@@ -377,7 +474,15 @@ def _decode_frame(
         if case is None:
             return None
         cases.append(case)
-    expected_count = _SETUP_REQUESTS + sum(len(case.allowed) + 6 for case in cases) + 4
+    gateway = _gateway_from_row(wire["gateway"])
+    if gateway is None:
+        return None
+    expected_count = (
+        _SETUP_REQUESTS
+        + sum(len(case.allowed) + 6 for case in cases)
+        + 4
+        + _GATEWAY_REQUESTS
+    )
     if (
         wire["http_requests"] != expected_count
         or sum(case.elapsed_ms for case in cases) > wire["elapsed_ms"]
@@ -387,6 +492,7 @@ def _decode_frame(
         source_sha=expected_source_sha,
         run_id=expected_run_id,
         cases=tuple(cases),
+        gateway=gateway,
         http_requests=wire["http_requests"],
         elapsed_ms=wire["elapsed_ms"],
     )
@@ -452,4 +558,8 @@ def evaluate_observations(observed: ProbeObservations) -> SubsetVerdict:
     passed = tuple(
         _case_passes(case, index) for index, case in enumerate(observed.cases)
     )
-    return SubsetVerdict(backend=all(passed[:4]), ws_hub=passed[4])
+    return SubsetVerdict(
+        backend=all(passed[:4]),
+        ws_hub=passed[4],
+        gateway=_gateway_passes(observed.gateway),
+    )

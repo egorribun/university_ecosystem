@@ -5,8 +5,9 @@ signed owner, Docker daemon and Compose resources, creates one no-mount probe
 container from the backend image, derives the probe input from inspected records,
 runs the probe through stdin, and rechecks the stack before removing the probe.
 
-Output is limited to case names, status codes and timings. Addresses, identities,
-headers and bodies stay private. Gateway and deployment paths are not assessed.
+Output is limited to case names, status codes, timings and gateway window
+counts. Addresses, identities, headers and bodies stay private. Deployment paths
+are not assessed.
 """
 
 from __future__ import annotations
@@ -361,9 +362,15 @@ def summary_lines(result: ClientIpResult) -> list[str]:
             f" elapsed_ms={case.elapsed_ms}"
         )
     verdict = result.verdict
+    gateway = result.observed.gateway
+    lines.append(
+        f"owned client-IP gateway windows={len(gateway.checks)}"
+        f" rate_limit={gateway.rate_limit} requests={gateway.requests}"
+    )
     lines.append(
         f"owned client-IP verdict backend={str(verdict.backend).lower()}"
-        f" ws_hub={str(verdict.ws_hub).lower()} gateway={verdict.gateway}"
+        f" ws_hub={str(verdict.ws_hub).lower()}"
+        f" gateway={str(verdict.gateway).lower()}"
         f" deployment={verdict.deployment}"
     )
     lines.append(f"owned client-IP source_sha={result.observed.source_sha}")
@@ -390,7 +397,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     for line in summary_lines(result):
         print(line, flush=True)
-    accepted = result.verdict.backend and result.verdict.ws_hub
+    accepted = (
+        result.verdict.backend and result.verdict.ws_hub and result.verdict.gateway
+    )
     print(
         f"owned client-IP outcome={'passed' if accepted else 'failed'}"
         f"{'' if accepted else ' phase=verdict'}",

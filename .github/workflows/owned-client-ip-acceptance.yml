@@ -1,8 +1,9 @@
 name: Owned client-IP acceptance
 
-# AUD-164: run the fixed client-IP probe once against an owned Core stand and
-# print its finite per-route results. This is finding evidence, not a required
-# check; it does not assess the gateway or a deployment.
+# AUD-164/167: run the fixed client-IP probe once against an owned Core stand and
+# print its finite per-route results, including the gateway bucket verdict. The
+# verdict is fail-closed; it does not assess a deployment. This is finding
+# evidence, not a required check.
 on:
   pull_request:
     branches: [main]

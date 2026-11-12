@@ -121,7 +121,7 @@ def test_a_passing_run_reports_verdicts_and_removes_the_probe(
 
     assert result.verdict.backend is True
     assert result.verdict.ws_hub is True
-    assert result.verdict.gateway == "not_assessed"
+    assert result.verdict.gateway is True
     assert result.verdict.deployment == "not_assessed"
     assert stand.removed is True
     assert [call[0] for call in stand.calls] == [
@@ -187,7 +187,7 @@ def test_summary_states_statuses_without_addresses_or_identities(
     ) in lines
     assert "backend_direct_untrusted=n/a" in text
     assert (
-        "owned client-IP verdict backend=true ws_hub=true gateway=not_assessed "
+        "owned client-IP verdict backend=true ws_hub=true gateway=true "
         "deployment=not_assessed"
     ) in lines
     assert "172." not in text
@@ -388,6 +388,15 @@ def test_main_passes_only_when_backend_and_hub_both_pass(
         type(result.verdict)(backend=True, ws_hub=False),
     )
     assert _main(monkeypatch, failed) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "owned client-IP outcome=failed phase=verdict"
+    )
+
+    gateway_failed = owned_client_ip_cli.ClientIpResult(
+        result.observed,
+        type(result.verdict)(backend=True, ws_hub=True, gateway=False),
+    )
+    assert _main(monkeypatch, gateway_failed) == 1
     assert capsys.readouterr().out.splitlines()[-1] == (
         "owned client-IP outcome=failed phase=verdict"
     )
