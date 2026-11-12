@@ -237,7 +237,8 @@ async function inspectRawTranslationKeys(page: Page, serverMarkup: string | null
 async function assertDashboardHydratesAndNavigatesInLanguage(
   page: Page,
   context: BrowserContext,
-  language: Language
+  language: Language,
+  mobile: boolean
 ): Promise<void> {
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
@@ -392,6 +393,14 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
     // The data-only route must remove the root fallback during an actual SPA
     // navigation. The reload below separately verifies the SSR fallback and
     // its replacement during hydration.
+    // Activity is a top-navigation link at 1440 px. At 390 px the bottom bar
+    // has no Activity entry, so the link exists only inside the drawer.
+    if (mobile) {
+      const drawerTrigger = page.locator('button[aria-controls="mobile-drawer"]')
+      await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
+      await drawerTrigger.click()
+      await expect(drawerTrigger).toHaveAttribute("aria-expanded", "true")
+    }
     const activityLink = page.locator('a[href="/activity"]:visible').first()
     await expect(activityLink).toBeVisible()
     await activityLink.click()
@@ -433,15 +442,25 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
 test("Russian dashboard SSR hydrates and preserves i18n across News navigation", async ({
   page,
   context,
-}) => {
-  await assertDashboardHydratesAndNavigatesInLanguage(page, context, "ru")
+}, testInfo) => {
+  await assertDashboardHydratesAndNavigatesInLanguage(
+    page,
+    context,
+    "ru",
+    testInfo.project.name === "mobile"
+  )
 })
 
 test("English dashboard SSR hydrates and preserves i18n across News navigation", async ({
   page,
   context,
-}) => {
-  await assertDashboardHydratesAndNavigatesInLanguage(page, context, "en")
+}, testInfo) => {
+  await assertDashboardHydratesAndNavigatesInLanguage(
+    page,
+    context,
+    "en",
+    testInfo.project.name === "mobile"
+  )
 })
 
 // Public routes render their own page metadata, which suppresses the root
