@@ -196,7 +196,13 @@ func TestRateLimiter_TrustedProxyRedis_ScriptErrorUsesBoundedFallback(t *testing
 		require.Empty(t, recorder.Header().Get("RateLimit-Limit"))
 		if i == 0 {
 			limiter.fallbackMu.Lock()
-			limiter.fallbackCounters["ip:198.51.100.10"].windowStart = time.Now().Add(time.Hour).Unix()
+			entry, exists := limiter.fallbackCounters["ip:198.51.100.10"]
+			if !exists || entry == nil {
+				limiter.fallbackMu.Unlock()
+				t.Fatal("successful fallback request must create a non-nil client counter")
+				return
+			}
+			entry.windowStart = time.Now().Add(time.Hour).Unix()
 			limiter.fallbackMu.Unlock()
 		}
 	}
