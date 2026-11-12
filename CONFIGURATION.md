@@ -611,7 +611,7 @@ precedence over the unprefixed name.
 | `WT_PORT` | Fallback WebTransport port when `WS_HUB_WT_PORT` is unset. | `8443` |
 | `WS_ALLOWED_ORIGINS` | Comma-separated origins accepted for WebSocket upgrades in addition to the same-origin check. | Unset (none added) |
 | `WS_HUB_MAX_CLIENTS` | Maximum concurrent WebSocket clients per ws-hub process. | `10000` |
-| `WS_UPGRADE_RATE_PER_MINUTE` | WebSocket upgrades allowed per client IP per minute at the Caddy edge and in ws-hub, also the ws-hub burst. Clients behind one NAT share it. | `120` |
+| `WS_UPGRADE_RATE_PER_MINUTE` | WebSocket upgrades allowed per client IP (`{http.request.remote.host}`, the socket peer address) per minute at the Caddy edge and in ws-hub, also the ws-hub burst. Clients behind one NAT share it. | `120` |
 | `WS_SEND_BUFFER_SIZE` | Per-client outbound frame buffer size. | `256` |
 | `WS_BROADCAST_BUFFER_SIZE` | Broadcast fan-out buffer size. | `4096` |
 | `WS_BROADCAST_WORKERS` | Broadcast worker count, capped at 12. | `2 * GOMAXPROCS` (capped) |
