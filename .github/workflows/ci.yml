@@ -2527,6 +2527,8 @@ jobs:
           # Bound the consumer to three file-grouped xdist workers: conftest owns
           # each worker database, query log, and temporary Pact directory. Keep
           # module-scoped Pact fixtures together without changing any selectors.
+          # The exact-disposition suite runs on three xdist workers so the serial
+          # verifier population keeps fitting the job's 10-minute budget.
           # The positional expansions in each single-quoted -c script belong to
           # the child Bash, so suppress shellcheck's literal-single-quote warning.
           # shellcheck disable=SC2016
@@ -2772,7 +2774,7 @@ jobs:
             bash -c '
               set -euo pipefail
               exec uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-                --tb=short --durations=20 -p no:cacheprovider \
+                -n 3 --tb=short --durations=20 -p no:cacheprovider \
                 --basetemp="$1" --junitxml="$2"
             ' _ "$policy_root/basetemp" "$policy_root/junit.xml" \
             > "$policy_root/pytest.log" 2>&1 &
