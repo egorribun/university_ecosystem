@@ -4,11 +4,16 @@ The raw files in this directory are supporting Kubernetes manifests for the
 University Ecosystem platform. They are **not** a complete application
 deployment artifact.
 
+MVP v1.0.0 targets Docker Compose on one host, not Kubernetes, under
+[ADR-054](../docs/adr/ADR-054-mvp-docker-compose-deployment-target.md).
+The Helm guidance below applies to Kubernetes deployments outside that MVP path; it does not
+authorize a Kubernetes deployment or close its pending findings.
+
 ## Deployment ownership
 
 The `charts/university-ecosystem` Helm chart is the sole canonical producer
-and single canonical deployment artifact for application workloads in staging
-and production. It renders and owns the
+and single canonical deployment artifact for Kubernetes application workloads
+in staging and production. It renders and owns the
 complete first-party workload set: `backend`, `gateway`, `ws-hub`,
 `file-processor`, `frontend`, and `outbox-worker`. Use the chart's reviewed
 values, digest-pinned images, and release gates for those environments.
@@ -38,7 +43,7 @@ development/diagnostic operations; they do not replace the Helm release.
 
 ## Usage
 
-### Canonical staging/production deployment
+### Canonical Kubernetes staging/production deployment
 
 Render and install the complete application through the Helm chart. Follow
 [`charts/university-ecosystem/README.md`](../charts/university-ecosystem/README.md)
@@ -200,7 +205,8 @@ compatibility matrix](https://gateway.envoyproxy.io/news/releases/matrix/)
 and [Helm installation guide](https://gateway.envoyproxy.io/docs/install/install-helm/).
 
 Do not call `envsubst | kubectl apply` directly and do not use this wrapper for
-staging or production releases; those environments must use the Helm chart.
+staging or production releases; Kubernetes staging and production environments
+must use the Helm chart.
 
 Create real secrets from `secrets-example.yaml` through the configured secret
 manager; never commit or apply the example file as production credentials.

@@ -68,11 +68,15 @@ university_ecosystem/
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Secure Uploads & Processing
 │   └── caddy/         # 🔒 Edge Reverse Proxy & TLS Termination
 ├── native/            # 🦀 Rust Extensions (PyO3/Rayon) - High-Performance Hot Path
-├── charts/            # ⎈ Helm Charts (canonical application deployment, ADR-034)
+├── charts/            # ⎈ Helm Charts (canonical Kubernetes application deployment, ADR-034)
 ├── k8s/               # ☸️ Kubernetes Manifests, Kyverno Policies & Chaos Mesh
 ├── alembic/           # 🗄️ Database Migrations (SQLAlchemy 2.0 Async)
 └── docs/              # 📖 Architecture Specs & ADRs (see docs/adr/)
 ```
+
+MVP v1.0.0 targets Docker Compose on one host; Helm remains the canonical
+Kubernetes application deployment artifact, outside the MVP deployment path.
+See [ADR-054](docs/adr/ADR-054-mvp-docker-compose-deployment-target.md).
 
 ## 🧠 Architectural Philosophy
 
@@ -101,7 +105,7 @@ graph TD
 
     subgraph "Data, Governance & Workflows"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
-        Valkey[("⚡ Valkey 8.1 cache (volatile-lru)")]
+        Valkey[("⚡ Valkey 9.1.2 cache (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
         MinIO[("📦 SeaweedFS (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]

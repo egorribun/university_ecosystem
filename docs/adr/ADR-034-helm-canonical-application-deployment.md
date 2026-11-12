@@ -8,6 +8,16 @@ Accepted
 
 2026-09-10
 
+## Current scope (2026-11-12)
+
+[ADR-054](ADR-054-mvp-docker-compose-deployment-target.md) selects Docker Compose on
+one host for MVP v1.0.0. Helm remains the canonical application deployment
+artifact for Kubernetes staging and production, outside that MVP path. The
+original decision below is retained as historical context: its Helm release
+gates and raw-manifest restrictions apply to Kubernetes, not to the Compose
+MVP. This scope note does not authorize a Kubernetes deployment or close its
+pending findings.
+
 ## Context
 
 The repository contains both a `charts/university-ecosystem` Helm chart and a

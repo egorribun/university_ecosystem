@@ -47,8 +47,10 @@ If you discover a vulnerability, do not publish technical details in an issue, p
   - `sourceKey` and `destKey` path traversal inputs are rejected at gRPC boundary with length capped to 1024 bytes (RZ-26-04, RZ-27-04).
   - GraphQL depth limit (10) and query timeout (30s) enforced (RZ-24-05).
 - **Tenant Identity Trust Boundary**:
-  - `X-Tenant-ID` and gRPC metadata are never authoritative. Backend RLS context accepts a tenant only when the gateway HMAC binds `user_id:session_id:tenant_id`; Go services derive tenant context only from a verified JWT claim.
-  - The current login issuer intentionally does not mint `tenant_id`: no authoritative user-to-tenant membership relation exists yet. Tenant-scoped HTTP, gRPC, and WebSocket identity therefore remains disabled until membership resolution and token rotation are implemented.
+  - Unsigned `X-Tenant-ID` and gRPC metadata are never tenant authority. Gateway assertions bind `user_id:session_id:tenant_id` with HMAC; Go services derive tenant context from a verified JWT claim.
+  - In the configured single-organization MVP mode ([ADR-053](docs/adr/ADR-053-operator-scoped-mvp-authentication.md)), the operator sets `MVP_TENANT_ID` to an existing active tenant. After credential verification and any required MFA verification, session issuance locks the stored user row and derives the `tenant_id` claim from `users.tenant_id`; null or foreign membership is rejected and caller-supplied claim overrides are not authoritative.
+  - Genuinely anonymous requests may use that configured routing scope to bootstrap authentication; this does not authenticate a user or bypass endpoint authorization, MFA, rate limits, revocation or RLS. Present invalid identities are rejected, not downgraded to anonymous access. Gateway assertions and direct-backend JWTs must match the configured tenant, and subsequent authentication checks the stored user. Unsigned tenant hints cannot switch scope.
+  - Without `MVP_TENANT_ID`, existing fail-closed tenant RLS remains; this is not a supported working MVP authentication deployment. Public multi-organization authentication is outside this mode. These statements describe source behavior, not completed hosted authentication acceptance.
 
 ---
 
