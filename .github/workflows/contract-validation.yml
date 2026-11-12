@@ -342,7 +342,7 @@ jobs:
         # per-platform binaries and every transitive package by sha512 integrity.
         # Lifecycle scripts are disabled: the wrapper declares none that are
         # required, and the native binaries ship prebuilt.
-        run: npm ci --prefix tools/oasdiff --ignore-scripts
+        run: npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund
 
       - name: Extract OpenAPI snapshot from event baseline
         id: openapi_baseline

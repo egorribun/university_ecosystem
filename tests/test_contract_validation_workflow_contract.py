@@ -269,7 +269,10 @@ def test_comparison_uses_extracted_event_snapshot_and_existing_err_policy() -> N
         step for step in steps if step.get("name") == "Install pinned openapi-diff tool"
     ]
     assert len(install) == 1
-    assert install[0]["run"] == "npm ci --prefix tools/oasdiff --ignore-scripts"
+    assert (
+        install[0]["run"]
+        == "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund"
+    )
     assert "npm install" not in install[0]["run"]
     assert "--global" not in install[0]["run"]
     assert "tools/oasdiff/node_modules/.bin/oasdiff breaking" in comparison["run"]

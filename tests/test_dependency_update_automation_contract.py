@@ -68,10 +68,10 @@ MANUAL_UPDATE_ROUTES = {
     },
     "The oasdiff npm wrapper and native binary remain a reviewed pair": {
         ".github/workflows/contract-validation.yml": (
-            "npm ci --prefix tools/oasdiff --ignore-scripts",
+            "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund",
         ),
         "tests/test_contract_validation_workflow_contract.py": (
-            "npm ci --prefix tools/oasdiff --ignore-scripts",
+            "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund",
         ),
         "tools/oasdiff/package.json": ('"@oasdiff-js/oasdiff-js": "1.0.0"',),
         "tools/oasdiff/package-lock.json": (
