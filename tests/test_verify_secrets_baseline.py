@@ -33232,11 +33232,14 @@ def test_aud375_package_projection_preserves_exact_predecessor() -> None:
     actual = (root / "frontend/package.json").read_bytes()
     historical = _aud375_historical_source_bytes("frontend/package.json", actual)
     assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
-    assert actual == historical.replace(
+    # The NOV-RUST lockfile projection changes the basic-ftp override; forward
+    # project that one-to-one companion edit onto the restored predecessor.
+    expected_live = historical.replace(
         b'"test:wasm": "node --test',
         b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX,
         1,
-    )
+    ).replace(b'"basic-ftp": ">=5.3.1",', b'"basic-ftp": ">=6.2.4",', 1)
+    assert actual == expected_live
     assert (
         hashlib.sha256(historical).digest()
         == _AUD154_SOURCE_PINS["frontend/package.json"][1]
@@ -33545,8 +33548,10 @@ def test_nov13_trivy_digest_rebind_preserves_exact_predecessor() -> None:
     assert row["expires_on"] == "2027-01-10"
     assert _nov13_trivy_current_view(restored["records"]) != restored["records"]
     forward = _nov13_trivy_current_view(restored["records"])
-    assert forward[:505] == policy["records"][:505]
-    assert forward[506:] == policy["records"][506:]
+    # The NOV-RUST lockfile rows are restored too; compare every other record.
+    predecessor = _rust_lock_historical_policy(policy)["records"]
+    assert forward[:505] == predecessor[:505]
+    assert forward[506:] == predecessor[506:]
 
 
 @pytest.mark.parametrize("mutation", ["path", "digest", "category", "owner", "expiry"])
@@ -33604,6 +33609,7 @@ def _nov13_trivy_companion_hex(digest: bytes) -> bytes:
 
 
 def _nov13_trivy_workflow_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _rust_lock_source_bytes(path, actual)
     if path == _NOV13_TRIVY_WORKFLOW_PATH:
         assert hashlib.sha256(actual).digest() == (
             _NOV13_TRIVY_WORKFLOW_CURRENT_SHA256
@@ -33637,7 +33643,7 @@ def _nov13_trivy_workflow_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _nov13_trivy_workflow_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _rust_lock_historical_policy(policy)
     identity = restored["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"]
     assert identity["path"] == _NOV13_TRIVY_WORKFLOW_LEDGER_PATH
     assert identity["type"] == "Hex High Entropy String"
@@ -33718,3 +33724,297 @@ def test_nov13_trivy_workflow_companion_projection_rejects_drift(mutation: str) 
         ] ^= 1
         with pytest.raises(AssertionError, match="trivy workflow companion identity"):
             _nov13_trivy_workflow_historical_policy(policy)
+
+
+# RUSTSEC-2026-0486 and RUSTSEC-2026-0386 are fixed by Cargo.lock-only bumps of
+# the dev-only rustix and tokio crates, and GHSA-5pm8-86m8-9m6r by the basic-ftp
+# override and lockfile record. The changed companions of the SafeHtml Semgrep row
+# (two WASM Cargo.lock/provenance files and the frontend package files) are rebound
+# one-to-one in one commit; no identity is added and the total stays 512. The
+# newest projection is innermost: it restores the exact predecessor source, ledger
+# and policy before the existing Trivy workflow layer runs.
+def _rust_hex(spaced: str) -> str:
+    return bytes.fromhex(spaced).hex()
+
+
+_RUST_LOCK_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_RUST_LOCK_PACKAGE_PATH = "frontend/package.json"
+_RUST_LOCK_PACKAGE_LOCK_PATH = "frontend/package-lock.json"
+_RUST_LOCK_PROVENANCE_PATH = "frontend/WASM_SOURCE_PROVENANCE.json"
+_RUST_LOCK_SANITIZER_PATH = "frontend/wasm-sanitizer/Cargo.lock"
+# (policy row, companion path, current sha256 hex, predecessor sha256 hex)
+_RUST_LOCK_REBINDS = (
+    (
+        451,
+        _RUST_LOCK_PACKAGE_PATH,
+        _rust_hex(
+            "1a b8 96 dc 7b 83 9f 71 cf 85 df 15 d6 dc 07 d4 3d 84 f3 78 94 ad 94 1c c9 02 20 f8 d3 5d 5c 39"
+        ),
+        _rust_hex(
+            "fc 9d 71 db 42 9c fc 88 dc 6d b3 1a b9 9d 73 a1 5e 3d 0f 4e 55 b4 fe 6a c5 23 68 48 d1 7e cf c2"
+        ),
+    ),
+    (
+        494,
+        _RUST_LOCK_PACKAGE_LOCK_PATH,
+        _rust_hex(
+            "ba 77 18 ef 0d 0b f9 f9 63 31 98 a1 8e 20 59 03 71 2e e2 e5 2a b6 17 3e 13 53 d3 77 de f2 e3 b2"
+        ),
+        _rust_hex(
+            "0d b6 a9 37 67 d7 07 9e 9c d3 14 e8 0a db 05 2b 88 39 d0 92 0a b5 05 cf 03 af ac 00 7e 49 7e 3b"
+        ),
+    ),
+    (
+        444,
+        _RUST_LOCK_PROVENANCE_PATH,
+        _rust_hex(
+            "59 16 d8 c2 c8 5b 4d 8a f4 1c 7f f4 75 87 b7 5a 36 50 e7 6f 27 15 4e 39 35 b8 ab 40 7d bd 2d bb"
+        ),
+        _rust_hex(
+            "6c 8d a6 4b 5f 94 ef 03 32 81 cc d9 89 5e ae c7 15 49 0e a3 de bf e4 6f be e5 71 65 85 00 25 b9"
+        ),
+    ),
+    (
+        447,
+        _RUST_LOCK_SANITIZER_PATH,
+        _rust_hex(
+            "7c 6b e0 22 b2 5f 84 d0 09 e4 93 3c 48 02 6d a2 87 a9 a0 bb 1a 16 dc 21 d7 46 ff 84 c5 0d 49 e0"
+        ),
+        _rust_hex(
+            "b1 a9 64 16 e1 ca 2c c1 84 43 cc 51 6c 56 5f 31 59 2f f2 86 54 6c 6c 74 5f 97 61 a9 03 ba 9a a5"
+        ),
+    ),
+)
+_RUST_LOCK_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "ec bf 10 3b 92 63 e0 08 75 2d 40 b4 d3 28 14 19 7b 89 be 20 b3 6d cd 85 27 71 20 24 41 87 9f 9b"
+    )
+)
+# Byte reversals of the two frontend package files whose content changed.
+_RUST_LOCK_TEXT_REVERSALS = {
+    _RUST_LOCK_PACKAGE_PATH: (
+        (
+            b'"basic-ftp": ">=6.2.4",',
+            b'"basic-ftp": ">=5.3.1",',
+        ),
+    ),
+    _RUST_LOCK_PACKAGE_LOCK_PATH: (
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 76 65 72 73 69 6f 6e 22 3a 20 22 36 2e 32 2e 36 22 2c 0a 20 20 20 20 20 20 22 72 65 73 6f 6c 76 65 64 22 3a 20 22 68 74 74 70 73 3a 2f 2f 72 65 67 69 73 74 72 79 2e 6e 70 6d 6a 73 2e 6f 72 67 2f 62 61 73 69 63 2d 66 74 70 2f 2d 2f 62 61 73 69 63 2d 66 74 70 2d 36 2e 32 2e 36 2e 74 67 7a 22 2c 0a 20 20 20 20 20 20 22 69 6e 74 65 67 72 69 74 79 22 3a 20 22 73 68 61 35 31 32 2d 30 45 6a 5a 43 61 6f 64 4f 7a 36 79 69 6f 6b 76 32 4a 41 31 56 79 4b 47 4e 64 47 78 55 4c 5a 2b 47 47 6c 50 67 47 39 74 6d 34 64 2b 54 2f 62 48 74 58 31 68 55 63 68 38 43 75 6d 44 6e 65 42 66 70 49 62 69 53 64 6e 37 54 61 43 47 77 70 4d 2b 67 77 73 4f 6c 77 3d 3d 22 2c 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 76 65 72 73 69 6f 6e 22 3a 20 22 36 2e 32 2e 31 22 2c 0a 20 20 20 20 20 20 22 72 65 73 6f 6c 76 65 64 22 3a 20 22 68 74 74 70 73 3a 2f 2f 72 65 67 69 73 74 72 79 2e 6e 70 6d 6a 73 2e 6f 72 67 2f 62 61 73 69 63 2d 66 74 70 2f 2d 2f 62 61 73 69 63 2d 66 74 70 2d 36 2e 32 2e 31 2e 74 67 7a 22 2c 0a 20 20 20 20 20 20 22 69 6e 74 65 67 72 69 74 79 22 3a 20 22 73 68 61 35 31 32 2d 62 4b 36 37 69 73 44 2b 6c 4b 71 34 36 41 55 38 76 4e 74 6a 76 4d 61 54 32 5a 71 41 4f 41 6d 4e 43 62 78 55 48 6c 46 42 52 44 34 6b 31 35 4e 57 78 79 45 6a 6d 61 4b 74 5a 50 6c 67 63 65 35 38 53 6f 34 42 4e 54 6a 49 54 47 51 4f 56 54 6a 4c 39 79 30 45 43 41 3d 3d 22 2c 0a"
+            ),
+        ),
+    ),
+    _RUST_LOCK_PROVENANCE_PATH: (
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 36 63 35 39 31 36 63"
+                "32 39 66 65 63 30 35 61 31 63 39 64 30 61 32 35 33 65 32 33 65 30 32 64"
+                "66 35 37 63 35 62 62 61 64 32 66 37 66 33 35 34 37 32 31 31 62 39 65 32"
+                "37 62 39 35 37 38 63 63 66 22 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 64 31 38 66 63 35 31"
+                "62 35 37 61 36 30 35 64 62 31 39 64 39 66 32 31 32 38 34 33 36 37 35 38"
+                "65 34 31 39 66 35 66 39 33 31 61 65 32 64 33 33 33 33 38 34 32 61 37 35"
+                "38 33 61 35 62 32 62 31 36 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 37 63 36 62 65 30 32"
+                "32 62 32 35 66 38 34 64 30 30 39 65 34 39 33 33 63 34 38 30 32 36 64 61"
+                "32 38 37 61 39 61 30 62 62 31 61 31 36 64 63 32 31 64 37 34 36 66 66 38"
+                "34 63 35 30 64 34 39 65 30 22 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 62 31 61 39 36 34 31"
+                "36 65 31 63 61 32 63 63 31 38 34 34 33 63 63 35 31 36 63 35 36 35 66 33"
+                "31 35 39 32 66 66 32 38 36 35 34 36 63 36 63 37 34 35 66 39 37 36 31 61"
+                "39 30 33 62 61 39 61 61 35 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex(
+                "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20"
+                "22 30 66 61 31 39 32 62 33 30 33 63 33 38 39 61 34 33 61 62 62 62 32 36"
+                "32 36 37 63 31 32 30 64 33 38 30 63 61 33 35 62 64 36 62 31 63 38 66 62"
+                "32 30 31 64 66 35 61 34 33 39 37 63 63 36 34 66 30 22 2c 0a"
+            ),
+            bytes.fromhex(
+                "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20"
+                "22 30 34 66 32 66 32 66 33 35 37 66 36 38 33 65 39 31 62 61 65 33 34 62"
+                "34 33 63 39 63 35 38 66 61 31 38 64 65 32 39 61 35 65 32 33 66 33 63 36"
+                "62 63 62 66 36 30 31 39 65 31 33 39 33 63 36 64 30 22 2c 0a"
+            ),
+        ),
+    ),
+    _RUST_LOCK_SANITIZER_PATH: (
+        (
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 31 2e 36 22 0a"),
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 31 2e 35 22 0a"),
+        ),
+        (
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 65 35 65 37 36 37 34 32 65 35 32 39"
+                "34 31 35 33 64 34 64 64 65 31 32 30 37 64 62 65 63 35 62 64 64 38 31 65"
+                "65 66 36 66 61 62 64 63 30 64 32 31 31 38 62 61 62 61 64 61 62 66 64 38"
+                "35 38 61 61 22 0a"
+            ),
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 38 39 31 65 66 61 62 61 62 65 34 31"
+                "38 36 37 30 37 37 35 66 31 39 39 66 30 64 32 33 33 64 38 34 38 34 33 63"
+                "32 32 37 61 30 39 34 39 61 38 38 33 63 65 31 35 62 33 37 63 37 38 64 36"
+                "36 32 39 64 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 35 33 2e 33 22 0a"),
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 35 33 2e 31 22 0a"),
+        ),
+        (
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 63 65 33 33 33 35 66 61 37 31 38 34"
+                "31 63 64 61 33 33 33 61 35 38 64 37 36 31 35 62 30 33 39 30 31 33 38 30"
+                "65 63 66 30 39 64 35 39 62 33 32 39 36 64 32 31 66 38 62 62 61 63 30 64"
+                "64 65 34 65 22 0a"
+            ),
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 32 30 32 63 61 65 61 38 37 31 62 36"
+                "39 36 36 38 32 35 30 64 32 34 32 30 37 30 38 34 39 65 62 34 39 35 62 65"
+                "31 37 38 65 64 36 39 37 61 33 65 39 38 61 65 62 63 65 35 62 63 38 31 61"
+                "30 62 65 64 22 0a"
+            ),
+        ),
+    ),
+}
+
+
+def _rust_lock_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
+    if path in _RUST_LOCK_TEXT_REVERSALS:
+        current, previous = next(
+            (row[2], row[3]) for row in _RUST_LOCK_REBINDS if row[1] == path
+        )
+        assert hashlib.sha256(actual).hexdigest() == current, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for before, after in _RUST_LOCK_TEXT_REVERSALS[path]:
+            assert historical.count(before) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(before, after, 1)
+        assert hashlib.sha256(historical).hexdigest() == previous, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    if path != _RUST_LOCK_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _RUST_LOCK_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual
+    for _row, _path, current, previous in _RUST_LOCK_REBINDS:
+        current_bytes = current.encode("ascii")
+        assert historical.count(current_bytes) == 1, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = historical.replace(current_bytes, previous.encode("ascii"), 1)
+    assert (
+        hashlib.sha256(historical).digest()
+        == _NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256
+    ), f"conditional disposition source file SHA-256 changed: {path}"
+    return historical
+
+
+def _rust_lock_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    for index, _path, current, previous in _RUST_LOCK_REBINDS:
+        row = records[index]
+        identity = row["identity"]
+        assert identity["path"] == _RUST_LOCK_LEDGER_PATH
+        assert identity["type"] == "Hex High Entropy String"
+        assert row["category"] == "public_integrity_digest"
+        assert row["owner"] == "egorribun", (
+            "approval metadata changed for rust lock companion"
+        )
+        assert row["expires_on"] == "2027-01-10", (
+            "approval metadata changed for rust lock companion"
+        )
+        assert bytes(identity["hashed_secret_bytes"]) == bytes(
+            _rust_lock_identity(current)
+        ), "live disposition rust lock companion identity changed"
+        identity["hashed_secret_bytes"] = _rust_lock_identity(previous)
+    return restored
+
+
+def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for _index, path, current, _previous in _RUST_LOCK_REBINDS:
+        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == current
+    ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item
+        for disposition in ledger["dispositions"]
+        for item in disposition.get("companions", [])
+    ]
+    bound = {
+        item["path"]: item["sha256"]
+        for item in companions
+        if item["path"] in {path for _i, path, _c, _p in _RUST_LOCK_REBINDS}
+    }
+    assert bound == {path: current for _i, path, current, _p in _RUST_LOCK_REBINDS}
+    historical = _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, ledger_bytes)
+    assert (
+        hashlib.sha256(historical).digest()
+        == _NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256
+    )
+    for path in _RUST_LOCK_TEXT_REVERSALS:
+        _rust_lock_source_bytes(path, (root / path).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _rust_lock_historical_policy(policy)
+    for index, _path, _current, previous in _RUST_LOCK_REBINDS:
+        assert restored["records"][index]["identity"]["hashed_secret_bytes"] == (
+            _rust_lock_identity(previous)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["ledger_extra", "ledger_missing", "package_json", "policy"]
+)
+def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
+        with pytest.raises(AssertionError, match="rust lock companion identity"):
+            _rust_lock_historical_policy(policy)
+        return
+    if mutation == "package_json":
+        actual = (root / _RUST_LOCK_PACKAGE_PATH).read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _rust_lock_source_bytes(_RUST_LOCK_PACKAGE_PATH, actual)
+        return
+    ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
+    if mutation == "ledger_extra":
+        actual = ledger_bytes + b"\n"
+    else:
+        actual = ledger_bytes.replace(_RUST_LOCK_REBINDS[3][2].encode("ascii"), b"", 1)
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, actual)
