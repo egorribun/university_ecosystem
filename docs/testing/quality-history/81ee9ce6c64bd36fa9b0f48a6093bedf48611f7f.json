@@ -1,0 +1,5205 @@
+{
+  "base_ref": "main",
+  "base_sha": "81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f",
+  "commit_sha": "81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f",
+  "components": {
+    "frontend": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 17978,
+          "percent": 100.0,
+          "status": "native",
+          "total": 17978
+        },
+        "functions": {
+          "covered": 5401,
+          "percent": 100.0,
+          "status": "native",
+          "total": 5401
+        },
+        "lines": {
+          "covered": 21459,
+          "percent": 100.0,
+          "status": "native",
+          "total": 21459
+        },
+        "statements": {
+          "covered": 24091,
+          "percent": 100.0,
+          "status": "native",
+          "total": 24091
+        }
+      },
+      "status": "passed"
+    },
+    "go-file-processor": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_branch_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_function_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": 2929,
+          "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+          "percent": 100.0,
+          "status": "derived",
+          "total": 2929
+        },
+        "statements": {
+          "covered": 1734,
+          "percent": 100.0,
+          "status": "native",
+          "total": 1734
+        }
+      },
+      "status": "passed"
+    },
+    "go-gateway": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_branch_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_function_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": 2956,
+          "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+          "percent": 100.0,
+          "status": "derived",
+          "total": 2956
+        },
+        "statements": {
+          "covered": 1745,
+          "percent": 100.0,
+          "status": "native",
+          "total": 1745
+        }
+      },
+      "status": "passed"
+    },
+    "go-shared": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_branch_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_function_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": 669,
+          "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+          "percent": 100.0,
+          "status": "derived",
+          "total": 669
+        },
+        "statements": {
+          "covered": 430,
+          "percent": 100.0,
+          "status": "native",
+          "total": 430
+        }
+      },
+      "status": "passed"
+    },
+    "go-ws-hub": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_branch_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "go_coverprofile_has_no_function_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": 5872,
+          "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+          "percent": 100.0,
+          "status": "derived",
+          "total": 5872
+        },
+        "statements": {
+          "covered": 3708,
+          "percent": 100.0,
+          "status": "native",
+          "total": 3708
+        }
+      },
+      "status": "passed"
+    },
+    "infrastructure": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "not_applicable"
+    },
+    "node-actions": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 102,
+          "percent": 100.0,
+          "status": "native",
+          "total": 102
+        },
+        "functions": {
+          "covered": 11,
+          "percent": 100.0,
+          "status": "native",
+          "total": 11
+        },
+        "lines": {
+          "covered": 116,
+          "percent": 100.0,
+          "status": "native",
+          "total": 116
+        },
+        "statements": {
+          "covered": 136,
+          "percent": 100.0,
+          "status": "native",
+          "total": 136
+        }
+      },
+      "status": "passed"
+    },
+    "python": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 9292,
+          "percent": 100.0,
+          "status": "native",
+          "total": 9292
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "coverage_xml_has_no_function_counter",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": 35348,
+          "percent": 100.0,
+          "status": "native",
+          "total": 35348
+        },
+        "statements": {
+          "covered": 35348,
+          "percent": 100.0,
+          "status": "native",
+          "total": 35348
+        }
+      },
+      "status": "passed"
+    },
+    "rust-crypto": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 10,
+          "percent": 100.0,
+          "status": "native",
+          "total": 10
+        },
+        "functions": {
+          "covered": 10,
+          "percent": 100.0,
+          "status": "native",
+          "total": 10
+        },
+        "lines": {
+          "covered": 114,
+          "percent": 100.0,
+          "status": "native",
+          "total": 114
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "llvm_json_has_no_statement_counter",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "passed"
+    },
+    "rust-native": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 198,
+          "percent": 100.0,
+          "status": "native",
+          "total": 198
+        },
+        "functions": {
+          "covered": 211,
+          "percent": 100.0,
+          "status": "native",
+          "total": 211
+        },
+        "lines": {
+          "covered": 2573,
+          "percent": 100.0,
+          "status": "native",
+          "total": 2573
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "llvm_json_has_no_statement_counter",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "passed"
+    },
+    "rust-wasm-sanitizer": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": 4,
+          "percent": 100.0,
+          "status": "native",
+          "total": 4
+        },
+        "functions": {
+          "covered": 26,
+          "percent": 100.0,
+          "status": "native",
+          "total": 26
+        },
+        "lines": {
+          "covered": 197,
+          "percent": 100.0,
+          "status": "native",
+          "total": 197
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "llvm_json_has_no_statement_counter",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "passed"
+    },
+    "scripts": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "not_applicable"
+    },
+    "workflows": {
+      "errors": [],
+      "metrics": {
+        "branches": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "functions": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "lines": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        },
+        "statements": {
+          "covered": null,
+          "percent": null,
+          "reason_code": "component_uses_noncoverage_quality_gates",
+          "status": "unsupported",
+          "total": null
+        }
+      },
+      "status": "not_applicable"
+    }
+  },
+  "coverage_scope": {
+    "frontend": [
+      "frontend/src"
+    ],
+    "go-file-processor": [
+      "services/file-processor"
+    ],
+    "go-gateway": [
+      "services/gateway"
+    ],
+    "go-shared": [
+      "services/cmd/uni-cli",
+      "services/pkg/logging",
+      "services/pkg/spiffe",
+      "services/pkg/spicedb"
+    ],
+    "go-ws-hub": [
+      "services/ws-hub"
+    ],
+    "node-actions": [
+      ".github/actions/dependency-review-capture"
+    ],
+    "python": [
+      "app",
+      "alembic/versions"
+    ],
+    "rust-crypto": [
+      "frontend/rust-crypto"
+    ],
+    "rust-native": [
+      "native/rust_ext"
+    ],
+    "rust-wasm-sanitizer": [
+      "frontend/wasm-sanitizer"
+    ]
+  },
+  "generated_at": "2026-11-12T01:29:10Z",
+  "generation": {
+    "command": "scripts/quality/normalize_coverage_reports.py",
+    "normalizer_version": "3.0.0"
+  },
+  "manifest_path": "artifacts/coverage/quality-manifest.json",
+  "missing_reports": [],
+  "provenance": {
+    "mode": "github-actions",
+    "workflow_event": "push",
+    "workflow_job": "coverage-policy-gate",
+    "workflow_ref": "egorribun/university_ecosystem/.github/workflows/ci.yml@refs/heads/main",
+    "workflow_repository": "egorribun/university_ecosystem",
+    "workflow_run_attempt": "1",
+    "workflow_run_id": "43130720648"
+  },
+  "reports": [
+    {
+      "component": "frontend",
+      "format": "istanbul-json",
+      "path": "frontend/coverage/coverage-final.json",
+      "sha256": "d3e79212503a22b3160d51a39edd4ef1bc6c11604b437afcc5710a79e1d5456f",
+      "size_bytes": 6535804
+    },
+    {
+      "component": "frontend",
+      "format": "lcov",
+      "path": "frontend/coverage/lcov.info",
+      "sha256": "55c952c569331e7274f4c1eac68ebecf641b80a4a40684bcc77ef0cc93a1f882",
+      "size_bytes": 794014
+    },
+    {
+      "component": "go-file-processor",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/file-processor/coverage.out",
+      "sha256": "905cd9db1131566ac2d0ef7b4b2130ce93acd52f8c66574ef9e86b5d0ec308dd",
+      "size_bytes": 115477
+    },
+    {
+      "component": "go-gateway",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/gateway/coverage.out",
+      "sha256": "7ae4b1b7ac1310686223f4eed087d77884c08260de3f93fba08cff9420edfb34",
+      "size_bytes": 91644
+    },
+    {
+      "component": "go-shared",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/shared/coverage.out",
+      "sha256": "f2f5904d3b4a69ac7c8c4923c727a9bbfa26309f9e007269bbeb448880ba465e",
+      "size_bytes": 22904
+    },
+    {
+      "component": "go-ws-hub",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/ws-hub/coverage.out",
+      "sha256": "b966493f895ada6f599c66b34448eff320961048adb8a4f5a739a9db9e5f44d3",
+      "size_bytes": 183966
+    },
+    {
+      "component": "node-actions",
+      "format": "istanbul-json",
+      "path": "artifacts/coverage/node-actions/coverage-final.json",
+      "sha256": "7f4595935e0c3812270a0137596f64119f90cedd34692fefee01c032cb8ac433",
+      "size_bytes": 30989
+    },
+    {
+      "component": "node-actions",
+      "format": "lcov",
+      "path": "artifacts/coverage/node-actions/lcov.info",
+      "sha256": "7a0419a0151648c43a183e34f8fb3d5db2590a0466b478e852cdc544ef2a137c",
+      "size_bytes": 3401
+    },
+    {
+      "component": "python",
+      "format": "cobertura-xml",
+      "path": "coverage.xml",
+      "sha256": "4676dd3afe8bdbebcdaf07892d76aa55ba22b0d9a6d654ff3c8e367f4ba46c8a",
+      "size_bytes": 1540910
+    },
+    {
+      "component": "python",
+      "format": "coverage-py-json",
+      "path": "artifacts/coverage/python/coverage.json",
+      "sha256": "8a3b9cf5cbb45da98d98164400e3f841d2b636342997c11d5bcd2cc2ba319007",
+      "size_bytes": 3360335
+    },
+    {
+      "component": "rust-crypto",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+      "sha256": "35547757d454a1a766140c1b7039df3a5c53a76f32702f7a4ee74071562eddb4",
+      "size_bytes": 42730
+    },
+    {
+      "component": "rust-crypto",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-crypto/llvm.json",
+      "sha256": "027f5aaaa3d9d2e72950f95d46912970d2a5445e73c0a2cdf6e7a466fd6e2b37",
+      "size_bytes": 49656
+    },
+    {
+      "component": "rust-native",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-native/branch-llvm.json",
+      "sha256": "7b3aaa22748860eb2956d2b052601941002168844b445f2fa31771d77b4c6fc0",
+      "size_bytes": 312866
+    },
+    {
+      "component": "rust-native",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-native/llvm.json",
+      "sha256": "7f236c7db3807aed1e6468201a191b41aab23bc64aff6edcd8b10c802ff08146",
+      "size_bytes": 417070
+    },
+    {
+      "component": "rust-wasm-sanitizer",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
+      "sha256": "2cdd26c912a01db1a4cc6558cdb49e51ddd1bd1530f267be625daec52fa2d6ac",
+      "size_bytes": 27165
+    },
+    {
+      "component": "rust-wasm-sanitizer",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+      "sha256": "5a1c4e9cd0a89b5a19e677e1c8849ed3f5c0ecf6fdabc7adc36bc8a30dbee8b9",
+      "size_bytes": 32436
+    }
+  ],
+  "schema_version": 3,
+  "source_head_sha": "81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f",
+  "source_roots": {
+    "frontend": [
+      "frontend/src"
+    ],
+    "go-file-processor": [
+      "services/file-processor"
+    ],
+    "go-gateway": [
+      "services/gateway"
+    ],
+    "go-shared": [
+      "services/cmd/uni-cli",
+      "services/pkg/logging",
+      "services/pkg/spiffe",
+      "services/pkg/spicedb"
+    ],
+    "go-ws-hub": [
+      "services/ws-hub"
+    ],
+    "infrastructure": [
+      "infra",
+      "infrastructure",
+      "k8s",
+      "charts"
+    ],
+    "node-actions": [
+      ".github/actions/dependency-review-capture"
+    ],
+    "python": [
+      "app",
+      "alembic/versions"
+    ],
+    "rust-crypto": [
+      "frontend/rust-crypto"
+    ],
+    "rust-native": [
+      "native/rust_ext"
+    ],
+    "rust-wasm-sanitizer": [
+      "frontend/wasm-sanitizer"
+    ],
+    "scripts": [
+      "scripts"
+    ],
+    "workflows": [
+      ".github/workflows"
+    ]
+  },
+  "tested_commit_sha": "81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f",
+  "tier0": {
+    "coverage": {
+      "branches": {
+        "covered": 4140,
+        "derivation": "sum of applicable Tier0 file metrics",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 4140
+      },
+      "functions": {
+        "covered": 1362,
+        "derivation": "sum of applicable Tier0 file metrics",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 1362
+      },
+      "lines": {
+        "covered": 15832,
+        "derivation": "sum of applicable Tier0 file metrics",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 15832
+      },
+      "statements": {
+        "covered": 12731,
+        "derivation": "sum of applicable Tier0 file metrics",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 12731
+      }
+    },
+    "errors": [],
+    "files": [
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          },
+          "functions": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "lines": {
+            "covered": 13,
+            "percent": 100.0,
+            "status": "native",
+            "total": 13
+          },
+          "statements": {
+            "covered": 18,
+            "percent": 100.0,
+            "status": "native",
+            "total": 18
+          }
+        },
+        "path": "frontend/src/api/hooks/sessions.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 56,
+            "percent": 100.0,
+            "status": "native",
+            "total": 56
+          },
+          "functions": {
+            "covered": 35,
+            "percent": 100.0,
+            "status": "native",
+            "total": 35
+          },
+          "lines": {
+            "covered": 145,
+            "percent": 100.0,
+            "status": "native",
+            "total": 145
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "frontend/src/api/interceptors/rateLimit.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "LCOV source contains no branch units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "lines": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          },
+          "statements": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          }
+        },
+        "path": "frontend/src/api/mfa.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 53,
+            "percent": 100.0,
+            "status": "native",
+            "total": 53
+          },
+          "functions": {
+            "covered": 16,
+            "percent": 100.0,
+            "status": "native",
+            "total": 16
+          },
+          "lines": {
+            "covered": 62,
+            "percent": 100.0,
+            "status": "native",
+            "total": 62
+          },
+          "statements": {
+            "covered": 73,
+            "percent": 100.0,
+            "status": "native",
+            "total": 73
+          }
+        },
+        "path": "frontend/src/app/sessionMutationCache.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 33,
+            "percent": 100.0,
+            "status": "native",
+            "total": 33
+          },
+          "functions": {
+            "covered": 1,
+            "percent": 100.0,
+            "status": "native",
+            "total": 1
+          },
+          "lines": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "statements": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          }
+        },
+        "path": "frontend/src/components/auth/AuthBackdrop.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 38,
+            "percent": 100.0,
+            "status": "native",
+            "total": 38
+          },
+          "functions": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "lines": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          },
+          "statements": {
+            "covered": 15,
+            "percent": 100.0,
+            "status": "native",
+            "total": 15
+          }
+        },
+        "path": "frontend/src/components/auth/LoginCredentialForm.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 31,
+            "percent": 100.0,
+            "status": "native",
+            "total": 31
+          },
+          "functions": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "lines": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "statements": {
+            "covered": 13,
+            "percent": 100.0,
+            "status": "native",
+            "total": 13
+          }
+        },
+        "path": "frontend/src/components/auth/MfaChallengeView.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 74,
+            "percent": 100.0,
+            "status": "native",
+            "total": 74
+          },
+          "functions": {
+            "covered": 33,
+            "percent": 100.0,
+            "status": "native",
+            "total": 33
+          },
+          "lines": {
+            "covered": 98,
+            "percent": 100.0,
+            "status": "native",
+            "total": 98
+          },
+          "statements": {
+            "covered": 110,
+            "percent": 100.0,
+            "status": "native",
+            "total": 110
+          }
+        },
+        "path": "frontend/src/components/mfa/OtpEntry.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 55,
+            "percent": 100.0,
+            "status": "native",
+            "total": 55
+          },
+          "functions": {
+            "covered": 13,
+            "percent": 100.0,
+            "status": "native",
+            "total": 13
+          },
+          "lines": {
+            "covered": 68,
+            "percent": 100.0,
+            "status": "native",
+            "total": 68
+          },
+          "statements": {
+            "covered": 72,
+            "percent": 100.0,
+            "status": "native",
+            "total": 72
+          }
+        },
+        "path": "frontend/src/components/mfa/StepUpDialog.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "lines": {
+            "covered": 22,
+            "percent": 100.0,
+            "status": "native",
+            "total": 22
+          },
+          "statements": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          }
+        },
+        "path": "frontend/src/components/mfa/TotpQrDisplay.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 28,
+            "percent": 100.0,
+            "status": "native",
+            "total": 28
+          },
+          "functions": {
+            "covered": 17,
+            "percent": 100.0,
+            "status": "native",
+            "total": 17
+          },
+          "lines": {
+            "covered": 49,
+            "percent": 100.0,
+            "status": "native",
+            "total": 49
+          },
+          "statements": {
+            "covered": 55,
+            "percent": 100.0,
+            "status": "native",
+            "total": 55
+          }
+        },
+        "path": "frontend/src/contexts/AuthContext.tsx"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "LCOV source contains no branch units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "LCOV source contains no function units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 0,
+            "derivation": "LCOV source contains no executable lines",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "statements": {
+            "covered": 0,
+            "derivation": "Istanbul JSON contains no statement units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          }
+        },
+        "path": "frontend/src/features/auth/index.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          },
+          "functions": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "lines": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "statements": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          }
+        },
+        "path": "frontend/src/features/auth/legacyResetTokenState.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          },
+          "functions": {
+            "covered": 3,
+            "percent": 100.0,
+            "status": "native",
+            "total": 3
+          },
+          "lines": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "statements": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          }
+        },
+        "path": "frontend/src/features/auth/schemas.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 7,
+            "percent": 100.0,
+            "status": "native",
+            "total": 7
+          },
+          "functions": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "lines": {
+            "covered": 17,
+            "percent": 100.0,
+            "status": "native",
+            "total": 17
+          },
+          "statements": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          }
+        },
+        "path": "frontend/src/hooks/auth/legacyTokenCleanup.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 1,
+            "percent": 100.0,
+            "status": "native",
+            "total": 1
+          },
+          "lines": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "statements": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          }
+        },
+        "path": "frontend/src/hooks/auth/ssrAuthHint.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 166,
+            "percent": 100.0,
+            "status": "native",
+            "total": 166
+          },
+          "functions": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          },
+          "lines": {
+            "covered": 197,
+            "percent": 100.0,
+            "status": "native",
+            "total": 197
+          },
+          "statements": {
+            "covered": 222,
+            "percent": 100.0,
+            "status": "native",
+            "total": 222
+          }
+        },
+        "path": "frontend/src/hooks/auth/useAuthApi.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 66,
+            "percent": 100.0,
+            "status": "native",
+            "total": 66
+          },
+          "functions": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          },
+          "lines": {
+            "covered": 131,
+            "percent": 100.0,
+            "status": "native",
+            "total": 131
+          },
+          "statements": {
+            "covered": 143,
+            "percent": 100.0,
+            "status": "native",
+            "total": 143
+          }
+        },
+        "path": "frontend/src/hooks/auth/useLoginFlow.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 440,
+            "percent": 100.0,
+            "status": "native",
+            "total": 440
+          },
+          "functions": {
+            "covered": 93,
+            "percent": 100.0,
+            "status": "native",
+            "total": 93
+          },
+          "lines": {
+            "covered": 603,
+            "percent": 100.0,
+            "status": "native",
+            "total": 603
+          },
+          "statements": {
+            "covered": 673,
+            "percent": 100.0,
+            "status": "native",
+            "total": 673
+          }
+        },
+        "path": "frontend/src/hooks/auth/useProfileSync.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 142,
+            "percent": 100.0,
+            "status": "native",
+            "total": 142
+          },
+          "functions": {
+            "covered": 28,
+            "percent": 100.0,
+            "status": "native",
+            "total": 28
+          },
+          "lines": {
+            "covered": 182,
+            "percent": 100.0,
+            "status": "native",
+            "total": 182
+          },
+          "statements": {
+            "covered": 190,
+            "percent": 100.0,
+            "status": "native",
+            "total": 190
+          }
+        },
+        "path": "frontend/src/hooks/auth/useSessionCrypto.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 44,
+            "percent": 100.0,
+            "status": "native",
+            "total": 44
+          },
+          "functions": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "lines": {
+            "covered": 57,
+            "percent": 100.0,
+            "status": "native",
+            "total": 57
+          },
+          "statements": {
+            "covered": 70,
+            "percent": 100.0,
+            "status": "native",
+            "total": 70
+          }
+        },
+        "path": "frontend/src/ssrAuth.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "functions": {
+            "covered": 7,
+            "percent": 100.0,
+            "status": "native",
+            "total": 7
+          },
+          "lines": {
+            "covered": 27,
+            "percent": 100.0,
+            "status": "native",
+            "total": 27
+          },
+          "statements": {
+            "covered": 32,
+            "percent": 100.0,
+            "status": "native",
+            "total": 32
+          }
+        },
+        "path": "frontend/src/stores/authIdentity.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 176,
+            "percent": 100.0,
+            "status": "native",
+            "total": 176
+          },
+          "functions": {
+            "covered": 23,
+            "percent": 100.0,
+            "status": "native",
+            "total": 23
+          },
+          "lines": {
+            "covered": 166,
+            "percent": 100.0,
+            "status": "native",
+            "total": 166
+          },
+          "statements": {
+            "covered": 183,
+            "percent": 100.0,
+            "status": "native",
+            "total": 183
+          }
+        },
+        "path": "frontend/src/stores/sessionEpoch.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 16,
+            "percent": 100.0,
+            "status": "native",
+            "total": 16
+          },
+          "lines": {
+            "covered": 11,
+            "percent": 100.0,
+            "status": "native",
+            "total": 11
+          },
+          "statements": {
+            "covered": 23,
+            "percent": 100.0,
+            "status": "native",
+            "total": 23
+          }
+        },
+        "path": "frontend/src/stores/useAuthStore.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 15,
+            "percent": 100.0,
+            "status": "native",
+            "total": 15
+          },
+          "functions": {
+            "covered": 1,
+            "percent": 100.0,
+            "status": "native",
+            "total": 1
+          },
+          "lines": {
+            "covered": 13,
+            "percent": 100.0,
+            "status": "native",
+            "total": 13
+          },
+          "statements": {
+            "covered": 16,
+            "percent": 100.0,
+            "status": "native",
+            "total": 16
+          }
+        },
+        "path": "frontend/src/utils/authUtils.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 13,
+            "percent": 100.0,
+            "status": "native",
+            "total": 13
+          },
+          "lines": {
+            "covered": 40,
+            "percent": 100.0,
+            "status": "native",
+            "total": 40
+          },
+          "statements": {
+            "covered": 41,
+            "percent": 100.0,
+            "status": "native",
+            "total": 41
+          }
+        },
+        "path": "frontend/src/utils/cryptoWorker.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "functions": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "lines": {
+            "covered": 15,
+            "percent": 100.0,
+            "status": "native",
+            "total": 15
+          },
+          "statements": {
+            "covered": 15,
+            "percent": 100.0,
+            "status": "native",
+            "total": 15
+          }
+        },
+        "path": "frontend/src/utils/passwordStrength.ts"
+      },
+      {
+        "component": "frontend",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 3,
+            "percent": 100.0,
+            "status": "native",
+            "total": 3
+          },
+          "lines": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          },
+          "statements": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          }
+        },
+        "path": "frontend/src/workers/crypto.worker.ts"
+      },
+      {
+        "component": "go-file-processor",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 203,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 203
+          },
+          "statements": {
+            "covered": 131,
+            "percent": 100.0,
+            "status": "native",
+            "total": 131
+          }
+        },
+        "path": "services/file-processor/cmd/file-processor/auth.go"
+      },
+      {
+        "component": "go-file-processor",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 335,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 335
+          },
+          "statements": {
+            "covered": 227,
+            "percent": 100.0,
+            "status": "native",
+            "total": 227
+          }
+        },
+        "path": "services/file-processor/cmd/file-processor/auth_jwks.go"
+      },
+      {
+        "component": "go-file-processor",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 81,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 81
+          },
+          "statements": {
+            "covered": 51,
+            "percent": 100.0,
+            "status": "native",
+            "total": 51
+          }
+        },
+        "path": "services/file-processor/internal/config/secret_files.go"
+      },
+      {
+        "component": "go-file-processor",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/file-processor/internal/config/secret_open_portable.go"
+      },
+      {
+        "component": "go-file-processor",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/file-processor/internal/config/secret_open_unix.go"
+      },
+      {
+        "component": "go-gateway",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 70,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 70
+          },
+          "statements": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          }
+        },
+        "path": "services/gateway/internal/config/secret_files.go"
+      },
+      {
+        "component": "go-gateway",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/gateway/internal/config/secret_open_portable.go"
+      },
+      {
+        "component": "go-gateway",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/gateway/internal/config/secret_open_unix.go"
+      },
+      {
+        "component": "go-gateway",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 798,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 798
+          },
+          "statements": {
+            "covered": 491,
+            "percent": 100.0,
+            "status": "native",
+            "total": 491
+          }
+        },
+        "path": "services/gateway/middleware/auth.go"
+      },
+      {
+        "component": "go-gateway",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 207,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 207
+          },
+          "statements": {
+            "covered": 121,
+            "percent": 100.0,
+            "status": "native",
+            "total": 121
+          }
+        },
+        "path": "services/gateway/middleware/ratelimit.go"
+      },
+      {
+        "component": "go-shared",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 71,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 71
+          },
+          "statements": {
+            "covered": 38,
+            "percent": 100.0,
+            "status": "native",
+            "total": 38
+          }
+        },
+        "path": "services/pkg/spicedb/client.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 76,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 76
+          },
+          "statements": {
+            "covered": 53,
+            "percent": 100.0,
+            "status": "native",
+            "total": 53
+          }
+        },
+        "path": "services/ws-hub/pkg/config/secret_files.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/ws-hub/pkg/config/secret_open_portable.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 9,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "statements": {
+            "covered": 5,
+            "percent": 100.0,
+            "status": "native",
+            "total": 5
+          }
+        },
+        "path": "services/ws-hub/pkg/config/secret_open_unix.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 319,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 319
+          },
+          "statements": {
+            "covered": 171,
+            "percent": 100.0,
+            "status": "native",
+            "total": 171
+          }
+        },
+        "path": "services/ws-hub/pkg/hub/auth_client.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 101,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 101
+          },
+          "statements": {
+            "covered": 62,
+            "percent": 100.0,
+            "status": "native",
+            "total": 62
+          }
+        },
+        "path": "services/ws-hub/pkg/hub/ratelimit.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 263,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 263
+          },
+          "statements": {
+            "covered": 164,
+            "percent": 100.0,
+            "status": "native",
+            "total": 164
+          }
+        },
+        "path": "services/ws-hub/pkg/hub/session_revocation.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 30,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 30
+          },
+          "statements": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          }
+        },
+        "path": "services/ws-hub/pkg/hub/session_ws.go"
+      },
+      {
+        "component": "go-ws-hub",
+        "metrics": {
+          "branches": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_branch_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "functions": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "go_coverprofile_has_no_function_counter",
+            "status": "unsupported",
+            "total": null
+          },
+          "lines": {
+            "covered": 232,
+            "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 232
+          },
+          "statements": {
+            "covered": 154,
+            "percent": 100.0,
+            "status": "native",
+            "total": 154
+          }
+        },
+        "path": "services/ws-hub/pkg/hub/session_wt.go"
+      },
+      {
+        "component": "node-actions",
+        "metrics": {
+          "branches": {
+            "covered": 94,
+            "percent": 100.0,
+            "status": "native",
+            "total": 94
+          },
+          "functions": {
+            "covered": 11,
+            "percent": 100.0,
+            "status": "native",
+            "total": 11
+          },
+          "lines": {
+            "covered": 107,
+            "percent": 100.0,
+            "status": "native",
+            "total": 107
+          },
+          "statements": {
+            "covered": 126,
+            "percent": 100.0,
+            "status": "native",
+            "total": 126
+          }
+        },
+        "path": ".github/actions/dependency-review-capture/capture.cjs"
+      },
+      {
+        "component": "node-actions",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "LCOV source contains no function units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "statements": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          }
+        },
+        "path": ".github/actions/dependency-review-capture/index.cjs"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 64,
+            "percent": 100.0,
+            "status": "native",
+            "total": 64
+          },
+          "statements": {
+            "covered": 64,
+            "percent": 100.0,
+            "status": "native",
+            "total": 64
+          }
+        },
+        "path": "alembic/versions/202611020000_mvp_baseline.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "functions": {
+            "covered": 2,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 2
+          },
+          "lines": {
+            "covered": 70,
+            "percent": 100.0,
+            "status": "native",
+            "total": 70
+          },
+          "statements": {
+            "covered": 70,
+            "percent": 100.0,
+            "status": "native",
+            "total": 70
+          }
+        },
+        "path": "app/api/admin/audit.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          },
+          "functions": {
+            "covered": 10,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 10
+          },
+          "lines": {
+            "covered": 208,
+            "percent": 100.0,
+            "status": "native",
+            "total": 208
+          },
+          "statements": {
+            "covered": 208,
+            "percent": 100.0,
+            "status": "native",
+            "total": 208
+          }
+        },
+        "path": "app/api/auth/login.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 164,
+            "percent": 100.0,
+            "status": "native",
+            "total": 164
+          },
+          "statements": {
+            "covered": 164,
+            "percent": 100.0,
+            "status": "native",
+            "total": 164
+          }
+        },
+        "path": "app/api/auth/mfa.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 56,
+            "percent": 100.0,
+            "status": "native",
+            "total": 56
+          },
+          "functions": {
+            "covered": 15,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 15
+          },
+          "lines": {
+            "covered": 191,
+            "percent": 100.0,
+            "status": "native",
+            "total": 191
+          },
+          "statements": {
+            "covered": 191,
+            "percent": 100.0,
+            "status": "native",
+            "total": 191
+          }
+        },
+        "path": "app/api/deps/auth.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 99,
+            "percent": 100.0,
+            "status": "native",
+            "total": 99
+          },
+          "statements": {
+            "covered": 99,
+            "percent": 100.0,
+            "status": "native",
+            "total": 99
+          }
+        },
+        "path": "app/api/internal/csp_report.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 26,
+            "percent": 100.0,
+            "status": "native",
+            "total": 26
+          },
+          "functions": {
+            "covered": 6,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 6
+          },
+          "lines": {
+            "covered": 89,
+            "percent": 100.0,
+            "status": "native",
+            "total": 89
+          },
+          "statements": {
+            "covered": 89,
+            "percent": 100.0,
+            "status": "native",
+            "total": 89
+          }
+        },
+        "path": "app/api/sessions.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 40,
+            "percent": 100.0,
+            "status": "native",
+            "total": 40
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 143,
+            "percent": 100.0,
+            "status": "native",
+            "total": 143
+          },
+          "statements": {
+            "covered": 143,
+            "percent": 100.0,
+            "status": "native",
+            "total": 143
+          }
+        },
+        "path": "app/api/ws/auth.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 2,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 2
+          },
+          "lines": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          },
+          "statements": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          }
+        },
+        "path": "app/api/ws/authenticator.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 0,
+            "derivation": "Cobertura source contains no executable lines",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "statements": {
+            "covered": 0,
+            "derivation": "coverage.py JSON contains no num_statements units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          }
+        },
+        "path": "app/auth/__init__.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          },
+          "statements": {
+            "covered": 9,
+            "percent": 100.0,
+            "status": "native",
+            "total": 9
+          }
+        },
+        "path": "app/auth/constants.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 32,
+            "percent": 100.0,
+            "status": "native",
+            "total": 32
+          },
+          "functions": {
+            "covered": 14,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 14
+          },
+          "lines": {
+            "covered": 125,
+            "percent": 100.0,
+            "status": "native",
+            "total": 125
+          },
+          "statements": {
+            "covered": 125,
+            "percent": 100.0,
+            "status": "native",
+            "total": 125
+          }
+        },
+        "path": "app/auth/fingerprint.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "statements": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          }
+        },
+        "path": "app/auth/handlers/__init__.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 1,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1
+          },
+          "lines": {
+            "covered": 50,
+            "percent": 100.0,
+            "status": "native",
+            "total": 50
+          },
+          "statements": {
+            "covered": 50,
+            "percent": 100.0,
+            "status": "native",
+            "total": 50
+          }
+        },
+        "path": "app/auth/handlers/logout.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 1,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1
+          },
+          "lines": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "statements": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          }
+        },
+        "path": "app/auth/mfa/__init__.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 86,
+            "percent": 100.0,
+            "status": "native",
+            "total": 86
+          },
+          "functions": {
+            "covered": 19,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 19
+          },
+          "lines": {
+            "covered": 242,
+            "percent": 100.0,
+            "status": "native",
+            "total": 242
+          },
+          "statements": {
+            "covered": 242,
+            "percent": 100.0,
+            "status": "native",
+            "total": 242
+          }
+        },
+        "path": "app/auth/mfa/challenge.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 148,
+            "percent": 100.0,
+            "status": "native",
+            "total": 148
+          },
+          "functions": {
+            "covered": 41,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 41
+          },
+          "lines": {
+            "covered": 494,
+            "percent": 100.0,
+            "status": "native",
+            "total": 494
+          },
+          "statements": {
+            "covered": 494,
+            "percent": 100.0,
+            "status": "native",
+            "total": 494
+          }
+        },
+        "path": "app/auth/mfa/email_otp.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 60,
+            "percent": 100.0,
+            "status": "native",
+            "total": 60
+          },
+          "functions": {
+            "covered": 12,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 12
+          },
+          "lines": {
+            "covered": 179,
+            "percent": 100.0,
+            "status": "native",
+            "total": 179
+          },
+          "statements": {
+            "covered": 179,
+            "percent": 100.0,
+            "status": "native",
+            "total": 179
+          }
+        },
+        "path": "app/auth/mfa/lifecycle.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 57,
+            "percent": 100.0,
+            "status": "native",
+            "total": 57
+          },
+          "statements": {
+            "covered": 57,
+            "percent": 100.0,
+            "status": "native",
+            "total": 57
+          }
+        },
+        "path": "app/auth/mfa/recovery.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 64,
+            "percent": 100.0,
+            "status": "native",
+            "total": 64
+          },
+          "functions": {
+            "covered": 11,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 11
+          },
+          "lines": {
+            "covered": 215,
+            "percent": 100.0,
+            "status": "native",
+            "total": 215
+          },
+          "statements": {
+            "covered": 215,
+            "percent": 100.0,
+            "status": "native",
+            "total": 215
+          }
+        },
+        "path": "app/auth/mfa/totp.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 28,
+            "percent": 100.0,
+            "status": "native",
+            "total": 28
+          },
+          "functions": {
+            "covered": 10,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 10
+          },
+          "lines": {
+            "covered": 108,
+            "percent": 100.0,
+            "status": "native",
+            "total": 108
+          },
+          "statements": {
+            "covered": 108,
+            "percent": 100.0,
+            "status": "native",
+            "total": 108
+          }
+        },
+        "path": "app/auth/mfa/trusted_device.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 66,
+            "percent": 100.0,
+            "status": "native",
+            "total": 66
+          },
+          "statements": {
+            "covered": 66,
+            "percent": 100.0,
+            "status": "native",
+            "total": 66
+          }
+        },
+        "path": "app/auth/rbac.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 11,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 11
+          },
+          "lines": {
+            "covered": 68,
+            "percent": 100.0,
+            "status": "native",
+            "total": 68
+          },
+          "statements": {
+            "covered": 68,
+            "percent": 100.0,
+            "status": "native",
+            "total": 68
+          }
+        },
+        "path": "app/auth/redis_session.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 16,
+            "percent": 100.0,
+            "status": "native",
+            "total": 16
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          },
+          "statements": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          }
+        },
+        "path": "app/auth/revocation.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "statements": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          }
+        },
+        "path": "app/auth/schemas.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 64,
+            "percent": 100.0,
+            "status": "native",
+            "total": 64
+          },
+          "functions": {
+            "covered": 26,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 26
+          },
+          "lines": {
+            "covered": 245,
+            "percent": 100.0,
+            "status": "native",
+            "total": 245
+          },
+          "statements": {
+            "covered": 245,
+            "percent": 100.0,
+            "status": "native",
+            "total": 245
+          }
+        },
+        "path": "app/auth/security.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 22,
+            "percent": 100.0,
+            "status": "native",
+            "total": 22
+          },
+          "functions": {
+            "covered": 11,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 11
+          },
+          "lines": {
+            "covered": 101,
+            "percent": 100.0,
+            "status": "native",
+            "total": 101
+          },
+          "statements": {
+            "covered": 101,
+            "percent": 100.0,
+            "status": "native",
+            "total": 101
+          }
+        },
+        "path": "app/cli/migrate_passwords.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 134,
+            "percent": 100.0,
+            "status": "native",
+            "total": 134
+          },
+          "statements": {
+            "covered": 134,
+            "percent": 100.0,
+            "status": "native",
+            "total": 134
+          }
+        },
+        "path": "app/core/config/mixins/cors_settings.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          },
+          "functions": {
+            "covered": 18,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 18
+          },
+          "lines": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "app/core/config/mixins/csp_settings.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 52,
+            "percent": 100.0,
+            "status": "native",
+            "total": 52
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 143,
+            "percent": 100.0,
+            "status": "native",
+            "total": 143
+          },
+          "statements": {
+            "covered": 143,
+            "percent": 100.0,
+            "status": "native",
+            "total": 143
+          }
+        },
+        "path": "app/core/config/mixins/jwt_settings.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 38,
+            "percent": 100.0,
+            "status": "native",
+            "total": 38
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "app/core/config/mixins/mfa_settings.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 63,
+            "percent": 100.0,
+            "status": "native",
+            "total": 63
+          },
+          "statements": {
+            "covered": 63,
+            "percent": 100.0,
+            "status": "native",
+            "total": 63
+          }
+        },
+        "path": "app/core/config/mixins/rate_limit_settings.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 44,
+            "percent": 100.0,
+            "status": "native",
+            "total": 44
+          },
+          "functions": {
+            "covered": 10,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 10
+          },
+          "lines": {
+            "covered": 125,
+            "percent": 100.0,
+            "status": "native",
+            "total": 125
+          },
+          "statements": {
+            "covered": 125,
+            "percent": 100.0,
+            "status": "native",
+            "total": 125
+          }
+        },
+        "path": "app/core/config/security.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 52,
+            "percent": 100.0,
+            "status": "native",
+            "total": 52
+          },
+          "functions": {
+            "covered": 12,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 12
+          },
+          "lines": {
+            "covered": 147,
+            "percent": 100.0,
+            "status": "native",
+            "total": 147
+          },
+          "statements": {
+            "covered": 147,
+            "percent": 100.0,
+            "status": "native",
+            "total": 147
+          }
+        },
+        "path": "app/core/csrf.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 21,
+            "percent": 100.0,
+            "status": "native",
+            "total": 21
+          },
+          "statements": {
+            "covered": 21,
+            "percent": 100.0,
+            "status": "native",
+            "total": 21
+          }
+        },
+        "path": "app/core/db/encryption.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          },
+          "statements": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          }
+        },
+        "path": "app/core/di/auth.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 2,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 2
+          },
+          "lines": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          },
+          "statements": {
+            "covered": 25,
+            "percent": 100.0,
+            "status": "native",
+            "total": 25
+          }
+        },
+        "path": "app/core/di/spicedb.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 8,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 8
+          },
+          "lines": {
+            "covered": 112,
+            "percent": 100.0,
+            "status": "native",
+            "total": 112
+          },
+          "statements": {
+            "covered": 112,
+            "percent": 100.0,
+            "status": "native",
+            "total": 112
+          }
+        },
+        "path": "app/core/feature_flags.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          },
+          "statements": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          }
+        },
+        "path": "app/core/policies/csp.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          },
+          "statements": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          }
+        },
+        "path": "app/core/ratelimit/__init__.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          },
+          "functions": {
+            "covered": 15,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 15
+          },
+          "lines": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "app/core/ratelimit/circuit_breaker.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 46,
+            "percent": 100.0,
+            "status": "native",
+            "total": 46
+          },
+          "statements": {
+            "covered": 46,
+            "percent": 100.0,
+            "status": "native",
+            "total": 46
+          }
+        },
+        "path": "app/core/ratelimit/cleanup.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "statements": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          }
+        },
+        "path": "app/core/ratelimit/contract.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 22,
+            "percent": 100.0,
+            "status": "native",
+            "total": 22
+          },
+          "functions": {
+            "covered": 8,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 8
+          },
+          "lines": {
+            "covered": 97,
+            "percent": 100.0,
+            "status": "native",
+            "total": 97
+          },
+          "statements": {
+            "covered": 97,
+            "percent": 100.0,
+            "status": "native",
+            "total": 97
+          }
+        },
+        "path": "app/core/ratelimit/delay.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 1,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1
+          },
+          "lines": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "statements": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          }
+        },
+        "path": "app/core/ratelimit/exceptions.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 50,
+            "percent": 100.0,
+            "status": "native",
+            "total": 50
+          },
+          "statements": {
+            "covered": 50,
+            "percent": 100.0,
+            "status": "native",
+            "total": 50
+          }
+        },
+        "path": "app/core/ratelimit/fastapi.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 18,
+            "percent": 100.0,
+            "status": "native",
+            "total": 18
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 71,
+            "percent": 100.0,
+            "status": "native",
+            "total": 71
+          },
+          "statements": {
+            "covered": 71,
+            "percent": 100.0,
+            "status": "native",
+            "total": 71
+          }
+        },
+        "path": "app/core/ratelimit/logic.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          },
+          "functions": {
+            "covered": 8,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 8
+          },
+          "lines": {
+            "covered": 117,
+            "percent": 100.0,
+            "status": "native",
+            "total": 117
+          },
+          "statements": {
+            "covered": 117,
+            "percent": 100.0,
+            "status": "native",
+            "total": 117
+          }
+        },
+        "path": "app/core/ratelimit/middleware.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 17,
+            "percent": 100.0,
+            "status": "native",
+            "total": 17
+          },
+          "statements": {
+            "covered": 17,
+            "percent": 100.0,
+            "status": "native",
+            "total": 17
+          }
+        },
+        "path": "app/core/ratelimit/models.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 1,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1
+          },
+          "lines": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          },
+          "statements": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          }
+        },
+        "path": "app/core/ratelimit/policy.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 22,
+            "percent": 100.0,
+            "status": "native",
+            "total": 22
+          },
+          "statements": {
+            "covered": 22,
+            "percent": 100.0,
+            "status": "native",
+            "total": 22
+          }
+        },
+        "path": "app/core/ratelimit/strategies/base.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 6,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 6
+          },
+          "lines": {
+            "covered": 46,
+            "percent": 100.0,
+            "status": "native",
+            "total": 46
+          },
+          "statements": {
+            "covered": 46,
+            "percent": 100.0,
+            "status": "native",
+            "total": 46
+          }
+        },
+        "path": "app/core/ratelimit/strategies/memory.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 62,
+            "percent": 100.0,
+            "status": "native",
+            "total": 62
+          },
+          "statements": {
+            "covered": 62,
+            "percent": 100.0,
+            "status": "native",
+            "total": 62
+          }
+        },
+        "path": "app/core/ratelimit/strategies/redis.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 72,
+            "percent": 100.0,
+            "status": "native",
+            "total": 72
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "app/core/ratelimit/utils.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 64,
+            "percent": 100.0,
+            "status": "native",
+            "total": 64
+          },
+          "functions": {
+            "covered": 6,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 6
+          },
+          "lines": {
+            "covered": 129,
+            "percent": 100.0,
+            "status": "native",
+            "total": 129
+          },
+          "statements": {
+            "covered": 129,
+            "percent": 100.0,
+            "status": "native",
+            "total": 129
+          }
+        },
+        "path": "app/core/security_headers.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 92,
+            "percent": 100.0,
+            "status": "native",
+            "total": 92
+          },
+          "statements": {
+            "covered": 92,
+            "percent": 100.0,
+            "status": "native",
+            "total": 92
+          }
+        },
+        "path": "app/core/spicedb.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 84,
+            "percent": 100.0,
+            "status": "native",
+            "total": 84
+          },
+          "statements": {
+            "covered": 84,
+            "percent": 100.0,
+            "status": "native",
+            "total": 84
+          }
+        },
+        "path": "app/core/spicedb_watch.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 42,
+            "percent": 100.0,
+            "status": "native",
+            "total": 42
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 104,
+            "percent": 100.0,
+            "status": "native",
+            "total": 104
+          },
+          "statements": {
+            "covered": 104,
+            "percent": 100.0,
+            "status": "native",
+            "total": 104
+          }
+        },
+        "path": "app/core/ssrf.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 24,
+            "percent": 100.0,
+            "status": "native",
+            "total": 24
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 102,
+            "percent": 100.0,
+            "status": "native",
+            "total": 102
+          },
+          "statements": {
+            "covered": 102,
+            "percent": 100.0,
+            "status": "native",
+            "total": 102
+          }
+        },
+        "path": "app/management/reset_mfa.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 168,
+            "percent": 100.0,
+            "status": "native",
+            "total": 168
+          },
+          "statements": {
+            "covered": 168,
+            "percent": 100.0,
+            "status": "native",
+            "total": 168
+          }
+        },
+        "path": "app/models/auth.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 4,
+            "percent": 100.0,
+            "status": "native",
+            "total": 4
+          },
+          "functions": {
+            "covered": 9,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "lines": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          },
+          "statements": {
+            "covered": 48,
+            "percent": 100.0,
+            "status": "native",
+            "total": 48
+          }
+        },
+        "path": "app/repositories/active_session_repository.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          },
+          "statements": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          }
+        },
+        "path": "app/repositories/audit_repository.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 11,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 11
+          },
+          "lines": {
+            "covered": 53,
+            "percent": 100.0,
+            "status": "native",
+            "total": 53
+          },
+          "statements": {
+            "covered": 53,
+            "percent": 100.0,
+            "status": "native",
+            "total": 53
+          }
+        },
+        "path": "app/repositories/session_repository.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 11,
+            "percent": 100.0,
+            "status": "native",
+            "total": 11
+          },
+          "statements": {
+            "covered": 11,
+            "percent": 100.0,
+            "status": "native",
+            "total": 11
+          }
+        },
+        "path": "app/schemas/dtos/audit.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "statements": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          }
+        },
+        "path": "app/schemas/dtos/auth.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 18,
+            "percent": 100.0,
+            "status": "native",
+            "total": 18
+          },
+          "statements": {
+            "covered": 18,
+            "percent": 100.0,
+            "status": "native",
+            "total": 18
+          }
+        },
+        "path": "app/schemas/dtos/session.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 0,
+            "derivation": "AST source contains no branch construct",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "functions": {
+            "covered": 0,
+            "derivation": "AST source contains no function definitions",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "lines": {
+            "covered": 0,
+            "derivation": "Cobertura source contains no executable lines",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          },
+          "statements": {
+            "covered": 0,
+            "derivation": "coverage.py JSON contains no num_statements units",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 0
+          }
+        },
+        "path": "app/server/__init__.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 140,
+            "percent": 100.0,
+            "status": "native",
+            "total": 140
+          },
+          "statements": {
+            "covered": 140,
+            "percent": 100.0,
+            "status": "native",
+            "total": 140
+          }
+        },
+        "path": "app/server/internal_mtls.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "functions": {
+            "covered": 9,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 9
+          },
+          "lines": {
+            "covered": 121,
+            "percent": 100.0,
+            "status": "native",
+            "total": 121
+          },
+          "statements": {
+            "covered": 121,
+            "percent": 100.0,
+            "status": "native",
+            "total": 121
+          }
+        },
+        "path": "app/server/spiffe_identity.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 98,
+            "percent": 100.0,
+            "status": "native",
+            "total": 98
+          },
+          "functions": {
+            "covered": 34,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 34
+          },
+          "lines": {
+            "covered": 276,
+            "percent": 100.0,
+            "status": "native",
+            "total": 276
+          },
+          "statements": {
+            "covered": 276,
+            "percent": 100.0,
+            "status": "native",
+            "total": 276
+          }
+        },
+        "path": "app/server/spiffe_transport.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "functions": {
+            "covered": 1,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1
+          },
+          "lines": {
+            "covered": 38,
+            "percent": 100.0,
+            "status": "native",
+            "total": 38
+          },
+          "statements": {
+            "covered": 38,
+            "percent": 100.0,
+            "status": "native",
+            "total": 38
+          }
+        },
+        "path": "app/server/spiffe_worker.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 216,
+            "percent": 100.0,
+            "status": "native",
+            "total": 216
+          },
+          "functions": {
+            "covered": 37,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 37
+          },
+          "lines": {
+            "covered": 525,
+            "percent": 100.0,
+            "status": "native",
+            "total": 525
+          },
+          "statements": {
+            "covered": 525,
+            "percent": 100.0,
+            "status": "native",
+            "total": 525
+          }
+        },
+        "path": "app/services/audit_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 18,
+            "percent": 100.0,
+            "status": "native",
+            "total": 18
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          },
+          "statements": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          }
+        },
+        "path": "app/services/auth/credential_validator.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "functions": {
+            "covered": 2,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 2
+          },
+          "lines": {
+            "covered": 43,
+            "percent": 100.0,
+            "status": "native",
+            "total": 43
+          },
+          "statements": {
+            "covered": 43,
+            "percent": 100.0,
+            "status": "native",
+            "total": 43
+          }
+        },
+        "path": "app/services/auth/fingerprint_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          },
+          "functions": {
+            "covered": 7,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 7
+          },
+          "lines": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          },
+          "statements": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          }
+        },
+        "path": "app/services/auth/graphql_token_validator.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 44,
+            "percent": 100.0,
+            "status": "native",
+            "total": 44
+          },
+          "functions": {
+            "covered": 16,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 16
+          },
+          "lines": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          },
+          "statements": {
+            "covered": 155,
+            "percent": 100.0,
+            "status": "native",
+            "total": 155
+          }
+        },
+        "path": "app/services/auth/lockout.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 10,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 10
+          },
+          "lines": {
+            "covered": 41,
+            "percent": 100.0,
+            "status": "native",
+            "total": 41
+          },
+          "statements": {
+            "covered": 41,
+            "percent": 100.0,
+            "status": "native",
+            "total": 41
+          }
+        },
+        "path": "app/services/auth/login_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 8,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 8
+          },
+          "lines": {
+            "covered": 90,
+            "percent": 100.0,
+            "status": "native",
+            "total": 90
+          },
+          "statements": {
+            "covered": 90,
+            "percent": 100.0,
+            "status": "native",
+            "total": 90
+          }
+        },
+        "path": "app/services/auth/login_session_manager.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 20,
+            "percent": 100.0,
+            "status": "native",
+            "total": 20
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 66,
+            "percent": 100.0,
+            "status": "native",
+            "total": 66
+          },
+          "statements": {
+            "covered": 66,
+            "percent": 100.0,
+            "status": "native",
+            "total": 66
+          }
+        },
+        "path": "app/services/auth/mfa_coordinator.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          },
+          "functions": {
+            "covered": 6,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 6
+          },
+          "lines": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          },
+          "statements": {
+            "covered": 78,
+            "percent": 100.0,
+            "status": "native",
+            "total": 78
+          }
+        },
+        "path": "app/services/auth/redis_session.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          },
+          "functions": {
+            "covered": 5,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 5
+          },
+          "lines": {
+            "covered": 41,
+            "percent": 100.0,
+            "status": "native",
+            "total": 41
+          },
+          "statements": {
+            "covered": 41,
+            "percent": 100.0,
+            "status": "native",
+            "total": 41
+          }
+        },
+        "path": "app/services/auth/security_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 2,
+            "percent": 100.0,
+            "status": "native",
+            "total": 2
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          },
+          "statements": {
+            "covered": 12,
+            "percent": 100.0,
+            "status": "native",
+            "total": 12
+          }
+        },
+        "path": "app/services/auth/session_policy.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 6,
+            "percent": 100.0,
+            "status": "native",
+            "total": 6
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 28,
+            "percent": 100.0,
+            "status": "native",
+            "total": 28
+          },
+          "statements": {
+            "covered": 28,
+            "percent": 100.0,
+            "status": "native",
+            "total": 28
+          }
+        },
+        "path": "app/services/auth/token_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 82,
+            "percent": 100.0,
+            "status": "native",
+            "total": 82
+          },
+          "functions": {
+            "covered": 13,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 13
+          },
+          "lines": {
+            "covered": 302,
+            "percent": 100.0,
+            "status": "native",
+            "total": 302
+          },
+          "statements": {
+            "covered": 302,
+            "percent": 100.0,
+            "status": "native",
+            "total": 302
+          }
+        },
+        "path": "app/services/auth_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 8,
+            "percent": 100.0,
+            "status": "native",
+            "total": 8
+          },
+          "functions": {
+            "covered": 2,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 2
+          },
+          "lines": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          },
+          "statements": {
+            "covered": 30,
+            "percent": 100.0,
+            "status": "native",
+            "total": 30
+          }
+        },
+        "path": "app/services/mfa_challenge_cleanup.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "percent": 100.0,
+            "status": "native",
+            "total": 10
+          },
+          "functions": {
+            "covered": 3,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 3
+          },
+          "lines": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          },
+          "statements": {
+            "covered": 37,
+            "percent": 100.0,
+            "status": "native",
+            "total": 37
+          }
+        },
+        "path": "app/services/password_reset_cleanup.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 24,
+            "percent": 100.0,
+            "status": "native",
+            "total": 24
+          },
+          "functions": {
+            "covered": 4,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "lines": {
+            "covered": 69,
+            "percent": 100.0,
+            "status": "native",
+            "total": 69
+          },
+          "statements": {
+            "covered": 69,
+            "percent": 100.0,
+            "status": "native",
+            "total": 69
+          }
+        },
+        "path": "app/services/session_cleanup.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 36,
+            "percent": 100.0,
+            "status": "native",
+            "total": 36
+          },
+          "functions": {
+            "covered": 11,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 11
+          },
+          "lines": {
+            "covered": 144,
+            "percent": 100.0,
+            "status": "native",
+            "total": 144
+          },
+          "statements": {
+            "covered": 144,
+            "percent": 100.0,
+            "status": "native",
+            "total": 144
+          }
+        },
+        "path": "app/services/session_service.py"
+      },
+      {
+        "component": "python",
+        "metrics": {
+          "branches": {
+            "covered": 68,
+            "percent": 100.0,
+            "status": "native",
+            "total": 68
+          },
+          "functions": {
+            "covered": 19,
+            "derivation": "AST function entries covered when the first executable body line is reported as executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 19
+          },
+          "lines": {
+            "covered": 204,
+            "percent": 100.0,
+            "status": "native",
+            "total": 204
+          },
+          "statements": {
+            "covered": 204,
+            "percent": 100.0,
+            "status": "native",
+            "total": 204
+          }
+        },
+        "path": "app/utils/encryption.py"
+      },
+      {
+        "component": "rust-crypto",
+        "metrics": {
+          "branches": {
+            "covered": 10,
+            "derivation": "source branch sites deduplicated across LLVM generic instantiations; each outcome covered by any instantiation",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 10
+          },
+          "functions": {
+            "covered": 14,
+            "percent": 100.0,
+            "status": "native",
+            "total": 14
+          },
+          "lines": {
+            "covered": 83,
+            "derivation": "unique source lines from non-gap LLVM segments; covered when any segment on the line is executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 83
+          },
+          "statements": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "llvm_file_has_no_statements_counter",
+            "status": "unsupported",
+            "total": null
+          }
+        },
+        "path": "frontend/rust-crypto/src/lib.rs"
+      },
+      {
+        "component": "rust-native",
+        "metrics": {
+          "branches": {
+            "covered": 198,
+            "derivation": "source branch sites deduplicated across LLVM generic instantiations; each outcome covered by any instantiation",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 198
+          },
+          "functions": {
+            "covered": 211,
+            "percent": 100.0,
+            "status": "native",
+            "total": 211
+          },
+          "lines": {
+            "covered": 1996,
+            "derivation": "unique source lines from non-gap LLVM segments; covered when any segment on the line is executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 1996
+          },
+          "statements": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "llvm_file_has_no_statements_counter",
+            "status": "unsupported",
+            "total": null
+          }
+        },
+        "path": "native/rust_ext/src/lib.rs"
+      },
+      {
+        "component": "rust-wasm-sanitizer",
+        "metrics": {
+          "branches": {
+            "covered": 4,
+            "derivation": "source branch sites deduplicated across LLVM generic instantiations; each outcome covered by any instantiation",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 4
+          },
+          "functions": {
+            "covered": 26,
+            "percent": 100.0,
+            "status": "native",
+            "total": 26
+          },
+          "lines": {
+            "covered": 178,
+            "derivation": "unique source lines from non-gap LLVM segments; covered when any segment on the line is executed",
+            "percent": 100.0,
+            "status": "derived",
+            "total": 178
+          },
+          "statements": {
+            "covered": null,
+            "percent": null,
+            "reason_code": "llvm_file_has_no_statements_counter",
+            "status": "unsupported",
+            "total": null
+          }
+        },
+        "path": "frontend/wasm-sanitizer/src/lib.rs"
+      }
+    ],
+    "metric_summary": {
+      "branches": {
+        "applicable_files": 122,
+        "not_applicable_files": 19
+      },
+      "functions": {
+        "applicable_files": 122,
+        "not_applicable_files": 19
+      },
+      "lines": {
+        "applicable_files": 141,
+        "not_applicable_files": 0
+      },
+      "statements": {
+        "applicable_files": 138,
+        "not_applicable_files": 3
+      }
+    },
+    "rules": [
+      "**/*_session_repository.py",
+      "**/AuthContext.tsx",
+      "**/audit.py",
+      "**/audit_repository.py",
+      "**/audit_service.py",
+      "**/auth.go",
+      "**/auth.py",
+      "**/auth/**",
+      "**/authIdentity.ts",
+      "**/authUtils.ts",
+      "**/auth_client.go",
+      "**/auth_jwks.go",
+      "**/auth_service.py",
+      "**/authenticator.py",
+      "**/cors_settings.py",
+      "**/crypto.worker.ts",
+      "**/crypto/**",
+      "**/cryptoWorker.ts",
+      "**/cryptography/**",
+      "**/csp.py",
+      "**/csp_report.py",
+      "**/csp_settings.py",
+      "**/csrf.py",
+      "**/csrf/**",
+      "**/encryption.py",
+      "**/jwt_settings.py",
+      "**/mfa.ts",
+      "**/mfa/**",
+      "**/mfa_*.py",
+      "**/mfa_settings.py",
+      "**/migrate_passwords.py",
+      "**/migration/**",
+      "**/migrations/**",
+      "**/passwordStrength.ts",
+      "**/password_*.py",
+      "**/pii/**",
+      "**/rateLimit.ts",
+      "**/rate_limit_settings.py",
+      "**/ratelimit.go",
+      "**/ratelimit/**",
+      "**/rebac/**",
+      "**/reset_mfa.py",
+      "**/secret_files.go",
+      "**/secret_open_*.go",
+      "**/security.py",
+      "**/security/**",
+      "**/security_headers.py",
+      "**/session.py",
+      "**/session/**",
+      "**/sessionEpoch.ts",
+      "**/sessionMutationCache.ts",
+      "**/session_*.py",
+      "**/session_revocation.go",
+      "**/session_ws.go",
+      "**/session_wt.go",
+      "**/sessions.py",
+      "**/sessions.ts",
+      "**/sessions/**",
+      "**/spicedb.py",
+      "**/spicedb/**",
+      "**/spicedb_watch.py",
+      "**/ssrAuth.ts",
+      "**/ssrf.py",
+      "**/ticketing/**",
+      "**/useAuthStore.ts",
+      ".github/actions/dependency-review-capture/capture.cjs",
+      ".github/actions/dependency-review-capture/index.cjs",
+      "alembic/versions/**",
+      "app/core/feature_flags.py",
+      "app/server/**",
+      "frontend/rust-crypto/**",
+      "frontend/wasm-sanitizer/**",
+      "native/rust_ext/**"
+    ],
+    "status": "ready"
+  },
+  "tool_versions": {
+    "@babel/parser": "8.0.8",
+    "@bcoe/v8-coverage": "1.0.2",
+    "ast-v8-to-istanbul": "1.0.7",
+    "cargo-llvm-cov": "0.9.1",
+    "coverage.py": "7.16.1",
+    "go": "1.26.11",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
+    "node": "24.22.2",
+    "node-actions-node": "24.22.1",
+    "python": "3.14.10",
+    "quality-normalizer": "3.0.0",
+    "rustc": "1.99.0",
+    "rustc-nightly": "1.102.0-nightly",
+    "vitest": "5.0.5"
+  },
+  "validation": {
+    "errors": [],
+    "valid": true
+  }
+}

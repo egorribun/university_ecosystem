@@ -2,16 +2,12 @@
 
 This file is generated from normalized quality manifests. A `—` means evidence was not observed; it is never interpreted as a passing score.
 
-No certified quality snapshot is currently published (`quality-history/` has
-no normalized manifest). The empty trend row is therefore intentional and
-must not be read as a pass.
-
 Historical CI-capacity observations are diagnostic context only, not current
 release evidence. The [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md)
 defines future O1–O8 comparable-run evidence; historical measurements are not
 a fresh baseline.
 
-Last rendered: `2026-10-10`
+Last rendered: `2026-11-12`
 Configured current patch-coverage floor: **100%**
 Tier 0 keeps 100% coverage, subject only to the finite migration decision
 in [ADR-047](../adr/ADR-047-risk-based-quality-policy.md).
@@ -26,7 +22,7 @@ dashboard publication are planned, not implemented.
 
 | Generated | Commit | Python lines | Frontend lines | Go statements (mean) | Evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| — | — | — | — | — | no snapshots |
+| `2026-11-12T01:29:10Z` | `81ee9ce6c64b` | 100.00% | 100.00% | 100.00% | [quality-history/81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f.json](quality-history/81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f.json) |
 
 ## Exclusions
 
