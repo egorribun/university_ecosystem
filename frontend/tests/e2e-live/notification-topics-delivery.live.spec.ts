@@ -251,6 +251,34 @@ const readAdminTopicPreferences = async (
   )
 
 /**
+ * Give each active account that has no saved preference an explicit empty one.
+ * Without a record the default is opt-in, so such an account would be eligible
+ * for every producer. Accounts with a saved preference are left unchanged and
+ * are still judged by requireProducerIsolation.
+ */
+const establishProducerIsolation = async (adminPage: Page): Promise<void> => {
+  const csrfCookie = (await adminPage.context().cookies()).find(
+    (cookie) => cookie.name === "csrf_token"
+  )
+  expect(csrfCookie, "admin session carries a CSRF cookie before isolation setup").toBeDefined()
+  const csrfToken = decodeURIComponent(csrfCookie?.value ?? "")
+
+  const activeUsers = (await listUsersCompletely(adminPage)).filter((user) => user.is_active)
+  for (const user of activeUsers) {
+    const preferences = await readAdminTopicPreferences(adminPage, user.id)
+    if (typeof preferences.updated_at === "string" && preferences.updated_at.length > 0) continue
+    const response = await adminPage.request.put(
+      `/api/v1/push/admin/topics/${encodeURIComponent(user.id)}`,
+      { data: { topics: [] }, headers: { "X-CSRF-Token": csrfToken } }
+    )
+    expect(
+      response.status(),
+      "admin saves an explicit empty preference for an account without one"
+    ).toBe(200)
+  }
+}
+
+/**
  * News, event, schedule and release producers can address every active account.
  * Fail before each producer call unless every other active account has an
  * explicit saved preference excluding all four tested topics.
@@ -1064,8 +1092,11 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     await loginAs(teacherPage, "teacher")
     const teacherOwnerId = await readCurrentUserId(teacherPage, "teacher")
 
-    // This read-only preflight prevents producers that target every active user
-    // from notifying any unrelated account. It must pass before synthetic setup.
+    // Producers that target every active user must not reach unrelated accounts.
+    // Accounts without a saved preference are first set to an explicit opt-out
+    // (existing preferences are untouched); the read-only preflight then verifies
+    // isolation before any synthetic setup.
+    await establishProducerIsolation(adminPage)
     await requireProducerIsolation(adminPage)
     groupId = await resolveEmptyScheduleGroup(adminPage)
 
