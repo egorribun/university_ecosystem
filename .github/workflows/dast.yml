@@ -1,31 +1,31 @@
 name: DAST — Nuclei + ZAP Scan
 
 # MOD-NEW-02 (audit 2026-03-07): Dynamic Application Security Testing workflow.
-# Nuclei scans the deployed staging environment using a curated set of templates.
-# Results are uploaded as SARIF to GitHub Security → Code Scanning.
+# AUD-381 (owner decision 2026-11-12): every scanner job starts its own
+# ephemeral owned Compose stand inside the job with scripts/live_stand.py, the
+# same launcher used by live acceptance, and scans only that loopback stand.
+# No external DAST target secret or workflow input exists.
+#
+# Results are uploaded as SARIF to GitHub Security → Code Scanning, and the
+# sanitized evidence is retained for 90 days.
 #
 # Trigger strategy:
 #   - Weekly (Sunday 02:00 UTC) so findings surface before Monday on-call starts.
 #   - Manual dispatch from the protected main ref for ad-hoc scans.
 #   - Never from a pull-request event: PR-controlled workflow/configuration
-#     must not receive the configured DAST target.
+#     must not receive a scan authorization.
 
 on:
   schedule:
     - cron: "0 2 * * 0"
-  workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the DAST target
-    inputs:
-      target_url:
-        description: "Target URL to scan (overrides DAST_TARGET_URL secret)"
-        required: false
-        type: string
+  workflow_dispatch:
 
 permissions: read-all
 
-# Active scans target one protected staging surface.  Serialize scheduled and
-# manual runs so a duplicate dispatch cannot consume two scanner stacks or
-# compete for the repository's hosted-runner budget.  Keep queued evidence
-# rather than cancelling an in-flight security scan.
+# Each scan owns its own stand. Serialize scheduled and manual runs so a
+# duplicate dispatch cannot consume two scanner stacks or compete for the
+# repository's hosted-runner budget. Keep queued evidence rather than
+# cancelling an in-flight security scan.
 concurrency:
   group: dast-main
   cancel-in-progress: false
@@ -51,46 +51,95 @@ jobs:
   nuclei:
     name: Nuclei DAST scan
     # Only the protected default branch can supply the active-scan workflow,
-    # templates, and configured target to a scheduled or manual execution.
+    # templates, and owned stand to a scheduled or manual execution.
     needs: verify-trusted-ref
     if: ${{ needs.verify-trusted-ref.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     permissions:
       contents: read
       security-events: write # Required to upload SARIF to Code Scanning
 
     steps:
-      - name: Checkout repository
+      # The owned stand is built from the checkout, so the full event commit is
+      # required; the in-place launcher refuses dirty or mismatched trees.
+      - name: Check out the event commit without persisting credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-          # The preflight enforces main; the event SHA binds evidence to its source.
           ref: ${{ github.sha }}
-          # Only the workflow tree and the Nuclei findings gate are needed
-          sparse-checkout: |
-            .github
-            scripts/quality
-          sparse-checkout-cone-mode: false
 
-      # MOD-01 (audit 2026-03-08 Wave 5): Previous SHA 9da1d2b...f8a9 was
-      # fabricated — tag v2.3.6 does not exist in projectdiscovery/nuclei-action.
-      # Updated to the verified SHA for v3.1.0 (latest stable as of 2026-03-08).
-      # To re-verify: gh api repos/projectdiscovery/nuclei-action/git/refs/tags
+      - name: Verify the checked-out event commit
+        id: verify-event-commit
+        env:
+          EXPECTED_EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_EVENT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The event commit SHA is unavailable or malformed."
+            exit 1
+          fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_EVENT_SHA" ]]; then
+            echo "::error::The DAST checkout does not match the event commit."
+            exit 1
+          fi
+          echo "checked_out_sha=$actual_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Select unique owned DAST state directory
+        run: |
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-dast-nuclei\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Start the owned ephemeral DAST stand
+        id: start-stand
+        env:
+          STAND_REF: ${{ steps.verify-event-commit.outputs.checked_out_sha }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF"
+          --stack core
+
+      # Status is read-only; its output stays private on the runner. The
+      # launcher prints the loopback base URL that the scanner will receive.
+      - name: Read the owned stand status privately
+        id: stand-status
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand status
+          --in-place --state-dir "$LIVE_STATE_DIR"
+          >"$RUNNER_TEMP/dast-stand-status.txt"
+
+      - name: Prepare the owned stand target for Nuclei
+        id: nuclei_target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.dast_privacy prepare-target \
+            --status-in "$RUNNER_TEMP/dast-stand-status.txt" \
+            --output "$RUNNER_TEMP/nuclei-target.txt"
+
       - name: Set up Nuclei
         uses: projectdiscovery/nuclei-action@cc153d0541e1adf8a42bbe31c0a4fb2376147538 # v3.1.1
         with:
           version: v3.11.1
-          # The custom step below validates TARGET_URL before any scan runs.
+          # Scan command below validates the owned stand target before scanning.
           install-only: true
-
-      - name: Validate Nuclei target URL
-        env:
-          DAST_SECRET_TARGET: ${{ secrets.DAST_TARGET_URL }}
-        run: |
-          set -euo pipefail
-          python3 -m scripts.quality.dast_privacy prepare-target \
-            --output "$RUNNER_TEMP/nuclei-target.txt"
 
       - name: Run Nuclei scan
         id: nuclei_scan
@@ -116,6 +165,15 @@ jobs:
             -omit-raw \
             -no-color \
             -stats >"$RUNNER_TEMP/nuclei-stdout.log" 2>"$RUNNER_TEMP/nuclei-stderr.log"
+
+      # Stop and remove the owned stand whether or not the scan succeeded.
+      # Teardown removes only the signed Compose project resources and volumes.
+      - name: Stop and remove the owned DAST stand
+        id: stop-stand
+        if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand teardown
+          --in-place --state-dir "$LIVE_STATE_DIR"
 
       # Trace and scanner logs may contain target details: keep them private on
       # the runner. A response establishes execution, not complete coverage.
@@ -198,7 +256,8 @@ jobs:
   # Complements Nuclei (CVE/template-based) with active probing for injection,
   # auth bypass, misconfiguration, and other dynamic vulnerabilities.
   #
-  # The pinned official image runs privately; only verified projections publish.
+  # The pinned official image runs privately against the owned loopback stand;
+  # only verified projections publish.
   # ---------------------------------------------------------------------------
   zap:
     name: OWASP ZAP Full Scan
@@ -206,39 +265,77 @@ jobs:
     needs: verify-trusted-ref
     if: ${{ needs.verify-trusted-ref.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 150
     permissions:
       contents: read
       security-events: write
 
     steps:
-      - name: Checkout repository (ZAP rules config)
+      # The owned stand and the ZAP rules are both read from this exact commit.
+      - name: Check out the event commit without persisting credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-          # The preflight enforces main; keep the rules at the event's source SHA.
           ref: ${{ github.sha }}
-          sparse-checkout: |
-            .github/workflows/dast.yml
-            .zap
-            scripts/quality
-          sparse-checkout-cone-mode: false
 
-      # Verify source and image before reading the target, then scan privately.
-      # Read manual input privately from the event file, never a step preamble.
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Select unique owned DAST state directory
+        run: |
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-dast-zap\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Start the owned ephemeral DAST stand
+        id: start-stand
+        env:
+          STAND_REF: ${{ github.sha }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF"
+          --stack core
+
+      - name: Read the owned stand status privately
+        id: stand-status
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand status
+          --in-place --state-dir "$LIVE_STATE_DIR"
+          >"$RUNNER_TEMP/dast-stand-status.txt"
+
+      # Verify source and image before scanning, then scan privately.
       # Native reports, context, target and logs never enter the public directory.
       - name: Prepare private ZAP scan and sanitized evidence
         id: zap_prepare
         shell: bash
-        env:
-          DAST_SECRET_TARGET: ${{ secrets.DAST_TARGET_URL }}
         run: |
           set -euo pipefail
           python3 -m scripts.quality.zap_workflow prepare \
             --repo-root "$GITHUB_WORKSPACE" \
             --work "$RUNNER_TEMP/zap-private" \
             --public "$GITHUB_WORKSPACE/zap-public" \
+            --status-in "$RUNNER_TEMP/dast-stand-status.txt" \
             --summary-file "$GITHUB_STEP_SUMMARY"
+
+      # Stop and remove the owned stand whether or not the scan succeeded.
+      - name: Stop and remove the owned DAST stand
+        id: stop-stand
+        if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand teardown
+          --in-place --state-dir "$LIVE_STATE_DIR"
 
       - name: Verify ZAP public evidence and provenance
         id: zap_verify

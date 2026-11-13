@@ -2545,3 +2545,136 @@ disposition. That companion digest and its existing public-integrity scanner
 identity are rebound one-to-one; path, type, category, owner, evidence and
 expiry stay the same, and the inventory remains 511 dispositions and 15
 Semgrep rows.
+
+### Exact Calico manifest digest
+
+The owner approved one additional `public_integrity_digest` disposition for the
+Calico v3.30.3 manifest SHA-256 checksum pinned at
+`scripts/k8s/networkpolicy_runtime_proof.sh:34`, sourced from
+`https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml`,
+with detector `Hex High Entropy String`, review date 2026-11-12 and finite expiry
+2027-01-10. Calico publishes no checksum for that manifest; the digest was computed
+from that exact file. The policy grows from 511 to 512 records; all prior 511
+records and expiry values remain unchanged. The detect-secrets baseline remains at
+242 identities, Gitleaks fingerprints remain 27 and Semgrep rows remain 15; as in
+the ZAP precedent, the approval is carried by the disposition record without a
+baseline entry.
+
+This approval adds no other identity or suppression and changes no scanner
+threshold, required check or audit status. Offline fixture and source checks do
+not establish a live Kubernetes NetworkPolicy runtime proof, a completed Calico
+download or successful CI; those require separate authorized runtime evidence and
+current source-bound checks.
+
+The same 2026-11-12 step applies the owner's standing 2026-10-31 approval for one-to-one rebinds of existing pins: the `values.yaml` and `values.schema.json` source pins now bind their new bytes, with exact predecessor projection; no new identity is added and the total remains 512.
+
+### Go 1.26.11 workflow-contract companion rebind
+
+The owner's standing 2026-10-31 approval covers one-to-one rebinds of existing
+pins. The workflow-contract companion `tests/test_quality_workflow_contract.py`
+changes by one line: the manifest pin `manifest_expected_version` moves from
+1.26.4 to 1.26.11, matching the approved Go toolchain. Its row-13 companion
+digest in `quality/semgrep-dispositions.json` is rebound to the new file
+SHA-256, and the existing public-integrity identity at
+`quality/security-false-positive-dispositions.json` record index 505 is rebound
+one-to-one to the SHA-1 of that digest. Path, type, category, owner, evidence and
+expiry are unchanged. Exact-predecessor projection layers in
+`tests/test_verify_secrets_baseline.py` restore the prior bytes before the
+existing pins are checked. No other pending Go file is pinned by the verifier or
+the disposition policy. The inventory stays at 512 dispositions, 242 baseline
+identities, 27 Gitleaks fingerprints and 15 Semgrep rows. This adds no scanner
+threshold, required check or audit status and does not establish a passing CI run.
+
+### Visual audit external-image fixture
+
+`frontend/scripts/authenticated-visual-audit.mjs` changes only after its Semgrep
+row-2 anchor (line 423 to 427, `detect-redos`). The new route answers exactly
+`https://picsum.photos/**` with the repository fixture
+`frontend/public/fallbacks/placeholder.png`, so the seeded demo-image CDN no
+longer decides the required live-realtime-visual gate. Every other external host
+still reaches the network and is counted by `classifyVisualRequestFailure`. The
+new constants sit below the anchor, so the reviewed finding keeps its lines.
+No byte digest pins this file or `frontend/scripts/visual-smoke-auth.test.mjs`
+(the only other reference to the audit's name is a prose reason), so no companion
+digest or public-integrity identity is rebound. The inventory stays at 512
+dispositions, 242 baseline identities, 27 Gitleaks fingerprints and 15 Semgrep
+rows. This adds no scanner threshold, required check or audit status.
+
+### Retired dead mfa_enabled flag
+
+The unused `mfa_enabled` setting, documented as `MFA_ENABLED`, is removed from the
+configuration mixin, `.env.example`, `CONFIGURATION.md` and both runtime env
+allowlists. Nothing in the application, frontend or services read it, and mandatory
+MFA is outside the MVP scope. The live MFA settings, including `email_mfa_enabled`,
+are unchanged.
+
+`app/core/config/mixins/mfa_settings.py` is a companion of the existing Semgrep
+disposition for insecure SHA-1 use. Its digest and the existing public-integrity
+identity are rebound one-to-one; path, type, category, owner, evidence and expiry
+stay the same, and the inventory remains 512 dispositions and 15 Semgrep rows.
+
+### Loopback previews omit upgrade-insecure-requests
+
+The Node SSR policy keeps `upgrade-insecure-requests` for every host. It is omitted
+only for a plain-HTTP request whose Host header is a loopback literal (`127.0.0.1`,
+`localhost`, `[::1]` or bare `::1`, with an optional port) and whose
+`X-Forwarded-Proto` is absent or exactly `http`. WebKit upgraded those loopback
+subresource requests to https, so the nightly mocked WebKit lanes failed on roughly
+2500 TLS errors. Production hosts, requests marked https and spoofed hosts such as
+`127.0.0.1.evil.com` keep the directive. The exception applies only to loopback
+literals and is covered by `frontend/scripts/server-csp.test.mjs`.
+
+`frontend/scripts/server-csp.mjs` is a companion of the existing SafeHtml Semgrep
+disposition. Its digest and the existing public-integrity identity are rebound
+one-to-one; path, type, category, owner, evidence and expiry stay the same, and the
+inventory remains 512 dispositions and 15 Semgrep rows.
+
+### SPIRE agent RBAC without nodes/proxy
+
+For AUD-251 the owner selected Kubernetes with kubelet fine-grained
+authorization (stable and enabled by default in 1.36; the gate must be set
+explicitly on 1.33 to 1.35). The SPIRE workload attestor only reads the
+kubelet `/pods` endpoint, which then maps to `nodes/pods`, so the
+`spire-agent-role` ClusterRole in `k8s/spire/spire-rbac.yaml` now grants
+`get` on `nodes/pods` instead of `nodes/proxy`. The scoped Trivy exception
+KSV-0047 for that file is removed, which tightens the 2026-11-04 table above.
+The Trivy fixture's ignore-policy digest is rebound one-to-one: the validator
+pins `299aeb3d...` in place of `6f245662...`, and the single existing
+public-integrity record changes only its hashed bytes, with the total still 512.
+The AUD-373 kind job on Kubernetes v1.36.4 remains the functional proof that
+attestation and mTLS still work.
+
+### Code-scanning alert decisions
+
+On 2026-11-12 the owner decided how the open code-scanning alerts on `main`
+are handled. The decisions cover exactly these items. They add no suppression
+comment, baseline entry or scanner exclusion, and they change no required
+context, hook, threshold or scanner rule.
+
+- **Temporary actionlint pre-commit pin.** The local `actionlint` hook in
+  `.pre-commit-config.yaml` builds commit `5dc52e8daa4ef51bfd76a648128474bd41d65df0`.
+  That commit is the head of the unmerged upstream change rhysd/actionlint#745,
+  which the workflow-level `cache-mode: none` setting needs. zizmor reports it
+  as `impostor-commit` (#3737). The exception is owned by egorribun and expires
+  on 2027-01-10. The exit criterion is to pin the first upstream release that
+  contains #745. The CI actionlint job keeps verifying its pinned source
+  archive by SHA-256.
+- **`pull_request_target` in `security-policy-integrity.yml` (#3734).** The
+  workflow uses the trigger on purpose, checks out no pull-request code and has
+  read-only permissions. `tests/test_security_policy_integrity_workflow_contract.py`
+  fails if it ever gains a checkout step, a pull-request head reference in
+  `run` or `with`, a write permission or a secret other than `GITHUB_TOKEN`.
+- **Committed WebAssembly packages (#3783, #3615).** The `.wasm` files are
+  required inputs of the source-provenance check
+  (`frontend/WASM_SOURCE_PROVENANCE.json`,
+  `frontend/scripts/verify-wasm-artifacts.mjs`), and the hosted producer lane
+  reproduces them. They are dismissed as required artifacts.
+- **Local action references (25 zizmor `self-repository` notes).** `uses: ./…`
+  resolves to reviewed repository content at the same commit and fetches no
+  third-party code.
+- **Branch protection (Scorecard #266).** The repository has a sole maintainer,
+  so a required human approval could not be satisfied without a bypass.
+  Protection relies on the required status checks and `enforce_admins`.
+
+None of these decisions establishes a passing scan or hosted check; every new
+source SHA still needs its own evidence.

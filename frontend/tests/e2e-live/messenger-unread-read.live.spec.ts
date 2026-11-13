@@ -561,6 +561,18 @@ test("a real DM read receipt clears only that chat's unread state", async ({
       )
     }
 
+    // Bind the sender's observation to this exact bubble, not to any row in the log. The
+    // sender page is not reloaded after this point, so the read transition below must
+    // arrive over the live socket and flip this same row from "sent" to "read".
+    const sentMessageRow = senderMessageLog
+      .getByText(message.content, { exact: true })
+      .locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+      )
+    await expect(sentMessageRow.getByRole("img", { name: "Отправлено", exact: true })).toBeVisible({
+      timeout: 10_000,
+    })
+
     await expect
       .poll(async () => (await getChatListItem(receiverPage, activeChatId))?.unread_count ?? null)
       .toBe(1)
@@ -661,11 +673,12 @@ test("a real DM read receipt clears only that chat's unread state", async ({
     await expect
       .poll(() => readFramesForChat(senderSocket, activeChatId))
       .toContainEqual(expect.objectContaining({ userId: receiver.id }))
-    await expect
-      .poll(() =>
-        senderMessageLog.getByRole("img", { name: "Прочитано получателем", exact: true }).count()
-      )
-      .toBe(1)
+    await expect(
+      sentMessageRow.getByRole("img", { name: "Прочитано получателем", exact: true })
+    ).toBeVisible({ timeout: 10_000 })
+    await expect(sentMessageRow.getByRole("img", { name: "Отправлено", exact: true })).toHaveCount(
+      0
+    )
 
     // A phone removes the list while a chat is open; it returns through the back button.
     if (mobile) {

@@ -108,8 +108,25 @@ test("Messenger live unread-to-read acceptance uses owned users, REST state, and
     "the sender receives the receiver's read identity"
   )
   requireMatch(
-    /getByRole\(["']img["'],\s*\{\s*name:\s*["']Прочитано получателем["']/u,
-    "the read receipt is visible to the message sender"
+    /const sentMessageRow = senderMessageLog\s*\.getByText\(message\.content, \{ exact: true \}\)\s*\.locator\([\s\S]{0,160}ancestor::div\[contains\(concat\(' ', normalize-space\(@class\), ' '\), ' group '\)\]\[1\]/u,
+    "the sender's read observation is bound to the exact sent bubble row"
+  )
+  requireMatch(
+    /expect\(sentMessageRow\.getByRole\(["']img["'],\s*\{ name: ["']Отправлено["'], exact: true \}\)\)\.toBeVisible\(\{\s*timeout: 10_000,?\s*\}\)/u,
+    "the exact sent bubble shows the sent state before the receiver opens the chat"
+  )
+  requireMatch(
+    /expect\(\s*sentMessageRow\.getByRole\(["']img["'],\s*\{ name: ["']Прочитано получателем["'], exact: true \}\)\s*\)\.toBeVisible\(\{ timeout: 10_000 \}\)/u,
+    "the read receipt flips the same sender bubble row to the read state"
+  )
+  requireMatch(
+    /expect\(sentMessageRow\.getByRole\(["']img["'],\s*\{ name: ["']Отправлено["'], exact: true \}\)\)\.toHaveCount\(\s*0\s*\)/u,
+    "the sender bubble no longer shows the sent state after the read receipt"
+  )
+  assert.doesNotMatch(
+    spec,
+    /senderMessageLog\.getByRole\(["']img["']/u,
+    "the sender read state is never checked by an unscoped log-wide count"
   )
 
   requireMatch(/deleteOwnedLiveMessage\(/u, "the generated message is deleted by its sender")

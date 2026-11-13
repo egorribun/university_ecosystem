@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from shutil import which
@@ -12,6 +13,7 @@ from typing import Any
 import pytest
 import yaml
 
+ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/contract-validation.yml"
 )
@@ -263,7 +265,37 @@ def test_comparison_uses_extracted_event_snapshot_and_existing_err_policy() -> N
     assert "pr-openapi.json" in comparison["run"]
     assert "--fail-on ERR" in comparison["run"]
     assert "tests/contracts/snapshots" not in comparison["run"]
-    assert any(
-        step.get("run") == "npm install --global @oasdiff-js/oasdiff-js@1.0.0"
-        for step in steps
+    install = [
+        step for step in steps if step.get("name") == "Install pinned openapi-diff tool"
+    ]
+    assert len(install) == 1
+    assert (
+        install[0]["run"]
+        == "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund"
     )
+    assert "npm install" not in install[0]["run"]
+    assert "--global" not in install[0]["run"]
+    assert "tools/oasdiff/node_modules/.bin/oasdiff breaking" in comparison["run"]
+    assert not re.search(r"(?m)^\s*oasdiff breaking", comparison["run"])
+    assert steps.index(install[0]) < steps.index(comparison)
+
+
+def test_oasdiff_lockfile_pins_every_package_by_integrity() -> None:
+    manifest_path = ROOT / "tools" / "oasdiff" / "package.json"
+    lock_path = ROOT / "tools" / "oasdiff" / "package-lock.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert manifest["dependencies"] == {"@oasdiff-js/oasdiff-js": "1.0.0"}
+    assert lock["lockfileVersion"] == 3
+    assert lock["packages"][""]["dependencies"] == manifest["dependencies"]
+    packages = {name: entry for name, entry in lock["packages"].items() if name}
+    assert "node_modules/@oasdiff-js/oasdiff-js" in packages
+    assert "node_modules/@oasdiff-js/oasdiff-linux-x64" in packages
+    for name, entry in packages.items():
+        assert entry["resolved"].startswith("https://registry.npmjs.org/"), name
+        assert re.fullmatch(r"sha512-[A-Za-z0-9+/]+={0,2}", entry["integrity"]), name
+    # The wrapper and every native binary must be the same reviewed generation.
+    wrapper = packages["node_modules/@oasdiff-js/oasdiff-js"]
+    assert wrapper["version"] == "1.0.0"
+    for native, version in wrapper["optionalDependencies"].items():
+        assert packages[f"node_modules/{native}"]["version"] == version

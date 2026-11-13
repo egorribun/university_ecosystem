@@ -86,15 +86,47 @@ def _input() -> dict[str, object]:
 
 
 class _SimulatedNetwork:
-    """A fake target; its output is useful only for exercising the protocol."""
+    """A fake target; its output is useful only for exercising the protocol.
 
-    def __init__(self) -> None:
+    ``gateway_key`` selects how the fake gateway charges its token bucket:
+    ``source`` charges the Caddy-reported client (correct), ``shared`` charges
+    every request to one bucket (a collapsed client), and ``xff`` trusts the
+    leftmost forwarded header (a spoofable gateway).
+    """
+
+    def __init__(self, gateway_key: str = "source") -> None:
         self.requests: list[probe.Request] = []
         self.counts: dict[tuple[str, str], int] = {}
+        self.gateway_key = gateway_key
+        self.gateway_counts: dict[str, int] = {}
+
+    def _gateway(self, request: probe.Request) -> probe.Response:
+        headers = dict(request.headers)
+        if self.gateway_key == "shared":
+            key = "one-bucket"
+        elif self.gateway_key == "xff":
+            key = headers.get("x-forwarded-for", request.source_ip)
+        else:
+            key = request.source_ip
+        self.gateway_counts[key] = self.gateway_counts.get(key, 0) + 1
+        remaining = max(0, 200 - self.gateway_counts[key])
+        return probe.Response(
+            404,
+            (
+                ("content-type", "application/json; charset=utf-8"),
+                ("ratelimit-limit", "100"),
+                ("ratelimit-remaining", str(remaining)),
+            ),
+            b'{"error":"endpoint not found"}',
+            True,
+            True,
+        )
 
     def __call__(self, request: probe.Request, timeout: float) -> probe.Response:
         assert 0 < timeout <= 5
         self.requests.append(request)
+        if request.path == probe._GATEWAY_PATH:
+            return self._gateway(request)
         if request.path == "/api/v1/auth/csrf-cookie":
             return probe.Response(
                 200,
@@ -161,10 +193,10 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
     assert (verdict.backend, verdict.ws_hub, verdict.gateway, verdict.deployment) == (
         True,
         True,
-        "not_assessed",
+        True,
         "not_assessed",
     )
-    assert len(network.requests) == 229
+    assert len(network.requests) == 430
     assert frame["http_requests"] == len(network.requests)
     assert b"token" not in encoded and b"nonce" not in encoded
     for address in (
@@ -263,7 +295,7 @@ def test_direct_backend_spoof_bypass_cannot_pass_backend_verdict(path):
         return response
 
     frame = probe._collect(config, bypass)
-    assert injected and len(network.requests) == 229
+    assert injected and len(network.requests) == 430
     result = PrivateProcessResult(
         ProcessOutcome.EXITED,
         0,
@@ -283,7 +315,8 @@ def test_direct_backend_spoof_bypass_cannot_pass_backend_verdict(path):
     verdict = evaluate_observations(observed)
     assert verdict.backend is False
     assert verdict.ws_hub is True
-    assert verdict.gateway == verdict.deployment == "not_assessed"
+    assert verdict.gateway is True
+    assert verdict.deployment == "not_assessed"
 
 
 @pytest.mark.parametrize(
@@ -495,8 +528,8 @@ def test_elapsed_refill_depletes_within_derived_budget(monkeypatch, latency):
     allowed = len(observed.cases[4].allowed)
     assert 120 <= allowed <= 130
     assert (allowed > 120) == (latency > 0)
-    assert observed.http_requests == len(network.requests) == 229 + allowed - 120
-    assert observed.http_requests <= 239
+    assert observed.http_requests == len(network.requests) == 430 + allowed - 120
+    assert observed.http_requests <= 440
     assert observed.cases[4].elapsed_ms < 5000
     assert len(json.dumps(frame).encode()) + 1 <= 4096
 
@@ -509,7 +542,7 @@ def test_slow_or_non_exhausting_bucket_cannot_emit_frame(
     monkeypatch.setattr(probe.time, "monotonic", lambda: network.now)
     with pytest.raises(probe.ProbeError):
         probe._collect(probe.parse_input(_input()), network)
-    assert len(network.requests) <= 239
+    assert len(network.requests) <= 440
 
 
 @pytest.mark.parametrize("defect", ["other_client", "spoofed", "direct_untrusted"])
@@ -530,10 +563,10 @@ def test_ws_isolation_remains_strict_with_refill(monkeypatch, defect):
 
 def test_producer_refuses_frame_outside_its_declared_request_budget(monkeypatch):
     network = _SimulatedNetwork()
-    monkeypatch.setattr(probe, "_BASE_REQUESTS", 230)
+    monkeypatch.setattr(probe, "_BASE_REQUESTS", 431)
     with pytest.raises(probe.ProbeError, match="invalid observation frame"):
         probe._collect(probe.parse_input(_input()), network)
-    assert len(network.requests) == 229
+    assert len(network.requests) == 430
 
 
 @pytest.mark.parametrize("address", [None, "", "not-an-ip", "192.168.001.1", "8.8.8.8"])
@@ -875,3 +908,144 @@ def test_request_closes_socket_after_primary_io_failure(monkeypatch, stage):
             probe.Request("127.0.0.2", "127.0.0.1", 80, "GET", "/", (), b""), 5
         )
     assert connection.closed
+
+
+def _gateway_verdict(network: _SimulatedNetwork):
+    frame = probe._collect(probe.parse_input(_input()), network)
+    encoded = (json.dumps(frame, separators=(",", ":")) + "\n").encode()
+    assert len(encoded) <= 4096
+    observed = decode_observations(
+        PrivateProcessResult(
+            ProcessOutcome.EXITED, 0, encoded, b"", LocalCleanup.CONFIRMED
+        ),
+        expected_source_sha="a" * 40,
+        expected_run_id="b" * 64,
+        now_ms=1000,
+        deadline_ms=121000,
+    )
+    assert observed is not None
+    return evaluate_observations(observed)
+
+
+@pytest.mark.parametrize("gateway_key", ["shared", "xff"])
+def test_collapsed_or_spoofable_gateway_bucket_fails_only_gateway(gateway_key):
+    verdict = _gateway_verdict(_SimulatedNetwork(gateway_key))
+    assert verdict.backend is True
+    assert verdict.ws_hub is True
+    assert verdict.gateway is False
+
+
+def test_gateway_windows_are_emitted_in_the_fixed_order():
+    network = _SimulatedNetwork()
+    frame = probe._collect(probe.parse_input(_input()), network)
+    gateway = frame["gateway"]
+    assert isinstance(gateway, dict)
+    assert gateway["rate_limit"] == 100
+    assert gateway["requests"] == probe._GATEWAY_REQUESTS == 201
+    checks = gateway["checks"]
+    assert [(c["subject"], c["expect"], c["k"]) for c in checks] == [
+        ("a", "moved", 60),
+        ("b", "unmoved", 60),
+        ("b", "moved", 60),
+        ("a", "unmoved", 61),
+        *[("a", "moved", 12)] * 6,
+    ]
+    assert frame["schema"] == "ue-owned-client-ip-v4"
+    gateway_requests = [r for r in network.requests if r.path == probe._GATEWAY_PATH]
+    assert len(gateway_requests) == 201
+    assert all(r.target_ip in {"172.23.0.20", "172.24.0.20"} for r in gateway_requests)
+    assert all(r.port == 80 and r.method == "GET" for r in gateway_requests)
+    spoof_headers = [dict(r.headers) for r in gateway_requests if r.headers]
+    assert len(spoof_headers) == 72
+    assert {"x-forwarded-for", "x-real-ip", "forwarded"} == {
+        name for headers in spoof_headers for name in headers
+    }
+    spoof_values = {
+        value.removeprefix("for=")
+        for headers in spoof_headers
+        for name, value in headers.items()
+    }
+    assert spoof_values == {"172.24.0.10", probe._GATEWAY_DECOY}
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        (429, (("content-type", "application/json"),), b"{}"),
+        (
+            404,
+            (
+                ("content-type", "text/plain"),
+                ("ratelimit-limit", "100"),
+                ("ratelimit-remaining", "5"),
+            ),
+            b'{"error":"endpoint not found"}',
+        ),
+        (
+            404,
+            (("content-type", "application/json"), ("ratelimit-limit", "100")),
+            b'{"error":"endpoint not found"}',
+        ),
+        (
+            404,
+            (
+                ("content-type", "application/json"),
+                ("ratelimit-limit", "0"),
+                ("ratelimit-remaining", "5"),
+            ),
+            b'{"error":"endpoint not found"}',
+        ),
+        (
+            404,
+            (
+                ("content-type", "application/json"),
+                ("ratelimit-limit", "100"),
+                ("ratelimit-remaining", "-1"),
+            ),
+            b'{"error":"endpoint not found"}',
+        ),
+        (
+            404,
+            (
+                ("content-type", "application/json"),
+                ("ratelimit-limit", "100"),
+                ("ratelimit-remaining", "5"),
+            ),
+            b'{"error":"other"}',
+        ),
+    ],
+)
+def test_gateway_phase_requires_limiter_headers_on_gateway_404(replacement):
+    status, headers, body = replacement
+    network = _SimulatedNetwork()
+    original = network._gateway
+
+    def responder(request):
+        if request.source_ip == "172.23.0.10" and request.headers == ():
+            return probe.Response(status, headers, body, True, True)
+        return original(request)
+
+    network._gateway = responder
+    with pytest.raises(probe.ProbeError, match="wrong gateway responder"):
+        probe._collect(probe.parse_input(_input()), network)
+
+
+def test_gateway_phase_rejects_a_changing_advertised_rate():
+    network = _SimulatedNetwork()
+    original = network._gateway
+    calls = []
+
+    def responder(request):
+        response = original(request)
+        calls.append(request)
+        if len(calls) == 3:
+            headers = tuple(
+                (name, "99" if name == "ratelimit-limit" else value)
+                for name, value in response.headers
+            )
+            return replace(response, headers=headers)
+        return response
+
+    network._gateway = responder
+    with pytest.raises(probe.ProbeError, match="inconsistent gateway limit"):
+        probe._collect(probe.parse_input(_input()), network)

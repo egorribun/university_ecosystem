@@ -2001,7 +2001,7 @@
         },
         {
           "event": "workflow_dispatch",
-          "guard": "{\"inputs\":{\"target_url\":{\"description\":\"Target URL to scan (overrides DAST_TARGET_URL secret)\",\"required\":false,\"type\":\"string\"}}}"
+          "guard": "any"
         }
       ],
       "jobs": {
@@ -2023,8 +2023,8 @@
         "nuclei": {
           "profile": "nightly",
           "check_name_template": "Nuclei DAST scan",
-          "expected_timeout_minutes": 30,
-          "expected_duration_seconds": 1800,
+          "expected_timeout_minutes": 90,
+          "expected_duration_seconds": 5400,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
           "needs": [
             "verify-trusted-ref"
@@ -2053,8 +2053,8 @@
         "zap": {
           "profile": "nightly",
           "check_name_template": "OWASP ZAP Full Scan",
-          "expected_timeout_minutes": 60,
-          "expected_duration_seconds": 3600,
+          "expected_timeout_minutes": 150,
+          "expected_duration_seconds": 9000,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
           "needs": [
             "verify-trusted-ref"
@@ -3363,7 +3363,14 @@
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "quality-history-${{ steps.collect-manifest.outputs.head_sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/quality-publish",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -5358,6 +5365,49 @@
             {
               "name_pattern": "${{ steps.verify.outputs.artifact_name }}",
               "path_pattern": "helm-dependencies/",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/k8s-networkpolicy-runtime.yml",
+      "name": "Kubernetes NetworkPolicy runtime proof",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"charts/**\",\"k8s/**\",\"backend.Dockerfile\",\"scripts/k8s/networkpolicy_runtime_*.py\",\"scripts/k8s/networkpolicy_runtime_proof.sh\",\"tests/test_helm_staging_contract.py\",\".github/workflows/k8s-networkpolicy-runtime.yml\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"41 4 * * 1\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "networkpolicy-kind-proof": {
+          "profile": "advisory",
+          "check_name_template": "NetworkPolicy kind runtime proof",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "aud169-188-189-networkpolicy-runtime-receipt",
+              "path_pattern": "${{ runner.temp }}/aud169-188-189-netpol",
               "required": false,
               "provenance": "none"
             }

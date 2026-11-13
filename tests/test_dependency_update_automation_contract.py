@@ -67,9 +67,15 @@ MANUAL_UPDATE_ROUTES = {
         ),
     },
     "The oasdiff npm wrapper and native binary remain a reviewed pair": {
-        ".github/workflows/contract-validation.yml": ("@oasdiff-js/oasdiff-js@1.0.0",),
+        ".github/workflows/contract-validation.yml": (
+            "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund",
+        ),
         "tests/test_contract_validation_workflow_contract.py": (
-            "@oasdiff-js/oasdiff-js@1.0.0",
+            "npm ci --prefix tools/oasdiff --ignore-scripts --no-audit --no-fund",
+        ),
+        "tools/oasdiff/package.json": ('"@oasdiff-js/oasdiff-js": "1.0.0"',),
+        "tools/oasdiff/package-lock.json": (
+            '"@oasdiff-js/oasdiff-linux-x64": "1.15.0"',
         ),
     },
     "Docker Hub image rows in tests retain exact version and digest pairs": {
@@ -246,7 +252,7 @@ def test_dependabot_keeps_ecosystem_coverage_and_seven_day_cooldowns() -> None:
         assert item["schedule"]["interval"] == "weekly"
         assert item["cooldown"]["default-days"] == 7
     npm = next(item for item in updates if item["package-ecosystem"] == "npm")
-    assert set(npm["directories"]) == {"/", "/frontend"}
+    assert set(npm["directories"]) == {"/", "/frontend", "/tools/oasdiff"}
     uv = next(item for item in updates if item["package-ecosystem"] == "uv")
     assert {item["dependency-name"] for item in uv["ignore"]} == {
         "jsonschema",

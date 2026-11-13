@@ -1,0 +1,67 @@
+name: Kubernetes NetworkPolicy runtime proof
+
+# AUD-169, AUD-188, AUD-189 and AUD-438: proves the rendered NetworkPolicies on a
+# disposable kind cluster with Calico enforcing NetworkPolicy. This is evidence for
+# the owner-accepted kind target environment, not a required check; it is not
+# wired into branch protection.
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "k8s/**"
+      - "backend.Dockerfile"
+      - "scripts/k8s/networkpolicy_runtime_*.py"
+      - "scripts/k8s/networkpolicy_runtime_proof.sh"
+      - "tests/test_helm_staging_contract.py"
+      - ".github/workflows/k8s-networkpolicy-runtime.yml"
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Only runs for the same PR supersede each other. Manual and scheduled runs
+  # have independent groups; the script deletes only its own named cluster.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+    && format('netpol-runtime-pr-{0}', github.event.pull_request.number)
+    || format('netpol-runtime-{0}-{1}-{2}', github.event_name, github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  networkpolicy-kind-proof:
+    name: NetworkPolicy kind runtime proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Run NetworkPolicy runtime proof
+        env:
+          UE_NETPOL_DIAG_DIR: ${{ runner.temp }}/aud169-188-189-netpol
+        run: bash scripts/k8s/networkpolicy_runtime_proof.sh
+
+      - name: Upload receipt and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aud169-188-189-networkpolicy-runtime-receipt
+          path: ${{ runner.temp }}/aud169-188-189-netpol
+          retention-days: 90
+          if-no-files-found: error

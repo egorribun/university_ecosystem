@@ -29,8 +29,38 @@ function assertNonce(nonce) {
   }
 }
 
-export function buildNodeCspHeaders(nonce) {
+// Loopback literals only. Anchored, so "127.0.0.1.evil.com", "evil.com:127.0.0.1"
+// and "[::1].evil.com" never match. Bare "::1" is accepted because it is the
+// unambiguous IPv6 loopback spelling without a port.
+const LOOPBACK_HOST_PATTERN =
+  /^(?:(?:127\.0\.0\.1|localhost)(?::\d{1,5})?|\[::1\](?::\d{1,5})?|::1)$/iu
+
+function isLoopbackHost(host) {
+  return typeof host === "string" && LOOPBACK_HOST_PATTERN.test(host)
+}
+
+// Only an absent X-Forwarded-Proto or an exact "http" marks a request as plain
+// HTTP. Anything else (https, lists, arrays, empty values) fails closed.
+function isMarkedPlainHttp(forwardedProto) {
+  if (forwardedProto === undefined || forwardedProto === null) return true
+  return typeof forwardedProto === "string" && forwardedProto.trim().toLowerCase() === "http"
+}
+
+/**
+ * Production sits behind Caddy TLS, so `upgrade-insecure-requests` stays for every
+ * real host. It is omitted only for a plain-HTTP request addressed to a loopback
+ * literal, which is the local preview / Playwright lane. WebKit otherwise upgrades
+ * those loopback subresource requests to https and fails the TLS handshake.
+ */
+export function shouldUpgradeInsecureRequests({ host, forwardedProto } = {}) {
+  return !(isLoopbackHost(host) && isMarkedPlainHttp(forwardedProto))
+}
+
+export function buildNodeCspHeaders(nonce, { upgradeInsecureRequests = true } = {}) {
   assertNonce(nonce)
+  if (typeof upgradeInsecureRequests !== "boolean") {
+    throw new TypeError("upgradeInsecureRequests must be a boolean")
+  }
   const connectSources = [...new Set(DEFAULT_CONNECT_SOURCES)].sort().join(" ")
   const policyDirectives = [
     "default-src 'self'",
@@ -48,7 +78,9 @@ export function buildNodeCspHeaders(nonce) {
     "trusted-types app dompurify-news goog#html 'allow-duplicates'",
     "require-trusted-types-for 'script'",
   ]
-  const enforcingPolicy = policyDirectives.join("; ")
+  const enforcingPolicy = policyDirectives
+    .filter((directive) => upgradeInsecureRequests || directive !== "upgrade-insecure-requests")
+    .join("; ")
   const reportOnlyPolicy = policyDirectives
     .filter((directive) => directive !== "upgrade-insecure-requests")
     .join("; ")
@@ -59,13 +91,13 @@ export function buildNodeCspHeaders(nonce) {
   })
 }
 
-export function applyNodeCspToHtmlResponse(response, nonce) {
+export function applyNodeCspToHtmlResponse(response, nonce, options = {}) {
   assertNonce(nonce)
   const contentType = response.headers.get("content-type") ?? ""
   if (!contentType.toLowerCase().includes("text/html")) return response
 
   const headers = new Headers(response.headers)
-  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
+  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce, options))) {
     headers.set(name, value)
   }
   headers.set("cache-control", "no-store, private, max-age=0")

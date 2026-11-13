@@ -415,8 +415,8 @@ async def test_totp_enrollment_and_verification_flow(
 
 
 @pytest.mark.asyncio
-async def test_totp_login_requires_mfa_even_when_toggle_disabled(
-    async_client, user_factory, db_session, monkeypatch
+async def test_totp_login_requires_mfa_without_global_toggle(
+    async_client, user_factory, db_session
 ):
     password = "TotpOptIn123!"
     user = await user_factory(
@@ -425,8 +425,6 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     )
 
     await _enroll_totp(async_client, user, password, db_session)
-
-    monkeypatch.setattr(settings, "mfa_enabled", False)
 
     pending_response = await async_client.post(
         "/auth/login",

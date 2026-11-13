@@ -247,3 +247,19 @@ test("expired-profile live reload probes a signed miss without exposing cache da
   )
   assert.doesNotMatch(section, /page\.route\(|routeWebSocket|useMockApi|\.fulfill\(/u)
 })
+
+test("live fixtures pin the external image host so full document loads cannot hang on picsum", async () => {
+  const [spec, fixtures] = await Promise.all([
+    readFile(specUrl, "utf8"),
+    readFile(fixtureUrl, "utf8"),
+  ])
+
+  assert.match(
+    fixtures,
+    /externalImageStub:\s*\[\s*async \(\{ context \}, use\) => \{[\s\S]*?context\.route\(LIVE_EXTERNAL_IMAGE_HOST_PATTERN/u
+  )
+  assert.match(fixtures, /LIVE_EXTERNAL_IMAGE_HOST_PATTERN = "https:\/\/picsum\.photos\/\*\*"/u)
+  assert.match(fixtures, /externalImageStub: void/u)
+  assert.match(fixtures, /\{ auto: true \},\s*\],\s*ownedSessionCleanup:/u)
+  assert.doesNotMatch(spec, /picsum/u)
+})

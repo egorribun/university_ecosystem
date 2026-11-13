@@ -59,12 +59,15 @@ or namespace-label selectors requires a separate configuration and RBAC review.
 See the [pinned attestor documentation](https://github.com/spiffe/spire/blob/v1.15.3/doc/plugin_agent_workloadattestor_k8s.md)
 and [kubelet client](https://github.com/spiffe/spire/blob/v1.15.3/pkg/agent/plugin/workloadattestor/k8s/kubeletclient.go).
 
-The retained `nodes/proxy` GET grant is a compatibility requirement, not a
-read-only security boundary: Kubernetes also authorizes some WebSocket exec
-endpoints through that permission. A narrower `nodes/pods` grant requires
-verified `KubeletFineGrainedAuthz` support on every deployed kubelet. Do not
-remove the compatibility grant or claim least-privilege completion without
-live authorization and workload-attestation proof. See [Kubelet authorization](https://kubernetes.io/docs/reference/access-authn-authz/kubelet-authn-authz/).
+The agent holds only `nodes/pods` `get`. The pinned attestor's `GET /pods` on
+the kubelet secure port is authorized as `nodes/pods` `get` when
+`KubeletFineGrainedAuthz` is enabled; the `nodes/proxy` grant is removed because
+it authorizes every other kubelet endpoint, including WebSocket exec. Every
+deployed kubelet must have `KubeletFineGrainedAuthz` enabled (default-on from
+Kubernetes v1.36 per the [kubelet authorization](https://kubernetes.io/docs/reference/access-authn-authz/kubelet-authn-authz/)
+docs). The AUD-373 kind job exercises SVID issuance under this grant. The
+AUD-251 finding stays Open in [docs/audits/INDEX.md](../../docs/audits/INDEX.md)
+until the owner closes it on live evidence.
 
 ## SPIFFE CSI driver socket path
 

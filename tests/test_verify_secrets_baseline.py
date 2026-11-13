@@ -917,8 +917,117 @@ def _nov4_current_view(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
     assert holders <= 1, "retired ignore-policy digest must appear at most once"
     if holders == 0:
-        return copy.deepcopy(records)
-    return _nov4_trivy_ignore_policy_digest_rebind(records)
+        rebound = copy.deepcopy(records)
+    else:
+        rebound = _nov4_trivy_ignore_policy_digest_rebind(records)
+    return _nov13_trivy_current_view(rebound)
+
+
+# STEP5 owner-authored 1:1 rebind of the Trivy fixture ignore-policy digest after
+# AUD-251 removed the stale KSV-0047 exception. The live validator, verifier
+# constants and public-integrity record carry the current digest; the exact
+# predecessor digest (the NOV4 NEW value) is restored for historical checks.
+# Only the hashed_secret_bytes of the single existing record changes.
+_NOV13_TRIVY_CURRENT_IGNORE_POLICY_DIGEST = bytes.fromhex(
+    "29 9a eb 3d 01 3b b5 ab ba f4 6e 03 7f 65 0b 4c ca 35 05 ac c7 14 84 86 09 6d 03 0d fc 03 e2 e2"
+)
+_NOV13_TRIVY_PREVIOUS_IGNORE_POLICY_DIGEST = bytes.fromhex(
+    "6f 24 56 62 81 6c 8e 99 87 7d 2d 8b 36 56 7b 6b fc ff ae b4 79 b4 b3 31 0e f5 cb 51 94 99 bf 02"
+)
+
+
+def _nov13_trivy_identity_bytes(digest: bytes) -> list[int]:
+    return list(
+        hashlib.sha1(digest.hex().encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _nov13_trivy_current_view(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Forward-project the NOV4 predecessor identity to the live digest.
+
+    A slice holding the NOV4 digest receives only the one-to-one NOV13 rebind;
+    a slice without it is returned unchanged.
+    """
+    rebound = copy.deepcopy(records)
+    holders = [
+        row
+        for row in rebound
+        if row["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+        and row["identity"]["hashed_secret_bytes"]
+        == _NOV4_TRIVY_IGNORE_POLICY_NEW_BYTES
+    ]
+    assert len(holders) <= 1, (
+        "predecessor ignore-policy digest must appear at most once"
+    )
+    for row in holders:
+        row["identity"]["hashed_secret_bytes"] = _nov13_trivy_identity_bytes(
+            _NOV13_TRIVY_CURRENT_IGNORE_POLICY_DIGEST
+        )
+    return rebound
+
+
+def _nov13_verify_dispositions(
+    policy_or_document: dict[str, Any], *args: Any, **kwargs: Any
+) -> Any:
+    """Validate with the live Trivy digest, as the verifier pins only that digest.
+
+    Chains restore the exact predecessor digest for historical hash checks; a
+    predecessor record is forward-projected to the live identity before the
+    verifier evaluates any policy or document that carries it.
+    """
+    records = policy_or_document.get("records")
+    if isinstance(records, list):
+        policy_or_document = {
+            **policy_or_document,
+            "records": _nov13_trivy_current_view(records),
+        }
+    return verifier.validate_false_positive_dispositions(
+        policy_or_document, *args, **kwargs
+    )
+
+
+def _nov13_trivy_predecessor_identities() -> frozenset[
+    tuple[str, str, tuple[int, ...]]
+]:
+    """Return the verifier's Trivy identities with the live digest made predecessor."""
+    current = tuple(
+        _nov13_trivy_identity_bytes(_NOV13_TRIVY_CURRENT_IGNORE_POLICY_DIGEST)
+    )
+    previous = tuple(
+        _nov13_trivy_identity_bytes(_NOV13_TRIVY_PREVIOUS_IGNORE_POLICY_DIGEST)
+    )
+    return frozenset(
+        (path, finding_type, previous if digest == current else digest)
+        for path, finding_type, digest in verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    )
+
+
+def _nov13_trivy_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """Restore the exact predecessor digest on the live 512-record policy."""
+    restored = copy.deepcopy(policy)
+    live_identity = _nov13_trivy_identity_bytes(
+        _NOV13_TRIVY_CURRENT_IGNORE_POLICY_DIGEST
+    )
+    holders = [
+        row
+        for row in restored["records"]
+        if row["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+        and row["identity"]["hashed_secret_bytes"] == live_identity
+    ]
+    assert len(holders) == 1, "live disposition trivy identity changed"
+    row = holders[0]
+    assert row["identity"]["type"] == "Hex High Entropy String", (
+        "live disposition trivy identity changed"
+    )
+    assert row["category"] == "public_integrity_digest", (
+        "live disposition trivy identity changed"
+    )
+    assert row["owner"] == "egorribun", "live disposition trivy identity changed"
+    assert row["expires_on"] == "2027-01-10", "live disposition trivy identity changed"
+    row["identity"]["hashed_secret_bytes"] = _nov13_trivy_identity_bytes(
+        _NOV13_TRIVY_PREVIOUS_IGNORE_POLICY_DIGEST
+    )
+    return _nov13_trivy_workflow_historical_policy(restored)
 
 
 def _nov4_trivy_checksum_renewal(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -935,7 +1044,7 @@ def _nov4_trivy_checksum_renewal(records: list[dict[str, Any]]) -> list[dict[str
             tuple(row["identity"]["hashed_secret_bytes"]),
         )
         for row in rows
-    } == verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    } == _nov13_trivy_predecessor_identities()
     assert len(rows) == 2
     for row in rows:
         assert row["category"] == "public_integrity_digest"
@@ -1029,7 +1138,7 @@ def test_public_source_pin_matches_the_owner_approved_disposition(
         if record["identity"] == expected["identity"]
     ]
     assert matches == [expected]
-    findings = verifier.validate_false_positive_dispositions(
+    findings = _nov13_verify_dispositions(
         _disposition_document(expected), today=verifier.date(2026, 11, 4)
     )
     identity = expected["identity"]
@@ -1042,13 +1151,13 @@ def test_public_source_pin_matches_the_owner_approved_disposition(
         )
     }
     assert (
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(expected), today=verifier.date(2027, 1, 10)
         )
         == findings
     )
     with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(expected), today=verifier.date(2027, 1, 11)
         )
 
@@ -1071,15 +1180,15 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert _RETIRED_DISPOSITION_PATHS == verifier._RETIRED_DISPOSITION_SOURCE_PATHS
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         _nov11_historical_509_from_live_policy(policy), today=verifier.date(2026, 11, 9)
     )
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
     live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 11)
+        repository_root=root, today=verifier.date(2026, 11, 12)
     )
-    assert len(live_validated) == 511
+    assert len(live_validated) == 512
     assert all(
         finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
     )
@@ -9285,7 +9394,7 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
         "src/known.py", "Hex High Entropy String", "a" * 40, 1
     )
 
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(_reviewed_disposition()),
         today=verifier.date(2026, 10, 12),
     )
@@ -9337,7 +9446,7 @@ def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> N
     ):
         record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
         record["evidence"] = evidence
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 16),
         ) == {
@@ -9414,13 +9523,13 @@ def test_page_title_route_identifier_candidates_are_exact_and_finite() -> None:
         approved["expires_on"] = "2027-01-10"
         pending = {**approved, "approval_status": "pending"}
         with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(pending),
                 today=verifier.date(2026, 10, 23),
             )
 
         identity = approved["identity"]
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(approved),
             today=verifier.date(2026, 10, 23),
         ) == {
@@ -9448,7 +9557,7 @@ def test_page_title_route_identifier_candidates_are_exact_and_finite() -> None:
         )
         for changed in changed_records:
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed),
                     today=verifier.date(2026, 10, 23),
                 )
@@ -9487,13 +9596,13 @@ def test_c6_source_contract_records_require_explicit_approval() -> None:
         assert "function-symbol hook" in record["evidence"]
         pending = {**record, "approval_status": "pending"}
         with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(pending),
                 today=verifier.date(2026, 10, 16),
             )
         approved = {**record, "approval_status": "approved"}
         identity = approved["identity"]
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(approved),
             today=verifier.date(2026, 10, 16),
         ) == {
@@ -9532,7 +9641,7 @@ def test_c6_source_contract_records_reject_mutated_identity_or_category() -> Non
         for change in changes:
             changed = {**record, **change}
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed),
                     today=verifier.date(2026, 10, 16),
                 )
@@ -9552,7 +9661,7 @@ def test_v4_independent_contract_fingerprints_match_exact_identities(
         "independent_contract_fingerprint",
     )
 
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 15),
     )
@@ -9576,7 +9685,7 @@ def test_external_kubernetes_secret_references_match_exact_identities(
         "external_kubernetes_secret_reference",
     )
 
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 15),
     )
@@ -9622,14 +9731,14 @@ def test_trivy_university_secret_reference_is_exact_and_requires_approval() -> N
     record["reviewed_on"] = "2026-10-16"
     expected = verifier.FindingIdentity(path, finding_type, digest_bytes.hex(), 1)
 
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 16),
     ) == {expected}
 
     record["approval_status"] = "pending"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 16),
         )
@@ -9679,7 +9788,7 @@ def test_new_exact_disposition_categories_reject_mutated_identities(
             category,
         )
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(record),
                 today=verifier.date(2026, 10, 15),
             )
@@ -9725,14 +9834,14 @@ def test_mfa_helm_secret_reference_is_exact_and_requires_approval() -> None:
     )
     expected = verifier.FindingIdentity(path, finding_type, digest_bytes.hex(), 1)
 
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 16),
     ) == {expected}
 
     record["approval_status"] = "pending"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 16),
         )
@@ -9751,7 +9860,7 @@ def test_external_secret_reference_requires_semantic_evidence_markers() -> None:
     record["evidence"] = "Exact detector identity was reviewed."
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 15),
         )
@@ -9770,7 +9879,7 @@ def test_external_secret_reference_still_requires_unexpired_review() -> None:
     record["expires_on"] = "2026-10-14"
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 15),
         )
@@ -9782,7 +9891,7 @@ def test_independent_contract_fingerprint_category_remains_exact() -> None:
         category="independent_contract_fingerprint",
     )
 
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 12),
     )
@@ -9923,7 +10032,7 @@ def test_non_hex_dispositions_are_scoped_to_reviewed_path_and_type(
             "status remains unverified."
         )
 
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(record),
         today=verifier.date(2026, 10, 12),
     )
@@ -10011,7 +10120,7 @@ def test_non_hex_dispositions_reject_wrong_source_or_type(
     )
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 12),
         )
@@ -10035,7 +10144,7 @@ def test_internal_demo_account_requires_both_owner_evidence_markers(
     record["evidence"] = evidence
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 12),
         )
@@ -10055,7 +10164,7 @@ def test_internal_demo_account_category_does_not_approve_pending_record() -> Non
     )
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 12),
         )
@@ -10071,7 +10180,7 @@ def test_internal_demo_account_category_does_not_approve_pending_record() -> Non
 def test_reviewed_disposition_does_not_match_other_path_or_digest(
     candidate_path: str, candidate_type: str, candidate_digest: str
 ) -> None:
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(_reviewed_disposition()),
         today=verifier.date(2026, 10, 12),
     )
@@ -10086,7 +10195,7 @@ def test_reviewed_disposition_rejects_unapproved_finding_type() -> None:
     record = _reviewed_disposition(finding_type="AWS Access Key")
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 12)
         )
 
@@ -10121,7 +10230,7 @@ def test_reviewed_disposition_requires_approved_owner_and_finite_dates(
     change(record)
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 12)
         )
 
@@ -10134,7 +10243,7 @@ def test_reviewed_disposition_rejects_non_exact_paths(invalid_path: str) -> None
     record = _reviewed_disposition(path=invalid_path)
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 12)
         )
 
@@ -10143,7 +10252,7 @@ def test_reviewed_disposition_rejects_duplicate_identities() -> None:
     record = _reviewed_disposition()
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record, _reviewed_disposition()),
             today=verifier.date(2026, 10, 12),
         )
@@ -10154,7 +10263,7 @@ def test_reviewed_disposition_rejects_unknown_fields_and_bad_digest() -> None:
     record["identity"]["unreviewed"] = False
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 12)
         )
 
@@ -10170,7 +10279,7 @@ def test_reviewed_disposition_rejects_malformed_digest_bytes(
     record["identity"]["hashed_secret_bytes"] = invalid_bytes
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 12)
         )
 
@@ -10179,7 +10288,7 @@ def test_reviewed_disposition_does_not_cover_an_unrelated_finding() -> None:
     unrelated = verifier.FindingIdentity(
         "src/known.py", "Hex High Entropy String", "b" * 40, 7
     )
-    dispositions = verifier.validate_false_positive_dispositions(
+    dispositions = _nov13_verify_dispositions(
         _disposition_document(_reviewed_disposition()),
         today=verifier.date(2026, 10, 12),
     )
@@ -10492,9 +10601,7 @@ def test_public_compose_sentinel_matches_only_approved_identity(
     record = _public_compose_sentinel_record()
     identity = record["identity"]
 
-    assert verifier.validate_false_positive_dispositions(
-        _disposition_document(record), today=today
-    ) == {
+    assert _nov13_verify_dispositions(_disposition_document(record), today=today) == {
         verifier.FindingIdentity(
             identity["path"],
             identity["type"],
@@ -10534,7 +10641,7 @@ def test_public_compose_sentinel_refuses_scope_mutation(change: str) -> None:
         record["expires_on"] = "2027-01-11"
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 20),
         )
@@ -10542,7 +10649,7 @@ def test_public_compose_sentinel_refuses_scope_mutation(change: str) -> None:
 
 def test_public_compose_sentinel_expires_after_approved_date() -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(_public_compose_sentinel_record()),
             today=verifier.date(2027, 1, 11),
         )
@@ -10565,7 +10672,7 @@ def test_public_compose_sentinel_requires_each_semantic_marker(marker: str) -> N
     record["evidence"] = evidence[:start] + evidence[start + len(marker) :]
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record),
             today=verifier.date(2026, 10, 20),
         )
@@ -10628,7 +10735,7 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     value = values.pop()
     actual_digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
     assert actual_digest == expected_digest
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2026, 11, 11)
     ) == {
         verifier.FindingIdentity(
@@ -10719,7 +10826,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             _NOV11_HELPER_REBINDS[digest] for digest in expected_digests
         } <= actual, path
 
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         {"schema_version": 1, "records": records},
         today=verifier.date(2026, 10, 21),
     ) == {
@@ -10764,9 +10871,7 @@ def test_achievement_url_fixture_is_one_exact_approved_identity(
         tuple(identity["hashed_secret_bytes"]),
     )
     assert verifier._SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES == {expected}
-    assert verifier.validate_false_positive_dispositions(
-        _disposition_document(record), today=today
-    ) == {
+    assert _nov13_verify_dispositions(_disposition_document(record), today=today) == {
         verifier.FindingIdentity(
             identity["path"],
             identity["type"],
@@ -10798,7 +10903,7 @@ def test_achievement_url_fixture_refuses_scope_mutation(change: str) -> None:
         record["expires_on"] = "2027-01-11"
 
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 22)
         )
 
@@ -10813,7 +10918,7 @@ def test_achievement_url_fixture_cannot_be_reclassified(category: str) -> None:
     record = _achievement_url_fixture_record()
     record["category"] = category
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 22)
         )
 
@@ -10833,14 +10938,14 @@ def test_achievement_url_fixture_requires_each_semantic_marker(marker: str) -> N
     start = evidence.casefold().index(marker.casefold())
     record["evidence"] = evidence[:start] + evidence[start + len(marker) :]
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 22)
         )
 
 
 def test_achievement_url_fixture_expires_after_owner_approved_date() -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(_achievement_url_fixture_record()),
             today=verifier.date(2027, 1, 11),
         )
@@ -10980,7 +11085,7 @@ def test_auth_validation_ui_copy_accepts_only_three_exact_identities() -> None:
         (_AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex())
         for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
     }
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         {**policy, "records": _nov4_current_view(policy["records"])},
         today=verifier.date(2026, 10, 23),
     ) >= {
@@ -11016,14 +11121,12 @@ def test_auth_validation_ui_copy_rejects_identity_or_category_transfer() -> None
         )
         mutate(record)
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
-                policy, today=verifier.date(2026, 10, 23)
-            )
+            _nov13_verify_dispositions(policy, today=verifier.date(2026, 10, 23))
 
 
 def test_auth_validation_ui_copy_expires_at_the_finite_cap() -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _auth_validation_candidate_policy(), today=verifier.date(2027, 1, 11)
         )
 
@@ -11181,9 +11284,7 @@ def test_aud253_and_trivy_candidate_records_are_exact_and_finite() -> None:
     for record in trivy:
         assert record["category"] == "public_integrity_digest"
         assert record["expires_on"] == _TRIVY_DISPOSITION_EXPIRY
-    assert verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 23)
-    )
+    assert _nov13_verify_dispositions(policy, today=verifier.date(2026, 10, 23))
 
 
 def test_aud253_candidate_rejects_identity_category_evidence_and_expiry_changes() -> (
@@ -11207,9 +11308,7 @@ def test_aud253_candidate_rejects_identity_category_evidence_and_expiry_changes(
         candidate = copy.deepcopy(policy)
         mutate(_owner_review_record(candidate, identity))
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
-                candidate, today=verifier.date(2026, 10, 23)
-            )
+            _nov13_verify_dispositions(candidate, today=verifier.date(2026, 10, 23))
 
 
 def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
@@ -11233,9 +11332,7 @@ def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
             candidate = copy.deepcopy(policy)
             mutate(_owner_review_record(candidate, identity))
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
-                    candidate, today=verifier.date(2026, 10, 23)
-                )
+                _nov13_verify_dispositions(candidate, today=verifier.date(2026, 10, 23))
 
 
 @pytest.mark.parametrize(
@@ -11253,17 +11350,15 @@ def test_trivy_checksum_renewal_is_valid_through_approved_expiry(
     }
     for current in (verifier.date(2026, 11, 4), verifier.date(2027, 1, 10)):
         assert (
-            verifier.validate_false_positive_dispositions(
-                _disposition_document(record), today=current
-            )
+            _nov13_verify_dispositions(_disposition_document(record), today=current)
             == expected
         )
     with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2027, 1, 11)
         )
     with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 3)
         )
 
@@ -11278,11 +11373,11 @@ def test_trivy_historical_approval_keeps_its_original_expiry(
     policy["records"] = _nov4_current_view(policy["records"])
     record = _owner_review_record(policy, identity)
     assert record["expires_on"] == "2026-11-22"
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2026, 11, 22)
     )
     with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 23)
         )
 
@@ -11305,7 +11400,7 @@ def test_trivy_checksum_renewal_rejects_unapproved_metadata(
     else:
         record["owner"] = "Another Reviewer"
     with pytest.raises(verifier.BaselineArtifactError, match="Trivy Kyverno"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 4)
         )
 
@@ -11690,7 +11785,7 @@ def test_aud495_cache_key_fixture_candidate_is_exact_and_requires_owner_approval
         for path, finding_type, digest in identities
     }
     assert (
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(*approved_records),
             today=verifier.date(2026, 10, 23),
         )
@@ -11700,7 +11795,7 @@ def test_aud495_cache_key_fixture_candidate_is_exact_and_requires_owner_approval
     pending = copy.deepcopy(approved_records)
     pending[0]["approval_status"] = "pending_owner_review"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(*pending), today=verifier.date(2026, 10, 23)
         )
 
@@ -11720,7 +11815,7 @@ def test_aud495_cache_key_fixture_candidate_is_exact_and_requires_owner_approval
         changed = copy.deepcopy(approved_records)
         mutation(changed[0])
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(*changed), today=verifier.date(2026, 10, 23)
             )
 
@@ -11789,7 +11884,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
         for path, finding_type, digest in expected_identities
     }
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         {
             "schema_version": policy["schema_version"],
             "records": _nov4_current_view(policy["records"][:347]),
@@ -11808,9 +11903,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
     for record in pending["records"][315:]:
         record["approval_status"] = "pending_owner_review"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
-        verifier.validate_false_positive_dispositions(
-            pending, today=verifier.date(2026, 10, 25)
-        )
+        _nov13_verify_dispositions(pending, today=verifier.date(2026, 10, 25))
 
 
 def _public_integrity_digest_source_identity() -> tuple[str, str, tuple[int, ...]]:
@@ -11856,7 +11949,7 @@ def test_public_integrity_digest_candidate_is_one_exact_source_identity() -> Non
     identity_finding = verifier.FindingIdentity(
         path, finding_type, bytes(digest_bytes).hex(), 1
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2026, 10, 23)
     ) == {identity_finding}
 
@@ -11880,7 +11973,7 @@ def test_public_integrity_digest_candidate_is_one_exact_source_identity() -> Non
     mutations.append(missing_evidence)
     for changed in mutations:
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed),
                 today=verifier.date(2026, 10, 23),
             )
@@ -12214,7 +12307,7 @@ def test_oct24_public_digest_validator_accepts_only_reviewed_identity(
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 24),
     ) == {expected}
@@ -12260,7 +12353,7 @@ def test_oct24_public_digest_validator_rejects_scope_or_approval_change(
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -12270,7 +12363,7 @@ def test_oct24_public_digest_validator_rejects_expired_disposition(
     record: dict[str, Any],
 ) -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
@@ -12287,7 +12380,7 @@ def test_oct24_public_digest_reserved_test_path_still_rejects_unlisted_values(
     changed["category"] = category
     changed["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -12301,7 +12394,7 @@ def test_oct24_public_fingerprint_cannot_move_to_legacy_allowed_path(
         "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
     )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -12443,7 +12536,7 @@ def test_public_git_blob_orchestrator_rebind_rejects_near_misses() -> None:
 
     for changed in mutations:
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed),
                 today=verifier.date(2026, 10, 26),
             )
@@ -12481,7 +12574,7 @@ def test_public_git_blob_validator_accepts_exact_historical_record_without_sourc
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 26),
     ) == {expected}
@@ -12533,7 +12626,7 @@ def test_public_git_blob_validator_rejects_changed_scope_or_metadata(
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 25)
         )
 
@@ -12543,12 +12636,12 @@ def test_public_git_blob_validator_rejects_expired_or_duplicate_record(
     record: dict[str, Any],
 ) -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
             today=verifier.date(2026, 10, 25),
         )
@@ -12561,7 +12654,7 @@ def test_public_git_blob_reserved_path_rejects_other_fingerprint(
     changed = copy.deepcopy(record)
     changed["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 25)
         )
 
@@ -12814,7 +12907,7 @@ def test_observed_public_metadata_accepts_exact_record_without_source(
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 24),
     ) == {expected}
@@ -12866,7 +12959,7 @@ def test_observed_public_metadata_rejects_changed_scope_or_approval(
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -12876,19 +12969,19 @@ def test_observed_public_metadata_rejects_expiry_duplicate_and_extra_identity(
     record: dict[str, Any],
 ) -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
             today=verifier.date(2026, 10, 24),
         )
     extra = copy.deepcopy(record)
     extra["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), extra),
             today=verifier.date(2026, 10, 24),
         )
@@ -13046,7 +13139,7 @@ def test_public_alembic_revision_accepts_only_its_exact_record_without_source(
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 24),
     ) == {expected}
@@ -13101,7 +13194,7 @@ def test_public_alembic_revision_rejects_changed_scope_or_approval(
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -13109,19 +13202,19 @@ def test_public_alembic_revision_rejects_changed_scope_or_approval(
 def test_public_alembic_revision_rejects_expiry_duplicate_and_extra_identity() -> None:
     record = _PUBLIC_ALEMBIC_REVISION_RECORD
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
             today=verifier.date(2026, 10, 24),
         )
     extra = copy.deepcopy(record)
     extra["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), extra),
             today=verifier.date(2026, 10, 24),
         )
@@ -13353,7 +13446,7 @@ def test_public_compiler_golden_accepts_only_exact_record_without_source(
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 24),
     ) == {expected}
@@ -13412,7 +13505,7 @@ def test_public_compiler_golden_rejects_changed_scope_or_approval(
         changed["identity"]["type"] = "Hex High Entropy String"
         changed["category"] = "public_integrity_digest"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -13420,19 +13513,19 @@ def test_public_compiler_golden_rejects_changed_scope_or_approval(
 def test_public_compiler_golden_rejects_expiry_duplicate_and_extra_identity() -> None:
     for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(copy.deepcopy(record)),
                 today=verifier.date(2027, 1, 11),
             )
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
                 today=verifier.date(2026, 10, 24),
             )
         extra = copy.deepcopy(record)
         extra["identity"]["hashed_secret_bytes"] = list(range(20))
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(copy.deepcopy(record), extra),
                 today=verifier.date(2026, 10, 24),
             )
@@ -13765,7 +13858,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         )
         for record in suffix
     )
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         {
             "schema_version": policy["schema_version"],
             "records": _nov4_current_view(policy["records"][:347]),
@@ -13788,7 +13881,7 @@ def test_node_react_compiler_policy_rejects_near_misses_and_pending_records() ->
         finding = verifier.FindingIdentity(
             identity[0], identity[1], bytes(identity[2]).hex(), 1
         )
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(valid)), today=today
         ) == {finding}
 
@@ -13834,12 +13927,10 @@ def test_node_react_compiler_policy_rejects_near_misses_and_pending_records() ->
 
         for changed in mutations:
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
-                    _disposition_document(changed), today=today
-                )
+                _nov13_verify_dispositions(_disposition_document(changed), today=today)
 
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(copy.deepcopy(valid), copy.deepcopy(valid)),
                 today=today,
             )
@@ -13985,7 +14076,7 @@ def test_live_private_field_accepts_exact_record_without_source(
         bytes(identity["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(copy.deepcopy(record)),
         today=verifier.date(2026, 10, 24),
     ) == {expected}
@@ -14039,7 +14130,7 @@ def test_live_private_field_rejects_changed_scope_or_approval(mutation: str) -> 
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
 
@@ -14047,19 +14138,19 @@ def test_live_private_field_rejects_changed_scope_or_approval(mutation: str) -> 
 def test_live_private_field_rejects_expiry_duplicate_and_extra_identity() -> None:
     record = _LIVE_PRIVATE_FIELD_RECORD
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
             today=verifier.date(2026, 10, 24),
         )
     extra = copy.deepcopy(record)
     extra["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), extra),
             today=verifier.date(2026, 10, 24),
         )
@@ -14208,7 +14299,7 @@ def test_aud247_squawk_public_checksum_accepts_only_exact_approved_record() -> N
         bytes(record["identity"]["hashed_secret_bytes"]).hex(),
         1,
     )
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2026, 10, 26)
     ) == {expected}
 
@@ -14248,7 +14339,7 @@ def test_aud247_squawk_public_checksum_rejects_changed_scope_or_review(
         assert mutation == "expiry_extension"
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 26)
         )
 
@@ -14256,12 +14347,12 @@ def test_aud247_squawk_public_checksum_rejects_changed_scope_or_review(
 def test_aud247_squawk_public_checksum_rejects_expiry_and_duplicate() -> None:
     record = _aud247_squawk_public_checksum_record()
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 11),
         )
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
             today=verifier.date(2026, 10, 26),
         )
@@ -14283,7 +14374,7 @@ def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
     ]
     assert len(target_records) <= 1
     assert len(same_path_type) == 10 + len(target_records)
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         {
             "schema_version": policy["schema_version"],
             "records": _nov4_current_view(policy["records"][:347]),
@@ -14751,7 +14842,7 @@ def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None
     )
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {**policy, "records": _nov4_current_view(policy["records"][:405])},
                 today=verifier.date(2026, 10, 29),
             )
@@ -14797,7 +14888,7 @@ def test_historical148_integrity_rejects_each_changed_scope_or_review() -> None:
                 assert mutation == "expiry_change"
                 changed["expires_on"] = "2027-01-09"
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 10, 29)
                 )
 
@@ -14806,15 +14897,15 @@ def test_historical148_integrity_rejects_duplicates_and_unapproved_dates() -> No
     for record in _historical148_source_records():
         for today in (verifier.date(2026, 10, 28), verifier.date(2027, 1, 11)):
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(copy.deepcopy(record)), today=today
                 )
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
                 today=verifier.date(2026, 10, 29),
             )
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(copy.deepcopy(record)),
             today=verifier.date(2027, 1, 10),
         )
@@ -14848,7 +14939,7 @@ def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> 
     } == expected_old_identities
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(*copy.deepcopy(old_collisions)),
                 today=verifier.date(2026, 10, 29),
             )
@@ -14859,7 +14950,7 @@ def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> 
         changed = copy.deepcopy(row)
         changed["identity"]["path"] = "tests/unreviewed_historical148.py"
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed), today=verifier.date(2026, 10, 29)
             )
 
@@ -15088,7 +15179,7 @@ def test_historical148_changed_current_literals_remain_unapproved() -> None:
                 verifier.BaselineArtifactError,
                 match="historical-148 integrity identity changed scope",
             ):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 10, 29)
                 )
     assert changed_paths == {
@@ -15129,7 +15220,7 @@ def test_historical148_current_capture_cannot_inherit_old_path_approvals(
             verifier.BaselineArtifactError,
             match="historical-148 integrity identity changed scope",
         ):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed), today=verifier.date(2026, 10, 29)
             )
 
@@ -15403,7 +15494,7 @@ def test_oct30_integrity_adds_exact_89_and_preserves_405_prefix() -> None:
     assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {**policy, "records": _nov4_current_view(policy["records"][:494])},
                 today=verifier.date(2026, 10, 30),
             )
@@ -15449,7 +15540,7 @@ def test_oct30_source_pins_reject_changed_bytes_and_transplanted_sources() -> No
 def test_oct30_each_identity_is_exact_and_cannot_inherit_old_58_metadata() -> None:
     for original in _oct30_source_records():
         identity = original["identity"]
-        approved = verifier.validate_false_positive_dispositions(
+        approved = _nov13_verify_dispositions(
             _disposition_document(original), today=verifier.date(2026, 10, 30)
         )
         assert approved == {
@@ -15478,7 +15569,7 @@ def test_oct30_each_identity_is_exact_and_cannot_inherit_old_58_metadata() -> No
                     "migration-risk waiver."
                 )
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 10, 30)
                 )
 
@@ -15496,22 +15587,22 @@ def test_oct30_review_metadata_and_expiry_remain_exact_for_each_source_path() ->
         "approval_status": "pending",
     }
     for original in representatives.values():
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(original), today=verifier.date(2027, 1, 10)
         )
         for field, value in changes.items():
             changed = copy.deepcopy(original)
             changed[field] = value
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 10, 30)
                 )
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(original), today=verifier.date(2027, 1, 11)
             )
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(original), today=verifier.date(2026, 10, 29)
             )
 
@@ -15524,11 +15615,7 @@ def test_oct30_retired_approvals_never_reactivate_from_base_or_candidate(
     accepted_sha = _commit_dispositions(repository, records)
     today = verifier.date(2026, 10, 30)
     assert (
-        len(
-            verifier.validate_false_positive_dispositions(
-                _disposition_document(*records), today=today
-            )
-        )
+        len(_nov13_verify_dispositions(_disposition_document(*records), today=today))
         == 89
     )
     # The October-30 batch also approved two still-live Redis contract digests.
@@ -15543,7 +15630,7 @@ def test_oct30_retired_approvals_never_reactivate_from_base_or_candidate(
         }
     ]
     assert len(surviving_records) == 2
-    expected = verifier.validate_false_positive_dispositions(
+    expected = _nov13_verify_dispositions(
         _disposition_document(*surviving_records), today=today
     )
     assert len(expected) == 2
@@ -15758,7 +15845,7 @@ def test_aud447_allocation_adds_exact_five_and_preserves_all_prior_records() -> 
     assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {**policy, "records": _nov4_current_view(policy["records"][:499])},
                 today=verifier.date(2026, 10, 31),
             )
@@ -15776,9 +15863,7 @@ def test_aud447_allocation_exact_records_validate_without_source(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     records = _aud447_allocation_records()
-    assert verifier.validate_false_positive_dispositions(
-        _disposition_document(*records), today=today
-    ) == {
+    assert _nov13_verify_dispositions(_disposition_document(*records), today=today) == {
         verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 9000)
         for path, finding_type, digest in _AUD447_CI_ALLOCATION_EVIDENCE
     }
@@ -15841,7 +15926,7 @@ def test_aud447_allocation_rejects_changed_scope_and_metadata(
         assert mutation == "missing-field"
         del changed["owner"]
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 31)
         )
 
@@ -15852,21 +15937,19 @@ def test_aud447_allocation_refuses_duplicates_sixth_identity_and_cap_growth() ->
     extra["identity"]["hashed_secret_bytes"][0] ^= 1
     for addition in (copy.deepcopy(records[0]), extra):
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(*records, addition),
                 today=verifier.date(2026, 10, 31),
             )
     with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(*([records[0]] * 513)),
             today=verifier.date(2026, 10, 31),
         )
     for today in (verifier.date(2026, 10, 30), verifier.date(2027, 1, 11)):
         for record in records:
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
-                    _disposition_document(record), today=today
-                )
+                _nov13_verify_dispositions(_disposition_document(record), today=today)
 
 
 def test_aud447_allocation_preserves_only_the_two_prior_quality_collisions() -> None:
@@ -15883,7 +15966,7 @@ def test_aud447_allocation_preserves_only_the_two_prior_quality_collisions() -> 
     assert identities == _AUD447_PRIOR_QUALITY_IDENTITIES
     for record in records:
         assert record["category"] == "public_integrity_digest"
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 10, 31)
         )
         for mutation in ("digest", "type", "category"):
@@ -15895,7 +15978,7 @@ def test_aud447_allocation_preserves_only_the_two_prior_quality_collisions() -> 
             else:
                 changed["category"] = "documented_crypto_test_vector"
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 10, 31)
                 )
 
@@ -16124,9 +16207,7 @@ def test_nov1_v4_binding_exact_identity_is_admitted_without_source(
     monkeypatch.chdir(tmp_path)
     record = _nov1_v4_binding_record(index)
     identity = record["identity"]
-    assert verifier.validate_false_positive_dispositions(
-        _disposition_document(record), today=today
-    ) == {
+    assert _nov13_verify_dispositions(_disposition_document(record), today=today) == {
         verifier.FindingIdentity(
             identity["path"],
             identity["type"],
@@ -16189,7 +16270,7 @@ def test_nov1_v4_binding_refuses_scope_and_approval_mutations(
         assert mutation == "noncanonical-path"
         identity["path"] = "./" + _NOV1_V4_FIXTURE_PATH
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 1)
         )
 
@@ -16197,7 +16278,7 @@ def test_nov1_v4_binding_refuses_scope_and_approval_mutations(
 def test_nov1_v4_binding_preserves_all_prior_499_records() -> None:
     records = _oct30_policy()["records"][:499]
     assert len(records) == 499
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         _disposition_document(*_nov4_current_view(records)),
         today=verifier.date(2026, 11, 1),
     )
@@ -16226,7 +16307,7 @@ def test_nov1_v4_binding_preserves_historical_off_fixture_collisions() -> None:
         "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
         "tests/test_full_backend_reusable_contract.py",
     }
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         _disposition_document(*collisions), today=verifier.date(2026, 11, 1)
     )
     assert len(validated) == 25
@@ -16236,7 +16317,7 @@ def test_nov1_v4_binding_refuses_unknown_fourth_fixture_identity() -> None:
     record = _nov1_v4_binding_record(0)
     record["identity"]["hashed_secret_bytes"] = [0] * 20
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 1)
         )
 
@@ -16273,7 +16354,7 @@ def test_nov1_v4_binding_refuses_future_review_and_expired_identity(
     index: int, today: verifier.date
 ) -> None:
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(_nov1_v4_binding_record(index)), today=today
         )
 
@@ -16289,7 +16370,7 @@ def test_nov1_v4_policy_appends_only_three_to_the_unchanged_499_prefix() -> None
     policy = _oct30_policy()
     _nov1_v4_assert_append_only_population(policy)
     assert len(policy["records"]) == 505
-    validated = verifier.validate_false_positive_dispositions(
+    validated = _nov13_verify_dispositions(
         {**policy, "records": _nov4_current_view(policy["records"])},
         today=verifier.date(2026, 11, 2),
     )
@@ -16344,13 +16425,13 @@ def test_nov1_v4_guard_keeps_historical_categories_exact() -> None:
     ]
     assert len(records) == 42
     for original in records:
-        assert verifier.validate_false_positive_dispositions(
+        assert _nov13_verify_dispositions(
             _disposition_document(original), today=verifier.date(2026, 11, 1)
         )
         changed = copy.deepcopy(original)
         changed["category"] = "documented_crypto_test_vector"
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed), today=verifier.date(2026, 11, 1)
             )
 
@@ -16358,11 +16439,11 @@ def test_nov1_v4_guard_keeps_historical_categories_exact() -> None:
 @pytest.mark.parametrize("index", range(3))
 def test_nov1_v4_policy_rejects_each_duplicate_identity(index: int) -> None:
     record = _nov1_v4_binding_record(index)
-    assert verifier.validate_false_positive_dispositions(
+    assert _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2026, 11, 1)
     )
     with pytest.raises(verifier.BaselineArtifactError, match="duplicate"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record, copy.deepcopy(record)),
             today=verifier.date(2026, 11, 1),
         )
@@ -16372,7 +16453,7 @@ def test_nov1_v4_policy_keeps_the_512_record_cap() -> None:
     assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
     record = _nov1_v4_binding_record(0)
     with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(*([record] * 513)),
             today=verifier.date(2026, 11, 1),
         )
@@ -16551,7 +16632,7 @@ def test_nov2_integrity_policy_preserves_502_and_adds_only_two() -> None:
     assert policy["records"][502:504] == _nov2_integrity_records()
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {**policy, "records": _nov4_current_view(policy["records"])},
                 today=verifier.date(2026, 11, 2),
             )
@@ -16625,7 +16706,7 @@ def test_nov2_integrity_rejects_any_approval_scope_drift(
     else:
         record["approval_status"] = "pending"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 2)
         )
 
@@ -16645,13 +16726,10 @@ def test_nov2_integrity_expires_before_january_ten(
 ) -> None:
     document = _disposition_document(_nov2_integrity_records()[index])
     if accepted:
-        assert (
-            len(verifier.validate_false_positive_dispositions(document, today=today))
-            == 1
-        )
+        assert len(_nov13_verify_dispositions(document, today=today)) == 1
     else:
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(document, today=today)
+            _nov13_verify_dispositions(document, today=today)
 
 
 @pytest.mark.parametrize("path", tuple(_PRE_SQUASH_SOURCE_BLOBS))
@@ -17524,7 +17602,7 @@ def test_nov2_workflow_binding_appends_only_one_and_preserves_504() -> None:
     ).digest() == bytes(record["identity"]["hashed_secret_bytes"])
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {**policy, "records": _nov4_current_view(policy["records"])},
                 today=verifier.date(2026, 11, 2),
             )
@@ -17539,7 +17617,7 @@ def test_nov2_workflow_binding_appends_only_one_and_preserves_504() -> None:
     assert len(older_same_path) == 3
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(*older_same_path),
                 today=verifier.date(2026, 11, 2),
             )
@@ -17583,7 +17661,7 @@ def test_nov2_workflow_binding_refuses_scope_or_approval_drift(mutation: str) ->
             "approval_status": "pending",
         }[mutation]
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(row), today=verifier.date(2026, 11, 2)
         )
 
@@ -17602,12 +17680,10 @@ def test_nov2_workflow_binding_keeps_existing_exclusive_expiry(
 ) -> None:
     policy = _disposition_document(_nov2_workflow_binding_record())
     if accepted:
-        assert (
-            len(verifier.validate_false_positive_dispositions(policy, today=today)) == 1
-        )
+        assert len(_nov13_verify_dispositions(policy, today=today)) == 1
     else:
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(policy, today=today)
+            _nov13_verify_dispositions(policy, today=today)
 
 
 @pytest.mark.parametrize("retired_path", sorted(_RETIRED_DISPOSITION_PATHS))
@@ -17622,9 +17698,7 @@ def test_candidate_loader_never_reactivates_a_retired_source(
     today = verifier.date(2026, 11, 2)
     # Historical metadata remains independently valid; activation is denied.
     assert len(
-        verifier.validate_false_positive_dispositions(
-            _disposition_document(*rows), today=today
-        )
+        _nov13_verify_dispositions(_disposition_document(*rows), today=today)
     ) == len(rows)
     policy_path = tmp_path / "quality/security-false-positive-dispositions.json"
     policy_path.parent.mkdir(parents=True)
@@ -17651,7 +17725,7 @@ def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
     repository, _ = _new_git_fixture(tmp_path)
     accepted_sha = _commit_dispositions(repository, policy["records"])
     today = verifier.date(2026, 11, 2)
-    expected = verifier.validate_false_positive_dispositions(
+    expected = _nov13_verify_dispositions(
         _disposition_document(
             *[
                 row
@@ -17686,12 +17760,12 @@ def test_nov2_chart_reference_exact_scope(record: dict[str, Any]) -> None:
         )
         == _AUD380_CURRENT_DELTA_CATEGORY_COUNTS["external_kubernetes_secret_reference"]
     )
-    accepted = verifier.validate_false_positive_dispositions(
+    accepted = _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2027, 1, 9)
     )
     assert len(accepted) == 1
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2027, 1, 10)
         )
 
@@ -17722,7 +17796,7 @@ def test_nov2_chart_reference_rejects_mutation(
     else:
         changed[field] = "2027-01-10" if field == "expires_on" else "unreviewed"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 11, 2)
         )
 
@@ -17847,7 +17921,7 @@ def test_nov2_removed_backend_secret_reference_is_not_approved() -> None:
         "approval_status": "approved",
     }
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 2)
         )
 
@@ -18016,9 +18090,7 @@ def _aud380_assert_live_policy_is_exact_505(
     assert live_records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
         "approved zlib APK suffix changed"
     )
-    accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 6)
-    )
+    accepted = _nov13_verify_dispositions(live_policy, today=verifier.date(2026, 11, 6))
     assert len(accepted) == 505, "historical approved disposition count changed"
 
 
@@ -18116,9 +18188,7 @@ def test_aud380_conditional_owner_projection_is_exact_current_delta(
     history = _reviewed_pre_retirement_dispositions()
     policy = _aud380_conditional_policy()
     _assert_aud380_conditional_policy(policy, _aud380_expected_active_363(history))
-    accepted = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(policy, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 469 + len(_AUD380_PENDING_OWNER_IDENTITIES)
 
 
@@ -18207,12 +18277,12 @@ def test_aud380_new_owner_rows_keep_explicit_review_and_expiry_boundaries() -> N
     assert len(new_rows) == len(_AUD380_PENDING_OWNER_IDENTITIES)
     pending_policy = {"schema_version": 1, "records": new_rows}
     for today in (verifier.date(2026, 11, 6), verifier.date(2027, 1, 10)):
-        assert len(
-            verifier.validate_false_positive_dispositions(pending_policy, today=today)
-        ) == len(new_rows)
+        assert len(_nov13_verify_dispositions(pending_policy, today=today)) == len(
+            new_rows
+        )
     for today in (verifier.date(2026, 11, 5), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(pending_policy, today=today)
+            _nov13_verify_dispositions(pending_policy, today=today)
 
 
 def test_aud380_validator_requires_exact_kind_secret_reference_evidence() -> None:
@@ -18231,7 +18301,7 @@ def test_aud380_validator_requires_exact_kind_secret_reference_evidence() -> Non
     )
     for row in secret_rows:
         single_record_policy = {"schema_version": 1, "records": [row]}
-        accepted = verifier.validate_false_positive_dispositions(
+        accepted = _nov13_verify_dispositions(
             single_record_policy, today=verifier.date(2026, 11, 7)
         )
         assert len(accepted) == 1
@@ -18244,7 +18314,7 @@ def test_aud380_validator_requires_exact_kind_secret_reference_evidence() -> Non
             "evidence": evidence.replace(marker, "unbound.reference", 1),
         }
         with pytest.raises(verifier.BaselineArtifactError, match="evidence"):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 {"schema_version": 1, "records": [changed_row]},
                 today=verifier.date(2026, 11, 7),
             )
@@ -25821,9 +25891,7 @@ def test_aud380_n3_conditional_493_projection_is_exact_append(
     assert verifier._AUD380_N3_CI_TEST_SENTINEL_IDENTITIES == (
         _AUD380_N3_PENDING_OWNER_IDENTITIES
     )
-    accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(conditional, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 493
     assert active_policy["records"] == _aud380_conditional_policy()["records"]
 
@@ -25845,7 +25913,7 @@ def test_aud380_n3_category_requires_exact_test_sentinel_identity(
         verifier.BaselineArtifactError,
         match="category does not allow this path and detector type",
     ):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             {"schema_version": 1, "records": [record]},
             today=verifier.date(2026, 11, 7),
         )
@@ -25925,17 +25993,10 @@ def test_aud380_n3_pending_records_keep_status_and_expiry_boundaries() -> None:
         row["approval_status"] = "approved"
     single_policy = {"schema_version": 1, "records": approved_for_validation}
     for today in (verifier.date(2026, 11, 6), verifier.date(2027, 1, 10)):
-        assert (
-            len(
-                verifier.validate_false_positive_dispositions(
-                    single_policy, today=today
-                )
-            )
-            == 3
-        )
+        assert len(_nov13_verify_dispositions(single_policy, today=today)) == 3
     for today in (verifier.date(2026, 11, 5), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(single_policy, today=today)
+            _nov13_verify_dispositions(single_policy, today=today)
 
 
 def test_aud380_n3_source_bindings_and_fail_closed_mutations(tmp_path: Path) -> None:
@@ -26195,9 +26256,7 @@ def test_aud380_n4_conditional_494_projection_is_exact_append() -> None:
     active = _aud380_conditional_policy()
     conditional = _aud380_n4_conditional_policy()
     _assert_aud380_n4_conditional_policy(conditional, active)
-    accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(conditional, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 494
     assert active["records"] == _aud380_conditional_policy()["records"]
 
@@ -26272,13 +26331,10 @@ def test_aud380_n4_rows_keep_pending_status_and_expiry_boundaries() -> None:
     for row in approved:
         single = {"schema_version": 1, "records": [row]}
         for today in (verifier.date(2026, 11, 6), verifier.date(2027, 1, 10)):
-            assert (
-                len(verifier.validate_false_positive_dispositions(single, today=today))
-                == 1
-            )
+            assert len(_nov13_verify_dispositions(single, today=today)) == 1
         for today in (verifier.date(2026, 11, 5), verifier.date(2027, 1, 11)):
             with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-                verifier.validate_false_positive_dispositions(single, today=today)
+                _nov13_verify_dispositions(single, today=today)
 
 
 def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
@@ -26309,7 +26365,7 @@ def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
     for record in approved[1:]:
         assert (
             len(
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(record), today=verifier.date(2026, 11, 7)
                 )
             )
@@ -26319,13 +26375,13 @@ def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
             changed = copy.deepcopy(record)
             changed["identity"][field] += ".unreviewed"
             with pytest.raises(verifier.BaselineArtifactError):
-                verifier.validate_false_positive_dispositions(
+                _nov13_verify_dispositions(
                     _disposition_document(changed), today=verifier.date(2026, 11, 7)
                 )
         changed = copy.deepcopy(record)
         changed["identity"]["hashed_secret_bytes"][0] ^= 1
         with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(changed), today=verifier.date(2026, 11, 7)
             )
 
@@ -26661,9 +26717,7 @@ def test_aud380_n5_conditional_495_projection_is_exact_append() -> None:
     active_494 = _aud380_n4_conditional_policy()
     conditional = _aud380_n5_conditional_policy()
     _assert_aud380_n5_conditional_policy(conditional, active_494)
-    accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(conditional, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 495
     assert active_494["records"] == _aud380_n4_conditional_policy()["records"]
 
@@ -26739,17 +26793,13 @@ def test_aud380_n5_pending_status_expiry_and_exact_source_binding() -> None:
     for today in (verifier.date(2026, 11, 6), verifier.date(2027, 1, 10)):
         assert (
             len(
-                verifier.validate_false_positive_dispositions(
-                    _disposition_document(approved), today=today
-                )
+                _nov13_verify_dispositions(_disposition_document(approved), today=today)
             )
             == 1
         )
     for today in (verifier.date(2026, 11, 5), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(
-                _disposition_document(approved), today=today
-            )
+            _nov13_verify_dispositions(_disposition_document(approved), today=today)
     _assert_conditional_owner_source_bindings(Path(__file__).resolve().parents[1])
 
 
@@ -30089,9 +30139,7 @@ def _aud380_assert_live_policy_is_exact_505(
     assert live_records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
         "approved zlib APK suffix changed"
     )
-    accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 6)
-    )
+    accepted = _nov13_verify_dispositions(live_policy, today=verifier.date(2026, 11, 6))
     assert len(accepted) == 505, "historical approved disposition count changed"
 
 
@@ -30197,9 +30245,7 @@ def test_aud380_n6_conditional_497_projection_is_exact_append() -> None:
     active_495 = _aud380_n5_conditional_policy()
     conditional = _aud380_n6_conditional_policy()
     _assert_aud380_n6_conditional_policy(conditional, active_495)
-    accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(conditional, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 497
     assert conditional["records"][:495] == active_495["records"]
 
@@ -30274,11 +30320,7 @@ def test_aud380_n6_pending_rows_keep_exact_expiry_and_reject_digest_mutations() 
         expires_on = verifier.date.fromisoformat(row["expires_on"])
         for today in (reviewed_on, expires_on):
             assert (
-                len(
-                    verifier.validate_false_positive_dispositions(
-                        _disposition_document(row), today=today
-                    )
-                )
+                len(_nov13_verify_dispositions(_disposition_document(row), today=today))
                 == 1
             )
         for today in (
@@ -30286,9 +30328,7 @@ def test_aud380_n6_pending_rows_keep_exact_expiry_and_reject_digest_mutations() 
             verifier.date.fromordinal(expires_on.toordinal() + 1),
         ):
             with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-                verifier.validate_false_positive_dispositions(
-                    _disposition_document(row), today=today
-                )
+                _nov13_verify_dispositions(_disposition_document(row), today=today)
     assert {_aud380_identity_key(row) for row in approved} == set(
         _AUD380_N6_EXPECTED_IDENTITIES
     )
@@ -30614,10 +30654,10 @@ def _nov6_zlib_historical_497_from_live_policy(
     )
     historical_505 = {**policy, "records": copy.deepcopy(records[:505])}
     try:
-        accepted_505 = verifier.validate_false_positive_dispositions(
+        accepted_505 = _nov13_verify_dispositions(
             historical_505, today=verifier.date(2026, 11, 6)
         )
-        accepted_live = verifier.validate_false_positive_dispositions(
+        accepted_live = _nov13_verify_dispositions(
             policy, today=verifier.date(2026, 11, 7)
         )
     except verifier.BaselineArtifactError as error:
@@ -30636,17 +30676,10 @@ def test_nov6_zlib_policy_exact_append_and_inclusive_expiry() -> None:
     assert live["records"][505] == _AUD428_ROW13_APPROVED_RECORD
     document = _disposition_document(*copy.deepcopy(_NOV6_ZLIB_EXPECTED_RECORDS))
     assert (
-        len(
-            verifier.validate_false_positive_dispositions(
-                document, today=verifier.date(2027, 1, 10)
-            )
-        )
-        == 8
+        len(_nov13_verify_dispositions(document, today=verifier.date(2027, 1, 10))) == 8
     )
     with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-        verifier.validate_false_positive_dispositions(
-            document, today=verifier.date(2027, 1, 11)
-        )
+        _nov13_verify_dispositions(document, today=verifier.date(2027, 1, 11))
 
 
 @pytest.mark.parametrize("index", range(8))
@@ -30668,7 +30701,7 @@ def test_nov6_zlib_validator_refuses_approval_drift(index: int, mutation: str) -
     record = copy.deepcopy(_NOV6_ZLIB_EXPECTED_RECORDS[index])
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(record), today=verifier.date(2026, 11, 6)
             )
         )
@@ -30693,7 +30726,7 @@ def test_nov6_zlib_validator_refuses_approval_drift(index: int, mutation: str) -
     else:
         record["approval_status"] = "NOT_APPROVED"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 6)
         )
 
@@ -30899,7 +30932,9 @@ def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
     ledger_bytes = _aud154_historical_source_bytes(
         "quality/semgrep-dispositions.json", ledger_path.read_bytes()
     )
-    companion_bytes = companion_path.read_bytes()
+    companion_bytes = _nov13_go_companion_historical_source_bytes(
+        "tests/test_quality_workflow_contract.py", companion_path.read_bytes()
+    )
     live_policy_bytes = policy_path.read_bytes()
     _nov9_assert_live_policy_bytes(live_policy_bytes)
     policy_bytes = _nov9_historical_506_policy_bytes(
@@ -30986,9 +31021,7 @@ def _aud428_assert_live_policy_is_exact_506(
         {"public_integrity_digest": 1}
     )
     assert Counter(row["category"] for row in records) == expected_counts
-    accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 7)
-    )
+    accepted = _nov13_verify_dispositions(live_policy, today=verifier.date(2026, 11, 7))
     assert len(accepted) == 506, "live approved disposition count changed"
 
 
@@ -31498,7 +31531,7 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    if len(policy.get("records", [])) == 511:
+    if len(policy.get("records", [])) == 512:
         policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -31512,9 +31545,7 @@ def _nov9_historical_506_from_live_policy(
     assert hashlib.sha256(historical_bytes).digest() == (
         _AUD428_ROW13_ACTIVE_POLICY_SHA256
     ), "prior 506 approved records or header changed"
-    accepted = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 11, 9)
-    )
+    accepted = _nov13_verify_dispositions(policy, today=verifier.date(2026, 11, 9))
     assert len(accepted) == 509, "live approved disposition count changed"
     return historical
 
@@ -31640,7 +31671,7 @@ def test_nov9_wasm_cli_validator_refuses_approval_drift(
     record = copy.deepcopy(_NOV9_WASM_CLI_EXPECTED_RECORDS[index])
     assert (
         len(
-            verifier.validate_false_positive_dispositions(
+            _nov13_verify_dispositions(
                 _disposition_document(record), today=verifier.date(2026, 11, 9)
             )
         )
@@ -31669,7 +31700,7 @@ def test_nov9_wasm_cli_validator_refuses_approval_drift(
     else:
         record["approval_status"] = "NOT_APPROVED"
     with pytest.raises(verifier.BaselineArtifactError):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 9)
         )
     policy = _aud380_read_live_policy()
@@ -31692,14 +31723,12 @@ def test_nov9_wasm_cli_review_and_inclusive_expiry_are_finite(index: int) -> Non
         )
     }
     for today in (verifier.date(2026, 11, 9), verifier.date(2027, 1, 10)):
-        assert verifier.validate_false_positive_dispositions(document, today=today) == (
-            expected
-        )
+        assert _nov13_verify_dispositions(document, today=today) == (expected)
     for today in (verifier.date(2026, 11, 8), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(document, today=today)
+            _nov13_verify_dispositions(document, today=today)
     with pytest.raises(verifier.BaselineArtifactError, match="duplicate"):
-        verifier.validate_false_positive_dispositions(
+        _nov13_verify_dispositions(
             _disposition_document(*document["records"], *document["records"]),
             today=verifier.date(2026, 11, 9),
         )
@@ -32138,7 +32167,8 @@ _NATS_PROCESS_PRE_REBIND_LEDGER_SHA256 = bytes.fromhex(
 
 
 # Owner-approved 2026-11-11 Go image identity. The older contracts operate on
-# the exact 509-record prefix; the live document appends only Go and ZAP.
+# the exact 509-record prefix; the live document appends only Go, ZAP and
+# Calico.
 _NOV11_GO_IMAGE_SCANNER_DIGEST = bytes.fromhex(
     "c8 64 20 19 43 35 0a eb 96 c2 e1 67 52 e3 9a f0 6a bb 45 e7"
 )
@@ -32168,11 +32198,12 @@ def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, 
     policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
-    assert len(records) == 511, "live disposition row count changed"
+    assert len(records) == 512, "live disposition row count changed"
     assert records[509:] == [
         _NOV11_GO_IMAGE_APPROVED_RECORD,
         _NOV11_ZAP_IMAGE_APPROVED_RECORD,
-    ], "live disposition approved Go and ZAP suffix changed"
+        _NOV12_CALICO_APPROVED_RECORD,
+    ], "live disposition approved Go, ZAP and Calico suffix changed"
     historical = {**policy, "records": copy.deepcopy(records[:509])}
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     assert hashlib.sha256(historical_bytes).digest() == _NOV9_WASM_CLI_POLICY_SHA256, (
@@ -32204,10 +32235,10 @@ def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
     ).read_bytes()
     historical_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
     assert len(json.loads(historical_bytes)["records"]) == 509
-    accepted = verifier.validate_false_positive_dispositions(
-        json.loads(policy_bytes), today=verifier.date(2026, 11, 11)
+    accepted = _nov13_verify_dispositions(
+        json.loads(policy_bytes), today=verifier.date(2026, 11, 12)
     )
-    assert len(accepted) == 511
+    assert len(accepted) == 512
 
 
 @pytest.mark.parametrize(
@@ -32246,13 +32277,10 @@ def test_nov11_go_image_approval_has_finite_review_and_expiry() -> None:
         )
     }
     for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
-        assert (
-            verifier.validate_false_positive_dispositions(document, today=today)
-            == expected
-        )
+        assert _nov13_verify_dispositions(document, today=today) == expected
     for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(document, today=today)
+            _nov13_verify_dispositions(document, today=today)
 
 
 @pytest.mark.parametrize("mutation", ["exact", "path", "digest", "type"])
@@ -32455,7 +32483,7 @@ def test_nov11_zap_image_projection_rejects_scope_drift(mutation: str) -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    record = policy["records"][-1]
+    record = policy["records"][510]
     if mutation == "path":
         record["identity"]["path"] = ".zap/other.txt"
     elif mutation == "digest":
@@ -32489,13 +32517,10 @@ def test_nov11_zap_image_approval_has_finite_review_and_expiry() -> None:
         )
     }
     for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 10)):
-        assert (
-            verifier.validate_false_positive_dispositions(document, today=today)
-            == expected
-        )
+        assert _nov13_verify_dispositions(document, today=today) == expected
     for today in (verifier.date(2026, 11, 10), verifier.date(2027, 1, 11)):
         with pytest.raises(verifier.BaselineArtifactError, match="date range"):
-            verifier.validate_false_positive_dispositions(document, today=today)
+            _nov13_verify_dispositions(document, today=today)
 
 
 # AUD154 changes source provenance only. Pin current bytes before projecting
@@ -32559,7 +32584,475 @@ _AUD154_SOURCE_INSERTIONS = {
 }
 
 
+# NOV12 chart pins: owner standing approval (2026-10-31) for one-to-one rebinds
+# of existing digest identities. The Calico values blocks are inserted into these
+# two chart files; the exact predecessor bytes are restored before the existing
+# AUD-380 source pins are checked. No identity is added; the total stays 512.
+_NOV12_CHART_REBINDS = {
+    "charts/university-ecosystem/values.yaml": (
+        23762,
+        32742,
+        bytes.fromhex(
+            "11 22 e9 99 8c 45 14 6b 82 99 41 ef 13 75 bb 55 c1 a4 fd f7 07 3f 4c e4 d7 75 a1 09 3e 1c 6e 78"
+        ),
+        bytes.fromhex(
+            "c3 da 7a a0 99 2e b6 0c 82 b2 53 b0 81 e7 41 1a ca 3e 4e 55 82 73 17 93 cd 22 de 7e 5e 07 eb d4"
+        ),
+    ),
+    "charts/university-ecosystem/values.schema.json": (
+        50597,
+        70162,
+        bytes.fromhex(
+            "d3 d1 a1 74 36 cd 9b 13 6c b1 05 63 e1 69 d8 48 e8 85 ba 84 5e 76 95 ff 24 bb 44 38 ce 99 93 49"
+        ),
+        bytes.fromhex(
+            "0f 65 6e 5a b4 be 92 51 3e 47 83 68 c0 ca c1 99 de d1 89 5e 3d 6b 40 60 49 c3 77 fc 73 d3 b6 12"
+        ),
+    ),
+}
+
+
+def _nov12_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    rebind = _NOV12_CHART_REBINDS.get(path)
+    if rebind is None:
+        return actual
+    prefix_length, previous_length, previous_sha, current_sha = rebind
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = (
+        actual[:prefix_length]
+        + actual[len(actual) - (previous_length - prefix_length) :]
+    )
+    assert hashlib.sha256(historical).digest() == previous_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+# STEP2 Go/companion rebind: the Semgrep row-13 companion digest for the workflow
+# contract changes with the approved 1.26.4 -> 1.26.11 manifest pin, and the existing
+# public-integrity identity is rebound one-to-one (owner standing approval 2026-10-31).
+# The exact predecessor test and ledger bytes are restored before the existing pins
+# are checked; no identity is added and the total stays 512.
+_NOV13_COMPANION_CURRENT_SHA256 = bytes.fromhex(
+    "e0 d2 df 72 3e a7 cb 3d 82 03 5d 18 a8 70 70 b3 89 4a e0 c9 f7 91 6c 51 58 c9 7c a3 e0 54 7e f5"
+)
+_NOV13_COMPANION_PREVIOUS_SHA256 = bytes.fromhex(
+    "b6 88 0e 4f 27 06 40 dc 5b 1e fc a7 05 8e 48 84 86 f4 a6 6d 06 50 c5 6a 74 61 46 02 d9 dc 06 fd"
+)
+_NOV13_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "16 11 d6 e3 4f c8 7a 75 79 df 77 dd 66 cf f0 9f 55 af df ef 21 3a b7 e4 6a 81 4e 21 14 39 19 28"
+)
+_NOV13_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    "50 05 3a 0f 31 7b 2e ee 4d 71 54 53 76 2a cf f3 f4 cb 17 11 da ec e1 5f a2 96 5d 2d e2 58 2e cf"
+)
+_NOV13_COMPANION_ROW = 505
+
+
+# STEP5 loopback CSP exception: the Semgrep companion digest of
+# frontend/scripts/server-csp.mjs and its existing public-integrity identity are
+# rebound one-to-one (owner standing approval 2026-10-31). The predecessor source,
+# ledger and policy bytes are restored before the existing pins are checked. Each
+# source hunk must match exactly once and the reversal must reproduce the
+# predecessor digest; no identity is added and the total stays 512.
+_NOV13_LOOPBACK_SOURCE_CURRENT_SHA256 = bytes.fromhex(
+    "e8 95 6f 34 9a ba 0b 03 44 26 44 e0 be 40 92 9c 75 22 45 5c 44 d2 7b bb d0 3f 61 ca 0a 1e 79 ce"
+)
+_NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256 = bytes.fromhex(
+    "58 c5 e4 51 cf 68 e3 a0 91 14 0c 57 fa 32 e8 7f 13 0c 56 42 16 70 4a 0f 05 f0 83 05 2e 62 62 43"
+)
+_NOV13_LOOPBACK_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "d6 e2 43 e1 ad 53 db 87 b5 28 fd 7e 39 2a 21 7e 5c ae 84 69 59 e3 fd 87 a8 4c 8e 4a 4b 23 b8 9b"
+)
+_NOV13_LOOPBACK_CSP_ROW = 443
+_NOV13_LOOPBACK_CSP_REVERSALS = (
+    (
+        r"""// Loopback literals only. Anchored, so "127.0.0.1.evil.com", "evil.com:127.0.0.1"
+// and "[::1].evil.com" never match. Bare "::1" is accepted because it is the
+// unambiguous IPv6 loopback spelling without a port.
+const LOOPBACK_HOST_PATTERN =
+  /^(?:(?:127\.0\.0\.1|localhost)(?::\d{1,5})?|\[::1\](?::\d{1,5})?|::1)$/iu
+
+function isLoopbackHost(host) {
+  return typeof host === "string" && LOOPBACK_HOST_PATTERN.test(host)
+}
+
+// Only an absent X-Forwarded-Proto or an exact "http" marks a request as plain
+// HTTP. Anything else (https, lists, arrays, empty values) fails closed.
+function isMarkedPlainHttp(forwardedProto) {
+  if (forwardedProto === undefined || forwardedProto === null) return true
+  return typeof forwardedProto === "string" && forwardedProto.trim().toLowerCase() === "http"
+}
+
+/**
+ * Production sits behind Caddy TLS, so `upgrade-insecure-requests` stays for every
+ * real host. It is omitted only for a plain-HTTP request addressed to a loopback
+ * literal, which is the local preview / Playwright lane. WebKit otherwise upgrades
+ * those loopback subresource requests to https and fails the TLS handshake.
+ */
+export function shouldUpgradeInsecureRequests({ host, forwardedProto } = {}) {
+  return !(isLoopbackHost(host) && isMarkedPlainHttp(forwardedProto))
+}
+
+export function buildNodeCspHeaders(nonce, { upgradeInsecureRequests = true } = {}) {
+""",
+        r"""export function buildNodeCspHeaders(nonce) {
+""",
+    ),
+    (
+        r"""  if (typeof upgradeInsecureRequests !== "boolean") {
+    throw new TypeError("upgradeInsecureRequests must be a boolean")
+  }
+""",
+        r"""""",
+    ),
+    (
+        r"""  const enforcingPolicy = policyDirectives
+    .filter((directive) => upgradeInsecureRequests || directive !== "upgrade-insecure-requests")
+    .join("; ")
+""",
+        r"""  const enforcingPolicy = policyDirectives.join("; ")
+""",
+    ),
+    (
+        r"""export function applyNodeCspToHtmlResponse(response, nonce, options = {}) {
+""",
+        r"""export function applyNodeCspToHtmlResponse(response, nonce) {
+""",
+    ),
+    (
+        r"""  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce, options))) {
+""",
+        r"""  for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
+""",
+    ),
+)
+
+
+def _nov13_loopback_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_trivy_workflow_source_bytes(path, actual)
+    if path == "frontend/scripts/server-csp.mjs":
+        assert (
+            hashlib.sha256(actual).digest() == _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        historical = actual
+        for current, previous in _NOV13_LOOPBACK_CSP_REVERSALS:
+            current_bytes = current.encode("utf-8")
+            assert historical.count(current_bytes) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(current_bytes, previous.encode("utf-8"), 1)
+        assert (
+            hashlib.sha256(historical).digest()
+            == _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert (
+            hashlib.sha256(actual).digest() == _NOV13_LOOPBACK_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        current = _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current, _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"), 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    return actual
+
+
+def _nov13_loopback_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    # The Trivy predecessor digest is the innermost projection: every later
+    # historical layer in this chain hashes the restored predecessor policy.
+    restored = _nov13_trivy_historical_policy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    row = records[_NOV13_LOOPBACK_CSP_ROW]
+    identity = row["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_CURRENT_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    ), "live disposition loopback CSP identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
+def test_nov13_loopback_csp_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "frontend/scripts/server-csp.mjs").read_bytes()
+    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item["sha256"]
+        for item in ledger["dispositions"][14]["companions"]
+        if item["path"] == "frontend/scripts/server-csp.mjs"
+    ]
+    assert companions == [hashlib.sha256(source).hexdigest()]
+    historical = _nov13_loopback_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    )
+    assert hashlib.sha256(historical).digest() == _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256
+    assert b"upgradeInsecureRequests" not in historical
+    restored_ledger = _nov13_loopback_csp_historical_source_bytes(
+        "quality/semgrep-dispositions.json", ledger_bytes
+    )
+    assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov13_loopback_csp_historical_policy(policy)
+    assert len(restored_policy["records"]) == 512
+    assert (
+        bytes(
+            restored_policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"][
+                "hashed_secret_bytes"
+            ]
+        )
+        == hashlib.sha1(
+            _NOV13_LOOPBACK_SOURCE_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+
+
+@pytest.mark.parametrize("mutation", ["source", "ledger", "policy"])
+def test_nov13_loopback_csp_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "source":
+        actual = (root / "frontend/scripts/server-csp.mjs").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_loopback_csp_historical_source_bytes(
+                "frontend/scripts/server-csp.mjs", actual
+            )
+    elif mutation == "ledger":
+        actual = (root / "quality/semgrep-dispositions.json").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_loopback_csp_historical_source_bytes(
+                "quality/semgrep-dispositions.json", actual
+            )
+    else:
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="loopback CSP identity changed"):
+            _nov13_loopback_csp_historical_policy(policy)
+
+
+# STEP4 retired dead mfa_enabled flag: the Semgrep companion digest of
+# app/core/config/mixins/mfa_settings.py and its existing public-integrity identity
+# are rebound one-to-one (owner standing approval 2026-10-31). The exact predecessor
+# source, ledger and policy bytes are restored before the existing pins are checked;
+# no identity is added and the total stays 512.
+_NOV13_MFA_CURRENT_SOURCE_SHA256 = bytes.fromhex(
+    "f2 84 ad a0 ed 1a ad 60 71 7b fe 34 ce 12 40 bd ab 52 9a 6d dd 9d 8a 7b df fe 14 10 7d 94 43 e4"
+)
+_NOV13_MFA_PREVIOUS_SOURCE_SHA256 = bytes.fromhex(
+    "c6 61 0b 73 d9 7d 6c db 87 f3 71 ac 02 85 05 03 28 eb 1e 86 0d 79 4d 14 01 d3 ad 26 70 a6 d6 ce"
+)
+_NOV13_MFA_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "51 c9 7a 40 87 f8 be e7 fd 72 88 19 d3 7b 95 be 7f 16 84 6f d1 be e3 72 65 51 46 86 9a 73 a2 a5"
+)
+_NOV13_MFA_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    "16 11 d6 e3 4f c8 7a 75 79 df 77 dd 66 cf f0 9f 55 af df ef 21 3a b7 e4 6a 81 4e 21 14 39 19 28"
+)
+_NOV13_MFA_COMPANION_ROW = 433
+_NOV13_MFA_DEAD_FLAG_LINE = b"    mfa_enabled: bool = False\n"
+_NOV13_MFA_ANCHOR_LINE = b"    mfa_default_method: str | None = None\n"
+
+
+def _nov13_mfa_settings_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_loopback_csp_historical_source_bytes(path, actual)
+    if path == "app/core/config/mixins/mfa_settings.py":
+        assert hashlib.sha256(actual).digest() == _NOV13_MFA_CURRENT_SOURCE_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        assert actual.count(_NOV13_MFA_ANCHOR_LINE) == 1
+        historical = actual.replace(
+            _NOV13_MFA_ANCHOR_LINE,
+            _NOV13_MFA_DEAD_FLAG_LINE + _NOV13_MFA_ANCHOR_LINE,
+            1,
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_PREVIOUS_SOURCE_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert hashlib.sha256(actual).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current = _NOV13_MFA_CURRENT_SOURCE_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current, _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"), 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_MFA_LEDGER_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    return actual
+
+
+def _nov13_mfa_settings_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _nov13_loopback_csp_historical_policy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    identity = records[_NOV13_MFA_COMPANION_ROW]["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_MFA_CURRENT_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    ), "live disposition mfa companion identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
+def test_nov13_mfa_settings_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app/core/config/mixins/mfa_settings.py").read_bytes()
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    companions = [
+        item["sha256"]
+        for item in ledger["dispositions"][13]["companions"]
+        if item["path"] == "app/core/config/mixins/mfa_settings.py"
+    ]
+    assert companions == [hashlib.sha256(source).hexdigest()]
+    historical = _nov13_mfa_settings_historical_source_bytes(
+        "app/core/config/mixins/mfa_settings.py", source
+    )
+    assert b"mfa_enabled" not in source
+    assert historical.count(_NOV13_MFA_DEAD_FLAG_LINE) == 1
+    restored_ledger = _nov13_mfa_settings_historical_source_bytes(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
+    assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_PREVIOUS_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov13_mfa_settings_historical_policy(policy)
+    assert len(restored_policy["records"]) == 512
+    assert (
+        bytes(
+            restored_policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"][
+                "hashed_secret_bytes"
+            ]
+        )
+        == hashlib.sha1(
+            _NOV13_MFA_PREVIOUS_SOURCE_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+
+
+@pytest.mark.parametrize("mutation", ["source", "ledger", "policy"])
+def test_nov13_mfa_settings_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "source":
+        actual = (root / "app/core/config/mixins/mfa_settings.py").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_mfa_settings_historical_source_bytes(
+                "app/core/config/mixins/mfa_settings.py", actual
+            )
+    elif mutation == "ledger":
+        actual = (root / "quality/semgrep-dispositions.json").read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_mfa_settings_historical_source_bytes(
+                "quality/semgrep-dispositions.json", actual
+            )
+    else:
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="mfa companion identity changed"):
+            _nov13_mfa_settings_historical_policy(policy)
+
+
+def _nov13_go_companion_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_mfa_settings_historical_source_bytes(path, actual)
+    if path == "tests/test_quality_workflow_contract.py":
+        assert hashlib.sha256(actual).digest() == _NOV13_COMPANION_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current_line = b'    manifest_expected_version = "1.26.11"\n'
+        assert actual.count(current_line) == 1
+        historical = actual.replace(
+            current_line, b'    manifest_expected_version = "1.26.4"\n', 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_COMPANION_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == "quality/semgrep-dispositions.json":
+        assert hashlib.sha256(actual).digest() == _NOV13_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        current = _NOV13_COMPANION_CURRENT_SHA256.hex().encode("ascii")
+        assert actual.count(current) == 1
+        historical = actual.replace(
+            current,
+            _NOV13_COMPANION_PREVIOUS_SHA256.hex().encode("ascii"),
+            1,
+        )
+        assert hashlib.sha256(historical).digest() == _NOV13_LEDGER_PREVIOUS_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    return actual
+
+
+def _nov13_go_companion_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _nov13_mfa_settings_historical_policy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    identity = records[_NOV13_COMPANION_ROW]["identity"]
+    assert identity["path"] == "quality/semgrep-dispositions.json"
+    assert identity["type"] == "Hex High Entropy String"
+    assert (
+        bytes(identity["hashed_secret_bytes"])
+        == hashlib.sha1(
+            _NOV13_COMPANION_CURRENT_SHA256.hex().encode("ascii"), usedforsecurity=False
+        ).digest()
+    ), "live disposition companion identity changed"
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _NOV13_COMPANION_PREVIOUS_SHA256.hex().encode("ascii"),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov12_chart_historical_source_bytes(path, actual)
     actual = _aud375_historical_source_bytes(path, actual)
     if path not in _AUD154_SOURCE_PINS:
         return actual
@@ -32585,7 +33078,7 @@ def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _aud375_historical_policy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    assert len(restored["records"]) == 512, "live disposition count changed"
     replacements = {
         hashlib.sha1(
             current.hex().encode("ascii"), usedforsecurity=False
@@ -32608,7 +33101,9 @@ def _aud154_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
         identity["hashed_secret_bytes"] = list(replacements[digest])
         changed.append(index)
     assert changed == [451, 495], "live disposition AUD154 rebind set changed"
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # Predecessor digests cover the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _AUD154_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32706,7 +33201,7 @@ def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _nov12_csp_historical_policy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    assert len(restored["records"]) == 512, "live disposition count changed"
     row = restored["records"][451]
     identity = row["identity"]
     assert identity["path"] == "quality/semgrep-dispositions.json"
@@ -32724,7 +33219,9 @@ def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
             usedforsecurity=False,
         ).digest()
     )
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # Predecessor digests cover the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _AUD375_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32735,11 +33232,14 @@ def test_aud375_package_projection_preserves_exact_predecessor() -> None:
     actual = (root / "frontend/package.json").read_bytes()
     historical = _aud375_historical_source_bytes("frontend/package.json", actual)
     assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
-    assert actual == historical.replace(
+    # The NOV-RUST lockfile projection changes the basic-ftp override; forward
+    # project that one-to-one companion edit onto the restored predecessor.
+    expected_live = historical.replace(
         b'"test:wasm": "node --test',
         b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX,
         1,
-    )
+    ).replace(b'"basic-ftp": ">=5.3.1",', b'"basic-ftp": ">=6.2.4",', 1)
+    assert actual == expected_live
     assert (
         hashlib.sha256(historical).digest()
         == _AUD154_SOURCE_PINS["frontend/package.json"][1]
@@ -32799,6 +33299,7 @@ _NOV12_CSP_ROW = 443
 
 
 def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov13_go_companion_historical_source_bytes(path, actual)
     if path == "frontend/scripts/server-csp.mjs":
         assert hashlib.sha256(actual).digest() == _NOV12_CSP_SOURCE_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -32822,8 +33323,8 @@ def _nov12_csp_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
-    assert len(restored["records"]) == 511, "live disposition count changed"
+    restored = _nov13_go_companion_historical_policy(policy)
+    assert len(restored["records"]) == 512, "live disposition count changed"
     row = restored["records"][_NOV12_CSP_ROW]
     identity = row["identity"]
     assert identity["path"] == "quality/semgrep-dispositions.json"
@@ -32841,7 +33342,9 @@ def _nov12_csp_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
             usedforsecurity=False,
         ).digest()
     )
-    assert hashlib.sha256(_nov9_historical_506_policy_bytes(restored)).digest() == (
+    # The predecessor digest covers the 511 records before the Calico identity.
+    predecessor = {**restored, "records": restored["records"][:511]}
+    assert hashlib.sha256(_nov9_historical_506_policy_bytes(predecessor)).digest() == (
         _NOV12_PREVIOUS_POLICY_SHA256
     ), "live disposition predecessor or approval metadata changed"
     return restored
@@ -32861,7 +33364,9 @@ def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
     historical = _nov12_csp_historical_source_bytes(
         "frontend/scripts/server-csp.mjs", source
     )
-    assert source == historical.replace(
+    assert _nov13_loopback_csp_historical_source_bytes(
+        "frontend/scripts/server-csp.mjs", source
+    ) == historical.replace(
         b'  "https://fcmregistrations.googleapis.com",\n',
         b'  "https://fcmregistrations.googleapis.com",\n' + _NOV12_CSP_INSERTION,
         1,
@@ -32906,3 +33411,610 @@ def test_nov12_map_csp_policy_projection_rejects_scope_drift(field: str) -> None
         row[field] += " changed"
     with pytest.raises(AssertionError):
         _nov12_csp_historical_policy(policy)
+
+
+# Owner-approved 2026-11-12 Calico manifest checksum identity. The live document
+# appends it after the Go and ZAP identities; the 511 prior records are preserved.
+_NOV12_CALICO_PRE_POLICY_SHA256 = bytes.fromhex(
+    "06 c6 fd da bf 3a ba ca c8 9f 4d 17 64 69 87 07 c9 4e f9 85 e8 11 e2 38 a6 e5 dc bc 0a 04 27 6c"
+)
+_NOV12_CALICO_SCANNER_DIGEST = bytes.fromhex(
+    "17 79 ac 26 87 8e 03 4c 7e e1 05 42 f3 d7 e2 e4 96 c6 b4 d9"
+)
+_NOV12_CALICO_SHA256_PATTERN = re.compile(r'readonly CALICO_SHA256="([0-9a-f]{64})"')
+_NOV12_CALICO_APPROVED_RECORD = {
+    "approval_status": "approved",
+    "category": "public_integrity_digest",
+    "evidence": (
+        "Official Calico v3.30.3 manifest SHA-256 pin at "
+        "scripts/k8s/networkpolicy_runtime_proof.sh:34 for "
+        "https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml; "
+        "computed from that exact file because the upstream project publishes no checksum; "
+        "owner approved this exact public integrity identity on 2026-11-12; "
+        "not credential material."
+    ),
+    "expires_on": "2027-01-10",
+    "identity": {
+        "hashed_secret_bytes": list(_NOV12_CALICO_SCANNER_DIGEST),
+        "path": "scripts/k8s/networkpolicy_runtime_proof.sh",
+        "type": "Hex High Entropy String",
+    },
+    "owner": "egorribun",
+    "reviewed_on": "2026-11-12",
+}
+
+
+def test_nov12_calico_preserves_published_policy_and_source_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    _nov11_historical_509_from_live_policy(policy)
+    restored_policy = _nov13_go_companion_historical_policy(policy)
+    previous = {**restored_policy, "records": restored_policy["records"][:511]}
+    assert (
+        hashlib.sha256(_nov9_historical_506_policy_bytes(previous)).digest()
+        == _NOV12_CALICO_PRE_POLICY_SHA256
+    )
+    assert policy["records"][511] == _NOV12_CALICO_APPROVED_RECORD
+    proof = (
+        (root / "scripts/k8s/networkpolicy_runtime_proof.sh")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    match = _NOV12_CALICO_SHA256_PATTERN.fullmatch(proof[33])
+    assert match is not None, "Calico checksum must stay on proof line 34"
+    digest = match.group(1)
+    assert (
+        hashlib.sha1(digest.encode("ascii"), usedforsecurity=False).digest()
+        == _NOV12_CALICO_SCANNER_DIGEST
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "digest",
+        "type",
+        "category",
+        "owner",
+        "review",
+        "expiry",
+        "evidence",
+        "zap_record",
+    ],
+)
+def test_nov12_calico_projection_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    record = policy["records"][511]
+    if mutation == "path":
+        record["identity"]["path"] = "scripts/k8s/other.sh"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "synthetic_test_fixture"
+    elif mutation == "owner":
+        record["owner"] = "someone_else"
+    elif mutation == "review":
+        record["reviewed_on"] = "2026-11-11"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        record["evidence"] += " changed"
+    else:
+        policy["records"][510]["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition"):
+        _nov11_historical_509_from_live_policy(policy)
+
+
+def test_nov12_calico_approval_has_finite_review_and_expiry() -> None:
+    document = _disposition_document(copy.deepcopy(_NOV12_CALICO_APPROVED_RECORD))
+    expected = {
+        verifier.FindingIdentity(
+            "scripts/k8s/networkpolicy_runtime_proof.sh",
+            "Hex High Entropy String",
+            _NOV12_CALICO_SCANNER_DIGEST.hex(),
+            34,
+        )
+    }
+    for today in (verifier.date(2026, 11, 12), verifier.date(2027, 1, 10)):
+        assert _nov13_verify_dispositions(document, today=today) == expected
+    for today in (verifier.date(2026, 11, 11), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            _nov13_verify_dispositions(document, today=today)
+
+
+def test_nov13_trivy_digest_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _nov13_trivy_historical_policy(policy)
+    assert len(restored["records"]) == 512
+    row = next(
+        record
+        for record in restored["records"]
+        if record["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+        and record["identity"]["hashed_secret_bytes"]
+        == _nov13_trivy_identity_bytes(_NOV13_TRIVY_PREVIOUS_IGNORE_POLICY_DIGEST)
+    )
+    assert row["category"] == "public_integrity_digest"
+    assert row["expires_on"] == "2027-01-10"
+    assert _nov13_trivy_current_view(restored["records"]) != restored["records"]
+    forward = _nov13_trivy_current_view(restored["records"])
+    # The NOV-RUST lockfile rows are restored too; compare every other record.
+    predecessor = _rust_lock_historical_policy(policy)["records"]
+    assert forward[:505] == predecessor[:505]
+    assert forward[506:] == predecessor[506:]
+
+
+@pytest.mark.parametrize("mutation", ["path", "digest", "category", "owner", "expiry"])
+def test_nov13_trivy_projection_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = next(
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+        and record["identity"]["hashed_secret_bytes"]
+        == _nov13_trivy_identity_bytes(_NOV13_TRIVY_CURRENT_IGNORE_POLICY_DIGEST)
+    )
+    if mutation == "path":
+        row["identity"]["path"] = "scripts/quality/other_validator.py"
+    elif mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        row["category"] = "synthetic_test_fixture"
+    elif mutation == "owner":
+        row["owner"] = "someone_else"
+    else:
+        row["expires_on"] = "2027-01-11"
+    with pytest.raises(AssertionError, match="live disposition trivy identity"):
+        _nov13_trivy_historical_policy(policy)
+
+
+# STEP5b tests/test_quality_workflow_contract.py is a Semgrep row-13 companion. The
+# KSV-0047 expectation removed with the stale SPIRE exception changes its bytes, so
+# its companion hex in the ledger and the one public-integrity policy record that
+# holds sha1(companion hex) are rebound one-to-one. The exact predecessor source,
+# ledger and policy bytes are restored before the existing row-13 pins are checked.
+_NOV13_TRIVY_WORKFLOW_PATH = "tests/test_quality_workflow_contract.py"
+_NOV13_TRIVY_WORKFLOW_CURRENT_SHA256 = bytes.fromhex(
+    "1c 75 46 38 eb 59 f5 79 1d dd 20 9c 0f 36 da fc dd 23 fa 92 76 d8 b4 f2 e5 d8 b6 2a 0e cd 8b 76"
+)
+_NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256 = bytes.fromhex(
+    "e0 d2 df 72 3e a7 cb 3d 82 03 5d 18 a8 70 70 b3 89 4a e0 c9 f7 91 6c 51 58 c9 7c a3 e0 54 7e f5"
+)
+_NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    "f2 33 1e 29 5d a2 63 f6 31 f2 ca 95 3e 12 a0 70 bb fe a4 47 66 85 29 13 e9 ab 1d 3c c9 81 5a f4"
+)
+_NOV13_TRIVY_WORKFLOW_ROW = 505
+_NOV13_TRIVY_WORKFLOW_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_NOV13_TRIVY_WORKFLOW_ANCHOR = b'        "KSV-0014",\n        "KSV-0009",\n'
+_NOV13_TRIVY_WORKFLOW_RESTORED = (
+    b'        "KSV-0014",\n        "KSV-0047",\n        "KSV-0009",\n'
+)
+
+
+def _nov13_trivy_companion_hex(digest: bytes) -> bytes:
+    return digest.hex().encode("ascii")
+
+
+def _nov13_trivy_workflow_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _rust_lock_source_bytes(path, actual)
+    if path == _NOV13_TRIVY_WORKFLOW_PATH:
+        assert hashlib.sha256(actual).digest() == (
+            _NOV13_TRIVY_WORKFLOW_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        assert actual.count(_NOV13_TRIVY_WORKFLOW_ANCHOR) == 1
+        historical = actual.replace(
+            _NOV13_TRIVY_WORKFLOW_ANCHOR, _NOV13_TRIVY_WORKFLOW_RESTORED, 1
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path == _NOV13_TRIVY_WORKFLOW_LEDGER_PATH:
+        assert hashlib.sha256(actual).digest() == (
+            _NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        current = _nov13_trivy_companion_hex(_NOV13_TRIVY_WORKFLOW_CURRENT_SHA256)
+        assert actual.count(current) == 1, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual.replace(
+            current,
+            _nov13_trivy_companion_hex(_NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256),
+            1,
+        )
+        assert (
+            hashlib.sha256(historical).digest() == _NOV13_LOOPBACK_LEDGER_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    return actual
+
+
+def _nov13_trivy_workflow_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _rust_lock_historical_policy(policy)
+    identity = restored["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"]
+    assert identity["path"] == _NOV13_TRIVY_WORKFLOW_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    live_digest = hashlib.sha1(
+        _nov13_trivy_companion_hex(_NOV13_TRIVY_WORKFLOW_CURRENT_SHA256),
+        usedforsecurity=False,
+    ).digest()
+    assert bytes(identity["hashed_secret_bytes"]) == live_digest, (
+        "live disposition trivy workflow companion identity changed"
+    )
+    identity["hashed_secret_bytes"] = list(
+        hashlib.sha1(
+            _nov13_trivy_companion_hex(_NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256),
+            usedforsecurity=False,
+        ).digest()
+    )
+    return restored
+
+
+def test_nov13_trivy_workflow_companion_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / _NOV13_TRIVY_WORKFLOW_PATH).read_bytes()
+    ledger_bytes = (root / _NOV13_TRIVY_WORKFLOW_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item["sha256"]
+        for item in ledger["dispositions"][12]["companions"]
+        if item["path"] == _NOV13_TRIVY_WORKFLOW_PATH
+    ]
+    assert companions == [hashlib.sha256(source).hexdigest()]
+    assert b'"KSV-0047"' not in source
+    historical = _nov13_trivy_workflow_source_bytes(_NOV13_TRIVY_WORKFLOW_PATH, source)
+    assert hashlib.sha256(historical).digest() == _NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256
+    assert historical.count(b'"KSV-0047"') == 1
+    restored_ledger = _nov13_trivy_workflow_source_bytes(
+        _NOV13_TRIVY_WORKFLOW_LEDGER_PATH, ledger_bytes
+    )
+    assert hashlib.sha256(restored_ledger).digest() == (
+        _NOV13_LOOPBACK_LEDGER_CURRENT_SHA256
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov13_trivy_historical_policy(policy)
+    assert len(restored_policy["records"]) == 512
+    assert (
+        bytes(
+            restored_policy["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"][
+                "hashed_secret_bytes"
+            ]
+        )
+        == hashlib.sha1(
+            _nov13_trivy_companion_hex(_NOV13_TRIVY_WORKFLOW_PREVIOUS_SHA256),
+            usedforsecurity=False,
+        ).digest()
+    )
+
+
+@pytest.mark.parametrize("mutation", ["source", "ledger", "policy"])
+def test_nov13_trivy_workflow_companion_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "source":
+        actual = (root / _NOV13_TRIVY_WORKFLOW_PATH).read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_trivy_workflow_source_bytes(_NOV13_TRIVY_WORKFLOW_PATH, actual)
+    elif mutation == "ledger":
+        actual = (root / _NOV13_TRIVY_WORKFLOW_LEDGER_PATH).read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _nov13_trivy_workflow_source_bytes(
+                _NOV13_TRIVY_WORKFLOW_LEDGER_PATH, actual
+            )
+    else:
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="trivy workflow companion identity"):
+            _nov13_trivy_workflow_historical_policy(policy)
+
+
+# RUSTSEC-2026-0486 and RUSTSEC-2026-0386 are fixed by Cargo.lock-only bumps of
+# the dev-only rustix and tokio crates, and GHSA-5pm8-86m8-9m6r by the basic-ftp
+# override and lockfile record. The changed companions of the SafeHtml Semgrep row
+# (two WASM Cargo.lock/provenance files and the frontend package files) are rebound
+# one-to-one in one commit; no identity is added and the total stays 512. The
+# newest projection is innermost: it restores the exact predecessor source, ledger
+# and policy before the existing Trivy workflow layer runs.
+def _rust_hex(spaced: str) -> str:
+    return bytes.fromhex(spaced).hex()
+
+
+_RUST_LOCK_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_RUST_LOCK_PACKAGE_PATH = "frontend/package.json"
+_RUST_LOCK_PACKAGE_LOCK_PATH = "frontend/package-lock.json"
+_RUST_LOCK_PROVENANCE_PATH = "frontend/WASM_SOURCE_PROVENANCE.json"
+_RUST_LOCK_SANITIZER_PATH = "frontend/wasm-sanitizer/Cargo.lock"
+# (policy row, companion path, current sha256 hex, predecessor sha256 hex)
+_RUST_LOCK_REBINDS = (
+    (
+        451,
+        _RUST_LOCK_PACKAGE_PATH,
+        _rust_hex(
+            "1a b8 96 dc 7b 83 9f 71 cf 85 df 15 d6 dc 07 d4 3d 84 f3 78 94 ad 94 1c c9 02 20 f8 d3 5d 5c 39"
+        ),
+        _rust_hex(
+            "fc 9d 71 db 42 9c fc 88 dc 6d b3 1a b9 9d 73 a1 5e 3d 0f 4e 55 b4 fe 6a c5 23 68 48 d1 7e cf c2"
+        ),
+    ),
+    (
+        494,
+        _RUST_LOCK_PACKAGE_LOCK_PATH,
+        _rust_hex(
+            "ba 77 18 ef 0d 0b f9 f9 63 31 98 a1 8e 20 59 03 71 2e e2 e5 2a b6 17 3e 13 53 d3 77 de f2 e3 b2"
+        ),
+        _rust_hex(
+            "0d b6 a9 37 67 d7 07 9e 9c d3 14 e8 0a db 05 2b 88 39 d0 92 0a b5 05 cf 03 af ac 00 7e 49 7e 3b"
+        ),
+    ),
+    (
+        444,
+        _RUST_LOCK_PROVENANCE_PATH,
+        _rust_hex(
+            "59 16 d8 c2 c8 5b 4d 8a f4 1c 7f f4 75 87 b7 5a 36 50 e7 6f 27 15 4e 39 35 b8 ab 40 7d bd 2d bb"
+        ),
+        _rust_hex(
+            "6c 8d a6 4b 5f 94 ef 03 32 81 cc d9 89 5e ae c7 15 49 0e a3 de bf e4 6f be e5 71 65 85 00 25 b9"
+        ),
+    ),
+    (
+        447,
+        _RUST_LOCK_SANITIZER_PATH,
+        _rust_hex(
+            "7c 6b e0 22 b2 5f 84 d0 09 e4 93 3c 48 02 6d a2 87 a9 a0 bb 1a 16 dc 21 d7 46 ff 84 c5 0d 49 e0"
+        ),
+        _rust_hex(
+            "b1 a9 64 16 e1 ca 2c c1 84 43 cc 51 6c 56 5f 31 59 2f f2 86 54 6c 6c 74 5f 97 61 a9 03 ba 9a a5"
+        ),
+    ),
+)
+_RUST_LOCK_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "ec bf 10 3b 92 63 e0 08 75 2d 40 b4 d3 28 14 19 7b 89 be 20 b3 6d cd 85 27 71 20 24 41 87 9f 9b"
+    )
+)
+# Byte reversals of the two frontend package files whose content changed.
+_RUST_LOCK_TEXT_REVERSALS = {
+    _RUST_LOCK_PACKAGE_PATH: (
+        (
+            b'"basic-ftp": ">=6.2.4",',
+            b'"basic-ftp": ">=5.3.1",',
+        ),
+    ),
+    _RUST_LOCK_PACKAGE_LOCK_PATH: (
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 76 65 72 73 69 6f 6e 22 3a 20 22 36 2e 32 2e 36 22 2c 0a 20 20 20 20 20 20 22 72 65 73 6f 6c 76 65 64 22 3a 20 22 68 74 74 70 73 3a 2f 2f 72 65 67 69 73 74 72 79 2e 6e 70 6d 6a 73 2e 6f 72 67 2f 62 61 73 69 63 2d 66 74 70 2f 2d 2f 62 61 73 69 63 2d 66 74 70 2d 36 2e 32 2e 36 2e 74 67 7a 22 2c 0a 20 20 20 20 20 20 22 69 6e 74 65 67 72 69 74 79 22 3a 20 22 73 68 61 35 31 32 2d 30 45 6a 5a 43 61 6f 64 4f 7a 36 79 69 6f 6b 76 32 4a 41 31 56 79 4b 47 4e 64 47 78 55 4c 5a 2b 47 47 6c 50 67 47 39 74 6d 34 64 2b 54 2f 62 48 74 58 31 68 55 63 68 38 43 75 6d 44 6e 65 42 66 70 49 62 69 53 64 6e 37 54 61 43 47 77 70 4d 2b 67 77 73 4f 6c 77 3d 3d 22 2c 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 76 65 72 73 69 6f 6e 22 3a 20 22 36 2e 32 2e 31 22 2c 0a 20 20 20 20 20 20 22 72 65 73 6f 6c 76 65 64 22 3a 20 22 68 74 74 70 73 3a 2f 2f 72 65 67 69 73 74 72 79 2e 6e 70 6d 6a 73 2e 6f 72 67 2f 62 61 73 69 63 2d 66 74 70 2f 2d 2f 62 61 73 69 63 2d 66 74 70 2d 36 2e 32 2e 31 2e 74 67 7a 22 2c 0a 20 20 20 20 20 20 22 69 6e 74 65 67 72 69 74 79 22 3a 20 22 73 68 61 35 31 32 2d 62 4b 36 37 69 73 44 2b 6c 4b 71 34 36 41 55 38 76 4e 74 6a 76 4d 61 54 32 5a 71 41 4f 41 6d 4e 43 62 78 55 48 6c 46 42 52 44 34 6b 31 35 4e 57 78 79 45 6a 6d 61 4b 74 5a 50 6c 67 63 65 35 38 53 6f 34 42 4e 54 6a 49 54 47 51 4f 56 54 6a 4c 39 79 30 45 43 41 3d 3d 22 2c 0a"
+            ),
+        ),
+    ),
+    _RUST_LOCK_PROVENANCE_PATH: (
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 36 63 35 39 31 36 63"
+                "32 39 66 65 63 30 35 61 31 63 39 64 30 61 32 35 33 65 32 33 65 30 32 64"
+                "66 35 37 63 35 62 62 61 64 32 66 37 66 33 35 34 37 32 31 31 62 39 65 32"
+                "37 62 39 35 37 38 63 63 66 22 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 64 31 38 66 63 35 31"
+                "62 35 37 61 36 30 35 64 62 31 39 64 39 66 32 31 32 38 34 33 36 37 35 38"
+                "65 34 31 39 66 35 66 39 33 31 61 65 32 64 33 33 33 33 38 34 32 61 37 35"
+                "38 33 61 35 62 32 62 31 36 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 37 63 36 62 65 30 32"
+                "32 62 32 35 66 38 34 64 30 30 39 65 34 39 33 33 63 34 38 30 32 36 64 61"
+                "32 38 37 61 39 61 30 62 62 31 61 31 36 64 63 32 31 64 37 34 36 66 66 38"
+                "34 63 35 30 64 34 39 65 30 22 0a"
+            ),
+            bytes.fromhex(
+                "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 62 31 61 39 36 34 31"
+                "36 65 31 63 61 32 63 63 31 38 34 34 33 63 63 35 31 36 63 35 36 35 66 33"
+                "31 35 39 32 66 66 32 38 36 35 34 36 63 36 63 37 34 35 66 39 37 36 31 61"
+                "39 30 33 62 61 39 61 61 35 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex(
+                "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20"
+                "22 30 66 61 31 39 32 62 33 30 33 63 33 38 39 61 34 33 61 62 62 62 32 36"
+                "32 36 37 63 31 32 30 64 33 38 30 63 61 33 35 62 64 36 62 31 63 38 66 62"
+                "32 30 31 64 66 35 61 34 33 39 37 63 63 36 34 66 30 22 2c 0a"
+            ),
+            bytes.fromhex(
+                "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20"
+                "22 30 34 66 32 66 32 66 33 35 37 66 36 38 33 65 39 31 62 61 65 33 34 62"
+                "34 33 63 39 63 35 38 66 61 31 38 64 65 32 39 61 35 65 32 33 66 33 63 36"
+                "62 63 62 66 36 30 31 39 65 31 33 39 33 63 36 64 30 22 2c 0a"
+            ),
+        ),
+    ),
+    _RUST_LOCK_SANITIZER_PATH: (
+        (
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 31 2e 36 22 0a"),
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 31 2e 35 22 0a"),
+        ),
+        (
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 65 35 65 37 36 37 34 32 65 35 32 39"
+                "34 31 35 33 64 34 64 64 65 31 32 30 37 64 62 65 63 35 62 64 64 38 31 65"
+                "65 66 36 66 61 62 64 63 30 64 32 31 31 38 62 61 62 61 64 61 62 66 64 38"
+                "35 38 61 61 22 0a"
+            ),
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 38 39 31 65 66 61 62 61 62 65 34 31"
+                "38 36 37 30 37 37 35 66 31 39 39 66 30 64 32 33 33 64 38 34 38 34 33 63"
+                "32 32 37 61 30 39 34 39 61 38 38 33 63 65 31 35 62 33 37 63 37 38 64 36"
+                "36 32 39 64 22 0a"
+            ),
+        ),
+        (
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 35 33 2e 33 22 0a"),
+            bytes.fromhex("76 65 72 73 69 6f 6e 20 3d 20 22 31 2e 35 33 2e 31 22 0a"),
+        ),
+        (
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 63 65 33 33 33 35 66 61 37 31 38 34"
+                "31 63 64 61 33 33 33 61 35 38 64 37 36 31 35 62 30 33 39 30 31 33 38 30"
+                "65 63 66 30 39 64 35 39 62 33 32 39 36 64 32 31 66 38 62 62 61 63 30 64"
+                "64 65 34 65 22 0a"
+            ),
+            bytes.fromhex(
+                "63 68 65 63 6b 73 75 6d 20 3d 20 22 32 30 32 63 61 65 61 38 37 31 62 36"
+                "39 36 36 38 32 35 30 64 32 34 32 30 37 30 38 34 39 65 62 34 39 35 62 65"
+                "31 37 38 65 64 36 39 37 61 33 65 39 38 61 65 62 63 65 35 62 63 38 31 61"
+                "30 62 65 64 22 0a"
+            ),
+        ),
+    ),
+}
+
+
+def _rust_lock_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
+    if path in _RUST_LOCK_TEXT_REVERSALS:
+        current, previous = next(
+            (row[2], row[3]) for row in _RUST_LOCK_REBINDS if row[1] == path
+        )
+        assert hashlib.sha256(actual).hexdigest() == current, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for before, after in _RUST_LOCK_TEXT_REVERSALS[path]:
+            assert historical.count(before) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(before, after, 1)
+        assert hashlib.sha256(historical).hexdigest() == previous, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    if path != _RUST_LOCK_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _RUST_LOCK_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual
+    for _row, _path, current, previous in _RUST_LOCK_REBINDS:
+        current_bytes = current.encode("ascii")
+        assert historical.count(current_bytes) == 1, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = historical.replace(current_bytes, previous.encode("ascii"), 1)
+    assert (
+        hashlib.sha256(historical).digest()
+        == _NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256
+    ), f"conditional disposition source file SHA-256 changed: {path}"
+    return historical
+
+
+def _rust_lock_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    for index, _path, current, previous in _RUST_LOCK_REBINDS:
+        row = records[index]
+        identity = row["identity"]
+        assert identity["path"] == _RUST_LOCK_LEDGER_PATH
+        assert identity["type"] == "Hex High Entropy String"
+        assert row["category"] == "public_integrity_digest"
+        assert row["owner"] == "egorribun", (
+            "approval metadata changed for rust lock companion"
+        )
+        assert row["expires_on"] == "2027-01-10", (
+            "approval metadata changed for rust lock companion"
+        )
+        assert bytes(identity["hashed_secret_bytes"]) == bytes(
+            _rust_lock_identity(current)
+        ), "live disposition rust lock companion identity changed"
+        identity["hashed_secret_bytes"] = _rust_lock_identity(previous)
+    return restored
+
+
+def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for _index, path, current, _previous in _RUST_LOCK_REBINDS:
+        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == current
+    ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item
+        for disposition in ledger["dispositions"]
+        for item in disposition.get("companions", [])
+    ]
+    bound = {
+        item["path"]: item["sha256"]
+        for item in companions
+        if item["path"] in {path for _i, path, _c, _p in _RUST_LOCK_REBINDS}
+    }
+    assert bound == {path: current for _i, path, current, _p in _RUST_LOCK_REBINDS}
+    historical = _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, ledger_bytes)
+    assert (
+        hashlib.sha256(historical).digest()
+        == _NOV13_TRIVY_WORKFLOW_LEDGER_CURRENT_SHA256
+    )
+    for path in _RUST_LOCK_TEXT_REVERSALS:
+        _rust_lock_source_bytes(path, (root / path).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _rust_lock_historical_policy(policy)
+    for index, _path, _current, previous in _RUST_LOCK_REBINDS:
+        assert restored["records"][index]["identity"]["hashed_secret_bytes"] == (
+            _rust_lock_identity(previous)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["ledger_extra", "ledger_missing", "package_json", "policy"]
+)
+def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
+        with pytest.raises(AssertionError, match="rust lock companion identity"):
+            _rust_lock_historical_policy(policy)
+        return
+    if mutation == "package_json":
+        actual = (root / _RUST_LOCK_PACKAGE_PATH).read_bytes() + b"\n"
+        with pytest.raises(AssertionError, match="conditional disposition source"):
+            _rust_lock_source_bytes(_RUST_LOCK_PACKAGE_PATH, actual)
+        return
+    ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
+    if mutation == "ledger_extra":
+        actual = ledger_bytes + b"\n"
+    else:
+        actual = ledger_bytes.replace(_RUST_LOCK_REBINDS[3][2].encode("ascii"), b"", 1)
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, actual)

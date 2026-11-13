@@ -600,6 +600,21 @@ networkPolicy:
     exceptIPv6CIDRs:
       - fc00::/7
       - fe80::/10
+  # AUD-189: Elasticsearch pods that outbox-worker may reach on the URL's port,
+  # only when backend.config.elasticsearchURL is in-cluster (a single-label host or
+  # a host in the release namespace). Empty selectors fail the render. The
+  # Elasticsearch release must admit this workload in its own policy.
+  elasticsearch:
+    namespaceSelector: {}
+    podSelector: {}
+  # AUD-438: only these Prometheus pods may scrape the ws-hub metrics listener.
+  # Other pods in the monitoring namespace are denied. Override both selectors
+  # when the cluster's Prometheus pods use different labels.
+  prometheus:
+    namespaceSelector:
+      "kubernetes.io/metadata.name": monitoring
+    podSelector:
+      "app.kubernetes.io/name": prometheus
   ingressController:
     # Namespace where the ingress controller pods live.
     namespaceSelector:

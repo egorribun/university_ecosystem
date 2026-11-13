@@ -79,16 +79,20 @@ kind: ClusterRole
 metadata:
   name: spire-agent-role
 rules:
-  # SPIRE 1.15.3's default PID workload attestor reads kubelet GET /pods.
-  # It does not list/watch pods through the Kubernetes API server. Broker
-  # object references, API-server cache and namespace-label selectors are not
+  # SPIRE 1.15.3's default PID workload attestor sends GET /pods to the local
+  # kubelet secure port (10250) with the agent's service account token; it does
+  # not list/watch pods through the Kubernetes API server. Broker object
+  # references, API-server cache and namespace-label selectors are not
   # configured; do not grant their permissions to this default deployment.
-  # Keep kubelet access for compatibility with clusters without fine-grained
-  # kubelet authorization. IMPORTANT: nodes/proxy GET is not read-only and
-  # can authorize WebSocket exec. Replacing it with nodes/pods requires proof
-  # that every deployed kubelet supports KubeletFineGrainedAuthz (AUD-251).
+  # With KubeletFineGrainedAuthz the kubelet authorizes GET /pods as
+  # nodes/pods get, so the broad nodes/proxy grant (which also authorizes
+  # WebSocket exec on other kubelet endpoints) is no longer granted (AUD-251).
+  # Every kubelet this agent runs on must have KubeletFineGrainedAuthz enabled.
+  # The AUD-373 kind job exercises SVID issuance under this grant.
+  # A ClusterRole cannot pin node names for a DaemonSet, so the grant is cluster-wide
+  # but limited to the get verb on the nodes/pods subresource.
   - apiGroups: [""]
-    resources: ["nodes/proxy"]
+    resources: ["nodes/pods"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

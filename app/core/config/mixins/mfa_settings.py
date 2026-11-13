@@ -67,7 +67,6 @@ class MfaSettingsMixin:
     production (AUD-392); development keeps it opt-in.
     """
 
-    mfa_enabled: bool = False
     mfa_default_method: str | None = None
     mfa_totp_issuer: str = "University Ecosystem"
     # Dedicated TOTP Fernet key ring. Non-active entries are read-only legacy

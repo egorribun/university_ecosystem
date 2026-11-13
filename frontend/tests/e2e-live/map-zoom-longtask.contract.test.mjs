@@ -53,7 +53,12 @@ test("map zoom long-task acceptance observes the real MapLibre browser path", as
   assert.match(spec, /await zoomIn\.click\(\)/u)
   assert.match(spec, /toEqual\(\s*\[\s*\]\s*\)/u)
   assert.match(spec, /browserName !== ["']chromium["']/u)
-  assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|waitForTimeout/u)
+  // The only interception allowed is the pinned tile fixture for the external
+  // public host; the stand must not depend on that host being reachable.
+  assert.match(spec, /page\.route\(`https:\/\/\$\{MAP_RESOURCE_HOST\}\/styles\/\*\*`/u)
+  assert.match(spec, /page\.route\(`https:\/\/\$\{MAP_RESOURCE_HOST\}\/data\/v3\/\*\*`/u)
+  assert.doesNotMatch(spec, /routeWebSocket|useMockApi|waitForTimeout/u)
+  assert.equal([...spec.matchAll(/page\.route\(/gu)].length, 2)
   assert.doesNotMatch(spec, /page\.request\.(?:post|put|patch|delete)/u)
 
   assert.match(gestureSpec, /page\.route\(["']https:\/\/tiles\.openfreemap\.org\/styles/u)

@@ -82,153 +82,97 @@ def test_target_validation_cli_accepts_safe_url(
     assert "::add-mask::api" in output
 
 
-@pytest.mark.parametrize(
-    ("event_name", "inputs", "secret", "selected"),
-    [
-        (
-            "workflow_dispatch",
-            {"target_url": "https://manual.example.test/private"},
-            "https://secret.example.test",
-            "https://manual.example.test/private",
-        ),
-        (
-            "workflow_dispatch",
-            {"target_url": ""},
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            None,
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-        (
-            "schedule",
-            None,
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-        (
-            "schedule",
-            {"target_url": "https://ignored.example.test"},
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-    ],
-)
-def test_prepare_target_selects_and_privately_hands_off_the_target(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    event_name: str,
-    inputs: object,
-    secret: str,
-    selected: str,
-) -> None:
-    event = tmp_path / "event.json"
-    event.write_text(json.dumps({"inputs": inputs}), encoding="utf-8")
-    handoff = tmp_path / "target.txt"
-    monkeypatch.setenv("GITHUB_EVENT_NAME", event_name)
-    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
-    monkeypatch.setenv("DAST_SECRET_TARGET", secret)
-    monkeypatch.delenv("TARGET_URL", raising=False)
-
-    assert dast_privacy.main(["prepare-target", "--output", str(handoff)]) == 0
-    assert handoff.read_text(encoding="utf-8") == selected
-    if os.name != "nt":
-        assert stat.S_IMODE(handoff.stat().st_mode) == 0o600
-    captured = capsys.readouterr()
-    assert f"::add-mask::{selected}" in captured.out
-    assert (
-        secret
-        not in "\n".join(
-            line
-            for line in captured.out.splitlines()
-            if not line.startswith("::add-mask::")
-        )
-        + captured.err
+def _stand_status(base_url: str) -> str:
+    """Mirror the lines printed by scripts/live_stand.py status."""
+    return (
+        "+ docker compose ps\n"
+        "LIVE_BASE_URL=" + base_url + "\n"
+        "LIVE_MAILPIT_URL=http://127.0.0.1:18025\n"
     )
 
 
 @pytest.mark.parametrize(
-    ("event_name", "event_text", "secret"),
-    [
-        ("workflow_dispatch", "{", "https://secret.example.test"),
-        ("workflow_dispatch", "[]", "https://secret.example.test"),
-        (
-            "workflow_dispatch",
-            '{"inputs":{},"inputs":{}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":NaN}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":1}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":"https://private.test/path?q=private"}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":"https://private.test/a%2Db"}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":"https://u:p@private.test/"}}',
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            '{"inputs":{"target_url":"https://private.test/a\\nb"}}',
-            "https://secret.example.test",
-        ),
-        ("workflow_dispatch", '{"inputs":[]}', "https://secret.example.test"),
-        ("workflow_dispatch", '{"inputs":{"target_url":""}}', ""),
-        ("push", "{}", "https://secret.example.test"),
-    ],
+    "base_url",
+    ["http://localhost:80", "http://localhost:20000", "http://localhost:45000"],
 )
-def test_prepare_target_rejects_bad_events_or_targets_without_publication(
+def test_prepare_target_hands_off_only_the_owned_stand_base_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    event_name: str,
-    event_text: str,
-    secret: str,
+    base_url: str,
 ) -> None:
-    event = tmp_path / "event.json"
-    event.write_text(event_text, encoding="utf-8")
+    status = tmp_path / "stand-status.txt"
+    status.write_text(_stand_status(base_url), encoding="utf-8")
     handoff = tmp_path / "target.txt"
-    monkeypatch.setenv("GITHUB_EVENT_NAME", event_name)
-    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
-    monkeypatch.setenv("DAST_SECRET_TARGET", secret)
+    monkeypatch.delenv("TARGET_URL", raising=False)
 
-    assert dast_privacy.main(["prepare-target", "--output", str(handoff)]) == 1
+    assert (
+        dast_privacy.main(
+            ["prepare-target", "--status-in", str(status), "--output", str(handoff)]
+        )
+        == 0
+    )
+    assert handoff.read_text(encoding="utf-8") == base_url
+    if os.name != "nt":
+        assert stat.S_IMODE(handoff.stat().st_mode) == 0o600
+    assert f"::add-mask::{base_url}" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "status_text",
+    [
+        "",
+        "LIVE_MAILPIT_URL=http://127.0.0.1:18025\n",
+        "LIVE_BASE_URL=http://localhost:20000\nLIVE_BASE_URL=http://localhost:20001\n",
+        "LIVE_BASE_URL=https://localhost:20000\n",
+        "LIVE_BASE_URL=http://127.0.0.1:20000\n",
+        "LIVE_BASE_URL=http://localhost:20000/api/v1\n",
+        "LIVE_BASE_URL=http://localhost:0\n",
+        "LIVE_BASE_URL=http://localhost:70000\n",
+        "LIVE_BASE_URL=http://private.test:20000\n",
+        "  LIVE_BASE_URL=http://localhost:20000\n",
+        "LIVE_BASE_URL=http://localhost:20000?token=private\n",
+    ],
+)
+def test_prepare_target_rejects_ambiguous_or_non_loopback_stand_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status_text: str,
+) -> None:
+    status = tmp_path / "stand-status.txt"
+    status.write_text(status_text, encoding="utf-8")
+    handoff = tmp_path / "target.txt"
+    monkeypatch.delenv("TARGET_URL", raising=False)
+
+    assert (
+        dast_privacy.main(
+            ["prepare-target", "--status-in", str(status), "--output", str(handoff)]
+        )
+        == 1
+    )
     assert not handoff.exists()
     output = capsys.readouterr()
     assert "private.test" not in output.out + output.err
-    assert "secret.example.test" not in output.out + output.err
+    assert "token=private" not in output.out + output.err
 
 
 def test_prepare_target_never_overwrites_an_existing_handoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    status = tmp_path / "stand-status.txt"
+    status.write_text(_stand_status("http://localhost:20000"), encoding="utf-8")
     handoff = tmp_path / "target.txt"
     handoff.write_text("existing", encoding="utf-8")
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
-    monkeypatch.setenv("DAST_SECRET_TARGET", "https://secret.example.test")
 
-    assert dast_privacy.main(["prepare-target", "--output", str(handoff)]) == 1
+    assert (
+        dast_privacy.main(
+            ["prepare-target", "--status-in", str(status), "--output", str(handoff)]
+        )
+        == 1
+    )
     assert handoff.read_text(encoding="utf-8") == "existing"
-    assert "secret.example.test" not in capsys.readouterr().err
+    assert "localhost:20000" not in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("unlink_fails", [False, True])
@@ -238,9 +182,9 @@ def test_prepare_target_fails_closed_on_handoff_write_errors(
     capsys: pytest.CaptureFixture[str],
     unlink_fails: bool,
 ) -> None:
+    status = tmp_path / "stand-status.txt"
+    status.write_text(_stand_status("http://localhost:20000"), encoding="utf-8")
     handoff = tmp_path / "target.txt"
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
-    monkeypatch.setenv("DAST_SECRET_TARGET", "https://secret.example.test")
     original_fdopen = os.fdopen
 
     class BrokenWrite:
@@ -264,11 +208,16 @@ def test_prepare_target_fails_closed_on_handoff_write_errors(
 
         monkeypatch.setattr(Path, "unlink", fail_unlink)
 
-    assert dast_privacy.main(["prepare-target", "--output", str(handoff)]) == 1
+    assert (
+        dast_privacy.main(
+            ["prepare-target", "--status-in", str(status), "--output", str(handoff)]
+        )
+        == 1
+    )
     assert handoff.exists() is unlink_fails
     if unlink_fails:
         assert handoff.read_bytes() == b""
-    assert "secret.example.test" not in capsys.readouterr().err
+    assert "localhost:20000" not in capsys.readouterr().err
 
 
 def test_target_file_is_used_without_putting_the_target_in_environment(

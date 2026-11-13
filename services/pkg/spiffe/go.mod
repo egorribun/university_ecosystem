@@ -1,12 +1,12 @@
 module github.com/university-ecosystem/services/pkg/spiffe
 
-go 1.26.4
+go 1.26.11
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.7
 	github.com/spiffe/go-spiffe/v2 v2.9.0
 	github.com/stretchr/testify v1.12.1
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 )
 
 require (

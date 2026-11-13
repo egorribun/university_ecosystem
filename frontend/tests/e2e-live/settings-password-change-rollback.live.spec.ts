@@ -374,10 +374,16 @@ test("password settings reject a wrong current password and persist a corrected 
       fullName,
       testInfo.project.name.toLowerCase().includes("mobile")
     )
-    await openPasswordSection(page)
-    await page.getByLabel("Текущий пароль", { exact: true }).fill(currentPassword)
-    await page.getByLabel("Новый пароль", { exact: true }).fill(updatedPassword)
-    await page.getByLabel("Повторите новый пароль", { exact: true }).fill(updatedPassword)
+    // The email-change form also labels a field "Текущий пароль", so every
+    // password field is resolved inside the password section only.
+    const correctedPasswordSection = await openPasswordSection(page)
+    await correctedPasswordSection
+      .getByLabel("Текущий пароль", { exact: true })
+      .fill(currentPassword)
+    await correctedPasswordSection.getByLabel("Новый пароль", { exact: true }).fill(updatedPassword)
+    await correctedPasswordSection
+      .getByLabel("Повторите новый пароль", { exact: true })
+      .fill(updatedPassword)
     await expect(updatePasswordButton).toBeVisible()
     await expect(updatePasswordButton).toBeEnabled()
     const savedResponseWait = waitForPasswordChange(page)

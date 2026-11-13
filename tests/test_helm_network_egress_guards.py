@@ -211,7 +211,7 @@ def test_external_elasticsearch_with_declared_cidr_opens_outbox_443_only() -> No
 def test_in_cluster_elasticsearch_fails_closed_for_outbox_without_a_peer() -> None:
     _assert_fails(
         _render("--set-string", "backend.config.elasticsearchURL=elasticsearch:9200"),
-        "names an in-cluster service, but this chart has no NetworkPolicy peer",
+        "names an in-cluster service; set networkPolicy.elasticsearch.namespaceSelector and podSelector",
     )
 
 

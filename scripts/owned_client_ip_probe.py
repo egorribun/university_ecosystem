@@ -63,8 +63,20 @@ _TOTAL_SECONDS = 120.0
 # A full bucket holds 120 tokens and refills at 120 / 60 per second.
 # The five-second case deadline permits at most ten additional allowed requests.
 _WS_MAX_ALLOWED = 120 + math.ceil((120 / 60) * 5)
-# Two setup requests, six controls per case, and four backend-direct controls.
-_BASE_REQUESTS = 2 + sum(case[2] for case in _CASES) + 6 * len(_CASES) + 4
+# Gateway bucket proof through Caddy. The unknown /api path is answered by the
+# gateway's NoRoute handler after its global rate limiter, never by the backend.
+_GATEWAY_PATH = "/api/gateway-rate-probe"
+_GATEWAY_NOT_FOUND = b'{"error":"endpoint not found"}'
+_GATEWAY_BURST = 60
+_GATEWAY_BLOCK = 12
+_GATEWAY_DECOY = "10.250.0.1"
+# Six homogeneous spoof blocks; each is preceded by one plain control.
+_GATEWAY_REQUESTS = 9 + 2 * _GATEWAY_BURST + 6 * _GATEWAY_BLOCK
+# Two setup requests, six controls per case, four backend-direct controls and
+# the gateway phase.
+_BASE_REQUESTS = (
+    2 + sum(case[2] for case in _CASES) + 6 * len(_CASES) + 4 + _GATEWAY_REQUESTS
+)
 _MAX_REQUESTS = _BASE_REQUESTS + (_WS_MAX_ALLOWED - 120)
 
 
@@ -360,6 +372,98 @@ def _checked_response(response: Response) -> dict[str, list[str]]:
     return headers
 
 
+GatewaySample = tuple[int, int, float, float]
+
+
+def _gateway_sample(
+    response: Response,
+    headers: dict[str, list[str]],
+    started: float,
+    finished: float,
+) -> GatewaySample:
+    """Accept only a gateway-produced 404 that carries its limiter headers."""
+    limit = _single(headers, "ratelimit-limit")
+    remaining = _single(headers, "ratelimit-remaining")
+    content_type = _single(headers, "content-type") or ""
+    if (
+        response.status != 404
+        or response.body != _GATEWAY_NOT_FOUND
+        or content_type.split(";", 1)[0].strip().lower() != "application/json"
+        or limit is None
+        or remaining is None
+        or re.fullmatch(r"[1-9][0-9]{0,6}", limit) is None
+        or re.fullmatch(r"[0-9]{1,7}", remaining) is None
+    ):
+        raise ProbeError("wrong gateway responder")
+    return int(limit), int(remaining), started, finished
+
+
+def _gateway_spoof_variants(other_client: str) -> tuple[tuple[str, str], ...]:
+    """Forged forwarding headers naming the other client or a decoy address."""
+    variants: list[tuple[str, str]] = []
+    for address in (other_client, _GATEWAY_DECOY):
+        variants.append(("x-forwarded-for", address))
+        variants.append(("x-real-ip", address))
+        variants.append(("forwarded", f"for={address}"))
+    return tuple(variants)
+
+
+def _gateway_phase(
+    observe: Callable[[int, tuple[tuple[str, str], ...]], GatewaySample],
+    other_source: str,
+) -> dict[str, object]:
+    """Interleave two clients through Caddy and record only remaining-token drops.
+
+    Each request consumes one token from the bucket it is keyed to. A bucket
+    refills at the advertised rate, so a drop can only be overstated by refill
+    inside the measured window. The evaluator derives that bound from the
+    window and the advertised rate; no request outcome depends on timing.
+    Every spoof block uses one forwarding header for all of its requests, so a
+    block is either charged to the true client or not at all.
+    """
+    a0 = observe(0, ())
+    b0 = observe(1, ())
+    a_burst = [observe(0, ()) for _ in range(_GATEWAY_BURST)]
+    b1 = observe(1, ())
+    b_burst = [observe(1, ()) for _ in range(_GATEWAY_BURST)]
+    a2 = observe(0, ())
+    pairs: list[tuple[str, str, GatewaySample, GatewaySample, int]] = [
+        ("a", "moved", a0, a_burst[-1], _GATEWAY_BURST),
+        ("b", "unmoved", b0, b1, _GATEWAY_BURST),
+        ("b", "moved", b1, b_burst[-1], _GATEWAY_BURST),
+        ("a", "unmoved", a_burst[-1], a2, _GATEWAY_BURST + 1),
+    ]
+    samples = [a0, b0, *a_burst, b1, *b_burst, a2]
+    pre = a2
+    for index, header in enumerate(_gateway_spoof_variants(other_source)):
+        if index:
+            pre = observe(0, ())
+            samples.append(pre)
+        block = [observe(0, (header,)) for _ in range(_GATEWAY_BLOCK)]
+        samples.extend(block)
+        pairs.append(("a", "moved", pre, block[-1], _GATEWAY_BLOCK))
+    limits = {sample[0] for sample in samples}
+    if len(limits) != 1:
+        raise ProbeError("inconsistent gateway limit")
+    if len(samples) != _GATEWAY_REQUESTS:
+        raise ProbeError("invalid gateway observation")
+    checks = [
+        {
+            "subject": subject,
+            "expect": expect,
+            "k": count,
+            "drop": pre_sample[1] - post_sample[1],
+            "window_ms": int((post_sample[3] - pre_sample[2]) * 1000),
+        }
+        for subject, expect, pre_sample, post_sample, count in pairs
+    ]
+    return {
+        "rate_limit": limits.pop(),
+        "requests": _GATEWAY_REQUESTS,
+        "checks": checks,
+    }
+
+
 def _collect(
     config: object, request: Callable[[Request, float], Response]
 ) -> dict[str, object]:
@@ -467,6 +571,7 @@ def _collect(
         return response.status
 
     cases: list[dict[str, object]] = []
+    allowed_total = 0
     for name, path, limit, header_limit, budget in _CASES:
         case_started = time.monotonic()
         case_deadline = min(deadline, case_started + budget)
@@ -508,6 +613,7 @@ def _collect(
                 backend_direct=True,
             )
         )
+        allowed_total += len(allowed)
         cases.append(
             {
                 "case": name,
@@ -520,9 +626,30 @@ def _collect(
                 "elapsed_ms": int((time.monotonic() - case_started) * 1000),
             }
         )
+
+    def observe_gateway(
+        source_index: int, extra: tuple[tuple[str, str], ...]
+    ) -> GatewaySample:
+        route = config.routes[source_index]
+        started_at = time.monotonic()
+        response, headers = send(
+            Request(
+                route.source_ip,
+                route.caddy_ip,
+                80,
+                "GET",
+                _GATEWAY_PATH,
+                extra,
+                b"",
+            ),
+            deadline,
+        )
+        return _gateway_sample(response, headers, started_at, time.monotonic())
+
+    gateway = _gateway_phase(observe_gateway, config.routes[1].source_ip)
     _remaining(deadline)
     frame: dict[str, object] = {
-        "schema": "ue-owned-client-ip-v3",
+        "schema": "ue-owned-client-ip-v4",
         "source_sha": config.source_sha,
         "run_id": config.run_id,
         "closed": True,
@@ -534,8 +661,9 @@ def _collect(
         "http_requests": count,
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "cases": cases,
+        "gateway": gateway,
     }
-    expected_count = 2 + sum(len(case["allowed"]) + 6 for case in cases) + 4
+    expected_count = 2 + allowed_total + 6 * len(cases) + 4 + _GATEWAY_REQUESTS
     if (
         count != expected_count
         or not _BASE_REQUESTS <= count <= _MAX_REQUESTS
@@ -577,6 +705,7 @@ def _request_bytes(item: Request) -> bytes:
                     (item.path == _CSRF_PATH and item.port == 80)
                     or (item.path == "/ws/chat" and item.port == 80)
                     or (item.path == "/ws" and item.port == 8081)
+                    or (item.path == _GATEWAY_PATH and item.port == 80)
                 )
             )
             or (

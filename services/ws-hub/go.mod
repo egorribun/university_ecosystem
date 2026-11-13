@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/ws-hub
 
-go 1.26.4
+go 1.26.11
 
 require (
 	github.com/getsentry/sentry-go v0.50.0
@@ -13,7 +13,7 @@ require (
 	// university-backend → ws-hub NATS message contract.  pact-go/v2 wraps the
 	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.
 	// Install the FFI once: go run github.com/pact-foundation/pact-go/v2/install
-	github.com/pact-foundation/pact-go/v2 v2.8.0
+	github.com/pact-foundation/pact-go/v2 v2.9.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
@@ -98,6 +98,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
+	github.com/ulikunitz/xz v0.5.17 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -112,7 +113,7 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
-	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 

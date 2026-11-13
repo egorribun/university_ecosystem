@@ -46,15 +46,15 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **511 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The 511 total includes the previous 506 approved records, including the eight
+current policy-file inventory is **512 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 512 total includes the previous 506 approved records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,
 plus three owner-approved wasm-bindgen CLI checksum identities, one Go Alpine
-image checksum identity and one ZAP image checksum identity. All five appended
-rows expire 2027-01-10. The latest published 510-record pre-ZAP state already
+image checksum identity and one ZAP image checksum identity, and one Calico v3.30.3 manifest checksum
+identity approved on 2026-11-12. All six appended rows expire 2027-01-10. The latest published 510-record pre-ZAP state already
 includes the authorized helper and row13 one-to-one rebinds; ZAP appends only
-its exact image identity and preserves all 510 records unchanged. These are inventory counts only and do
+its exact image identity and preserves all 510 records unchanged; the Calico identity appends the 512th record and preserves the prior 511. These are inventory counts only and do
 not establish passing scanner results or required checks.
 All 78 required context/app pairs (78 is the count from the live GitHub ruleset; the repository holds no script deriving it), blocking CodeQL, hooks and quality floors
 remain in force.
@@ -118,7 +118,7 @@ files or authorize routine backup, copying, publication, or distribution. AUD-42
 - [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
   operational checkpoint; every release claim still requires fresh exact-SHA
   evidence.
-- [Historical safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
+- [Historical safe pause checkpoint, 2026-10-24](https://github.com/egorribun/university_ecosystem/blob/d8891684fd0ac32f9e2512001c792d2712695375/docs/superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
 - [Historical accepted audit lower bound: 386/512 (75.4%)](AUDIT-2026-10.md#scoped-aud-258-aud-365-and-aud-418-acceptance-2026-10-30) — preserves all 383 prior IDs and adds only AUD-258, AUD-365 and AUD-418 on source d1c8e96d. Hosted PostgreSQL and scoped local evidence have explicit limits; 126 IDs remain unaccepted. The next publication needs its own scans and required checks; no full CI or release claim.
 - [Historical accepted audit lower bound: 383/512 (74.8%)](AUDIT-2026-10.md#scoped-aud-340-acceptance-2026-10-29) — preserves all 382 previous IDs and adds only AUD-340 with four real PostgreSQL and four unit PASS receipts on exact source 36f70a0f. This closes the tested transactional writer race, not historical repair, arbitrary AUTOCOMMIT sessions or deployment safety. Raw patch evidence is not merged coverage: Coverage Policy/Codecov are SKIPPED, full CI on that source failed, and all existing floors/gates are unchanged. 129 IDs remained unaccepted at that checkpoint.
 - [Historical accepted audit lower bound: 382/512 (74.6%)](AUDIT-2026-10.md#scoped-aud-445-acceptance-2026-10-29) — preserves all 381 previous IDs and adds only AUD-445 with 37 ordinary and five PostgreSQL named PASS receipts on exact source 8573ec57. Atomic removal/cache-repair intent and durable replay are accepted only within the tested service/owned-PostgreSQL scope, not deployed Redis/NATS recovery. AUD-454's corrected fixture passes but borrowed-session PostgreSQL evidence remains missing; 130 IDs remain unaccepted. Full Matrix and release acceptance remain separate.

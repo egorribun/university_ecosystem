@@ -596,6 +596,8 @@ def _assert_contract_dispatch(
         "pytest",
         "tests/test_verify_secrets_baseline.py",
         "-v",
+        "-n",
+        "3",
         "--tb=short",
         "--durations=20",
         "-p",

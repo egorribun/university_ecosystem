@@ -1,10 +1,10 @@
 module github.com/university-ecosystem/core/gen/go
 
-go 1.26.4
+go 1.26.11
 
 require (
 	github.com/stretchr/testify v1.12.1
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
 

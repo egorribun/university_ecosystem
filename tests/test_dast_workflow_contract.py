@@ -14,7 +14,6 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
-TARGET_EXPRESSION = "${{ inputs.target_url || secrets.DAST_TARGET_URL }}"
 TRUSTED_REF_ERROR = "DAST scans must run from the protected main ref."
 pytest_plugins = ("pytester",)
 
@@ -27,27 +26,54 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     return triggers
 
 
-def _assert_fail_closed_target_preflight(preflight_script: str) -> None:
-    """Nuclei rejects missing targets before a scan can receive one."""
+PREFLIGHT_LINES = [
+    "set -euo pipefail",
+    "python3 -m scripts.quality.dast_privacy prepare-target \\",
+    '--status-in "$RUNNER_TEMP/dast-stand-status.txt" \\',
+    '--output "$RUNNER_TEMP/nuclei-target.txt"',
+]
+CHECKOUT_NAME = "Check out the event commit without persisting credentials"
+START_NAME = "Start the owned ephemeral DAST stand"
+STATUS_NAME = "Read the owned stand status privately"
+TEARDOWN_NAME = "Stop and remove the owned DAST stand"
+NUCLEI_PREFLIGHT_NAME = "Prepare the owned stand target for Nuclei"
+ZAP_PREPARE_NAME = "Prepare private ZAP scan and sanitized evidence"
+
+
+def _steps(workflow: dict[str, object], job_name: str) -> list[dict[str, object]]:
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_name]
+    assert isinstance(job, dict)
+    steps = job["steps"]
+    assert isinstance(steps, list)
+    return steps
+
+
+def _step(steps: list[dict[str, object]], name: str) -> dict[str, object]:
+    matches = [step for step in steps if step.get("name") == name]
+    assert len(matches) == 1, name
+    return matches[0]
+
+
+def _assert_owned_stand_target_preflight(preflight_script: str) -> None:
+    """The scanner receives only the loopback base URL from private stand status."""
     shell_lines = [
         line.strip()
         for line in preflight_script.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
-    assert shell_lines == [
-        "set -euo pipefail",
-        "python3 -m scripts.quality.dast_privacy prepare-target \\",
-        '--output "$RUNNER_TEMP/nuclei-target.txt"',
-    ]
+    assert shell_lines == PREFLIGHT_LINES
 
 
 def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
-    """Changing a PR label must never expose the configured scan target."""
+    """Changing a PR label must never authorize a scan of anything but the owned stand."""
 
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
     triggers = _workflow_triggers(workflow)
 
     assert set(triggers) == {"schedule", "workflow_dispatch"}
+    assert triggers["workflow_dispatch"] is None
     assert "pull_request" not in triggers
     assert "pull_request_target" not in triggers
 
@@ -63,104 +89,121 @@ def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
         job = workflow["jobs"][job_name]
         assert job["needs"] == "verify-trusted-ref"
         assert job["if"] == "${{ needs.verify-trusted-ref.result == 'success' }}"
-        checkout = next(
-            step
-            for step in job["steps"]
-            if step.get("uses", "").startswith("actions/checkout@")
+        checkout = _step(_steps(workflow, job_name), CHECKOUT_NAME)
+        # The owned stand is built from the checkout, so the full event commit is required.
+        assert checkout["uses"] == (
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         )
-        assert checkout["with"]["ref"] == "${{ github.sha }}"
-        expected_sparse_paths = (
-            {".github", "scripts/quality"}
-            if job_name == "nuclei"
-            else {".github/workflows/dast.yml", ".zap", "scripts/quality"}
-        )
-        assert set(checkout["with"]["sparse-checkout"].split()) == expected_sparse_paths
-        assert checkout["with"]["persist-credentials"] is False
-        assert checkout["with"]["sparse-checkout-cone-mode"] is False
-        if job_name == "zap":
-            assert ".zap" in checkout["with"]["sparse-checkout"].split()
+        assert checkout["with"] == {
+            "fetch-depth": 0,
+            "persist-credentials": False,
+            "ref": "${{ github.sha }}",
+        }
 
 
-def test_nuclei_target_preflight_remains_fail_closed() -> None:
+@pytest.mark.parametrize("job_name", ["nuclei", "zap"])
+def test_each_scanner_job_starts_and_tears_down_its_own_owned_stand(
+    job_name: str,
+) -> None:
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["nuclei"]["steps"]
-    names = [step["name"] for step in steps]
-    preflight = steps[names.index("Validate Nuclei target URL")]
-    assert names.index("Validate Nuclei target URL") < names.index("Run Nuclei scan")
-    assert preflight["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
-    assert preflight.get("continue-on-error", False) is False
-    _assert_fail_closed_target_preflight(preflight["run"])
+    steps = _steps(workflow, job_name)
+    names = [step.get("name") for step in steps]
 
+    start = _step(steps, START_NAME)
+    assert start["id"] == "start-stand"
+    assert "STAND_REF" in start["env"]
+    for fragment in (
+        "scripts.live_stand up",
+        "--in-place",
+        '--state-dir "$LIVE_STATE_DIR"',
+        '--ref "$STAND_REF"',
+        "--stack core",
+    ):
+        assert fragment in start["run"]
 
-def test_nuclei_dispatch_target_never_appears_in_a_step_preamble() -> None:
-    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["nuclei"]["steps"]
-    preflight = next(
-        step for step in steps if step.get("name") == "Validate Nuclei target URL"
+    status = _step(steps, STATUS_NAME)
+    assert "scripts.live_stand status" in status["run"]
+    assert '--state-dir "$LIVE_STATE_DIR"' in status["run"]
+    assert '>"$RUNNER_TEMP/dast-stand-status.txt"' in status["run"]
+
+    teardown = _step(steps, TEARDOWN_NAME)
+    assert teardown["id"] == "stop-stand"
+    assert teardown["if"] == "${{ always() && steps.start-stand.outcome != 'skipped' }}"
+    assert "scripts.live_stand teardown" in teardown["run"]
+    assert '--state-dir "$LIVE_STATE_DIR"' in teardown["run"]
+
+    scan_name = "Run Nuclei scan" if job_name == "nuclei" else ZAP_PREPARE_NAME
+    assert (
+        names.index(START_NAME)
+        < names.index(STATUS_NAME)
+        < names.index(scan_name)
+        < names.index(TEARDOWN_NAME)
     )
-
-    assert preflight["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
-    assert "prepare-target" in preflight["run"]
     for step in steps:
-        preamble = json.dumps({"env": step.get("env"), "with": step.get("with")})
-        assert "inputs.target_url" not in preamble
-        assert "inputs.target_url" not in step.get("run", "")
+        assert "DAST_TARGET_URL" not in json.dumps(step)
+        assert "DAST_SECRET_TARGET" not in json.dumps(step)
+
+
+def test_nuclei_stand_target_preflight_is_fail_closed_and_status_bound() -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = _steps(workflow, "nuclei")
+    names = [step["name"] for step in steps]
+    preflight = _step(steps, NUCLEI_PREFLIGHT_NAME)
+    assert names.index(START_NAME) < names.index(STATUS_NAME)
+    assert names.index(STATUS_NAME) < names.index(NUCLEI_PREFLIGHT_NAME)
+    assert names.index(NUCLEI_PREFLIGHT_NAME) < names.index("Run Nuclei scan")
+    assert "env" not in preflight
+    assert preflight.get("continue-on-error", False) is False
+    _assert_owned_stand_target_preflight(preflight["run"])
+
+
+def test_no_external_dast_target_source_remains() -> None:
+    """Scans reach only the owned stand; no secret or dispatch input can redirect them."""
+
+    text = DAST_WORKFLOW_PATH.read_text(encoding="utf-8")
+    for forbidden in (
+        "DAST_TARGET_URL",
+        "DAST_SECRET_TARGET",
+        "inputs.target_url",
+        "target_url",
+    ):
+        assert forbidden not in text
+    workflow = yaml.safe_load(text)
+    assert _workflow_triggers(workflow)["workflow_dispatch"] is None
 
 
 @pytest.mark.parametrize(
-    ("event_name", "inputs", "secret", "expected_target"),
+    ("status_text", "expected_target"),
     [
+        ("LIVE_BASE_URL=http://localhost:20000\n", "http://localhost:20000"),
         (
-            "workflow_dispatch",
-            {"target_url": "https://manual.example.test/private"},
-            "https://secret.example.test",
-            "https://manual.example.test/private",
+            "+ docker compose ps\n"
+            "LIVE_BASE_URL=http://localhost:45000\n"
+            "LIVE_MAILPIT_URL=http://127.0.0.1:18025\n",
+            "http://localhost:45000",
         ),
+        ("LIVE_BASE_URL=https://secret.example.test\n", None),
         (
-            "workflow_dispatch",
-            {"target_url": ""},
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-        (
-            "schedule",
-            None,
-            "https://secret.example.test",
-            "https://secret.example.test",
-        ),
-        (
-            "workflow_dispatch",
-            {"target_url": "https://private.example.test/path?token=hidden"},
-            "https://secret.example.test",
+            "LIVE_BASE_URL=http://localhost:20000\nLIVE_BASE_URL=http://localhost:20001\n",
             None,
         ),
-        ("workflow_dispatch", {"target_url": ""}, "", None),
+        ("", None),
     ],
 )
-def test_nuclei_target_preflight_executes_private_selection(
+def test_nuclei_stand_target_preflight_executes_on_private_status(
     tmp_path: Path,
     pytester,
     monkeypatch: pytest.MonkeyPatch,
-    event_name: str,
-    inputs: object,
-    secret: str,
+    status_text: str,
     expected_target: str | None,
 ) -> None:
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    step = next(
-        item
-        for item in workflow["jobs"]["nuclei"]["steps"]
-        if item.get("name") == "Validate Nuclei target URL"
-    )
-    event = tmp_path / "event.json"
-    event.write_text(json.dumps({"inputs": inputs}), encoding="utf-8")
+    step = _step(_steps(workflow, "nuclei"), NUCLEI_PREFLIGHT_NAME)
+    (tmp_path / "dast-stand-status.txt").write_text(status_text, encoding="utf-8")
     monkeypatch.chdir(REPOSITORY_ROOT)
     monkeypatch.delenv("BASH_ENV", raising=False)
     monkeypatch.delenv("TARGET_URL", raising=False)
     for name, value in {
-        "GITHUB_EVENT_NAME": event_name,
-        "GITHUB_EVENT_PATH": event.as_posix(),
-        "DAST_SECRET_TARGET": secret,
         "RUNNER_TEMP": tmp_path.as_posix(),
         "TEST_GATE_PYTHON": Path(sys.executable).as_posix(),
     }.items():
@@ -192,7 +235,7 @@ def test_nuclei_target_preflight_executes_private_selection(
     if expected_target is not None:
         assert handoff.read_text(encoding="utf-8") == expected_target
     else:
-        assert "private.example.test" not in result.stdout.str() + result.stderr.str()
+        assert "secret.example.test" not in result.stdout.str() + result.stderr.str()
 
 
 def test_nuclei_nonzero_exit_remains_terminal_after_artifact_uploads() -> None:
@@ -481,6 +524,25 @@ VERIFIED_UPLOAD = (
     "${{ always() && steps.zap_prepare.outcome == 'success' "
     "&& steps.zap_verify.outcome == 'success' }}"
 )
+ZAP_STEP_ORDER = (
+    CHECKOUT_NAME,
+    "Set up Python",
+    "Install uv",
+    "Install locked Python runtime dependencies",
+    "Select unique owned DAST state directory",
+    START_NAME,
+    STATUS_NAME,
+    ZAP_PREPARE_NAME,
+    TEARDOWN_NAME,
+    "Verify ZAP public evidence and provenance",
+    "Upload ZAP SARIF to GitHub Security",
+    "Upload verified ZAP public evidence",
+    "Fail on medium or high ZAP findings",
+)
+ZAP_GATE_NAME = "Fail on medium or high ZAP findings"
+ZAP_VERIFY_NAME = "Verify ZAP public evidence and provenance"
+ZAP_SARIF_NAME = "Upload ZAP SARIF to GitHub Security"
+ZAP_ARTIFACT_NAME = "Upload verified ZAP public evidence"
 
 
 def _assert_zap_pipeline(workflow: dict) -> None:
@@ -489,20 +551,22 @@ def _assert_zap_pipeline(workflow: dict) -> None:
     assert job["permissions"] == {"contents": "read", "security-events": "write"}
     assert job["needs"] == "verify-trusted-ref"
     assert job["if"] == "${{ needs.verify-trusted-ref.result == 'success' }}"
-    assert job["timeout-minutes"] == 60
+    assert job["timeout-minutes"] == 150
     assert "env" not in job and "env" not in workflow
     steps = job["steps"]
-    assert len(steps) == 6
-    checkout, prepare, verify, sarif, artifact, gate = steps
-    assert (
-        checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-    )
+    assert [step.get("name") for step in steps] == list(ZAP_STEP_ORDER)
+    by_name = {step["name"]: step for step in steps}
+    start = by_name[START_NAME]
+    assert start["id"] == "start-stand"
+    assert "--stack core" in start["run"]
+    prepare = by_name[ZAP_PREPARE_NAME]
+    verify = by_name[ZAP_VERIFY_NAME]
+    gate = by_name[ZAP_GATE_NAME]
+    teardown = by_name[TEARDOWN_NAME]
     assert prepare["id"] == "zap_prepare"
-    assert prepare["env"] == {"DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"}
-    assert "if" not in prepare
     assert verify["id"] == "zap_verify"
     assert verify["if"] == "${{ always() && steps.zap_prepare.outcome == 'success' }}"
-    assert gate["name"] == "Fail on medium or high ZAP findings"
+    assert teardown["if"] == "${{ always() && steps.start-stand.outcome != 'skipped' }}"
     assert gate["if"] == "${{ always() }}"
     for step, command in ((prepare, "prepare"), (verify, "verify"), (gate, "gate")):
         assert step["shell"] == "bash"
@@ -521,17 +585,23 @@ def _assert_zap_pipeline(workflow: dict) -> None:
             "--public",
             "$GITHUB_WORKSPACE/zap-public",
         ]
+        if command == "prepare":
+            expected += ["--status-in", "$RUNNER_TEMP/dast-stand-status.txt"]
         if command != "verify":
             expected += ["--summary-file", "$GITHUB_STEP_SUMMARY"]
         assert shlex.split(step["run"].replace("\\\n", " ")) == expected
     for step in steps:
         preamble = json.dumps({"env": step.get("env"), "with": step.get("with")})
         assert "inputs.target_url" not in preamble
+        assert "DAST_TARGET_URL" not in json.dumps(step)
+        assert "DAST_SECRET_TARGET" not in json.dumps(step)
         assert "inputs.target_url" not in step.get("run", "")
         assert step.get("continue-on-error", False) is False
-        if step is not prepare:
-            assert "env" not in step
         assert "${{" not in step.get("run", "")
+        if step is not start:
+            assert "env" not in step
+    sarif = by_name[ZAP_SARIF_NAME]
+    artifact = by_name[ZAP_ARTIFACT_NAME]
     assert (
         sarif["uses"]
         == "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
@@ -554,6 +624,19 @@ def test_zap_private_prepare_verify_publish_threshold_pipeline() -> None:
     _assert_zap_pipeline(yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8")))
 
 
+def test_dast_sarif_categories_and_retention_remain_pinned() -> None:
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    categories: set[str] = set()
+    for job_name in ("nuclei", "zap"):
+        for step in _steps(workflow, job_name):
+            uses = str(step.get("uses", ""))
+            if uses.startswith("github/codeql-action/upload-sarif@"):
+                categories.add(step["with"]["category"])
+            if uses.startswith("actions/upload-artifact@"):
+                assert step["with"]["retention-days"] == 90
+    assert categories == {"nuclei-dast", "zap-dast"}
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -562,14 +645,16 @@ def test_zap_private_prepare_verify_publish_threshold_pipeline() -> None:
         "skip_verify",
         "ignore_failure",
         "target_in_verify",
+        "external_target_secret",
+        "target_in_shell",
+        "target_in_action_input",
         "public_work",
         "gate_before_upload",
+        "teardown_before_scan",
+        "skip_teardown",
         "issue_permission",
         "unpin_action",
         "extra_publisher",
-        "target_in_shell",
-        "target_in_prepare_env",
-        "target_in_action_input",
     ],
 )
 def test_zap_pipeline_contract_rejects_privacy_and_ordering_regressions(
@@ -580,34 +665,48 @@ def test_zap_pipeline_contract_rejects_privacy_and_ordering_regressions(
     )
     job = workflow["jobs"]["zap"]
     steps = job["steps"]
+    by_name = {step["name"]: step for step in steps}
+    artifact = by_name[ZAP_ARTIFACT_NAME]
     if mutation == "raw_upload":
-        steps[4]["with"]["path"] += "$RUNNER_TEMP/zap-private/report_json.json\n"
+        artifact["with"]["path"] += "$RUNNER_TEMP/zap-private/report_json.json\n"
     elif mutation == "directory_upload":
-        steps[4]["with"]["path"] = "zap-public/"
+        artifact["with"]["path"] = "zap-public/"
     elif mutation == "skip_verify":
-        steps[3]["if"] = "${{ always() }}"
+        by_name[ZAP_VERIFY_NAME]["if"] = "${{ always() }}"
     elif mutation == "ignore_failure":
-        steps[1]["continue-on-error"] = True
+        by_name[ZAP_PREPARE_NAME]["continue-on-error"] = True
     elif mutation == "target_in_verify":
-        steps[2]["env"] = {"TARGET_URL": TARGET_EXPRESSION}
+        by_name[ZAP_VERIFY_NAME]["env"] = {
+            "TARGET_URL": "${{ secrets.DAST_TARGET_URL }}"
+        }
+    elif mutation == "external_target_secret":
+        by_name[ZAP_PREPARE_NAME]["env"] = {
+            "DAST_SECRET_TARGET": "${{ secrets.DAST_TARGET_URL }}"
+        }
+    elif mutation == "target_in_shell":
+        by_name[ZAP_PREPARE_NAME]["run"] += "echo ${{ secrets.DAST_TARGET_URL }}\n"
+    elif mutation == "target_in_action_input":
+        by_name[ZAP_SARIF_NAME]["with"]["target"] = "${{ inputs.target_url }}"
     elif mutation == "public_work":
-        steps[1]["run"] = steps[1]["run"].replace(
+        by_name[ZAP_PREPARE_NAME]["run"] = by_name[ZAP_PREPARE_NAME]["run"].replace(
             "$RUNNER_TEMP/zap-private", "$GITHUB_WORKSPACE"
         )
     elif mutation == "gate_before_upload":
-        steps[3], steps[5] = steps[5], steps[3]
+        gate_index = steps.index(by_name[ZAP_GATE_NAME])
+        sarif_index = steps.index(by_name[ZAP_SARIF_NAME])
+        steps[gate_index], steps[sarif_index] = steps[sarif_index], steps[gate_index]
+    elif mutation == "teardown_before_scan":
+        teardown_index = steps.index(by_name[TEARDOWN_NAME])
+        scan_index = steps.index(by_name[ZAP_PREPARE_NAME])
+        steps.insert(scan_index, steps.pop(teardown_index))
+    elif mutation == "skip_teardown":
+        by_name[TEARDOWN_NAME]["if"] = "${{ success() }}"
     elif mutation == "issue_permission":
         job["permissions"]["issues"] = "write"
     elif mutation == "unpin_action":
-        steps[4]["uses"] = "actions/upload-artifact@main"
-    elif mutation == "target_in_prepare_env":
-        steps[1]["env"] = {"TARGET_URL": TARGET_EXPRESSION}
-    elif mutation == "target_in_action_input":
-        steps[3]["with"]["target"] = TARGET_EXPRESSION
-    elif mutation == "extra_publisher":
-        steps.append(copy.deepcopy(steps[4]))
+        artifact["uses"] = "actions/upload-artifact@main"
     else:
-        steps[1]["run"] += "echo " + TARGET_EXPRESSION
+        steps.append(copy.deepcopy(artifact))
     with pytest.raises(AssertionError):
         _assert_zap_pipeline(workflow)
 
@@ -623,9 +722,12 @@ def test_zap_real_shell_preserves_cli_arguments_and_failure(
 ) -> None:
     """Execute actual workflow shell without running Docker or contacting a target."""
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    step = workflow["jobs"]["zap"]["steps"][
-        {"prepare": 1, "verify": 2, "gate": 5}[command]
-    ]
+    step_name = {
+        "prepare": ZAP_PREPARE_NAME,
+        "verify": ZAP_VERIFY_NAME,
+        "gate": ZAP_GATE_NAME,
+    }[command]
+    step = _step(_steps(workflow, "zap"), step_name)
     workspace = tmp_path / "workspace with spaces"
     private = tmp_path / "private with spaces"
     summary = tmp_path / "summary with spaces.md"
@@ -669,6 +771,8 @@ def test_zap_real_shell_preserves_cli_arguments_and_failure(
         "--public",
         str(workspace / "zap-public"),
     ]
+    if command == "prepare":
+        expected += ["--status-in", str(private / "dast-stand-status.txt")]
     if command != "verify":
         expected += ["--summary-file", str(summary)]
     assert json.loads(log.read_text(encoding="utf-8")) == expected

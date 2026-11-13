@@ -7,6 +7,7 @@ updates:
     directories:
       - "/"
       - "/frontend"
+      - "/tools/oasdiff"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -118,6 +119,12 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
+    # quic-go v0.65.0 breaks github.com/quic-go/webtransport-go v0.13.0 (latest)
+    # with "assignment mismatch: ... HTTPStream returns 2 values"; keep v0.64.1
+    # until webtransport-go accepts the newer quic-go API.
+    ignore:
+      - dependency-name: "github.com/quic-go/quic-go"
+        versions: [">= 0.65.0, < 0.66.0"]
     groups:
       go-ws-hub:
         patterns:
@@ -135,6 +142,12 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
+    # quic-go v0.65.0 breaks github.com/quic-go/webtransport-go v0.13.0 (latest)
+    # with "assignment mismatch: ... HTTPStream returns 2 values"; keep v0.64.1
+    # until webtransport-go accepts the newer quic-go API.
+    ignore:
+      - dependency-name: "github.com/quic-go/quic-go"
+        versions: [">= 0.65.0, < 0.66.0"]
     groups:
       go-gateway:
         patterns:

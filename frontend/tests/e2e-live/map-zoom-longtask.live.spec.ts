@@ -6,6 +6,23 @@ const MAP_RESOURCE_HOST = "tiles.openfreemap.org"
 const LONG_TASK_THRESHOLD_MS = 50
 const ZOOM_STEPS = 3
 
+// The public tile host is outside the stand's control, so its style and vector
+// tiles are pinned to a local fixture. MapLibre itself still runs for real: it
+// parses this style, requests the tile through the same URL template, and
+// renders the canvas that the zoom control and long-task observer exercise.
+const deterministicStyle = {
+  version: 8,
+  sources: {
+    openmaptiles: {
+      type: "vector",
+      tiles: [`https://${MAP_RESOURCE_HOST}/data/v3/{z}/{x}/{y}.pbf`],
+      minzoom: 0,
+      maxzoom: 14,
+    },
+  },
+  layers: [{ id: "background", type: "background", paint: { "background-color": "#f4f6f8" } }],
+}
+
 interface MapCamera {
   zoom: number
   latitude: number
@@ -111,6 +128,17 @@ test("live MapLibre zoom has no main-thread long task at or above 50 ms", async 
   })
   page.on("requestfinished", (request) => pendingMapRequests.delete(request))
   page.on("requestfailed", (request) => pendingMapRequests.delete(request))
+
+  await page.route(`https://${MAP_RESOURCE_HOST}/styles/**`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(deterministicStyle),
+    })
+  )
+  await page.route(`https://${MAP_RESOURCE_HOST}/data/v3/**`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/x-protobuf", body: Buffer.alloc(0) })
+  )
 
   await loginAs(page, "student")
   await page.goto(MAP_URL, { waitUntil: "commit" })

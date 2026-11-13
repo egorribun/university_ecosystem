@@ -1,15 +1,14 @@
 """Offline AUD-251 source contract; this does not establish live authorization.
 
-The named role deliberately retains nodes/proxy GET for kubelet compatibility.
-That permission may also authorize WebSocket exec and is not a read-only grant.
+The named role grants only nodes/pods GET, which KubeletFineGrainedAuthz uses to
+authorize the attestor's kubelet GET /pods. The former nodes/proxy GET is
+absent: it authorizes other kubelet endpoints, including WebSocket exec.
 This test cannot detect other live bindings or establish kubelet behavior.
 
 Acceptance still requires, for every target cluster, a namespace-aware review
 of the service account's effective grants (including group and other bindings),
-live authorization checks, and successful agent/workload attestation. Replacing
-the compatibility grant with nodes/pods additionally requires proof on every
-deployed kubelet that /pods works with the narrow grant and nodes/proxy denied.
-Otherwise the remaining GET exposure needs an explicit risk decision.
+live authorization checks (the AUD-373 kind proof runs them), and successful
+agent/workload attestation on kubelets with KubeletFineGrainedAuthz enabled.
 """
 
 import re
@@ -43,8 +42,9 @@ def _assert_source_contract(
     role = _one(rbac, "ClusterRole", "spire-agent-role")
     assert "aggregationRule" not in role
     assert role["rules"] == [
-        {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]}
+        {"apiGroups": [""], "resources": ["nodes/pods"], "verbs": ["get"]}
     ]
+    assert "nodes/proxy" not in str(role)
 
     account = _one(rbac, "ServiceAccount", "spire-agent")
     daemonset = _one(agent_documents, "DaemonSet", "spire-agent")
@@ -163,7 +163,15 @@ def test_aud251_named_role_and_service_account_match_attestors() -> None:
 
 
 @pytest.mark.parametrize(
-    "change", ["namespace", "role_ref", "extra_verb", "workload_options", "allowlist"]
+    "change",
+    [
+        "namespace",
+        "role_ref",
+        "extra_verb",
+        "nodes_proxy",
+        "workload_options",
+        "allowlist",
+    ],
 )
 def test_aud251_contract_rejects_identity_or_permission_drift(change: str) -> None:
     rbac, agent, server = deepcopy(_sources())
@@ -178,6 +186,10 @@ def test_aud251_contract_rejects_identity_or_permission_drift(change: str) -> No
     elif change == "extra_verb":
         _one(rbac, "ClusterRole", "spire-agent-role")["rules"][0]["verbs"].append(
             "watch"
+        )
+    elif change == "nodes_proxy":
+        _one(rbac, "ClusterRole", "spire-agent-role")["rules"].append(
+            {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]}
         )
     elif change == "workload_options":
         config = _one(agent, "ConfigMap", "spire-agent-config")["data"]

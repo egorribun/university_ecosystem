@@ -1,0 +1,12 @@
+{
+  "name": "oasdiff-ci-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned oasdiff CLI used by the contract-validation OpenAPI breaking-change gate",
+  "dependencies": {
+    "@oasdiff-js/oasdiff-js": "1.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  }
+}

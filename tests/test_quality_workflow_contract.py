@@ -1473,7 +1473,6 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0001",
         "KSV-0118",
         "KSV-0014",
-        "KSV-0047",
         "KSV-0009",
         "KSV-0010",
         "KSV-0008",
@@ -2060,7 +2059,7 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
     """
 
     expected_version = "1.26.11"
-    manifest_expected_version = "1.26.4"
+    manifest_expected_version = "1.26.11"
     manifests = (
         "go.mod",
         "go.work",

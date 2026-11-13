@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test"
+import { Page, type Response } from "@playwright/test"
 import {
   withLiveRegistrationAdmission,
   expect,
@@ -266,8 +266,20 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     ).toBe(true)
     expect((await readOwnerProfile(page)).full_name).toBe(initialName)
 
+    // Ordering contract: (1) the signed-in profile refresh settles and seeds the editor,
+    // (2) the CSRF cookie is removed, (3) the CSRF bootstrap is registered and observed
+    // before the save, (4) the PUT carries the proof and the edited name.
+    const profileSettled = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/v1/users/me" &&
+        response.request().method() === "GET" &&
+        response.status() === 200
+    )
     await page.goto("/profile?edit=1")
-    await page.getByLabel("Имя", { exact: true }).fill(acceptedName)
+    await profileSettled
+    const nameInput = page.getByLabel("Имя", { exact: true })
+    await expect(nameInput).toHaveValue(initialName)
+
     await page.context().clearCookies({ name: "csrf_token" })
     const cookiesAfterExpiry = (await page.context().cookies()).map((cookie) => cookie.name)
     expect(cookiesAfterExpiry, "only the CSRF cookie is removed before UI recovery").not.toContain(
@@ -276,18 +288,46 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     expect(cookiesAfterExpiry, "the authenticated session remains available").toContain(
       "access_token_v2"
     )
-    const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)
-    const saveResponsePromise = waitForProfileUpdate(page)
-    await page.getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()
-    const [csrfBootstrapResponse, saveResponse] = await Promise.all([
-      csrfBootstrapResponsePromise,
-      saveResponsePromise,
-    ])
-    expect(csrfBootstrapResponse.status(), "the UI reacquires the CSRF cookie before saving").toBe(
-      200
-    )
+
+    const requestOrder: string[] = []
+    const recordOrder = (response: Response) => {
+      const pathname = new URL(response.url()).pathname
+      if (pathname === "/api/v1/auth/csrf-cookie") requestOrder.push("csrf-cookie")
+      if (pathname === "/api/v1/users/me" && response.request().method() === "PUT") {
+        requestOrder.push("save")
+      }
+    }
+    page.on("response", recordOrder)
+    try {
+      await nameInput.fill(acceptedName)
+      const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)
+      const saveResponsePromise = waitForProfileUpdate(page)
+      await page.getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()
+      const [csrfBootstrapResponse, saveResponse] = await Promise.all([
+        csrfBootstrapResponsePromise,
+        saveResponsePromise,
+      ])
+      expect(
+        csrfBootstrapResponse.status(),
+        "the UI reacquires the CSRF cookie before saving"
+      ).toBe(200)
+      expect(requestOrder, "the CSRF bootstrap completes before the profile save").toEqual([
+        "csrf-cookie",
+        "save",
+      ])
+      const saveRequest = saveResponse.request()
+      expect(saveRequest.postDataJSON(), "the save submits the edited name").toMatchObject({
+        full_name: acceptedName,
+      })
+      expect(
+        saveRequest.headers()["x-csrf-token"],
+        "the save carries the CSRF proof for the reacquired cookie"
+      ).toBeTruthy()
+      expect(saveResponse.status(), "the normal same-origin UI mutation succeeds").toBe(200)
+    } finally {
+      page.off("response", recordOrder)
+    }
     expect((await page.context().cookies()).map((cookie) => cookie.name)).toContain("csrf_token")
-    expect(saveResponse.status(), "the normal same-origin UI mutation succeeds").toBe(200)
     await expect(page).toHaveURL(/\/profile$/u)
     await expect(page.getByRole("heading", { level: 1, name: acceptedName })).toBeVisible()
 

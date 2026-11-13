@@ -133,6 +133,9 @@ async def run_scan(
             "--rm",
             "--platform",
             "linux/amd64",
+            # The target is the owned stand published on the runner's loopback.
+            "--network",
+            "host",
             "--name",
             name,
             "--user",

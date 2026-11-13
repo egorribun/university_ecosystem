@@ -637,7 +637,10 @@ test("server nonce flows only through the trusted Start router option", async ()
   assert.match(serverSource, /randomBytes\(16\)\.toString\("base64"\)/u)
   assert.doesNotMatch(serverSource, /replaceCspNoncePlaceholder|NonceHeader|nonce-header/iu)
   assert.match(serverSource, /handler\.fetch\(request,\s*requestOptions\)/u)
-  assert.match(serverSource, /applyNodeCspToHtmlResponse\(response, nonce\)/u)
+  assert.match(
+    serverSource,
+    /applyNodeCspToHtmlResponse\(\s*response,\s*nonce,\s*\{\s*upgradeInsecureRequests:\s*shouldUpgradeInsecureRequests\(/u
+  )
   assert.match(routerSource, /ssr:\s*\{\s*nonce:\s*ssrNonce\s*\}/u)
   assert.match(routerSource, /globalThis\.__ssrNonceGetter__\?\.\(\)/u)
   assert.match(routerSource, /meta\[property="csp-nonce"\]/u)

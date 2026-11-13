@@ -68,6 +68,7 @@ import {
   buildNodeCspHeaders,
   createCspNoncePlaceholderTransform,
   replaceCspNoncePlaceholder,
+  shouldUpgradeInsecureRequests,
 } from "./server-csp.mjs"
 
 // The bounded Lighthouse SSR preview owns its port explicitly.  Prefer that
@@ -157,7 +158,13 @@ function serveStatic(req, res, urlPath) {
   res.setHeader("content-type", contentType)
   if (isHtml) {
     res.setHeader("referrer-policy", "no-referrer")
-    for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
+    const cspOptions = {
+      upgradeInsecureRequests: shouldUpgradeInsecureRequests({
+        host: req.headers.host,
+        forwardedProto: req.headers["x-forwarded-proto"],
+      }),
+    }
+    for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce, cspOptions))) {
       res.setHeader(name, value)
     }
     res.setHeader("cache-control", "no-store, private, max-age=0")
@@ -331,7 +338,13 @@ const server = createServer(async (req, res) => {
       const notFoundHtml = replaceCspNoncePlaceholder(notFoundDocument, nonce)
       response = applyNodeCspToHtmlResponse(
         createNotFoundResponse(notFoundHtml, { method: req.method }),
-        nonce
+        nonce,
+        {
+          upgradeInsecureRequests: shouldUpgradeInsecureRequests({
+            host: req.headers.host,
+            forwardedProto: req.headers["x-forwarded-proto"],
+          }),
+        }
       )
     }
     // The Lighthouse preview is the only runtime allowed to rewrite SSR

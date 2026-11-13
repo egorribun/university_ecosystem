@@ -936,11 +936,37 @@ export async function stubBreachedPasswordLookup(page: Page): Promise<void> {
   )
 }
 
+/**
+ * Seeded demo avatars and story thumbnails point at the public picsum.photos
+ * host, which the disposable stand cannot rely on. A full document load of any
+ * page that renders them (the dashboard, after an admin-route redirect) waits
+ * for those images, so an unreachable host turns the browser `load` event into
+ * a 45 s navigation timeout. Every live test therefore fulfils that one host
+ * with a 2x3 SVG at the context level, which also covers popups.
+ */
+export const LIVE_EXTERNAL_IMAGE_HOST_PATTERN = "https://picsum.photos/**"
+const LIVE_SYNTHETIC_EXTERNAL_IMAGE =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3" />'
+
 /** Fails the test on any uncaught page exception, the live lane's crash signal. */
 export const test = base.extend<{
   pageErrors: Error[]
   ownedSessionCleanup: void
+  externalImageStub: void
 }>({
+  externalImageStub: [
+    async ({ context }, use) => {
+      await context.route(LIVE_EXTERNAL_IMAGE_HOST_PATTERN, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "image/svg+xml",
+          body: LIVE_SYNTHETIC_EXTERNAL_IMAGE,
+        })
+      )
+      await use()
+    },
+    { auto: true },
+  ],
   ownedSessionCleanup: [
     // Playwright requires a destructured fixture argument even without dependencies.
     async ({ browser }, runTest, testInfo) => {

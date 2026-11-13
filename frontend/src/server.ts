@@ -28,7 +28,11 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { randomBytes } from "node:crypto"
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry"
 import type { i18n as I18nInstance } from "i18next"
-import { applyNodeCspToHtmlResponse, CSP_NONCE_PLACEHOLDER } from "../scripts/server-csp.mjs"
+import {
+  applyNodeCspToHtmlResponse,
+  CSP_NONCE_PLACEHOLDER,
+  shouldUpgradeInsecureRequests,
+} from "../scripts/server-csp.mjs"
 import { createI18nInstance } from "./i18n/config"
 import { extractAuthFromRequest, SSR_AUTH_UNAUTH, type SsrAuthState } from "./ssrAuth"
 import {
@@ -238,7 +242,12 @@ export default createServerEntry({
                     response = REFERRER_SENSITIVE_PATH.test(url.pathname)
                       ? augmentResponseForNoReferrer(response)
                       : response
-                    return applyNodeCspToHtmlResponse(response, nonce)
+                    return applyNodeCspToHtmlResponse(response, nonce, {
+                      upgradeInsecureRequests: shouldUpgradeInsecureRequests({
+                        host: request.headers.get("host"),
+                        forwardedProto: request.headers.get("x-forwarded-proto"),
+                      }),
+                    })
                   })
                 })
               )

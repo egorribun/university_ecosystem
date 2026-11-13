@@ -308,6 +308,16 @@ def test_runner_selects_verified_linux_amd64_platform(runner_inputs) -> None:
     assert arguments[arguments.index("--platform") + 1] == "linux/amd64"
 
 
+def test_runner_shares_only_the_host_loopback_for_the_owned_stand(
+    runner_inputs,
+) -> None:
+    """The scanner reaches the owned stand on loopback and nothing else is attached."""
+    _run(runner_inputs)
+    arguments = json.loads(runner_inputs[4].read_text().splitlines()[0])
+    assert arguments[arguments.index("--network") + 1] == "host"
+    assert arguments.count("--network") == 1
+
+
 def test_cleanup_removes_container_after_client_already_exited(runner_inputs) -> None:
     import shutil
     import sys

@@ -357,8 +357,10 @@ def test_spire_ksv_dispositions_are_scoped_to_their_manifests() -> None:
 
     assert entries["KSV-0012"]["paths"] == ["k8s/spire/spire-agent.yaml"]
     assert entries["KSV-0023"]["paths"] == ["k8s/spire/spire-agent.yaml"]
-    assert entries["KSV-0047"]["paths"] == ["k8s/spire/spire-rbac.yaml"]
-    for rule in ("KSV-0012", "KSV-0023", "KSV-0047"):
+    # AUD-251: the SPIRE agent no longer holds nodes/proxy, so the node-proxy
+    # exception is gone rather than merely unused.
+    assert "KSV-0047" not in entries
+    for rule in ("KSV-0012", "KSV-0023"):
         assert date.fromisoformat(str(entries[rule]["expired_at"])) == date(2027, 1, 10)
     assert "KSV-0017" not in entries
 
@@ -430,7 +432,6 @@ def test_ksv_policy_has_no_global_or_plain_format_entries() -> None:
         "KSV-0001",
         "KSV-0118",
         "KSV-0014",
-        "KSV-0047",
         "KSV-0009",
         "KSV-0010",
         "KSV-0008",
@@ -457,3 +458,4 @@ def test_ksv_exceptions_do_not_match_manifests_outside_their_scope() -> None:
         "k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml",
     )
     assert not _aud245_ignored("KSV-0047", "k8s/spire/spire-agent.yaml")
+    assert not _aud245_ignored("KSV-0047", "k8s/spire/spire-rbac.yaml")
