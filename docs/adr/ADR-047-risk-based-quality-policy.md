@@ -2678,3 +2678,39 @@ context, hook, threshold or scanner rule.
 
 None of these decisions establishes a passing scan or hosted check; every new
 source SHA still needs its own evidence.
+
+## Decisions recorded on 2026-11-13
+
+### Live Web Push runs in Google Chrome
+
+- **Verified root cause.** `registration.pushManager.subscribe(...)` fails in
+  Playwright's default `browser.newContext()` (an off-the-record context) with
+  `AbortError: Registration failed - permission denied`, in both Playwright
+  Chromium and Google Chrome. With `chromium.launchPersistentContext` and the
+  open-source bundled Chromium, it fails with `Registration failed - push
+  service not available`, because that build has no Google push service. Only
+  Google Chrome (`channel: "chrome"`) with a persistent profile subscribes, with
+  an `fcm.googleapis.com` endpoint. This is why the live push suite never passed
+  in hosted CI.
+- **Owner decision (2026-11-13).** Only the live Web Push specs run in branded
+  Google Chrome with a persistent profile and real FCM delivery, using the
+  stand's local VAPID keys.
+- **Scope.** `notification-preferences`, `notification-topics-delivery`,
+  `push-delivery` and `push-subscription` use the persistent `chrome` profile
+  through the shared `nativePushProfiles` fixture
+  (`frontend/tests/e2e-live/native-push-profile-fixtures.ts`). The fixture
+  defaults to `NATIVE_PUSH_BROWSER_CHANNEL = "chrome"`. `push-permission-default`
+  never calls `pushManager.subscribe`, so it stays on locked Chromium. Every
+  other live spec stays on locked Playwright Chromium. Second-user contexts that
+  never subscribe remain off-the-record.
+- **Accepted costs.** The Chrome version is whatever the runner image ships
+  (`ubuntu-24.04` preinstalls Google Chrome stable at `/opt/google/chrome`, so no
+  extra download). It is not pinned. The Web Push specs depend on FCM being
+  reachable from the runner.
+- **Gates.** `.github/workflows/live-acceptance.yml` fails closed when
+  `google-chrome` is missing and prints its version. Without Chrome the push
+  specs also fail at browser launch; no spec falls back to Chromium.
+- **Evidence status.** A local probe outside the repository used the fixture
+  with a static service-worker page and subscribed in both the primary and a
+  second owner persistent profile. This is not stand or hosted evidence; the
+  next full live run on `main` provides it.

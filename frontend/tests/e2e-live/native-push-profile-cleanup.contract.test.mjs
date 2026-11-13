@@ -128,3 +128,24 @@ test("runs the synchronous profile removal only before its absolute deadline", (
   )
   assert.equal(removalCalls, 1)
 })
+
+test("native push profiles default to persistent branded Google Chrome, never off-the-record Chromium", async () => {
+  const fixtureSource = await readFile(
+    new URL("./native-push-profile-fixtures.ts", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(fixtureSource, /export const NATIVE_PUSH_BROWSER_CHANNEL = "chrome"/u)
+  assert.match(
+    fixtureSource,
+    /nativePushChannel: \[NATIVE_PUSH_BROWSER_CHANNEL, \{ option: true \}\]/u,
+    "the fixture must default to the Chrome channel that owns a real push service"
+  )
+  assert.doesNotMatch(fixtureSource, /nativePushChannel: \[undefined/u)
+  assert.match(fixtureSource, /\.launchPersistentContext\(canonicalProfilePath, /u)
+  assert.doesNotMatch(
+    fixtureSource,
+    /browser\.newContext\(/u,
+    "native push profiles must not be created as off-the-record contexts"
+  )
+})

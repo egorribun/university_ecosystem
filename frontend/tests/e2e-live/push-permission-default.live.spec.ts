@@ -3,6 +3,7 @@ import { expect, loginAs } from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
 
 test.use({ channel: "chromium" })
+// This scenario never calls pushManager.subscribe, so it keeps the locked Chromium build.
 test.use({ nativePushChannel: "chromium" })
 
 const expandPushAccordion = async (page: Page): Promise<void> => {

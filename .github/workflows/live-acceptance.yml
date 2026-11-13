@@ -87,6 +87,17 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      # Live Web Push specs use the preinstalled branded Chrome (channel "chrome"),
+      # because Playwright's open-source Chromium has no push service. Fail closed.
+      - name: Verify preinstalled Google Chrome for live Web Push
+        run: |
+          set -euo pipefail
+          if ! command -v google-chrome >/dev/null 2>&1; then
+            echo "::error::google-chrome is required for live Web Push specs" >&2
+            exit 1
+          fi
+          google-chrome --version
+
       - name: Validate live acceptance contracts before starting Docker
         working-directory: frontend
         run: npm run test:e2e:live:contract
@@ -329,6 +340,17 @@ jobs:
       - name: Install locked Chromium and Linux browser dependencies
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      # Live Web Push specs use the preinstalled branded Chrome (channel "chrome"),
+      # because Playwright's open-source Chromium has no push service. Fail closed.
+      - name: Verify preinstalled Google Chrome for live Web Push
+        run: |
+          set -euo pipefail
+          if ! command -v google-chrome >/dev/null 2>&1; then
+            echo "::error::google-chrome is required for live Web Push specs" >&2
+            exit 1
+          fi
+          google-chrome --version
 
       - name: Validate live acceptance contracts before starting Docker
         working-directory: frontend

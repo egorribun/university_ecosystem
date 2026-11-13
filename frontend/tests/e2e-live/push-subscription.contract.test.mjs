@@ -52,7 +52,13 @@ test("live Web Push acceptance is selected and stays inside native opt-in and su
   )
   assert.match(spec, /randomUUID\(\)/u)
   assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
-  assert.match(spec, /test\.use\(\{ nativePushChannel: "chromium" \}\)/u)
+  assert.match(spec, /test\.use\(\{ nativePushChannel: "chrome" \}\)/u)
+  assert.doesNotMatch(spec, /nativePushChannel: "chromium"/u)
+  assert.doesNotMatch(
+    spec,
+    /browser\.newContext\([\s\S]{0,400}?pushManager\.subscribe/u,
+    "no off-the-record context may subscribe to Web Push"
+  )
   assert.match(spec, /freshPassword\(\)/u)
   assert.match(spec, /loginAs\(adminPage,\s*["']admin["']\)/u)
   assert.match(spec, /await page\.goto\(["']\/register["']\)/u)

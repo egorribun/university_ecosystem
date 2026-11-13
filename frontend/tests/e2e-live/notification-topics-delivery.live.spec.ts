@@ -19,7 +19,7 @@ const expandPushAccordion = async (page: Page): Promise<void> => {
 }
 
 test.use({ channel: "chromium" })
-test.use({ nativePushChannel: "chromium" })
+test.use({ nativePushChannel: "chrome" })
 
 const DELIVERY_TOPICS = [
   "news.published",

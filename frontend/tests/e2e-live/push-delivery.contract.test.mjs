@@ -69,6 +69,17 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
     /channel:\s*["']chromium["']/u,
     "full Chromium remains scoped to the native push spec"
   )
+  assert.match(
+    spec,
+    /test\.use\(\{ nativePushChannel: "chrome" \}\)/u,
+    "the push-subscribing recipient runs in persistent branded Google Chrome"
+  )
+  assert.doesNotMatch(spec, /nativePushChannel: "chromium"/u)
+  assert.doesNotMatch(
+    spec,
+    /browser\.newContext\([\s\S]{0,400}?pushManager\.subscribe/u,
+    "no off-the-record context may subscribe to Web Push"
+  )
   assert.match(spec, /browserName !== "chromium"/u)
   assert.match(spec, /navigator\.userActivation\.isActive/u)
   assert.match(spec, /Notification\.requestPermission/u)
