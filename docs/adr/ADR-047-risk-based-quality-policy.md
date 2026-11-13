@@ -2678,3 +2678,57 @@ context, hook, threshold or scanner rule.
 
 None of these decisions establishes a passing scan or hosted check; every new
 source SHA still needs its own evidence.
+
+## Decisions recorded on 2026-11-13
+
+### Live Web Push runs in Google Chrome
+
+- **Verified root cause.** `registration.pushManager.subscribe(...)` fails in
+  Playwright's default `browser.newContext()` (an off-the-record context) with
+  `AbortError: Registration failed - permission denied`, in both Playwright
+  Chromium and Google Chrome. With `chromium.launchPersistentContext` and the
+  open-source bundled Chromium, it fails with `Registration failed - push
+  service not available`, because that build has no Google push service. Only
+  Google Chrome (`channel: "chrome"`) with a persistent profile subscribes, with
+  an `fcm.googleapis.com` endpoint. This is why the live push suite never passed
+  in hosted CI.
+- **Owner decision (2026-11-13).** Only the live Web Push specs run in branded
+  Google Chrome with a persistent profile and real FCM delivery, using the
+  stand's local VAPID keys.
+- **Scope.** `notification-preferences`, `notification-topics-delivery`,
+  `push-delivery` and `push-subscription` use the persistent `chrome` profile
+  through the shared `nativePushProfiles` fixture
+  (`frontend/tests/e2e-live/native-push-profile-fixtures.ts`). The fixture
+  defaults to `NATIVE_PUSH_BROWSER_CHANNEL = "chrome"`. `push-permission-default`
+  never calls `pushManager.subscribe`, so it stays on locked Chromium. Every
+  other live spec stays on locked Playwright Chromium. Second-user contexts that
+  never subscribe remain off-the-record.
+- **Accepted costs.** The Chrome version is whatever the runner image ships
+  (`ubuntu-24.04` preinstalls Google Chrome stable at `/opt/google/chrome`, so no
+  extra download). It is not pinned. The Web Push specs depend on FCM being
+  reachable from the runner.
+- **Gates.** `.github/workflows/live-acceptance.yml` fails closed when
+  `google-chrome` is missing and prints its version. Without Chrome the push
+  specs also fail at browser launch; no spec falls back to Chromium.
+- **Evidence status.** A local probe outside the repository used the fixture
+  with a static service-worker page and subscribed in both the primary and a
+  second owner persistent profile. This is not stand or hosted evidence; the
+  next full live run on `main` provides it.
+
+### Native rust_ext keeps rustix 1.1.5 for now
+
+- **Context.** RUSTSEC-2026-0486 is fixed in rustix 1.1.6. In
+  `native/rust_ext`, rustix arrives only through the dev-dependency chain
+  proptest → tempfile, so the compiled extension module does not link it.
+  The frontend WASM crates already use 1.1.6.
+- **Evidence.** The paired Rust Native Optimizer Regression Gate rejected the
+  Cargo.lock-only bump twice: in PR #1385 (reverted in 6960b55d0) and again in
+  benchmark run 43365410358 on PR #1391. `batch_detect_conflicts/100` had a
+  median paired ratio of 1.252 (one-sided 95% lower bound 1.226), and
+  `batch_detect_conflicts/500` had 1.215 (lower bound 1.193), against the 1.10
+  threshold. The other sizes passed. Both runs reproduced the same delta, so
+  the gate signal is not treated as noise.
+- **Decision.** Keep rustix 1.1.5 in `native/rust_ext/Cargo.lock` and leave the
+  gate and its threshold unchanged. The advisory remains open for this
+  test-only chain until the bench delta is explained or a later rustix release
+  passes the gate. This records a deferral, not a finding of non-reachability.

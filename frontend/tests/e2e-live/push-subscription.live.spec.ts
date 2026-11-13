@@ -12,7 +12,7 @@ import { NativePushProfile } from "./native-push-profile-fixtures"
 import { Page } from "@playwright/test"
 
 test.use({ channel: "chromium" })
-test.use({ nativePushChannel: "chromium" })
+test.use({ nativePushChannel: "chrome" })
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })

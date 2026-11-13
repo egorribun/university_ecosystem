@@ -798,6 +798,36 @@ def test_live_contracts_run_after_browser_setup_and_before_docker(
     assert browser < contract < stand
 
 
+@pytest.mark.parametrize("job_name", ("live-acceptance", "frozen-rc-full-smoke"))
+def test_live_acceptance_verifies_preinstalled_google_chrome_for_web_push(
+    job_name: str,
+) -> None:
+    _, workflow = _workflow()
+    steps = workflow["jobs"][job_name]["steps"]
+    chrome = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Verify preinstalled Google Chrome for live Web Push"
+    )
+    browser = next(
+        index
+        for index, step in enumerate(steps)
+        if "playwright install --with-deps chromium" in step.get("run", "")
+    )
+    contract = next(
+        index
+        for index, step in enumerate(steps)
+        if "npm run test:e2e:live:contract" in step.get("run", "")
+    )
+    run = steps[chrome]["run"]
+    assert "set -euo pipefail" in run
+    assert "command -v google-chrome" in run
+    assert "exit 1" in run
+    assert "google-chrome --version" in run
+    assert "playwright install" not in run
+    assert browser < chrome < contract
+
+
 def test_live_contract_command_includes_every_live_contract_file() -> None:
     frontend = ROOT / "frontend"
     package = json.loads((frontend / "package.json").read_text(encoding="utf-8"))

@@ -183,7 +183,7 @@ def test_cancellation_during_cleanup_waits_for_removal(
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), 3001])
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), 6001])
 def test_invalid_timeouts_never_start_container(runner_inputs, timeout: float) -> None:
     with pytest.raises(ValueError):
         _run(runner_inputs, timeout)

@@ -14,13 +14,19 @@ import type { ReactNode } from "react"
 
 let Route: (typeof import("../__root"))["Route"]
 let ActivityRootSeoFallback: (typeof import("../__root"))["ActivityRootSeoFallback"]
+let RootSeoGapFallback: (typeof import("../__root"))["RootSeoGapFallback"]
 const mockedScripts = vi.hoisted(() => vi.fn((): any => null))
 const mockedFetchCampusTimezone = vi.hoisted(() =>
   vi.fn(() => Promise.resolve<string | null>(null))
 )
 const mockedActivityRouterState = vi.hoisted(() => {
   const state: {
-    matches: Array<{ routeId: string; status: string; ssr?: boolean | "data-only" }>
+    matches: Array<{
+      routeId: string
+      status: string
+      ssr?: boolean | "data-only"
+      meta?: unknown
+    }>
   } = { matches: [] }
   const hook = vi.fn((options: any) => options.select({ matches: state.matches }))
   return { state, hook }
@@ -119,7 +125,7 @@ describe("__root.tsx components", () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    ;({ Route, ActivityRootSeoFallback } = await import("../__root"))
+    ;({ Route, ActivityRootSeoFallback, RootSeoGapFallback } = await import("../__root"))
     originalSSR = import.meta.env.SSR
     originalDocumentClass = document.documentElement.className
     originalDocumentLang = document.documentElement.getAttribute("lang")
@@ -1112,6 +1118,81 @@ describe("__root.tsx components", () => {
         )
       } else {
         expect(activityMeta).toBeNull()
+      }
+    }
+  )
+
+  it.each([
+    [
+      "before hydration",
+      [{ routeId: "/_auth/dashboard", status: "success", meta: [{ charSet: "UTF-8" }] }],
+      false,
+      false,
+      false,
+    ],
+    [
+      "after hydration when a hidden page SEO left the head without a title",
+      [
+        { routeId: "__root__", status: "success", meta: [{ charSet: "UTF-8" }] },
+        { routeId: "/_auth/dashboard", status: "success" },
+      ],
+      true,
+      false,
+      true,
+    ],
+    [
+      "while a page SEO is registered",
+      [{ routeId: "__root__", status: "success", meta: [{ charSet: "UTF-8" }] }],
+      true,
+      true,
+      false,
+    ],
+    [
+      "when the managed head already has a title",
+      [{ routeId: "__root__", status: "success", meta: [{ title: "University Ecosystem" }] }],
+      true,
+      false,
+      false,
+    ],
+    [
+      "while the Activity fallback owns the head",
+      [
+        { routeId: "__root__", status: "success", meta: [{ charSet: "UTF-8" }] },
+        { routeId: "/_auth/activity", status: "success" },
+      ],
+      true,
+      false,
+      false,
+    ],
+    [
+      "when a pending match ends the managed head before a later title",
+      [
+        { routeId: "__root__", status: "pending", meta: [{ charSet: "UTF-8" }] },
+        { routeId: "/_auth/news/", status: "success", meta: [{ title: "Not yet managed" }] },
+      ],
+      true,
+      false,
+      true,
+    ],
+  ] as const)(
+    "renders the gap metadata fallback %s",
+    (_label, matches, hydrated, pageSeoReady, rendersFallback) => {
+      mockedActivityRouterState.state.matches = [...matches]
+      mockedUseHydrated.mockReturnValue(hydrated)
+      mockedUsePageSeoReady.mockReturnValue(pageSeoReady)
+
+      render(<RootSeoGapFallback />)
+
+      const titles = document.head.querySelectorAll("title")
+      if (rendersFallback) {
+        expect(titles).toHaveLength(1)
+        expect(titles[0]?.textContent).toEqual(expect.any(String))
+        expect(document.head.querySelector('meta[property="og:type"]')).toHaveAttribute(
+          "content",
+          "website"
+        )
+      } else {
+        expect(titles).toHaveLength(0)
       }
     }
   )

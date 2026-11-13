@@ -23,6 +23,14 @@ const PROFILE_OWNER_MARKER = ".ue-live-native-push-owner"
 const PROFILE_CLOSE_TIMEOUT_MS = 10_000
 const PROFILE_CLEANUP_TIMEOUT_MS = 30_000
 
+/**
+ * Live Web Push subscriptions need the branded Google Chrome build with its push
+ * service. Playwright's open-source Chromium fails `pushManager.subscribe` with
+ * "push service not available", and off-the-record contexts fail with
+ * "permission denied", so push-subscribing specs must use this persistent profile.
+ */
+export const NATIVE_PUSH_BROWSER_CHANNEL = "chrome"
+
 export type NativePushProfile = {
   context: BrowserContext
   page: Page
@@ -265,7 +273,7 @@ function removeVerifiedProfile(canonicalPath: string): void {
 }
 
 export const test = liveTest.extend<NativePushProfileFixtures & NativePushProfileOptions>({
-  nativePushChannel: [undefined, { option: true }],
+  nativePushChannel: [NATIVE_PUSH_BROWSER_CHANNEL, { option: true }],
   nativePushProfiles: async ({ browser, nativePushChannel }, provideFixture, testInfo) => {
     const records: OwnedProfile[] = []
     let testFailure: unknown

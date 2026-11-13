@@ -73,3 +73,47 @@ proof of any specific provider.
 Revisit: after MVP, replace the broad public range with an egress proxy or an
 FQDN-aware policy (for example, Cilium FQDN rules or a dedicated egress gateway),
 then remove this addendum.
+
+## Addendum 2026-11-13: notifications-worker public egress for Web Push
+
+Finding: `notifications-worker` sends Web Push itself (`app/workers/notifications.py`
+through `app.services.webpush`). On the full local and live stand
+(`docker-compose.full.yml`, plus `docker-compose.live.yml`) it was attached only to
+the internal `internal` network. From that container `fcm.googleapis.com` did not
+resolve, while `backend`, which is on `public`, reached it. Push deliveries
+therefore never left the live stand. The MVP base (`docker-compose.yml` with the
+production overlay) already attaches the worker to `public`.
+
+Decision (owner, 2026-11-13): `notifications-worker` gets public egress in every
+Compose topology. `docker-compose.full.yml` now also attaches it to `public`, so the
+live stand matches the MVP base. The worker still publishes no host port, and its
+monitoring endpoint stays on the internal network for Prometheus.
+
+Reason and accepted risk: browser push services (FCM, Mozilla autopush, Apple, WNS)
+have no fixed address set, so the worker needs broad outbound HTTPS, the same
+posture as `backend`. The Helm chart has no notifications-worker workload today,
+so the AUD-189 Helm egress exception above is unchanged.
+
+Revisit: after MVP, move push egress behind an egress proxy or an FQDN-aware
+policy together with the AUD-189 follow-up.
+
+## Addendum 2026-11-13b: outbox-worker public egress for Web Push
+
+Finding: the Web Push sender for `notification.delivery_requested` events is
+`outbox-worker` (`app.services.push_service` through `app.services.webpush`), not
+only `notifications-worker`. It was attached only to internal networks in both the
+MVP base (`docker-compose.yml`: `db_net`, `cache_net`, `event_net`) and the full
+stand (`internal`). On the live stand `fcm.googleapis.com` therefore failed DNS
+resolution in the SSRF guard, and every push event moved to the DLQ after five
+retries. Real Web Push could not be delivered on the MVP target either.
+
+Decision (owner, 2026-11-13): `outbox-worker` joins `public` in `docker-compose.yml`
+and in `docker-compose.full.yml`, with the same posture and accepted risk as the
+notifications-worker addendum above. It keeps its internal networks, publishes no
+port, and outbound requests still pass the application SSRF guard.
+
+Helm is outside the MVP deployment path and is unchanged. Its
+`outbox-worker` NetworkPolicy grants no public egress, so Web Push would also fail
+on Kubernetes. Before any Kubernetes deployment, the AUD-189 public TCP/443
+exception must be extended to `outbox-worker`, or push egress must move behind an
+egress proxy.

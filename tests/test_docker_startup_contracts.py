@@ -1199,7 +1199,7 @@ def test_full_worker_monitor_stays_on_unpublished_internal_network(
         for name, config in model.get("networks", {}).items():
             network_config[name] = {**network_config.get(name, {}), **(config or {})}
 
-    assert worker_networks == {"internal"}
+    assert worker_networks == {"internal", "public"}
     assert "internal" in prometheus_networks
     assert network_config["internal"].get("internal") is True
     assert not network_config["internal"].get("external")

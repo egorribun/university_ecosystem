@@ -32,7 +32,13 @@ test("live notification acceptance uses an owned account and cleans up only that
   assert.match(spec, /notification topics and quiet hours persist across reload and opt-out/u)
   assert.match(spec, /import \{ test \} from "\.\/native-push-profile-fixtures"/u)
   assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
-  assert.match(spec, /test\.use\(\{ nativePushChannel: "chromium" \}\)/u)
+  assert.match(spec, /test\.use\(\{ nativePushChannel: "chrome" \}\)/u)
+  assert.doesNotMatch(spec, /nativePushChannel: "chromium"/u)
+  assert.doesNotMatch(
+    spec,
+    /browser\.newContext\([\s\S]{0,400}?pushManager\.subscribe/u,
+    "no off-the-record context may subscribe to Web Push"
+  )
   assert.match(
     nativeProfileFixture,
     /page:\s*async\s*\(\{\s*nativePushProfiles\s*\},\s*provideFixture\)\s*=>\s*\{[\s\S]*?provideFixture\(nativePushProfiles\.primary\.page\)/u,

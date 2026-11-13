@@ -529,6 +529,32 @@ def test_prepare_requires_the_owned_stand_status(source, monkeypatch):
     assert not work.exists()
 
 
+def test_scanner_budget_expiry_fails_closed_with_a_specific_message(
+    source, monkeypatch, capsys
+):
+    root, env, work, public = source
+    m = module()
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    budgets = []
+
+    async def expired(target_file, rules_file, work, identity, timeout_seconds):
+        budgets.append(timeout_seconds)
+        raise TimeoutError
+
+    monkeypatch.setattr(m, "run_scan", expired)
+    flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
+    status = str(root.parent / "stand-status.txt")
+    (root.parent / "stand-status.txt").write_text(STATUS_LINE, encoding="utf-8")
+    assert m.main(["prepare", *flags, "--status-in", status]) == 1
+    assert budgets == [m.SCAN_BUDGET_SECONDS]
+    assert 0 < m.SCAN_BUDGET_SECONDS <= 6000
+    err = capsys.readouterr().err
+    assert "did not finish within its time budget; scan result is unknown." in err
+    assert TARGET not in err
+    assert not public.exists()
+
+
 @pytest.mark.parametrize("event_name", ["schedule", "workflow_dispatch"])
 def test_scheduled_and_manual_scans_share_the_owned_stand_target(
     source, monkeypatch, event_name
