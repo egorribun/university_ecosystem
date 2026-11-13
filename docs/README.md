@@ -1,9 +1,22 @@
 # University Ecosystem documentation
 
-## Current reconciliation — 2026-11-12
+## Current reconciliation — 2026-11-13
 
-The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
-**4S / 6P / 0U / 0N**. This update accepts AUD-313, AUD-321, AUD-322, AUD-346,
+The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. This update accepts AUD-167, AUD-251, AUD-432 and AUD-484,
+each for its own stated criterion. [Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13)
+bind them to hosted runs on main `a061735136fa4fb56805929fe716affbc952f4fc`; the AUD-251 evidence also cites the earlier
+main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings are AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
+and AUD-438. The [current 6-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
+lists what each still needs. The Kubernetes proof environment is recorded in the
+[ADR-054 addendum of 2026-11-13](adr/ADR-054-mvp-docker-compose-deployment-target.md#addendum-2026-11-13-kind--calico-proof-environment).
+No overall CI, release or deployment acceptance is implied; this documentation commit needs
+its own checks.
+
+## Dated reconciliation — 2026-11-12 (502/10; superseded)
+
+At this dated checkpoint the formal total was **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. That update accepted AUD-313, AUD-321, AUD-322, AUD-346,
 AUD-347, AUD-375, AUD-378 and AUD-483, each for its own stated criterion.
 [Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12)
 bind them to hosted runs on main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec` and
@@ -118,7 +131,8 @@ handoffs are intentionally not part of the canonical index.
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [MVP Block 4 traceability matrix (ТЗ §2–13)](testing/mvp-traceability-matrix.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-12 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 502 / 512 accepted or resolved (98.0%), 10 open; 49 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-13 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 506 / 512 accepted or resolved (98.8%), 6 open; 53 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 502 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 10 open (4S / 6P / 0U / 0N), retained as history.
 - [Dated 494 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
 - [Dated 490 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09) — 22 open (13S / 9P / 0U / 0N), retained as history.
 - [Dated 486 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-486-26-scoped-supplement--2026-11-09) — 26 open (14S / 12P / 0U / 0N), retained as history.
@@ -184,7 +198,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 10-finding complement, 2026-11-12 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)                 |
+| Current open findings                         | [Current 6-finding complement, 2026-11-13 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable

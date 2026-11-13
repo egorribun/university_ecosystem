@@ -1,9 +1,119 @@
-# Full audit reassessment — 2026-11-12 UTC
+# Full audit reassessment — 2026-11-13 UTC
 
-## Current scoped supplement — 2026-11-12
+## Current scoped supplement — 2026-11-13
 
-The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
-**4S / 6P / 0U / 0N**. This update accepts only AUD-313, AUD-321, AUD-322, AUD-346,
+The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. This update accepts only AUD-167, AUD-251, AUD-432 and AUD-484, each for
+its own stated criterion, and preserves the 502/10 and earlier checkpoints as dated history. The
+[current 6-finding complement](AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
+lists the open findings.
+
+### Sources and runs
+
+- [Owned client-IP probe run 43390855574](https://github.com/egorribun/university_ecosystem/actions/runs/43390855574), job 131770118876, success, on main `a061735136fa4fb56805929fe716affbc952f4fc` (AUD-167).
+- [AUD-373 kind SPIFFE mTLS proof run 43390833449](https://github.com/egorribun/university_ecosystem/actions/runs/43390833449), job 131770047910, success, on main `a061735136fa4fb56805929fe716affbc952f4fc` (AUD-251). The earlier green main run [43338658602](https://github.com/egorribun/university_ecosystem/actions/runs/43338658602) on `bed67acdc7f2814b70cde347f7c56dc05794413b` is also cited.
+- [Focused live evidence run 43392187896](https://github.com/egorribun/university_ecosystem/actions/runs/43392187896), job 131774522746, conclusion failure, on main `a061735136fa4fb56805929fe716affbc952f4fc` (AUD-432).
+- Code-scanning alerts 2995 to 3002 on `refs/heads/egorribun`, dismissed on 2026-11-12 (AUD-484).
+- [Kubernetes NetworkPolicy runtime proof run 43390827781](https://github.com/egorribun/university_ecosystem/actions/runs/43390827781), job 131770029585, success, on main `a061735136fa4fb56805929fe716affbc952f4fc`. It is cited only for the Kubernetes findings that stay open below. Its receipt is artifact 14020339850.
+
+Each run was checked with `gh` for its head SHA, job and conclusion. No overall CI, release or
+deployment acceptance is implied.
+
+### AUD-167 — two clients and forged forwarding headers through Caddy
+
+Job 131770118876 printed, for each case through Caddy, lines of this form:
+
+- `owned client-IP case=login allowed=60 allowed_status=422 blocked=429 other_client=422 spoofed=429,429,429 direct_untrusted=429 backend_direct_untrusted=429`
+- the same fields for `case=register` (allowed=5), `case=mfa` (allowed=5) and `case=forgot` (allowed=3);
+- `owned client-IP case=ws_hub allowed=120 allowed_status=401 blocked=429 other_client=401 spoofed=429,429,429 direct_untrusted=429 backend_direct_untrusted=n/a`.
+
+It then printed `gateway windows=10 rate_limit=100 requests=201`,
+`verdict backend=true ws_hub=true gateway=true deployment=not_assessed`,
+`topology=unchanged cleanup=confirmed` and `outcome=passed`.
+
+The other client was not rate-limited, while the blocked client, forged forwarding headers and
+untrusted direct requests were limited (429). Forged headers therefore did not rotate buckets.
+**Deployment was not assessed**: no deployment is in scope, and this is the CI Compose stand.
+
+### AUD-251 — SPIRE agent kubelet authorization
+
+The matrix criterion requires effective RBAC without the broad `nodes/proxy` grant, plus a real
+agent SVID, mTLS success and negative controls. The evidence is:
+
+- the AUD-373 kind job (run 43390833449, job 131770047910, success) exercises SVID issuance under the grant;
+- artifact `aud373-internal-mtls-kind-diagnostics` prints, for the SPIRE agent service account,
+  `agent get nodes/proxy: no`, `agent list pods across namespaces: no`,
+  `agent watch pods across namespaces: no`, and `no` for list and watch of nodes;
+- the kind node image is `kindest/node:v1.36.4` (pinned in `k8s/README.md`), above the 1.33
+  requirement, with `KubeletFineGrainedAuthz` default-on; `k8s/spire/spire-rbac.yaml` grants only `nodes/pods get`.
+
+This is the owner-accepted ephemeral kind + Calico environment (decision of 2026-11-12). It is
+not a real target cluster profile. The kubelet feature gate is inferred from the node version,
+not read from a kubelet flag dump.
+
+### AUD-432 — SSR head, hydration and i18n
+
+Focused run 43392187896 on main `a061735136fa4fb56805929fe716affbc952f4fc`, `workflow_dispatch`, printed:
+
+- `ssr-hydration-i18n.live.spec.ts`: `live E2E counts passed=6`;
+- `auth-login-lockout.live.spec.ts`: `passed=2`;
+- `register-double-submit.live.spec.ts`: `passed=2`;
+- `aud178-reset-referer-csp.live.spec.ts`: `passed=4`;
+- `story-viewer-keyboard.live.spec.ts`: `passed=6`;
+
+each followed by an AUD-313 seed receipt with `readonly_mounts=3 record=removed oneoff_containers=0 outcome=passed`.
+
+**The run conclusion is failure only because `messenger-membership-revocation.live.spec.ts`
+was flaky on mobile** (`live E2E counts passed=1 flaky=1`) and `failOnFlakyTests` is on. That spec
+is not part of AUD-432, and its focused result line reads `outcome=failed`. Its seed receipt line
+still reads `outcome=passed`, which is not reconciled with the focused result. The messenger
+result is neither evidence for nor against AUD-432.
+
+### AUD-484 — stale Trivy alerts
+
+The owner decided on 2026-11-12 to dismiss the stale alerts and keep their analyses. Alerts 2995
+to 3002 on `refs/heads/egorribun` are `dismissed` with reason `false positive`, dismissed between
+`2026-11-12T13:07:13Z` and `13:07:22Z`. Analyses 1578186880 (`trivy-fs`) and 1578185547
+(`docker-security`) still exist. Repository-wide, the only open code-scanning alert is #502
+(Scorecard, `refs/heads/main`); the owner keeps it open under the go-jose/v3 exception that
+expires 2027-01-10. That alert is outside this finding and was not re-verified here.
+
+### Not accepted here
+
+**AUD-154 stays open (S).** The owner accepted equivalence, but acceptance needs a green hosted
+Owned Live Acceptance run on the exact SHA with the added read-receipt live check. The live suite
+still has open failures.
+
+**AUD-381 stays open (P).** ZAP and Nuclei must pass on the ephemeral Compose stand on main.
+Nuclei passes. The ZAP job has not yet produced a verified report. The scanner exit-code
+diagnostic landed in `7030be533`.
+
+**AUD-169 stays open (S).** Run 43390827781 passed 27 of 27 probes, including Redis AUTH checks.
+Its receipt's `not_run` list keeps the finding open: the file-processor process cannot reach
+serving state in kind (it requires Temporal and NATS at startup), so the revoked and unrevoked
+token pair through the file-processor was not run. The Redis checks use a stand-in pod with
+file-processor labels.
+
+**AUD-188 stays open (S).** The JWKS checks in the same run are performed by a stand-in consumer
+"without the refresher". Process JWKS refresh, gRPC ProcessFile acceptance and per-replica key
+refresh without restart are not run.
+
+**AUD-189 stays open (P).** Backend public TCP/443 is proven allowed. Not run: link-local TCP/443
+(no link-local listener in kind) and the backup public TCP/443 allowance (backup is disabled in
+the staging values, so its policy is not rendered). The ADR-054 2026-11-13 notifications-worker and
+outbox-worker addenda are not in this run: outbox-worker public TCP/443 is denied here, and the
+Helm exception is unchanged.
+
+**AUD-438 stays open (S).** The probes are TCP-level. Prometheus reaches the metrics listener on
+9108 and a non-Prometheus monitoring pod is denied, but no HTTP `GET /metrics` is performed, and
+the public-ingress probe targets the WebSocket port 8081, not the metrics listener.
+
+<a id="current-scoped-supplement--2026-11-12"></a>
+
+## Dated scoped supplement — 2026-11-12 (superseded)
+
+At this dated checkpoint the formal total was **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. That update accepted only AUD-313, AUD-321, AUD-322, AUD-346,
 AUD-347, AUD-375, AUD-378 and AUD-483 and preserves the prior 494/18, 490/22, 486/26,
 485/27, 484/28, 478/34 and 476/36 checkpoints as dated history. The
 [current 10-finding complement](AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12)
@@ -231,7 +341,7 @@ AUD-154, AUD-167, AUD-169, AUD-188, AUD-189, AUD-251, AUD-381 and AUD-438 are un
 
 At this dated review the formal audit total remained **494/512 (96.5%) accepted or resolved, 18 open**,
 **9S / 9P / 0U / 0N**. The review added no acceptance and is superseded by the
-[2026-11-12 supplement](#current-scoped-supplement--2026-11-12) above. The previously held
+[2026-11-13 supplement](#current-scoped-supplement--2026-11-13) above. The previously held
 497/512 proposal was never published and is not the current formal count.
 Historical finding evidence and current hosted checks are separate decisions.
 
@@ -827,7 +937,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. The Curre
 | AUD-073 | White text on sent messages has insufficient contrast on the light violet gradient. The source contract measures adequate normal-text contrast at WCAG AA 4.5:1. | S | fixed / sufficient | Scoped acceptance; see decision section | `frontend/src/components/messenger/ChatWindow.tsx:746` (snapshot, blob `91c4f11d2b5d`); `frontend/src/styles/tokens/messenger.css:95` (snapshot, blob `2425bc81977c`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-154 | frontend/tests/e2e/chat-realtime.spec.ts:127-128; frontend/src/components/messenger/ChatWindow.tsx:986-994 — the delivery test waits for a marker the status renderer does not produce. | S | fixed / partial | Open (S) | `frontend/tests/e2e/chat-realtime.spec.ts:125` (snapshot, blob `b568a66b29ac`); `frontend/src/components/messenger/ChatWindow.tsx:1008` (snapshot, blob `91c4f11d2b5d`) | Run the named delivery case with REALTIME_E2E=true against the real backend/WebSocket stack on this source tree, and retain the case-level Playwright result and source/test blob binding; confirm the case was not skipped. |
 | AUD-164 | The backend sees the gateway IP, causing anonymous login, registration, MFA, and password-reset requests from different clients to share rate-limit buckets (docs/audits/AUDIT-2026-10.md:191). | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `docs/audits/AUDIT-2026-10.md:191` (snapshot, blob `ce20147fdbee`); `app/core/ratelimit/utils.py:172` (snapshot, blob `afef0bb756c3`) | Historical 490/512 remaining action: Source-bind an invocation path for the existing no-mount probe, then perform one owner-leased run against actual Docker-inspected Caddy, gateway, and backend peers. Record named per-route results for two distinct clients plus X-Forwarded-For, X-Real-IP, Forwarded, and direct-backend spoof negatives; bind the observation to this source tree and verify before/after topology witnesses and exact probe cleanup. Current evidence and its scope limits are in the supplement above. |
-| AUD-167 | AUDIT-2026-10.md:194 — “Rate-limit gateway and ws-hub collapses to one proxy IP.” Distinct clients behind the same explicitly trusted proxy must receive distinct IP rate-limit buckets; untrusted forwarded headers must not allow bucket rotation. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:194` (snapshot, blob `ce20147fdbee`); `services/gateway/cmd/gateway/main.go:604` (snapshot, blob `87d471f684ea`) | With owner-selected trusted proxy peer CIDRs and target topology, run a bounded two-client and forged-forwarded-header check through the actual Caddy-to-Gateway and Caddy-to-ws-hub paths; record source/config-bound results. The previous Compose binder must first satisfy its Docker IpcMode precondition. |
+| AUD-167 | AUDIT-2026-10.md:194 — “Rate-limit gateway and ws-hub collapses to one proxy IP.” Distinct clients behind the same explicitly trusted proxy must receive distinct IP rate-limit buckets; untrusted forwarded headers must not allow bucket rotation. | P | partial / partial | Scoped acceptance at 506/512 (was Open (P) at 502/512) | `docs/audits/AUDIT-2026-10.md:194` (snapshot, blob `ce20147fdbee`); `services/gateway/cmd/gateway/main.go:604` (snapshot, blob `87d471f684ea`) | Historical 502/512 remaining action: With owner-selected trusted proxy peer CIDRs and target topology, run a bounded two-client and forged-forwarded-header check through the actual Caddy-to-Gateway and Caddy-to-ws-hub paths; record source/config-bound results. The previous Compose binder must first satisfy its Docker IpcMode precondition. |
 | AUD-169 | file-processor fails to start in staging/production because NetworkPolicy blocks its connection to revocation Redis (docs/audits/AUDIT-2026-10.md:196). | P | fixed / missing | Open (S) | `charts/university-ecosystem/templates/network-policy.yaml:709` (snapshot, blob `2c11ef6f7464`); `charts/university-ecosystem/templates/file-processor-deployment.yaml:35` (snapshot, blob `f5b8bdc8aee7`) | When an owner-authorized staging/production-equivalent namespace is available, run the AUD-169 portion of the prepared harness against the actual file-processor and dedicated Redis at this source/image digest. Privately confirm their namespace/release identity and the Secret URL host; record same-release TCP/6379 reachability through Pod IP and Service, startup and authenticated PING, plus cross-release/unrelated-source denial with same-destination controls and attributable CNI verdicts. Keep credentials out of the receipt. |
 | AUD-178 | Prevent reset-password bearer tokens in legacy query/path URLs from appearing in access logs via Referer or in CSP reports. | P | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `services/caddy/Caddyfile:24` (snapshot, blob `330c365dcc73`); `frontend/src/server.ts:126` (snapshot, blob `e7992cd94b47`) | Historical 490/512 remaining action: Run the current AUD-178 live Playwright spec through the owned Caddy/SSR stand with synthetic query and path tokens before hydration. Require the browser Referer and CSP assertions plus the current correlated Caddy-log verifier to pass, and retain value-free receipts. A local stand result would not attest a production deployment. Current evidence and its scope limits are in the supplement above. |
 | AUD-188 | The file-processor JWKS endpoint is denied by NetworkPolicy, causing RS256 tokens to be rejected after roughly 24 hours (docs/audits/AUDIT-2026-10.md:276). | P | fixed / partial | Open (S) | `charts/university-ecosystem/templates/file-processor-deployment.yaml:2` (snapshot, blob `f5b8bdc8aee7`); `charts/university-ecosystem/templates/network-policy.yaml:515` (snapshot, blob `2c11ef6f7464`) | In an owner-authorized isolated environment matching each target cluster's CNI and resolved chart values, execute the documented AUD-188 protocol: prove direct Pod IP and Service reachability to the actual JWKS URL with HTTP 200 and no redirect from the file-processor namespace; prove same-release allowance and sibling/unrelated denial with same-destination controls and CNI verdicts; then demonstrate per-replica key B refresh without restart using the authentication boundary. Record endpoint, effective policy, CIDR, and DNAT observations. |
@@ -835,7 +945,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. The Curre
 | AUD-208 | The Squawk gate must not pass guard migrations with no lintable SQL and must not be weakened by rule exclusions. | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `.github/workflows/ci.yml:1553` (snapshot, blob `f6ecac56cbf6`); `scripts/quality/render_live_alembic_sql.py:234` (snapshot, blob `27febaf0f99c`) | Historical 478/512 remaining action: Run a named PostgreSQL+Squawk guard case bound to this tree that proves DO/SELECT guard SQL is retained or causes a fail-closed result when no lintable DDL is captured; include an empty/no-op negative control and confirm only the exact documented baseline exclusions apply. Current evidence and its scope limits are in the supplement above. |
 | AUD-226 | Tier-0 migration sources under alembic/versions/** must participate in the 100% coverage requirement; each tracked Tier-0 migration must be evidenced and meet 100% line, statement, branch, and function coverage. | P | fixed / missing | Scoped acceptance at 486/512 (was Open at 485/512) | `docs/audits/AUDIT-2026-10.md:313` (snapshot, blob `ce20147fdbee`); `quality/quality-contract.json:268` (snapshot, blob `93d57cd21d2e`) | Historical 485/512 remaining action: Run the source-bound Coverage & Quality Policy Gate for snapshot tree 20d4/current source after the Python and PostgreSQL migration coverage artifacts are produced; retain its valid merged manifest and per-file Tier-0 output showing every tracked alembic/versions migration at 100% for all four metrics with no exception. Current evidence and limits are in the AUD-226 supplement above. |
 | AUD-245 | The KSV Trivy ignore entries reported at .trivyignore:17-26 were global, lacked manifest path scope, and had an expired review period. | U | fixed / sufficient | Scoped acceptance; see decision section | `.trivyignore:7` (snapshot, blob `03c6c6fad623`); `.trivyignore.yaml:6` (snapshot, blob `9c12f93dbdca`) | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-251 | The SPIRE agent receives cluster-wide nodes/proxy get/list/watch permissions. | P | partial / partial | Open (P) | `k8s/spire/spire-rbac.yaml:91` (snapshot, blob `5d871c81f229`); `k8s/spire/README.md:62` (snapshot, blob `8b730d4fa69f`) | Owner confirmed 2026-11-07 that no target Kubernetes profile is selected and no deployment is authorized. The isolated Kind profile remains reference-only and establishes no target-cluster settings or closure; AUD-251 stays Open (P). No acceptance, count, or policy changes. Next obtain owner selection of the kubelet profile and node lifecycle; then consider the nodes/pods-only role and fail-closed all-node gate, followed by target-cluster effective-RBAC evidence (including nodes/proxy get/list/watch) and real agent/workload SVID plus mTLS success and negative controls. |
+| AUD-251 | The SPIRE agent receives cluster-wide nodes/proxy get/list/watch permissions. | P | partial / partial | Scoped acceptance at 506/512 (was Open (P) at 502/512) | `k8s/spire/spire-rbac.yaml:91` (snapshot, blob `5d871c81f229`); `k8s/spire/README.md:62` (snapshot, blob `8b730d4fa69f`) | Historical 502/512 remaining action: Owner confirmed 2026-11-07 that no target Kubernetes profile is selected and no deployment is authorized. The isolated Kind profile remains reference-only and establishes no target-cluster settings or closure; AUD-251 stays Open (P). No acceptance, count, or policy changes. Next obtain owner selection of the kubelet profile and node lifecycle; then consider the nodes/pods-only role and fail-closed all-node gate, followed by target-cluster effective-RBAC evidence (including nodes/proxy get/list/watch) and real agent/workload SVID plus mTLS success and negative controls. |
 | AUD-269 | Reconcile 202603280001 removes approximately 15 hot-path indexes without restoring them. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:465` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:2060` (snapshot, blob `e4e0679260e8`) The cited revision `202603280001_reconcile_post_uuid_migration_drift.py` is pre-squash (ADR-051); read it with `git show 2eb51a77e^:alembic/versions/202603280001_reconcile_post_uuid_migration_drift.py`. | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-272 | UNIQUE «delivery once» включает attempted_at и не препятствует повторным пушам | U | fixed / missing | Open (S) | `app/models/notifications.py:269` (snapshot, blob `630d7f513cd3`); `app/services/notifications/delivery.py:367` (snapshot, blob `39f0e548f5e0`) | Run the named owned-PostgreSQL cases and the sender-count replay case against this snapshot, capturing per-case results and source/test blob identities; do not infer success from the aggregate hosted shard. |
 | AUD-275 | The historical migration builds indexes on messages and users without CONCURRENTLY while its docstring promises concurrent creation. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/adr/ADR-051-mvp-migration-baseline-squash.md:185` (snapshot, blob `905f99cd4ff5`); `alembic/versions/202611020000_mvp_baseline.py:30` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
@@ -868,7 +978,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. The Curre
 | AUD-423 | Correct documented numbers, paths, and defaults in README.md, README.ru.md, SECURITY.md, DEPLOY.md, and AGENTS.md that disagree with code; the original finding cites README.md:228 and README.ru.md:226. | P | partial / partial | Scoped acceptance; see decision section | `README.md`; `README.ru.md`; `SECURITY.md`; `AGENTS.md`; `docs/DEPLOY.md`; `docs/DEPLOY.en.md`; `app/auth/security.py`; `tests/test_docs_source_alignment_static.py`; `tests/test_argon2id_variant_enforcement.py` (tree `ea381c19bda1`) | No additional action for the documented source-alignment criterion; limits below remain.
 | AUD-428 | Approximately 140 Python, 17 Go, and about 30 TypeScript test blocks lacked result checks. The criterion is a complete cross-language census and correction of test blocks that do not check results. | P | partial / partial | Scoped acceptance at 490/512 (was Open (P) at 486/512) | `docs/audits/AUDIT-2026-10.md:647` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10-30-reconciliation.md:877` (snapshot, blob `6c8637f0bb3d`) | Historical 486/512 remaining action: Produce and preserve a reproducible Python and Go test-block census against this tree, with assertion-free negative controls; enumerate and correct all remaining resultless blocks, then record named runs. Add frontend negative controls for assertion-shaped no-ops and expect calls without matchers, and refine the classifier where they pass. Current evidence and its scope limits are in the supplement above. |
 | AUD-429 | E2E realtime suite and visual tests are not executed in CI (frontend/tests/e2e/chat-realtime.spec.ts:21, 24). | P | fixed / missing | Scoped acceptance at 490/512 (was Open (S) at 486/512) | `frontend/tests/e2e/chat-realtime.spec.ts:21` (snapshot, blob `b568a66b29ac`); `.github/workflows/reusable-e2e-tests.yml:420` (snapshot, blob `3d7f580f7641`) | Historical 486/512 remaining action: Obtain a successful run of the existing required live-realtime-visual job bound to the exact reviewed source tree, with full-stand startup, 16/16 realtime passes and the complete authenticated visual matrix passing. Current evidence and its scope limits are in the supplement above. |
-| AUD-432 | E2E-live contract tests check spec-file text with regular expressions (docs/audits/AUDIT-2026-10.md:651, citing auth-login-lockout.contract.test.mjs:15-60). The dated scoped follow-on work names behavior-level evidence for lockout, full SSR, and registration (docs/superpowers/plans/2026-11-03-audit-evidence/l6.md:20,33-35); those boundaries define what the regex-only checks fail to establish. | P | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:651` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:133` (snapshot, blob `aea09f60fe11`) | Run the current-source auth-login-lockout.live.spec.ts on desktop and mobile against the owned backend/database; retain named results showing the expected pre-threshold 401s, threshold 423, bounded Retry-After, no rate-limit 429 masking, and cleanup. Run register-double-submit.live.spec.ts on desktop and mobile against the owned real stack; retain named results proving two physical inputs produce exactly one real registration request/account and verified cleanup. Run the production SSR suite with playwright.ssr.config.ts and PRODUCTION_SERVER_E2E=true against the managed production server; retain results for login/register in both locales and the wrong-locale negative. Run the hydration scenarios if that behavior remains in the accepted scope. Status on 2026-11-12: the lockout, double-submit and production SSR parts have current evidence; the hydration spec fails on main and is the open part. See the supplement above. |
+| AUD-432 | E2E-live contract tests check spec-file text with regular expressions (docs/audits/AUDIT-2026-10.md:651, citing auth-login-lockout.contract.test.mjs:15-60). The dated scoped follow-on work names behavior-level evidence for lockout, full SSR, and registration (docs/superpowers/plans/2026-11-03-audit-evidence/l6.md:20,33-35); those boundaries define what the regex-only checks fail to establish. | P | partial / partial | Scoped acceptance at 506/512 (was Open (P) at 502/512) | `docs/audits/AUDIT-2026-10.md:651` (snapshot, blob `ce20147fdbee`); `frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:133` (snapshot, blob `aea09f60fe11`) | Historical 502/512 remaining action: Run the current-source auth-login-lockout.live.spec.ts on desktop and mobile against the owned backend/database; retain named results showing the expected pre-threshold 401s, threshold 423, bounded Retry-After, no rate-limit 429 masking, and cleanup. Run register-double-submit.live.spec.ts on desktop and mobile against the owned real stack; retain named results proving two physical inputs produce exactly one real registration request/account and verified cleanup. Run the production SSR suite with playwright.ssr.config.ts and PRODUCTION_SERVER_E2E=true against the managed production server; retain results for login/register in both locales and the wrong-locale negative. Run the hydration scenarios if that behavior remains in the accepted scope. Status on 2026-11-12: the lockout, double-submit and production SSR parts have current evidence; the hydration spec fails on main and is the open part. See the supplement above. |
 | AUD-433 | Fresh-chain intermediate state: notifications has no child partitions and writes fail before migration 202607020001. | U | fixed / sufficient | Scoped acceptance; see decision section | `alembic/versions/202611020000_mvp_baseline.py:31` (snapshot, blob `e4e0679260e8`); `alembic/versions/202611020000_mvp_baseline.py:584` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-434 | The original AUD-434 entry says that alembic check did not compare server defaults and that push_subscriptions.topics diverged from the model. This review tests that named PostgreSQL JSON default against the model and baseline; it does not broaden the finding to every schema object or database workflow. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:653` (snapshot, blob `ce20147fdbee`); `alembic/env.py:199` (snapshot, blob `16edeb9ffd9c`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-436 | live_stand Windows SID resolution searches whoami through PATH, so Git Bash may select its GNU whoami instead of the native Windows utility. | S | fixed / sufficient | Scoped acceptance; see decision section | `scripts/live_stand.py:584` (snapshot, blob `aa4733565860`); `scripts/live_stand.py:608` (snapshot, blob `aa4733565860`) | No additional action for this finding-specific scope; limitations below remain. |
@@ -881,7 +991,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. The Curre
 | AUD-480 | PR-гейты не покрывают medium/low npm, dev-зависимости и unfixed (Trivy FS) | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `docs/audits/AUDIT-2026-10.md:564` (snapshot, blob `ce20147fdbee`); `.github/workflows/reusable-security-audit.yml:535` (snapshot, blob `8082923e1ebb`) | Historical 478/512 remaining action: Resolve the node_modules/frontend/node_modules Trivy scope gap retained from the prior P review, using a pinned Trivy 0.75.0 negative-control fixture with an unfixed HIGH or CRITICAL dependency and verifying that the scan surfaces it and the re-assert gate fails; bind the result to the final source tree. Current evidence and its scope limits are in the supplement above. |
 | AUD-482 | The Caddy image resolves Go dependencies during build, has no committed lock, and is outside govulncheck and OSV scanning. | P | fixed / sufficient | Scoped acceptance; see decision section | `services/caddy/Dockerfile:28` (snapshot, blob `8ebb02df163d`); `services/caddy/go.mod:1` (snapshot, blob `5f03608a8324`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-483 | `sbom.yml` job `Go SBOM`: osv-scanner (Go) runs only on main; 75 open alerts (12 IDs); standard-library findings are based on the `go 1.26.4` directive, per CI reports. | P | partial / stale | Scoped acceptance at 502/512 (was Open (P) at 494/512) | `docs/audits/AUDIT-2026-10.md:567` (snapshot, blob `ce20147fdbee`); `.github/workflows/sbom.yml:90` (snapshot, blob `70c1828f464d`) | Historical 494/512 remaining action: Obtain a completed hosted OSV/stdlib run bound to tree 20d4a080aeb0, retain the scanner result/package identities, and refresh the current-ref alert inventory to reconcile the historical 75 alerts/12 IDs. Confirm whether root go.mod and gen/go/go.mod are within the original Go scan scope; include them in the scan/reconciliation if they are. Current evidence and its scope limits are in the supplement above. |
-| AUD-484 | Stale open code-scanning and Dependabot alerts do not reflect current lock files (AUDIT-2026-10 reports 8 Trivy alerts on code-scanning, refs/heads/egorribun). | N | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:568` (snapshot, blob `ce20147fdbee`); `uv.lock:111` (snapshot, blob `8e1296d8b407`) | Obtain a Trivy analysis bound to the exact reviewed source SHA/tree and record whether each of IDs 2995-3002 becomes fixed or needs another explicit disposition; preserve the gap that the original audit row omitted IDs unless its original CI artifact supplies them. Requery the current Dependabot alert inventory and compare every relevant open advisory/package version to the exact reviewed lockfiles, then record an item-by-item disposition. The 2026-11-05 Dependabot inventory is historical, not current proof. Status on 2026-11-12: exact-SHA Trivy analyses report 0 results and Dependabot has no open alert, but alerts 2995-3002 are still open on refs/heads/egorribun and need an owner disposition. See the supplement above. |
+| AUD-484 | Stale open code-scanning and Dependabot alerts do not reflect current lock files (AUDIT-2026-10 reports 8 Trivy alerts on code-scanning, refs/heads/egorribun). | N | partial / partial | Scoped acceptance at 506/512 (was Open (P) at 502/512) | `docs/audits/AUDIT-2026-10.md:568` (snapshot, blob `ce20147fdbee`); `uv.lock:111` (snapshot, blob `8e1296d8b407`) | Historical 502/512 remaining action: Obtain a Trivy analysis bound to the exact reviewed source SHA/tree and record whether each of IDs 2995-3002 becomes fixed or needs another explicit disposition; preserve the gap that the original audit row omitted IDs unless its original CI artifact supplies them. Requery the current Dependabot alert inventory and compare every relevant open advisory/package version to the exact reviewed lockfiles, then record an item-by-item disposition. The 2026-11-05 Dependabot inventory is historical, not current proof. Status on 2026-11-12: exact-SHA Trivy analyses report 0 results and Dependabot has no open alert, but alerts 2995-3002 are still open on refs/heads/egorribun and need an owner disposition. See the supplement above. |
 | AUD-501 | The hidden-tab pause live test must assert that story progress stays frozen during the hidden interval, not merely check the story after returning to the visible tab (AUD-501; frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:84, 90-100). | S | fixed / partial | Scoped acceptance at 494/512 (was Open (S) at 490/512) | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:97` (snapshot, blob `4aebb26ff391`); `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:114` (snapshot, blob `4aebb26ff391`) | Historical 490/512 remaining action: Run the clock-controlled hidden-tab Playwright case against the owned full live stand on the frozen source in both desktop and mobile projects; capture each named result and verify the hidden-visibility negative control executes. Current evidence and its scope limits are in the supplement above. |
 | AUD-506 | Temporal used HTTP for JWKS key discovery and the noop authorizer, allowing forged or unauthorized JWTs to reach Temporal operations (services/temporal/config.yaml:100-107). | P | fixed / sufficient | Scoped acceptance; see decision section | `services/temporal/config.yaml:104` (snapshot, blob `f8e130aba3aa`); `services/temporal/entrypoint.sh:36` (snapshot, blob `4c1c5e552e7f`) | No additional action for this finding-specific scope; limitations below remain. |
 
@@ -1203,6 +1313,6 @@ The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lo
 
 ## Current scope and continuation
 
-The current decision set contains 49 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **502 / 512 (98.0%) accepted or resolved, with 10 open**. The 4S / 6P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-10-finding-reconciliation--2026-11-12). The prior 494/18, 490/22, 486/26, 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The 24 scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
+The current decision set contains 53 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **506 / 512 (98.8%) accepted or resolved, with 6 open**. The 4S / 2P / 0U / 0N complement is listed in the [current reconciliation](AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13). The 502/10 checkpoint remains dated history. The prior 494/18, 490/22, 486/26, 485/27, 484/28, 478/34 and 476/36 checkpoints remain dated history. The 24 scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
 
 AUD-269's current schema/HNSW results do not establish query performance or a deployed catalog; the expanded candidate flags are not actual execution. AUD-474's synthetic browser oracle does not establish a real backend or full live stand. Git object IDs and SHA-256 public prefixes are shown as abbreviated identifiers; exact bindings remain in private evidence inputs. The package retains the existing 78 required context/app pairs, blocking CodeQL, hooks, quality thresholds, active baselines and disposition matching rules. No passing scanner, full-source check set, hosted all-green run, merge, deployment, or release readiness is claimed.

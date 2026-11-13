@@ -15,7 +15,9 @@ actual CNI. Other findings needed a named target topology to be judged at all.
 
 MVP v1.0.0 runs on Docker Compose on one host.
 
-**Kubernetes findings stay open.** AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438 are
+*Superseded in part by the 2026-11-13 addendum below: AUD-251 is accepted on the kind proof, and AUD-169, AUD-188, AUD-189 and AUD-438 stay open until the listed checks run.*
+
+**Kubernetes findings stay open (original 2026-11-07 text).** AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438 are
 not resolved and are not marked as not applicable. The Helm chart remains in the
 repository but is not the MVP deployment path. Each finding's prepared check must
 run before any first Kubernetes deployment.
@@ -44,7 +46,7 @@ backend directly and can try to intercept this traffic.
 
 - Trust inside the host is an explicit MVP limitation and belongs in the release
   notes, together with the five open Kubernetes findings.
-- The formal audit total cannot reach 512/512 while these findings stay open.
+- *Superseded by the 2026-11-13 addendum:* the formal audit total cannot reach 512/512 while these findings stay open. At 506/512, four findings remain open for Kubernetes reasons (AUD-169, AUD-188, AUD-189, AUD-438), and AUD-154 and AUD-381 are open for other reasons.
 
 ## Revisit
 
@@ -117,3 +119,32 @@ Helm is outside the MVP deployment path and is unchanged. Its
 on Kubernetes. Before any Kubernetes deployment, the AUD-189 public TCP/443
 exception must be extended to `outbox-worker`, or push egress must move behind an
 egress proxy.
+
+## Addendum 2026-11-13: kind + Calico proof environment
+
+Owner decision (2026-11-12): an ephemeral kind cluster with Calico, created by CI, is the accepted
+proof environment for the Kubernetes NetworkPolicy and SPIRE findings. It is not a deployment
+target and does not select a Kubernetes profile for production. The Compose decision above is
+unchanged.
+
+Evidence on main `a061735136fa4fb56805929fe716affbc952f4fc`:
+
+- **AUD-251 is accepted** on the kind proof: AUD-373 kind SPIFFE mTLS proof run 43390833449 (job
+  131770047910, success), and diagnostics showing that the SPIRE agent has no `nodes/proxy` get and
+  no cross-namespace pod list or watch. The node image is `kindest/node:v1.36.4`, above 1.33, with
+  `KubeletFineGrainedAuthz` default-on.
+- **AUD-169, AUD-188, AUD-189 and AUD-438 stay open.** The NetworkPolicy runtime proof run
+  43390827781 (job 131770029585, success) passed 27 of 27 probes. Its receipt's `not_run` list
+  records what is not proven: the file-processor process (AUD-169 and AUD-188), link-local TCP/443
+  and the backup public TCP/443 allowance (AUD-189). The Redis AUTH and JWKS checks run through
+  stand-in pods, not the file-processor process. The AUD-438 probes are TCP-level and do not
+  perform an HTTP `GET /metrics`. These four findings close only when the kind run covers the
+  listed checks.
+
+The 2026-11-12 addendum (backend and backup public TCP/443) and the 2026-11-13 notifications-worker
+and outbox-worker addenda are not yet proven in the kind run. The backup allowance is not run, and
+outbox-worker public TCP/443 is denied in this run, so the extension it requires is not yet
+exercised.
+
+This addendum supersedes the "Kubernetes findings stay open" statement and the "cannot reach
+512/512" consequence above. Those original statements are kept as history.
