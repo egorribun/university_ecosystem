@@ -918,10 +918,18 @@ class SecureAuditService:
             now = now.replace(tzinfo=UTC)
         now_iso = now.isoformat()
 
-        event_metadata = {
+        event_metadata: dict[str, Any] = {
             "actor_id": str(actor_id) if actor_id else None,
             _DOMAIN_EVENT_SIGNATURE_VERSION_KEY: _DOMAIN_EVENT_SIGNATURE_VERSION,
         }
+        # The outbox worker restores this tenant before it dispatches the event.
+        # Without it the handlers run with an empty scope, and forced RLS hides
+        # every tenant row: schedule changes found no group members to notify.
+        from app.core.tenant import capture_tenant_id
+
+        tenant_id = capture_tenant_id()
+        if tenant_id is not None:
+            event_metadata["tenant_id"] = tenant_id
         signature_metadata = self._event_signature_metadata(event_metadata)
         canonical = self.canonicalize_event_payload(
             aggregate_type=aggregate_type,
