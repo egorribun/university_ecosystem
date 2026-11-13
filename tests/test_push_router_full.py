@@ -16,9 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.models import PushSubscription, UserPushTopic
 from app.models.users import UserPreferences
 from app.routers import notifications as notifications_router
+from app.services.push_topics import get_allowed_topics
 from app.services.webpush import WebPushResult
 
 # ---------------------------------------------------------------------------
@@ -673,6 +675,37 @@ class TestAdminUpdateTopics:
         assert resp.status_code == 200
         data = resp.json()
         assert data["user_id"] == str(target.id)
+
+    @pytest.mark.asyncio
+    async def test_admin_saves_and_reads_own_preference(
+        self, async_client: AsyncClient, user_factory, db_session
+    ):
+        # The authenticated admin is already in the session identity map with a
+        # noload preference relationship; the saved row must still be reported.
+        hashed = await get_password_hash(_TEST_PASSWORD)
+        admin = await user_factory(hashed_password=hashed, is_active=True, role="admin")
+        headers = await _login(async_client, admin.email)
+        topic = sorted(get_allowed_topics(settings))[0]
+
+        opt_out = await async_client.put(
+            f"/push/admin/topics/{admin.id}", json={"topics": []}, headers=headers
+        )
+        assert opt_out.status_code == 200
+        assert opt_out.json()["topics"] == []
+        assert opt_out.json()["updated_at"] is not None
+
+        opt_in = await async_client.put(
+            f"/push/admin/topics/{admin.id}", json={"topics": [topic]}, headers=headers
+        )
+        assert opt_in.status_code == 200
+        assert opt_in.json()["topics"] == [topic]
+
+        read_back = await async_client.get(
+            f"/push/admin/topics/{admin.id}", headers=headers
+        )
+        assert read_back.status_code == 200
+        assert read_back.json()["topics"] == [topic]
+        assert read_back.json()["updated_at"] is not None
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(

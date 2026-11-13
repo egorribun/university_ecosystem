@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.deps import (
     get_current_admin_user_from_dishka,
@@ -690,6 +689,26 @@ async def send_test(
     return summary
 
 
+async def _load_topic_preferences(
+    db: AsyncDatabaseSession, user_id: uuid.UUID
+) -> UserPushTopic | None:
+    """Read the saved preference row itself, never the noload relationship.
+
+    When an admin targets their own account, the authenticated ``User`` is
+    already in the session identity map with ``push_topic_preferences``
+    resolved to ``None`` by ``lazy="noload"``. Neither ``selectinload`` nor
+    ``refresh`` repopulates it, so the response would report no saved
+    preference although the row exists.
+    """
+    return (
+        await db.execute(
+            select(UserPushTopic)
+            .where(UserPushTopic.user_id == user_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+
+
 @router.get("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
 @inject
 async def admin_get_user_topics(
@@ -700,11 +719,7 @@ async def admin_get_user_topics(
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     target = (
-        await db.execute(
-            select(User)
-            .options(selectinload(User.push_topic_preferences))
-            .where(User.id == user_id)
-        )
+        await db.execute(select(User).where(User.id == user_id))
     ).scalar_one_or_none()
     if not target:
         raise HTTPException(
@@ -714,7 +729,7 @@ async def admin_get_user_topics(
                 "message": translate("errors.users.not_found", locale=locale),
             },
         )
-    record = target.push_topic_preferences
+    record = await _load_topic_preferences(db, target.id)
     allowed = get_allowed_topics(settings)
     topics = sort_topics(record.topics if record else [], allowed_topics=allowed)
     return AdminUserTopicsResponse(
@@ -737,11 +752,7 @@ async def admin_update_user_topics(
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     target = (
-        await db.execute(
-            select(User)
-            .options(selectinload(User.push_topic_preferences))
-            .where(User.id == user_id)
-        )
+        await db.execute(select(User).where(User.id == user_id))
     ).scalar_one_or_none()
     if not target:
         raise HTTPException(
@@ -758,8 +769,7 @@ async def admin_update_user_topics(
         topics=payload.topics,
     )
     await db.commit()
-    await db.refresh(target, attribute_names=["push_topic_preferences"])
-    record = target.push_topic_preferences
+    record = await _load_topic_preferences(db, target.id)
     topics = sort_topics(normalized_topics, allowed_topics=allowed)
     return AdminUserTopicsResponse(
         user_id=target.id,
