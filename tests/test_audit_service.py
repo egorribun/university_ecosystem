@@ -1012,3 +1012,44 @@ def test_audit_service_log_records_forwarded_client_behind_trusted_gateway(
 
     extra = mock_logger.log.call_args[1]["extra"]
     assert extra["ip"] == "203.0.113.8"
+
+
+@pytest.mark.asyncio
+async def test_record_domain_event_carries_the_current_tenant_for_the_outbox(
+    db_session,
+):
+    """The outbox restores this tenant; without it forced RLS hides every row."""
+    from app.core.tenant import set_current_tenant, tenant_id_ctx
+
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    tenant = uuid4()
+    token = set_current_tenant(tenant)
+    try:
+        scoped = await svc.record_domain_event(
+            db_session,
+            event_type="SCHEDULE_UPDATED",
+            aggregate_type="schedule",
+            aggregate_id=uuid4(),
+            payload={"room": "202"},
+        )
+    finally:
+        tenant_id_ctx.reset(token)
+    assert scoped.metadata_["tenant_id"] == str(tenant)
+
+    unscoped = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_UPDATED",
+        aggregate_type="schedule",
+        aggregate_id=uuid4(),
+        payload={"room": "303"},
+    )
+    assert "tenant_id" not in unscoped.metadata_
+
+    for event in (scoped, unscoped):
+        is_valid, failed_id, _ = await svc.verify_chain_integrity(
+            db_session,
+            aggregate_type="schedule",
+            aggregate_id=event.aggregate_id,
+        )
+        assert is_valid is True
+        assert failed_id is None

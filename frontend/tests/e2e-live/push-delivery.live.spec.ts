@@ -8,7 +8,7 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { test } from "./native-push-profile-fixtures"
+import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
 import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
@@ -596,7 +596,8 @@ test("chat message reaches Chromium through its real push subscription", async (
     const subscribePromise = page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/v1/push/subscribe"
+        new URL(response.url()).pathname === "/api/v1/push/subscribe",
+      { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
     )
     subscriptionMayExist = true
     await pushSwitch.click()
@@ -903,7 +904,8 @@ test("quoted group author gets one chat.reply push with group context and no gen
     const subscribePromise = page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/v1/push/subscribe"
+        new URL(response.url()).pathname === "/api/v1/push/subscribe",
+      { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
     )
     subscriptionMayExist = true
     await pushSwitch.click()

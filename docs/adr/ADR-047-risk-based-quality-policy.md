@@ -2714,6 +2714,23 @@ source SHA still needs its own evidence.
   with a static service-worker page and subscribed in both the primary and a
   second owner persistent profile. This is not stand or hosted evidence; the
   next full live run on `main` provides it.
+- **Notification display (added 2026-11-13).** Under automation Chrome closes
+  every system notification at once, headless and headful, on Windows and in
+  hosted Linux. `showNotification()` resolves but `getNotifications()` stays
+  empty, so the push specs could never observe a delivered notification. The
+  fixture therefore launches Chrome with `--disable-features=NativeNotifications`
+  (`NATIVE_PUSH_BROWSER_ARGS`), which keeps Chrome's own notification centre. The
+  notifications remain real Chrome notifications with their tags. Hosted run
+  43457859398 on `7030be533` showed the subscription and the push reaching the
+  service worker. The same run exposed a product bug, fixed with this change:
+  `app/services/webpush.py` sends `{title, options, data}`, but the service
+  worker read only flat fields. Every real push therefore lost its tag (the
+  persisted notification id), body, actions and the quiet-hours `silent` flag.
+- **Subscription budget (added 2026-11-13).** The first subscription save after
+  an explicit opt-in waits for Chrome's registration with FCM. This took
+  3–6 s on a local stand and more than the 15 s action timeout on some hosted
+  runs. The opt-in saves, and any save created before that click, therefore
+  wait up to `PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS` (60 s). No assertion changes.
 
 ### Native rust_ext keeps rustix 1.1.5 for now
 

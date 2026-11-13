@@ -101,10 +101,27 @@ async function canonicalTemporaryRoot(): Promise<string> {
   return root
 }
 
+/**
+ * Chrome's own notification centre instead of the operating system's. Under
+ * automation the system path closes every notification at once (headless and
+ * headful, Windows and Linux), so getNotifications() could never observe a
+ * real Web Push. The notifications stay real Chrome notifications with their
+ * tags; only the display surface changes.
+ */
+/**
+ * Budget for the subscription save that follows an explicit opt-in, and for any
+ * save created before that click. It covers Chrome's registration with the real
+ * FCM push service: 3-6 s on a local stand, above the 15 s action timeout on
+ * some hosted runs (live run 43457859398).
+ */
+export const PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS = 60_000
+
+export const NATIVE_PUSH_BROWSER_ARGS = ["--disable-features=NativeNotifications"] as const
+
 function contextOptionsForProject(
   testInfo: TestInfo,
   channel: string | undefined
-): BrowserContextOptions & { channel?: string; headless: boolean } {
+): BrowserContextOptions & { channel?: string; headless: boolean; args: string[] } {
   const projectUse = testInfo.project.use
   const configuredViewport = projectUse.viewport as ViewportSize | undefined
   if (
@@ -117,12 +134,17 @@ function contextOptionsForProject(
     throw new Error("Native Push profile requires the configured project viewport")
   }
 
-  const options: BrowserContextOptions & { channel?: string; headless: boolean } = {
+  const options: BrowserContextOptions & {
+    channel?: string
+    headless: boolean
+    args: string[]
+  } = {
     baseURL: ownedSessionOrigin(),
     ignoreHTTPSErrors: true,
     locale: typeof projectUse.locale === "string" ? projectUse.locale : "ru-RU",
     viewport: { ...configuredViewport },
     headless: true,
+    args: [...NATIVE_PUSH_BROWSER_ARGS],
   }
   if (typeof projectUse.deviceScaleFactor === "number") {
     options.deviceScaleFactor = projectUse.deviceScaleFactor

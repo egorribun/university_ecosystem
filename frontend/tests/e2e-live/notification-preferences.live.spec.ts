@@ -7,7 +7,7 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { test } from "./native-push-profile-fixtures"
+import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
 import { reportAuthHttpStatus } from "./auth-notification-diagnostic"
 
 test.use({ channel: "chromium" })
@@ -69,10 +69,11 @@ const waitForProfileUpdate = (page: Page) =>
       response.request().method() === "PUT"
   )
 
-const waitForPushAction = (page: Page, path: string, method: string) =>
+const waitForPushAction = (page: Page, path: string, method: string, timeout?: number) =>
   page.waitForResponse(
     (response) =>
-      new URL(response.url()).pathname === path && response.request().method() === method
+      new URL(response.url()).pathname === path && response.request().method() === method,
+    timeout === undefined ? undefined : { timeout }
   )
 
 const readProfile = async (
@@ -319,8 +320,18 @@ test("notification topics and quiet hours persist across reload and opt-out", as
       0
     )
 
-    const subscriptionSaved = waitForPushAction(page, "/api/v1/push/subscribe", "POST")
-    const topicSelectionSaved = waitForPushAction(page, "/api/v1/push/subscribe/topics", "PATCH")
+    const subscriptionSaved = waitForPushAction(
+      page,
+      "/api/v1/push/subscribe",
+      "POST",
+      PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+    )
+    const topicSelectionSaved = waitForPushAction(
+      page,
+      "/api/v1/push/subscribe/topics",
+      "PATCH",
+      PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+    )
     subscriptionMayExist = true
     await pushSwitch.click()
     const subscriptionResponse = await subscriptionSaved
@@ -452,7 +463,12 @@ test("notification topics and quiet hours persist across reload and opt-out", as
     expect(topicPatchRequests).toBe(1 + SELECTED_TOPICS.length)
 
     const topicPatchRequestsBeforeRebind = topicPatchRequests
-    const optedOutPushRebind = waitForPushAction(page, "/api/v1/push/subscribe", "POST")
+    const optedOutPushRebind = waitForPushAction(
+      page,
+      "/api/v1/push/subscribe",
+      "POST",
+      PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+    )
     subscriptionMayExist = true
     await pushSwitch.click()
     const reboundSubscription = await optedOutPushRebind

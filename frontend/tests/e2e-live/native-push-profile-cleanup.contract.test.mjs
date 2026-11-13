@@ -143,6 +143,12 @@ test("native push profiles default to persistent branded Google Chrome, never of
   )
   assert.doesNotMatch(fixtureSource, /nativePushChannel: \[undefined/u)
   assert.match(fixtureSource, /\.launchPersistentContext\(canonicalProfilePath, /u)
+  assert.match(
+    fixtureSource,
+    /export const NATIVE_PUSH_BROWSER_ARGS = \["--disable-features=NativeNotifications"\] as const/u,
+    "automated Chrome closes system notifications at once; keep Chrome's own notification centre"
+  )
+  assert.match(fixtureSource, /args: \[\.\.\.NATIVE_PUSH_BROWSER_ARGS\],/u)
   assert.doesNotMatch(
     fixtureSource,
     /browser\.newContext\(/u,

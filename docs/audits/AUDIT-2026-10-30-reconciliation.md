@@ -1,9 +1,22 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Current reconciliation — 2026-11-12
+## Current reconciliation — 2026-11-13
 
-The current formal total is **502/512 (98.0%) accepted or resolved, 10 open**:
-**4S / 6P / 0U / 0N**. This update accepts AUD-313, AUD-321, AUD-322, AUD-346,
+The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. This update accepts AUD-167, AUD-251, AUD-432 and AUD-484,
+each for its own stated criterion. [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13)
+bind them to hosted runs on main `a061735136fa4fb56805929fe716affbc952f4fc`; the AUD-251 evidence also cites the earlier
+main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings are AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
+and AUD-438. The [current 6-finding complement](#current-6-finding-reconciliation--2026-11-13)
+lists what each still needs. The Kubernetes proof environment is recorded in the
+[ADR-054 addendum of 2026-11-13](../adr/ADR-054-mvp-docker-compose-deployment-target.md#addendum-2026-11-13-kind--calico-proof-environment).
+No overall CI, release or deployment acceptance is implied; this documentation commit needs
+its own checks.
+
+## Dated reconciliation — 2026-11-12 (502/10; superseded)
+
+At this dated checkpoint the formal total was **502/512 (98.0%) accepted or resolved, 10 open**:
+**4S / 6P / 0U / 0N**. That update accepted AUD-313, AUD-321, AUD-322, AUD-346,
 AUD-347, AUD-375, AUD-378 and AUD-483, each for its own stated criterion.
 [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12)
 bind them to hosted runs on main `eb853a37cca3a614a32c8ee598f7cf6f3d10e0ec` and
@@ -51,9 +64,40 @@ This decision left the then 506 dispositions, 242 baseline identities, 27 Gitlea
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
 quality floors unchanged. The current policy inventory is 512 dispositions.
 
+<a id="current-6-finding-reconciliation--2026-11-13"></a>
+
+### Current 6-finding complement
+
+- **S (4):** AUD-154, AUD-169, AUD-188, AUD-438.
+- **P (2):** AUD-189, AUD-381.
+- **U (0):** none.
+- **N (0):** none.
+
+This is exactly the previous 10-ID complement minus AUD-167, AUD-251, AUD-432 and
+AUD-484. All other finding-specific acceptance requirements remain. What each open finding
+still needs:
+
+- AUD-154 needs a green hosted Owned Live Acceptance run on the exact SHA of its accepted
+  equivalence, with the added read-receipt live check; the live suite still has open failures.
+- AUD-169 and AUD-188 need the real file-processor in the kind + Calico run, not stand-in pods.
+  AUD-169 needs process startup and the revoked/unrevoked token pair through it; the receipt's
+  `not_run` list records both as not run, because the process cannot reach serving state in kind
+  (it needs Temporal and NATS at startup). AUD-188 needs the real JWKS refresher, gRPC
+  ProcessFile acceptance and per-replica key refresh without restart; the stand-in consumer
+  verifies RS256 and rotation without the refresher.
+- AUD-189 needs the kind run to cover link-local TCP/443 (no link-local listener in kind), the
+  backup public TCP/443 allowance (backup is disabled in the staging values, so its policy is
+  not rendered), and the ADR-054 2026-11-13 notifications-worker and outbox-worker extensions.
+  Backend public TCP/443 is proven allowed; outbox-worker public TCP/443 is denied in this run.
+- AUD-438 needs an HTTP GET /metrics check on the ws-hub metrics listener: unauthenticated
+  success from monitoring Prometheus and denial from an unselected namespace and public ingress.
+  The current probes are TCP-level; the public-ingress probe targets the WebSocket port 8081.
+- AUD-381 needs the ZAP and Nuclei job on the ephemeral Compose stand to pass on main with a
+  verified ZAP report. Nuclei passes; the scanner exit-code diagnostic landed in `7030be533`.
+
 <a id="current-10-finding-reconciliation--2026-11-12"></a>
 
-### Current 10-finding complement
+### Dated 10-finding complement (502/10; superseded)
 
 - **S (4):** AUD-154, AUD-169, AUD-188, AUD-438.
 - **P (6):** AUD-167, AUD-189, AUD-251, AUD-381, AUD-432, AUD-484.
@@ -1003,7 +1047,7 @@ are retained; source repairs and missing execution are distinguished explicitly.
 | AUD-154 | Delivery test ждёт marker, которого нет в status renderer | source-fixed-awaiting-proof | Delivery assertion binds actual message identity and Sent/Read role; REALTIME_E2E guard still prevents current ordinary-suite execution. *Superseded 2026-11-12: the guard and spec were removed in a386d34dd; this row is historical.* |
 | AUD-155 | Ошибка optimistic-операции откатывает несвязанные изменения message cache | confirmed-ready | Token-owned rollback replaces snapshot restore; rollback.integration36, reverse-send1, clear-recovery2 and ownership11 PASS. Scoped source/local concurrency acceptance, not live certification. |
 | AUD-164 | Backend видит IP gateway: все анонимы делят лимиты login/register/MFA/reset | partial | Source normalization and synthetic topology binder exist; actual leased two-client/proxy-chain proof is absent. |
-| AUD-167 | Rate-limit gateway и ws-hub сводится к одному IP прокси | partial | Compose trusted peers and bounded probe witnesses exist; actual topology proof absent and binder rejects Docker default IpcMode=private. *Superseded 2026-11-12: scripts/owned_client_ip_runtime.py now accepts None, "" and "private".* |
+| AUD-167 | Rate-limit gateway и ws-hub сводится к одному IP прокси | partial | Compose trusted peers and bounded probe witnesses exist; actual topology proof absent and binder rejects Docker default IpcMode=private. *Superseded 2026-11-12: scripts/owned_client_ip_runtime.py now accepts None, "" and "private".* *Superseded 2026-11-13: accepted on run 43390855574; see the 2026-11-13 supplement.* |
 | AUD-169 | file-processor не стартует в staging/prod: revocation-Redis закрыт NetworkPolicy | partial | Redis release-scoped egress/render controls exist; actual CNI endpoint proof absent. |
 | AUD-178 | Токен сброса пароля попадает в access log (Referer) и в CSP-отчёты | partial | Reset fragments and source protections exist; early legacy-query/path CSP probe lacks live receipt. |
 | AUD-188 | JWKS file-processor запрещён NetworkPolicy: через ~24 ч отклоняются все RS256-токены | partial | JWKS egress/render controls exist; actual CNI endpoint proof absent. |
@@ -1017,7 +1061,7 @@ are retained; source repairs and missing execution are distinguished explicitly.
 | AUD-244 | `zizmor.yml` отключает 15 аудитов, включая template-injection и dangerous-triggers | unfixed | Fifteen zizmor disable annotations remain; checkout credential hardening does not remove original suppressions. |
 | AUD-245 | Trivy-исключения KSV глобальные (без путей), срок пересмотра истёк | unfixed | Ten global SPIRE KSV exceptions still lack path/expiry scope; finite Kyverno fixture exceptions are separate. |
 | AUD-250 | Метрики кэш-Redis (9121) доступны любому pod; revocation-store это закрывает, app-chart нет | source-fixed-awaiting-proof | Redis metrics selector/effective-union negatives exist; current executed policy proof was blocked. |
-| AUD-251 | SPIRE agent получает кластерный nodes/proxy get/list/watch | unfixed | SPIRE agent still grants get/list/watch on nodes/proxy. |
+| AUD-251 | SPIRE agent получает кластерный nodes/proxy get/list/watch | unfixed | SPIRE agent still grants get/list/watch on nodes/proxy. *Superseded 2026-11-13: accepted on the kind proof (run 43390833449); see the 2026-11-13 supplement.* |
 | AUD-253 | Лаунчер пишет .env.docker с секретами с umask по умолчанию на POSIX | source-fixed-awaiting-proof | PowerShell env creation uses CreateNew/UnixCreateMode0600 before writes; real pwsh umask/first-write controls need current receipt. |
 | AUD-260 | Неограниченные выборки в скачивании вложений, посещаемости событий и приёме CWV | source-fixed-awaiting-proof | Attachment identity/limit2, my-events cap100/page+1 and CWV bounded500 implemented; complete named cross-surface runtime evidence pending. |
 | AUD-262 | Сбой Redis после commit даёт 500 при успешной отправке и дубликат при повторе | partial | Durable command receipts and Redis-completion failure handling exist; current PG/concurrency/schema/legacy durability proof incomplete. |
@@ -1086,7 +1130,7 @@ are retained; source repairs and missing execution are distinguished explicitly.
 | AUD-427 | Контрактные тесты Redis-ключей и WS-кадров проверяют собственные словари (`tests/contracts/test_redis_key_contracts.py:26-56`) | source-fixed-awaiting-proof | Real Redis ticket/session producers/consumers via fakeredis replace self-dictionaries; current Redis execution pending, Pact wire proof separate. |
 | AUD-428 | Около 140 Python, 17 Go и ~30 TS-блоков тестов без проверок результата (`Python`) | partial | Selected weak assertions improved, but complete original Python/Go/TS census and negative-control proof missing. |
 | AUD-429 | E2E realtime-набор и визуальные тесты в CI не выполняются (`frontend/tests/e2e/chat-realtime.spec.ts:21, 24`) | partial | Ordinary realtime guard unset in nightly; visual-audit remains manual-only. |
-| AUD-432 | E2E-live contract-тесты проверяют текст spec-файлов регулярками (`frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:15-60`) | partial | Executable helper negatives improve some live contracts; many still regex-only, current reviewed-head stand did not run. |
+| AUD-432 | E2E-live contract-тесты проверяют текст spec-файлов регулярками (`frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:15-60`) | partial | Executable helper negatives improve some live contracts; many still regex-only, current reviewed-head stand did not run. *Superseded 2026-11-13: accepted on focused run 43392187896; see the 2026-11-13 supplement.* |
 | AUD-433 | Промежуточное состояние свежей цепочки: notifications без партиций, записи падают до `202607020001` (`alembic/versions/148642dd1207_fix_missing_tables.py:~818-838`) | unfixed | Notifications partitioned without child; positive default-child fixture is not source remedy. |
 | AUD-434 | `alembic check` не сравнивает server default; `push_subscriptions.topics` расходится с моделью (`alembic/env.py:170-180`) | unfixed | compare_server_default absent; Python defaults are not server-default proof. |
 | AUD-436 | live_stand: whoami ищется через PATH, в Git Bash получается GNU-утилита (уточнено) (`scripts/live_stand.py:414–433 _windows_user_sid`) | source-fixed-awaiting-proof | Windows helper resolves whoami/icacls under SystemRoot/System32; actual Windows/Git Bash receipt missing. |
@@ -1107,7 +1151,7 @@ are retained; source repairs and missing execution are distinguished explicitly.
 | AUD-480 | PR-гейты не покрывают medium/low npm, dev-зависимости и unfixed (Trivy FS) | unfixed | npm audit filters high/critical; medium/low omission remains. |
 | AUD-482 | Caddy-образ: Go-зависимости разрешаются при сборке, lock в репозитории отсутствует, вне govulncheck и osv | partial | Selected xcaddy overrides/inventory producer do not supply complete locked final-binary graph or runtime scanner evidence. |
 | AUD-483 | osv-scanner (Go) запускается только на main: 75 открытых алертов (12 ID); stdlib-находки основаны на директиве `go 1.26.4` | partial | Go SBOM remains main-only; PR reachable-symbol scan is separate, current complete alert reconciliation missing. |
-| AUD-484 | Устаревшие открытые алерты (code-scanning и Dependabot) не отражают текущие lock-файлы | not-verified | Enabled plugin does not expose remote security-alert inventory; scanner success does not enumerate remote alerts. |
+| AUD-484 | Устаревшие открытые алерты (code-scanning и Dependabot) не отражают текущие lock-файлы | not-verified | Enabled plugin does not expose remote security-alert inventory; scanner success does not enumerate remote alerts. *Superseded 2026-11-13: alerts 2995-3002 dismissed on 2026-11-12; see the 2026-11-13 supplement.* |
 | AUD-485 | govulncheck молча пропускает модули при сбое go list (`.github/workflows/reusable-security-audit.yml:517-528`) | source-fixed-awaiting-proof | Module/package discovery now fail closed; actual empty/space/discovery shell controls need current proof. |
 | AUD-486 | LHCI-фолбэк принимает упавший прогон и пустые метрики как успешный (`frontend/scripts/lhci-windows-fallback.mjs:270-281`) | confirmed-ready | Complete finite LHCI report/cleanup classifier and four focused controls PASS; six Windows-only cases SKIP, no native-Windows certification. |
 | AUD-487 | Проверка cross-repository в security-policy никогда не срабатывает (`.github/workflows/reusable-security-audit.yml:55, 63-66`) | source-fixed-awaiting-proof | Policy fetch verifies actual head/base repositories; dedicated same/fork/malformed negatives need current execution. |

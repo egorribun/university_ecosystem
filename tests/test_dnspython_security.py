@@ -21,7 +21,7 @@ def test_dnspython_runtime_matches_the_reviewed_lock() -> None:
         package for package in lock["package"] if package["name"] == "dnspython"
     ]
     assert len(packages) == 1
-    assert packages[0]["version"] == version("dnspython") == "2.9.0"
+    assert packages[0]["version"] == version("dnspython") == "2.9.2"
 
 
 def _compression_chain(hops: int) -> bytes:
