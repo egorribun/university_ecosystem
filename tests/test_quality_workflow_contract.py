@@ -140,7 +140,7 @@ UPLOAD_ARTIFACT_ACTION_PIN = (
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 )
 CODEQL_UPLOAD_SARIF_ACTION_PIN = (
-    "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
+    "github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066"
 )
 CAPTURE_ALLOWED_CONDITIONAL_ORS = (
     'if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then',

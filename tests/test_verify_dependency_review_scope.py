@@ -2687,11 +2687,11 @@ class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
 
     def test_read_pin_fails_closed_on_missing_ambiguous_or_malformed_pin(self):
         workflow_path = Path(TRUFFLEHOG_MANIFEST)
-        pin_line = "      uses: trufflesecurity/trufflehog@{}  # v3.99.7\n"
+        pin_line = "      uses: trufflesecurity/trufflehog@{}  # v3.99.8\n"
         cases = {
             "missing": None,
             "two-references": pin_line.format(self.pin) + pin_line.format(self.pin),
-            "non-hex": pin_line.format("v3.99.7"),
+            "non-hex": pin_line.format("v3.99.8"),
             "short": pin_line.format(self.pin[:-1]),
         }
         for label, text in cases.items():
@@ -2801,7 +2801,7 @@ class TrufflehogObservedNullRowTests(unittest.TestCase):
             "manifest": (".github/workflows/other.yml", "services/caddy/go.mod"),
             "ecosystem": ("gomod", "githubactions"),
             "name": ("other/action", "TruffleSecurity/TruffleHog"),
-            "version": (other_pin, "v3.99.7", self.pin.upper()),
+            "version": (other_pin, "v3.99.8", self.pin.upper()),
             "license": ("AGPL-3.0", "AGPL-3.0-only", "MIT", "", "null", "NOASSERTION"),
             "source_repository_url": (
                 None,

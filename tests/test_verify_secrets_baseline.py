@@ -17328,38 +17328,38 @@ def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -
         # The companion workflow contract checks their shell, env and argv.
         assert hashlib.sha256(actual).digest() == bytes(
             (
-                58,
-                105,
-                19,
-                29,
-                192,
-                199,
-                196,
-                198,
-                99,
-                52,
-                60,
-                136,
-                2,
-                126,
-                58,
-                58,
-                125,
-                130,
-                50,
-                129,
-                225,
+                98,
+                65,
+                81,
+                226,
+                239,
+                11,
+                122,
+                78,
+                23,
+                98,
+                189,
+                66,
+                10,
+                216,
+                114,
+                11,
+                184,
+                167,
                 0,
-                44,
-                106,
-                231,
-                76,
-                150,
-                186,
-                154,
-                214,
-                213,
-                19,
+                137,
+                246,
+                151,
+                153,
+                51,
+                3,
+                239,
+                238,
+                83,
+                59,
+                40,
+                171,
+                253,
             )
         ), "reviewed parser-friendly workflow bytes changed"
     else:
@@ -34374,6 +34374,7 @@ def _ammonia_projected_binary(actual: bytes) -> bytes:
 
 
 def _ammonia_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _deps_actions_source_bytes(path, actual)
     if path == _AMMONIA_LEDGER_PATH:
         assert hashlib.sha256(actual).digest() == _AMMONIA_LEDGER_CURRENT_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -34413,7 +34414,7 @@ def _ammonia_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _ammonia_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _deps_actions_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     for index, _path, current, previous in _AMMONIA_REBINDS:
@@ -34440,7 +34441,13 @@ def test_ammonia_rebind_preserves_exact_predecessor() -> None:
     for _index, path, current, _previous in _AMMONIA_REBINDS:
         assert hashlib.sha256((root / path).read_bytes()).hexdigest() == current
     ledger_bytes = (root / _AMMONIA_LEDGER_PATH).read_bytes()
-    assert hashlib.sha256(ledger_bytes).digest() == _AMMONIA_LEDGER_CURRENT_SHA256
+    # The newer actions layer owns the live ledger; project through it first.
+    assert (
+        hashlib.sha256(
+            _deps_actions_source_bytes(_AMMONIA_LEDGER_PATH, ledger_bytes)
+        ).digest()
+        == _AMMONIA_LEDGER_CURRENT_SHA256
+    )
     ledger = json.loads(ledger_bytes)
     companions = ledger["dispositions"][14]["companions"]
     bound = {
@@ -34536,3 +34543,203 @@ def test_ammonia_wasm_projection_never_applies_to_other_paths() -> None:
 def test_projected_sha256_on_plain_bytes_is_sha256() -> None:
     data = b"plain bytes"
     assert _projected_sha256(data) == hashlib.sha256(data).digest()
+
+
+# The Dependabot GitHub Actions bump moves two Semgrep companions with their
+# pins: the deploy workflow (astral-sh/setup-uv v10.3.2 -> v10.3.3, companion of
+# rows 7, 8 and 9) and tests/test_quality_workflow_contract.py (the CodeQL
+# upload-sarif pin, companion of row 12). Each companion digest, its ledger
+# occurrences and the SHA-1 identity of its hex (policy records 476 and 505) are
+# rebound one-to-one; no identity is added and the total stays 512. This is the
+# newest projection: it restores the exact predecessor before the ammonia layer runs.
+_DEPS_ACTIONS_LEDGER_PATH = "quality/semgrep-dispositions.json"
+# (path, current SHA-256, previous SHA-256, ledger occurrences, policy row, reversals)
+_DEPS_ACTIONS_REBINDS = (
+    (
+        ".github/workflows/deploy.yml",
+        _rust_hex(
+            "69 12 eb 70 a4 fd 97 c1 5f 6d ee b5 1b 2c a3 99 99 ac 3c e4 01 73 21 21 04 b9 83 03 3c 95 a8 6c"
+        ),
+        _rust_hex(
+            "bc 85 d3 33 81 65 fc e7 9a b0 5e a9 f4 b4 b9 2d 9a 60 78 98 61 0f 98 e9 3e 35 96 c8 d6 b7 8e 1f"
+        ),
+        3,
+        476,
+        (
+            (
+                b"astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3",
+                b"astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2",
+                2,
+            ),
+        ),
+    ),
+    (
+        "tests/test_quality_workflow_contract.py",
+        _rust_hex(
+            "d0 3e 4c 8d a0 04 5b f6 86 d0 8c ac 6b e6 49 f8 bf 59 01 85 2d f6 44 42 6f 0c b3 66 64 18 bc 9c"
+        ),
+        _rust_hex(
+            "1c 75 46 38 eb 59 f5 79 1d dd 20 9c 0f 36 da fc dd 23 fa 92 76 d8 b4 f2 e5 d8 b6 2a 0e cd 8b 76"
+        ),
+        1,
+        505,
+        (
+            (
+                b"github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066",
+                b"github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370",
+                1,
+            ),
+        ),
+    ),
+)
+
+
+def _deps_actions_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _deps_actions_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == _DEPS_ACTIONS_LEDGER_PATH:
+        ledger_current = hashlib.sha256(actual).digest()
+        assert ledger_current == _DEPS_ACTIONS_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for _path, current, previous, count, _row, _reversals in _DEPS_ACTIONS_REBINDS:
+            assert historical.count(current.encode("ascii")) == count, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(
+                current.encode("ascii"), previous.encode("ascii")
+            )
+        assert hashlib.sha256(historical).digest() == _AMMONIA_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    for (
+        rebind_path,
+        current,
+        previous,
+        _count,
+        _row,
+        reversals,
+    ) in _DEPS_ACTIONS_REBINDS:
+        if path != rebind_path:
+            continue
+        assert hashlib.sha256(actual).hexdigest() == current, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for before, after, expected in reversals:
+            assert historical.count(before) == expected, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(before, after)
+        assert hashlib.sha256(historical).hexdigest() == previous, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    return actual
+
+
+def _deps_actions_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    for (
+        _path,
+        current,
+        previous,
+        _count,
+        row_index,
+        _reversals,
+    ) in _DEPS_ACTIONS_REBINDS:
+        row = records[row_index]
+        identity = row["identity"]
+        if bytes(identity["hashed_secret_bytes"]) != bytes(
+            _deps_actions_identity(current)
+        ):
+            continue
+        assert identity["path"] == _DEPS_ACTIONS_LEDGER_PATH
+        assert identity["type"] == "Hex High Entropy String"
+        assert row["category"] == "public_integrity_digest"
+        assert row["owner"] == "egorribun", (
+            "approval metadata changed for deps actions companion"
+        )
+        assert row["expires_on"] == "2027-01-10", (
+            "approval metadata changed for deps actions companion"
+        )
+        identity["hashed_secret_bytes"] = _deps_actions_identity(previous)
+    return restored
+
+
+_DEPS_ACTIONS_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "69 56 ae d4 8b 00 9c 25 51 01 c4 fe 93 9e 38 51 57 03 ae 43 5a 62 c7 58 ef 1b 90 0a 45 50 74 4e"
+    )
+)
+
+
+def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger_bytes = (root / _DEPS_ACTIONS_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    companions = [
+        item
+        for disposition in ledger["dispositions"]
+        for item in disposition.get("companions", [])
+    ]
+    for path, current, previous, count, _row, _reversals in _DEPS_ACTIONS_REBINDS:
+        source = (root / path).read_bytes()
+        assert hashlib.sha256(source).hexdigest() == current
+        bound = [item["sha256"] for item in companions if item["path"] == path]
+        assert bound == [current] * count
+        historical = _deps_actions_source_bytes(path, source)
+        assert hashlib.sha256(historical).hexdigest() == previous
+    historical_ledger = _deps_actions_source_bytes(
+        _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
+    )
+    assert hashlib.sha256(historical_ledger).digest() == _AMMONIA_LEDGER_CURRENT_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _deps_actions_historical_policy(policy)
+    for (
+        _path,
+        _current,
+        previous,
+        _count,
+        row_index,
+        _reversals,
+    ) in _DEPS_ACTIONS_REBINDS:
+        assert restored["records"][row_index]["identity"]["hashed_secret_bytes"] == (
+            _deps_actions_identity(previous)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["deploy_extra", "contract_extra", "ledger_extra", "policy"]
+)
+def test_deps_actions_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        identity = policy["records"][476]["identity"]
+        identity["hashed_secret_bytes"][0] ^= 1
+        mutated = list(identity["hashed_secret_bytes"])
+        restored = _deps_actions_historical_policy(policy)
+        assert restored["records"][476]["identity"]["hashed_secret_bytes"] == mutated
+        return
+    if mutation == "ledger_extra":
+        path = _DEPS_ACTIONS_LEDGER_PATH
+    elif mutation == "deploy_extra":
+        path = ".github/workflows/deploy.yml"
+    else:
+        path = "tests/test_quality_workflow_contract.py"
+    actual = (root / path).read_bytes() + b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _deps_actions_source_bytes(path, actual)

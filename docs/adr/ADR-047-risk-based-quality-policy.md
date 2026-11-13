@@ -2011,7 +2011,7 @@ remain the source-level references alongside the CSP tests linked above.
 Owner `egorribun` explicitly approved retaining the CI-only TruffleHog Action
 at the immutable revision used in `.github/workflows/trufflehog.yml`, with an
 exclusive expiry of 2027-01-10. The approved revision and license source are
-[the pinned LICENSE](https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE).
+[the pinned LICENSE](https://github.com/trufflesecurity/trufflehog/blob/ea68ca03c865c5f324e86e849ced20ed3cf9dbbb/LICENSE).
 The retrieved Git blob `d2bc34f9900abd088bfd0d914641ecf434aa5a52` contains the
 GNU Affero General Public License, version 3. The recorded license remains
 `AGPL-3.0`; CI approval does not remove the license's obligations.

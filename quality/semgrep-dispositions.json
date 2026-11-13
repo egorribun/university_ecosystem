@@ -222,7 +222,7 @@
       "companions": [
         {
           "path": ".github/workflows/deploy.yml",
-          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+          "sha256": "6912eb70a4fd97c15f6deeb51b2ca39999ac3ce40173212104b983033c95a86c"
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
@@ -250,7 +250,7 @@
       "companions": [
         {
           "path": ".github/workflows/deploy.yml",
-          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+          "sha256": "6912eb70a4fd97c15f6deeb51b2ca39999ac3ce40173212104b983033c95a86c"
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
@@ -278,7 +278,7 @@
       "companions": [
         {
           "path": ".github/workflows/deploy.yml",
-          "sha256": "bc85d3338165fce79ab05ea9f4b4b92d9a607898610f98e93e3596c8d6b78e1f"
+          "sha256": "6912eb70a4fd97c15f6deeb51b2ca39999ac3ce40173212104b983033c95a86c"
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
@@ -378,7 +378,7 @@
         },
         {
           "path": "tests/test_quality_workflow_contract.py",
-          "sha256": "1c754638eb59f5791ddd209c0f36dafcdd23fa9276d8b4f2e5d8b62a0ecd8b76"
+          "sha256": "d03e4c8da0045bf686d08cac6be649f8bf5901852df644426f0cb3666418bc9c"
         }
       ],
       "expires": "2027-01-10",
