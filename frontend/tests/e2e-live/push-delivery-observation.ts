@@ -277,3 +277,22 @@ export async function reportLivePushDeliveryObservation(
     // Observation failures never replace the original delivery failure.
   }
 }
+
+/**
+ * Awaits the subscription save that follows an explicit push opt-in. If it does
+ * not arrive, emits the bounded push observation for the subscribe phase before
+ * rethrowing the original failure, so a hosted run shows whether the browser
+ * held a permission, an active worker and a native subscription at that point.
+ */
+export async function awaitPushSubscribeWithObservation<T>(
+  subscribeResponse: Promise<T>,
+  page: Page,
+  project: unknown
+): Promise<T> {
+  try {
+    return await subscribeResponse
+  } catch (error) {
+    await reportLivePushDeliveryObservation(page, project, "subscribe-phase")
+    throw error
+  }
+}

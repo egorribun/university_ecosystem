@@ -20,7 +20,7 @@ integration tests behind the `integration` build tag:
 - `make test-integration` runs `go test -tags integration -race -timeout 5m ./...`.
 - `make test-all` runs both tiers.
 
-The integration tier uses `testcontainers-go` v0.44.0 (pinned in the
+The integration tier uses `testcontainers-go` v0.45.0 (pinned in the
 gateway, file-processor, and ws-hub module manifests) and is required by the
 aggregate CI gate. Each service runs in an independent reusable-workflow job so
 a failure identifies its owning service without masking the others.
