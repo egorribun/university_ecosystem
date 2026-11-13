@@ -100,7 +100,7 @@ async def run_scan(
     timeout_seconds: float,
 ) -> dict[str, Any]:
     """Run one scanner in a fresh private directory, without uploading anything."""
-    if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 3000:
+    if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 6000:
         raise ValueError("Invalid ZAP outer timeout")
     docker = shutil.which("docker")
     if docker is None:

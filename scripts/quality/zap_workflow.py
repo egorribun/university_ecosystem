@@ -42,6 +42,13 @@ SOURCE_FILES = (
 )
 PUBLIC_FILES = ("zap-results.sarif", "zap-evidence.txt")
 RECEIPT = "zap-sarif-provenance.json"
+# The dast.yml zap job allows 150 minutes; the owned stand takes about 11 minutes
+# to start. The previous 45-minute budget killed full scans before a report existed.
+SCAN_BUDGET_SECONDS = 6000
+
+
+class ScanBudgetExceeded(ValueError):
+    """The scanner did not finish inside its outer budget; the result is unknown."""
 
 
 def _digest(data: bytes) -> str:
@@ -171,11 +178,18 @@ def prepare(
         raise ValueError("Invalid ZAP target")
     try:
         target = read_payload(target_file).decode("utf-8")
-        receipt = asyncio.run(
-            run_scan(
-                target_file, root / ".zap/rules.tsv", work, source["identity"], 2700
+        try:
+            receipt = asyncio.run(
+                run_scan(
+                    target_file,
+                    root / ".zap/rules.tsv",
+                    work,
+                    source["identity"],
+                    SCAN_BUDGET_SECONDS,
+                )
             )
-        )
+        except TimeoutError as error:
+            raise ScanBudgetExceeded("ZAP scanner exceeded its time budget") from error
     finally:
         target_file.unlink(missing_ok=True)
     public.mkdir(mode=0o700)
@@ -267,6 +281,12 @@ def main(argv: list[str] | None = None) -> int:
             alerts = verify_publication(args.repo_root, env, args.work, args.public)
             if args.command == "gate":
                 return evaluate_alerts(alerts, args.summary_file)
+    except ScanBudgetExceeded:
+        print(
+            "::error::ZAP scanner did not finish within its time budget; scan result is unknown.",
+            file=sys.stderr,
+        )
+        return 1
     except (
         OSError,
         ValueError,
