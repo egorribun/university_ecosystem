@@ -108,6 +108,14 @@ async function canonicalTemporaryRoot(): Promise<string> {
  * real Web Push. The notifications stay real Chrome notifications with their
  * tags; only the display surface changes.
  */
+/**
+ * Budget for the subscription save that follows an explicit opt-in, and for any
+ * save created before that click. It covers Chrome's registration with the real
+ * FCM push service: 3-6 s on a local stand, above the 15 s action timeout on
+ * some hosted runs (live run 43457859398).
+ */
+export const PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS = 60_000
+
 export const NATIVE_PUSH_BROWSER_ARGS = ["--disable-features=NativeNotifications"] as const
 
 function contextOptionsForProject(

@@ -2726,6 +2726,11 @@ source SHA still needs its own evidence.
   `app/services/webpush.py` sends `{title, options, data}`, but the service
   worker read only flat fields. Every real push therefore lost its tag (the
   persisted notification id), body, actions and the quiet-hours `silent` flag.
+- **Subscription budget (added 2026-11-13).** The first subscription save after
+  an explicit opt-in waits for Chrome's registration with FCM. This took
+  3–6 s on a local stand and more than the 15 s action timeout on some hosted
+  runs. The opt-in saves, and any save created before that click, therefore
+  wait up to `PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS` (60 s). No assertion changes.
 
 ### Native rust_ext keeps rustix 1.1.5 for now
 

@@ -8,7 +8,7 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { test } from "./native-push-profile-fixtures"
+import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -589,12 +589,14 @@ const savePushOptInAndTopics = async (
   const subscriptionSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/push/subscribe"
+      new URL(response.url()).pathname === "/api/v1/push/subscribe",
+    { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
   )
   const topicsSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
-      new URL(response.url()).pathname === "/api/v1/push/subscribe/topics"
+      new URL(response.url()).pathname === "/api/v1/push/subscribe/topics",
+    { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
   )
   await pushSwitch.click()
   const subscriptionResponse = await subscriptionSaved

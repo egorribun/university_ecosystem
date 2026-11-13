@@ -7,7 +7,7 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { test } from "./native-push-profile-fixtures"
+import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
 import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
 import { NativePushProfile } from "./native-push-profile-fixtures"
 import { Page } from "@playwright/test"
@@ -283,8 +283,9 @@ test("Chromium push opt-in persists one native subscription and removes it on op
       false
     )
 
-    const foreignSavePromise = secondPage.waitForResponse((response) =>
-      isPushRoute(response, "/api/v1/push/subscribe")
+    const foreignSavePromise = secondPage.waitForResponse(
+      (response) => isPushRoute(response, "/api/v1/push/subscribe"),
+      { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
     )
     foreignSubscriptionMayExist = true
     await foreignPushSwitch.click()
@@ -351,8 +352,9 @@ test("Chromium push opt-in persists one native subscription and removes it on op
       true
     )
 
-    const firstSavePromise = page.waitForResponse((response) =>
-      isPushRoute(response, "/api/v1/push/subscribe")
+    const firstSavePromise = page.waitForResponse(
+      (response) => isPushRoute(response, "/api/v1/push/subscribe"),
+      { timeout: PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS }
     )
     subscriptionMayExist = true
     await pushSwitch.click()

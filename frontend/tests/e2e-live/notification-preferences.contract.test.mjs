@@ -30,7 +30,15 @@ test("live notification acceptance uses an owned account and cleans up only that
   ])
 
   assert.match(spec, /notification topics and quiet hours persist across reload and opt-out/u)
-  assert.match(spec, /import \{ test \} from "\.\/native-push-profile-fixtures"/u)
+  assert.match(
+    spec,
+    /import \{ PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test \} from "\.\/native-push-profile-fixtures"/u
+  )
+  assert.match(
+    spec,
+    /const subscriptionSaved = waitForPushAction\(\s*page,\s*"\/api\/v1\/push\/subscribe",\s*"POST",\s*PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS\s*\)/u,
+    "the opt-in save waits for Chrome's real FCM registration"
+  )
   assert.match(spec, /test\.use\(\{ channel: "chromium" \}\)/u)
   assert.match(spec, /test\.use\(\{ nativePushChannel: "chrome" \}\)/u)
   assert.doesNotMatch(spec, /nativePushChannel: "chromium"/u)
@@ -207,7 +215,7 @@ test("live notification preferences cover every topic, owner scope, and post-rel
   assert.match(spec, /topicPatchRequests\)\.toBe\(1 \+ SELECTED_TOPICS\.length\)/u)
   assert.match(
     spec,
-    /optedOutTopicsAfterReload = await readTopicPreferences\(\s*page,\s*diagnosticProject\(testInfo\.project\.name\)\s*\)[\s\S]*?const optedOutPushRebind = waitForPushAction\(page, "\/api\/v1\/push\/subscribe", "POST"\)[\s\S]*?const reboundTopics = await readTopicPreferences\(page,\s*diagnosticProject\(testInfo\.project\.name\)\)[\s\S]*?reboundTopics\.has_preferences\)\.toBe\(true\)[\s\S]*?reboundTopics\.topics\)\.toEqual\(\[\]\)[\s\S]*?await page\.reload\(\)[\s\S]*?expectTopicSelection\(page, \[\]\)/u,
+    /optedOutTopicsAfterReload = await readTopicPreferences\(\s*page,\s*diagnosticProject\(testInfo\.project\.name\)\s*\)[\s\S]*?const optedOutPushRebind = waitForPushAction\(\s*page,\s*"\/api\/v1\/push\/subscribe",\s*"POST",\s*PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS\s*\)[\s\S]*?const reboundTopics = await readTopicPreferences\(page,\s*diagnosticProject\(testInfo\.project\.name\)\)[\s\S]*?reboundTopics\.has_preferences\)\.toBe\(true\)[\s\S]*?reboundTopics\.topics\)\.toEqual\(\[\]\)[\s\S]*?await page\.reload\(\)[\s\S]*?expectTopicSelection\(page, \[\]\)/u,
     "re-enabling the endpoint must preserve an explicit empty topic opt-out across reload"
   )
   assert.match(
