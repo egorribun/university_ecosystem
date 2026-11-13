@@ -101,10 +101,19 @@ async function canonicalTemporaryRoot(): Promise<string> {
   return root
 }
 
+/**
+ * Chrome's own notification centre instead of the operating system's. Under
+ * automation the system path closes every notification at once (headless and
+ * headful, Windows and Linux), so getNotifications() could never observe a
+ * real Web Push. The notifications stay real Chrome notifications with their
+ * tags; only the display surface changes.
+ */
+export const NATIVE_PUSH_BROWSER_ARGS = ["--disable-features=NativeNotifications"] as const
+
 function contextOptionsForProject(
   testInfo: TestInfo,
   channel: string | undefined
-): BrowserContextOptions & { channel?: string; headless: boolean } {
+): BrowserContextOptions & { channel?: string; headless: boolean; args: string[] } {
   const projectUse = testInfo.project.use
   const configuredViewport = projectUse.viewport as ViewportSize | undefined
   if (
@@ -117,12 +126,17 @@ function contextOptionsForProject(
     throw new Error("Native Push profile requires the configured project viewport")
   }
 
-  const options: BrowserContextOptions & { channel?: string; headless: boolean } = {
+  const options: BrowserContextOptions & {
+    channel?: string
+    headless: boolean
+    args: string[]
+  } = {
     baseURL: ownedSessionOrigin(),
     ignoreHTTPSErrors: true,
     locale: typeof projectUse.locale === "string" ? projectUse.locale : "ru-RU",
     viewport: { ...configuredViewport },
     headless: true,
+    args: [...NATIVE_PUSH_BROWSER_ARGS],
   }
   if (typeof projectUse.deviceScaleFactor === "number") {
     options.deviceScaleFactor = projectUse.deviceScaleFactor
