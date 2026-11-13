@@ -27,7 +27,9 @@ _CONTAINER_ENTRY = (
     "import os;from pathlib import Path;"
     "target=Path('/zap/target.txt').read_text(encoding='utf-8');"
     "os.execvp('zap-full-scan.py',['zap-full-scan.py','-t',target,"
-    "'-c','/zap/rules.tsv','-J','report_json.json','-a','-j','--ajax-spider','-T','60','--hook=/zap/origin-hook.py'])"
+    "'-c','/zap/rules.tsv','-J','report_json.json','-a','-j','--ajax-spider','-m','10',"
+    "'-z','-config ajaxSpider.maxDuration=10 -config scanner.maxScanDurationInMins=30',"
+    "'-T','60','--hook=/zap/origin-hook.py'])"
 )
 
 

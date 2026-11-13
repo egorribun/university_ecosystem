@@ -2732,3 +2732,21 @@ source SHA still needs its own evidence.
   gate and its threshold unchanged. The advisory remains open for this
   test-only chain until the bench delta is explained or a later rustix release
   passes the gate. This records a deferral, not a finding of non-reachability.
+
+### Bounded ZAP full-scan phases on the ephemeral DAST stand
+
+- **Evidence.** The first hosted runs of the AUD-381 DAST lane on `main`
+  (43338648755, 43387407982) produced no ZAP report. The second run stopped
+  after about 60 minutes, at zap-full-scan's own `-T 60` limit. The AJAX
+  spider's default `ajaxSpider.maxDuration` is 60 minutes and the active scan is
+  unbounded, so the run never reached its report and the gate correctly said
+  the result was unknown.
+- **Decision.** The scan keeps the full-scan mode, the rules file, the AJAX
+  spider, the origin hook and the 60-minute overall limit. Its phases are now
+  bounded: the traditional spider runs at most 10 minutes (`-m 10`), the AJAX
+  spider at most 10 (`ajaxSpider.maxDuration=10`) and the active scan at most 30
+  (`scanner.maxScanDurationInMins=30`), so a complete report fits inside the
+  limit. The medium+ gate and the fail-closed evidence validation are unchanged.
+- **Accepted cost.** Coverage is bounded by time rather than exhaustive; a scan
+  that never completes provided no evidence at all. Raise the bounds together
+  with the outer budgets if a later run shows unused headroom.
