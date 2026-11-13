@@ -2714,3 +2714,21 @@ source SHA still needs its own evidence.
   with a static service-worker page and subscribed in both the primary and a
   second owner persistent profile. This is not stand or hosted evidence; the
   next full live run on `main` provides it.
+
+### Native rust_ext keeps rustix 1.1.5 for now
+
+- **Context.** RUSTSEC-2026-0486 is fixed in rustix 1.1.6. In
+  `native/rust_ext`, rustix arrives only through the dev-dependency chain
+  proptest → tempfile, so the compiled extension module does not link it.
+  The frontend WASM crates already use 1.1.6.
+- **Evidence.** The paired Rust Native Optimizer Regression Gate rejected the
+  Cargo.lock-only bump twice: in PR #1385 (reverted in 6960b55d0) and again in
+  benchmark run 43365410358 on PR #1391. `batch_detect_conflicts/100` had a
+  median paired ratio of 1.252 (one-sided 95% lower bound 1.226), and
+  `batch_detect_conflicts/500` had 1.215 (lower bound 1.193), against the 1.10
+  threshold. The other sizes passed. Both runs reproduced the same delta, so
+  the gate signal is not treated as noise.
+- **Decision.** Keep rustix 1.1.5 in `native/rust_ext/Cargo.lock` and leave the
+  gate and its threshold unchanged. The advisory remains open for this
+  test-only chain until the bench delta is explained or a later rustix release
+  passes the gate. This records a deferral, not a finding of non-reachability.
