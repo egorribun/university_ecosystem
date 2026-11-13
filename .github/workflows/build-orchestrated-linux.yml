@@ -95,7 +95,7 @@ jobs:
         # wasm-pack; install-action hardcodes old repo. Pinned rustwasm
         # canonical curl URL (HTTPS rustwasm.github.io, official installer).
         # Same fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: wasm-pack@0.15.0
 
