@@ -46,7 +46,7 @@ dependencies = [
   # MOD-20-02 (audit 2026-03-24): Added upper bounds (<2.0 / <1.0) to prevent
   # accidental major-version breakage.  The 0.x instrumentation packages are
   # NOT beta — the 0.x prefix is a versioning convention tracking the SDK minor.
-  "opentelemetry-api>=1.41.0,<2.0",
+  "opentelemetry-api>=1.45.2,<2.0",  # GHSA-mf5v-w3w3-f6cg patched floor
   "opentelemetry-exporter-otlp>=1.41.0,<2.0",
   "opentelemetry-instrumentation>=0.62b0,<1.0",
   "opentelemetry-instrumentation-asgi>=0.62b0,<1.0",
@@ -477,7 +477,7 @@ constraint-dependencies = [
 override-dependencies = [
     "protobuf>=6.33.6,<8",
     "grpcio>=1.81.0,<1.85",
-    "opentelemetry-api>=1.41.0",
+    "opentelemetry-api>=1.45.2",  # GHSA-mf5v-w3w3-f6cg patched floor
     "opentelemetry-sdk>=1.41.0",
     "opentelemetry-exporter-otlp>=1.41.0",
     "opentelemetry-exporter-otlp-proto-http>=1.41.0",
