@@ -94,7 +94,7 @@ def _inspect_fixture():
         "minio": ("internal", "public"),
         "minio-init": ("internal",),
         "nats": ("internal",),
-        "notifications-worker": ("internal",),
+        "notifications-worker": ("internal", "public"),
         "outbox-worker": ("internal",),
         "postgres": ("internal", "published_ports"),
         "postgres-databases-init": ("internal",),

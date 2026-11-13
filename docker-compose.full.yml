@@ -348,6 +348,7 @@ services:
       retries: 3
     networks:
       - internal
+      - public
     deploy:
       resources:
         limits:

@@ -73,3 +73,26 @@ proof of any specific provider.
 Revisit: after MVP, replace the broad public range with an egress proxy or an
 FQDN-aware policy (for example, Cilium FQDN rules or a dedicated egress gateway),
 then remove this addendum.
+
+## Addendum 2026-11-13: notifications-worker public egress for Web Push
+
+Finding: `notifications-worker` sends Web Push itself (`app/workers/notifications.py`
+through `app.services.webpush`). On the full local and live stand
+(`docker-compose.full.yml`, plus `docker-compose.live.yml`) it was attached only to
+the internal `internal` network. From that container `fcm.googleapis.com` did not
+resolve, while `backend`, which is on `public`, reached it. Push deliveries
+therefore never left the live stand. The MVP base (`docker-compose.yml` with the
+production overlay) already attaches the worker to `public`.
+
+Decision (owner, 2026-11-13): `notifications-worker` gets public egress in every
+Compose topology. `docker-compose.full.yml` now also attaches it to `public`, so the
+live stand matches the MVP base. The worker still publishes no host port, and its
+monitoring endpoint stays on the internal network for Prometheus.
+
+Reason and accepted risk: browser push services (FCM, Mozilla autopush, Apple, WNS)
+have no fixed address set, so the worker needs broad outbound HTTPS, the same
+posture as `backend`. The Helm chart has no notifications-worker workload today,
+so the AUD-189 Helm egress exception above is unchanged.
+
+Revisit: after MVP, move push egress behind an egress proxy or an FQDN-aware
+policy together with the AUD-189 follow-up.
