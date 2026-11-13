@@ -39,6 +39,14 @@ from elasticsearch.helpers import (  # noqa: E402
 logger = get_logger(__name__)
 
 
+# Search is optional infrastructure: content writes and outbox handlers call it
+# best-effort. Bound each request and allow one retry so an unreachable cluster
+# fails within seconds instead of the client's default multi-retry budget, which
+# outlasted the reverse-proxy timeout on deletes and stalled outbox delivery.
+_REQUEST_TIMEOUT_SECONDS = 3.0
+_MAX_RETRIES = 1
+
+
 class SearchService:
     """Async Elasticsearch service for full-text search."""
 
@@ -54,7 +62,11 @@ class SearchService:
     @property
     def client(self) -> AsyncElasticsearch:
         if self._client is None:
-            kwargs: dict[str, Any] = {"hosts": self._hosts}
+            kwargs: dict[str, Any] = {
+                "hosts": self._hosts,
+                "request_timeout": _REQUEST_TIMEOUT_SECONDS,
+                "max_retries": _MAX_RETRIES,
+            }
             if self._http_auth is not None:
                 kwargs["http_auth"] = self._http_auth
             self._client = AsyncElasticsearch(**kwargs)

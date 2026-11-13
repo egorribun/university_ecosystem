@@ -21,7 +21,10 @@ async def test_search_service_lazy_client():
         client = service.client
         assert client is not None
         mock_ae.assert_called_once_with(
-            hosts=["http://localhost:9200"], http_auth=("user", "pass")
+            hosts=["http://localhost:9200"],
+            request_timeout=3.0,
+            max_retries=1,
+            http_auth=("user", "pass"),
         )
         assert service._client is client
 
@@ -30,7 +33,9 @@ async def test_search_service_lazy_client():
     with patch("app.services.search.AsyncElasticsearch") as mock_ae_no_auth:
         client_no_auth = service_no_auth.client
         assert client_no_auth is not None
-        mock_ae_no_auth.assert_called_once_with(hosts=["http://localhost:9200"])
+        mock_ae_no_auth.assert_called_once_with(
+            hosts=["http://localhost:9200"], request_timeout=3.0, max_retries=1
+        )
 
 
 @pytest.mark.anyio
