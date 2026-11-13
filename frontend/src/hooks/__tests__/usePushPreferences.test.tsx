@@ -904,6 +904,48 @@ describe("usePushPreferences", () => {
     expect(result.current.pushBusy).toBe(false)
   })
 
+  it("keeps a newer topic choice when an earlier queued write fails", async () => {
+    mockFetchPushTopics.mockResolvedValue(
+      serverTopics(true, ["news.published", "events.published", "system.release"])
+    )
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+    await waitFor(() => expect(result.current.topicsReady).toBe(true))
+    await enableWith(result, "https://endpoint")
+
+    let failFirstWrite: () => void = () => undefined
+    mockUpdatePushTopics.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((_resolve, reject) => {
+          failFirstWrite = () => reject(new Error("first write failed"))
+        })
+    )
+    let newsWrite!: Promise<void>
+    let eventsWrite!: Promise<void>
+    act(() => {
+      newsWrite = result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+    await waitFor(() => expect(mockUpdatePushTopics).toHaveBeenCalledTimes(1))
+    act(() => {
+      eventsWrite = result.current.handleTopicToggle("events.published")({} as any, false)
+    })
+
+    await act(async () => {
+      failFirstWrite()
+      await newsWrite
+      await eventsWrite
+    })
+    expect(mockUpdatePushTopics.mock.calls.map((call) => call[1])).toEqual([
+      ["events.published", "system.release"],
+      ["system.release"],
+    ])
+    expect(result.current.topicState).toEqual(topicStateOf(["system.release"]))
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.updateFailed", severity: "error" })
+    )
+    expect(result.current.pushBusy).toBe(false)
+  })
+
   it("lets the server response override the cached placeholder", async () => {
     let resolveTopics!: (value: PushTopicsResponse) => void
     mockFetchPushTopics.mockReturnValue(
