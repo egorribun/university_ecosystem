@@ -468,6 +468,7 @@ environments = [
 constraint-dependencies = [
     "pyasn1>=0.6.5,<0.7",  # CVE-2026-119194/-119195/-119196/-119197 security floor
     "certifi>=2026.10.19",  # GHSA-6q48-6c7w-9gw2; durable security floor
+    "dnspython>=2.9.2,<3",  # GHSA-vvf4-9x63-8xvv patched floor
     "brotli>=1.2.1,<2",  # durable floor for the fixed Brotli decoder
     "filelock>=4.2.1,<5",  # GHSA-v4x8-3wr5-3wq8 patched floor
     "msgpack>=1.2.3,<2",  # GHSA-j586-36cw-2gc2 patched floor
