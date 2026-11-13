@@ -135,12 +135,22 @@ async function reportNewsOverflowDiagnostic(
       let best: Element | null = null
       let bestRight = Number.NEGATIVE_INFINITY
       let bestDepth = -1
+      // Only boxes that can widen the document count: skip fixed boxes and
+      // anything inside a horizontal clip or scroll container.
+      const clipsHorizontally = (node: Element) => {
+        const overflowX = getComputedStyle(node).overflowX
+        return overflowX !== "visible"
+      }
       for (const element of Array.from(body.querySelectorAll("*"))) {
+        if (getComputedStyle(element).position === "fixed") continue
         const right = element.getBoundingClientRect().right
         let depth = 0
+        let clipped = false
         for (let node: Element | null = element; node && node !== body; node = node.parentElement) {
           depth += 1
+          if (node !== element && clipsHorizontally(node)) clipped = true
         }
+        if (clipped) continue
         if (right > bestRight || (right === bestRight && depth > bestDepth)) {
           best = element
           bestRight = right
