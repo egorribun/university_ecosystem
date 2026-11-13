@@ -116,6 +116,7 @@ handoffs are intentionally not part of the canonical index.
 - [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
+- [MVP Block 4 traceability matrix (ТЗ §2–13)](testing/mvp-traceability-matrix.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
 - [Current full audit reassessment, 2026-11-12 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 502 / 512 accepted or resolved (98.0%), 10 open; 49 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
 - [Dated 494 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
