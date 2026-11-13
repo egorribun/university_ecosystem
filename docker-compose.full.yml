@@ -395,6 +395,7 @@ services:
         condition: service_completed_successfully
     networks:
       - internal
+      - public
     healthcheck:
       test: ["CMD", "python", "-c", "import os,time; pid=int(open('/tmp/worker.pid', encoding='ascii').read()); os.kill(pid,0); raise SystemExit(0 if time.time()-os.path.getmtime('/tmp/worker.heartbeat') < 30 else 1)"]
       interval: 15s

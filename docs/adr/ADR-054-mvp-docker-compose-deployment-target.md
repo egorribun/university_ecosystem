@@ -96,3 +96,24 @@ so the AUD-189 Helm egress exception above is unchanged.
 
 Revisit: after MVP, move push egress behind an egress proxy or an FQDN-aware
 policy together with the AUD-189 follow-up.
+
+## Addendum 2026-11-13b: outbox-worker public egress for Web Push
+
+Finding: the Web Push sender for `notification.delivery_requested` events is
+`outbox-worker` (`app.services.push_service` through `app.services.webpush`), not
+only `notifications-worker`. It was attached only to internal networks in both the
+MVP base (`docker-compose.yml`: `db_net`, `cache_net`, `event_net`) and the full
+stand (`internal`). On the live stand `fcm.googleapis.com` therefore failed DNS
+resolution in the SSRF guard, and every push event moved to the DLQ after five
+retries. Real Web Push could not be delivered on the MVP target either.
+
+Decision (owner, 2026-11-13): `outbox-worker` joins `public` in `docker-compose.yml`
+and in `docker-compose.full.yml`, with the same posture and accepted risk as the
+notifications-worker addendum above. It keeps its internal networks, publishes no
+port, and outbound requests still pass the application SSRF guard.
+
+Helm is outside the MVP deployment path and is unchanged. Its
+`outbox-worker` NetworkPolicy grants no public egress, so Web Push would also fail
+on Kubernetes. Before any Kubernetes deployment, the AUD-189 public TCP/443
+exception must be extended to `outbox-worker`, or push egress must move behind an
+egress proxy.
