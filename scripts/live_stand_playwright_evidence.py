@@ -213,9 +213,37 @@ _PLAYWRIGHT_NEWS_VIEWPORT_LINE = re.compile(
 )
 _PLAYWRIGHT_NEWS_VIEWPORT_LIMIT = 20
 _PlaywrightNewsViewport = tuple[str, str, int, int, int, int, int, int, int]
+_PLAYWRIGHT_NEWS_OVERFLOW_LINE = re.compile(
+    r"UE_LIVE_NEWS_OVERFLOW_V1 project=(?P<project>desktop|mobile) "
+    r"language=(?P<language>ru|en) "
+    r"width=(?P<width>360|390|768|1024|1440) "
+    r"docWidth=(?P<doc_width>0|[1-9][0-9]{0,4}) "
+    r"innerWidth=(?P<inner_width>0|[1-9][0-9]{0,4}) "
+    r"right=(?P<right>0|[1-9][0-9]{0,4}) "
+    r"elWidth=(?P<el_width>0|[1-9][0-9]{0,4}) "
+    r"textLength=(?P<text_length>0|[1-9][0-9]{0,4}) "
+    r"path=(?P<path>[a-z0-9.>-]{1,200})"
+)
+_PLAYWRIGHT_NEWS_OVERFLOW_LIMIT = 4
+_PlaywrightNewsOverflow = tuple[str, str, int, int, int, int, int, int, str]
+_PLAYWRIGHT_NAVBAR_GEOMETRY_LINE = re.compile(
+    r"UE_LIVE_NAVBAR_GEOMETRY_V1 project=(?P<project>desktop|mobile) "
+    r"width=(?P<width>0|[1-9][0-9]{0,4}) "
+    r"contentRight=(?P<content_right>0|[1-9][0-9]{0,4}) "
+    r"settingsLeft=(?P<settings_left>0|[1-9][0-9]{0,4}) "
+    r"settingsRight=(?P<settings_right>0|[1-9][0-9]{0,4}) "
+    r"nameLeft=(?P<name_left>0|[1-9][0-9]{0,4}) "
+    r"nameRight=(?P<name_right>0|[1-9][0-9]{0,4}) "
+    r"messengerLeft=(?P<messenger_left>0|[1-9][0-9]{0,4}) "
+    r"referenceRight=(?P<reference_right>0|[1-9][0-9]{0,4}) "
+    r"scrollWidth=(?P<scroll_width>0|[1-9][0-9]{0,4}) "
+    r"clientWidth=(?P<client_width>0|[1-9][0-9]{0,4})"
+)
+_PLAYWRIGHT_NAVBAR_GEOMETRY_LIMIT = 6
+_PlaywrightNavbarGeometry = tuple[str, int, int, int, int, int, int, int, int, int, int]
 
 
-_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int]
+_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int, str]
 _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
     r"UE_LIVE_PUSH_OBS_V1 project=(?P<project>desktop|mobile) "
     r"permission=(?P<permission>default|granted|denied|unsupported) "
@@ -223,7 +251,10 @@ _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
     r"state=(?P<state>missing|installing|installed|activating|"
     r"activated|redundant|error) "
     r"controller=(?P<controller>[01]) subscription=(?P<subscription>[01]) "
-    r"matches=(?P<matches>[01])"
+    r"matches=(?P<matches>[01]) "
+    r"probe=(?P<probe>skipped|subscribed|permission-denied|"
+    r"push-service-unavailable|push-service-error|not-allowed|abort|"
+    r"invalid-state|not-supported|other|timeout)"
 )
 _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
 
@@ -2269,6 +2300,74 @@ def _live_playwright_news_viewports(output: str) -> list[_PlaywrightNewsViewport
     return records
 
 
+def _live_playwright_news_overflows(output: str) -> list[_PlaywrightNewsOverflow]:
+    # Parse only the fixed overflow fields; the element path is charset-checked.
+    records: list[_PlaywrightNewsOverflow] = []
+    seen: set[tuple[str, str, int]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 400 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_NEWS_OVERFLOW_LINE.fullmatch(line)
+        if match is None:
+            continue
+        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        language = match["language"]
+        width = int(match["width"])
+        key = (project, language, width)
+        if key in seen:
+            continue
+        record: _PlaywrightNewsOverflow = (
+            project,
+            language,
+            width,
+            int(match["doc_width"]),
+            int(match["inner_width"]),
+            int(match["right"]),
+            int(match["el_width"]),
+            int(match["text_length"]),
+            match["path"],
+        )
+        records.append(record)
+        seen.add(key)
+        if len(records) == _PLAYWRIGHT_NEWS_OVERFLOW_LIMIT:
+            break
+    return records
+
+
+def _live_playwright_navbar_geometries(
+    output: str,
+) -> list[_PlaywrightNavbarGeometry]:
+    # Parse only the fixed desktop spacing geometry fields, each a bounded count.
+    records: list[_PlaywrightNavbarGeometry] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 320 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_NAVBAR_GEOMETRY_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record: _PlaywrightNavbarGeometry = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            int(match["width"]),
+            int(match["content_right"]),
+            int(match["settings_left"]),
+            int(match["settings_right"]),
+            int(match["name_left"]),
+            int(match["name_right"]),
+            int(match["messenger_left"]),
+            int(match["reference_right"]),
+            int(match["scroll_width"]),
+            int(match["client_width"]),
+        )
+        if record in records:
+            continue
+        records.append(record)
+        if len(records) == _PLAYWRIGHT_NAVBAR_GEOMETRY_LIMIT:
+            break
+    return records
+
+
 def _live_playwright_push_observations(
     output: str,
 ) -> list[_PlaywrightPushObservation]:
@@ -2289,6 +2388,7 @@ def _live_playwright_push_observations(
             match["controller"] == "1",
             match["subscription"] == "1",
             int(match["matches"]),
+            match["probe"],
         )
         if record in observations:
             continue
@@ -2641,7 +2741,7 @@ _PlaywrightSkipIdentity = tuple[str, str, int]
 _PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES: tuple[_PlaywrightSkipIdentity, ...] = (
     ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 144),
     ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 144),
-    ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 174),
+    ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 267),
     ("mobile", "tests/e2e-live/schedule-grid-keyboard.live.spec.ts", 5),
     ("mobile", "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts", 5),
     ("mobile", "tests/e2e-live/map-gesture-isolation.live.spec.ts", 178),

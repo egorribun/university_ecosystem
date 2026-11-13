@@ -127,6 +127,12 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_login_failures as _live_playwright_login_failures,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_navbar_geometries as _live_playwright_navbar_geometries,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_news_overflows as _live_playwright_news_overflows,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_news_viewports as _live_playwright_news_viewports,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5793,6 +5799,8 @@ def _run_live_playwright(
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
     footer_geometries = _live_playwright_footer_geometries(stdout)
     news_viewports = _live_playwright_news_viewports(stdout)
+    news_overflows = _live_playwright_news_overflows(stdout)
+    navbar_geometries = _live_playwright_navbar_geometries(stdout)
     retry_decisions = _live_playwright_retry_decisions(stdout)
     rate_limit_headers = _live_playwright_rate_limit_headers(stdout)
     page_errors = _live_playwright_page_errors(stdout)
@@ -5884,11 +5892,12 @@ def _run_live_playwright(
         controller,
         subscription,
         matches,
+        probe,
     ) in push_observations:
         print(
             f"live E2E push project={project} permission={permission} ready={ready} "
             f"state={state} controller={str(controller).lower()} "
-            f"subscription={str(subscription).lower()} matches={matches}",
+            f"subscription={str(subscription).lower()} matches={matches} probe={probe}",
             flush=True,
         )
     for record in story_setup_diagnostics:
@@ -6084,6 +6093,44 @@ def _run_live_playwright(
             f"live E2E news viewport project={project} language={language} width={width} "
             f"viewportHeight={viewport_height} scrollY={scroll_y} top={top} "
             f"bottom={bottom} left={left} right={right}",
+            flush=True,
+        )
+    for (
+        project,
+        language,
+        width,
+        doc_width,
+        inner_width,
+        right,
+        el_width,
+        text_length,
+        path,
+    ) in news_overflows:
+        print(
+            f"live E2E news overflow project={project} language={language} width={width} "
+            f"docWidth={doc_width} innerWidth={inner_width} right={right} "
+            f"elWidth={el_width} textLength={text_length} path={path}",
+            flush=True,
+        )
+    for (
+        project,
+        width,
+        content_right,
+        settings_left,
+        settings_right,
+        name_left,
+        name_right,
+        messenger_left,
+        reference_right,
+        scroll_width,
+        client_width,
+    ) in navbar_geometries:
+        print(
+            f"live E2E navbar geometry project={project} width={width} "
+            f"contentRight={content_right} settingsLeft={settings_left} "
+            f"settingsRight={settings_right} nameLeft={name_left} nameRight={name_right} "
+            f"messengerLeft={messenger_left} referenceRight={reference_right} "
+            f"scrollWidth={scroll_width} clientWidth={client_width}",
             flush=True,
         )
     for project, check, retry_after, decision, remaining_ms in retry_decisions:

@@ -33900,6 +33900,7 @@ def _rust_lock_identity(digest_hex: str) -> list[int]:
 
 
 def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _push_probe_source_bytes(path, actual)
     if path in _RUST_LOCK_TEXT_REVERSALS:
         current, previous = next(
             (row[2], row[3]) for row in _RUST_LOCK_REBINDS if row[1] == path
@@ -33937,7 +33938,7 @@ def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _rust_lock_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _push_probe_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     for index, _path, current, previous in _RUST_LOCK_REBINDS:
@@ -34018,3 +34019,171 @@ def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
         actual = ledger_bytes.replace(_RUST_LOCK_REBINDS[3][2].encode("ascii"), b"", 1)
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, actual)
+
+
+# The live stand push observation gained a closed probe field. scripts/live_stand.py,
+# its Semgrep companion digest, the ledger digest and the SHA-1 identity of that
+# companion hex are rebound one-to-one in one commit; no identity is added and the
+# total stays 512. This is the newest projection: it restores the exact predecessor
+# before the rust lock layer runs.
+_PUSH_PROBE_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_PUSH_PROBE_LIVE_STAND_PATH = "scripts/live_stand.py"
+_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256 = _rust_hex(
+    "24 59 fa 68 ca 3e a7 64 4f b9 1e 5f 32 35 6e 67 76 05 2e ce 06 cc 06 d3 7b b4 c8 94 2f 4b 61 20"
+)
+_PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256 = _rust_hex(
+    "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+)
+_PUSH_PROBE_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "6a 8d 7e 63 af 92 b1 40 b3 2b 85 0d 69 db 72 d0 94 ea 4a a8 46 e5 ca 5b 22 70 6b da 86 75 26 10"
+    )
+)
+# Policy record holding the SHA-1 identity of the live stand companion hex.
+_PUSH_PROBE_IDENTITY_ROW = 495
+# Byte reversals from the newest live stand source back to its base (3c8d20312) bytes.
+_PUSH_PROBE_LIVE_STAND_REVERSALS = (
+    (
+        b")\nfrom scripts.live_stand_playwright_evidence import (\n    _live_playwright_navbar_geometries as _live_playwright_navbar_geometries,\n)\nfrom scripts.live_stand_playwright_evidence import (\n    _live_playwright_news_overflows as _live_playwright_news_overflows,\n",
+        b"",
+    ),
+    (
+        b"    news_overflows = _live_playwright_news_overflows(stdout)\n    navbar_geometries = _live_playwright_navbar_geometries(stdout)\n",
+        b"",
+    ),
+    (
+        b"        probe,\n",
+        b"",
+    ),
+    (
+        b'            f"subscription={str(subscription).lower()} matches={matches} probe={probe}",\n',
+        b'            f"subscription={str(subscription).lower()} matches={matches}",\n',
+    ),
+    (
+        b'            flush=True,\n        )\n    for (\n        project,\n        language,\n        width,\n        doc_width,\n        inner_width,\n        right,\n        el_width,\n        text_length,\n        path,\n    ) in news_overflows:\n        print(\n            f"live E2E news overflow project={project} language={language} width={width} "\n            f"docWidth={doc_width} innerWidth={inner_width} right={right} "\n            f"elWidth={el_width} textLength={text_length} path={path}",\n            flush=True,\n        )\n    for (\n        project,\n        width,\n        content_right,\n        settings_left,\n        settings_right,\n        name_left,\n        name_right,\n        messenger_left,\n        reference_right,\n        scroll_width,\n        client_width,\n    ) in navbar_geometries:\n        print(\n            f"live E2E navbar geometry project={project} width={width} "\n            f"contentRight={content_right} settingsLeft={settings_left} "\n            f"settingsRight={settings_right} nameLeft={name_left} nameRight={name_right} "\n            f"messengerLeft={messenger_left} referenceRight={reference_right} "\n            f"scrollWidth={scroll_width} clientWidth={client_width}",\n',
+        b"",
+    ),
+)
+
+
+def _push_probe_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _push_probe_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == _PUSH_PROBE_LIVE_STAND_PATH:
+        assert hashlib.sha256(actual).hexdigest() == (
+            _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        historical = actual
+        for before, after in _PUSH_PROBE_LIVE_STAND_REVERSALS:
+            assert historical.count(before) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(before, after, 1)
+        assert hashlib.sha256(historical).hexdigest() == (
+            _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path != _PUSH_PROBE_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _PUSH_PROBE_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256.encode("ascii")
+    assert actual.count(current) == 1, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual.replace(
+        current, _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256.encode("ascii"), 1
+    )
+    assert hashlib.sha256(historical).digest() == _RUST_LOCK_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+def _push_probe_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    row = records[_PUSH_PROBE_IDENTITY_ROW]
+    identity = row["identity"]
+    assert identity["path"] == _PUSH_PROBE_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert row["owner"] == "egorribun", (
+        "approval metadata changed for push probe companion"
+    )
+    assert row["expires_on"] == "2027-01-10", (
+        "approval metadata changed for push probe companion"
+    )
+    assert bytes(identity["hashed_secret_bytes"]) == bytes(
+        _push_probe_identity(_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256)
+    ), "live disposition push probe companion identity changed"
+    identity["hashed_secret_bytes"] = _push_probe_identity(
+        _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+    )
+    return restored
+
+
+def test_push_probe_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
+    assert hashlib.sha256(live).hexdigest() == _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+    ledger_bytes = (root / _PUSH_PROBE_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    bound = [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _PUSH_PROBE_LIVE_STAND_PATH
+    ]
+    assert bound == [_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256]
+    historical_live = _push_probe_source_bytes(_PUSH_PROBE_LIVE_STAND_PATH, live)
+    assert (
+        hashlib.sha256(historical_live).hexdigest()
+        == _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+    )
+    historical_ledger = _push_probe_source_bytes(_PUSH_PROBE_LEDGER_PATH, ledger_bytes)
+    assert hashlib.sha256(historical_ledger).digest() == (
+        _RUST_LOCK_LEDGER_CURRENT_SHA256
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _push_probe_historical_policy(policy)
+    assert restored["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _push_probe_identity(_PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["live_extra", "live_missing", "ledger_extra", "policy"]
+)
+def test_push_probe_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="push probe companion identity"):
+            _push_probe_historical_policy(policy)
+        return
+    live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
+    ledger_bytes = (root / _PUSH_PROBE_LEDGER_PATH).read_bytes()
+    if mutation == "live_extra":
+        actual = live + b"\n"
+        path = _PUSH_PROBE_LIVE_STAND_PATH
+    elif mutation == "live_missing":
+        actual = live.replace(b"        probe,\n", b"", 1)
+        path = _PUSH_PROBE_LIVE_STAND_PATH
+    else:
+        actual = ledger_bytes + b"\n"
+        path = _PUSH_PROBE_LEDGER_PATH
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _push_probe_source_bytes(path, actual)

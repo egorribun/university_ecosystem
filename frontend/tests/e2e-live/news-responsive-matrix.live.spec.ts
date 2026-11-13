@@ -97,6 +97,117 @@ async function reportNewsHeadingViewport(
   }
 }
 
+const NEWS_OVERFLOW_DIAGNOSTIC_LIMIT = 4
+const NEWS_OVERFLOW_DIAGNOSTIC_COUNT_LIMIT = 99_999
+const emittedNewsOverflowTuples = new Set<string>()
+
+function boundedNewsOverflowCount(value: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined
+  const rounded = Math.round(value)
+  return rounded >= 0 && rounded <= NEWS_OVERFLOW_DIAGNOSTIC_COUNT_LIMIT ? rounded : undefined
+}
+
+// Names the widest in-page element when the document overflows. Only tag and
+// first-class names, rounded geometry and a text length are emitted, never text.
+async function reportNewsOverflowDiagnostic(
+  page: Page,
+  language: keyof typeof NEWS_LOCALIZATIONS,
+  width: (typeof WIDTHS)[number],
+  documentWidth: number,
+  viewportWidth: number
+): Promise<void> {
+  try {
+    const project = test.info().project.name
+    if ((project !== "desktop" && project !== "mobile") || !WIDTHS.includes(width)) {
+      return
+    }
+
+    const tuple = project + "/" + language + "/" + width
+    if (
+      emittedNewsOverflowTuples.has(tuple) ||
+      emittedNewsOverflowTuples.size >= NEWS_OVERFLOW_DIAGNOSTIC_LIMIT
+    ) {
+      return
+    }
+
+    const widest = await page.evaluate(() => {
+      const body = document.body
+      let best: Element | null = null
+      let bestRight = Number.NEGATIVE_INFINITY
+      let bestDepth = -1
+      for (const element of Array.from(body.querySelectorAll("*"))) {
+        const right = element.getBoundingClientRect().right
+        let depth = 0
+        for (let node: Element | null = element; node && node !== body; node = node.parentElement) {
+          depth += 1
+        }
+        if (right > bestRight || (right === bestRight && depth > bestDepth)) {
+          best = element
+          bestRight = right
+          bestDepth = depth
+        }
+      }
+      if (best === null) return null
+      const chain: Element[] = []
+      for (let node: Element | null = best; node; node = node.parentElement) {
+        chain.unshift(node)
+        if (node === body) break
+      }
+      const path = chain
+        .slice(-8)
+        .map((node) => {
+          const tag = node.tagName.toLowerCase()
+          const firstClass = node.classList.item(0) ?? ""
+          return /^[a-z][a-z0-9-]{0,23}$/u.test(firstClass) ? tag + "." + firstClass : tag
+        })
+        .join(">")
+      const rect = best.getBoundingClientRect()
+      return {
+        right: rect.right,
+        elWidth: rect.width,
+        textLength: Math.min((best.textContent ?? "").length, 99_999),
+        path,
+      }
+    })
+    if (widest === null) return
+
+    const values = {
+      documentWidth: boundedNewsOverflowCount(documentWidth),
+      innerWidth: boundedNewsOverflowCount(viewportWidth),
+      right: boundedNewsOverflowCount(widest.right),
+      elWidth: boundedNewsOverflowCount(widest.elWidth),
+      textLength: boundedNewsOverflowCount(widest.textLength),
+    }
+    if (Object.values(values).some((value) => value === undefined)) return
+    if (!/^[a-z0-9.>-]{1,200}$/u.test(widest.path)) return
+
+    process.stdout.write(
+      "UE_LIVE_NEWS_OVERFLOW_V1 project=" +
+        project +
+        " language=" +
+        language +
+        " width=" +
+        width +
+        " docWidth=" +
+        values.documentWidth +
+        " innerWidth=" +
+        values.innerWidth +
+        " right=" +
+        values.right +
+        " elWidth=" +
+        values.elWidth +
+        " textLength=" +
+        values.textLength +
+        " path=" +
+        widest.path +
+        "\n"
+    )
+    emittedNewsOverflowTuples.add(tuple)
+  } catch {
+    // Diagnostics must never replace the existing overflow assertion.
+  }
+}
+
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
 async function selectLanguageThroughSettings(
@@ -176,6 +287,15 @@ async function verifyNewsWidths(
     })
     const articleBounds = await seededArticle.boundingBox()
 
+    if (metrics.documentWidth > width + 1 || metrics.viewportWidth !== width) {
+      await reportNewsOverflowDiagnostic(
+        page,
+        language,
+        width,
+        metrics.documentWidth,
+        metrics.viewportWidth
+      )
+    }
     expect(metrics.viewportWidth, `${language} viewport width`).toBe(width)
     expect(
       metrics.documentWidth,
