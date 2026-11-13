@@ -8,6 +8,7 @@ import {
   stubBreachedPasswordLookup,
 } from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
+import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
 import { NativePushProfile } from "./native-push-profile-fixtures"
 import { Page } from "@playwright/test"
 
@@ -287,7 +288,11 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     )
     foreignSubscriptionMayExist = true
     await foreignPushSwitch.click()
-    const foreignSave = await foreignSavePromise
+    const foreignSave = await awaitPushSubscribeWithObservation(
+      foreignSavePromise,
+      secondPage,
+      testInfo.project.name
+    )
     expect(foreignSave.status(), "the second owner persists its own native subscription").toBe(200)
     const foreignRecord = (await foreignSave.json()) as PushSubscriptionResponse
     const foreignRecordId = typeof foreignRecord.id === "string" ? foreignRecord.id : ""

@@ -9,6 +9,7 @@ import {
   stubBreachedPasswordLookup,
 } from "./fixtures"
 import { test } from "./native-push-profile-fixtures"
+import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -599,7 +600,11 @@ test("chat message reaches Chromium through its real push subscription", async (
     )
     subscriptionMayExist = true
     await pushSwitch.click()
-    const subscribeResponse = await subscribePromise
+    const subscribeResponse = await awaitPushSubscribeWithObservation(
+      subscribePromise,
+      page,
+      testInfo.project.name
+    )
     expect(subscribeResponse.status(), "the explicit opt-in stores a real browser endpoint").toBe(
       200
     )
@@ -902,7 +907,11 @@ test("quoted group author gets one chat.reply push with group context and no gen
     )
     subscriptionMayExist = true
     await pushSwitch.click()
-    const subscribeResponse = await subscribePromise
+    const subscribeResponse = await awaitPushSubscribeWithObservation(
+      subscribePromise,
+      page,
+      testInfo.project.name
+    )
     expect(subscribeResponse.status(), "explicit opt-in stores a real browser endpoint").toBe(200)
     const subscriptionReceipt = (await subscribeResponse.json()) as PushSubscriptionReceipt
     if (typeof subscriptionReceipt.endpoint !== "string") {
