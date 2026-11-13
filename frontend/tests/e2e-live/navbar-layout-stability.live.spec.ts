@@ -10,6 +10,87 @@ declare global {
 }
 
 const NAVBAR_CLS_LIMIT = 0.1
+const NAVBAR_GEOMETRY_DIAGNOSTIC_LIMIT = 6
+const NAVBAR_GEOMETRY_DIAGNOSTIC_COUNT_LIMIT = 99_999
+const emittedNavbarGeometryRecords = new Set<string>()
+
+interface NavbarGeometrySample {
+  width: number
+  contentRight: number
+  settingsLeft: number
+  settingsRight: number
+  nameLeft: number
+  nameRight: number
+  messengerLeft: number
+  referenceRight: number
+  scrollWidth: number
+  clientWidth: number
+}
+
+function boundedNavbarGeometryCount(value: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined
+  const rounded = Math.round(value)
+  return rounded >= 0 && rounded <= NAVBAR_GEOMETRY_DIAGNOSTIC_COUNT_LIMIT ? rounded : undefined
+}
+
+// Emits the exact geometry only when one of the spacing expectations below would fail.
+function reportNavbarGeometryDiagnostic(sample: NavbarGeometrySample): void {
+  try {
+    const project = test.info().project.name
+    if (project !== "desktop" && project !== "mobile") return
+    const failing =
+      sample.messengerLeft - sample.referenceRight < 12 ||
+      sample.nameRight > sample.settingsLeft + 1 ||
+      sample.settingsRight > sample.contentRight + 1 ||
+      sample.scrollWidth > sample.clientWidth + 1
+    if (!failing) return
+    if (emittedNavbarGeometryRecords.size >= NAVBAR_GEOMETRY_DIAGNOSTIC_LIMIT) return
+
+    const values = {
+      width: boundedNavbarGeometryCount(sample.width),
+      contentRight: boundedNavbarGeometryCount(sample.contentRight),
+      settingsLeft: boundedNavbarGeometryCount(sample.settingsLeft),
+      settingsRight: boundedNavbarGeometryCount(sample.settingsRight),
+      nameLeft: boundedNavbarGeometryCount(sample.nameLeft),
+      nameRight: boundedNavbarGeometryCount(sample.nameRight),
+      messengerLeft: boundedNavbarGeometryCount(sample.messengerLeft),
+      referenceRight: boundedNavbarGeometryCount(sample.referenceRight),
+      scrollWidth: boundedNavbarGeometryCount(sample.scrollWidth),
+      clientWidth: boundedNavbarGeometryCount(sample.clientWidth),
+    }
+    if (Object.values(values).some((value) => value === undefined)) return
+
+    const record =
+      "UE_LIVE_NAVBAR_GEOMETRY_V1 project=" +
+      project +
+      " width=" +
+      values.width +
+      " contentRight=" +
+      values.contentRight +
+      " settingsLeft=" +
+      values.settingsLeft +
+      " settingsRight=" +
+      values.settingsRight +
+      " nameLeft=" +
+      values.nameLeft +
+      " nameRight=" +
+      values.nameRight +
+      " messengerLeft=" +
+      values.messengerLeft +
+      " referenceRight=" +
+      values.referenceRight +
+      " scrollWidth=" +
+      values.scrollWidth +
+      " clientWidth=" +
+      values.clientWidth +
+      "\n"
+    if (emittedNavbarGeometryRecords.has(record)) return
+    emittedNavbarGeometryRecords.add(record)
+    process.stdout.write(record)
+  } catch {
+    // Diagnostics must never replace the existing spacing assertions.
+  }
+}
 
 async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
   const liveBaseUrl = process.env.LIVE_BASE_URL
@@ -89,6 +170,18 @@ async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
             clientWidth: element.clientWidth,
             scrollWidth: element.scrollWidth,
           }))
+        reportNavbarGeometryDiagnostic({
+          width,
+          contentRight: contentBox.x + contentBox.width,
+          settingsLeft: settingsBox.x,
+          settingsRight: settingsBox.x + settingsBox.width,
+          nameLeft: nameBox.x,
+          nameRight: nameBox.x + nameBox.width,
+          messengerLeft: messengerBox.x,
+          referenceRight: referenceBox.x + referenceBox.width,
+          scrollWidth: contentMetrics.scrollWidth,
+          clientWidth: contentMetrics.clientWidth,
+        })
         expect(
           messengerBox.x - (referenceBox.x + referenceBox.width),
           label + " reserved nav-to-action gap"

@@ -68,3 +68,13 @@ test("real News content is checked in RU and EN across the approved width matrix
   assert.match(config, /screenshot:\s*["']off["']/u)
   assert.match(config, /video:\s*["']off["']/u)
 })
+
+test("the bounded News overflow diagnostic names only tag and class geometry", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.ok(spec.includes("const NEWS_OVERFLOW_DIAGNOSTIC_LIMIT = 4"))
+  assert.match(spec, /UE_LIVE_NEWS_OVERFLOW_V1 project=/u)
+  assert.ok(spec.includes("/^[a-z0-9.>-]{1,200}$/u"))
+  assert.ok(spec.includes("/^[a-z][a-z0-9-]{0,23}$/u"))
+  assert.match(spec, /metrics\.documentWidth > width \+ 1 \|\| metrics\.viewportWidth !== width/u)
+  assert.doesNotMatch(spec, /innerText|innerHTML/u)
+})

@@ -85,3 +85,13 @@ test("the live run is Chromium-project discoverable with diagnostic artifacts di
   assert.match(config, /screenshot:\s*["']off["']/u)
   assert.match(config, /video:\s*["']off["']/u)
 })
+
+test("the desktop spacing diagnostic emits bounded geometry only on failing samples", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec, /const NAVBAR_GEOMETRY_DIAGNOSTIC_LIMIT = 6/u)
+  assert.match(spec, /UE_LIVE_NAVBAR_GEOMETRY_V1 project=/u)
+  assert.match(spec, /sample\.messengerLeft - sample\.referenceRight < 12/u)
+  assert.match(spec, /sample\.nameRight > sample\.settingsLeft \+ 1/u)
+  assert.match(spec, /sample\.settingsRight > sample\.contentRight \+ 1/u)
+  assert.match(spec, /sample\.scrollWidth > sample\.clientWidth \+ 1/u)
+})

@@ -8614,7 +8614,7 @@ def _assert_conditional_owner_source_bindings(
         source_bytes = _aud154_historical_source_bytes(
             relative_path, (repository_root / relative_path).read_bytes()
         )
-        assert hashlib.sha256(source_bytes).digest() == expected_digest, (
+        assert _projected_sha256(source_bytes) == expected_digest, (
             f"conditional disposition source file SHA-256 changed: {relative_path}"
         )
         source_lines[relative_path] = source_bytes.splitlines()
@@ -33900,6 +33900,7 @@ def _rust_lock_identity(digest_hex: str) -> list[int]:
 
 
 def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _push_probe_source_bytes(path, actual)
     if path in _RUST_LOCK_TEXT_REVERSALS:
         current, previous = next(
             (row[2], row[3]) for row in _RUST_LOCK_REBINDS if row[1] == path
@@ -33937,7 +33938,7 @@ def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _rust_lock_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _push_probe_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     for index, _path, current, previous in _RUST_LOCK_REBINDS:
@@ -33962,9 +33963,10 @@ def _rust_lock_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
 def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     for _index, path, current, _previous in _RUST_LOCK_REBINDS:
-        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == current
+        restored = _ammonia_source_bytes(path, (root / path).read_bytes())
+        assert hashlib.sha256(restored).hexdigest() == current
     ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
-    ledger = json.loads(ledger_bytes)
+    ledger = json.loads(_ammonia_source_bytes(_RUST_LOCK_LEDGER_PATH, ledger_bytes))
     companions = [
         item
         for disposition in ledger["dispositions"]
@@ -34002,7 +34004,7 @@ def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
         policy = json.loads(
             (root / "quality/security-false-positive-dispositions.json").read_bytes()
         )
-        policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
+        policy["records"][494]["identity"]["hashed_secret_bytes"][0] ^= 1
         with pytest.raises(AssertionError, match="rust lock companion identity"):
             _rust_lock_historical_policy(policy)
         return
@@ -34015,6 +34017,522 @@ def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
     if mutation == "ledger_extra":
         actual = ledger_bytes + b"\n"
     else:
-        actual = ledger_bytes.replace(_RUST_LOCK_REBINDS[3][2].encode("ascii"), b"", 1)
+        actual = ledger_bytes.replace(_RUST_LOCK_REBINDS[1][2].encode("ascii"), b"", 1)
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _rust_lock_source_bytes(_RUST_LOCK_LEDGER_PATH, actual)
+
+
+# The live stand push observation gained a closed probe field. scripts/live_stand.py,
+# its Semgrep companion digest, the ledger digest and the SHA-1 identity of that
+# companion hex are rebound one-to-one in one commit; no identity is added and the
+# total stays 512. This is the newest projection: it restores the exact predecessor
+# before the rust lock layer runs.
+_PUSH_PROBE_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_PUSH_PROBE_LIVE_STAND_PATH = "scripts/live_stand.py"
+_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256 = _rust_hex(
+    "24 59 fa 68 ca 3e a7 64 4f b9 1e 5f 32 35 6e 67 76 05 2e ce 06 cc 06 d3 7b b4 c8 94 2f 4b 61 20"
+)
+_PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256 = _rust_hex(
+    "31 24 56 fe 94 57 db e9 e9 a9 1e 9e 88 44 4c 9d 36 88 92 51 46 c1 dc a6 5c ec 90 de f3 72 1e d4"
+)
+_PUSH_PROBE_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "6a 8d 7e 63 af 92 b1 40 b3 2b 85 0d 69 db 72 d0 94 ea 4a a8 46 e5 ca 5b 22 70 6b da 86 75 26 10"
+    )
+)
+# Policy record holding the SHA-1 identity of the live stand companion hex.
+_PUSH_PROBE_IDENTITY_ROW = 495
+# Byte reversals from the newest live stand source back to its base (3c8d20312) bytes.
+_PUSH_PROBE_LIVE_STAND_REVERSALS = (
+    (
+        b")\nfrom scripts.live_stand_playwright_evidence import (\n    _live_playwright_navbar_geometries as _live_playwright_navbar_geometries,\n)\nfrom scripts.live_stand_playwright_evidence import (\n    _live_playwright_news_overflows as _live_playwright_news_overflows,\n",
+        b"",
+    ),
+    (
+        b"    news_overflows = _live_playwright_news_overflows(stdout)\n    navbar_geometries = _live_playwright_navbar_geometries(stdout)\n",
+        b"",
+    ),
+    (
+        b"        probe,\n",
+        b"",
+    ),
+    (
+        b'            f"subscription={str(subscription).lower()} matches={matches} probe={probe}",\n',
+        b'            f"subscription={str(subscription).lower()} matches={matches}",\n',
+    ),
+    (
+        b'            flush=True,\n        )\n    for (\n        project,\n        language,\n        width,\n        doc_width,\n        inner_width,\n        right,\n        el_width,\n        text_length,\n        path,\n    ) in news_overflows:\n        print(\n            f"live E2E news overflow project={project} language={language} width={width} "\n            f"docWidth={doc_width} innerWidth={inner_width} right={right} "\n            f"elWidth={el_width} textLength={text_length} path={path}",\n            flush=True,\n        )\n    for (\n        project,\n        width,\n        content_right,\n        settings_left,\n        settings_right,\n        name_left,\n        name_right,\n        messenger_left,\n        reference_right,\n        scroll_width,\n        client_width,\n    ) in navbar_geometries:\n        print(\n            f"live E2E navbar geometry project={project} width={width} "\n            f"contentRight={content_right} settingsLeft={settings_left} "\n            f"settingsRight={settings_right} nameLeft={name_left} nameRight={name_right} "\n            f"messengerLeft={messenger_left} referenceRight={reference_right} "\n            f"scrollWidth={scroll_width} clientWidth={client_width}",\n',
+        b"",
+    ),
+)
+
+
+def _push_probe_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _push_probe_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _ammonia_source_bytes(path, actual)
+    if path == _PUSH_PROBE_LIVE_STAND_PATH:
+        assert hashlib.sha256(actual).hexdigest() == (
+            _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        historical = actual
+        for before, after in _PUSH_PROBE_LIVE_STAND_REVERSALS:
+            assert historical.count(before) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(before, after, 1)
+        assert hashlib.sha256(historical).hexdigest() == (
+            _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+        ), f"conditional disposition source file SHA-256 changed: {path}"
+        return historical
+    if path != _PUSH_PROBE_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _PUSH_PROBE_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256.encode("ascii")
+    assert actual.count(current) == 1, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual.replace(
+        current, _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256.encode("ascii"), 1
+    )
+    assert hashlib.sha256(historical).digest() == _RUST_LOCK_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+def _push_probe_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = _ammonia_historical_policy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    row = records[_PUSH_PROBE_IDENTITY_ROW]
+    identity = row["identity"]
+    assert identity["path"] == _PUSH_PROBE_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert row["owner"] == "egorribun", (
+        "approval metadata changed for push probe companion"
+    )
+    assert row["expires_on"] == "2027-01-10", (
+        "approval metadata changed for push probe companion"
+    )
+    assert bytes(identity["hashed_secret_bytes"]) == bytes(
+        _push_probe_identity(_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256)
+    ), "live disposition push probe companion identity changed"
+    identity["hashed_secret_bytes"] = _push_probe_identity(
+        _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+    )
+    return restored
+
+
+def test_push_probe_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
+    assert hashlib.sha256(live).hexdigest() == _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+    ledger_bytes = (root / _PUSH_PROBE_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    bound = [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _PUSH_PROBE_LIVE_STAND_PATH
+    ]
+    assert bound == [_PUSH_PROBE_LIVE_STAND_CURRENT_SHA256]
+    historical_live = _push_probe_source_bytes(_PUSH_PROBE_LIVE_STAND_PATH, live)
+    assert (
+        hashlib.sha256(historical_live).hexdigest()
+        == _PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256
+    )
+    historical_ledger = _push_probe_source_bytes(_PUSH_PROBE_LEDGER_PATH, ledger_bytes)
+    assert hashlib.sha256(historical_ledger).digest() == (
+        _RUST_LOCK_LEDGER_CURRENT_SHA256
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _push_probe_historical_policy(policy)
+    assert restored["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _push_probe_identity(_PUSH_PROBE_LIVE_STAND_PREVIOUS_SHA256)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["live_extra", "live_missing", "ledger_extra", "policy"]
+)
+def test_push_probe_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(AssertionError, match="push probe companion identity"):
+            _push_probe_historical_policy(policy)
+        return
+    live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
+    ledger_bytes = (root / _PUSH_PROBE_LEDGER_PATH).read_bytes()
+    if mutation == "live_extra":
+        actual = live + b"\n"
+        path = _PUSH_PROBE_LIVE_STAND_PATH
+    elif mutation == "live_missing":
+        actual = live.replace(b"        probe,\n", b"", 1)
+        path = _PUSH_PROBE_LIVE_STAND_PATH
+    else:
+        actual = ledger_bytes + b"\n"
+        path = _PUSH_PROBE_LEDGER_PATH
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _push_probe_source_bytes(path, actual)
+
+
+# The sanitizer ammonia bump (RUSTSEC-2026-0533) rebinds the wasm sanitizer
+# companions one-to-one: Cargo.toml, Cargo.lock, the source provenance and the
+# wasm binary, plus the ledger digest and their four SHA-1 identities. This is the
+# newest projection: it restores the exact predecessor before the push probe layer
+# runs. The wasm binary has no text predecessor, so its predecessor is the digest
+# alone, carried through the ledger and identity rebinds.
+_AMMONIA_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_AMMONIA_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "e9 3c e6 82 94 8a 0c 3a 9c a3 45 4a 86 68 ad 35 b7 57 e7 a8 7e 9e d1 73 35 a2 17 b5 3a 5b b7 72"
+    )
+)
+_AMMONIA_LEDGER_PREVIOUS_SHA256 = _PUSH_PROBE_LEDGER_CURRENT_SHA256
+# (policy row, companion path, current sha256 hex, predecessor sha256 hex)
+_AMMONIA_REBINDS = (
+    (
+        446,
+        "frontend/wasm-sanitizer/Cargo.toml",
+        _rust_hex(
+            "ee 8e 6d 0f 0f d5 53 b4 40 4d f9 1f 58 82 70 3e 64 9e bb fd d4 00 3b 20 7a 03 25 23 4a 61 78 32"
+        ),
+        _rust_hex(
+            "73 db 9b 6f e0 55 d8 66 2c 76 2d 70 50 e8 18 cb ae 5e 53 7f 91 6c 8e ca d3 4e ba ff 2c 29 b5 7d"
+        ),
+    ),
+    (
+        447,
+        "frontend/wasm-sanitizer/Cargo.lock",
+        _rust_hex(
+            "5e 53 2e 05 23 f2 b5 e6 db f4 31 d2 fe 16 49 f2 54 3e 0c 1e 74 ef 8a 87 55 43 4a 5c fb 0e 3e fc"
+        ),
+        _rust_hex(
+            "7c 6b e0 22 b2 5f 84 d0 09 e4 93 3c 48 02 6d a2 87 a9 a0 bb 1a 16 dc 21 d7 46 ff 84 c5 0d 49 e0"
+        ),
+    ),
+    (
+        444,
+        "frontend/WASM_SOURCE_PROVENANCE.json",
+        _rust_hex(
+            "92 9d 03 b6 85 e2 be 82 fd 8d cd 9c 7f 70 53 e3 25 ba 15 ac b4 92 76 a8 fc 7e 42 a1 21 44 95 0f"
+        ),
+        _rust_hex(
+            "59 16 d8 c2 c8 5b 4d 8a f4 1c 7f f4 75 87 b7 5a 36 50 e7 6f 27 15 4e 39 35 b8 ab 40 7d bd 2d bb"
+        ),
+    ),
+    (
+        450,
+        "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm",
+        _rust_hex(
+            "9f c9 5b 06 d6 42 25 d2 67 9c 74 28 cb 59 e0 9d 17 cd 6f 27 61 85 8c c7 35 41 dc f8 12 a4 f9 50"
+        ),
+        _rust_hex(
+            "ca b4 05 1f e0 31 b3 75 d5 a7 15 4d e0 71 bc 47 ee c8 54 12 3b 46 ac ab c0 64 82 a1 36 8e 86 05"
+        ),
+    ),
+)
+_AMMONIA_TEXT_REVERSALS = {
+    "frontend/wasm-sanitizer/Cargo.toml": (
+        (
+            bytes.fromhex(
+                _rust_hex("61 6d 6d 6f 6e 69 61 20 3d 20 22 34 2e 32 2e 35 22 0a")
+            ),
+            bytes.fromhex(
+                _rust_hex("61 6d 6d 6f 6e 69 61 20 3d 20 22 34 2e 32 2e 34 22 0a")
+            ),
+        ),
+    ),
+    "frontend/wasm-sanitizer/Cargo.lock": (
+        (
+            bytes.fromhex(
+                _rust_hex("76 65 72 73 69 6f 6e 20 3d 20 22 34 2e 32 2e 35 22 0a")
+            ),
+            bytes.fromhex(
+                _rust_hex("76 65 72 73 69 6f 6e 20 3d 20 22 34 2e 32 2e 34 22 0a")
+            ),
+        ),
+        (
+            bytes.fromhex(
+                _rust_hex(
+                    "63 68 65 63 6b 73 75 6d 20 3d 20 22 62 33 34 63 61 34 39 65 34 30 37 63 30 36 64 61 61 63 35 33 66 30 63 34 64 65 62 65 38 66 66 35 64 66 39 63 63 32 61 34 65 39 33 36 39 64 31 36 34 61 35 64 38 36 65 66 38 63 32 31 39 33 31 39 22 0a"
+                )
+            ),
+            bytes.fromhex(
+                _rust_hex(
+                    "63 68 65 63 6b 73 75 6d 20 3d 20 22 31 66 34 35 64 66 61 36 38 35 65 31 65 63 33 33 62 31 62 66 31 61 33 62 39 33 62 38 30 34 37 63 62 64 62 65 66 34 31 62 36 30 34 30 64 65 65 62 62 65 36 62 65 61 37 37 32 30 61 34 35 35 37 34 22 0a"
+                )
+            ),
+        ),
+    ),
+    "frontend/WASM_SOURCE_PROVENANCE.json": (
+        (
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 35 65 35 33 32 65 30 35 32 33 66 32 62 35 65 36 64 62 66 34 33 31 64 32 66 65 31 36 34 39 66 32 35 34 33 65 30 63 31 65 37 34 65 66 38 61 38 37 35 35 34 33 34 61 35 63 66 62 30 65 33 65 66 63 22 0a"
+                )
+            ),
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 37 63 36 62 65 30 32 32 62 32 35 66 38 34 64 30 30 39 65 34 39 33 33 63 34 38 30 32 36 64 61 32 38 37 61 39 61 30 62 62 31 61 31 36 64 63 32 31 64 37 34 36 66 66 38 34 63 35 30 64 34 39 65 30 22 0a"
+                )
+            ),
+        ),
+        (
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 65 65 38 65 36 64 30 66 30 66 64 35 35 33 62 34 34 30 34 64 66 39 31 66 35 38 38 32 37 30 33 65 36 34 39 65 62 62 66 64 64 34 30 30 33 62 32 30 37 61 30 33 32 35 32 33 34 61 36 31 37 38 33 32 22 0a"
+                )
+            ),
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 37 33 64 62 39 62 36 66 65 30 35 35 64 38 36 36 32 63 37 36 32 64 37 30 35 30 65 38 31 38 63 62 61 65 35 65 35 33 37 66 39 31 36 63 38 65 63 61 64 33 34 65 62 61 66 66 32 63 32 39 62 35 37 64 22 0a"
+                )
+            ),
+        ),
+        (
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20 22 30 64 65 62 33 35 63 33 33 64 39 34 64 34 66 64 61 32 37 33 64 36 38 32 64 33 65 30 36 63 62 61 66 38 62 62 34 64 34 66 61 39 31 65 35 34 32 37 65 65 33 31 66 32 30 62 36 33 63 35 64 34 33 61 22 2c 0a"
+                )
+            ),
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 22 73 6f 75 72 63 65 5f 74 72 65 65 5f 73 68 61 32 35 36 22 3a 20 22 30 66 61 31 39 32 62 33 30 33 63 33 38 39 61 34 33 61 62 62 62 32 36 32 36 37 63 31 32 30 64 33 38 30 63 61 33 35 62 64 36 62 31 63 38 66 62 32 30 31 64 66 35 61 34 33 39 37 63 63 36 34 66 30 22 2c 0a"
+                )
+            ),
+        ),
+        (
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 69 7a 65 22 3a 20 37 39 34 31 30 36 2c 0a 20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 39 66 63 39 35 62 30 36 64 36 34 32 32 35 64 32 36 37 39 63 37 34 32 38 63 62 35 39 65 30 39 64 31 37 63 64 36 66 32 37 36 31 38 35 38 63 63 37 33 35 34 31 64 63 66 38 31 32 61 34 66 39 35 30 22 0a"
+                )
+            ),
+            bytes.fromhex(
+                _rust_hex(
+                    "20 20 20 20 20 20 22 73 69 7a 65 22 3a 20 37 39 34 30 34 32 2c 0a 20 20 20 20 20 20 22 73 68 61 32 35 36 22 3a 20 22 63 61 62 34 30 35 31 66 65 30 33 31 62 33 37 35 64 35 61 37 31 35 34 64 65 30 37 31 62 63 34 37 65 65 63 38 35 34 31 32 33 62 34 36 61 63 61 62 63 30 36 34 38 32 61 31 33 36 38 65 38 36 30 35 22 0a"
+                )
+            ),
+        ),
+    ),
+}
+
+
+def _ammonia_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+class _ProjectedDigest(bytes):
+    """Rebuilt binary whose predecessor is known only by verified digest."""
+
+    predecessor_sha256: bytes
+    predecessor_size: int
+
+
+def _projected_sha256(data: bytes) -> bytes:
+    if isinstance(data, _ProjectedDigest):
+        return data.predecessor_sha256
+    return hashlib.sha256(data).digest()
+
+
+_AMMONIA_WASM_PATH = "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm"
+_AMMONIA_WASM_CURRENT_SIZE = 794106
+_AMMONIA_WASM_PREVIOUS_SIZE = 794042
+
+
+def _ammonia_projected_binary(actual: bytes) -> bytes:
+    _row, _path, current, previous = next(
+        row for row in _AMMONIA_REBINDS if row[1] == _AMMONIA_WASM_PATH
+    )
+    assert hashlib.sha256(actual).hexdigest() == current, (
+        f"conditional disposition source file SHA-256 changed: {_AMMONIA_WASM_PATH}"
+    )
+    assert len(actual) == _AMMONIA_WASM_CURRENT_SIZE, (
+        f"conditional disposition source file SHA-256 changed: {_AMMONIA_WASM_PATH}"
+    )
+    projected = _ProjectedDigest(actual)
+    projected.predecessor_sha256 = bytes.fromhex(previous)
+    projected.predecessor_size = _AMMONIA_WASM_PREVIOUS_SIZE
+    return projected
+
+
+def _ammonia_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == _AMMONIA_LEDGER_PATH:
+        assert hashlib.sha256(actual).digest() == _AMMONIA_LEDGER_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for _row, _path, current, _previous in _AMMONIA_REBINDS:
+            current_bytes = current.encode("ascii")
+            assert historical.count(current_bytes) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(current_bytes, _previous.encode("ascii"), 1)
+        assert hashlib.sha256(historical).digest() == _AMMONIA_LEDGER_PREVIOUS_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    rebind = next((row for row in _AMMONIA_REBINDS if row[1] == path), None)
+    if rebind is None:
+        return actual
+    _row, _path, current, previous = rebind
+    assert hashlib.sha256(actual).hexdigest() == current, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    if path == _AMMONIA_WASM_PATH:
+        return _ammonia_projected_binary(actual)
+    if path not in _AMMONIA_TEXT_REVERSALS:
+        return actual
+    historical = actual
+    for before, after in _AMMONIA_TEXT_REVERSALS[path]:
+        assert historical.count(before) == 1, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = historical.replace(before, after, 1)
+    assert hashlib.sha256(historical).hexdigest() == previous, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+def _ammonia_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    for index, _path, current, previous in _AMMONIA_REBINDS:
+        row = records[index]
+        identity = row["identity"]
+        assert identity["path"] == _AMMONIA_LEDGER_PATH
+        assert identity["type"] == "Hex High Entropy String"
+        assert row["category"] == "public_integrity_digest"
+        assert row["owner"] == "egorribun", (
+            "approval metadata changed for ammonia companion"
+        )
+        assert row["expires_on"] == "2027-01-10", (
+            "approval metadata changed for ammonia companion"
+        )
+        assert bytes(identity["hashed_secret_bytes"]) == bytes(
+            _ammonia_identity(current)
+        ), "live disposition ammonia companion identity changed"
+        identity["hashed_secret_bytes"] = _ammonia_identity(previous)
+    return restored
+
+
+def test_ammonia_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for _index, path, current, _previous in _AMMONIA_REBINDS:
+        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == current
+    ledger_bytes = (root / _AMMONIA_LEDGER_PATH).read_bytes()
+    assert hashlib.sha256(ledger_bytes).digest() == _AMMONIA_LEDGER_CURRENT_SHA256
+    ledger = json.loads(ledger_bytes)
+    companions = ledger["dispositions"][14]["companions"]
+    bound = {
+        item["path"]: item["sha256"]
+        for item in companions
+        if item["path"] in {path for _i, path, _c, _p in _AMMONIA_REBINDS}
+    }
+    assert bound == {path: current for _i, path, current, _p in _AMMONIA_REBINDS}
+    historical_ledger = _ammonia_source_bytes(_AMMONIA_LEDGER_PATH, ledger_bytes)
+    assert hashlib.sha256(historical_ledger).digest() == _AMMONIA_LEDGER_PREVIOUS_SHA256
+    for _index, path, _current, previous in _AMMONIA_REBINDS:
+        restored = _ammonia_source_bytes(path, (root / path).read_bytes())
+        if path in _AMMONIA_TEXT_REVERSALS:
+            assert hashlib.sha256(restored).hexdigest() == previous
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _ammonia_historical_policy(policy)
+    for index, _path, _current, previous in _AMMONIA_REBINDS:
+        assert restored_policy["records"][index]["identity"]["hashed_secret_bytes"] == (
+            _ammonia_identity(previous)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["toml", "lock", "provenance", "ledger_extra", "policy"]
+)
+def test_ammonia_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
+        with pytest.raises(AssertionError, match="ammonia companion identity"):
+            _ammonia_historical_policy(policy)
+        return
+    paths = {
+        "toml": "frontend/wasm-sanitizer/Cargo.toml",
+        "lock": "frontend/wasm-sanitizer/Cargo.lock",
+        "provenance": "frontend/WASM_SOURCE_PROVENANCE.json",
+        "ledger_extra": _AMMONIA_LEDGER_PATH,
+    }
+    path = paths[mutation]
+    actual = (root / path).read_bytes() + b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _ammonia_source_bytes(path, actual)
+
+
+def test_ammonia_wasm_projection_accepts_exact_rebuilt_digest() -> None:
+    root = Path(__file__).resolve().parents[1]
+    rebuilt = (root / _AMMONIA_WASM_PATH).read_bytes()
+    projected = _ammonia_source_bytes(_AMMONIA_WASM_PATH, rebuilt)
+    assert isinstance(projected, _ProjectedDigest)
+    assert bytes(projected) == rebuilt
+    assert _projected_sha256(projected) == bytes.fromhex(
+        _rust_hex(
+            "ca b4 05 1f e0 31 b3 75 d5 a7 15 4d e0 71 bc 47 ee c8 54 12 3b 46 ac ab c0 64 82 a1 36 8e 86 05"
+        )
+    )
+    assert projected.predecessor_size == _AMMONIA_WASM_PREVIOUS_SIZE
+
+
+@pytest.mark.parametrize("mutation", ["flip_byte", "extra_byte", "truncate"])
+def test_ammonia_wasm_projection_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    rebuilt = bytearray((root / _AMMONIA_WASM_PATH).read_bytes())
+    if mutation == "flip_byte":
+        rebuilt[len(rebuilt) // 2] ^= 1
+        drifted = bytes(rebuilt)
+    elif mutation == "extra_byte":
+        drifted = bytes(rebuilt) + b"\x00"
+    else:
+        drifted = bytes(rebuilt[:-1])
+    with pytest.raises(
+        AssertionError,
+        match=rf"conditional disposition source file SHA-256 changed: {re.escape(_AMMONIA_WASM_PATH)}",
+    ):
+        _ammonia_source_bytes(_AMMONIA_WASM_PATH, drifted)
+
+
+def test_ammonia_wasm_projection_never_applies_to_other_paths() -> None:
+    data = b"not the sanitizer binary"
+    for other in (
+        "frontend/wasm-sanitizer/pkg/wasm_sanitizer.js",
+        "frontend/rust-crypto/pkg/rust_crypto_bg.wasm",
+    ):
+        result = _ammonia_source_bytes(other, data)
+        assert type(result) is bytes
+        assert result == data
+
+
+def test_projected_sha256_on_plain_bytes_is_sha256() -> None:
+    data = b"plain bytes"
+    assert _projected_sha256(data) == hashlib.sha256(data).digest()

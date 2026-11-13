@@ -162,7 +162,9 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
     spec,
     /await page\.addInitScript\([\s\S]*?SERVICE_WORKER_BOOTSTRAP_EVENT[\s\S]*?await loginAs\(page,[\s\S]*?await page\.goto\(new URL\(["']\/dashboard["'],[\s\S]*?await page\.waitForFunction\([\s\S]*?__ueServiceWorkerBootstrapStatus[\s\S]*?expect\(serviceWorkerBootstrapStatus\)\.toBe\(["']ready["']\)[\s\S]*?const trigger =/u
   )
-  assert.doesNotMatch(spec, /page\.route\(|routeWebSocket\(|\.fulfill\(/u)
+  assert.doesNotMatch(spec, /page\.route\(|routeWebSocket\(/u)
+  // The only fulfilled route is the pinned context-level demo-image route asserted below.
+  assert.equal(spec.match(/\.fulfill\(/gu)?.length, 1)
   assert.match(spec, /newCDPSession\(page\)/u)
   assert.match(spec, /HeapProfiler\.collectGarbage/u)
   assert.match(spec, /Memory\.getDOMCounters/u)
@@ -319,4 +321,16 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
   ]) {
     assert.ok(spec.includes(marker), `missing Story setup diagnostic stage marker: ${marker}`)
   }
+
+  assert.match(spec, /const PINNED_EXTERNAL_IMAGE_ROUTE = "https:\/\/picsum\.photos\/\*\*"/u)
+  assert.match(
+    spec,
+    /const PINNED_EXTERNAL_IMAGE_PATH = fileURLToPath\(\s*new URL\("\.\.\/\.\.\/public\/fallbacks\/placeholder\.png", import\.meta\.url\)\s*\)/u
+  )
+  assert.match(spec, /readFile\(PINNED_EXTERNAL_IMAGE_PATH\)/u)
+  assert.match(
+    spec,
+    /await page\s*\.context\(\)\s*\.route\(PINNED_EXTERNAL_IMAGE_ROUTE,\s*\(route\) =>\s*route\.fulfill\(\{ status: 200, contentType: "image\/png", body: pinnedExternalImage \}\)/u
+  )
+  assert.doesNotMatch(spec, /await page\.route\(/u)
 })

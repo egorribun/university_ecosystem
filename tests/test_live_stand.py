@@ -3048,9 +3048,8 @@ def test_live_playwright_push_observation_accepts_closed_records(
     matches: str,
 ) -> None:
     row = (
-        f"UE_LIVE_PUSH_OBS_V1 project={project} permission={permission} "
-        f"ready={ready} state={state} controller={controller} "
-        f"subscription={subscription} matches={matches}" + newline
+        f"UE_LIVE_PUSH_OBS_V1 project={project} permission={permission} ready={ready} "
+        f"state={state} controller={controller} subscription={subscription} matches={matches} probe=skipped{newline}"
     )
     assert live_stand._live_playwright_push_observations(row) == [
         (
@@ -3061,6 +3060,7 @@ def test_live_playwright_push_observation_accepts_closed_records(
             controller == "1",
             subscription == "1",
             int(matches),
+            "skipped",
         )
     ]
 
@@ -3068,7 +3068,7 @@ def test_live_playwright_push_observation_accepts_closed_records(
 def test_live_playwright_push_observation_rejects_malformed_records() -> None:
     valid = (
         "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
-        "state=activated controller=1 subscription=1 matches=1\n"
+        "state=activated controller=1 subscription=1 matches=1 probe=skipped\n"
     )
     malformed = (
         valid.replace("project=desktop", "project=private-project"),
@@ -3082,7 +3082,7 @@ def test_live_playwright_push_observation_rejects_malformed_records() -> None:
         valid[:-1] + " \n",
         valid[:-1],
         valid.replace("permission=granted", "permission=granted\x1b[0m"),
-        valid.replace("matches=1\n", "matches=1\u202e\n"),
+        valid.replace("probe=skipped\n", "probe=skipped\u202e\n"),
         valid[:-1] + " " + "x" * 300 + "\n",
     )
     for row in malformed:
@@ -3091,25 +3091,25 @@ def test_live_playwright_push_observation_rejects_malformed_records() -> None:
 
 def test_live_playwright_push_observation_caps_and_deduplicates() -> None:
     rows = [
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=default "
-        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted "
-        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied "
-        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported "
-        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
-        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=default "
-        "ready=resolved state=activated controller=1 subscription=1 matches=0\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=default ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=default ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
     ]
     parsed = live_stand._live_playwright_push_observations(
         rows[0] + rows[1] + rows[0] + rows[2] + rows[3] + rows[4]
     )
     assert parsed == [
-        ("desktop", "default", "resolved", "activated", True, True, 0),
-        ("desktop", "granted", "resolved", "activated", True, True, 0),
-        ("desktop", "denied", "resolved", "activated", True, True, 0),
-        ("desktop", "unsupported", "resolved", "activated", True, True, 0),
+        ("desktop", "default", "resolved", "activated", True, True, 0, "skipped"),
+        ("desktop", "granted", "resolved", "activated", True, True, 0, "skipped"),
+        ("desktop", "denied", "resolved", "activated", True, True, 0, "skipped"),
+        ("desktop", "unsupported", "resolved", "activated", True, True, 0, "skipped"),
     ]
 
 
@@ -3120,7 +3120,7 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
 ) -> None:
     row = (
         "UE_LIVE_PUSH_OBS_V1 project=mobile permission=granted ready=timeout "
-        "state=activated controller=1 subscription=1 matches=0\n"
+        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n"
     )
     private = "private push endpoint notification-id message-content raw-error"
     completed = subprocess.CompletedProcess(
@@ -3137,7 +3137,7 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E push project=mobile permission=granted ready=timeout "
-        "state=activated controller=true subscription=true matches=0",
+        "state=activated controller=true subscription=true matches=0 probe=skipped",
         "live E2E outcome=failed exit_code=1",
     ]
     assert private not in printed.out + printed.err
@@ -16067,3 +16067,179 @@ def test_live_stand_exercises_the_default_socket_budget_at_both_edges() -> None:
         assert "events {$WS_UPGRADE_RATE_PER_MINUTE:120}" in source
     config = (ROOT / "services/ws-hub/pkg/config/config.go").read_text(encoding="utf-8")
     assert "const DefaultWSUpgradeRatePerMinute = 120" in config
+
+
+@pytest.mark.parametrize(
+    "probe",
+    [
+        "skipped",
+        "subscribed",
+        "permission-denied",
+        "push-service-unavailable",
+        "push-service-error",
+        "not-allowed",
+        "abort",
+        "invalid-state",
+        "not-supported",
+        "other",
+        "timeout",
+    ],
+)
+def test_live_playwright_push_observation_accepts_each_closed_probe(probe: str) -> None:
+    row = (
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
+        f"state=activated controller=1 subscription=0 matches=0 probe={probe}\n"
+    )
+    assert live_stand._live_playwright_push_observations(row) == [
+        ("desktop", "granted", "resolved", "activated", True, False, 0, probe)
+    ]
+
+
+def test_live_playwright_push_observation_rejects_unknown_or_missing_probe() -> None:
+    valid = (
+        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=1 probe=skipped\n"
+    )
+    malformed = (
+        valid.replace("probe=skipped", "probe=private"),
+        valid.replace("probe=skipped", "probe=Skipped"),
+        valid.replace("probe=skipped", "probe=timeout-extra"),
+        valid.replace(" probe=skipped", ""),
+        valid.replace("probe=skipped", "probe=skipped probe=skipped"),
+        valid.replace("probe=skipped", "probe=other‮"),
+    )
+    for row in malformed:
+        assert live_stand._live_playwright_push_observations(row) == []
+
+
+_NEWS_OVERFLOW_VALID = (
+    "UE_LIVE_NEWS_OVERFLOW_V1 project=desktop language=ru width=360 "
+    "docWidth=412 innerWidth=360 right=401 elWidth=380 textLength=120 "
+    "path=body>div.shell>main>article.card\n"
+)
+
+
+def test_live_playwright_news_overflow_accepts_closed_record() -> None:
+    assert live_stand._live_playwright_news_overflows(_NEWS_OVERFLOW_VALID) == [
+        (
+            "desktop",
+            "ru",
+            360,
+            412,
+            360,
+            401,
+            380,
+            120,
+            "body>div.shell>main>article.card",
+        )
+    ]
+
+
+def test_live_playwright_news_overflow_rejects_bad_path_range_and_extra_fields() -> (
+    None
+):
+    valid = _NEWS_OVERFLOW_VALID
+    malformed = (
+        valid.replace("path=body>div.shell", "path=body>DIV.shell"),
+        valid.replace("path=body>div.shell", "path=body>div private"),
+        valid.replace("path=body>div.shell>main>article.card", "path=" + "a" * 201),
+        valid.replace(
+            "path=body>div.shell>main>article.card", "path=" + "\u202e" + "a"
+        ),
+        valid.replace("width=360", "width=500"),
+        valid.replace("docWidth=412", "docWidth=100000"),
+        valid.replace("right=401", "right=-1"),
+        valid.replace("textLength=120", "textLength=0120"),
+        valid.replace("language=ru", "language=de"),
+        valid.replace("project=desktop", "project=private"),
+        valid[:-1] + " text=secret\n",
+        valid.replace("elWidth=380 ", ""),
+    )
+    for row in malformed:
+        assert live_stand._live_playwright_news_overflows(row) == [], row
+
+
+def test_live_playwright_news_overflow_caps_and_deduplicates_at_four() -> None:
+    rows = [
+        f"UE_LIVE_NEWS_OVERFLOW_V1 project={project} language={language} width={width} "
+        "docWidth=412 innerWidth=360 right=401 elWidth=380 textLength=120 path=body>main\n"
+        for project in ("desktop", "mobile")
+        for language in ("ru", "en")
+        for width in (360, 390, 768)
+    ]
+    parsed = live_stand._live_playwright_news_overflows(
+        rows[0] + rows[0] + "".join(rows)
+    )
+    assert len(parsed) == 4
+    assert len({record[:3] for record in parsed}) == 4
+
+
+_NAVBAR_GEOMETRY_VALID = (
+    "UE_LIVE_NAVBAR_GEOMETRY_V1 project=desktop width=1349 contentRight=1200 "
+    "settingsLeft=1180 settingsRight=1220 nameLeft=900 nameRight=1100 "
+    "messengerLeft=1000 referenceRight=1000 scrollWidth=1200 clientWidth=1200\n"
+)
+
+
+def test_live_playwright_navbar_geometry_accepts_closed_record() -> None:
+    assert live_stand._live_playwright_navbar_geometries(_NAVBAR_GEOMETRY_VALID) == [
+        ("desktop", 1349, 1200, 1180, 1220, 900, 1100, 1000, 1000, 1200, 1200)
+    ]
+
+
+def test_live_playwright_navbar_geometry_rejects_range_and_extra_fields() -> None:
+    valid = _NAVBAR_GEOMETRY_VALID
+    malformed = (
+        valid.replace("width=1349", "width=100000"),
+        valid.replace("nameLeft=900", "nameLeft=-900"),
+        valid.replace("project=desktop", "project=private"),
+        valid.replace("clientWidth=1200", "clientWidth=1200 extra=1"),
+        valid.replace("messengerLeft=1000 ", ""),
+        valid[:-1] + " private-text\n",
+    )
+    for row in malformed:
+        assert live_stand._live_playwright_navbar_geometries(row) == [], row
+
+
+def test_live_playwright_navbar_geometry_caps_and_deduplicates_at_six() -> None:
+    rows = [
+        _NAVBAR_GEOMETRY_VALID.replace("width=1349", f"width={width}")
+        for width in range(1000, 1010)
+    ]
+    parsed = live_stand._live_playwright_navbar_geometries(
+        rows[0] + rows[0] + "".join(rows)
+    )
+    assert len(parsed) == 6
+    assert len({record[1] for record in parsed}) == 6
+
+
+def test_live_playwright_prints_layout_diagnostics_from_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    private = "private layout text notification-id raw-error"
+    stdout = _NEWS_OVERFLOW_VALID + _NAVBAR_GEOMETRY_VALID + private + "\n"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=stdout.encode(),
+        stderr=b"",
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    lines = printed.out.splitlines()
+    assert (
+        "live E2E news overflow project=desktop language=ru width=360 docWidth=412 "
+        "innerWidth=360 right=401 elWidth=380 textLength=120 "
+        "path=body>div.shell>main>article.card"
+    ) in lines
+    assert (
+        "live E2E navbar geometry project=desktop width=1349 contentRight=1200 "
+        "settingsLeft=1180 settingsRight=1220 nameLeft=900 nameRight=1100 "
+        "messengerLeft=1000 referenceRight=1000 scrollWidth=1200 clientWidth=1200"
+    ) in lines
+    assert private not in printed.out + printed.err

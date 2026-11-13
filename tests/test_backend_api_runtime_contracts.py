@@ -535,13 +535,16 @@ async def test_admin_get_user_topics_success():
     target_user = MagicMock()
     target_user.id = uuid.uuid4()
     target_user.email = "test@example.com"
-    target_user.push_topic_preferences = UserPushTopic(
-        user_id=target_user.id, topics=["system"]
-    )
+    saved_at = datetime(2026, 11, 13, tzinfo=UTC)
+    preference = UserPushTopic(user_id=target_user.id, topics=["system"])
+    preference.updated_at = saved_at
 
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = target_user
-    db.execute.return_value = mock_res
+    # The handler reads the user, then the saved preference row itself.
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = target_user
+    preference_res = MagicMock()
+    preference_res.scalar_one_or_none.return_value = preference
+    db.execute.side_effect = [user_res, preference_res]
 
     with patch(
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
@@ -556,6 +559,8 @@ async def test_admin_get_user_topics_success():
         assert res.user_id == target_user.id
         assert res.email == target_user.email
         assert "system.release" in res.topics
+        assert res.updated_at == saved_at
+        assert db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -600,13 +605,16 @@ async def test_admin_update_user_topics_success():
     target_user = MagicMock()
     target_user.id = uuid.uuid4()
     target_user.email = "test@example.com"
-    target_user.push_topic_preferences = UserPushTopic(
-        user_id=target_user.id, topics=["system"]
-    )
+    saved_at = datetime(2026, 11, 13, tzinfo=UTC)
+    preference = UserPushTopic(user_id=target_user.id, topics=["system"])
+    preference.updated_at = saved_at
 
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = target_user
-    db.execute.return_value = mock_res
+    # The handler reads the user, then re-reads the committed preference row.
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = target_user
+    preference_res = MagicMock()
+    preference_res.scalar_one_or_none.return_value = preference
+    db.execute.side_effect = [user_res, preference_res]
 
     with (
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
@@ -625,6 +633,9 @@ async def test_admin_update_user_topics_success():
         )
         assert res.user_id == target_user.id
         assert "system.release" in res.topics
+        assert res.updated_at == saved_at
+        db.commit.assert_awaited_once()
+        db.refresh.assert_not_awaited()
 
 
 @pytest.mark.asyncio

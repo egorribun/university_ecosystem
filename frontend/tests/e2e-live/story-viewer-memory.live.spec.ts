@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
 import {
   SERVICE_WORKER_BOOTSTRAP_EVENT,
   type ServiceWorkerBootstrapEventDetail,
@@ -16,6 +18,14 @@ const SEEDED_STORY_TITLE = /(?:Сессия: советы по подготов�
 const WARM_UP_CYCLES = 1
 const MEASURED_CYCLES = 20
 const HEAP_PLATEAU_TOLERANCE_BYTES = 512 * 1024
+// The seeded story cover is hosted on the third-party demo-image CDN. Its latency must
+// not decide the memory plateau, so that host is answered with a repository fixture.
+// The route is set on the browser context (not the page) so service-worker fetches,
+// which bypass page-level routes, are covered too. The assertions are unchanged.
+const PINNED_EXTERNAL_IMAGE_ROUTE = "https://picsum.photos/**"
+const PINNED_EXTERNAL_IMAGE_PATH = fileURLToPath(
+  new URL("../../public/fallbacks/placeholder.png", import.meta.url)
+)
 
 type DOMCounters = {
   documents: number
@@ -369,6 +379,12 @@ storyVisibilityTest(
   async ({ page }, testInfo) => {
     try {
       markStorySetupStage(page, "bootstrap-listener")
+      const pinnedExternalImage = await readFile(PINNED_EXTERNAL_IMAGE_PATH)
+      await page
+        .context()
+        .route(PINNED_EXTERNAL_IMAGE_ROUTE, (route) =>
+          route.fulfill({ status: 200, contentType: "image/png", body: pinnedExternalImage })
+        )
       await page.addInitScript((eventName: string) => {
         const observedWindow = window as StoryBootstrapProbeWindow
         observedWindow.__ueServiceWorkerBootstrapStatus = null
