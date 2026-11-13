@@ -18,7 +18,12 @@ from scripts.quality.dast_privacy import prepare_target
 from scripts.quality.zap_evidence_pipeline import prepare_publication
 from scripts.quality.zap_findings_gate import evaluate_alerts
 from scripts.quality.zap_report_binding import verify_payload
-from scripts.quality.zap_run_provenance import _identity, _object, verify_run
+from scripts.quality.zap_run_provenance import (
+    ScannerExitError,
+    _identity,
+    _object,
+    verify_run,
+)
 from scripts.quality.zap_runner import run_scan
 from scripts.quality.zap_sarif_producer import read_payload
 
@@ -284,6 +289,14 @@ def main(argv: list[str] | None = None) -> int:
     except ScanBudgetExceeded:
         print(
             "::error::ZAP scanner did not finish within its time budget; scan result is unknown.",
+            file=sys.stderr,
+        )
+        return 1
+    except ScannerExitError as error:
+        code = "unknown" if error.exit_code is None else str(error.exit_code)
+        cause = "" if error.error_class is None else f" after {error.error_class}"
+        print(
+            f"::error::ZAP scanner exited with code {code}{cause}; scan result is unknown.",
             file=sys.stderr,
         )
         return 1

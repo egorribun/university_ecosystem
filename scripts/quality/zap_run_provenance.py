@@ -124,6 +124,55 @@ def _validate_report_site(payload: bytes, target: str) -> None:
     raise ValueError("ZAP report has no matching target site")
 
 
+# zap-full-scan.py prints `ERROR <class 'X'>` for an unexpected exception. Only
+# that exact form is read: it names a code identifier, never a URL or a message.
+_SCANNER_ERROR_CLASS = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,5}"
+)
+_SCANNER_ERROR_LINE = re.compile(
+    rb"^ERROR <class '([^'\r\n]{1,400})'>\r?$", re.MULTILINE
+)
+_SCANNER_LOG_TAIL_BYTES = 65536
+
+
+class ScannerExitError(ValueError):
+    """A scanner process ended without a documented completed exit code.
+
+    Only the integer code and an exception class name are kept, so a hosted run
+    can say why the result is unknown (for example 3 for a scanner exception or
+    137 for a SIGKILL such as an out-of-memory kill) without exposing scanner
+    output or the target.
+    """
+
+    def __init__(self, exit_code: object, error_class: object = None) -> None:
+        super().__init__("ZAP scanner did not complete")
+        self.exit_code = (
+            exit_code if type(exit_code) is int and -255 <= exit_code <= 255 else None
+        )
+        self.error_class = (
+            error_class
+            if isinstance(error_class, str)
+            and _SCANNER_ERROR_CLASS.fullmatch(error_class) is not None
+            else None
+        )
+
+
+def _scanner_error_class(work: Path) -> str | None:
+    """Return the last upstream exception class from the private scanner log."""
+    try:
+        with (work / "stdout.log").open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - _SCANNER_LOG_TAIL_BYTES))
+            tail = handle.read(_SCANNER_LOG_TAIL_BYTES)
+    except OSError:
+        return None
+    matches = _SCANNER_ERROR_LINE.findall(tail)
+    if not matches:
+        return None
+    candidate = matches[-1].decode("ascii", errors="replace")
+    return candidate if _SCANNER_ERROR_CLASS.fullmatch(candidate) else None
+
+
 def finish_run(
     work: Path, identity: dict[str, str], nonce: str, exit_code: int, target: str
 ) -> dict[str, Any]:
@@ -131,7 +180,7 @@ def finish_run(
     context = _context(work, identity, nonce)
     # Official zap-full-scan.py: 0=success, 1=FAIL findings, 2=WARN, 3=error.
     if type(exit_code) is not int or exit_code not in (0, 1, 2):
-        raise ValueError("ZAP scanner did not complete")
+        raise ScannerExitError(exit_code, _scanner_error_class(work))
     payload = read_payload(work / "scan" / "report_json.json")
     build_report(payload)
     _validate_report_site(payload, target)

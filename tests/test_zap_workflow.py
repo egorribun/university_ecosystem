@@ -559,6 +559,38 @@ def test_scanner_budget_expiry_fails_closed_with_a_specific_message(
     assert not public.exists()
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "error_class", "shown"),
+    [
+        (3, "ValueError", "3 after ValueError"),
+        (137, None, "137"),
+        (999, None, "unknown"),
+    ],
+)
+def test_scanner_exit_is_reported_without_scanner_output(
+    source, monkeypatch, capsys, exit_code, error_class, shown
+):
+    root, env, work, public = source
+    m = module()
+    provenance = importlib.import_module("scripts.quality.zap_run_provenance")
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    async def crashed(target_file, rules_file, work, identity, timeout_seconds):
+        raise provenance.ScannerExitError(exit_code, error_class)
+
+    monkeypatch.setattr(m, "run_scan", crashed)
+    flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
+    status = str(root.parent / "stand-status.txt")
+    (root.parent / "stand-status.txt").write_text(STATUS_LINE, encoding="utf-8")
+    assert m.main(["prepare", *flags, "--status-in", status]) == 1
+    err = capsys.readouterr().err
+    assert f"ZAP scanner exited with code {shown}; scan result is unknown." in err
+    assert "evidence validation failed" not in err
+    assert TARGET not in err
+    assert not public.exists()
+
+
 @pytest.mark.parametrize("event_name", ["schedule", "workflow_dispatch"])
 def test_scheduled_and_manual_scans_share_the_owned_stand_target(
     source, monkeypatch, event_name

@@ -72,9 +72,47 @@ def test_scanner_errors_do_not_create_success_receipt(
     tmp_path: Path, exit_code: int
 ) -> None:
     module, work, nonce, _ = _start(tmp_path)
-    with pytest.raises(ValueError):
+    with pytest.raises(module.ScannerExitError) as raised:
         module.finish_run(work, IDENTITY, nonce, exit_code, TARGET)
+    assert isinstance(raised.value, ValueError)
+    # Only a plain bounded integer is kept; a bool is not an exit code.
+    assert raised.value.exit_code == (None if exit_code is True else exit_code)
+    assert raised.value.error_class is None
     assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("log", "expected"),
+    [
+        (b"Total of 3 URLs\nERROR <class 'ValueError'>\n", "ValueError"),
+        (
+            b"ERROR <class 'KeyError'>\r\n"
+            b"ERROR <class 'requests.exceptions.ReadTimeout'>\r\n",
+            "requests.exceptions.ReadTimeout",
+        ),
+        (b"ERROR http://127.0.0.1:8080/private-path failed\n", None),
+        (b"ERROR <class 'x y'>\n", None),
+        (b"WARN <class 'ValueError'>\n", None),
+        (b"", None),
+    ],
+)
+def test_scanner_exit_reads_only_the_upstream_exception_class(
+    tmp_path: Path, log: bytes, expected: str | None
+) -> None:
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.exit_code == 3
+    assert raised.value.error_class == expected
+
+
+@pytest.mark.parametrize("exit_code", [256, -256, "3", None, 3.0])
+def test_scanner_exit_error_keeps_only_bounded_values(exit_code: object) -> None:
+    error = zap_run_provenance.ScannerExitError(exit_code, "not a class name!")
+    assert str(error) == "ZAP scanner did not complete"
+    assert error.exit_code is None
+    assert error.error_class is None
 
 
 def test_existing_workdir_is_never_reused(tmp_path: Path) -> None:
