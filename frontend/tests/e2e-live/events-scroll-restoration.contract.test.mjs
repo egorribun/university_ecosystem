@@ -170,6 +170,11 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
     2,
     "both Back navigations must restore the accessible Archive tab state"
   )
+  assert.match(
+    spec,
+    /await selectedEvent\.click\(\)[\s\S]*?await page\.mouse\.move\(0, 0\)\s+await page\.goBack\(\)/u,
+    "the pointer must be moved off the card before the first Back navigation"
+  )
   assert.match(spec, /selectedUrl\.href/u)
   assert.match(spec, /originalPosition\.scrollY/u)
   assert.match(spec, /originalPosition\.top/u)

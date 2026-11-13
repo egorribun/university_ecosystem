@@ -129,6 +129,11 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
     top: Math.round(heading.getBoundingClientRect().top),
   }))
 
+  // The pointer still sits where the card was clicked. Once Back restores the card
+  // under it, the CSS hover lift (hover:-translate-y-0.5) shifts the link by 2px and
+  // opens the quick view, which is hover drift rather than scroll drift. Move the
+  // pointer off the content so the restored position is measured without hover.
+  await page.mouse.move(0, 0)
   await page.goBack()
   await expect(page).toHaveURL(archiveUrl)
   await expect(archiveTab).toHaveAttribute("aria-selected", "true")
