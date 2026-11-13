@@ -57,6 +57,63 @@ describe("parsePushEventData", () => {
         },
       })
     ).toEqual({})
+    expect(parsePushEventData({ json: () => ["title"], text: () => "ignored" })).toEqual({})
+  })
+
+  it("lifts the backend's nested notification options into the payload", () => {
+    // app/services/webpush.py sends {title, options, data}; the persisted
+    // notification id travels as options.tag.
+    const backendPayload = {
+      title: "Sender",
+      options: {
+        body: "Message text",
+        icon: "/icon.png",
+        badge: "/badge.png",
+        tag: "0b0d6c1e-6a52-4c39-9a0e-3c7d5b1f2a90",
+        renotify: false,
+        requireInteraction: false,
+        silent: true,
+        timestamp: 1700000000,
+        vibrate: [],
+        actions: [{ action: "open", title: "Open" }],
+        unknown: "dropped",
+      },
+      data: { url: "/messenger", notificationId: "0b0d6c1e-6a52-4c39-9a0e-3c7d5b1f2a90" },
+    }
+    const parsed = parsePushEventData({
+      json: () => backendPayload,
+      text: () => JSON.stringify(backendPayload),
+    })
+    expect(parsed).toEqual({
+      title: "Sender",
+      body: "Message text",
+      icon: "/icon.png",
+      badge: "/badge.png",
+      tag: "0b0d6c1e-6a52-4c39-9a0e-3c7d5b1f2a90",
+      renotify: false,
+      requireInteraction: false,
+      silent: true,
+      timestamp: 1700000000,
+      vibrate: [],
+      actions: [{ action: "open", title: "Open" }],
+      data: backendPayload.data,
+    })
+    expect(buildNotificationDetails(parsed).options.tag).toBe(backendPayload.options.tag)
+  })
+
+  it("keeps flat fields over nested options and ignores non-object options", () => {
+    expect(
+      parsePushEventData({
+        json: () => ({ title: "T", tag: "flat", options: { tag: "nested", body: "nested body" } }),
+        text: () => "",
+      })
+    ).toEqual({ title: "T", tag: "flat", body: "nested body" })
+    expect(
+      parsePushEventData({ json: () => ({ title: "T", options: ["tag"] }), text: () => "" })
+    ).toEqual({ title: "T" })
+    expect(
+      parsePushEventData({ json: () => ({ title: "T", options: null }), text: () => "" })
+    ).toEqual({ title: "T" })
   })
 })
 

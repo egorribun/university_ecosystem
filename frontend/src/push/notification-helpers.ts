@@ -73,6 +73,42 @@ export type ExtendedNotificationOptions = NotificationOptions & {
   actions?: NotificationActionOption[]
 }
 
+// Notification options the backend sends nested under `options`
+// (app/services/webpush.py builds {title, options, data}, mirroring
+// showNotification(title, options)).
+const NESTED_OPTION_KEYS = [
+  "body",
+  "icon",
+  "badge",
+  "tag",
+  "renotify",
+  "requireInteraction",
+  "silent",
+  "timestamp",
+  "vibrate",
+  "actions",
+] as const
+
+/**
+ * Accept both the backend's canonical `{title, options, data}` payload and the
+ * flat form. Nested options fill only fields the flat form does not set, so the
+ * persisted notification id (`options.tag`), body, actions and the quiet-hours
+ * `silent` flag survive into showNotification.
+ */
+function normalizePushPayload(parsed: Record<string, unknown>): PushPayload {
+  const { options, ...rest } = parsed
+  const payload: Record<string, unknown> = { ...rest }
+  if (options && typeof options === "object" && !Array.isArray(options)) {
+    const nested = options as Record<string, unknown>
+    for (const key of NESTED_OPTION_KEYS) {
+      if (payload[key] === undefined && nested[key] !== undefined) {
+        payload[key] = nested[key]
+      }
+    }
+  }
+  return payload as PushPayload
+}
+
 export function parsePushEventData(
   data: { json: () => unknown; text: () => string } | null | undefined
 ): PushPayload {
@@ -82,8 +118,8 @@ export function parsePushEventData(
 
   try {
     const parsed = data.json()
-    if (parsed && typeof parsed === "object") {
-      return parsed as PushPayload
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return normalizePushPayload(parsed as Record<string, unknown>)
     }
     return {}
   } catch (_error) {
