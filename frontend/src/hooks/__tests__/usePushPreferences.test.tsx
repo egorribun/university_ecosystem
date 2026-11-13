@@ -830,6 +830,80 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("keeps a newer topic choice when a refetch started before the write answers late", async () => {
+    mockFetchPushTopics.mockResolvedValue(
+      serverTopics(true, ["news.published", "events.published", "system.release"])
+    )
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.topicsReady).toBe(true))
+    await enableWith(result, "https://endpoint")
+
+    const refetches: Array<(value: PushTopicsResponse) => void> = []
+    mockFetchPushTopics.mockImplementation(
+      () => new Promise<PushTopicsResponse>((resolve) => refetches.push(resolve))
+    )
+    await act(async () => {
+      await result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+    await waitFor(() => expect(refetches.length).toBeGreaterThan(0))
+
+    // The refetch answers with the server state from before the next write.
+    let eventsWrite!: Promise<void>
+    act(() => {
+      eventsWrite = result.current.handleTopicToggle("events.published")({} as any, false)
+    })
+    await act(async () => {
+      refetches[0]?.(serverTopics(true, ["events.published", "system.release"]))
+      await eventsWrite
+    })
+    expect(result.current.topicState["events.published"]).toBe(false)
+
+    await act(async () => {
+      await result.current.handleTopicToggle("system.release")({} as any, false)
+    })
+    expect(mockUpdatePushTopics).toHaveBeenLastCalledWith("https://endpoint", [])
+    expect(result.current.topicState).toEqual(topicStateOf([]))
+  })
+
+  it("queues a topic choice made during an in-flight write and sends the latest state last", async () => {
+    mockFetchPushTopics.mockResolvedValue(
+      serverTopics(true, ["news.published", "events.published", "system.release"])
+    )
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.topicsReady).toBe(true))
+    await enableWith(result, "https://endpoint")
+
+    let finishFirstWrite: () => void = () => undefined
+    mockUpdatePushTopics.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishFirstWrite = () => resolve(undefined)
+        })
+    )
+    let newsWrite!: Promise<void>
+    let eventsWrite!: Promise<void>
+    act(() => {
+      newsWrite = result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+    await waitFor(() => expect(mockUpdatePushTopics).toHaveBeenCalledTimes(1))
+    act(() => {
+      eventsWrite = result.current.handleTopicToggle("events.published")({} as any, false)
+    })
+    expect(mockUpdatePushTopics).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishFirstWrite()
+      await newsWrite
+      await eventsWrite
+    })
+    expect(mockUpdatePushTopics.mock.calls.map((call) => call[1])).toEqual([
+      ["events.published", "system.release"],
+      ["system.release"],
+    ])
+    expect(result.current.topicState).toEqual(topicStateOf(["system.release"]))
+    expect(result.current.pushBusy).toBe(false)
+  })
+
   it("lets the server response override the cached placeholder", async () => {
     let resolveTopics!: (value: PushTopicsResponse) => void
     mockFetchPushTopics.mockReturnValue(

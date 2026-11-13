@@ -95,7 +95,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   // placeholder for a newly confirmed account until the server responds.
   const topicSource = serverTopics ?? confirmedUserId
   const [appliedTopicSource, setAppliedTopicSource] = useState<typeof topicSource>(null)
-  if (topicSource !== appliedTopicSource) {
+  // Topic writes in flight own the local choice: a server answer read before
+  // them would otherwise overwrite it, and the next PATCH would resend it.
+  const [topicWriteCount, setTopicWriteCount] = useState(0)
+  const topicStateRef = useRef(topicState)
+  const pendingTopicWritesRef = useRef(0)
+  const topicWriteTailRef = useRef<Promise<void>>(Promise.resolve())
+  if (topicSource !== appliedTopicSource && topicWriteCount === 0) {
     setAppliedTopicSource(topicSource)
     setTopicState(
       toTopicState(
@@ -327,22 +333,36 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     }
   }, [invalidatePushQueries, notify, t])
 
+  // The render closure can lag a write that is still settling, so the intended
+  // choice is read from a ref that every toggle updates synchronously.
+  useEffect(() => {
+    topicStateRef.current = topicState
+  }, [topicState])
+
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
       if (pushBusy || !topicsReady) return
-      const previousState = topicState
-      const nextState = { ...topicState, [key]: checked }
+      const previousState = topicStateRef.current
+      const nextState = { ...previousState, [key]: checked }
       const topicsToSend = NOTIFICATION_TOPIC_KEYS.filter((topic) => nextState[topic])
+      topicStateRef.current = nextState
       setTopicState(nextState)
       if (!pushSubscription) {
         pendingExplicitTopicsRef.current = topicsToSend
         return
       }
-      setPushBusy(true)
-      try {
+      pendingTopicWritesRef.current += 1
+      setTopicWriteCount(pendingTopicWritesRef.current)
+      // Writes run one at a time in toggle order, so the server settles on the
+      // last choice. Each write cancels any refetch that started before it.
+      const write = topicWriteTailRef.current.then(async () => {
+        await queryClient.cancelQueries({ queryKey: ["notifications", "push-topics"] })
         // PATCH, not POST: an empty list must mean "opt out of everything".
         await updatePushTopics(pushSubscription.endpoint, topicsToSend)
-        invalidatePushQueries()
+      })
+      topicWriteTailRef.current = write.catch(() => undefined)
+      try {
+        await write
         const label = topicLabels[key]
         notify({
           text: checked
@@ -352,17 +372,22 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         })
       } catch (error) {
         logError("Failed to update topics", error)
-        setTopicState(previousState)
+        if (topicStateRef.current === nextState) {
+          topicStateRef.current = previousState
+          setTopicState(previousState)
+        }
         notify({ text: t("notifications:messages.updateFailed"), severity: "error" })
       } finally {
-        setPushBusy(false)
+        pendingTopicWritesRef.current -= 1
+        setTopicWriteCount(pendingTopicWritesRef.current)
+        invalidatePushQueries()
       }
     },
     [
       invalidatePushQueries,
       pushBusy,
       pushSubscription,
-      topicState,
+      queryClient,
       topicsReady,
       notify,
       t,
@@ -461,7 +486,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     notificationPermission,
     pushSubscription,
     notificationsEnabled,
-    pushBusy,
+    pushBusy: pushBusy || topicWriteCount > 0,
     pushInitializing,
     permissionText,
     selectedTopicsDescription,
