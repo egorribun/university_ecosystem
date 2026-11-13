@@ -79,9 +79,16 @@ test.describe("Activity single head SEO", () => {
     await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
       timeout: 15_000,
     })
-    const startSnapshot = await readHeadSnapshot(page)
-    expect(startSnapshot.titles).toBe(1)
-    expect(startSnapshot.descriptions).toBe(1)
+    // WebKit can report hydration before the Dashboard route has written its
+    // head, so wait for the settled start state instead of reading it once.
+    // The regression itself is asserted on every sample after navigation.
+    await page.waitForURL(/\/dashboard$/)
+    await expect
+      .poll(async () => {
+        const snapshot = await readHeadSnapshot(page)
+        return [snapshot.titles, snapshot.descriptions]
+      })
+      .toEqual([1, 1])
 
     // Navigate inside the SPA so the Activity route passes through its
     // pending state rather than a document load.

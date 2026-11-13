@@ -286,10 +286,66 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
 })
 
+// Mirrors where <HeadContent /> takes its title from: route head() meta of the
+// leading matches, up to and including the first match that is not yet
+// successful.
+function managedHeadHasTitle(matches: ReadonlyArray<{ status: string; meta?: unknown }>): boolean {
+  for (const match of matches) {
+    if (
+      Array.isArray(match.meta) &&
+      match.meta.some(
+        (entry: unknown) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "title" in entry &&
+          Boolean((entry as { title?: unknown }).title)
+      )
+    ) {
+      return true
+    }
+    if (match.status !== "success") return false
+  }
+  return false
+}
+
 export function ActivityRootSeoFallback() {
   const isHydrated = useHydrated()
   const hasPageSeo = usePageSeoReady()
-  const isActivityFallbackRoute = useRouterState({
+  const isActivityFallbackRoute = useIsActivityFallbackRoute()
+
+  // TanStack presents a successful data-only SSR match as pending during
+  // hydration. Keep its fallback in the first client tree so React claims
+  // the server's hoisted tags instead of leaving them orphaned in <head>.
+  if (!isActivityFallbackRoute || (isHydrated && hasPageSeo)) return null
+
+  return <BrandSeoTags />
+}
+
+/**
+ * After hydration a navigation can hide the previous page behind its route
+ * Suspense boundary while the next route chunk loads. React then removes the
+ * hidden page's hoisted SEO, but the router head still omits the root title,
+ * so <head> would briefly have no title at all. This fills exactly that gap:
+ * it renders only when no page SEO is registered, the managed head has no
+ * title of its own and the Activity fallback is not active, so it cannot
+ * duplicate any of them. It lives in the body tree, outside every route
+ * Suspense boundary, and renders nothing before hydration.
+ */
+export function RootSeoGapFallback() {
+  const isHydrated = useHydrated()
+  const hasPageSeo = usePageSeoReady()
+  const isActivityFallbackRoute = useIsActivityFallbackRoute()
+  const headHasTitle = useRouterState({
+    select: (state) => managedHeadHasTitle(state.matches),
+  })
+
+  if (!isHydrated || hasPageSeo || headHasTitle || isActivityFallbackRoute) return null
+
+  return <BrandSeoTags />
+}
+
+function useIsActivityFallbackRoute(): boolean {
+  return useRouterState({
     select: (state) =>
       state.matches.some(
         (match) =>
@@ -297,12 +353,9 @@ export function ActivityRootSeoFallback() {
           (match.status === "success" || (match.status === "pending" && match.ssr === "data-only"))
       ),
   })
+}
 
-  // TanStack presents a successful data-only SSR match as pending during
-  // hydration. Keep its fallback in the first client tree so React claims
-  // the server's hoisted tags instead of leaving them orphaned in <head>.
-  if (!isActivityFallbackRoute || (isHydrated && hasPageSeo)) return null
-
+function BrandSeoTags() {
   const brandName = getRootMetadataText("navigation:brandName")
   const brandDescription = getRootMetadataText("navigation:brandDescription")
   const socialDescription = getRootMetadataText("navigation:socialDescription")
@@ -520,6 +573,7 @@ function RootComponent() {
               the loader lifecycle without leaving an orphaned hit target behind.
             */}
             <BrandBootLoader />
+            <RootSeoGapFallback />
             <MainLayout>
               <PageErrorBoundary>
                 <Outlet />
