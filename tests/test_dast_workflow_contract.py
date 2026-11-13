@@ -604,7 +604,7 @@ def _assert_zap_pipeline(workflow: dict) -> None:
     artifact = by_name[ZAP_ARTIFACT_NAME]
     assert (
         sarif["uses"]
-        == "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
+        == "github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066"
     )
     assert (
         artifact["uses"]
