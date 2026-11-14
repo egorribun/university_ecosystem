@@ -208,7 +208,8 @@ async def acquire_shared_spicedb_channel() -> grpc.aio.Channel:
     """Return the process-wide grpc.aio.Channel, opening it on first use.
 
     Used by request paths (through ``get_async_spicedb_channel``) and by
-    non-request code such as outbox handlers that cannot use Dishka scopes.
+    non-request code such as the relationship writers and backfill scripts,
+    which cannot use Dishka scopes.
     """
     global _global_channel
 

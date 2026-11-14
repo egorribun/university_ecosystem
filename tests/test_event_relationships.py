@@ -382,3 +382,18 @@ def test_backfill_main_prints_counts(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "creator relations: 3" in out
     assert "attendee relations: 2" in out
+
+
+@pytest.mark.asyncio
+async def test_shared_channel_fails_closed_when_creation_yields_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import spicedb as spicedb_module
+
+    monkeypatch.setattr(spicedb_module, "_global_channel", None)
+    monkeypatch.setattr(
+        spicedb_module, "create_async_spicedb_channel", lambda *a, **k: None
+    )
+
+    with pytest.raises(RuntimeError, match="SpiceDB async channel is unavailable"):
+        await spicedb_module.acquire_shared_spicedb_channel()
