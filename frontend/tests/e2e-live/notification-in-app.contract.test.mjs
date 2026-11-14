@@ -115,3 +115,6 @@ test("live in-app chat notification stays unique and read after reload", async (
   assert.match(spec, /["']X-CSRF-Token["']:\s*csrfToken/u)
   assert.doesNotMatch(spec, /asyncpg|sqlalchemy|nats|jetstream|webpush/iu)
 })
+
+// Keep topic regressions in the established live-contract CI entrypoint.
+import "./notification-topics-delivery.contract.test.mjs"
