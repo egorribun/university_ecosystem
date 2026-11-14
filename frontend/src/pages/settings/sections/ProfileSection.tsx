@@ -114,7 +114,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   size="sm"
                   variant="solid"
                   onClick={triggerCoverPick}
-                  disabled={coverBusy}
+                  disabled={coverBusy || identityLoading}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.cover.change")}
@@ -125,7 +125,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                     variant="outline"
                     color="error"
                     onClick={removeCover}
-                    disabled={coverBusy}
+                    disabled={coverBusy || identityLoading}
                     className="w-full sm:w-auto"
                   >
                     {t("settings:media.cover.remove")}
