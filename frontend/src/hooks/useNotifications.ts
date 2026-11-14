@@ -443,7 +443,9 @@ export function useNotifications() {
     unreadCount: list.data?.unread ?? 0,
     hasMore: list.data?.hasMore ?? false,
     nextCursor: list.data?.nextCursor ?? null,
-    isLoading: list.isLoading,
+    // List data can arrive before auth confirms who may mutate it. Keep the
+    // existing data visible, but expose readiness consistently to the bell.
+    isLoading: list.isLoading || ownerId === null,
     isError: list.isError,
     error: list.error,
     isRefetching: list.isRefetching,
