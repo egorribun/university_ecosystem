@@ -55,3 +55,15 @@ Adopted **SpiceDB** (authzed/spicedb) as the authorization service, using gRPC v
 - `app/auth/rbac.py` — `PermissionChecker`, grace cache, circuit breaker
 - `app/core/spicedb.py` — gRPC channel factory with keepalive options
 - SpiceDB schema: `schema.zed`
+- `app/auth/relationships.py` — event `creator` / `attendee` relationship writer
+
+## 2026-11-14: relationship writes
+
+`schema.zed` grants event permissions through the `event#creator` and `event#attendee` relations, but no application code wrote them before this addendum. Creators were denied PATCH/DELETE on their own events, and attendees could not view event files; only admins passed through `semester->admin`. The writes below close that gap.
+
+- **Creator (best effort, backend request path).** `EventService.create_event` TOUCHes `event:{id}#creator@user:{created_by}` after the event commit. A SpiceDB failure logs `event_creator_relationship_sync_failed` and does not fail the request. A missing creator is a no-op.
+- **Attendee (best effort, backend request path).** Attendance has no domain event. `register_attendance` TOUCHes `event:{id}#attendee@user:{uid}` after the participation commit, and `unregister_attendance` DELETEs it. A failure logs `event_attendee_relationship_sync_failed` and does not fail the request.
+- **Outbox worker has no SpiceDB access.** The outbox-worker container is not on the SpiceDB network and receives no SpiceDB configuration, and the Helm NetworkPolicies grant it no SpiceDB egress. Relationship writes therefore never go through the outbox. Changing worker networking is out of scope for this addendum.
+- **Backfill reconciles gaps.** `scripts/backfill_event_relationships.py` TOUCHes creator relations for every event with `created_by` and attendee relations for every attendance row. It runs under the configured MVP tenant context (`tenant_id_ctx`, validated by `require_mvp_tenant`) and never enables the RLS bypass. Pages are keyset-ordered by primary key, and writes are chunked below SpiceDB's per-request update limit. Every write is a TOUCH, so reruns are idempotent. Any best-effort write missed by the request path is repaired by rerunning it.
+- **Consistency.** `PermissionChecker` uses SpiceDB's default consistency, which minimizes latency. A just-created event may therefore need a few seconds before the creator check passes, and a new attendee may see the same delay. Checks do not request `at_least_as_fresh`.
+- **Known gaps.** Deleting an event does not remove its creator relation, so a stale relation can remain for a deleted event ID. No check can reach that ID through a live event row. A failed best-effort write leaves that user without access until the backfill reruns.
