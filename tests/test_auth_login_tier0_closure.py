@@ -240,7 +240,7 @@ async def test_register_returns_success_and_maps_service_errors():
     request = MagicMock()
 
     result = await _original("register")(
-        SimpleNamespace(email="student@example.com"),
+        SimpleNamespace(email="student@example.com", group_id=None),
         request,
         compliance,
         MagicMock(),

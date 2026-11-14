@@ -7,14 +7,15 @@ backend request path after the domain commit:
 
 - ``creator`` by the event service after ``create_event`` commits.
 - ``attendee`` by the attendance service after register/unregister commits.
-- ``group`` ``participant`` by the user services after a ``group_id`` change
-  commits (see ``sync_group_participant``). Group schedules are gated by
-  ``group#view``, which includes ``participant``.
+- ``group`` ``participant`` by the registration/create handlers and profile
+  service after a ``group_id`` change commits (see ``sync_group_participant``).
+  Group schedules are gated by ``group#view``, which includes ``participant``.
 
 A SpiceDB failure is logged and never fails the request. The
-``scripts/backfill_event_relationships`` script reconciles any gap. The outbox
-worker intentionally has no SpiceDB access, so these writes do not go through
-the outbox.
+event and group backfill scripts restore missing grants for current database
+rows. They do not remove stale grants left by failed deletes or reordered
+concurrent writes. The outbox worker intentionally has no SpiceDB access, so
+these writes do not go through the outbox.
 
 Authentication is carried by the shared channel (see ``app.core.spicedb``), so
 no per-call metadata is attached here. Permission checks use SpiceDB's default
@@ -226,7 +227,8 @@ async def sync_event_attendee(
     """Best-effort ``event#attendee`` sync after an attendance commit.
 
     There is no domain event for attendance, so a SpiceDB failure is logged and
-    swallowed; the backfill script reconciles missed relations.
+    swallowed. The TOUCH-only backfill restores missing grants, not failed
+    deletions.
     """
     operation = "touch" if attending else "delete"
     try:
@@ -253,7 +255,8 @@ async def sync_group_participant(
 
     The old membership is DELETEd and the new one TOUCHed in one request. An
     unchanged or entirely absent membership is a no-op. A SpiceDB failure is
-    logged and swallowed; the backfill script reconciles missed relations.
+    logged and swallowed. The TOUCH-only backfill restores missing grants, not failed
+    deletions.
     """
     if old_group_id == new_group_id:
         return

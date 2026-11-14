@@ -397,3 +397,73 @@ async def test_shared_channel_fails_closed_when_creation_yields_none(
 
     with pytest.raises(RuntimeError, match="SpiceDB async channel is unavailable"):
         await spicedb_module.acquire_shared_spicedb_channel()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_cursor", [False, True])
+async def test_creator_backfill_page_preserves_keyset_and_relationships(
+    monkeypatch, has_cursor
+):
+    event_id, user_id = uuid4(), uuid4()
+    cursor = uuid4() if has_cursor else None
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(
+        all=lambda: [(event_id, user_id), (uuid4(), None)]
+    )
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    monkeypatch.setattr(backfill, "async_session", lambda: context)
+
+    page = await backfill._fetch_creator_page(cursor, 7)
+
+    assert len(page) == 1
+    row_id, (update,) = page[0]
+    assert row_id == event_id
+    assert update == build_event_relationship_update(
+        operation="touch", relation=CREATOR_RELATION, event_id=event_id, user_id=user_id
+    )
+    (statement,) = session.execute.await_args.args
+    sql = str(statement)
+    assert "events.created_by IS NOT NULL" in sql
+    assert "ORDER BY events.id" in sql
+    assert ("events.id >" in sql) is has_cursor
+    assert 7 in statement.compile().params.values()
+    if has_cursor:
+        assert cursor in statement.compile().params.values()
+    context.__aexit__.assert_awaited_once_with(None, None, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_cursor", [False, True])
+async def test_attendee_backfill_page_uses_attendance_key_and_relationship(
+    monkeypatch, has_cursor
+):
+    attendance_id, event_id, user_id = uuid4(), uuid4(), uuid4()
+    cursor = uuid4() if has_cursor else None
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(
+        all=lambda: [(attendance_id, event_id, user_id)]
+    )
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    monkeypatch.setattr(backfill, "async_session", lambda: context)
+
+    page = await backfill._fetch_attendee_page(cursor, 9)
+
+    assert len(page) == 1
+    row_id, (update,) = page[0]
+    assert row_id == attendance_id
+    assert update == build_event_relationship_update(
+        operation="touch",
+        relation=ATTENDEE_RELATION,
+        event_id=event_id,
+        user_id=user_id,
+    )
+    (statement,) = session.execute.await_args.args
+    sql = str(statement)
+    assert "ORDER BY event_attendance.id" in sql
+    assert ("event_attendance.id >" in sql) is has_cursor
+    assert 9 in statement.compile().params.values()
+    if has_cursor:
+        assert cursor in statement.compile().params.values()
+    context.__aexit__.assert_awaited_once_with(None, None, None)

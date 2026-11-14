@@ -654,9 +654,13 @@ class EventService:
                     data.event_id, user_id, updates
                 )
                 assert exist is not None  # noqa: S101
-                async with self.uow:
-                    await self.uow.commit()
+            # Release the registration row lock before the best-effort RPC,
+            # including when the existing attendance needs no database update.
+            async with self.uow:
+                await self.uow.commit()
+            if updates:
                 await events_cache_version.increment()
+            await sync_event_attendee(data.event_id, user_id, attending=True)
 
             # Helper logic to set token attribute for response
             token = attendance_tokens.issue_token(exist)

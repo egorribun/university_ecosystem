@@ -2,8 +2,10 @@
 
 Writes ``event#creator`` for every event that has ``created_by`` and
 ``event#attendee`` for every attendance row. Every update is a TOUCH, so the
-script is idempotent: rerunning it, or running it while the outbox is still
-delivering creators, converges to the same relationships.
+script is idempotent for unchanged database rows. It restores missing grants,
+but does not remove stale grants from failed deletions. Run against quiescent
+membership data: a concurrent removal can otherwise be followed by a stale
+TOUCH. The outbox worker never delivers SpiceDB relationships.
 
 Rows are read in primary-key order, one page of ``--batch-size`` at a time.
 Each page is written in chunks of at most ``WRITE_CHUNK_SIZE`` updates. Reads

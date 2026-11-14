@@ -2,7 +2,9 @@
 
 Writes ``group:{group_id}#participant@user:{user_id}`` for every user whose
 ``group_id`` is set. Every update is a TOUCH, so the script is idempotent:
-rerunning it converges to the same relationships.
+rerunning it against unchanged database rows restores missing grants. It does
+not remove stale memberships left by failed deletions. Run against quiescent
+membership data to avoid re-adding a concurrently removed membership.
 
 Rows are read in ``User.id`` order, one page of ``--batch-size`` at a time, and
 written through the shared ``apply_pages`` helper from
