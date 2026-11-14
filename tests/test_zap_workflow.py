@@ -562,7 +562,7 @@ def test_scanner_budget_expiry_fails_closed_with_a_specific_message(
 @pytest.mark.parametrize(
     ("exit_code", "error_class", "shown"),
     [
-        (3, "ValueError", "3 after ValueError"),
+        (3, "ValueError", "3"),
         (137, None, "137"),
         (999, None, "unknown"),
     ],
@@ -585,7 +585,10 @@ def test_scanner_exit_is_reported_without_scanner_output(
     (root.parent / "stand-status.txt").write_text(STATUS_LINE, encoding="utf-8")
     assert m.main(["prepare", *flags, "--status-in", status]) == 1
     err = capsys.readouterr().err
-    assert f"ZAP scanner exited with code {shown}; scan result is unknown." in err
+    assert (
+        f"ZAP scanner exited with code {shown}; diagnostic=unknown; scan result is unknown."
+        in err
+    )
     assert "evidence validation failed" not in err
     assert TARGET not in err
     assert not public.exists()
@@ -610,3 +613,48 @@ def test_source_rejection_precedes_stand_status_read(source):
     with pytest.raises(ValueError, match="trusted"):
         module().prepare(root, env, work, public, root.parent / "stand-status.txt")
     assert not work.with_name(work.name + "-target.txt").exists()
+
+
+@pytest.mark.parametrize(
+    ("log", "expected"),
+    [
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "startup_wait_expired",
+        ),
+        (b"ERROR <class 'private_secret_sentinel'>\n", "scanner_exception"),
+        (b"ERROR https://private_secret_sentinel.invalid/\n", "unknown"),
+    ],
+)
+def test_scanner_diagnostics_publish_only_fixed_reason_and_no_success_evidence(
+    source, monkeypatch, capsys, log, expected
+):
+    root, env, work, public = source
+    m = module()
+    provenance = importlib.import_module("scripts.quality.zap_run_provenance")
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    async def failed_scan(target_file, rules_file, work, identity, timeout_seconds):
+        nonce = provenance.start_run(work, identity)
+        (work / "stdout.log").write_bytes(log)
+        (work / "stderr.log").write_bytes(
+            b"Authorization: Bearer private_secret_sentinel\n"
+        )
+        return provenance.finish_run(work, identity, nonce, 3, TARGET)
+
+    monkeypatch.setattr(m, "run_scan", failed_scan)
+    flags = ["--repo-root", str(root), "--work", str(work), "--public", str(public)]
+    status = root.parent / "stand-status.txt"
+    assert m.main(["prepare", *flags, "--status-in", str(status)]) == 1
+    captured = capsys.readouterr()
+    assert f"diagnostic={expected}" in captured.err
+    assert "scan result is unknown" in captured.err
+    assert "private_secret_sentinel" not in captured.out + captured.err
+    assert TARGET not in captured.err
+    assert not (work / "receipt.json").exists()
+    assert not (work / "publication.json").exists()
+    assert not public.exists()
+    assert m.main(["gate", *flags]) == 1
+    assert "scan result is unknown" in capsys.readouterr().err
+    assert not public.exists()

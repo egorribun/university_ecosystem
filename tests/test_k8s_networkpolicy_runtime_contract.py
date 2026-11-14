@@ -941,14 +941,30 @@ def test_unpublished_token_is_independently_validated():
 
 
 def test_same_new_token_checked_before_and_after_publication():
+    import ast
+
     source = (ROOT / "scripts/k8s/networkpolicy_runtime_real_fp.py").read_text()
-    assert (
-        'check_all("unpublished-new-rejected", new_token, "Unauthenticated")' in source
-    )
-    assert '"overlap-new-accepted",\n                new_token,' in source
+    calls = {
+        node.args[0].value: node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "check_all"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    }
+    unpublished = calls["unpublished-new-rejected"]
+    overlap = calls["overlap-new-accepted"]
+    for call, expected in (
+        (unpublished, "Unauthenticated"),
+        (overlap, "InvalidArgument"),
+    ):
+        assert isinstance(call.args[1], ast.Name) and call.args[1].id == "new_token"
+        assert isinstance(call.args[2], ast.Constant) and call.args[2].value == expected
+    assert unpublished.lineno < overlap.lineno
+    assert "real_probe_b" in source
     assert '"replicas": before' in source
     assert '"image_id": status.get("imageID", "")' in source
-    assert "real_probe_b" in source
 
 
 def test_real_processor_workflow_activation_is_source_bound():
@@ -2267,3 +2283,149 @@ def test_temporal_diagnostics_fail_closed_without_raw_error(case):
         m, "run_command", return_value=SimpleNamespace(stdout=raw), side_effect=failure
     ):
         assert m.temporal_startup_status("probe-a") == {"status": "unavailable"}
+
+
+@pytest.fixture(scope="module")
+def real_staging_processor_resources():
+    runner = _real_runtime_module("networkpolicy_runtime_probe")
+    app, store = runner.load_render_contracts()
+    app._helm()
+    resources, _ = runner.render_release("probe-a", app, store)
+    return resources
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [
+        (None, None),
+        ("secrets", "processor-secrets"),
+        ("service", "processor-jwks-service"),
+        ("publication", "processor-jwks-publication"),
+        ("publication-command", "processor-jwks-publication"),
+        ("workloads", "processor-workloads"),
+    ],
+)
+def test_real_helm_processor_preparation_preserves_config_and_scopes_io_failure(
+    real_staging_processor_resources, failure, expected_stage
+):
+    import copy
+    import subprocess
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    original = copy.deepcopy(real_staging_processor_resources)
+    sha = "a" * 40
+    worker = m._object("Secret", "netpol-temporal-worker", "probe-a")
+    setup = {
+        "result": "ready",
+        "endpoint": "temporal:7233",
+        "ca_configmap": "netpol-temporal-ca",
+        "worker_secret": worker["metadata"]["name"],
+    }
+    observed_batches = []
+
+    def apply(objects):
+        observed_batches.append(objects)
+        stage = {1: "secrets", 2: "service", 3: "workloads"}[len(observed_batches)]
+        if stage == failure:
+            raise subprocess.CalledProcessError(
+                1,
+                ["kubectl"],
+                output="private-error-canary",
+                stderr="private-error-canary",
+            )
+
+    def publish(*args):
+        if failure == "publication-command":
+            raise subprocess.CalledProcessError(
+                1, ["kubectl"], output="private-error-canary"
+            )
+        return {"result": "exec-error" if failure == "publication" else "published"}
+
+    with (
+        patch.object(m, "apply_objects", side_effect=apply),
+        patch.object(m, "publish_jwks", side_effect=publish),
+    ):
+        arguments = {
+            "password": m.secrets.token_hex(32),
+            "nats_url": "nats://netpol-nats:4222",
+            "signer": m.generate_signing_key("primary"),
+            "processor_image": "ue-netpol-fp:" + sha,
+            "diagnostic_image": "ue-netpol-diagnostic:" + sha,
+            "source_sha": sha,
+        }
+        pods = {
+            "a-redis": m.Pod(
+                "probe-a", "probe-a-revocation-redis-master-0", "192.0.2.2"
+            ),
+            "a-backend": m.Pod("probe-a", "probe-a-backend", "192.0.2.3"),
+        }
+        if failure:
+            with pytest.raises(m.ProcessorSetupError) as error:
+                m.prepare_processor_fixture(
+                    original, "probe-a", pods, setup, **arguments
+                )
+            assert str(error.value) == expected_stage
+            assert error.value.__suppress_context__ is True
+            assert "private-error-canary" not in str(error.value)
+            return
+        prepared = m.prepare_processor_fixture(
+            original, "probe-a", pods, setup, **arguments
+        )
+    assert original == real_staging_processor_resources
+    assert [[obj["kind"] for obj in batch] for batch in observed_batches] == [
+        ["Secret", "Secret", "Secret"],
+        ["Service", "ServiceAccount"],
+        ["Secret", "Pod", "Deployment"],
+    ]
+    assert all(
+        obj["metadata"]["namespace"] == "probe-a"
+        for batch in observed_batches
+        for obj in batch
+    )
+    assert prepared.jwks_hostname == "probe-a-backend"
+    assert prepared.server_name == "probe-a-file-processor.probe-a.svc"
+    assert prepared.deployment["spec"]["replicas"] == 2
+    spec = prepared.deployment["spec"]["template"]["spec"]
+    env = {entry["name"]: entry["value"] for entry in spec["containers"][0]["env"]}
+    assert env["FP_ENVIRONMENT"] == "staging"
+    assert env["FP_TEMPORAL_TLS_DISABLED"] == "false"
+    assert env["FP_JWKS_REFRESH_INTERVAL"] == "300"
+    assert (
+        env["FP_GRPC_ALLOWED_CLIENT_URIS"]
+        == "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
+    )
+    assert env["FP_JWKS_URL"] == "http://probe-a-backend:8000/.well-known/jwks.json"
+    assert env["FP_TEMPORAL_API_KEY_FILE"] == "/run/netpol-temporal/token"
+    original_deployment = m.find(original, "Deployment", "probe-a-file-processor")
+    original_spec = original_deployment["spec"]["template"]["spec"]
+    assert spec["securityContext"] == original_spec["securityContext"]
+    assert (
+        spec["containers"][0]["securityContext"]
+        == original_spec["containers"][0]["securityContext"]
+    )
+    assert (
+        prepared.deployment["spec"]["template"]["metadata"]["labels"]
+        == original_deployment["spec"]["template"]["metadata"]["labels"]
+    )
+    assert observed_batches[1][0]["spec"] == {
+        "selector": {"probe-role": "a-backend"},
+        "ports": [{"port": 8000}],
+    }
+
+
+def test_processor_setup_substage_reaches_receipt_without_exception_payload():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    with patch.object(
+        m,
+        "prepare_processor_fixture",
+        side_effect=m.ProcessorSetupError("processor-workloads"),
+    ):
+        result = run_phase()
+    assert result == {
+        "verdict": "inconclusive",
+        "stage": "probe-a:processor-workloads",
+        "checks": [],
+    }

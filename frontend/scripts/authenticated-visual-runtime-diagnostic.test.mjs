@@ -380,3 +380,147 @@ test("React numeric identity survives earlier classifier words in decoder argume
     }
   }
 })
+
+const validNavbarGeometry = () => ({
+  controlsValid: true,
+  headerContained: true,
+  nameHidden: false,
+  nameVisible: true,
+  naturalWidth: 120,
+  visibleWidth: 80,
+  fallbackComplete: false,
+  labelExpected: true,
+})
+
+test("navbar geometry rejects clipped fragments, missing controls and overflow without rejecting short names", () => {
+  const valid = validNavbarGeometry()
+  assert.equal(audit.isAuthenticatedNavbarGeometryValid(valid), true)
+  assert.equal(
+    audit.isAuthenticatedNavbarGeometryValid({ ...valid, naturalWidth: 12, visibleWidth: 12 }),
+    true
+  )
+  for (const invalid of [
+    null,
+    { ...valid, visibleWidth: 5 },
+    { ...valid, controlsValid: false },
+    { ...valid, headerContained: false },
+    { ...valid, nameVisible: false },
+    { ...valid, naturalWidth: NaN },
+    { ...valid, visibleWidth: Infinity },
+    { ...valid, visibleWidth: -1 },
+    { ...valid, naturalWidth: -1 },
+  ]) {
+    assert.equal(audit.isAuthenticatedNavbarGeometryValid(invalid), false)
+  }
+  const hidden = {
+    ...valid,
+    nameHidden: true,
+    nameVisible: false,
+    labelExpected: false,
+    fallbackComplete: true,
+  }
+  assert.equal(audit.isAuthenticatedNavbarGeometryValid(hidden), true)
+  assert.equal(
+    audit.isAuthenticatedNavbarGeometryValid({ ...hidden, fallbackComplete: false }),
+    false
+  )
+  assert.equal(audit.isAuthenticatedNavbarGeometryValid({ ...hidden, labelExpected: true }), false)
+  assert.equal(
+    audit.findNavbarGeometryIssues([
+      { viewportWidth: 390 },
+      { viewportWidth: 1440, navbarGeometry: valid },
+      { viewportWidth: 1440, navbarGeometry: null },
+    ]).length,
+    1
+  )
+})
+
+test("navbar observation measures clipping and full-name references without returning text", async () => {
+  const { JSDOM } = await import("jsdom")
+  const dom = new JSDOM(
+    `<style>* { opacity:1; visibility:visible } html { font-size:16px }</style><nav class="vt-navbar"><a id="navbar-logo-link" href="/dashboard">Logo</a><ul class="navbar-desktop-nav">${["dashboard", "news", "schedule", "events", "activity", "map"].map((route) => `<li><a id="navbar-link-${route}" href="/${route}">${route}</a></li>`).join("")}</ul><div id="actions"><button id="global-messenger-btn"></button><button id="global-notifications-btn"></button><div><button id="avatar"></button><div class="navbar-user-name"><button id="name">Private Synthetic Name</button></div><button id="navbar-settings-btn"></button></div></div></nav>`
+  )
+  const originals = ["document", "window"].map((key) => [
+    key,
+    Object.getOwnPropertyDescriptor(globalThis, key),
+  ])
+  try {
+    const { document } = dom.window
+    Object.defineProperty(globalThis, "document", { value: document, configurable: true })
+    Object.defineProperty(globalThis, "window", { value: dom.window, configurable: true })
+    const rect = (left, width, height = 44) => ({
+      left,
+      right: left + width,
+      top: 0,
+      bottom: height,
+      width,
+      height,
+    })
+    for (const element of document.querySelectorAll("*"))
+      element.getBoundingClientRect = () => rect(0, 1440, 64)
+    Object.defineProperty(document.documentElement, "clientWidth", { value: 1440 })
+    const nav = document.querySelector("nav")
+    Object.defineProperties(nav, { clientWidth: { value: 1440 }, scrollWidth: { value: 1440 } })
+    for (const [index, id] of [
+      "global-messenger-btn",
+      "global-notifications-btn",
+      "avatar",
+      "navbar-settings-btn",
+    ].entries())
+      document.getElementById(id).getBoundingClientRect = () => rect(index * 50, 44)
+    const navigation = [...document.querySelectorAll("#navbar-logo-link, .navbar-desktop-nav a")]
+    navigation.forEach((link, index) => {
+      link.getBoundingClientRect = () => rect(300 + index * 100, 90)
+    })
+    document.getElementById("actions").getBoundingClientRect = () => rect(0, 260)
+    const name = document.querySelector(".navbar-user-name")
+    name.getBoundingClientRect = () => rect(200, 5)
+    document.getElementById("name").getBoundingClientRect = () => rect(200, 5)
+    document.createRange = () => ({
+      selectNodeContents() {},
+      getBoundingClientRect: () => rect(200, 120),
+    })
+    const observe = () => audit.measureAuthenticatedNavbarGeometry()
+    const clipped = observe()
+    assert.equal(clipped.visibleWidth, 5)
+    assert.equal(audit.isAuthenticatedNavbarGeometryValid(clipped), false)
+    name.style.display = "none"
+    document.getElementById("avatar").setAttribute("aria-describedby", "name")
+    const hidden = observe()
+    assert.equal(audit.isAuthenticatedNavbarGeometryValid(hidden), true)
+    assert.equal(
+      Object.values(hidden).every(
+        (value) => typeof value === "number" || typeof value === "boolean"
+      ),
+      true
+    )
+    assert.equal(JSON.stringify(hidden).includes("Private"), false)
+    for (const link of navigation) {
+      const parent = link.parentElement
+      const next = link.nextSibling
+      link.remove()
+      assert.equal(observe(), null, "missing expected navigation must fail closed")
+      parent.insertBefore(link, next)
+      const originalRect = link.getBoundingClientRect
+      link.getBoundingClientRect = () => rect(100, 44)
+      assert.equal(
+        audit.isAuthenticatedNavbarGeometryValid(observe()),
+        false,
+        "navigation/action collision must fail"
+      )
+      link.getBoundingClientRect = originalRect
+    }
+    assert.equal(audit.isAuthenticatedNavbarGeometryValid(observe()), true)
+
+    document.getElementById("avatar").setAttribute("aria-describedby", "missing")
+    assert.equal(audit.isAuthenticatedNavbarGeometryValid(observe()), false)
+    document.getElementById("global-messenger-btn").remove()
+    assert.equal(observe(), null)
+  } finally {
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else delete globalThis[key]
+    }
+    dom.window.close()
+  }
+})

@@ -97,3 +97,18 @@ test("the live scenario uses the configured desktop/mobile Chromium projects wit
   assert.match(config, /screenshot:\s*["']off["']/u)
   assert.match(config, /video:\s*["']off["']/u)
 })
+
+test("keyboard acceptance waits for the production hydration contract before DOM identity and input", async () => {
+  const source = await readFile(
+    new URL("./settings-tabs-keyboard.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const navigation = source.indexOf('await page.goto("/settings")')
+  const hydration = source.indexOf(
+    "await page.waitForFunction(() => window.__APP_HYDRATED === true)"
+  )
+  const firstInteraction = source.indexOf('const panelId = await panel.getAttribute("id")')
+  assert.ok(navigation >= 0 && navigation < hydration && hydration < firstInteraction)
+  assert.equal(source.split("window.__APP_HYDRATED === true").length - 1, 1)
+  assert.doesNotMatch(source, /waitForTimeout|setTimeout|test\.skip|test\.fixme|retries|timeout:/u)
+})

@@ -13,6 +13,7 @@ import json
 import secrets
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -388,6 +389,401 @@ def validate_fixture_token(
         raise ValueError("fixture token is not valid for this proof")
 
 
+@dataclass(frozen=True)
+class ProcessorFixture:
+    deployment: dict[str, Any]
+    env: dict[str, Any]
+    server_name: str
+    redis_host: str
+    jwks_hostname: str | None
+
+
+class ProcessorSetupError(ValueError):
+    """Only a fixed setup substage, never an underlying exception or payload."""
+
+
+def prepare_processor_fixture(
+    resources: list[dict[str, Any]],
+    release: str,
+    pods: dict[str, Pod],
+    setup: dict[str, Any],
+    *,
+    password: str,
+    nats_url: str,
+    signer: Any,
+    processor_image: str,
+    diagnostic_image: str,
+    source_sha: str,
+) -> ProcessorFixture:
+    """Materialize the rendered staging fixture, keeping external failures scoped."""
+    short = release.split("-")[-1]
+    progress = "processor-render"
+    try:
+        deployment = real_processor_deployment(
+            resources,
+            release,
+            image=processor_image,
+            diagnostic_image=diagnostic_image,
+            source_sha=source_sha,
+            temporal_endpoint=setup["endpoint"],
+            temporal_ca_configmap=setup["ca_configmap"],
+        )
+        progress = "processor-auth"
+        spec = deployment["spec"]["template"]["spec"]
+        processor = next(c for c in spec["containers"] if c["name"] == "file-processor")
+        env = {e["name"]: e.get("value") for e in processor["env"]}
+        if env.get("FP_INTERNAL_HTTP_MTLS_ENABLED") == "true":
+            raise ValueError("SPIFFE fixture required by rendered profile")
+        server_name = f"{release}-file-processor.{release}.svc"
+        uris = env["FP_GRPC_ALLOWED_CLIENT_URIS"].split(",")
+        if len(uris) != 1:
+            raise ValueError("ambiguous rendered client identity")
+        server, client = grpc_credentials(server_name, uris[0])
+        public = (
+            signer.private_key.public_key()
+            .public_bytes(
+                serialization.Encoding.PEM,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+        redis_host = pods[short + "-redis"].ip
+        values = {
+            "FP_NATS_URL_FILE": nats_url,
+            "FP_MINIO_ACCESS_KEY_FILE": secrets.token_hex(16),
+            "FP_MINIO_SECRET_KEY_FILE": secrets.token_hex(32),
+            "FP_PROCESSING_CAPABILITY_SECRET_FILE": secrets.token_hex(32),
+            "FP_RSA_PUBLIC_KEY_FILE": public,
+            "FP_TEMPORAL_API_KEY_FILE": secrets.token_urlsafe(32),
+            "FP_REVOCATION_REDIS_URL_FILE": f"redis://:{quote(password, safe='')}@{release}-revocation-redis-master:6379/0",
+        }
+        progress = "processor-secrets"
+        materialize_processor_secrets(deployment, release, values, server)
+        wire_processor_temporal(deployment, setup)
+        # Existing backend-labelled publisher stays unchanged; Service uses
+        # its exact probe role, so real calls traverse the rendered policy.
+        progress = "processor-jwks-config"
+        jwks = urlparse(env["FP_JWKS_URL"])
+        if (
+            jwks.scheme != "http"
+            or jwks.port != 8000
+            or jwks.path != "/.well-known/jwks.json"
+        ):
+            raise ValueError("rendered JWKS transport requires a different fixture")
+        progress = "processor-jwks-service"
+        apply_objects(
+            [
+                _object(
+                    "Service",
+                    jwks.hostname,
+                    release,
+                    spec={
+                        "selector": {"probe-role": short + "-backend"},
+                        "ports": [{"port": 8000}],
+                    },
+                ),
+                find(resources, "ServiceAccount", spec["serviceAccountName"]),
+            ]
+        )
+        progress = "processor-jwks-publication"
+        if (
+            publish_jwks(pods[short + "-backend"], jwks_document([signer])).get(
+                "result"
+            )
+            != "published"
+        ):
+            raise ValueError("JWKS publication failed")
+        progress = "processor-client-labels"
+        gateway = find(resources, "Deployment", release + "-gateway")["spec"][
+            "template"
+        ]["metadata"]["labels"]
+        client_pod = _object(
+            "Pod",
+            "netpol-grpc-client",
+            release,
+            spec={
+                "automountServiceAccountToken": False,
+                "containers": [
+                    {
+                        "name": "probe",
+                        "image": diagnostic_image,
+                        "imagePullPolicy": "Never",
+                        "command": ["sleep", "infinity"],
+                        "volumeMounts": [_mount("grpc", "/grpc")],
+                    }
+                ],
+                "volumes": [secret_volume("grpc", "netpol-grpc-client")],
+            },
+        )
+        client_pod["metadata"]["labels"] = copy.deepcopy(gateway)
+        progress = "processor-workloads"
+        apply_objects(
+            [
+                _object("Secret", "netpol-grpc-client", release, stringData=client),
+                client_pod,
+                deployment,
+            ]
+        )
+        return ProcessorFixture(deployment, env, server_name, redis_host, jwks.hostname)
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        StopIteration,
+        SystemExit,
+        yaml.YAMLError,
+        InvalidSignature,
+        subprocess.SubprocessError,
+    ):
+        raise ProcessorSetupError(progress) from None
+
+
+def check_processor_network(
+    fixture: ProcessorFixture,
+    release: str,
+    pods: dict[str, Pod],
+    password: str,
+    replicas: list[dict[str, Any]],
+    checks: list[dict[str, Any]],
+) -> None:
+    """Require authenticated Redis and JWKS paths from each real replica."""
+    short = release.split("-")[-1]
+    redis_host = fixture.redis_host
+    before = replicas
+    for replica in before:
+        for mode, host, port, extra, expected in [
+            ("redis-ping", redis_host, 6379, [], "redis-pong"),
+            (
+                "redis-ping",
+                f"{release}-revocation-redis-master",
+                6379,
+                [],
+                "redis-pong",
+            ),
+            (
+                "http",
+                pods[short + "-backend"].ip,
+                8000,
+                ["/.well-known/jwks.json"],
+                "http",
+            ),
+            (
+                "http",
+                fixture.jwks_hostname,
+                8000,
+                ["/.well-known/jwks.json"],
+                "http",
+            ),
+        ]:
+            output = run_command(
+                [
+                    "kubectl",
+                    "-n",
+                    release,
+                    "exec",
+                    "-i",
+                    replica["name"],
+                    "-c",
+                    "probe",
+                    "--",
+                    "python3",
+                    "-I",
+                    "-c",
+                    PROBE_SRC,
+                    mode,
+                    host,
+                    str(port),
+                    "3",
+                    *extra,
+                ],
+                stdin=password if mode == "redis-ping" else "",
+                timeout=20,
+            )
+            observed = json.loads(output.stdout)
+            passed = observed.get("result") == expected and (
+                observed.get("status") == "200"
+                if mode == "http"
+                else observed.get("auth") == "+OK"
+            )
+            checks.append(
+                {
+                    "check_id": "actual-network-" + mode,
+                    "namespace": release,
+                    "timestamp_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "pod_uid": replica["uid"],
+                    "destination": host,
+                    "observed": observed,
+                    "verdict": "pass" if passed else "inconclusive",
+                }
+            )
+            if not passed:
+                raise ValueError("real network prerequisite failed")
+
+
+def verify_processor_authentication(
+    fixture: ProcessorFixture,
+    release: str,
+    pods: dict[str, Pod],
+    password: str,
+    old: Any,
+    new: Any,
+    before: list[dict[str, Any]],
+    checks: list[dict[str, Any]],
+    rotations: list[dict[str, Any]],
+) -> None:
+    """Verify revocation and both JWKS rotation windows without restarting replicas."""
+    short = release.split("-")[-1]
+    env, server_name, redis_host = fixture.env, fixture.server_name, fixture.redis_host
+    labels = fixture.deployment["spec"]["selector"]["matchLabels"]
+    stage = "revocation"
+    try:
+
+        def token(key: Any, jti: str, *, env: dict[str, Any] = env) -> str:
+            return processor_token(
+                key,
+                issuer=env["FP_JWT_ISSUER"],
+                audience=env["FP_JWT_AUDIENCE"],
+                session_id=jti,
+            )
+
+        def check_all(
+            check_id: str,
+            bearer: str,
+            expected: str,
+            *,
+            before: list[dict[str, Any]] = before,
+            release: str = release,
+            server_name: str = server_name,
+        ) -> None:
+            for replica in before:
+                observed = call_processor(release, replica, server_name, bearer)
+                checks.append(
+                    {
+                        "check_id": check_id,
+                        "namespace": release,
+                        "timestamp_utc": datetime.datetime.now(
+                            datetime.UTC
+                        ).isoformat(),
+                        "pod_uid": replica["uid"],
+                        "observed": observed,
+                        "expected": expected,
+                        "verdict": grpc_probe_verdict(observed, expected),
+                    }
+                )
+
+        stage = "revocation"
+        jti = secrets.token_hex(16)
+        issued = time.monotonic()
+        bearer = token(old, jti)
+        check_all("unrevoked-accepted", bearer, "InvalidArgument")
+        revoke = run_in_pod(
+            pods[short + "-fp"],
+            REDIS_REVOKE,
+            [],
+            stdin=json.dumps({"host": redis_host, "password": password, "jti": jti}),
+            timeout=5,
+        )
+        if revoke.get("result") != "revoked" or time.monotonic() - issued > 540:
+            raise ValueError("revocation precondition failed")
+        check_all("revoked-rejected", bearer, "Unauthenticated")
+        check_all(
+            "unrevoked-control",
+            token(old, secrets.token_hex(16)),
+            "InvalidArgument",
+        )
+        refresh = int(env["FP_JWKS_REFRESH_INTERVAL"])
+        if not 1 <= refresh <= 300:
+            raise ValueError("refresh exceeds existing proof budget")
+        stage = "unpublished-key"
+        new_jti = secrets.token_hex(16)
+        new_issued = time.monotonic()
+        new_token = token(new, new_jti)
+        validate_fixture_token(new, new_token, env, new_jti)
+        independent = run_in_pod(
+            pods[short + "-fp"],
+            REDIS_REVOKE,
+            [],
+            stdin=json.dumps(
+                {
+                    "host": redis_host,
+                    "password": password,
+                    "jti": new_jti,
+                    "action": "check",
+                }
+            ),
+            timeout=5,
+        )
+        if independent.get("result") != "unrevoked":
+            raise ValueError("new token revocation precondition failed")
+        check_all("unpublished-new-rejected", new_token, "Unauthenticated")
+        stage = "rotation-overlap"
+        publication = datetime.datetime.now(datetime.UTC).isoformat()
+
+        if (
+            publish_jwks(pods[short + "-backend"], jwks_document([old, new])).get(
+                "result"
+            )
+            != "published"
+        ):
+            raise ValueError("publish failed")
+        time.sleep(refresh + 10)
+        if time.monotonic() - new_issued > 540:
+            raise ValueError("new-key token expiry margin exhausted")
+        validate_fixture_token(new, new_token, env, new_jti)
+        rotations.append(
+            {
+                "namespace": release,
+                "published_utc": publication,
+                "refresh_interval_seconds": refresh,
+                "key_ids": [old.kid, new.kid],
+                "required_observation": "same fresh unrevoked token rejected before publication and accepted by each unchanged replica after refresh",
+            }
+        )
+        check_all(
+            "overlap-old-accepted",
+            token(old, secrets.token_hex(16)),
+            "InvalidArgument",
+        )
+        check_all(
+            "overlap-new-accepted",
+            new_token,
+            "InvalidArgument",
+        )
+        stage = "rotation-retirement"
+        if (
+            publish_jwks(pods[short + "-backend"], jwks_document([new])).get("result")
+            != "published"
+        ):
+            raise ValueError("publish failed")
+        time.sleep(refresh + 10)
+        # Fresh old-key token rules out expiry as a false retirement pass.
+        check_all(
+            "retired-old-rejected",
+            token(old, secrets.token_hex(16)),
+            "Unauthenticated",
+        )
+        check_all(
+            "retirement-new-control",
+            token(new, secrets.token_hex(16)),
+            "InvalidArgument",
+        )
+        if replica_state(release, labels) != before:
+            raise ValueError("replica restarted during proof")
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        StopIteration,
+        SystemExit,
+        yaml.YAMLError,
+        InvalidSignature,
+        subprocess.SubprocessError,
+    ):
+        raise ProcessorSetupError(stage) from None
+
+
 def actual_processor_phase(
     root: Path,
     rendered: dict[str, Any],
@@ -415,7 +811,6 @@ def actual_processor_phase(
             (root / "charts/university-ecosystem/values.yaml").read_text()
         )
         for release, (resources, _) in [("probe-a", rendered["probe-a"])]:
-            short = release.split("-")[-1]
             stage = f"{release}:temporal"
             setup = bootstrap_temporal(
                 root, release, python_image, chart_values["backup"]["postgresImage"]
@@ -432,106 +827,19 @@ def actual_processor_phase(
             old = generate_signing_key("primary")
             new = generate_signing_key("netpol-rotated")
             stage = f"{release}:processor-config"
-            deployment = real_processor_deployment(
+            fixture = prepare_processor_fixture(
                 resources,
                 release,
-                image=processor_image,
+                pods,
+                setup,
+                password=passwords[release],
+                nats_url=nats_url,
+                signer=old,
+                processor_image=processor_image,
                 diagnostic_image=diagnostic_image,
                 source_sha=source_sha,
-                temporal_endpoint=setup["endpoint"],
-                temporal_ca_configmap=setup["ca_configmap"],
             )
-            spec = deployment["spec"]["template"]["spec"]
-            processor = next(
-                c for c in spec["containers"] if c["name"] == "file-processor"
-            )
-            env = {e["name"]: e.get("value") for e in processor["env"]}
-            if env.get("FP_INTERNAL_HTTP_MTLS_ENABLED") == "true":
-                raise ValueError("SPIFFE fixture required by rendered profile")
-            server_name = f"{release}-file-processor.{release}.svc"
-            uris = env["FP_GRPC_ALLOWED_CLIENT_URIS"].split(",")
-            if len(uris) != 1:
-                raise ValueError("ambiguous rendered client identity")
-            server, client = grpc_credentials(server_name, uris[0])
-            public = (
-                old.private_key.public_key()
-                .public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-                .decode()
-            )
-            redis_host = pods[short + "-redis"].ip
-            values = {
-                "FP_NATS_URL_FILE": nats_url,
-                "FP_MINIO_ACCESS_KEY_FILE": secrets.token_hex(16),
-                "FP_MINIO_SECRET_KEY_FILE": secrets.token_hex(32),
-                "FP_PROCESSING_CAPABILITY_SECRET_FILE": secrets.token_hex(32),
-                "FP_RSA_PUBLIC_KEY_FILE": public,
-                "FP_TEMPORAL_API_KEY_FILE": secrets.token_urlsafe(32),
-                "FP_REVOCATION_REDIS_URL_FILE": f"redis://:{quote(passwords[release], safe='')}@{release}-revocation-redis-master:6379/0",
-            }
-            materialize_processor_secrets(deployment, release, values, server)
-            wire_processor_temporal(deployment, setup)
-            # Existing backend-labelled publisher stays unchanged; Service uses
-            # its exact probe role, so real calls traverse the rendered policy.
-            jwks = urlparse(env["FP_JWKS_URL"])
-            if (
-                jwks.scheme != "http"
-                or jwks.port != 8000
-                or jwks.path != "/.well-known/jwks.json"
-            ):
-                raise ValueError("rendered JWKS transport requires a different fixture")
-            apply_objects(
-                [
-                    _object(
-                        "Service",
-                        jwks.hostname,
-                        release,
-                        spec={
-                            "selector": {"probe-role": short + "-backend"},
-                            "ports": [{"port": 8000}],
-                        },
-                    ),
-                    find(resources, "ServiceAccount", spec["serviceAccountName"]),
-                ]
-            )
-            if (
-                publish_jwks(pods[short + "-backend"], jwks_document([old])).get(
-                    "result"
-                )
-                != "published"
-            ):
-                raise ValueError("JWKS publication failed")
-            gateway = find(resources, "Deployment", release + "-gateway")["spec"][
-                "template"
-            ]["metadata"]["labels"]
-            client_pod = _object(
-                "Pod",
-                "netpol-grpc-client",
-                release,
-                spec={
-                    "automountServiceAccountToken": False,
-                    "containers": [
-                        {
-                            "name": "probe",
-                            "image": diagnostic_image,
-                            "imagePullPolicy": "Never",
-                            "command": ["sleep", "infinity"],
-                            "volumeMounts": [_mount("grpc", "/grpc")],
-                        }
-                    ],
-                    "volumes": [secret_volume("grpc", "netpol-grpc-client")],
-                },
-            )
-            client_pod["metadata"]["labels"] = copy.deepcopy(gateway)
-            apply_objects(
-                [
-                    _object("Secret", "netpol-grpc-client", release, stringData=client),
-                    client_pod,
-                    deployment,
-                ]
-            )
+            deployment = fixture.deployment
             stage = f"{release}:processor-ready"
             kubectl(
                 "-n",
@@ -554,206 +862,21 @@ def actual_processor_phase(
             if len(before) != deployment["spec"].get("replicas", 1):
                 raise ValueError("replica count mismatch")
             stage = f"{release}:real-network-paths"
-            for replica in before:
-                for mode, host, port, extra, expected in [
-                    ("redis-ping", redis_host, 6379, [], "redis-pong"),
-                    (
-                        "redis-ping",
-                        f"{release}-revocation-redis-master",
-                        6379,
-                        [],
-                        "redis-pong",
-                    ),
-                    (
-                        "http",
-                        pods[short + "-backend"].ip,
-                        8000,
-                        ["/.well-known/jwks.json"],
-                        "http",
-                    ),
-                    ("http", jwks.hostname, 8000, ["/.well-known/jwks.json"], "http"),
-                ]:
-                    output = run_command(
-                        [
-                            "kubectl",
-                            "-n",
-                            release,
-                            "exec",
-                            "-i",
-                            replica["name"],
-                            "-c",
-                            "probe",
-                            "--",
-                            "python3",
-                            "-I",
-                            "-c",
-                            PROBE_SRC,
-                            mode,
-                            host,
-                            str(port),
-                            "3",
-                            *extra,
-                        ],
-                        stdin=passwords[release] if mode == "redis-ping" else "",
-                        timeout=20,
-                    )
-                    observed = json.loads(output.stdout)
-                    passed = observed.get("result") == expected and (
-                        observed.get("status") == "200"
-                        if mode == "http"
-                        else observed.get("auth") == "+OK"
-                    )
-                    checks.append(
-                        {
-                            "check_id": "actual-network-" + mode,
-                            "namespace": release,
-                            "timestamp_utc": datetime.datetime.now(
-                                datetime.UTC
-                            ).isoformat(),
-                            "pod_uid": replica["uid"],
-                            "destination": host,
-                            "observed": observed,
-                            "verdict": "pass" if passed else "inconclusive",
-                        }
-                    )
-                    if not passed:
-                        raise ValueError("real network prerequisite failed")
+            check_processor_network(
+                fixture, release, pods, passwords[release], before, checks
+            )
 
-            def token(key: Any, jti: str, *, env: dict[str, Any] = env) -> str:
-                return processor_token(
-                    key,
-                    issuer=env["FP_JWT_ISSUER"],
-                    audience=env["FP_JWT_AUDIENCE"],
-                    session_id=jti,
-                )
-
-            def check_all(
-                check_id: str,
-                bearer: str,
-                expected: str,
-                *,
-                before: list[dict[str, Any]] = before,
-                release: str = release,
-                server_name: str = server_name,
-            ) -> None:
-                for replica in before:
-                    observed = call_processor(release, replica, server_name, bearer)
-                    checks.append(
-                        {
-                            "check_id": check_id,
-                            "namespace": release,
-                            "timestamp_utc": datetime.datetime.now(
-                                datetime.UTC
-                            ).isoformat(),
-                            "pod_uid": replica["uid"],
-                            "observed": observed,
-                            "expected": expected,
-                            "verdict": grpc_probe_verdict(observed, expected),
-                        }
-                    )
-
-            stage = f"{release}:revocation"
-            jti = secrets.token_hex(16)
-            issued = time.monotonic()
-            bearer = token(old, jti)
-            check_all("unrevoked-accepted", bearer, "InvalidArgument")
-            revoke = run_in_pod(
-                pods[short + "-fp"],
-                REDIS_REVOKE,
-                [],
-                stdin=json.dumps(
-                    {"host": redis_host, "password": passwords[release], "jti": jti}
-                ),
-                timeout=5,
+            verify_processor_authentication(
+                fixture,
+                release,
+                pods,
+                passwords[release],
+                old,
+                new,
+                before,
+                checks,
+                rotations,
             )
-            if revoke.get("result") != "revoked" or time.monotonic() - issued > 540:
-                raise ValueError("revocation precondition failed")
-            check_all("revoked-rejected", bearer, "Unauthenticated")
-            check_all(
-                "unrevoked-control",
-                token(old, secrets.token_hex(16)),
-                "InvalidArgument",
-            )
-            refresh = int(env["FP_JWKS_REFRESH_INTERVAL"])
-            if not 1 <= refresh <= 300:
-                raise ValueError("refresh exceeds existing proof budget")
-            stage = f"{release}:unpublished-key"
-            new_jti = secrets.token_hex(16)
-            new_issued = time.monotonic()
-            new_token = token(new, new_jti)
-            validate_fixture_token(new, new_token, env, new_jti)
-            independent = run_in_pod(
-                pods[short + "-fp"],
-                REDIS_REVOKE,
-                [],
-                stdin=json.dumps(
-                    {
-                        "host": redis_host,
-                        "password": passwords[release],
-                        "jti": new_jti,
-                        "action": "check",
-                    }
-                ),
-                timeout=5,
-            )
-            if independent.get("result") != "unrevoked":
-                raise ValueError("new token revocation precondition failed")
-            check_all("unpublished-new-rejected", new_token, "Unauthenticated")
-            stage = f"{release}:rotation-overlap"
-            publication = datetime.datetime.now(datetime.UTC).isoformat()
-
-            if (
-                publish_jwks(pods[short + "-backend"], jwks_document([old, new])).get(
-                    "result"
-                )
-                != "published"
-            ):
-                raise ValueError("publish failed")
-            time.sleep(refresh + 10)
-            if time.monotonic() - new_issued > 540:
-                raise ValueError("new-key token expiry margin exhausted")
-            validate_fixture_token(new, new_token, env, new_jti)
-            rotations.append(
-                {
-                    "namespace": release,
-                    "published_utc": publication,
-                    "refresh_interval_seconds": refresh,
-                    "key_ids": [old.kid, new.kid],
-                    "required_observation": "same fresh unrevoked token rejected before publication and accepted by each unchanged replica after refresh",
-                }
-            )
-            check_all(
-                "overlap-old-accepted",
-                token(old, secrets.token_hex(16)),
-                "InvalidArgument",
-            )
-            check_all(
-                "overlap-new-accepted",
-                new_token,
-                "InvalidArgument",
-            )
-            stage = f"{release}:rotation-retirement"
-            if (
-                publish_jwks(pods[short + "-backend"], jwks_document([new])).get(
-                    "result"
-                )
-                != "published"
-            ):
-                raise ValueError("publish failed")
-            time.sleep(refresh + 10)
-            # Fresh old-key token rules out expiry as a false retirement pass.
-            check_all(
-                "retired-old-rejected",
-                token(old, secrets.token_hex(16)),
-                "Unauthenticated",
-            )
-            check_all(
-                "retirement-new-control",
-                token(new, secrets.token_hex(16)),
-                "InvalidArgument",
-            )
-            if replica_state(release, labels) != before:
-                raise ValueError("replica restarted during proof")
             # Matrix cross-release checks already finished against the unchanged
             # original targets. Retire only actual phase workloads before the
             # next namespace, bounding peak runtime memory to one real stack.
@@ -789,6 +912,12 @@ def actual_processor_phase(
                 "--wait=true",
                 "--timeout=60s",
             )
+    except ProcessorSetupError as error:
+        return {
+            "verdict": "inconclusive",
+            "stage": f"probe-a:{error.args[0]}",
+            "checks": checks,
+        }
     except (
         OSError,
         ValueError,

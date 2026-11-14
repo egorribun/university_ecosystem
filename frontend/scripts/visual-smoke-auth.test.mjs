@@ -926,3 +926,6 @@ test("authenticated audit answers only the seeded placeholder CDN with a pinned 
   assert.equal(externalOutage.httpStatusClassCounts["5xx"], 2)
   assert.equal(externalOutage.httpFailureOriginCounts.external, 2)
 })
+
+// Include authenticated capture diagnostics in the existing hosted visual contract lane.
+import "./authenticated-visual-runtime-diagnostic.test.mjs"

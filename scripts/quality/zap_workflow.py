@@ -294,9 +294,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except ScannerExitError as error:
         code = "unknown" if error.exit_code is None else str(error.exit_code)
-        cause = "" if error.error_class is None else f" after {error.error_class}"
         print(
-            f"::error::ZAP scanner exited with code {code}{cause}; scan result is unknown.",
+            f"::error::ZAP scanner exited with code {code}; "
+            f"diagnostic={error.reason}; scan result is unknown.",
             file=sys.stderr,
         )
         return 1

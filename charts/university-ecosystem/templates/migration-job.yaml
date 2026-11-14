@@ -58,7 +58,9 @@ spec:
           type: RuntimeDefault
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
       {{- end }}
       containers:
         - name: migrate

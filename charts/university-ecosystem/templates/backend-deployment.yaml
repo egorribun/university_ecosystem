@@ -70,7 +70,9 @@ spec:
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
       {{- end }}
       # TD-05 (audit Wave 12): use the dedicated ServiceAccount (automountServiceAccountToken=false).
       serviceAccountName: {{ .Release.Name }}-backend

@@ -47,6 +47,8 @@ scan = next(item.split("src=", 1)[1].split(",", 1)[0] for item in mounts if "dst
 target = next(item.split("src=", 1)[1].split(",", 1)[0] for item in mounts if "dst=/zap/target.txt" in item)
 print(pathlib.Path(target).read_text(), flush=True)
 print("private-zap-marker", file=sys.stderr, flush=True)
+if os.environ.get("FAKE_DIAGNOSTIC"):
+    print(os.environ["FAKE_DIAGNOSTIC"], flush=True)
 if os.environ.get("FAKE_SLEEP"):
     time.sleep(60)  # Fixed upper bound; runner timeout/cancellation must kill this child.
 if not os.environ.get("FAKE_NO_REPORT"):
@@ -341,3 +343,36 @@ def test_cleanup_removes_container_after_client_already_exited(runner_inputs) ->
         "--force",
         "completed-client",
     ]
+
+
+@pytest.mark.parametrize(
+    ("marker", "expected"),
+    [
+        (
+            "ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds",
+            "startup_wait_expired",
+        ),
+        ("ERROR <class 'private_secret_sentinel'>", "scanner_exception"),
+        ("ERROR https://private_secret_sentinel.invalid/", "unknown"),
+    ],
+)
+def test_real_process_exit_projects_only_fixed_diagnostic(
+    runner_inputs, monkeypatch, capsys, marker, expected
+):
+    from scripts.quality.zap_run_provenance import ScannerExitError
+
+    monkeypatch.setenv("FAKE_EXIT", "3")
+    monkeypatch.setenv("FAKE_DIAGNOSTIC", marker)
+    with pytest.raises(ScannerExitError) as raised:
+        _run(runner_inputs)
+    assert raised.value.reason == expected
+    assert raised.value.exit_code == 3
+    _, _, _, work, _ = runner_inputs
+    assert marker in (work / "stdout.log").read_text()
+    assert not (work / "receipt.json").exists()
+    assert not (work / "target.txt").exists()
+    captured = capsys.readouterr()
+    assert "private_secret_sentinel" not in captured.out + captured.err + str(
+        raised.value
+    )
+    assert "private-zap-marker" not in captured.out + captured.err + str(raised.value)

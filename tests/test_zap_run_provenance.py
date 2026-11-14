@@ -291,3 +291,178 @@ def test_clean_report_target_site_is_sufficient(tmp_path, name):
     )
     module.finish_run(work, IDENTITY, nonce, 0, TARGET)
     assert module.verify_run(work, IDENTITY, nonce, TARGET) == report.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("log", "expected"),
+    [
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "startup_wait_expired",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\r\n",
+            "startup_wait_expired",
+        ),
+        (
+            b"private_secret_sentinel\nERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "startup_wait_expired",
+        ),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds", "unknown"),
+        (
+            b"prefix ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "unknown",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds private_secret_sentinel\n",
+            "unknown",
+        ),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 03600 seconds\n", "unknown"),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 600 seconds\n", "unknown"),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after -3600 seconds\n", "unknown"),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\r\r\n",
+            "unknown",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\x00\n",
+            "unknown",
+        ),
+        (
+            b"ERROR https://private_secret_sentinel.invalid/?token=private_secret_sentinel\n",
+            "unknown",
+        ),
+        (b"Authorization: Bearer private_secret_sentinel\n", "unknown"),
+        (b"ERROR <class 'private_secret_sentinel'>\n", "scanner_exception"),
+        (b"ERROR <class 'ValueError'>\n", "scanner_exception"),
+        (b"\xff\xfe\n", "unknown"),
+        (b"", "unknown"),
+    ],
+)
+def test_scanner_failure_reason_is_a_fixed_enum_from_complete_stdout_lines(
+    tmp_path: Path, log: bytes, expected: str
+) -> None:
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    (work / "stderr.log").write_bytes(b"private_secret_sentinel\n")
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == expected
+    assert "private_secret_sentinel" not in str(raised.value)
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("exit_code", [125, 137, -9, True, "3", 999])
+def test_startup_marker_does_not_reclassify_other_exit_codes(tmp_path, exit_code):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    )
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, exit_code, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    "mode", ["missing", "directory", "symlink", "fifo", "unreadable", "stderr-only"]
+)
+def test_missing_or_unsafe_stdout_is_unknown_without_reading_stderr(
+    tmp_path, monkeypatch, mode
+):
+    import os
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "stdout.log"
+    marker = b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    (work / "stderr.log").write_bytes(marker + b"private_secret_sentinel\n")
+    if mode == "directory":
+        path.mkdir()
+    elif mode == "symlink":
+        path.symlink_to(work / "stderr.log")
+    elif mode == "fifo":
+        os.mkfifo(path)
+    elif mode == "unreadable":
+        path.write_bytes(marker)
+        original = os.open
+
+        def denied(source, *args, **kwargs):
+            if source == path:
+                raise PermissionError("private_secret_sentinel")
+            return original(source, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", denied)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["outside-tail", "cut-line", "complete-line"])
+def test_startup_marker_requires_a_complete_line_within_bounded_tail(tmp_path, mode):
+    module, work, nonce, _ = _start(tmp_path)
+    marker = b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    if mode == "outside-tail":
+        payload = marker + b"x" * 65536
+        expected = "unknown"
+    elif mode == "cut-line":
+        payload = b"private_secret_sentinel" + marker + b"x" * (65536 - len(marker))
+        expected = "unknown"
+    else:
+        payload = b"x" * 70000 + b"\n" + marker
+        expected = "startup_wait_expired"
+    (work / "stdout.log").write_bytes(payload)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == expected
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        b"ERROR <class 'bad class'>\n",
+        b"ERROR <class 'private_secret_sentinel'>",
+        b"ERROR <class 'private_secret_sentinel'> suffix\n",
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\nERROR unrecognized private_secret_sentinel\n",
+        b"ERROR <class 'ValueError'>\nERROR <class 'bad class'>\n",
+    ],
+)
+def test_malformed_or_later_unmatched_error_marker_is_unknown(tmp_path, log):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "private_secret_sentinel",
+        "http://private_secret_sentinel.invalid",
+        None,
+        True,
+        3,
+        [],
+        {},
+    ],
+)
+def test_untrusted_exception_reason_is_normalized_to_unknown(reason):
+    error = zap_run_provenance.ScannerExitError(3, reason=reason)
+    assert error.reason == "unknown"
+    assert "private_secret_sentinel" not in str(error)
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\nERROR partial",
+        b"ERROR <class 'ValueError'>\r\r\n",
+    ],
+)
+def test_incomplete_final_output_and_malformed_class_ending_are_unknown(tmp_path, log):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.reason == "unknown"

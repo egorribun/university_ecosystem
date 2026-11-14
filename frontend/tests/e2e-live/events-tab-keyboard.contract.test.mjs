@@ -85,3 +85,18 @@ test("live Events tabs prove the real keyboard and accessible selection contract
   assert.match(config, /name: "desktop"/u)
   assert.match(config, /name: "mobile"/u)
 })
+
+test("keyboard acceptance waits for the production hydration contract before DOM identity and input", async () => {
+  const source = await readFile(
+    new URL("./events-tab-keyboard.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const navigation = source.indexOf('await page.goto("/events")')
+  const hydration = source.indexOf(
+    "await page.waitForFunction(() => window.__APP_HYDRATED === true)"
+  )
+  const firstInteraction = source.indexOf("await activeTab.focus()")
+  assert.ok(navigation >= 0 && navigation < hydration && hydration < firstInteraction)
+  assert.equal(source.split("window.__APP_HYDRATED === true").length - 1, 1)
+  assert.doesNotMatch(source, /waitForTimeout|setTimeout|test\.skip|test\.fixme|retries|timeout:/u)
+})
