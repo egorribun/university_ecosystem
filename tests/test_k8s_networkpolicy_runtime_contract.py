@@ -1569,6 +1569,15 @@ def run_phase(fault=""):
     )
     worker_resource = m._object("Secret", "worker", "probe-a")
     with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                _real_runtime_module("networkpolicy_runtime_startup"),
+                "run_command",
+                side_effect=OSError(
+                    "diagnostic transport unavailable in phase unit fixture"
+                ),
+            )
+        )
         setup = stack.enter_context(
             patch.object(
                 m,
@@ -2429,3 +2438,310 @@ def test_processor_setup_substage_reaches_receipt_without_exception_payload():
         "stage": "probe-a:processor-workloads",
         "checks": [],
     }
+
+
+def startup_api_fixture():
+    return [
+        {"metadata": {"uid": "deployment-id"}},
+        {
+            "metadata": {},
+            "items": [
+                {
+                    "metadata": {
+                        "uid": "replica-id",
+                        "ownerReferences": [
+                            {
+                                "controller": True,
+                                "kind": "Deployment",
+                                "uid": "deployment-id",
+                            }
+                        ],
+                    }
+                }
+            ],
+        },
+        {
+            "metadata": {},
+            "items": [
+                {
+                    "metadata": {
+                        "name": "probe-a-file-processor-abc-xyz",
+                        "namespace": "probe-a",
+                        "ownerReferences": [
+                            {
+                                "controller": True,
+                                "kind": "ReplicaSet",
+                                "uid": "replica-id",
+                            }
+                        ],
+                    },
+                    "status": {
+                        "containerStatuses": [
+                            {
+                                "name": "file-processor",
+                                "ready": False,
+                                "restartCount": 5,
+                                "state": {"waiting": {"message": "private-canary"}},
+                                "lastState": {
+                                    "terminated": {
+                                        "exitCode": 1,
+                                        "message": "private-canary",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "probe",
+                                "ready": True,
+                                "restartCount": 0,
+                                "state": {"running": {}},
+                            },
+                        ]
+                    },
+                }
+            ],
+        },
+    ]
+
+
+def test_actual_startup_diagnostic_projects_owned_status_and_fixed_messages():
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    documents = startup_api_fixture()
+    documents[2]["items"].append(
+        {
+            "metadata": {"name": "stand-in", "ownerReferences": []},
+            "status": {"message": "private-canary"},
+        }
+    )
+    payload = json.dumps(
+        {
+            "msg": "Failed to initialize session revocation Redis",
+            "err": "private-canary",
+            "env": "private-canary",
+        }
+    )
+    responses = [json.dumps(d) for d in documents] + [
+        payload,
+        "not JSON private-canary\n" + json.dumps({"msg": "private-canary"}),
+    ]
+    with patch.object(
+        m, "run_command", side_effect=[SimpleNamespace(stdout=s) for s in responses]
+    ) as command:
+        result = m.processor_startup_diagnostics()
+    assert result["status"] == "collected"
+    assert len(result["replicas"]) == 1
+    replica = result["replicas"][0]
+    assert replica["containers"][0] == {
+        "name": "file-processor",
+        "state": "waiting",
+        "ready": False,
+        "restarts": 5,
+        "exit_code": None,
+        "previous_exit_code": 1,
+    }
+    assert replica["current"] == {"status": "classified", "events": ["redis-failed"]}
+    assert replica["previous"] == {"status": "unknown", "events": []}
+    assert "private-canary" not in json.dumps(result)
+    assert "pass" not in json.dumps(result)
+    assert len(command.call_args_list) == 5
+    for call in command.call_args_list:
+        assert call.kwargs["timeout"] == 10
+        assert "--request-timeout=5s" in call.args[0]
+    for call in command.call_args_list[1:3]:
+        assert "limit=8" in call.args[0][-1]
+    for call in command.call_args_list[3:]:
+        assert "--tail=100" in call.args[0]
+        assert "--limit-bytes=16384" in call.args[0]
+        assert call.args[0][call.args[0].index("-c") + 1] == "file-processor"
+    assert "--previous=true" in command.call_args_list[-1].args[0]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "request",
+        "json",
+        "document-type",
+        "oversize",
+        "uid",
+        "continue",
+        "items-type",
+        "too-many-items",
+        "no-owner",
+        "too-many-pods",
+        "namespace",
+        "name",
+        "container-list",
+        "too-many-containers",
+        "container-name",
+        "duplicate-container",
+        "restarts-type",
+        "restarts-range",
+        "exit-type",
+        "exit-range",
+        "owner-type",
+    ],
+)
+def test_startup_diagnostics_fail_closed_on_untrusted_api_shape(fault):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    docs = startup_api_fixture()
+    pod = docs[2]["items"][0]
+    row = pod["status"]["containerStatuses"][0]
+    if fault == "uid":
+        docs[0]["metadata"]["uid"] = ""
+    if fault == "continue":
+        docs[1]["metadata"]["continue"] = "private-canary"
+    if fault == "items-type":
+        docs[1]["items"] = {}
+    if fault == "too-many-items":
+        docs[1]["items"] *= 9
+    if fault == "no-owner":
+        pod["metadata"]["ownerReferences"] = []
+    if fault == "too-many-pods":
+        docs[2]["items"] *= 3
+    if fault == "namespace":
+        pod["metadata"]["namespace"] = "unrelated"
+    if fault == "name":
+        pod["metadata"]["name"] = "stand-in"
+    if fault == "container-list":
+        pod["status"]["containerStatuses"] = {}
+    if fault == "too-many-containers":
+        pod["status"]["containerStatuses"] *= 2
+    if fault == "container-name":
+        row["name"] = "private-canary"
+    if fault == "duplicate-container":
+        pod["status"]["containerStatuses"] = [row, row]
+    if fault == "restarts-type":
+        row["restartCount"] = True
+    if fault == "restarts-range":
+        row["restartCount"] = -1
+    if fault == "exit-type":
+        row["state"] = {"terminated": {"exitCode": True}}
+    if fault == "exit-range":
+        row["state"] = {"terminated": {"exitCode": 256}}
+    if fault == "owner-type":
+        pod["metadata"]["ownerReferences"] = [None]
+    outputs = [json.dumps(d) for d in docs]
+    if fault == "json":
+        outputs[0] = "private-canary"
+    if fault == "document-type":
+        outputs[0] = "[]"
+    if fault == "oversize":
+        outputs[0] = "x" * 131073
+    with patch.object(
+        m,
+        "run_command",
+        side_effect=subprocess.CalledProcessError(
+            1, ["kubectl"], stderr="private-canary"
+        )
+        if fault == "request"
+        else [SimpleNamespace(stdout=s) for s in outputs],
+    ):
+        assert m.processor_startup_diagnostics() == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "case", ["all-messages", "unknown", "request", "oversize", "unicode-oversize"]
+)
+def test_startup_log_projection_never_exposes_payload(case):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    text = "\n".join(
+        json.dumps({"msg": msg, "err": "private-canary"}) for msg in m.MESSAGES
+    )
+    if case == "unknown":
+        text = '[]\nnull\n{"msg": []}\n{"msg": "unknown private-canary"}\n'
+    if case == "oversize":
+        text = "x" * 16385
+    if case == "unicode-oversize":
+        text = "я" * 9000
+    with patch.object(
+        m,
+        "run_command",
+        side_effect=subprocess.TimeoutExpired(["kubectl"], 10, output="private-canary")
+        if case == "request"
+        else None,
+        return_value=SimpleNamespace(stdout=text),
+    ):
+        result = m._logs("probe-a", "probe-a-file-processor-abc-xyz", False)
+    assert "private-canary" not in json.dumps(result)
+    if case == "all-messages":
+        assert result == {"status": "classified", "events": sorted(m.MESSAGES.values())}
+    else:
+        assert result == {
+            "status": "unknown" if case == "unknown" else "unavailable",
+            "events": [],
+        }
+
+
+def test_startup_container_unknown_state_and_exit_are_not_success():
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    pod = startup_api_fixture()[2]["items"][0]
+    row = pod["status"]["containerStatuses"][0]
+    row["state"] = {"terminated": {"exitCode": 1}, "waiting": {}}
+    assert m._containers(pod)[0]["state"] == "unknown"
+    assert m._containers(pod)[0]["exit_code"] == 1
+
+
+def test_readiness_failure_attaches_diagnostic_without_changing_verdict():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    with patch.object(
+        m, "processor_startup_diagnostics", return_value={"status": "unavailable"}
+    ) as diagnostic:
+        result = run_phase("rollout")
+    diagnostic.assert_called_once_with()
+    assert result == {
+        "verdict": "inconclusive",
+        "stage": "probe-a:processor-ready",
+        "checks": [],
+        "diagnostics": {"status": "unavailable"},
+    }
+
+
+@pytest.mark.parametrize("source", ["api", "log"])
+def test_startup_deep_json_is_unavailable_without_interrupting_receipt(source):
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    phase = _real_runtime_module("networkpolicy_runtime_real_fp")
+    depth = 65527 if source == "api" else 4000
+    nested = "[" * depth + "0" + "]" * depth
+    assert len(nested.encode("utf-8")) < (131072 if source == "api" else 16384)
+
+    def collect():
+        with patch.object(
+            m, "run_command", return_value=SimpleNamespace(stdout=nested)
+        ):
+            if source == "api":
+                with pytest.raises(RecursionError):
+                    json.loads(nested)
+                return m.processor_startup_diagnostics()
+            # Python runtimes differ in decoder nesting limits. Exercise the
+            # log decoder error branch independently within its byte limit.
+            with patch.object(m.json, "loads", side_effect=RecursionError):
+                return m._logs("probe-a", "probe-a-file-processor-abc-xyz", False)
+
+    with patch.object(phase, "processor_startup_diagnostics", side_effect=collect):
+        receipt = run_phase("rollout")
+    assert receipt["verdict"] == "inconclusive"
+    assert receipt["stage"] == "probe-a:processor-ready"
+    assert receipt["checks"] == []
+    assert receipt["diagnostics"]["status"] == "unavailable"
+    assert nested not in json.dumps(receipt)
+    assert json.loads(json.dumps(receipt)) == receipt

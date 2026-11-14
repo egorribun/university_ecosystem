@@ -41,6 +41,7 @@ from networkpolicy_runtime_processor import (
     real_processor_deployment,
 )
 from networkpolicy_runtime_standins import PROBE_SRC
+from networkpolicy_runtime_startup import processor_startup_diagnostics
 from networkpolicy_runtime_temporal import (
     _key_pem,
     _mount,
@@ -929,7 +930,10 @@ def actual_processor_phase(
         InvalidSignature,
         subprocess.SubprocessError,
     ):
-        return {"verdict": "inconclusive", "stage": stage, "checks": checks}
+        failure = {"verdict": "inconclusive", "stage": stage, "checks": checks}
+        if stage == "probe-a:processor-ready":
+            failure["diagnostics"] = processor_startup_diagnostics()
+        return failure
     return {
         "verdict": "pass"
         if checks and all(c["verdict"] == "pass" for c in checks)
