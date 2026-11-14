@@ -374,11 +374,54 @@ const server = createServer(async (req, res) => {
     console.error("server-prod: handler error:", err)
     if (!res.headersSent) {
       res.statusCode = 500
+      res.setHeader("cache-control", "no-store, private, max-age=0")
+      res.setHeader("referrer-policy", "no-referrer")
+      res.setHeader("x-content-type-options", "nosniff")
+      if (req.method === "GET" || req.method === "HEAD") {
+        const nonce = randomBytes(16).toString("base64")
+        res.setHeader("content-type", "text/html; charset=utf-8")
+        for (const [name, value] of Object.entries(
+          buildNodeCspHeaders(nonce, {
+            upgradeInsecureRequests: shouldUpgradeInsecureRequests({
+              host: req.headers.host,
+              forwardedProto: req.headers["x-forwarded-proto"],
+            }),
+          })
+        ))
+          res.setHeader(name, value)
+        res.end(req.method === "HEAD" ? undefined : serverErrorDocument(req.headers.cookie, nonce))
+        return
+      }
       res.setHeader("content-type", "text/plain; charset=utf-8")
     }
     if (!res.writableEnded) res.end("Internal Server Error")
   }
 })
+
+// Independent of the renderer and its assets. Only supported cookie values
+// select static trusted text; malformed preferences retain the SSR RU default.
+function serverErrorDocument(cookie, nonce) {
+  let language = "ru"
+  const preference = (cookie ?? "").split(/;\s*/u).find((part) => part.startsWith("ue:language="))
+  try {
+    if (preference && decodeURIComponent(preference.slice("ue:language=".length)) === "en") {
+      language = "en"
+    }
+  } catch {
+    // Keep the default for invalid percent encoding.
+  }
+  const english = language === "en"
+  const title = english ? "Something went wrong" : "Что-то пошло не так"
+  const description = english
+    ? "We could not load this page. Please try again."
+    : "Не удалось загрузить страницу. Попробуйте снова."
+  const retry = english ? "Try again" : "Попробовать снова"
+  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a;font:1rem system-ui,sans-serif}main{max-width:28rem;margin:1rem;padding:2rem;text-align:center;border:1px solid #cbd5e1;border-radius:1rem;background:white}button{min-width:44px;min-height:44px;padding:.75rem 1rem;border:0;border-radius:.5rem;background:#1d4ed8;color:white;font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #0f172a;outline-offset:3px}</style>
+</head><body><main aria-labelledby="error-title"><p>500</p><h1 id="error-title">${title}</h1><p>${description}</p><button type="button" id="retry">${retry}</button></main>
+<script nonce="${nonce}">document.getElementById("retry").addEventListener("click",function(){this.disabled=true;location.reload()})</script></body></html>`
+}
 
 async function startServer() {
   const warmupStarted = Date.now()

@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
+import { runInNewContext } from "node:vm"
 import { gunzipSync, gzipSync } from "node:zlib"
 import { JSDOM } from "jsdom"
 
@@ -162,7 +163,7 @@ test("warmSsrRuntime aborts a hung render before advertising readiness", async (
 })
 
 test(
-  "server-prod returns a generic 500 when an isolated synthetic renderer throws",
+  "server-prod returns a localized retry page when the real handler catches a renderer failure",
   { timeout: 10_000 },
   async () => {
     const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "ue-server-prod-error-"))
@@ -172,12 +173,15 @@ test(
     await writeFile(
       path.join(serverDirectory, "server.js"),
       [
+        "let recoveryRequests = 0",
         "export default {",
         "  async fetch(request) {",
         "    const pathname = new URL(request.url).pathname",
         '    if (pathname === "/login") {',
         '      return new Response("synthetic warmup", { status: 200, headers: { "content-type": "text/html; charset=utf-8" } })',
         "    }",
+        '    if (pathname === "/__recover__" && recoveryRequests++ === 0) throw new Error("private renderer detail")',
+        '    if (pathname === "/__recover__") return new Response("Recovered document", { headers: { "content-type": "text/html" } })',
         '    if (pathname === "/__synthetic_ssr_error__") {',
         '      throw new Error("SYNTHETIC_RENDER_DIAGNOSTIC_ONLY\\n    at fixtureRenderer (fixture.js:1:1)")',
         "    }",
@@ -204,6 +208,9 @@ test(
             TMP: process.env.TMP ?? os.tmpdir(),
             HOST: "127.0.0.1",
             PORT: String(port),
+            ...(process.env.NODE_V8_COVERAGE
+              ? { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }
+              : {}),
           },
           stdio: "ignore",
         }
@@ -215,11 +222,64 @@ test(
       assert.equal(warmupResponse.headers.get("referrer-policy"), "no-referrer")
       await warmupResponse.body?.cancel()
 
+      const failedDocument = await fetch(`${origin}/__recover__`)
+      assert.equal(failedDocument.status, 500)
+      const recoveryHtml = await failedDocument.text()
+      const document = new JSDOM(recoveryHtml).window.document
+      const retryButton = document.getElementById("retry")
+      assert.ok(
+        failedDocument.headers
+          .get("content-security-policy")
+          .includes(`nonce-${document.querySelector("script").nonce}`)
+      )
+      assert.equal(failedDocument.headers.get("x-content-type-options"), "nosniff")
+      let reloads = 0
+      runInNewContext(document.querySelector("script").textContent, {
+        document,
+        location: {
+          reload() {
+            reloads++
+          },
+        },
+      })
+      retryButton.click()
+      retryButton.click()
+      assert.equal(reloads, 1)
+      assert.equal(retryButton.disabled, true)
+      const recovered = await fetch(`${origin}/__recover__`)
+      assert.equal(recovered.status, 200)
+      assert.equal(await recovered.text(), "Recovered document")
+      const mutation = await fetch(`${origin}/__synthetic_ssr_error__`, { method: "POST" })
+      assert.equal(mutation.status, 500)
+      assert.equal(await mutation.text(), "Internal Server Error")
+
       const response = await fetch(`${origin}/__synthetic_ssr_error__`)
       assert.equal(response.status, 500)
-      assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8")
+      assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8")
       const responseBody = await response.text()
-      assert.equal(responseBody, "Internal Server Error")
+      assert.match(responseBody, /<html lang="ru">/u)
+      assert.match(responseBody, /Попробовать снова/u)
+      assert.match(responseBody, /location.reload\(\)/u)
+      assert.equal(response.headers.get("cache-control"), "no-store, private, max-age=0")
+      assert.equal(response.headers.get("referrer-policy"), "no-referrer")
+      assert.match(response.headers.get("content-security-policy"), /script-src/u)
+      for (const cookie of ["ue:language=en", "ue:language=%65n"]) {
+        const english = await fetch(`${origin}/__synthetic_ssr_error__?token=DO_NOT_REFLECT`, {
+          headers: { cookie },
+        })
+        const html = await english.text()
+        assert.equal(english.status, 500)
+        assert.match(html, /<html lang="en">/u)
+        assert.match(html, /Try again/u)
+        assert.doesNotMatch(html, /DO_NOT_REFLECT|__synthetic_ssr_error__|fixtureRenderer/u)
+      }
+      for (const cookie of ["ue:language=fr", "ue:language=%", "other=en"]) {
+        const fallback = await fetch(`${origin}/__synthetic_ssr_error__`, { headers: { cookie } })
+        assert.match(await fallback.text(), /<html lang="ru">/u)
+      }
+      const head = await fetch(`${origin}/__synthetic_ssr_error__`, { method: "HEAD" })
+      assert.equal(head.status, 500)
+      assert.equal(await head.text(), "")
       assert.doesNotMatch(
         responseBody,
         /SYNTHETIC_RENDER_DIAGNOSTIC_ONLY|Traceback|fixtureRenderer|notFound\.(?:title|description|home|login)/u

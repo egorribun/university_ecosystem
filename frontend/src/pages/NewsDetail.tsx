@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { isAxiosError } from "axios"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft as ArrowBackIcon, Copy as CopyIcon } from "lucide-react"
@@ -15,7 +16,7 @@ import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { resolveSiteShareUrl, useShare } from "@/hooks/useShare"
 import { toDate, getMoscowDate } from "@/utils/date"
 import { localizeField } from "@/utils/localize"
-import { deleteNews, type NewsItem } from "@/api/news"
+import { deleteNews, NewsRequestError, type NewsItem } from "@/api/news"
 import { newsDetailQueryOptions, useAnonymousReadMode } from "@/api/hooks/news"
 import { SEO } from "@/components/ui/SEO"
 import { Button } from "@/components/ui/Button"
@@ -281,6 +282,12 @@ function NewsDetailArticle({ id }: { id: string }) {
 
   /* ══════════════ ERROR ══════════════ */
   if (query.isError || !query.data) {
+    const errorStatus =
+      query.error instanceof NewsRequestError
+        ? query.error.status
+        : isAxiosError(query.error)
+          ? query.error.response?.status
+          : undefined
     return (
       <>
         <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
@@ -290,9 +297,20 @@ function NewsDetailArticle({ id }: { id: string }) {
             <p className="text-lg font-semibold text-(--error-text)">
               {t("news:states.loadError")}
             </p>
-            <Button variant="glass" onClick={handleBack}>
-              {t("common:buttons.back")}
-            </Button>
+            <div className="flex flex-wrap justify-center gap-3">
+              {(errorStatus ?? 0) >= 500 && (
+                <Button
+                  variant="glass"
+                  disabled={query.isFetching}
+                  onClick={() => void query.refetch({ cancelRefetch: false })}
+                >
+                  {t("common:errorBoundary.retry")}
+                </Button>
+              )}
+              <Button variant="glass" onClick={handleBack}>
+                {t("common:buttons.back")}
+              </Button>
+            </div>
           </div>
         </div>
       </>
