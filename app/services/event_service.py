@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.auth.relationships import sync_event_attendee, sync_event_creator
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
@@ -552,6 +553,8 @@ class EventService:
             event = await self.repo.create(obj_data, locale=locale)
         async with self.uow:
             await self.uow.commit()
+        # Best effort: the event is committed, so a SpiceDB failure only logs.
+        await sync_event_creator(event.id, user_id)
         return event
 
     async def update_event(
@@ -651,9 +654,13 @@ class EventService:
                     data.event_id, user_id, updates
                 )
                 assert exist is not None  # noqa: S101
-                async with self.uow:
-                    await self.uow.commit()
+            # Release the registration row lock before the best-effort RPC,
+            # including when the existing attendance needs no database update.
+            async with self.uow:
+                await self.uow.commit()
+            if updates:
                 await events_cache_version.increment()
+            await sync_event_attendee(data.event_id, user_id, attending=True)
 
             # Helper logic to set token attribute for response
             token = attendance_tokens.issue_token(exist)
@@ -672,6 +679,8 @@ class EventService:
                 await self.uow.commit()
             await events_cache_version.increment()
             record_event_registration()
+            # No domain event covers attendance, so SpiceDB is synced after commit.
+            await sync_event_attendee(data.event_id, user_id, attending=True)
         except IntegrityError as exc:
             await self.uow.rollback()
             # Race condition retry
@@ -699,6 +708,7 @@ class EventService:
                     await self.uow.commit()
                 await events_cache_version.increment()
 
+            await sync_event_attendee(data.event_id, user_id, attending=True)
             enriched_exist = exist.model_copy(
                 update={"qr_token": attendance_tokens.issue_token(exist)}
             )
@@ -726,6 +736,7 @@ class EventService:
             async with self.uow:
                 await self.uow.commit()
             await events_cache_version.increment()
+            await sync_event_attendee(data.event_id, user_id, attending=False)
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=("attendance", "participation"),

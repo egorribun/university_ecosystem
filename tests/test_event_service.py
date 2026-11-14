@@ -745,3 +745,130 @@ async def test_register_attendance_integrity_not_found_raises_value_error(
     with pytest.raises(ValueError):
         await event_service.register_attendance(data, user_id)
     mock_uow.rollback.assert_awaited_once()
+
+
+def _create_event_payload(now: datetime) -> schemas.EventCreate:
+    return schemas.EventCreate(
+        title="Test Event",
+        description="Description",
+        starts_at=now,
+        ends_at=now + timedelta(hours=2),
+        location="Location",
+        event_type="test_type",
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_event_syncs_creator_after_commit(
+    event_service, mock_uow, mock_repo
+):
+    user_id = uuid4()
+    mock_event = create_mock_event()
+    mock_repo.create.return_value = mock_event
+    order: list[str] = []
+    mock_uow.commit.side_effect = lambda: order.append("commit")
+    sync = AsyncMock(side_effect=lambda *_args: order.append("sync"))
+
+    with patch("app.services.event_service.sync_event_creator", sync):
+        result = await event_service.create_event(
+            _create_event_payload(datetime.now(UTC)), user_id
+        )
+
+    assert result == mock_event
+    sync.assert_awaited_once_with(mock_event.id, user_id)
+    assert order == ["commit", "sync"]
+
+
+@pytest.mark.asyncio
+async def test_create_event_swallows_creator_sync_failure(
+    event_service, mock_repo, mock_spicedb_relationship_writes
+):
+    import grpc.aio
+
+    mock_event = create_mock_event()
+    mock_repo.create.return_value = mock_event
+    mock_spicedb_relationship_writes.WriteRelationships.side_effect = (
+        grpc.aio.AioRpcError(
+            code=grpc.StatusCode.UNAVAILABLE,
+            initial_metadata=grpc.aio.Metadata(),
+            trailing_metadata=grpc.aio.Metadata(),
+            details="spicedb down",
+        )
+    )
+
+    with patch("app.auth.relationships.logger.warning") as warning:
+        result = await event_service.create_event(
+            _create_event_payload(datetime.now(UTC)), uuid4()
+        )
+
+    # The event is committed, so the request must still succeed.
+    assert result == mock_event
+    warning.assert_called_once()
+    assert warning.call_args.args[0] == "event_creator_relationship_sync_failed"
+    assert warning.call_args.kwargs["event_id"] == str(mock_event.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("already_registered", [False, True])
+async def test_existing_attendance_syncs_relationship_after_commit(
+    event_service, mock_uow, mock_repo, already_registered
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+    existing = EventAttendanceDTO(
+        id=uuid4(),
+        event_id=data.event_id,
+        user_id=user_id,
+        registered_at=datetime.now(UTC) if already_registered else None,
+    )
+    mock_repo.get_for_registration.return_value = _registration_event()
+    mock_repo.get_attendance.return_value = existing
+    mock_repo.update_attendance.return_value = existing
+    order: list[str] = []
+    mock_uow.commit.side_effect = lambda: order.append("commit")
+    sync = AsyncMock(side_effect=lambda *_args, **_kwargs: order.append("sync"))
+
+    with (
+        patch("app.services.event_service.sync_event_attendee", sync),
+        patch(
+            "app.services.event_service.attendance_tokens.issue_token",
+            return_value="token",
+        ),
+    ):
+        result = await event_service.register_attendance(data, user_id)
+
+    assert result.qr_token == "token"
+    sync.assert_awaited_once_with(data.event_id, user_id, attending=True)
+    assert order == ["commit", "sync"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("already_registered", [False, True])
+async def test_existing_attendance_commit_failure_does_not_sync(
+    event_service, mock_uow, mock_repo, already_registered
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+    existing = EventAttendanceDTO(
+        id=uuid4(),
+        event_id=data.event_id,
+        user_id=user_id,
+        registered_at=datetime.now(UTC) if already_registered else None,
+    )
+    mock_repo.get_for_registration.return_value = _registration_event()
+    mock_repo.get_attendance.return_value = existing
+    mock_repo.update_attendance.return_value = existing
+    mock_uow.commit.side_effect = RuntimeError("commit failed")
+    sync = AsyncMock()
+
+    with (
+        patch("app.services.event_service.sync_event_attendee", sync),
+        patch(
+            "app.services.event_service.attendance_tokens.issue_token",
+            return_value="token",
+        ),
+        pytest.raises(RuntimeError, match="commit failed"),
+    ):
+        await event_service.register_attendance(data, user_id)
+
+    sync.assert_not_awaited()

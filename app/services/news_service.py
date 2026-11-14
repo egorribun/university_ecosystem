@@ -223,9 +223,6 @@ class NewsService:
         from app.services import search_indexer
 
         await search_indexer.remove_document(search_indexer.NEWS_INDEX, news_id)
-        # Repository delete does execute/rowcount but usually not commit?
-        # BaseRepository delete: execute delete stmt. Does NOT commit.
-        # So we need to commit.
 
         # The legacy news_images key has no news-specific ownership proof.
         # Retain the object until uploads carry a verifiable owner key.

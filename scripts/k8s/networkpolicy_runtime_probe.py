@@ -8,7 +8,8 @@ scripts/k8s/networkpolicy_runtime_proof.sh. The script:
    releases (probe-a, probe-b), each in its own namespace;
 2. deploys the revocation Redis StatefulSet from the store chart with a generated
    password Secret, and stand-in pods that carry the rendered pod-template labels
-   of the file-processor, backend and ws-hub workloads, plus unrelated,
+   of the file-processor, backend, ws-hub and backup (CronJob) workloads, plus
+   Temporal and NATS stand-ins, a host-network link-local listener, unrelated,
    monitoring, Prometheus-labelled and ingress-labelled sources;
 3. proves every probe target is reachable before any policy is applied
    (baseline), applies the rendered policies, then runs the probe matrix with a
@@ -17,8 +18,8 @@ scripts/k8s/networkpolicy_runtime_proof.sh. The script:
    acceptance across rotation) in the same enforced cluster;
 5. writes a JSON receipt and exits non-zero on any mismatch or inconclusive row.
 
-The file-processor and backend images are not run. The receipt's not_run list
-states what remains unproven.
+The file-processor, backend, backup and Temporal/NATS workloads are not run as
+their real images. The receipt's not_run list states what remains unproven.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from networkpolicy_runtime_app import (
 from networkpolicy_runtime_kube import (
     Pod,
     apply_objects,
+    cronjob_template_labels,
     find,
     helm_template,
     kubectl,
@@ -54,9 +56,13 @@ from networkpolicy_runtime_kube import (
 )
 from networkpolicy_runtime_rows import (
     BACKEND_PORT,
+    LINK_LOCAL_ADDRESS,
+    LINK_LOCAL_PORT,
+    NATS_PORT,
     PUBLIC_HTTPS_TARGET,
     REDIS_PORT,
     ROWS,
+    TEMPORAL_PORT,
     WS_METRICS_PORT,
     WS_PUBLIC_PORT,
     Execute,
@@ -81,7 +87,8 @@ REDIS_CREDENTIAL_ITEM_REF = "revocation-redis-password"
 EXPORTER_INIT = "redis-exporter-password-file"
 EXPORTER_CONTAINER = "metrics"
 EXPORTER_VOLUME = "redis-exporter-auth"
-RECEIPT_SCHEMA = "aud169-188-189-aud438-kind-networkpolicy-receipt/v2"
+RECEIPT_SCHEMA = "aud169-188-189-aud438-kind-networkpolicy-receipt/v3"
+BACKUP_CRONJOB = "db-backup"
 
 Rendered = dict[str, tuple[list[dict[str, Any]], list[dict[str, Any]]]]
 
@@ -147,6 +154,12 @@ def render_release(
             *app_contract._resolved_staging_args("192.0.2.0/24"),
             "--set-string",
             f"fullnameOverride={release}",
+            "--set",
+            "backup.enabled=true",
+            # Staging validation requires an https backup endpoint. The rendered
+            # backup policy grants TCP/443 generically, so this name is never resolved.
+            "--set-string",
+            "backup.minioEndpoint=https://backup-target.probe.invalid:443",
         ],
         release,
     )
@@ -189,6 +202,25 @@ def assert_rendered_ports(
         raise SystemExit(
             "rendered backend ingress does not admit the probe backend port"
         )
+    # The backup workload is rendered with backup.enabled=true; its policy must
+    # select the CronJob pod template and admit TCP/443 only as public egress.
+    find(app, "CronJob", f"{release}-{BACKUP_CRONJOB}")
+    backup_policy = find(app, "NetworkPolicy", f"{release}-backup-policy")
+    if (
+        backup_policy["spec"]["podSelector"]["matchLabels"].get(
+            "app.kubernetes.io/component"
+        )
+        != "backup"
+    ):
+        raise SystemExit("rendered backup policy does not select the backup component")
+    backup_public = [
+        port
+        for rule in backup_policy["spec"]["egress"]
+        for port in rule.get("ports", [])
+        if port.get("port") == 443
+    ]
+    if not backup_public:
+        raise SystemExit("rendered backup policy lacks the TCP/443 public egress rule")
     find(store, "StatefulSet", f"{release}-revocation-redis-master")
     find(store, "Service", f"{release}-revocation-redis-master")
 
@@ -253,7 +285,13 @@ def standin_objects(
     specs: dict[str, Pod] = {}
 
     def add_pod(
-        key: str, namespace: str, name: str, labels: dict[str, str], **listen: str
+        key: str,
+        namespace: str,
+        name: str,
+        labels: dict[str, str],
+        *,
+        host_network: bool = False,
+        **listen: str,
     ) -> None:
         objects.append(
             stand_in_pod(
@@ -263,6 +301,7 @@ def standin_objects(
                 base_image,
                 listen.get("tcp", ""),
                 listen.get("udp", ""),
+                host_network=host_network,
             )
         )
         specs[key] = Pod(namespace, name)
@@ -308,16 +347,65 @@ def standin_objects(
             f"probe-a-{component}-stand-in",
             pod_template_labels(app_a, "Deployment", f"probe-a-{component}"),
         )
+    # Backup CronJob pod template labels (backup.enabled=true in every release).
+    add_pod(
+        "a-backup",
+        "probe-a",
+        "probe-a-backup-stand-in",
+        cronjob_template_labels(app_a, f"probe-a-{BACKUP_CRONJOB}"),
+    )
+    # Dependencies the file-processor egresses to. Labels are the chart's
+    # app.kubernetes.io/name selectors only, so no release default-deny applies.
+    add_pod(
+        "a-temporal",
+        "probe-a",
+        "temporal-0",
+        {"app.kubernetes.io/name": "temporal"},
+        tcp=str(TEMPORAL_PORT),
+    )
+    add_pod(
+        "a-nats",
+        "probe-a",
+        "nats-0",
+        {"app.kubernetes.io/name": "nats"},
+        tcp=str(NATS_PORT),
+    )
     add_pod("unrelated", UNRELATED_NS, "untrusted-source", {"app": "untrusted"})
     add_pod(
         "decoy",
         UNRELATED_NS,
         "decoy-listener",
         {"app": "decoy"},
-        tcp="443,53",
+        tcp="80,443,53",
         udp="53",
     )
     objects.append(service(UNRELATED_NS, "decoy-443-svc", {"probe-role": "decoy"}, 443))
+    # Same selector labels as the release dependencies, but in an unselected namespace.
+    add_pod(
+        "decoy-temporal",
+        UNRELATED_NS,
+        "decoy-temporal-0",
+        {"app.kubernetes.io/name": "temporal"},
+        tcp=str(TEMPORAL_PORT),
+    )
+    add_pod(
+        "decoy-nats",
+        UNRELATED_NS,
+        "decoy-nats-0",
+        {"app.kubernetes.io/name": "nats"},
+        tcp=str(NATS_PORT),
+    )
+    # Host-network listener on the kind node at LINK_LOCAL_ADDRESS:LINK_LOCAL_PORT.
+    # Host-network traffic is not subject to pod NetworkPolicy, so it is the
+    # same-destination control for every denied link-local attempt.
+    add_pod(
+        "linklocal",
+        UNRELATED_NS,
+        "host-linklocal",
+        {"app": "host-linklocal"},
+        host_network=True,
+        tcp=str(LINK_LOCAL_PORT),
+    )
     add_pod(
         "prometheus",
         MONITORING_NS,
@@ -373,9 +461,15 @@ def build_targets(pods: dict[str, Pod], kube_dns_ip: str) -> dict[str, tuple[str
         "a-redis-svc": (redis_service["probe-a"], REDIS_PORT),
         "a-ws-public": (pods["a-ws"].ip, WS_PUBLIC_PORT),
         "a-ws-metrics": (pods["a-ws"].ip, WS_METRICS_PORT),
+        "a-temporal-pod": (pods["a-temporal"].ip, TEMPORAL_PORT),
+        "a-nats-pod": (pods["a-nats"].ip, NATS_PORT),
+        "decoy-temporal-pod": (pods["decoy-temporal"].ip, TEMPORAL_PORT),
+        "decoy-nats-pod": (pods["decoy-nats"].ip, NATS_PORT),
         "decoy-pod-443": (pods["decoy"].ip, 443),
+        "decoy-pod-80": (pods["decoy"].ip, 80),
         "decoy-pod-53": (pods["decoy"].ip, 53),
         "decoy-svc-443": (cluster_ip(UNRELATED_NS, "decoy-443-svc"), 443),
+        "link-local-443": (LINK_LOCAL_ADDRESS, LINK_LOCAL_PORT),
         "kube-dns-udp": (kube_dns_ip, 53),
         "kube-dns-tcp": (kube_dns_ip, 53),
         "public-https": (PUBLIC_HTTPS_TARGET, 443),
@@ -470,13 +564,20 @@ def not_run_items() -> list[dict[str, str]]:
         },
         {
             "finding": "AUD-189",
-            "check": "link-local TCP/443 destination",
-            "reason": "no owned link-local listener in kind",
+            "check": "backup job image behaviour",
+            "reason": (
+                "the backup CronJob's real pg_dump and rclone images are not run; the "
+                "backup policy is proven through a stand-in pod with the CronJob's pod-template "
+                "labels, so the probes show policy enforcement, not the dump or upload"
+            ),
         },
         {
-            "finding": "AUD-189",
-            "check": "backup public TCP/443 allowance",
-            "reason": "backup.enabled is false in the staging values; the backup policy is not rendered here",
+            "finding": "AUD-438",
+            "check": "metrics exposition content",
+            "reason": (
+                "the stand-in metrics listener answers any GET with HTTP 200; the policy "
+                "rows prove reachability on /metrics, not the ws-hub metrics payload"
+            ),
         },
     ]
 

@@ -8,7 +8,9 @@ public-egress exception scope or the fail-closed verdict.
 
 from __future__ import annotations
 
+import importlib
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -57,8 +59,21 @@ FINDING_PROBES = (
     "aud189-public-gateway",
     "aud189-public-frontend",
     "aud189-public-outbox",
+    "aud189-backup-public",
+    "aud189-backup-decoy-443",
+    "aud189-backup-decoy-80",
+    "aud189-backup-backend-8000",
+    "aud189-linklocal-fp",
+    "aud189-linklocal-backend",
+    "aud189-linklocal-backup",
+    "aud188-temporal-allow",
+    "aud188-nats-allow",
+    "aud188-temporal-decoy",
+    "aud188-nats-decoy",
     "aud438-metrics-prometheus",
     "aud438-metrics-other",
+    "aud438-metrics-unrelated",
+    "aud438-metrics-ingress",
     "aud438-public-prometheus",
     "aud438-public-unrelated",
     "aud438-public-ingress",
@@ -300,29 +315,169 @@ def test_revocation_redis_is_the_chart_workload_with_a_generated_credential() ->
     assert '"credential_value": "generated per run and not recorded"' in text
 
 
-def test_public_egress_exception_rows_are_scoped_to_backend() -> None:
-    rows = (PROBE_DIR / "networkpolicy_runtime_rows.py").read_text(encoding="utf-8")
-    allow = re.search(
-        r'"aud189-public-backend",\s*"a-backend",\s*"public-https",\s*"tcp",\s*443,\s*True',
-        rows,
-    )
-    assert allow, "backend public TCP/443 must be the only allowed public row"
-    for denied in (
+def _rows_module() -> Any:
+    """Import the probe row table without a cluster (pure data and verdict rules)."""
+    if str(PROBE_DIR) not in sys.path:
+        sys.path.insert(0, str(PROBE_DIR))
+    return importlib.import_module("networkpolicy_runtime_rows")
+
+
+def _rows_by_id() -> dict[str, Any]:
+    return {row.probe_id: row for row in _rows_module().ROWS}
+
+
+def test_public_egress_exception_rows_are_scoped_to_backend_and_backup() -> None:
+    rows = _rows_module().ROWS
+    allowed = {
+        row.probe_id
+        for row in rows
+        if row.target == "public-https" and row.expect_allow
+    }
+    assert allowed == {"aud189-public-backend", "aud189-backup-public"}
+    denied = {
+        row.probe_id
+        for row in rows
+        if row.target == "public-https" and not row.expect_allow
+    }
+    assert denied == {
         "aud189-443-public",
         "aud189-public-ws",
         "aud189-public-gateway",
         "aud189-public-frontend",
         "aud189-public-outbox",
+    }
+    assert {row.port for row in rows if row.target == "public-https"} == {443}
+
+
+def test_every_denial_has_a_live_same_destination_control_and_ids_are_unique() -> None:
+    rows = _rows_module().ROWS
+    ids = [row.probe_id for row in rows]
+    assert len(ids) == len(set(ids))
+    for row in rows:
+        if not row.expect_allow:
+            assert row.control is not None, row.probe_id
+
+
+def test_metrics_rows_are_http_get_on_metrics_and_deny_unselected_sources() -> None:
+    rows = _rows_by_id()
+    module = _rows_module()
+    for probe_id in (
+        "aud438-metrics-prometheus",
+        "aud438-metrics-other",
+        "aud438-metrics-unrelated",
+        "aud438-metrics-ingress",
     ):
-        block = rows[rows.index(f'"{denied}"') :][:400]
-        assert "False," in block, denied
+        row = rows[probe_id]
+        assert row.mode == "http", probe_id
+        assert row.path == "/metrics", probe_id
+        assert row.port == module.WS_METRICS_PORT, probe_id
+        assert row.target == "a-ws-metrics", probe_id
+    assert rows["aud438-metrics-prometheus"].source == "prometheus"
+    assert rows["aud438-metrics-prometheus"].expect_allow is True
+    assert rows["aud438-metrics-other"].expect_allow is False
+    assert rows["aud438-metrics-unrelated"].source == "unrelated"
+    assert rows["aud438-metrics-unrelated"].expect_allow is False
+    assert rows["aud438-metrics-ingress"].source == "ingress"
+    assert rows["aud438-metrics-ingress"].expect_allow is False
+
+
+def test_file_processor_reaches_only_release_temporal_and_nats() -> None:
+    rows = _rows_by_id()
+    module = _rows_module()
+    temporal = rows["aud188-temporal-allow"]
+    nats = rows["aud188-nats-allow"]
+    assert (temporal.source, temporal.target, temporal.port) == (
+        "a-fp",
+        "a-temporal-pod",
+        module.TEMPORAL_PORT,
+    )
+    assert temporal.expect_allow is True
+    assert (nats.source, nats.target, nats.port) == (
+        "a-fp",
+        "a-nats-pod",
+        module.NATS_PORT,
+    )
+    assert nats.expect_allow is True
+    for probe_id, decoy in (
+        ("aud188-temporal-decoy", "decoy-temporal-pod"),
+        ("aud188-nats-decoy", "decoy-nats-pod"),
+    ):
+        row = rows[probe_id]
+        assert row.source == "a-fp" and row.target == decoy, probe_id
+        assert row.expect_allow is False
+        assert row.control is not None and row.control[0] == "unrelated"
+
+
+def test_backup_rows_allow_only_public_443_and_deny_other_ports_and_peers() -> None:
+    rows = _rows_by_id()
+    backup_rows = [row for row in rows.values() if row.source == "a-backup"]
+    assert {row.probe_id for row in backup_rows} == {
+        "aud189-backup-public",
+        "aud189-backup-decoy-443",
+        "aud189-backup-decoy-80",
+        "aud189-backup-backend-8000",
+        "aud189-linklocal-backup",
+    }
+    allowed = [row for row in backup_rows if row.expect_allow]
+    assert [(row.target, row.port) for row in allowed] == [("public-https", 443)]
+    for row in backup_rows:
+        if not row.expect_allow:
+            assert row.control is not None, row.probe_id
+
+
+def test_link_local_rows_deny_every_workload_against_a_host_network_control() -> None:
+    rows = _rows_by_id()
+    module = _rows_module()
+    linklocal = [row for row in rows.values() if row.target == "link-local-443"]
+    assert {row.source for row in linklocal} == {"a-fp", "a-backend", "a-backup"}
+    for row in linklocal:
+        assert row.expect_allow is False, row.probe_id
+        assert row.port == module.LINK_LOCAL_PORT == 443
+        assert row.control == ("linklocal", "link-local-443", "tcp", 443), row.probe_id
+
+
+def test_link_local_address_matches_the_proof_script_and_is_link_local() -> None:
+    module = _rows_module()
+    assert module.LINK_LOCAL_ADDRESS.startswith("169.254.")
+    text = PROOF.read_text(encoding="utf-8")
+    match = re.search(r'readonly LINK_LOCAL_ADDRESS="([^"]+)"', text)
+    assert match and match.group(1) == module.LINK_LOCAL_ADDRESS
+
+
+def test_proof_script_adds_link_local_address_before_the_probe_and_fails_closed() -> (
+    None
+):
+    text = PROOF.read_text(encoding="utf-8")
+    call = text.index("\n  add_link_local_address\n")
+    probe = text.index(
+        "uv run --frozen python scripts/k8s/networkpolicy_runtime_probe.py"
+    )
+    assert call < probe
+    assert 'ip addr add "${LINK_LOCAL_ADDRESS}/32" dev eth0' in text
+    assert '[[ "$addresses" == *"inet ${LINK_LOCAL_ADDRESS}/32"* ]]' in text
+
+
+def test_probe_builds_backup_and_host_network_stand_ins_from_rendered_labels() -> None:
+    text = _probe_source()
+    assert "backup.enabled=true" in text
+    assert "cronjob_template_labels(app_a" in text
+    assert 'find(app, "CronJob", f"{release}-{BACKUP_CRONJOB}")' in text
+    assert "host_network=True" in text
+    assert text.count("host_network=True") == 1
+    assert '"hostNetwork": host_network' in text
+    assert '{"app.kubernetes.io/name": "temporal"}' in text
+    assert '{"app.kubernetes.io/name": "nats"}' in text
 
 
 def test_not_run_keeps_unproven_items_and_drops_the_proven_ones() -> None:
     text = _probe_source()
-    assert "backup public TCP/443 allowance" in text
-    assert "link-local TCP/443 destination" in text
+    # Proven by the probe matrix now, so they are no longer listed as unproven.
+    assert "backup public TCP/443 allowance" not in text
+    assert "link-local TCP/443 destination" not in text
+    # Still unproven, and stated as such.
     assert "file-processor process JWKS refresher" in text
+    assert "backup job image behaviour" in text
+    assert "metrics exposition content" in text
     assert "authenticated Redis PING and revoked/unrevoked" not in text
     assert "owner-approved public TCP/443 allowance" not in text
 
@@ -358,3 +513,55 @@ def test_harness_status_describes_the_hosted_run_without_accepting_findings() ->
     assert "k8s-networkpolicy-runtime.yml" in text
     assert "scripts/k8s/networkpolicy_runtime_proof.sh" in text
     assert "not accepted" in text.lower()
+
+
+@pytest.mark.parametrize(
+    "probe_id",
+    ("aud189-linklocal-fp", "aud189-linklocal-backend", "aud189-linklocal-backup"),
+)
+@pytest.mark.parametrize("failed_endpoint", ("target_ok", "control_ok"))
+def test_link_local_setup_failure_never_counts_as_policy_denial(
+    probe_id: str,
+    failed_endpoint: str,
+) -> None:
+    module = _rows_module()
+    baseline = {"target_ok": True, "control_ok": True, failed_endpoint: False}
+
+    def unexpected_probe(*_args: Any) -> dict[str, Any]:
+        pytest.fail("An unreachable baseline must not be evaluated as policy denial")
+
+    result = module.evaluate_row(
+        _rows_by_id()[probe_id], baseline, unexpected_probe, ""
+    )
+
+    assert result["verdict"] == "inconclusive"
+    assert result["reason"] == "baseline reachability failed before policy"
+
+
+@pytest.mark.parametrize(
+    "probe_id",
+    ("aud189-linklocal-fp", "aud189-linklocal-backend", "aud189-linklocal-backup"),
+)
+@pytest.mark.parametrize("failed_control", (0, 2))
+def test_link_local_denial_requires_both_live_controls(
+    probe_id: str,
+    failed_control: int,
+) -> None:
+    module = _rows_module()
+    observations = [
+        {"result": "connected"},
+        {"result": "timeout"},
+        {"result": "connected"},
+    ]
+    observations[failed_control] = {"result": "timeout"}
+    pending = iter(observations)
+
+    result = module.evaluate_row(
+        _rows_by_id()[probe_id],
+        {"target_ok": True, "control_ok": True},
+        lambda *_args: next(pending),
+        "",
+    )
+
+    assert result["verdict"] == "inconclusive"
+    assert "live same-destination control" in result["reason"]

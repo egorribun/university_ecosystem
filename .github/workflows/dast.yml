@@ -315,6 +315,22 @@ jobs:
           --in-place --state-dir "$LIVE_STATE_DIR"
           >"$RUNNER_TEMP/dast-stand-status.txt"
 
+      # Runner memory telemetry (AUD-381) is observation only: it never changes
+      # scan coverage, rules, thresholds or pass/fail. It records process names,
+      # PIDs and resident sizes from /proc, never command lines or targets.
+      - name: Start DAST runner memory telemetry
+        id: telemetry-start
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/dast-memory.stop"
+          nohup python3 scripts/quality/dast_memory_sampler.py sample \
+            --output "$RUNNER_TEMP/dast-memory.jsonl" \
+            --stop-file "$RUNNER_TEMP/dast-memory.stop" \
+            --interval-seconds 5 \
+            >"$RUNNER_TEMP/dast-memory-sampler.log" 2>&1 &
+          echo "$!" >"$RUNNER_TEMP/dast-memory.pid"
+
       # Verify source and image before scanning, then scan privately.
       # Native reports, context, target and logs never enter the public directory.
       - name: Prepare private ZAP scan and sanitized evidence
@@ -329,6 +345,22 @@ jobs:
             --status-in "$RUNNER_TEMP/dast-stand-status.txt" \
             --summary-file "$GITHUB_STEP_SUMMARY"
 
+      # Record the ZAP container only if it still exists; it runs with --rm, so
+      # this is normally empty. Observation only: failures never fail the job.
+      - name: Record ZAP container resources if it still exists
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker ps -a --filter 'name=^zap-' --format '{{.Names}}' || true)"
+          if [ -z "$containers" ]; then
+            echo "No ZAP container remains; the scan container is removed on exit."
+            exit 0
+          fi
+          while IFS= read -r container_name; do
+            docker stats --no-stream "$container_name" || echo "::warning::docker stats failed for the ZAP container."
+          done <<<"$containers"
+
       # Stop and remove the owned stand whether or not the scan succeeded.
       - name: Stop and remove the owned DAST stand
         id: stop-stand
@@ -336,6 +368,34 @@ jobs:
         run: >-
           uv run --frozen --no-sync python -m scripts.live_stand teardown
           --in-place --state-dir "$LIVE_STATE_DIR"
+
+      - name: Stop DAST runner memory telemetry and summarize
+        id: telemetry-stop
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch "$RUNNER_TEMP/dast-memory.stop"
+          pid="$(cat "$RUNNER_TEMP/dast-memory.pid" 2>/dev/null || true)"
+          if [ -n "$pid" ]; then
+            for _ in $(seq 1 30); do
+              kill -0 "$pid" 2>/dev/null || break
+              sleep 1
+            done
+            kill "$pid" 2>/dev/null || true
+          fi
+          if python3 scripts/quality/dast_memory_sampler.py summarize \
+            "$RUNNER_TEMP/dast-memory.jsonl" >"$RUNNER_TEMP/dast-memory-summary.txt"; then
+            cat "$RUNNER_TEMP/dast-memory-summary.txt"
+            {
+              echo "### DAST runner memory telemetry"
+              echo '```text'
+              cat "$RUNNER_TEMP/dast-memory-summary.txt"
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::DAST runner memory telemetry could not be summarized."
+          fi
 
       - name: Verify ZAP public evidence and provenance
         id: zap_verify
@@ -366,6 +426,17 @@ jobs:
             zap-public/zap-sarif-provenance.json
           retention-days: 90
           if-no-files-found: error
+
+      - name: Upload DAST runner memory telemetry
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dast-memory-telemetry-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dast-memory.jsonl
+            ${{ runner.temp }}/dast-memory-summary.txt
+          retention-days: 7
+          if-no-files-found: warn
 
       # AUD-381: publish verified findings before applying the medium/high gate.
       # No continue-on-error: any earlier failure remains a failed workflow.

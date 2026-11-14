@@ -9,6 +9,7 @@ import {
   stubBreachedPasswordLookup,
 } from "./fixtures"
 import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
+import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -424,10 +425,15 @@ const listAllNotifications = async (page: Page): Promise<NotificationRow[]> => {
   let cursor: string | null = null
 
   for (let pageNumber = 0; pageNumber < 10_000; pageNumber += 1) {
-    const query = new URLSearchParams({ limit: "100" })
+    // APIRequestContext does not inherit the browser's locale. The release
+    // marker is in notes_ru, so every page must request its Russian variant.
+    const query = new URLSearchParams({ limit: "100", lang: "ru" })
     if (cursor) query.set("cursor", cursor)
     const response = await page.request.get(`/api/v1/notifications?${query.toString()}`)
     expect(response.status(), "the recipient can read its in-app notification pages").toBe(200)
+    expect(response.headers()["content-language"], "notification pages use the marker locale").toBe(
+      "ru"
+    )
     const body = (await response.json()) as NotificationListResponse
     if (!Array.isArray(body.items) || typeof body.has_more !== "boolean") {
       throw new Error("notification pagination returned an invalid page")
@@ -509,13 +515,18 @@ const waitForNativeNotification = async (
   notificationId: string,
   entityKey: string
 ): Promise<NativeNotification> => {
-  await expect
-    .poll(async () => (await inspectNativeNotification(page, notificationId, entityKey)).count, {
-      timeout: 60_000,
-      message:
-        "the native Chromium service worker receives a push tagged with the persisted notification id",
-    })
-    .toBe(1)
+  try {
+    await expect
+      .poll(async () => (await inspectNativeNotification(page, notificationId, entityKey)).count, {
+        timeout: 60_000,
+        message:
+          "the native Chromium service worker receives a push tagged with the persisted notification id",
+      })
+      .toBe(1)
+  } catch (error) {
+    await reportLivePushDeliveryObservation(page, test.info().project.name, notificationId)
+    throw error
+  }
   return inspectNativeNotification(page, notificationId, entityKey)
 }
 

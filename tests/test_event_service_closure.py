@@ -194,8 +194,15 @@ async def test_register_attendance_existing_record_does_not_update(
     repo.get_for_registration.return_value = event
     repo.get_attendance.return_value = attendance
 
-    with patch(
-        "app.services.event_service.attendance_tokens.issue_token", return_value="tok"
+    with (
+        patch(
+            "app.services.event_service.attendance_tokens.issue_token",
+            return_value="tok",
+        ),
+        patch(
+            "app.services.event_service.events_cache_version",
+            new=MagicMock(increment=AsyncMock()),
+        ) as cache_version,
     ):
         result = await service.register_attendance(
             schemas.EventAttendanceCreate(event_id=event.id), user_id
@@ -203,7 +210,8 @@ async def test_register_attendance_existing_record_does_not_update(
 
     assert result.qr_token == "tok"
     repo.update_attendance.assert_not_awaited()
-    uow.commit.assert_not_awaited()
+    uow.commit.assert_awaited_once_with()
+    cache_version.increment.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -68,9 +68,18 @@ test("admin filters the live users directory by role without changing records", 
     }
   })
 
+  // The users route is SSR-rendered, so its heading and filter controls are
+  // visible before React hydrates them. The unfiltered directory query starts
+  // from the hydrated feature's effects, so awaiting it guarantees the role
+  // select's change handler is attached before the first selectOption call.
+  const initialDirectoryResponse = page.waitForResponse((response) => {
+    const requestUrl = new URL(response.url())
+    return requestUrl.pathname === "/api/v1/users" && !requestUrl.searchParams.has("role")
+  })
   await page.goto("/admin/users")
   await expect(page).toHaveURL(/\/admin\/users$/u)
   await expect(page.getByRole("heading", { level: 1, name: /Пользователи|Users/u })).toBeVisible()
+  await initialDirectoryResponse
 
   const roleFilter = page.locator("#role-filter")
   for (const role of directoryRoles) {

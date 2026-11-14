@@ -900,6 +900,27 @@ def mock_spicedb_permissions():
 
 
 @pytest.fixture(autouse=True)
+def mock_spicedb_relationship_writes(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    """Keep best-effort event creator/attendee writes off the gRPC channel.
+
+    Tests that assert on the writer patch these names again inside the test body.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    stub = MagicMock()
+    stub.WriteRelationships = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "app.auth.relationships.acquire_shared_spicedb_channel",
+        AsyncMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "app.auth.relationships.PermissionsServiceStub",
+        MagicMock(return_value=stub),
+    )
+    yield stub
+
+
+@pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Iterator[None]:
     """
     Clear ONLY the dependency overrides that were added by the CURRENT test.

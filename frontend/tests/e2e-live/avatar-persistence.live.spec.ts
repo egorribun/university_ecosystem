@@ -86,6 +86,9 @@ const removeOwnerAvatar = async (page: Page): Promise<void> => {
   }
 
   const removeButton = page.getByRole("button", { name: /Удалить фото|Remove photo/u })
+  // Removal is dropped without a request while the identity is still loading,
+  // so wait for the enabled state before the click that must issue DELETE.
+  await expect(removeButton).toBeEnabled()
   const removal = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/v1/users/me/avatar" &&
@@ -100,8 +103,13 @@ const chooseAvatarFile = async (
   page: Page,
   file: { name: string; mimeType: string; buffer: Buffer }
 ): Promise<void> => {
+  const changeButton = page.getByRole("button", { name: /Сменить|Change/u })
+  // The control stays disabled while the account identity is still loading.
+  // A file picked earlier would be dropped without a request, so wait for the
+  // enabled state before opening the chooser.
+  await expect(changeButton).toBeEnabled()
   const fileChooserPromise = page.waitForEvent("filechooser")
-  await page.getByRole("button", { name: /Сменить|Change/u }).click()
+  await changeButton.click()
   const fileChooser = await fileChooserPromise
   await fileChooser.setFiles(file)
 }

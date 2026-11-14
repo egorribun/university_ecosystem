@@ -34,7 +34,9 @@ What the job does, in order:
 1. Installs the pinned kind v0.31.0, kubectl v1.36.4 and Helm v4.2.4 binaries,
    verifying each against its official checksum (same pins as the AUD-373 job).
 2. Creates a uniquely named kind cluster from the digest-pinned
-   `kindest/node:v1.36.4` image with `disableDefaultCNI: true`.
+   `kindest/node:v1.36.4` image with `disableDefaultCNI: true`. It then adds the
+   link-local address `169.254.10.10/32` to the node container's `eth0`
+   (`docker exec`, verified with `ip -4 addr show`; the job fails if it is absent).
 3. Installs Calico v3.30.3 from a manifest whose sha256 is checked before
    `kubectl apply`, and waits for calico-node, calico-kube-controllers and CoreDNS.
 4. Runs `scripts/k8s/networkpolicy_runtime_probe.py` (with its helper modules
@@ -42,7 +44,9 @@ What the job does, in order:
    `scripts/k8s/networkpolicy_runtime_proof.sh`. The probe renders the
    university-ecosystem and revocation-store charts for two releases (`probe-a`,
    `probe-b`) with the staging-contract arguments and asserts the rendered ports it
-   depends on (fails closed on drift).
+   depends on (fails closed on drift). Both releases render with `backup.enabled=true`
+   (and an https `backup.minioEndpoint`, which staging validation requires; the name
+   is never resolved), so the rendered `*-backup-policy` is applied.
 5. Deploys the **real revocation Redis** StatefulSet and Services from the store
    chart in each release namespace, with a generated password Secret
    (`revocation-redis-credentials`, key `revocation-redis-password`) created for the
@@ -54,15 +58,24 @@ What the job does, in order:
 6. Creates stand-in pods with the rendered pod-template labels of the
    file-processor, backend, ws-hub, gateway, frontend and outbox-worker workloads
    (the gateway, frontend and outbox-worker stand-ins are in `probe-a` only), plus
-   an unrelated source, an in-cluster 443 decoy, a Prometheus-labelled pod, a
-   non-Prometheus monitoring pod and an ingress-controller-labelled pod. The
+   an unrelated source, an in-cluster decoy (TCP 53, 80, 443), a Prometheus-labelled
+   pod, a non-Prometheus monitoring pod and an ingress-controller-labelled pod. The
    stand-in base image is read at runtime from the runtime `FROM` line of
    `backend.Dockerfile`; the probe fails closed unless exactly one such line exists.
    Stand-ins run only the Python standard library. They are not the application
-   images.
+   images. Additional stand-ins added for the acceptance gaps:
+   - `a-backup`: the rendered `db-backup` CronJob's pod-template labels (the backup
+     policy's selector).
+   - `a-temporal` and `a-nats`: pods labelled only `app.kubernetes.io/name=temporal`
+     (port 7233) and `=nats` (port 4222) in `probe-a`. They carry no release
+     selector labels, so no release default-deny applies to them.
+   - `decoy-temporal` and `decoy-nats`: the same labels in the unselected namespace.
+   - `linklocal`: a host-network pod (`hostNetwork: true`) listening on TCP/443 of
+     `169.254.10.10`. Host-network traffic is not subject to pod NetworkPolicy, so
+     this pod is the same-destination control for every link-local denial.
 7. Proves every target and control is reachable before any policy is applied
    (baseline), and that the authenticated Redis PING succeeds before policy. It
-   then applies the rendered policies and runs the 27-row probe matrix. Each denied
+   then applies the rendered policies and runs the 40-row probe matrix. Each denied
    attempt is bracketed by a control to the same destination that must succeed
    before and after it. A timeout without a live control is inconclusive, not a
    pass.
@@ -106,9 +119,11 @@ What the job does, in order:
   cannot reach serving state in kind. The stand-in consumer exercises the same RS256
   and JWKS contract, but not the refresher's interval or last-known-good logic.
 - Revoked and unrevoked token pairs through the file-processor (AUD-169).
-- Link-local TCP/443 denial, since kind provides no owned link-local listener.
-- Backup public TCP/443 allowance: `backup.enabled` is `false` in the staging
-  values, so the backup policy is not rendered in this job.
+- The backup CronJob's real `pg_dump` and `rclone` images. The backup policy is
+  proven through a stand-in pod that carries the CronJob's pod-template labels, so
+  the probes show policy enforcement only, not the dump or the upload.
+- The ws-hub metrics payload. The `/metrics` stand-in answers any GET with HTTP 200,
+  so the rows prove reachability on the `/metrics` path, not the exposition content.
 - Staging or production topology, real NAT, or cloud load balancer behavior.
 - The Redis metrics exporter, which is removed from the rendered workload (see
   step 5).
@@ -117,11 +132,44 @@ What the job does, in order:
 
 Owner-accepted residual risk: the `backend` and `backup` workloads may reach public
 TCP/443 destinations, excluding the private, carrier-grade NAT and link-local
-ranges. The job proves that the backend reaches `1.1.1.1:443` (an allowed row) and
-that the file-processor, ws-hub, gateway, frontend and outbox-worker stand-ins are
-denied the same destination, each with a backend control. Backup is not runnable
-here (see `not_run`). The exception does not count as proof of any specific
-provider.
+ranges. The job proves that the backend and the backup stand-in each reach
+`1.1.1.1:443` (allowed rows), and that the file-processor, ws-hub, gateway, frontend
+and outbox-worker stand-ins are denied the same destination, each with a backend
+control. The exception does not count as proof of any specific provider.
+
+### Probes added for the acceptance gaps (AUD-169, AUD-188, AUD-189, AUD-438)
+
+Each row is a connection attempt from a stand-in source; denials are bracketed by a
+live control to the same destination. The rows are defined in
+`scripts/k8s/networkpolicy_runtime_rows.py`.
+
+- **AUD-188, file-processor Temporal and NATS egress.** `aud188-temporal-allow`
+  (`a-fp` to `a-temporal-pod`, TCP/7233) and `aud188-nats-allow` (`a-fp` to
+  `a-nats-pod`, TCP/4222) must connect. `aud188-temporal-decoy` and
+  `aud188-nats-decoy` must be denied to the identically labelled pods in the
+  unselected namespace, with an unrelated-source control. The source is the
+  stand-in carrying the rendered file-processor Deployment labels, not the binary.
+- **AUD-189, backup egress.** `aud189-backup-public` (`a-backup` to `1.1.1.1:443`)
+  is the only allowed backup row. `aud189-backup-decoy-443` (in-cluster TCP/443),
+  `aud189-backup-decoy-80` (in-cluster TCP/80) and `aud189-backup-backend-8000`
+  (release backend TCP/8000, with a file-processor control) must be denied, so
+  nothing except public TCP/443 (plus DNS) is granted to the backup workload.
+- **AUD-189, link-local denial.** `aud189-linklocal-fp`, `aud189-linklocal-backend`
+  and `aud189-linklocal-backup` must be denied for TCP/443 to `169.254.10.10`, the
+  host-network listener. The same address is reachable from the host-network control
+  before policy (baseline) and after it. The backend and backup workloads hold a
+  TCP/443 public grant, so their link-local rows are the ones that test the
+  `169.254.0.0/16` exception in `httpsEgressRules`.
+- **AUD-438, `/metrics`.** `aud438-metrics-prometheus` must return HTTP 200 for
+  `GET /metrics` on the ws-hub metrics port from the Prometheus pod. The denials
+  `aud438-metrics-other` (monitoring, non-Prometheus pod), `aud438-metrics-unrelated`
+  (unselected namespace) and `aud438-metrics-ingress` (ingress controller) use the
+  Prometheus HTTP request as their control. The public WebSocket port rows are
+  unchanged.
+
+The link-local proof depends on the kind node accepting a link-local `/32` on
+`eth0` and on the host-network route to it; a failure of either is a setup failure,
+not a pass.
 
 ### Elasticsearch peer (AUD-189, chart contract)
 
@@ -135,7 +183,9 @@ Elasticsearch release must admit this workload in its own policy.
 Local validation run (2026-11-12, not hosted): the probe was run against a local
 kind v1.36.4 cluster with Calico v3.30.3 on Docker Desktop, using the uncommitted
 working tree. The verdict was `pass`: 27 probe rows, 4 AUD-169 checks, 9 AUD-188
-checks and the resolver check. The shell proof script is Linux-only and was not
+checks and the resolver check. That run predates the Temporal/NATS, backup,
+link-local and `/metrics` probes described below; the 40-row matrix has not been run
+anywhere, locally or hosted. The shell proof script is Linux-only and was not
 run; its pins and the probe arguments are the same. A first run exposed an invalid
 public-denial row for an unlabelled namespace, which has no chart policy and was
 replaced by denials for the chart workloads. This run is not acceptance evidence.

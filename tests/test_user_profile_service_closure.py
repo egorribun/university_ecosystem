@@ -251,6 +251,7 @@ async def test_admin_reset_returns_fresh_mfa_dto_and_commits_notification_first(
     user_id = uuid4()
     db_user = SimpleNamespace(
         id=user_id,
+        group_id=None,
         mfa_required=True,
         mfa_default_method="totp",
         email_mfa_enabled_at=MagicMock(),
@@ -320,7 +321,7 @@ async def test_admin_reset_commit_failure_rolls_back_retaining_redis_revocation(
     profile_service,
 ) -> None:
     user_id = uuid4()
-    db_user = SimpleNamespace(id=user_id)
+    db_user = SimpleNamespace(id=user_id, group_id=None)
     updated_user = SimpleNamespace(id=user_id)
     profile_service.repo.get_orm_for_update_with_relations.return_value = db_user
     profile_service.repo._to_dto.return_value = updated_user

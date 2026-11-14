@@ -22,6 +22,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.models as models
 from app.api.deps import (
@@ -38,7 +39,7 @@ from app.api.validation import (
     raise_not_found,
     require_teacher_or_admin,
 )
-from app.auth.rbac import PermissionChecker
+from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
@@ -543,6 +544,36 @@ async def upload_event_file(
     return ef
 
 
+async def _require_event_file_view(
+    repo: EventRepository,
+    checker: PermissionChecker,
+    event_id: uuid.UUID | int,
+    user_id: uuid.UUID | int,
+    locale: str,
+) -> None:
+    """Exclude stale attendee grants without replacing other graph permissions."""
+    try:
+        attending = await repo.has_current_attendance(event_id, user_id)
+        allowed = await checker.check_permission(
+            resource_type="event",
+            resource_id=str(event_id),
+            permission="view" if attending else "view_without_attendee",
+            user_id=str(user_id),
+        )
+    except (SQLAlchemyError, SpiceDBUnavailableError):
+        # A failed membership read or unavailable schema must never fall back
+        # to the old view permission (including its cached attendee ALLOW).
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "authz_unavailable",
+                "message": "Authorization service temporarily unavailable",
+            },
+        ) from None
+    if not allowed:
+        raise_forbidden(locale)
+
+
 @router.get("/{event_id}/files", response_model=list[schemas.EventFileOut])
 @inject
 async def get_event_files(
@@ -566,15 +597,8 @@ async def get_event_files(
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
     assert event is not None  # noqa: S101
-    if not await checker.check_permission(
-        resource_type="event",
-        resource_id=str(event.id),
-        permission="view",
-        user_id=str(user.id),
-    ):
-        raise_forbidden(locale)
-
     repo = EventRepository(db)
+    await _require_event_file_view(repo, checker, event.id, user.id, locale)
     return await repo.get_event_files(event_id)
 
 
@@ -609,15 +633,9 @@ async def download_event_file(
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
     assert event is not None  # noqa: S101
-    if not await checker.check_permission(
-        resource_type="event",
-        resource_id=str(event.id),
-        permission="view",
-        user_id=str(user.id),
-    ):
-        raise_forbidden(locale)
-
-    files = await EventRepository(db).get_event_files(event_id)
+    repo = EventRepository(db)
+    await _require_event_file_view(repo, checker, event.id, user.id, locale)
+    files = await repo.get_event_files(event_id)
     event_file = next(
         (
             item

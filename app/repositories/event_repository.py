@@ -414,6 +414,27 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             user_attendance=attendance_dto,
         )
 
+    async def has_current_attendance(
+        self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
+    ) -> bool:
+        """Read membership freshly, through both tenant-visible parent rows.
+
+        Attendance has no tenant RLS of its own. Select a scalar rather than
+        consulting an ORM object or relationship that can outlive a revocation.
+        Revocation-sensitive callers must provide the primary DB session.
+        """
+        stmt = (
+            select(models.EventAttendance.id)
+            .join(Event, Event.id == models.EventAttendance.event_id)
+            .join(models.User, models.User.id == models.EventAttendance.user_id)
+            .where(
+                models.EventAttendance.event_id == self._cast_id(event_id),
+                models.EventAttendance.user_id == self._cast_id(user_id),
+            )
+            .limit(1)
+        )
+        return (await self.db.scalar(stmt)) is not None
+
     async def get_attendance(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
     ) -> EventAttendanceDTO | None:

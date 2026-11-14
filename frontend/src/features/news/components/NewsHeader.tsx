@@ -85,11 +85,11 @@ export const NewsHeader = ({
       <header className="space-y-4">
         {/* Row 1: Title + search + admin button */}
         <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 text-fluid-h1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3 min-w-0 max-w-full text-fluid-h1">
             <div className="news-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
               <Newspaper size={20} strokeWidth={2.2} />
             </div>
-            <h1 className="font-extrabold tracking-tight text-text-primary whitespace-nowrap">
+            <h1 className="min-w-0 max-w-full break-words font-extrabold tracking-tight text-text-primary">
               {t("news:pageTitle")}
             </h1>
             {newsCount != null && (

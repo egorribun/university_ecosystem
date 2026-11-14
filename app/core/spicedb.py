@@ -204,18 +204,17 @@ def _get_channel_lock() -> asyncio.Lock:
     return _global_channel_lock
 
 
-async def get_async_spicedb_channel() -> AsyncIterator[object]:
-    """Yield an async-native grpc.aio.Channel for the duration of a request.
+async def acquire_shared_spicedb_channel() -> grpc.aio.Channel:
+    """Return the process-wide grpc.aio.Channel, opening it on first use.
 
-    The channel is yielded from a global singleton to properly utilize HTTP/2
-    multiplexing across all requests and avoid connection thrashing.
+    Used by request paths (through ``get_async_spicedb_channel``) and by
+    non-request code such as the relationship writers and backfill scripts,
+    which cannot use Dishka scopes.
     """
     global _global_channel
 
     # MED-W19: Acquire the lock only for channel initialisation; release it
-    # *before* yielding so that the lock is never held across the yield point.
-    # Holding a lock across a yield causes all other coroutines waiting on that
-    # lock to stall for the entire duration of the request.
+    # before the channel is handed out so the lock is never held by callers.
     if _global_channel is None:
         async with _get_channel_lock():
             if _global_channel is None:
@@ -238,9 +237,22 @@ async def get_async_spicedb_channel() -> AsyncIterator[object]:
                 logger.debug(
                     "SpiceDB async channel opened: %s:%s ssl=%s", host, port, use_ssl
                 )
-        # Lock released before yield — no lock held during request processing.
 
-    yield _global_channel
+    channel = _global_channel
+    if channel is None:
+        raise RuntimeError("SpiceDB async channel is unavailable")
+    return channel
+
+
+async def get_async_spicedb_channel() -> AsyncIterator[object]:
+    """Yield an async-native grpc.aio.Channel for the duration of a request.
+
+    The channel is yielded from a global singleton to properly utilize HTTP/2
+    multiplexing across all requests and avoid connection thrashing.
+    """
+    # The lock is released inside acquire_shared_spicedb_channel before the
+    # yield, so no lock is held during request processing.
+    yield await acquire_shared_spicedb_channel()
 
 
 async def close_global_spicedb_channel() -> None:

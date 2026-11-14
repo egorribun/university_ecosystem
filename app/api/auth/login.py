@@ -27,6 +27,7 @@ from app.auth.mfa.email_otp import (
     MfaOtpRejected,
     MfaSecurityUnavailable,
 )
+from app.auth.relationships import sync_group_participant
 from app.auth.schemas import (
     EmailOtpResendIn,
     LoginIn,
@@ -503,7 +504,9 @@ async def register(
 ) -> dict[str, Any]:
     locale = resolve_locale(request=request)
     try:
-        await compliance_service.register_user(user)
+        created = await compliance_service.register_user(user)
+        # Best-effort SpiceDB group sync after the registration commit.
+        await sync_group_participant(created.id, None, user.group_id)
     except EntityAlreadyExists as exc:
         await db.rollback()
         if (

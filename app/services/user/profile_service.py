@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 from fastapi import Request
 
 from app.auth import mfa
+from app.auth.relationships import sync_group_participant
 from app.core.exceptions.domain import EntityNotFound, PermissionDenied
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
@@ -143,8 +144,11 @@ class UserProfileService:
         if not db_user:
             raise EntityNotFound("User", user_id)
 
-        # Apply nested updates
+        # Capture the group membership before and after the update so the
+        # SpiceDB sync can run after the commit with plain values.
+        old_group_id = db_user.group_id
         update_user_attributes(db_user, payload)
+        new_group_id = db_user.group_id
 
         self.repo.add(db_user)
         await self.uow.flush()
@@ -172,6 +176,9 @@ class UserProfileService:
                     reset_stats.session_revocations
                 )
             await self.uow.commit()
+
+        # Best-effort SpiceDB sync after the commit; a failure never fails the update.
+        await sync_group_participant(updated_user.id, old_group_id, new_group_id)
 
         if reset_requested:
             log_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id

@@ -37,6 +37,7 @@ from app.api.openapi_responses import (
 )
 from app.api.validation import raise_validation_error
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
+from app.auth.relationships import sync_group_participant
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
@@ -408,6 +409,8 @@ async def create_user(
         # AUD-392: password-policy violations are raised as ValueError before any
         # write.  Map them to 400 as registration does instead of an unhandled 500.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Best-effort SpiceDB group sync after the create commit.
+    await sync_group_participant(user_dto.id, None, data.group_id)
     return schemas.UserOut.model_validate(user_dto)
 
 

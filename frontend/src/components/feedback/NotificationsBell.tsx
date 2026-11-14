@@ -354,7 +354,12 @@ export default function NotificationsBell() {
                           >
                             <a
                               href={n.link || "#"}
+                              aria-disabled={!n.read && isLoading}
                               onClick={(e) => {
+                                if (!n.read && isLoading) {
+                                  e.preventDefault()
+                                  return
+                                }
                                 if (!n.link) {
                                   e.preventDefault()
                                   if (!n.read) {
@@ -417,6 +422,7 @@ export default function NotificationsBell() {
                             {/* Mark read button (appears on hover) */}
                             {!n.read && (
                               <button
+                                disabled={isLoading}
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()

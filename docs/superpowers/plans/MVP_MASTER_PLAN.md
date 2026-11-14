@@ -621,6 +621,9 @@ teardown проверяет ownership; пользовательские тома
 необходимости все языки, роли, темы и ширины: матрица обязана показать, какой
 сценарий подтверждает каждую ось и где полный набор вариантов необходим для риска.
 
+Текущая матрица (проверена по исходникам 2026-11-14, результаты пока не заполнены
+из hosted CI): [docs/testing/mvp-traceability-matrix.md](../../testing/mvp-traceability-matrix.md).
+
 - **Auth/MFA:** регистрация, login, TOTP, email OTP из Mailpit, recovery, reset и
   token reuse, safe redirect, cooldown/TTL/attempt limits, правильные 401/429,
   sibling/session revocation. Отдельно подтвердить отсутствие WebAuthn/security
