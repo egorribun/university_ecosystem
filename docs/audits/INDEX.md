@@ -429,6 +429,27 @@ link-check result does not establish the current documentation state.
 - [October audit checkpoint](AUDIT-2026-10.md) — current accepted count, local integration
   results and pending gates.
 
+## DAST runner telemetry (AUD-381)
+
+The `zap` job in `.github/workflows/dast.yml` records runner memory around the
+ZAP scan with `scripts/quality/dast_memory_sampler.py`. It is observation only:
+scan coverage, rules, thresholds and pass/fail are unchanged, and AUD-381 stays
+open until a verified ZAP report exists.
+
+- The `dast-memory-telemetry-<run>-attempt-<n>` artifact (7-day retention)
+  holds `dast-memory.jsonl`, one record per 5 seconds: MemAvailable, MemTotal,
+  SwapFree, the `oom_kill` counter, and the top five processes by VmRSS (name,
+  PID, kB). Records never contain command lines or targets.
+- The step summary shows the minimum MemAvailable, the peak VmRSS per process
+  name, and the `oom_kill` delta across the run. A large drop in MemAvailable
+  near the ZAP step, a peak `firefox` or `java` RSS near the host limit, or a
+  non-zero `oom_kill` delta points to the OOM hypothesis in the DomXss/Firefox
+  failure mode. A flat profile with no `oom_kill` delta points elsewhere.
+- Missing samples mean the sampler did not run or the host lacked `/proc`; the
+  summary then reports the count of usable samples. `docker stats` is logged
+  only if the `zap-<nonce>` container still exists, which is normally not the
+  case because it runs with `--rm`.
+
 ## Historical reports
 
 Current requirements and useful procedures from legacy reports have been

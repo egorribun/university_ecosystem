@@ -38,6 +38,10 @@ STATUS_NAME = "Read the owned stand status privately"
 TEARDOWN_NAME = "Stop and remove the owned DAST stand"
 NUCLEI_PREFLIGHT_NAME = "Prepare the owned stand target for Nuclei"
 ZAP_PREPARE_NAME = "Prepare private ZAP scan and sanitized evidence"
+TELEMETRY_START_NAME = "Start DAST runner memory telemetry"
+TELEMETRY_STOP_NAME = "Stop DAST runner memory telemetry and summarize"
+TELEMETRY_UPLOAD_NAME = "Upload DAST runner memory telemetry"
+ZAP_RESOURCES_NAME = "Record ZAP container resources if it still exists"
 
 
 def _steps(workflow: dict[str, object], job_name: str) -> list[dict[str, object]]:
@@ -532,11 +536,15 @@ ZAP_STEP_ORDER = (
     "Select unique owned DAST state directory",
     START_NAME,
     STATUS_NAME,
+    TELEMETRY_START_NAME,
     ZAP_PREPARE_NAME,
+    ZAP_RESOURCES_NAME,
     TEARDOWN_NAME,
+    TELEMETRY_STOP_NAME,
     "Verify ZAP public evidence and provenance",
     "Upload ZAP SARIF to GitHub Security",
     "Upload verified ZAP public evidence",
+    TELEMETRY_UPLOAD_NAME,
     "Fail on medium or high ZAP findings",
 )
 ZAP_GATE_NAME = "Fail on medium or high ZAP findings"
@@ -633,7 +641,11 @@ def test_dast_sarif_categories_and_retention_remain_pinned() -> None:
             if uses.startswith("github/codeql-action/upload-sarif@"):
                 categories.add(step["with"]["category"])
             if uses.startswith("actions/upload-artifact@"):
-                assert step["with"]["retention-days"] == 90
+                # Runner telemetry is diagnostic only and keeps short retention.
+                expected_retention = (
+                    7 if step.get("name") == TELEMETRY_UPLOAD_NAME else 90
+                )
+                assert step["with"]["retention-days"] == expected_retention
     assert categories == {"nuclei-dast", "zap-dast"}
 
 
@@ -776,3 +788,36 @@ def test_zap_real_shell_preserves_cli_arguments_and_failure(
     if command != "verify":
         expected += ["--summary-file", str(summary)]
     assert json.loads(log.read_text(encoding="utf-8")) == expected
+
+
+def test_zap_runner_telemetry_observes_without_changing_scan_outcome() -> None:
+    """AUD-381 telemetry records runner memory but cannot alter pass/fail."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = _steps(workflow, "zap")
+    by_name = {step["name"]: step for step in steps}
+    start = by_name[TELEMETRY_START_NAME]
+    stop = by_name[TELEMETRY_STOP_NAME]
+    upload = by_name[TELEMETRY_UPLOAD_NAME]
+    resources = by_name[ZAP_RESOURCES_NAME]
+
+    assert start["shell"] == "bash"
+    assert "scripts/quality/dast_memory_sampler.py sample" in start["run"]
+    assert "--stop-file" in start["run"]
+    assert start["run"].rstrip().endswith('"$!" >"$RUNNER_TEMP/dast-memory.pid"')
+    assert stop["if"] == upload["if"] == resources["if"] == "${{ always() }}"
+    assert "dast_memory_sampler.py summarize" in stop["run"]
+    assert "$GITHUB_STEP_SUMMARY" in stop["run"]
+    assert upload["uses"] == (
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert upload["with"]["if-no-files-found"] == "warn"
+    assert "runner.temp" in upload["with"]["path"]
+    assert workflow["jobs"]["zap"]["permissions"] == {
+        "contents": "read",
+        "security-events": "write",
+    }
+    for step in (start, stop, upload, resources):
+        assert step.get("continue-on-error", False) is False
+        assert "env" not in step
+    assert by_name[ZAP_PREPARE_NAME]["id"] == "zap_prepare"
