@@ -70,3 +70,49 @@ Adopted **SpiceDB** (authzed/spicedb) as the authorization service, using gRPC v
 - **Group participants.** `group:{group_id}#participant@user:{user_id}` is the membership relation that `group#view` (`schema.zed`) grants schedule access through. Before this change no code wrote it, so non-admin students received an empty GraphQL group schedule. `sync_group_participant(user_id, old_group_id, new_group_id)` in `app/auth/relationships.py` DELETEs the old membership and TOUCHes the new one in a single WriteRelationships request. It is a no-op when the group is unchanged or absent, and it is best effort: a `RelationshipWriteError` logs `group_participant_relationship_sync_failed` and is swallowed.
 - **Group call sites.** The sync runs in the registration API handler (`app/api/auth/login.py`) after `UserComplianceService.register_user` returns, in the admin create-user API handler (`app/api/users.py`) after `UserComplianceService.create_user` returns (both old `None`), and in `UserProfileService.admin_update_user` after commit (old value captured before the update). The compliance service itself is unchanged. The self-service profile update cannot change `group_id`, so it has no call site.
 - **Group backfill.** `scripts/backfill_group_participants.py` TOUCHes a participant relation for every user with a non-null `group_id`. It reuses the keyset pager and chunked writer from `scripts/backfill_event_relationships.py`, runs under the MVP tenant context, and never enables the RLS bypass. Reruns are idempotent for unchanged memberships; old-group grants and concurrent membership changes retain the revocation limits above. The backend GraphQL endpoint remains unmounted in the MVP, so group schedule access through that endpoint is not an accepted live product surface.
+
+## 2026-11-14: event-file membership guard
+
+The two HTTP event-file read routes (`get_event_files` and
+`download_event_file`) now require current primary-database attendance before
+using the `event#attendee` grant. `EventRepository.has_current_attendance`
+executes a fresh scalar query joining both tenant-visible Event and User rows;
+it does not consult an ORM relationship, identity-map membership, or a read
+replica. Parent-event existence and download-path validation still precede this
+authorization, and attachment rows/storage are accessed only after it succeeds.
+
+Current attendees retain the existing `event#view` check. Other callers use the
+additive `event#view_without_attendee` permission, whose expression is exactly
+`creator + semester->admin + campus->view + tenant->view`. The existing `view`
+permission is unchanged. SQL presence never grants access by itself, and all
+independent creator and inherited graph grants remain valid. The repository's
+membership writers derive attendee relationships from SQL; no independent
+manual attendee-grant workflow is introduced by this change.
+
+PermissionChecker already keys its grace cache by permission. A former attendee
+therefore cannot reuse a cached `view` ALLOW when the new scalar query finds no
+attendance. Membership-query failures, or authorization-service failures without
+valid permission-specific grace, return 503 without falling back to `view`; an
+explicit graph denial remains 403. A missing additive permission with a cold
+cache fails closed. Existing grace and consistency behavior for independent
+graph grants is unchanged: a previously allowed `view_without_attendee` result
+can retain its ordinary 45-second grace, including during a schema error.
+
+The guarantee begins when a fresh primary membership read observes a committed
+cancellation: failed DELETEs and subsequently reordered TOUCHes cannot grant
+these file reads solely through the obsolete attendee relation. Requests whose
+membership read overlaps cancellation can have authorized before it. This does
+not retract in-flight reads or bytes already delivered. This repair does not
+reconcile stale graph tuples, make best-effort writes durable, or activate the
+unmounted group GraphQL surface; those limitations remain as recorded above.
+
+Roll out the additive schema first and readers second. Existing readers remain
+exposed until every serving API instance is replaced. Rolling a reader back
+reopens the old authorization path. Removing the new permission causes
+fail-closed unavailability once any permission-specific grace expires; it never
+enables fallback to attendee-based `view`. Source changes alone do not establish
+deployment or release acceptance. Before acceptance, verify the
+exact schema with the pinned runtime, exercise revoked-attendee/cache/alternate
+grant cases, and run the current-source integration and required checks. Primary
+PostgreSQL/RLS and deployed-reader evidence must be reported separately from
+hermetic SQL tests or an in-memory SpiceDB proof.

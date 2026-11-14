@@ -78,6 +78,7 @@ definition event {
     relation creator: user
     relation attendee: user
 
+    permission view_without_attendee = creator + semester->admin + campus->view + tenant->view
     permission view = attendee + creator + semester->admin + campus->view + tenant->view
     permission edit = creator + semester->admin + campus->manage + tenant->manage
     permission delete = creator + semester->admin + campus->manage + tenant->manage
