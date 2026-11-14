@@ -1,8 +1,9 @@
 # MVP Block 4 traceability matrix (ТЗ §2–13)
 
-Date: 2026-11-14. Verified against source; no test was run for this document.
-Results are filled only from hosted CI runs on `main`; the "Result on SHA"
-column is empty by design.
+Date: 2026-11-14. Verified against source. Local-only checks are identified
+in individual evidence cells; they are not hosted acceptance. Results are
+filled only from hosted CI runs on `main`; the "Result on SHA" column is
+empty by design.
 
 ## Scope
 
@@ -303,11 +304,9 @@ Rows that share a fix are merged in the "Add to" column.
 | R35 | PARTIAL | `frontend/tests/e2e/profile-settings.spec.ts` | Click an achievement card and assert the detail view opens | 1280x720 (chromium); RU; light |
 | R39b | PARTIAL | `frontend/tests/e2e/i18n-switching.spec.ts` | Visit the messenger, profile and settings pages in EN and assert no text matching a raw key pattern (for example `^[a-z]+\.[a-z.]+$`) | default viewport; RU and EN; light |
 | R40 | PARTIAL | `frontend/tests/e2e/activity-populated.spec.ts` (new) | Route-mock `/api/v1/stats/summary` and heatmap data; assert heatmap cells, trend points and grade values render | 390, 768, 1440; RU and EN; light and dark |
-| R41 | NONE | `frontend/tests/e2e/activity-negative-scope.spec.ts` (new) or the Activity contract test under `frontend/tests/e2e-live/activity-summary.contract.test.mjs` | Assert the Activity page contains no goal, attendance or learning-target UI (no text or test id matching those features) and that the summary payload has no goal or target fields | 1440 and 390; RU and EN; light |
 | R43 | PARTIAL | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts` | Press ArrowRight and ArrowLeft and assert the active story index changes; dispatch a horizontal touch swipe and assert the same | 390 (touch) and 1440 (keys); RU; light |
 | R47 | PARTIAL | `frontend/tests/e2e-live/dashboard-hover.live.spec.ts` (new) | Hover a dashboard card and assert computed `transform` has no translation (scale only) | 1440; RU; light |
 | R48 | PARTIAL | `frontend/tests/e2e/dashboard-hover.spec.ts` (new) | Hover a date bullet and an event card; assert the expected scale or outline computed style | 1280x720 (chromium); RU; light |
-| R49 | NONE | `frontend/tests/e2e/dashboard-empty-spacing.spec.ts` (new) | Mock empty schedule, news and events; assert the vertical gap between the cards is at most the grid gap | 390, 768, 1440; RU; light |
 | R54 | PARTIAL | `frontend/tests/e2e/push-context-geometry.spec.ts` (viewport list) and `frontend/tests/e2e-live/push-permission-default.live.spec.ts` | Add 390x844 and 768x1024 to the viewport list; live: the offer is inside the viewport and not covered by the bottom navigation | 390, 768, 1440; RU; light |
 | R56 | PARTIAL | `frontend/tests/e2e-live/navbar-layout-stability.live.spec.ts` | Assert the drawer's transform animates (not a jump) and the open state ends at `translateX(0)` | 390 and 360; RU; light |
 | R58 | PARTIAL | `frontend/tests/e2e-live/footer-bottom-navigation.live.spec.ts` | Press and hold a bottom-nav item (`mouse.down`), assert the pressed attribute or `:active` style, then release | 390 and 360; RU; light |
@@ -317,7 +316,6 @@ Rows that share a fix are merged in the "Add to" column.
 | R72 | PARTIAL | `frontend/tests/e2e-live/chat-attachment-isolation.live.spec.ts` | Profile avatar: a second student requests the first student's avatar URL and gets 403 or 404 | 390 and 1440; RU; light |
 | R74 | PARTIAL | `frontend/tests/e2e-live/chat-xss-render.live.spec.ts` (new) | Send a message and a profile name containing `<img src=x onerror=...>` and `<script>` text; assert the text renders literally and no alert or dialog fires | 390 and 1440; RU; light |
 | R78 | PARTIAL | `frontend/tests/e2e-live/schedule-grid-keyboard.live.spec.ts` and `frontend/tests/e2e/schedule-conflict.spec.ts` (new) | Keyboard grid opened at 390; mocked update conflict (409) shows the conflict message | 390 and 1440; RU and EN; light |
-| R81 | NONE | `tests/test_news_repository_closure.py` or new `tests/test_event_repository_analytics_removed.py` | Assert `EventRepository` has no `get_analytics_data` attribute and that the event analytics query does not select `max_attendees` | backend |
 | R83 | PARTIAL | `frontend/tests/e2e/chat_workflow.spec.ts` (note: chromium-only by design) and `frontend/tests/e2e/category-scroll-stability.spec.ts` | Decide and record whether messenger Firefox and WebKit are required; if yes, remove the chromium-only skip for the messenger smoke test | 1280x720 (firefox, webkit); RU; light |
 | R85 | NONE | Manual check (see Manual checks) | Icon set and micro-interaction review recorded with SHA | 390, 1440; RU and EN; light and dark |
 | R86 | PARTIAL | `frontend/tests/e2e-live/map-zoom-longtask.live.spec.ts` and `frontend/tests/e2e-live/messenger-realtime.live.spec.ts` | Open and close the messenger and the map 20 times, then assert the heap plateau with the same helper as `story-viewer-memory.live.spec.ts` | 390 and 1440; RU; light |
@@ -325,13 +323,14 @@ Rows that share a fix are merged in the "Add to" column.
 
 ### Product gap (not a test gap)
 
-- **Teacher event ownership (§4 «Мероприятия»).** SpiceDB event
-  ownership relationships are never written, so teachers cannot edit or
-  delete their own events. Fix in progress on a separate branch; no PR number
-  is recorded here. Once merged, add a live test in
-  `frontend/tests/e2e-live/` that creates an event as a teacher, edits it,
-  and deletes it, at 390 and 1440 in RU, and a backend test that asserts the
-  owner relationship is written on creation.
+- **Event and group relationship synchronization (§4 «Мероприятия»).**
+  PR #1399 adds backend request-path creator, attendee and group membership
+  writes, with backend tests. Teacher create/edit/delete still needs exact-SHA
+  hosted live evidence at 390 and 1440 in RU. This source fix is not a complete
+  synchronization guarantee: failed revocations and concurrent writes can
+  leave stale access, and the TOUCH-only backfills do not remove it. The
+  [ADR-008 relationship-write limits](../adr/ADR-008-spicedb-rebac.md#2026-11-14-relationship-writes)
+  remain unresolved; no acceptance is inferred from the presence of a writer.
 
 - **No HTTP 500 error page (R67).** A failed API or document request does not
   show a full-page error with a retry action. Dashboard cards show an inline
