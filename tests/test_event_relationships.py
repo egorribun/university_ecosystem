@@ -467,3 +467,93 @@ async def test_attendee_backfill_page_uses_attendance_key_and_relationship(
     if has_cursor:
         assert cursor in statement.compile().params.values()
     context.__aexit__.assert_awaited_once_with(None, None, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("after", "limit", "expected_ids"),
+    [(None, 10, [4, 6]), (None, 1, [4]), (4, 1, [6]), (6, 1, [])],
+)
+async def test_attendee_backfill_requires_tenant_visible_event_and_user(
+    monkeypatch, after, limit, expected_ids
+):
+    """Execute the actual query against each parent's tenant-visible row set.
+
+    Attendance has no tenant column or RLS policy. Its event and user parents
+    must both be joined before LIMIT. SQLite supplies the relational negative
+    controls here, not evidence that PostgreSQL's RLS policies are enforced.
+    """
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy import Column, MetaData, Table, Uuid, create_engine
+
+    metadata = MetaData()
+    attendance = Table(
+        "event_attendance",
+        metadata,
+        Column("id", Uuid, primary_key=True),
+        Column("event_id", Uuid, nullable=False),
+        Column("user_id", Uuid, nullable=False),
+    )
+    events = Table("events", metadata, Column("id", Uuid, primary_key=True))
+    users = Table("users", metadata, Column("id", Uuid, primary_key=True))
+    (
+        visible_event,
+        second_visible_event,
+        hidden_event,
+        second_hidden_event,
+        visible_user,
+        hidden_user,
+    ) = (uuid4() for _ in range(6))
+    engine = create_engine("sqlite://")
+    try:
+        metadata.create_all(engine)
+        with engine.begin() as connection:
+            # These parent tables represent only rows visible in this tenant.
+            # The unscoped child still contains all four event/user combinations.
+            connection.execute(
+                events.insert(),
+                [{"id": visible_event}, {"id": second_visible_event}],
+            )
+            connection.execute(users.insert(), [{"id": visible_user}])
+            connection.execute(
+                attendance.insert(),
+                [
+                    {"id": UUID(int=key), "event_id": event, "user_id": user}
+                    for key, event, user in [
+                        (1, hidden_event, hidden_user),
+                        (2, visible_event, hidden_user),
+                        (3, hidden_event, visible_user),
+                        (4, visible_event, visible_user),
+                        (5, second_hidden_event, hidden_user),
+                        (6, second_visible_event, visible_user),
+                    ]
+                ],
+            )
+
+            async def execute(statement):
+                return connection.execute(statement)
+
+            @asynccontextmanager
+            async def session():
+                yield SimpleNamespace(execute=execute)
+
+            monkeypatch.setattr(backfill, "async_session", session)
+            page = await backfill._fetch_attendee_page(
+                UUID(int=after) if after is not None else None, limit
+            )
+
+        assert [key.int for key, _ in page] == expected_ids
+        expected_events = {4: visible_event, 6: second_visible_event}
+        for key, updates in page:
+            (update,) = updates
+            assert update.operation == RelationshipUpdate.OPERATION_TOUCH
+            assert update.relationship.resource.object_type == "event"
+            assert update.relationship.resource.object_id == str(
+                expected_events[key.int]
+            )
+            assert update.relationship.relation == "attendee"
+            assert update.relationship.subject.object.object_type == "user"
+            assert update.relationship.subject.object.object_id == str(visible_user)
+    finally:
+        engine.dispose()

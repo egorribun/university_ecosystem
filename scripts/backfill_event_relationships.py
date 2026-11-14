@@ -39,7 +39,7 @@ from app.core.spicedb import (
     close_global_spicedb_channel,
 )
 from app.core.tenant import bypass_rls_ctx, require_mvp_tenant, tenant_id_ctx
-from app.models import Event, EventAttendance
+from app.models import Event, EventAttendance, User
 
 DEFAULT_BATCH_SIZE: Final = 500
 # SpiceDB caps the number of updates per WriteRelationships request; keep well below.
@@ -80,7 +80,13 @@ async def _fetch_creator_page(
 async def _fetch_attendee_page(
     after: UUID | None, limit: int
 ) -> list[tuple[UUID, list[RelationshipUpdate]]]:
-    stmt = select(EventAttendance.id, EventAttendance.event_id, EventAttendance.user_id)
+    # Attendance has no tenant column or RLS policy of its own. Both parents
+    # must be visible under this tenant's RLS before pagination or any grant.
+    stmt = (
+        select(EventAttendance.id, EventAttendance.event_id, EventAttendance.user_id)
+        .join(Event, Event.id == EventAttendance.event_id)
+        .join(User, User.id == EventAttendance.user_id)
+    )
     if after is not None:
         stmt = stmt.where(EventAttendance.id > after)
     async with async_session() as db:

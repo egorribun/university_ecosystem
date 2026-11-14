@@ -14,8 +14,8 @@ backend request path after the domain commit:
 A SpiceDB failure is logged and never fails the request. The
 event and group backfill scripts restore missing grants for current database
 rows. They do not remove stale grants left by failed deletes or reordered
-concurrent writes. The outbox worker intentionally has no SpiceDB access, so
-these writes do not go through the outbox.
+concurrent writes. These writes are owned by the backend request path and
+do not go through the outbox.
 
 Authentication is carried by the shared channel (see ``app.core.spicedb``), so
 no per-call metadata is attached here. Permission checks use SpiceDB's default
