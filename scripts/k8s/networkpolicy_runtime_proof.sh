@@ -32,6 +32,10 @@ readonly KUBERNETES_VERSION="v1.36.4"
 # Calico v3.30.3 manifest; the sha256 below was computed from the exact file.
 readonly CALICO_URL="https://raw.githubusercontent.com/projectcalico/calico/v3.30.3/manifests/calico.yaml"
 readonly CALICO_SHA256="9382d2b27a76f40c170454b408653e6d71e2205ef0aef069e942bb690e7381d0"
+# Link-local listener address (169.254.0.0/16) added to the kind node's eth0. The
+# probe's host-network listener binds here; it must match LINK_LOCAL_ADDRESS in
+# scripts/k8s/networkpolicy_runtime_rows.py (contract-tested).
+readonly LINK_LOCAL_ADDRESS="169.254.10.10"
 
 RUN_SUFFIX="$(openssl rand -hex 6)"
 readonly RUN_SUFFIX
@@ -104,6 +108,15 @@ nodes:
 EOF
 }
 
+add_link_local_address() {
+  # The kind node is a privileged container; its eth0 carries the link-local /32
+  # that the host-network listener binds. Fail closed if the address is absent.
+  local addresses
+  docker exec "${CLUSTER_NAME}-control-plane" ip addr add "${LINK_LOCAL_ADDRESS}/32" dev eth0
+  addresses="$(docker exec "${CLUSTER_NAME}-control-plane" ip -4 addr show dev eth0)"
+  [[ "$addresses" == *"inet ${LINK_LOCAL_ADDRESS}/32"* ]]
+}
+
 collect_diagnostics() {
   mkdir -p "$DIAG_DIR"
   if [[ "$CLUSTER_CREATED" -eq 1 ]]; then
@@ -132,6 +145,7 @@ main() {
   CLUSTER_CREATED=1
   kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" \
     --config "${WORK_DIR}/kind-config.yaml" --wait 120s
+  add_link_local_address
 
   download_pinned "$CALICO_URL" "$CALICO_SHA256" "${WORK_DIR}/calico.yaml"
   kubectl apply --server-side --force-conflicts -f "${WORK_DIR}/calico.yaml"

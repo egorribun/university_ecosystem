@@ -281,6 +281,7 @@ def stand_in_pod(
     image: str,
     listen_tcp: str = "",
     listen_udp: str = "",
+    host_network: bool = False,
 ) -> dict[str, Any]:
     env = []
     if listen_tcp:
@@ -297,6 +298,9 @@ def stand_in_pod(
         "metadata": {"name": name, "namespace": namespace, "labels": labels},
         "spec": {
             "automountServiceAccountToken": False,
+            # Host networking is used only for the link-local listener and its
+            # control: their traffic is not subject to pod NetworkPolicy.
+            "hostNetwork": host_network,
             "containers": [
                 {
                     "name": "probe",

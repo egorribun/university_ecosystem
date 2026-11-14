@@ -89,6 +89,14 @@ def pod_template_labels(
     return dict(find(resources, kind, name)["spec"]["template"]["metadata"]["labels"])
 
 
+def cronjob_template_labels(
+    resources: list[dict[str, Any]], name: str
+) -> dict[str, str]:
+    """Return the pod-template labels of a rendered CronJob's Job, fail closed."""
+    job = find(resources, "CronJob", name)["spec"]["jobTemplate"]["spec"]["template"]
+    return dict(job["metadata"]["labels"])
+
+
 def run_in_pod(
     pod: Pod,
     source: str,
