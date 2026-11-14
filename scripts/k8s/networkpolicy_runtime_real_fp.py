@@ -404,7 +404,8 @@ def actual_processor_phase(
     Test both replicas of probe-a, preserving the rendered original
     labels, policies, transport flags, refresh interval and replica count. Real
     probe-b is not claimed; both namespaces stay covered by the original matrix.
-    A fixed stage marker is the only setup-error detail allowed into receipts.
+    Setup-error receipts allow fixed stage markers and allowlisted prerequisite
+    container status facts, never raw messages, logs, environment or Secrets.
     """
     checks = []
     rotations = []
@@ -420,7 +421,12 @@ def actual_processor_phase(
                 root, release, python_image, chart_values["backup"]["postgresImage"]
             )
             if setup.get("result") != "ready":
-                return {"verdict": "inconclusive", "stage": stage, "checks": checks}
+                return {
+                    "verdict": "inconclusive",
+                    "stage": stage,
+                    "checks": checks,
+                    "prerequisite": setup,
+                }
             stage = f"{release}:nats"
             nats_url = bootstrap_nats(root, release, python_image)
             old = generate_signing_key("primary")

@@ -658,9 +658,18 @@ def test_wait_failure_is_inconclusive_and_contains_no_exception(stage):
         patch.object(m, "fixture_objects", return_value=([], {}, {})),
         patch.object(m, "apply_objects"),
         patch.object(m, "kubectl", side_effect=waits),
+        patch.object(
+            m, "temporal_startup_status", return_value={"status": "unavailable"}
+        ) as diagnostics,
     ):
         result = m.bootstrap_temporal(ROOT, "probe-a", *pins())
-    assert result == {"result": "inconclusive", "stage": stage}
+    expected = {"result": "inconclusive", "stage": stage}
+    if stage == "temporal":
+        expected["diagnostics"] = {"status": "unavailable"}
+        diagnostics.assert_called_once_with("probe-a")
+    else:
+        diagnostics.assert_not_called()
+    assert result == expected
     assert "SECRET" not in str(result)
 
 
@@ -800,6 +809,7 @@ def test_native_setup_failure_inconclusive_not_pass():
         "verdict": "inconclusive",
         "stage": "probe-a:temporal",
         "checks": [],
+        "prerequisite": {"result": "inconclusive", "stage": "schema"},
     }
 
 
@@ -2040,3 +2050,220 @@ sleep() { printf "wait\n" >> "$WORK_DIR/waits"; }
         )
     else:
         assert not (tmp_path / "waits").exists()
+
+
+def _strict_fixture_handshake(tmp_path, ca, credential, hostname):
+    import ssl
+
+    certificate = tmp_path / "tls.crt"
+    certificate.write_text(credential["tls.crt"])
+    key = tmp_path / "tls.key"
+    key.touch(mode=0o600)
+    key.write_text(credential["tls.key"])
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_context.minimum_version = ssl.TLSVersion.TLSv1_3
+    server_context.load_cert_chain(certificate, key)
+    client_context = ssl.create_default_context(cadata=ca)
+    client_context.minimum_version = ssl.TLSVersion.TLSv1_3
+    assert client_context.verify_flags & ssl.VERIFY_X509_STRICT
+    assert client_context.verify_mode == ssl.CERT_REQUIRED
+    assert client_context.check_hostname
+    client_in, client_out, server_in, server_out = [ssl.MemoryBIO() for _ in range(4)]
+    peers = [
+        client_context.wrap_bio(client_in, client_out, server_hostname=hostname),
+        server_context.wrap_bio(server_in, server_out, server_side=True),
+    ]
+    complete = set()
+    for _ in range(20):
+        for index, peer in enumerate(peers):
+            try:
+                peer.do_handshake()
+                complete.add(index)
+            except ssl.SSLWantReadError:
+                pass
+        if client_out.pending:
+            server_in.write(client_out.read())
+        if server_out.pending:
+            client_in.write(server_out.read())
+        if len(complete) == 2:
+            assert peers[0].version() == "TLSv1.3"
+            return
+    pytest.fail("bounded in-memory TLS handshake did not complete")
+
+
+@pytest.mark.parametrize("target", ["issuer", "server"])
+def test_native_fixture_certificates_pass_default_strict_tls(tmp_path, target):
+    from cryptography import x509
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    ca, server, issuer = m._credentials("probe-a")
+    root = x509.load_pem_x509_certificate(ca.encode())
+    assert root.extensions.get_extension_for_class(x509.KeyUsage).value.key_cert_sign
+    assert root.extensions.get_extension_for_class(x509.SubjectKeyIdentifier)
+    credential, hostname = (
+        (issuer, "127.0.0.1") if target == "issuer" else (server, "temporal")
+    )
+    leaf = x509.load_pem_x509_certificate(credential["tls.crt"].encode())
+    assert leaf.extensions.get_extension_for_class(x509.AuthorityKeyIdentifier)
+    _strict_fixture_handshake(tmp_path, ca, credential, hostname)
+
+
+@pytest.mark.parametrize("missing", ["authority", "ca-usage", "hostname"])
+def test_native_fixture_strict_tls_rejects_incomplete_chain(
+    tmp_path, monkeypatch, missing
+):
+    import ssl
+
+    from cryptography import x509
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    original = x509.CertificateBuilder.add_extension
+
+    def omit_extension(builder, extension, critical):
+        if (
+            missing == "authority"
+            and isinstance(extension, x509.AuthorityKeyIdentifier)
+        ) or (missing == "ca-usage" and isinstance(extension, x509.KeyUsage)):
+            return builder
+        return original(builder, extension, critical)
+
+    monkeypatch.setattr(x509.CertificateBuilder, "add_extension", omit_extension)
+    ca, _, issuer = m._credentials("probe-a")
+    with pytest.raises(ssl.SSLCertVerificationError):
+        _strict_fixture_handshake(
+            tmp_path,
+            ca,
+            issuer,
+            "wrong.example" if missing == "hostname" else "127.0.0.1",
+        )
+
+
+def test_temporal_status_diagnostics_emit_only_allowlisted_fields():
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    rows = [
+        {
+            "name": "jwks",
+            "state": {"running": {"message": "PRIVATE"}},
+            "ready": False,
+            "started": False,
+            "restartCount": 1,
+        },
+        {
+            "name": "render",
+            "state": {"waiting": {"reason": "PRIVATE"}},
+            "ready": True,
+            "started": True,
+        },
+        {
+            "name": "temporal",
+            "state": {"terminated": {"exitCode": 1, "message": "PRIVATE"}},
+            "restartCount": 100000,
+        },
+        {"name": "admin", "state": {}},
+        {"name": "PRIVATE", "state": {"running": {}}},
+    ]
+    response = {
+        "initContainerStatuses": rows[:2],
+        "containerStatuses": rows[2:],
+        "message": "PRIVATE",
+    }
+    with patch.object(
+        m, "run_command", return_value=SimpleNamespace(stdout=json.dumps(response))
+    ) as run:
+        result = m.temporal_startup_status("probe-a")
+    assert result["status"] == "collected"
+    assert [r["state"] for r in result["containers"]] == [
+        "running",
+        "waiting",
+        "terminated",
+        "unknown",
+    ]
+    assert result["containers"][2]["exit_code"] == 1
+    assert result["containers"][0]["restarts"] == 1
+    assert "PRIVATE" not in json.dumps(result)
+    assert run.call_args.kwargs == {"timeout": 10}
+    assert run.call_args.args[0] == [
+        "kubectl",
+        "--request-timeout=5s",
+        "-n",
+        "probe-a",
+        "get",
+        "pod/netpol-temporal",
+        "-o",
+        "jsonpath={.status}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "oversize",
+        "invalid-json",
+        "list",
+        "missing-name",
+        "invalid-state",
+        "too-many",
+        "command",
+        "restart-text",
+        "restart-bool",
+        "restart-low",
+        "restart-high",
+        "exit-text",
+        "exit-bool",
+        "exit-low",
+        "exit-high",
+    ],
+)
+def test_temporal_diagnostics_fail_closed_without_raw_error(case):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    row = {"name": "jwks", "state": {"terminated": {"exitCode": 0}}, "restartCount": 0}
+    document = {"containerStatuses": [row]}
+    if case.startswith("restart-"):
+        row["restartCount"] = {
+            "text": "PRIVATE",
+            "bool": True,
+            "low": -1,
+            "high": 100001,
+        }[case.removeprefix("restart-")]
+    if case.startswith("exit-"):
+        row["state"]["terminated"]["exitCode"] = {
+            "text": "PRIVATE",
+            "bool": True,
+            "low": -1,
+            "high": 256,
+        }[case.removeprefix("exit-")]
+    if case == "missing-name":
+        del row["name"]
+    if case == "invalid-state":
+        row["state"] = None
+    if case == "too-many":
+        document["containerStatuses"] *= 9
+    raw = (
+        "x" * 65537
+        if case == "oversize"
+        else "PRIVATE"
+        if case == "invalid-json"
+        else "[]"
+        if case == "list"
+        else json.dumps(document)
+    )
+    failure = (
+        subprocess.CalledProcessError(
+            1, ["kubectl"], output="PRIVATE", stderr="PRIVATE"
+        )
+        if case == "command"
+        else None
+    )
+    with patch.object(
+        m, "run_command", return_value=SimpleNamespace(stdout=raw), side_effect=failure
+    ):
+        assert m.temporal_startup_status("probe-a") == {"status": "unavailable"}

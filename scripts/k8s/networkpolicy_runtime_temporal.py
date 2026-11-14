@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import ipaddress
+import json
 import re
 import secrets
 import subprocess
@@ -130,6 +131,13 @@ def _certificate(key: Any, ca_key: Any, ca: Any, names: list[Any]) -> str:
         .add_extension(
             x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False
         )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .sign(ca_key, hashes.SHA256())
     )
     return cert.public_bytes(serialization.Encoding.PEM).decode()
@@ -156,6 +164,28 @@ def _credentials(namespace: str) -> tuple[str, dict[str, str], dict[str, str]]:
         .not_valid_before(now - datetime.timedelta(minutes=1))
         .not_valid_after(now + datetime.timedelta(hours=2))
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .sign(ca_key, hashes.SHA256())
     )
     server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -517,9 +547,75 @@ def fixture_objects(
     return objects, schema, pod
 
 
+def temporal_startup_status(namespace: str) -> dict[str, Any]:
+    """Bounded status-only diagnostics; never return messages, logs or pod spec."""
+    try:
+        response = run_command(
+            [
+                "kubectl",
+                "--request-timeout=5s",
+                "-n",
+                namespace,
+                "get",
+                "pod/netpol-temporal",
+                "-o",
+                "jsonpath={.status}",
+            ],
+            timeout=10,
+        )
+        if len(response.stdout) > 65536:
+            raise ValueError("oversized status")
+        status = json.loads(response.stdout)
+        containers = []
+        rows = [
+            *status.get("initContainerStatuses", []),
+            *status.get("containerStatuses", []),
+        ]
+        if len(rows) > 8:
+            raise ValueError("oversized container status list")
+        for row in rows:
+            if row["name"] not in {"jwks", "render", "temporal", "admin"}:
+                continue
+            current = row["state"]
+            state = next(
+                (
+                    name
+                    for name in ("waiting", "running", "terminated")
+                    if name in current
+                ),
+                "unknown",
+            )
+            code = current.get("terminated", {}).get("exitCode")
+            restarts = row.get("restartCount", 0)
+            if type(restarts) is not int or not 0 <= restarts <= 100000:
+                raise ValueError("invalid restart count")
+            if code is not None and (type(code) is not int or not 0 <= code <= 255):
+                raise ValueError("invalid exit code")
+            containers.append(
+                {
+                    "name": row["name"],
+                    "state": state,
+                    "ready": row.get("ready") is True,
+                    "started": row.get("started") is True,
+                    "restarts": restarts,
+                    "exit_code": code,
+                }
+            )
+        return {"status": "collected", "containers": containers}
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        subprocess.SubprocessError,
+    ):
+        return {"status": "unavailable"}
+
+
 def bootstrap_temporal(
     root: Path, namespace: str, python_image: str, postgres_image: str
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Apply to EXISTING disposable namespace. Return only nonsecret setup facts.
 
     Caller's existing EXIT trap owns cluster deletion, including failed setup.
@@ -603,7 +699,10 @@ def bootstrap_temporal(
     ):
         # CalledProcessError may contain serialized Secrets in stdout/stderr.
         # Do not propagate, print, chain, or return the exception object.
-        return {"result": "inconclusive", "stage": stage}
+        failure: dict[str, Any] = {"result": "inconclusive", "stage": stage}
+        if stage == "temporal":
+            failure["diagnostics"] = temporal_startup_status(namespace)
+        return failure
     return {
         "result": "ready",
         "endpoint": "temporal:7233",
