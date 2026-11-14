@@ -137,15 +137,57 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Opt-in private real-process phase. Uses existing FP Dockerfile builder and the
+# tracked Python base; never publishes images or changes the forty-row matrix.
+require_clean_source() {
+  local untracked
+  # No filenames or diffs are printed: ignored caches/secrets never become
+  # provenance data. The build context below is a Git archive, not the worktree.
+  if ! git -C "$ROOT_DIR" diff --quiet HEAD -- || ! git -C "$ROOT_DIR" diff --cached --quiet HEAD --; then
+    log "real-process proof requires a committed clean source tree"
+    return 1
+  fi
+  untracked="$(git -C "$ROOT_DIR" ls-files --others --exclude-standard)" || return 1
+  if [[ -n "$untracked" ]]; then
+    log "real-process proof requires a committed clean source tree"
+    return 1
+  fi
+}
+
+build_real_processor_images() {
+  [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]] || return 0
+  local base_image build_source
+  require_clean_source
+  SOURCE_SHA="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+  build_source="${WORK_DIR}/source"
+  mkdir -p "$build_source"
+  git -C "$ROOT_DIR" archive --format=tar "$SOURCE_SHA" | tar -xf - -C "$build_source"
+  FP_IMAGE="ue-netpol-fp:${SOURCE_SHA}"
+  DIAGNOSTIC_IMAGE="ue-netpol-diagnostic:${SOURCE_SHA}"
+  base_image="$(cd "$ROOT_DIR" && uv run --frozen python -c 'import sys; sys.path.insert(0,sys.argv[1]+"/scripts/k8s"); from networkpolicy_runtime_probe import runtime_base_image; print(runtime_base_image())' "$build_source")"
+  docker build -f "${build_source}/services/file-processor/Dockerfile" -t "$FP_IMAGE" "$build_source"
+  # Reuse the existing builder stage so Go/module pins and native source agree.
+  sed '/^FROM .* AS health-probe/,$d' "${build_source}/services/file-processor/Dockerfile" > "${WORK_DIR}/diagnostic.Dockerfile"
+  printf '\nRUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /networkpolicy-probe ./cmd/networkpolicy-probe\nFROM %s\nCOPY --from=builder /networkpolicy-probe /usr/local/bin/networkpolicy-probe\n' "$base_image" >> "${WORK_DIR}/diagnostic.Dockerfile"
+  docker build -f "${WORK_DIR}/diagnostic.Dockerfile" -t "$DIAGNOSTIC_IMAGE" "$build_source"
+}
+
 main() {
   require_platform
   install_tools
   write_kind_config
+  build_real_processor_images
 
   CLUSTER_CREATED=1
   kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" \
     --config "${WORK_DIR}/kind-config.yaml" --wait 120s
   add_link_local_address
+  local -a real_processor_args=()
+  if [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]]; then
+    kind load docker-image --name "$CLUSTER_NAME" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"
+    real_processor_args=(--real-processor-image "$FP_IMAGE" --diagnostic-image "$DIAGNOSTIC_IMAGE" --source-sha "$SOURCE_SHA")
+  fi
 
   download_pinned "$CALICO_URL" "$CALICO_SHA256" "${WORK_DIR}/calico.yaml"
   kubectl apply --server-side --force-conflicts -f "${WORK_DIR}/calico.yaml"
@@ -161,7 +203,7 @@ main() {
       --receipt "${DIAG_DIR}/receipt.json" \
       --kubernetes-version "$KUBERNETES_VERSION" \
       --node-image "$NODE_IMAGE" \
-      --calico-sha256 "$CALICO_SHA256"
+      --calico-sha256 "$CALICO_SHA256" "${real_processor_args[@]}"
   )
 }
 
