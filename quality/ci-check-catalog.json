@@ -2065,6 +2065,12 @@
               "path_pattern": "zap-public/zap-results.sarif\nzap-public/zap-evidence.txt\nzap-public/zap-sarif-provenance.json\n",
               "required": false,
               "provenance": "run_id_attempt"
+            },
+            {
+              "name_pattern": "dast-memory-telemetry-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/dast-memory.jsonl\n${{ runner.temp }}/dast-memory-summary.txt\n",
+              "required": false,
+              "provenance": "run_id_attempt"
             }
           ],
           "retry_policy": {
