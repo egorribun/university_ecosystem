@@ -194,3 +194,133 @@ test("authenticated non-member cannot send a message into the private group", ()
   assert.doesNotMatch(sendAttempt, /console\.|response\.(?:text|json)\(/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|debug)\(/u)
 })
+
+// Execute the actual TypeScript frame decoder, not a duplicate test implementation.
+const { default: ts } = await import("typescript")
+const { runInNewContext } = await import("node:vm")
+function groupDecoder(source = spec) {
+  const start = source.indexOf("type JsonRecord =")
+  const end = source.indexOf("async function getCurrentUser(")
+  assert.ok(start >= 0 && end > start)
+  const compiled = ts.transpileModule(source.slice(start, end), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText
+  const context = {}
+  runInNewContext(compiled + "\nglobalThis.decode = findGroupMessageEvents", context)
+  return (value) => JSON.parse(JSON.stringify(context.decode(value)))
+}
+
+test("group observer retains replay ordering and exact sender/chat identity from real hub envelopes", () => {
+  const decode = groupDecoder()
+  const envelope = {
+    seq: 31,
+    replayed: true,
+    payload: {
+      type: "new_message",
+      chat_id: "group-a",
+      message: {
+        id: "message-a",
+        chat_id: "group-a",
+        sender_id: "owner-a",
+        content: "synthetic",
+      },
+    },
+  }
+  assert.deepEqual(decode([envelope]), [
+    {
+      type: "new_message",
+      chatId: "group-a",
+      messageId: "message-a",
+      content: "synthetic",
+      senderId: "owner-a",
+      messageChatId: "group-a",
+      sequence: 31,
+      replayed: true,
+    },
+  ])
+  assert.equal(decode({ ...envelope, replayed: false })[0].replayed, false)
+  assert.equal(decode({ ...envelope, seq: "31" })[0].sequence, undefined)
+  assert.deepEqual(decode(null), [])
+  assert.deepEqual(decode({ payload: { type: "new_message", chat_id: "group-a" } }), [])
+  assert.deepEqual(
+    decode({
+      payload: {
+        type: "message_edited",
+        chat_id: "group-a",
+        message_id: "message-a",
+        content: "edited",
+        edited_at: "2026-11-14T00:00:00Z",
+      },
+    })[0],
+    {
+      type: "message_edited",
+      chatId: "group-a",
+      messageId: "message-a",
+      content: "edited",
+      editedAt: "2026-11-14T00:00:00Z",
+      replayed: false,
+    }
+  )
+})
+
+function assertGroupReconnect(source) {
+  for (const marker of [
+    "await teacherContext.setOffline(true)",
+    "teacherPage.evaluate(() => navigator.onLine)).toBe(false)",
+    "expect(eventsForMessage(teacherSocket, chatId, item.id)).toEqual([])",
+    "await teacherContext.setOffline(false)",
+    "teacherSocket.sessions.slice(previousSessionCount)",
+    "session.resumeRooms.includes(chatId)",
+    "expect((await historyPromise).ok()).toBe(true)",
+    "expect(replay.map((event) => event.messageId)).toEqual(missedIds)",
+    "content: missed[index]!.content, replayed: true",
+    "expect(Number.isSafeInteger(event.sequence)).toBe(true)",
+    "content: after.content, replayed: false",
+    "expect(afterFrame.sequence!).toBeGreaterThan(replay[1]!.sequence!)",
+    "expect(eventsForMessage(nonMemberSocket, chatId, id)).toEqual([])",
+    "expect(eventsForMessage(teacherSocket, chatId, item.id)).toHaveLength(1)",
+  ]) {
+    assert.ok(
+      source.replace(/\s+/gu, "").includes(marker.replace(/\s+/gu, "")),
+      `missing group reconnect acceptance: ${marker}`
+    )
+  }
+  assert.ok(
+    source.indexOf("await teacherContext.setOffline(true)") < source.indexOf("const missed =")
+  )
+  assert.ok(
+    source.indexOf("const missed =") < source.indexOf("await teacherContext.setOffline(false)")
+  )
+  assert.doesNotMatch(
+    source,
+    /test\.setTimeout|test\.slow|timeout:|retries:|routeWebSocket|page\.route\(/u
+  )
+  assert.equal((source.match(/test\("group events reach both members/g) ?? []).length, 1)
+}
+
+test("existing group acceptance covers real offline replay without changing collection or budgets", () => {
+  assertGroupReconnect(spec)
+})
+
+test("group reconnect acceptance guards reject missing replay, isolation and dedup evidence", () => {
+  for (const marker of [
+    "await teacherContext.setOffline(true)",
+    "expect(replay.map((event) => event.messageId)).toEqual(missedIds)",
+    "content: missed[index]!.content, replayed: true",
+    "expect(eventsForMessage(nonMemberSocket, chatId, id)).toEqual([])",
+    "expect(eventsForMessage(teacherSocket, chatId, item.id)).toHaveLength(1)",
+  ]) {
+    const candidate = spec.replace(
+      new RegExp(
+        marker
+          .split(/\s+/u)
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+          .join("\\s*"),
+        "u"
+      ),
+      ""
+    )
+    assert.notEqual(candidate, spec)
+    assert.throws(() => assertGroupReconnect(candidate), { name: "AssertionError" })
+  }
+})
