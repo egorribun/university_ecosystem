@@ -616,6 +616,7 @@ function SsrRoot() {
           {/* Mirror the client tree so the SSR loader is reconciled by React
               and can transition out after AppProviders publishes hydration. */}
           <BrandBootLoader />
+          <RootSeoGapFallback />
           <MainLayout>
             <PageErrorBoundary>
               <Outlet />
