@@ -57,13 +57,20 @@ export const DesktopNav = ({
                 }
               }}
             >
-              {/* Icon — instant swap, no crossfade (prevents flash during pill morph) */}
+              {/* Icon — instant swap, no crossfade (prevents flash during pill morph).
+                  Between the tablet and wide breakpoints the labelled row cannot fit
+                  with the user menu on every hosted font stack, so the labels collapse
+                  to icons there; the text stays in the accessible name (sr-only). */}
               <span
                 className={cn(
                   "flex items-center justify-center",
                   isCompact
                     ? "relative opacity-100"
-                    : "absolute inset-0 opacity-0 pointer-events-none"
+                    : [
+                        "absolute inset-0 opacity-0 pointer-events-none",
+                        "min-[1350px]:max-[1439px]:relative min-[1350px]:max-[1439px]:opacity-100",
+                        "min-[1350px]:max-[1439px]:pointer-events-auto",
+                      ]
                 )}
               >
                 <Icon size={18} aria-hidden="true" />
@@ -75,7 +82,7 @@ export const DesktopNav = ({
                   "whitespace-nowrap",
                   isCompact
                     ? "absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none"
-                    : "relative opacity-100"
+                    : "relative opacity-100 min-[1350px]:max-[1439px]:sr-only"
                 )}
               >
                 {item.label}
