@@ -62,7 +62,9 @@ spec:
               type: RuntimeDefault
           {{- with .Values.global.imagePullSecrets }}
           imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
+            {{- range . }}
+            - name: {{ . | quote }}
+            {{- end }}
           {{- end }}
           containers:
             - name: partition-maintenance

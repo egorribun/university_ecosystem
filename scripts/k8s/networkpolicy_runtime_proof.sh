@@ -137,15 +137,92 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Opt-in private real-process phase. Uses existing FP Dockerfile builder and the
+# tracked Python base; never publishes images or changes the forty-row matrix.
+require_clean_source() {
+  local untracked
+  # No filenames or diffs are printed: ignored caches/secrets never become
+  # provenance data. The build context below is a Git archive, not the worktree.
+  if ! git -C "$ROOT_DIR" diff --quiet HEAD -- || ! git -C "$ROOT_DIR" diff --cached --quiet HEAD --; then
+    log "real-process proof requires a committed clean source tree"
+    return 1
+  fi
+  untracked="$(git -C "$ROOT_DIR" ls-files --others --exclude-standard)" || return 1
+  if [[ -n "$untracked" ]]; then
+    log "real-process proof requires a committed clean source tree"
+    return 1
+  fi
+}
+
+build_real_processor_images() {
+  [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]] || return 0
+  local base_image build_source
+  require_clean_source
+  SOURCE_SHA="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+  build_source="${WORK_DIR}/source"
+  mkdir -p "$build_source"
+  git -C "$ROOT_DIR" archive --format=tar "$SOURCE_SHA" | tar -xf - -C "$build_source"
+  FP_IMAGE="ue-netpol-fp:${SOURCE_SHA}"
+  DIAGNOSTIC_IMAGE="ue-netpol-diagnostic:${SOURCE_SHA}"
+  base_image="$(cd "$ROOT_DIR" && uv run --frozen python -c 'import sys; sys.path.insert(0,sys.argv[1]+"/scripts/k8s"); from networkpolicy_runtime_probe import runtime_base_image; print(runtime_base_image())' "$build_source")"
+  docker build -f "${build_source}/services/file-processor/Dockerfile" -t "$FP_IMAGE" "$build_source"
+  # Reuse the existing builder stage so Go/module pins and native source agree.
+  sed '/^FROM .* AS health-probe/,$d' "${build_source}/services/file-processor/Dockerfile" > "${WORK_DIR}/diagnostic.Dockerfile"
+  printf '\nRUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /networkpolicy-probe ./cmd/networkpolicy-probe\nFROM %s\nCOPY --from=builder /networkpolicy-probe /usr/local/bin/networkpolicy-probe\n' "$base_image" >> "${WORK_DIR}/diagnostic.Dockerfile"
+  docker build -f "${WORK_DIR}/diagnostic.Dockerfile" -t "$DIAGNOSTIC_IMAGE" "$build_source"
+}
+
+
+load_real_processor_images() {
+  local archive="${WORK_DIR}/real-processor-images.tar" image expected observed attempt
+  # kind v0.31.0 rejects config v4 before import (nodeutils/util.go).
+  # Use the pinned node's native ctr instead, including unpack into overlayfs,
+  # the rootful kind node's snapshotter. Do not mutate containerd configuration.
+  docker save --output "$archive" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"
+  docker exec -i "${CLUSTER_NAME}-control-plane" ctr --namespace=k8s.io images import \
+    --local --all-platforms --digests --snapshotter=overlayfs - < "$archive"
+  # The CRI must resolve each exact tag to the locally built image config ID.
+  # Successful tar ingestion alone is not evidence that kubelet can use it.
+  for image in "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"; do
+    expected="$(docker image inspect --format '{{.Id}}' "$image")"
+    [[ "$expected" =~ ^sha256:[0-9a-f]{64}$ ]]
+    # Image-created events reach the CRI cache asynchronously. Wait only for a
+    # missing tag (at most 29 one-second sleeps/image); malformed output, command errors or
+    # an already visible wrong identity must fail immediately, never be retried.
+    for attempt in {1..30}; do
+      observed="$(docker exec "${CLUSTER_NAME}-control-plane" crictl images --output json |
+        uv run --frozen python -c 'import json,sys
+matches = [item["id"] for item in json.load(sys.stdin)["images"] if sys.argv[1] in item.get("repoTags", [])]
+if len(matches) > 1: raise ValueError("ambiguous imported image reference")
+print(matches[0] if matches else "")' "docker.io/library/${image}")"
+      [[ -z "$observed" || "$observed" == "$expected" ]]
+      [[ "$observed" != "$expected" ]] || break
+      [[ "$attempt" -lt 30 ]]
+      sleep 1
+    done
+    observed="$(docker exec "${CLUSTER_NAME}-control-plane" crictl inspecti --output json "$image" |
+      uv run --frozen python -c 'import json,sys; print(json.load(sys.stdin)["status"]["id"])')"
+    [[ "$observed" == "$expected" ]]
+  done
+  rm "$archive"
+}
+
 main() {
   require_platform
   install_tools
   write_kind_config
+  build_real_processor_images
 
   CLUSTER_CREATED=1
   kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" \
     --config "${WORK_DIR}/kind-config.yaml" --wait 120s
   add_link_local_address
+  local -a real_processor_args=()
+  if [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]]; then
+    load_real_processor_images
+    real_processor_args=(--real-processor-image "$FP_IMAGE" --diagnostic-image "$DIAGNOSTIC_IMAGE" --source-sha "$SOURCE_SHA")
+  fi
 
   download_pinned "$CALICO_URL" "$CALICO_SHA256" "${WORK_DIR}/calico.yaml"
   kubectl apply --server-side --force-conflicts -f "${WORK_DIR}/calico.yaml"
@@ -161,7 +238,7 @@ main() {
       --receipt "${DIAG_DIR}/receipt.json" \
       --kubernetes-version "$KUBERNETES_VERSION" \
       --node-image "$NODE_IMAGE" \
-      --calico-sha256 "$CALICO_SHA256"
+      --calico-sha256 "$CALICO_SHA256" "${real_processor_args[@]}"
   )
 }
 

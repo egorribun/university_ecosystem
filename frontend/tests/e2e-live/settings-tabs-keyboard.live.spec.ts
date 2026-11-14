@@ -7,6 +7,8 @@ test("Settings tabs follow APG keyboard focus, activation, and panel association
 }) => {
   await loginAs(page, "student")
   await page.goto("/settings")
+  // SSR markup is visible before React attaches keyboard handlers and stable IDs.
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
 
   const tablist = page.getByRole("tablist", { name: /Разделы настроек|Settings sections/u })
   const tabs = tablist.getByRole("tab")

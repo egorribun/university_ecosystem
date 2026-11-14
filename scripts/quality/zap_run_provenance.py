@@ -13,6 +13,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -138,13 +139,18 @@ _SCANNER_LOG_TAIL_BYTES = 65536
 class ScannerExitError(ValueError):
     """A scanner process ended without a documented completed exit code.
 
-    Only the integer code and an exception class name are kept, so a hosted run
-    can say why the result is unknown (for example 3 for a scanner exception or
-    137 for a SIGKILL such as an out-of-memory kill) without exposing scanner
-    output or the target.
+    The public diagnostic is a fixed enum, never the private exception class.
+    It identifies an observed log marker, not the underlying engine failure or
+    scan coverage. Only documented completed exit codes can issue a receipt.
     """
 
-    def __init__(self, exit_code: object, error_class: object = None) -> None:
+    def __init__(
+        self,
+        exit_code: object,
+        error_class: object = None,
+        *,
+        reason: object = "unknown",
+    ) -> None:
         super().__init__("ZAP scanner did not complete")
         self.exit_code = (
             exit_code if type(exit_code) is int and -255 <= exit_code <= 255 else None
@@ -156,21 +162,60 @@ class ScannerExitError(ValueError):
             else None
         )
 
+        self.reason = "unknown"
+        if self.exit_code == 3 and type(reason) is str:
+            if reason == "startup_wait_expired":
+                self.reason = "startup_wait_expired"
+            elif reason == "scanner_exception":
+                self.reason = "scanner_exception"
 
-def _scanner_error_class(work: Path) -> str | None:
-    """Return the last upstream exception class from the private scanner log."""
+
+def _scanner_log_tail(work: Path) -> bytes:
+    """Read only a bounded regular stdout tail, without following links."""
     try:
-        with (work / "stdout.log").open("rb") as handle:
+        descriptor = os.open(
+            work / "stdout.log", os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+        )
+        with os.fdopen(descriptor, "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                return b""
             handle.seek(0, os.SEEK_END)
-            handle.seek(max(0, handle.tell() - _SCANNER_LOG_TAIL_BYTES))
+            offset = max(0, handle.tell() - _SCANNER_LOG_TAIL_BYTES)
+            handle.seek(offset)
             tail = handle.read(_SCANNER_LOG_TAIL_BYTES)
     except OSError:
-        return None
+        return b""
+    # A cut first line cannot become a matching marker after losing its prefix.
+    return tail.partition(b"\n")[2] if offset else tail
+
+
+def _scanner_error_class(tail: bytes) -> str | None:
+    """Keep the last bounded exception class private; never print it publicly."""
     matches = _SCANNER_ERROR_LINE.findall(tail)
     if not matches:
         return None
     candidate = matches[-1].decode("ascii", errors="replace")
     return candidate if _SCANNER_ERROR_CLASS.fullmatch(candidate) else None
+
+
+def _scanner_failure_reason(tail: bytes) -> str:
+    """Project the last complete ERROR line to a fixed enum, else unknown.
+
+    The startup literal reflects the current -T 60 configuration. A different
+    upstream format or duration is deliberately unknown until reviewed.
+    """
+    if not tail.endswith(b"\n"):
+        return "unknown"
+    for line in reversed(tail.split(b"\n")[:-1]):
+        line = line.removesuffix(b"\r")
+        if not line.startswith(b"ERROR "):
+            continue
+        if line == b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds":
+            return "startup_wait_expired"
+        if b"\r" not in line and _scanner_error_class(line) is not None:
+            return "scanner_exception"
+        return "unknown"
+    return "unknown"
 
 
 def finish_run(
@@ -180,7 +225,10 @@ def finish_run(
     context = _context(work, identity, nonce)
     # Official zap-full-scan.py: 0=success, 1=FAIL findings, 2=WARN, 3=error.
     if type(exit_code) is not int or exit_code not in (0, 1, 2):
-        raise ScannerExitError(exit_code, _scanner_error_class(work))
+        tail = _scanner_log_tail(work)
+        raise ScannerExitError(
+            exit_code, _scanner_error_class(tail), reason=_scanner_failure_reason(tail)
+        )
     payload = read_payload(work / "scan" / "report_json.json")
     build_report(payload)
     _validate_report_site(payload, target)

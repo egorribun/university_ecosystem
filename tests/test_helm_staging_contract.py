@@ -3556,3 +3556,63 @@ def test_in_cluster_elasticsearch_requires_an_explicit_port() -> None:
             "backend.config.elasticsearchURL=https://elasticsearch",
             *IN_CLUSTER_ELASTICSEARCH_ARGS[2:],
         )
+
+
+@pytest.mark.parametrize(
+    "names", [None, [], ["registry-primary", "registry-secondary"]]
+)
+def test_first_party_image_pull_secrets_render_local_object_references(names):
+    extra = []
+    if names is not None:
+        extra = ["--set-json", f"global.imagePullSecrets={json.dumps(names)}"]
+    resources = _render_staging(
+        "--set",
+        "backup.enabled=true",
+        "--set-string",
+        "backup.minioEndpoint=https://minio.staging.internal:443",
+        *extra,
+    )
+    expected = [
+        {"name": name} for name in (names if names is not None else ["ghcr-pull"])
+    ]
+    observed = set()
+    for resource in resources:
+        kind = resource["kind"]
+        component = (
+            resource.get("metadata", {})
+            .get("labels", {})
+            .get("app.kubernetes.io/component")
+        )
+        if kind not in {"Deployment", "Job", "CronJob"} or component not in {
+            "backend",
+            "frontend",
+            "gateway",
+            "ws-hub",
+            "file-processor",
+            "outbox-worker",
+            "migration",
+            "backup",
+            "partition-maintenance",
+        }:
+            continue
+        spec = resource["spec"]
+        if kind == "CronJob":
+            spec = spec["jobTemplate"]["spec"]
+        pod_spec = spec["template"]["spec"]
+        assert pod_spec.get("imagePullSecrets", []) == expected, resource["metadata"][
+            "name"
+        ]
+        if not expected:
+            assert "imagePullSecrets" not in pod_spec
+        observed.add(component)
+    assert observed == {
+        "backend",
+        "frontend",
+        "gateway",
+        "ws-hub",
+        "file-processor",
+        "outbox-worker",
+        "migration",
+        "backup",
+        "partition-maintenance",
+    }

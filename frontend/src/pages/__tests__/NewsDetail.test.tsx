@@ -1,4 +1,5 @@
 type _MockedModuleType1 = typeof import("@/hooks/useShare")
+type NewsApiModule = typeof import("@/api/news")
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -67,7 +68,8 @@ vi.mock("@/contexts/LanguageContext", () => ({
   useLanguage: () => ({ language: mocks.language }),
 }))
 
-vi.mock("@/api/news", () => ({
+vi.mock("@/api/news", async (importOriginal) => ({
+  ...(await importOriginal<NewsApiModule>()),
   deleteNews: mocks.deleteNews,
 }))
 
@@ -412,6 +414,53 @@ describe("NewsDetail", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
+  })
+
+  it("offers a query retry for a terminal HTTP 500", () => {
+    const refetch = vi.fn()
+    mocks.query = {
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      data: undefined,
+      error: {
+        isAxiosError: true,
+        message: "PRIVATE_AXIOS_DIAGNOSTIC https://private.example.test/?token=DO_NOT_REFLECT",
+        response: { status: 500, data: { detail: "PRIVATE_PROBLEM_DETAIL" } },
+      },
+      refetch,
+    }
+    const view = render(<NewsDetail />)
+    expect(document.body).not.toHaveTextContent(
+      /PRIVATE_AXIOS_DIAGNOSTIC|PRIVATE_PROBLEM_DETAIL|DO_NOT_REFLECT/u
+    )
+    fireEvent.click(screen.getByRole("button", { name: "common:errorBoundary.retry" }))
+    expect(refetch).toHaveBeenCalledWith({ cancelRefetch: false })
+    mocks.query.isFetching = true
+    view.rerender(<NewsDetail />)
+    expect(screen.getByRole("button", { name: "common:errorBoundary.retry" })).toBeDisabled()
+  })
+
+  it("does not offer a server retry for an Axios error without a response", () => {
+    mocks.query = { isLoading: false, isError: true, error: { isAxiosError: true } }
+    render(<NewsDetail />)
+    expect(
+      screen.queryByRole("button", { name: "common:errorBoundary.retry" })
+    ).not.toBeInTheDocument()
+  })
+
+  it.each([404, 401, 422])("does not offer a server retry for HTTP %s", (status) => {
+    mocks.query = {
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      error: { isAxiosError: true, response: { status } },
+    }
+    render(<NewsDetail />)
+    expect(
+      screen.queryByRole("button", { name: "common:errorBoundary.retry" })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.back" })).toBeEnabled()
   })
 
   it("uses browser history when a previous page exists", () => {

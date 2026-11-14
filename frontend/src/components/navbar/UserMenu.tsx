@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useId, useMemo } from "react"
 import NotificationsBell from "@/components/feedback/NotificationsBell"
 import MessengerButton from "@/components/layout/MessengerButton"
 import SmartImage from "@/components/media/SmartImage"
@@ -32,6 +32,7 @@ export const UserMenu = ({
   isCompact = false,
   prefersReducedMotion = false,
 }: UserMenuProps) => {
+  const profileNameId = useId()
   const avatarCacheV = useMemo(() => {
     const raw = user?.avatar_updated_at ?? user?.avatar_version ?? user?.updated_at ?? undefined
     return parseCacheVersion(raw)
@@ -45,7 +46,9 @@ export const UserMenu = ({
   const profileTitle = t("navigation:aria.openProfile")
   const profileNameLabel = user?.full_name ? `${profileTitle}: ${user.full_name}` : profileTitle
 
-  const rootPlacement = isCompact ? "ml-auto gap-2" : "ml-3 flex-1 justify-end gap-3"
+  const rootPlacement = isCompact
+    ? "ml-auto gap-2"
+    : "ml-3 flex-1 justify-end gap-3 @container/profile-actions"
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
   const ease = "ease-[var(--ease-premium)]"
 
@@ -100,6 +103,7 @@ export const UserMenu = ({
           )}
           onClick={() => go("/profile")}
           aria-label={profileTitle}
+          aria-describedby={user.full_name ? profileNameId : undefined}
           title={profileTitle}
         >
           <SmartImage
@@ -118,7 +122,9 @@ export const UserMenu = ({
         <div
           className={cn(
             "navbar-user-name min-w-0 overflow-hidden",
-            isCompact ? "max-w-0 opacity-0" : "max-w-48 opacity-100"
+            isCompact
+              ? "max-w-0 opacity-0"
+              : "max-w-48 opacity-100 hidden @min-[18rem]/profile-actions:block"
           )}
         >
           <button
@@ -126,6 +132,7 @@ export const UserMenu = ({
             onClick={() => go("/profile")}
             disabled={isCompact}
             aria-hidden={isCompact}
+            id={profileNameId}
             aria-label={profileNameLabel}
             title={profileTitle}
             className="m-0 min-h-11 max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"

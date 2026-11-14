@@ -23,6 +23,9 @@ describe("anonymous news detail response contract", () => {
       "News request failed with status 503"
     )
 
+    await expect(fetchAnonymousNewsItem(id, { language: "en" })).rejects.toMatchObject({
+      status: 503,
+    })
     expect(json).not.toHaveBeenCalled()
   })
 

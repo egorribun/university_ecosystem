@@ -4,6 +4,8 @@ test("Events status tabs are keyboard navigable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await loginAs(page, "student")
   await page.goto("/events")
+  // SSR markup is visible before React attaches keyboard handlers and stable IDs.
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
   await expect.poll(() => new URL(page.url()).pathname).toBe("/events")
 
   const tablist = page.getByRole("tablist", { name: /Мероприятия|Events/u })

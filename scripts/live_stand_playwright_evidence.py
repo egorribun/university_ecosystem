@@ -3235,15 +3235,71 @@ def _validated_reconnect_diagnostic(value: object) -> dict[str, object] | None:
     return {key: record[key] for key in _RECONNECT_KEYS}
 
 
+_FORWARDING_KEYS = (
+    "schema",
+    "scenario",
+    "project",
+    "attempt",
+    "sockets",
+    "joinSentSockets",
+    "openJoinSentSockets",
+    "sourceFrames",
+    "sourceFramesAfterJoinSent",
+    "sourceAccepted",
+    "socketsCapped",
+    "framesCapped",
+)
+
+
+def _validated_forwarding_diagnostic(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _FORWARDING_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 2:
+        return None
+    if record["scenario"] != "forwarding-source-receive" or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not _reconnect_integer(record["attempt"], 1):
+        return None
+    if any(
+        not _reconnect_integer(record[key], 32)
+        for key in (
+            "sockets",
+            "joinSentSockets",
+            "openJoinSentSockets",
+            "sourceFrames",
+            "sourceFramesAfterJoinSent",
+        )
+    ):
+        return None
+    if any(
+        type(record[key]) is not bool
+        for key in ("sourceAccepted", "socketsCapped", "framesCapped")
+    ):
+        return None
+    if (
+        not record["openJoinSentSockets"]
+        <= record["joinSentSockets"]
+        <= record["sockets"]
+        or record["sourceFramesAfterJoinSent"] > record["sourceFrames"]
+    ):
+        return None
+    return {key: record[key] for key in _FORWARDING_KEYS}
+
+
 def _live_playwright_reconnect_diagnostics(
     output: str,
     *,
     retained: bool = False,
 ) -> list[dict[str, object]]:
-    """Accept complete literal-newline records only, never reporter fragments."""
+    """Accept complete records under the legacy transport label, not a reconnect claim.
+
+    Schema 1 remains reconnect evidence; schema 2 names initial forwarding receipt.
+    """
     prefix = "live E2E reconnect " if retained else "UE_LIVE_RECONNECT_V1 "
     records: list[dict[str, object]] = []
-    seen: set[tuple[object, object]] = set()
+    seen: set[tuple[object, ...]] = set()
     for raw_line in output.split("\n")[:-1]:
         line = raw_line.removesuffix("\r")
         if not line.startswith(prefix) or not line.isprintable():
@@ -3256,12 +3312,14 @@ def _live_playwright_reconnect_diagnostics(
                 object_pairs_hook=_auth_diag_json_object,
                 parse_constant=_reject_auth_diag_json_constant,
             )
-            record = _validated_reconnect_diagnostic(value)
+            record = _validated_reconnect_diagnostic(
+                value
+            ) or _validated_forwarding_diagnostic(value)
         except (ValueError, RecursionError):
             continue
         if record is None:
             continue
-        identity = (record["project"], record["attempt"])
+        identity = (record["scenario"], record["project"], record["attempt"])
         if identity in seen:
             continue
         seen.add(identity)

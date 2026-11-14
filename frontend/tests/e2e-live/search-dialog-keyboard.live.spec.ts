@@ -60,16 +60,33 @@ test("SearchDialog traps Tab and restores the original focus", async ({ page }) 
 })
 
 test("compact navbar preserves native profile keyboard access", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
+  // Expanded NavbarPill is full-width, not capped by the compact pill max-width.
+  // Exercise the original name-focus contract where the 18rem container fits.
+  await page.setViewportSize({ width: 1920, height: 900 })
   await loginAs(page, "student")
+  // Match SSR and client preferences only in this test's fresh browser context.
+  // Russian navigation labels exercise the constrained-width fallback below.
+  await page
+    .context()
+    .addCookies([{ name: "ue:language", value: "ru", url: new URL(page.url()).origin }])
+  await page.addInitScript(() => window.localStorage.setItem("ue:language", "ru"))
   await page.goto("/news")
   await page.waitForFunction(() => window.__APP_HYDRATED === true)
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru")
   await expect(page.getByRole("main")).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
 
   const navbar = page.locator("nav.vt-navbar")
   const name = navbar.locator(".navbar-user-name button")
   const avatar = name.locator("xpath=../preceding-sibling::button[1]")
   const settings = navbar.locator("#navbar-settings-btn")
+  const profileActions = navbar.locator('[class~="@container/profile-actions"]')
+  const readProfileActionsWidthRem = () =>
+    profileActions.evaluate(
+      (element) =>
+        element.getBoundingClientRect().width /
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+    )
   const readKeyboardState = () =>
     navbar.evaluate((element) => {
       const name = element.querySelector<HTMLButtonElement>(".navbar-user-name button")
@@ -104,6 +121,8 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
 
   await page.evaluate(() => window.scrollTo(0, 0))
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect.poll(readProfileActionsWidthRem).toBeGreaterThanOrEqual(18)
+  await expect(name).toBeVisible()
   await expect(name).toBeEnabled()
   await avatar.focus()
   await page.keyboard.press("Tab")
@@ -138,6 +157,8 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
 
   await page.evaluate(() => window.scrollTo(0, 0))
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect.poll(readProfileActionsWidthRem).toBeGreaterThanOrEqual(18)
+  await expect(name).toBeVisible()
   await expect(name).toBeEnabled()
   await expect(name).toHaveAttribute("aria-hidden", "false")
   await avatar.focus()
@@ -145,6 +166,44 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
   await expect(name).toBeFocused()
   await page.keyboard.press("Enter")
   await expect.poll(() => new URL(page.url()).pathname).toBe("/profile")
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru")
+  await expect(page.getByRole("main")).toBeVisible()
+
+  // This is the available-width fallback, not scroll-driven compact mode:
+  // the enabled name is CSS-hidden while its complete identity still describes
+  // the avatar. Neither expected branch may pass just because a control is absent.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/news")
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru")
+  await expect(page.getByRole("main")).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect.poll(readProfileActionsWidthRem).toBeLessThan(18)
+  await expect(name).toHaveCount(1)
+  await expect(name.locator("..")).toHaveCSS("display", "none")
+  await expect(name).toBeHidden()
+  await expect(name).toBeEnabled()
+  await expect(name).toHaveAttribute("aria-hidden", "false")
+  await expect(name).toHaveText("Тест Студентов")
+  await expect(avatar).toBeVisible()
+  await expect(avatar).toBeEnabled()
+  await expect(avatar).toHaveAccessibleName("Открыть профиль")
+  await expect(avatar).toHaveAccessibleDescription("Открыть профиль: Тест Студентов")
+  await expect(settings).toBeVisible()
+  await expect(settings).toBeEnabled()
+  await avatar.focus()
+  await page.keyboard.press("Tab")
+  await expect(settings).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(avatar).toBeFocused()
+  await page.keyboard.press("Enter")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/profile")
+  await page.waitForFunction(() => window.__APP_HYDRATED === true)
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru")
+  await expect(page.getByRole("main")).toBeVisible()
 })
 
 test.describe("controlled full-text search", () => {

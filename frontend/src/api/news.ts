@@ -12,6 +12,13 @@ import {
 import type { NewsCreate, NewsOut, NewsUpdate } from "@/api/generated"
 import { ensureValidResponse } from "./validation"
 
+export class NewsRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`News request failed with status ${status}`)
+    this.name = "NewsRequestError"
+  }
+}
+
 export type NewsItem = NewsOut
 
 type FetchNewsOptions = {
@@ -93,7 +100,7 @@ export const fetchAnonymousNewsItem = async (
   { language, signal }: { language: string; signal?: AbortSignal }
 ): Promise<NewsItem> => {
   const response = await fetchAnonymousNewsDetail({ id, language, signal })
-  if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
+  if (!response.ok) throw new NewsRequestError(response.status)
   return ensureValidResponse(newsItemSchema, await response.json(), "GET /api/v1/news/{id}")
 }
 

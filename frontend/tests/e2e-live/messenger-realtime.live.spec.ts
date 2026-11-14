@@ -1681,11 +1681,10 @@ test.describe("live messenger delivery", () => {
     let sourceMessage: CreatedLiveMessage | null = null
     let forwardedMessage: (CreatedLiveMessage & { forwardedFromName: string }) | null = null
     let senderLog: Locator | null = null
-
+    let sourceDiagnostic: ForwardingSourceDiagnostic | undefined
     try {
       const receiverPage = await receiverContext.newPage()
       const sourceContent = `live-forward-${crypto.randomUUID()}`
-
       await loginAs(page, "student")
       await loginAs(receiverPage, "teacher")
       const senderResponse = await page.request.get("/api/v1/users/me")
@@ -1709,7 +1708,6 @@ test.describe("live messenger delivery", () => {
       expect(receiver.id).not.toBe(sender.id)
       const senderName = sender.full_name
       if (!senderName) throw new Error("Forward source sender does not have a display name")
-
       const senderRoomJoinFrames: unknown[] = []
       page.on("websocket", (socket) => {
         socket.on("framesent", (payload) => senderRoomJoinFrames.push(parseFrame(payload)))
@@ -1725,7 +1723,7 @@ test.describe("live messenger delivery", () => {
       expect(activeChatId).toBeTruthy()
       if (!activeChatId) throw new Error("New direct chat route did not contain a chat id")
       chatId = activeChatId
-
+      sourceDiagnostic = observeSource(receiverPage, activeChatId, sourceContent, testInfo)
       senderLog = page.getByRole("log", { name: /Сообщения чата/i })
       await expect(senderLog).toBeVisible()
       const receiverRoomJoinFrames: unknown[] = []
@@ -1745,7 +1743,6 @@ test.describe("live messenger delivery", () => {
       await expect
         .poll(() => receiverRoomJoinFrames.some((frame) => hasRoomJoin(frame, activeChatId)))
         .toBe(true)
-
       const createdSource = await sendLiveMessage(
         page,
         activeChatId,
@@ -1754,14 +1751,18 @@ test.describe("live messenger delivery", () => {
       )
       sourceMessage = createdSource
       await expect(senderLog.getByText(sourceContent, { exact: true })).toBeVisible()
-      await expect(receiverLog.getByText(sourceContent, { exact: true })).toBeVisible()
+      try {
+        await expect(receiverLog.getByText(sourceContent, { exact: true })).toBeVisible()
+      } catch (error) {
+        sourceDiagnostic.report(sourceMessage !== null)
+        throw error
+      }
       const sourceRow = senderLog
         .getByText(sourceContent, { exact: true })
         .locator(
           "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
         )
       await sourceRow.getByRole("button", { name: "Переслать", exact: true }).click()
-
       const forwardDialog = page.getByRole("dialog")
       await expect(forwardDialog).toBeVisible()
       const currentChatOption = forwardDialog.getByRole("option").filter({ hasText: "Текущий" })
@@ -1780,7 +1781,6 @@ test.describe("live messenger delivery", () => {
         source_chat_id: activeChatId,
         message_ids: [createdSource.id],
       })
-
       const forwardResults = (await forwardResponse.json()) as Array<{
         id: string
         chat_id: string
@@ -2232,3 +2232,8 @@ test.describe("live messenger delivery", () => {
     }
   })
 })
+
+import {
+  observeForwardingSource as observeSource,
+  type ForwardingSourceDiagnostic,
+} from "./messenger-forwarding-diagnostic"

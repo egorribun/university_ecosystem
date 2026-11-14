@@ -40,7 +40,9 @@ spec:
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
       {{- end }}
       serviceAccountName: {{ .Release.Name }}-ws-hub
       automountServiceAccountToken: false

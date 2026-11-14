@@ -565,3 +565,2183 @@ def test_link_local_denial_requires_both_live_controls(
 
     assert result["verdict"] == "inconclusive"
     assert "live same-destination control" in result["reason"]
+
+
+# Real file-processor runtime proof: hermetic setup, protocol and fail-closed checks.
+def _real_runtime_module(name: str) -> Any:
+    import importlib
+    import sys
+
+    if str(PROBE_DIR) not in sys.path:
+        sys.path.insert(0, str(PROBE_DIR))
+    return importlib.import_module(name)
+
+
+def pins():
+    import re
+
+    python = re.findall(
+        r"^FROM (python:\S+@sha256:[0-9a-f]{64}) AS runtime$",
+        (ROOT / "backend.Dockerfile").read_text(),
+        re.M,
+    )[0]
+    postgres = yaml.safe_load(
+        (ROOT / "charts/university-ecosystem/values.yaml").read_text()
+    )["backup"]["postgresImage"]
+    return python, postgres
+
+
+def test_native_config_retains_auth_and_loopback():
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    result = yaml.safe_load(m.native_config(ROOT))
+    original = yaml.safe_load((ROOT / "services/temporal/config.yaml").read_text())
+    assert result["global"]["authorization"] == original["global"]["authorization"]
+    assert result["services"] == original["services"]
+    assert (
+        result["global"]["tls"]["frontend"]["client"]["disableHostVerification"]
+        is False
+    )
+    assert result["global"]["tls"]["frontend"]["server"]["requireClientAuth"] is False
+
+
+def test_manifests_use_native_server_without_networkpolicy():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with patch.object(
+        m,
+        "_credentials",
+        return_value=("public-ca", {"tls.key": "server"}, {"tls.key": "issuer"}),
+    ):
+        objects, job, pod = m.fixture_objects(
+            ROOT, "probe-a", *pins(), m.generate_signing_key("fixture")
+        )
+    assert not any(obj["kind"] == "NetworkPolicy" for obj in objects)
+    assert job["spec"]["backoffLimit"] == 0
+    assert job["spec"]["activeDeadlineSeconds"] == 180
+    assert pod["spec"]["initContainers"][0]["restartPolicy"] == "Always"
+    server, admin = pod["spec"]["containers"]
+    assert server["command"][0] == "temporal-server"
+    assert all(e["name"] != "POSTGRES_PWD" for e in server["env"])
+    assert all(v.get("mountPath") != "/issuer" for v in server["volumeMounts"])
+    assert admin["volumeMounts"] == [
+        {"name": "ca", "mountPath": "/ca", "readOnly": True}
+    ]
+    config = next(
+        x for x in objects if x["metadata"]["name"] == "netpol-temporal-config"
+    )
+    assert "entrypoint.sh" not in config["data"]
+    assert config["data"]["render.py"] == m.SAFE_RENDER
+    assert "os.umask(0o077)" in m.SAFE_RENDER
+    assert (
+        "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+        in m.POSTGRES_INIT
+    )
+    assert "rolsuper" in m.POSTGRES_INIT
+    assert "tls.key" not in config["data"]
+
+
+@pytest.mark.parametrize("stage", ["postgres", "schema", "temporal"])
+def test_wait_failure_is_inconclusive_and_contains_no_exception(stage):
+    import subprocess
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    failures = {"postgres": 0, "schema": 1, "temporal": 2}
+    waits = [None] * failures[stage] + [
+        subprocess.CalledProcessError(1, ["kubectl"], output="SECRET")
+    ]
+    with (
+        patch.object(m, "fixture_objects", return_value=([], {}, {})),
+        patch.object(m, "apply_objects"),
+        patch.object(m, "kubectl", side_effect=waits),
+        patch.object(
+            m, "temporal_startup_status", return_value={"status": "unavailable"}
+        ) as diagnostics,
+    ):
+        result = m.bootstrap_temporal(ROOT, "probe-a", *pins())
+    expected = {"result": "inconclusive", "stage": stage}
+    if stage == "temporal":
+        expected["diagnostics"] = {"status": "unavailable"}
+        diagnostics.assert_called_once_with("probe-a")
+    else:
+        diagnostics.assert_not_called()
+    assert result == expected
+    assert "SECRET" not in str(result)
+
+
+def test_namespace_failure_cannot_mint_worker_secret():
+    import subprocess
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with (
+        patch.object(m, "fixture_objects", return_value=([], {}, {})),
+        patch.object(m, "apply_objects") as apply,
+        patch.object(m, "kubectl"),
+        patch.object(
+            m, "run_command", side_effect=subprocess.TimeoutExpired(["kubectl"], 240)
+        ),
+    ):
+        result = m.bootstrap_temporal(ROOT, "probe-a", *pins())
+    assert result == {"result": "inconclusive", "stage": "namespace"}
+    assert apply.call_count == 3
+
+
+def test_success_is_ready_not_pass_and_token_uses_stdin():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with (
+        patch.object(m, "fixture_objects", return_value=([], {}, {})),
+        patch.object(m, "apply_objects"),
+        patch.object(m, "kubectl"),
+        patch.object(m, "run_command") as run,
+    ):
+        result = m.bootstrap_temporal(ROOT, "probe-a", *pins())
+    assert result["result"] == "ready"
+    assert "api_key" not in str(result)
+    assert "api_key" not in str(run.call_args.args)
+    assert "api_key" in run.call_args.kwargs["stdin"]
+    assert "--tls=false" not in m.NAMESPACE_INIT
+    assert "--tls-ca-path /ca/ca.crt --tls-server-name temporal" in m.NAMESPACE_INIT
+
+
+def test_untracked_pin_rejected_before_credentials():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    python, postgres = pins()
+    with patch.object(m, "_credentials") as credentials, pytest.raises(ValueError):
+        m.fixture_objects(
+            ROOT, "probe-a", python.replace("python:", "other:"), postgres, None
+        )
+    credentials.assert_not_called()
+
+
+def test_safe_renderer_keeps_password_out_of_argv_and_owner_only(tmp_path):
+    import subprocess
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    import os
+    import stat
+
+    source = tmp_path / "source"
+    source.mkdir()
+    rendered = tmp_path / "rendered"
+    rendered.mkdir()
+    (source / "docker.yaml").write_text(
+        'user: "${POSTGRES_USER}"\npassword: "${POSTGRES_PWD}"\nurl: "${TEMPORAL_JWKS_URL}"\n'
+    )
+    (source / "ca.crt").write_text("fixture-public-ca")
+    program = (
+        m.SAFE_RENDER.replace("/config/", str(source) + "/")
+        .replace("/ca/", str(source) + "/")
+        .replace("/rendered/", str(rendered) + "/")
+    )
+    command = [sys.executable, "-I", "-c", program]
+    password = "a" * 64
+    import shlex
+
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=shlex.join(command),
+        env={**os.environ, "POSTGRES_USER": "ue_temporal", "POSTGRES_PWD": password},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert password not in str(command)
+    assert password not in result.stdout + result.stderr
+    assert password in (rendered / "docker.yaml").read_text()
+    assert stat.S_IMODE((rendered / "docker.yaml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((rendered / "roots.pem").stat().st_mode) == 0o600
+
+
+def test_postgres_bootstrap_credentials_never_given_to_temporal_or_schema():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with patch.object(m, "_credentials", return_value=("public", {}, {})):
+        objects, job, pod = m.fixture_objects(
+            ROOT, "probe-a", *pins(), m.generate_signing_key("fixture")
+        )
+    pg = next(o for o in objects if o["metadata"]["name"] == "netpol-postgres")
+    assert any(
+        e.get("valueFrom", {}).get("secretKeyRef", {}).get("name")
+        == "netpol-postgres-bootstrap"
+        for e in pg["spec"]["containers"][0]["env"]
+    )
+    assert "netpol-postgres-bootstrap" not in str(job)
+    assert "netpol-postgres-bootstrap" not in str(pod)
+    assert 'PGPASSWORD="$SERVICE_PASSWORD"' in str(pg)
+
+
+def test_native_setup_failure_inconclusive_not_pass():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    with patch.object(
+        m,
+        "bootstrap_temporal",
+        return_value={"result": "inconclusive", "stage": "schema"},
+    ):
+        result = m.actual_processor_phase(
+            ROOT,
+            {"probe-a": ([], [])},
+            {},
+            {},
+            python_image="unused",
+            processor_image="unused",
+            diagnostic_image="unused",
+            source_sha="unused",
+        )
+    assert result == {
+        "verdict": "inconclusive",
+        "stage": "probe-a:temporal",
+        "checks": [],
+        "prerequisite": {"result": "inconclusive", "stage": "schema"},
+    }
+
+
+def test_actual_client_transport_error_is_not_authentication_rejection():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    import subprocess
+
+    with patch.object(
+        m,
+        "run_command",
+        side_effect=subprocess.CalledProcessError(
+            1, ["kubectl"], output="private-output"
+        ),
+    ):
+        result = m.call_processor(
+            "probe-a", {"ip": "127.0.0.1"}, "temporal", "private-token"
+        )
+    assert result == {"result": "setup-error"}
+    assert m.grpc_probe_verdict(result, "Unauthenticated") == "inconclusive"
+
+
+def test_grpc_certificates_only_certify_rendered_identity():
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    from cryptography import x509
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+
+    uri = "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
+    server, client = m.grpc_credentials("processor.probe-a.svc", uri)
+    server_cert = x509.load_pem_x509_certificate(server["tls.crt"].encode())
+    client_cert = x509.load_pem_x509_certificate(client["tls.crt"].encode())
+    assert server_cert.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.DNSName) == ["processor.probe-a.svc"]
+    assert client_cert.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.UniformResourceIdentifier) == [uri]
+    assert (
+        ExtendedKeyUsageOID.CLIENT_AUTH
+        in client_cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    )
+    assert (
+        ExtendedKeyUsageOID.SERVER_AUTH
+        in server_cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    )
+
+
+def test_rotation_mints_fresh_retired_token_after_wait():
+    import ast
+
+    tree = ast.parse(
+        (ROOT / "scripts/k8s/networkpolicy_runtime_real_fp.py").read_text()
+    )
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    retirement = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "check_all"
+        and any(
+            isinstance(arg, ast.Constant) and arg.value == "retired-old-rejected"
+            for arg in node.args
+        )
+    )
+    mint = next(
+        node
+        for node in ast.walk(retirement)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "token"
+    )
+    assert isinstance(mint.args[0], ast.Name) and mint.args[0].id == "old"
+    assert len(mint.args) == 2 and not mint.keywords
+    nonce = mint.args[1]
+    assert isinstance(nonce, ast.Call) and isinstance(nonce.func, ast.Attribute)
+    assert isinstance(nonce.func.value, ast.Name) and nonce.func.value.id == "secrets"
+    assert nonce.func.attr == "token_hex"
+    assert len(nonce.args) == 1 and not nonce.keywords
+    assert isinstance(nonce.args[0], ast.Constant) and nonce.args[0].value == 16
+    waits = [
+        node
+        for node in calls
+        if isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "time"
+        and node.func.attr == "sleep"
+    ]
+    final_wait = max(waits, key=lambda node: node.lineno)
+    assert final_wait.lineno < mint.lineno
+    delay = final_wait.args[0]
+    assert isinstance(delay, ast.BinOp) and isinstance(delay.op, ast.Add)
+    assert isinstance(delay.left, ast.Name) and delay.left.id == "refresh"
+    assert isinstance(delay.right, ast.Constant) and delay.right.value == 10
+
+
+def test_nats_stream_bootstrap_does_not_publish_work():
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    assert "PUB $JS.API.STREAM.CREATE.FILES_PROCESS" in m.NATS_INIT
+    assert "PUB files.process" not in m.NATS_INIT
+    assert "socket.create_connection" in m.NATS_INIT
+
+
+def test_unpublished_token_is_independently_validated():
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    import pytest
+
+    signer = m.generate_signing_key("new-key")
+    env = {
+        "FP_JWT_ISSUER": "https://issuer.fixture",
+        "FP_JWT_AUDIENCE": "fixture-audience",
+    }
+    bearer = m.processor_token(
+        signer,
+        issuer=env["FP_JWT_ISSUER"],
+        audience=env["FP_JWT_AUDIENCE"],
+        session_id="synthetic-session",
+    )
+    m.validate_fixture_token(signer, bearer, env, "synthetic-session")
+    with pytest.raises(ValueError):
+        m.validate_fixture_token(signer, bearer, env, "other-session")
+    wrong = dict(env, FP_JWT_AUDIENCE="wrong-audience")
+    with pytest.raises(ValueError):
+        m.validate_fixture_token(signer, bearer, wrong, "synthetic-session")
+
+
+def test_same_new_token_checked_before_and_after_publication():
+    import ast
+
+    source = (ROOT / "scripts/k8s/networkpolicy_runtime_real_fp.py").read_text()
+    calls = {
+        node.args[0].value: node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "check_all"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    }
+    unpublished = calls["unpublished-new-rejected"]
+    overlap = calls["overlap-new-accepted"]
+    for call, expected in (
+        (unpublished, "Unauthenticated"),
+        (overlap, "InvalidArgument"),
+    ):
+        assert isinstance(call.args[1], ast.Name) and call.args[1].id == "new_token"
+        assert isinstance(call.args[2], ast.Constant) and call.args[2].value == expected
+    assert unpublished.lineno < overlap.lineno
+    assert "real_probe_b" in source
+    assert '"replicas": before' in source
+    assert '"image_id": status.get("imageID", "")' in source
+
+
+def test_real_processor_workflow_activation_is_source_bound():
+    import json
+
+    import yaml
+
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    job = workflow["jobs"]["networkpolicy-kind-proof"]
+    assert job["timeout-minutes"] == 45
+    steps = job["steps"]
+    assert (
+        steps[0]["with"]["ref"]
+        == "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    run = next(
+        step
+        for step in steps
+        if step.get("run") == "bash scripts/k8s/networkpolicy_runtime_proof.sh"
+    )
+    assert run["env"]["UE_NETPOL_REAL_FP"] == "1"
+    catalog = json.loads((ROOT / "quality/ci-check-catalog.json").read_text())
+    entry = next(
+        row
+        for row in catalog["workflows"]
+        if row["path"] == ".github/workflows/k8s-networkpolicy-runtime.yml"
+    )
+    guard = next(
+        row["guard"] for row in entry["events"] if row["event"] == "pull_request"
+    )
+    assert json.loads(guard) == workflow[True]["pull_request"]
+
+
+def test_completed_matrix_receipt_survives_interrupted_actual_phase(tmp_path):
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    import json
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+
+    import networkpolicy_runtime_real_fp
+    import pytest
+
+    loader = importlib.util.spec_from_file_location(
+        "private_runner_checkpoint",
+        ROOT / "scripts/k8s/networkpolicy_runtime_probe.py",
+    )
+    runner = importlib.util.module_from_spec(loader)
+    loader.loader.exec_module(runner)
+    receipt = tmp_path / "receipt.json"
+    args = SimpleNamespace(
+        receipt=receipt,
+        kubernetes_version="fixture",
+        node_image="fixture",
+        calico_sha256="fixture",
+        real_processor_image="fixture",
+        diagnostic_image="fixture",
+        source_sha="a" * 40,
+    )
+    pods = {
+        key: m.Pod("probe-a", key, ip="127.0.0.1", uid=key)
+        for key in ["a-fp", "a-redis", "b-redis"]
+    }
+    rows = [{"probe_id": str(i), "verdict": "pass"} for i in range(40)]
+
+    def interrupt(*args, **kwargs):
+        observed = json.loads(receipt.read_text())
+        assert len(observed["probes"]) == 40
+        assert observed["matrix_verdict"] == "pass"
+        assert observed["verdict"] == "inconclusive"
+        assert observed["real_processor"]["verdict"] == "in_progress"
+        assert observed["finished_utc"] is None
+        raise KeyboardInterrupt
+
+    replacements = {
+        "runtime_base_image": "fixture",
+        "render_all": {},
+        "set_up_cluster": pods,
+        "cluster_ip": "127.0.0.1",
+        "build_targets": {},
+        "make_executor": None,
+        "measure_baseline": {},
+        "redis_ping": {"result": "redis-pong"},
+        "apply_policies": [],
+        "evaluate_rows": rows,
+        "resolver_status": {"verdict": "pass"},
+        "run_app_checks": {"fixture": {"verdict": "pass"}},
+        "policy_summary": [],
+    }
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                runner.argparse.ArgumentParser, "parse_args", return_value=args
+            )
+        )
+        for name, value in replacements.items():
+            stack.enter_context(patch.object(runner, name, return_value=value))
+        stack.enter_context(
+            patch.object(
+                networkpolicy_runtime_real_fp,
+                "actual_processor_phase",
+                side_effect=interrupt,
+            )
+        )
+        with pytest.raises(KeyboardInterrupt):
+            runner.main()
+    assert receipt.exists()
+    assert not receipt.with_suffix(".tmp").exists()
+
+
+@pytest.mark.parametrize("outcome", ["pass", "inconclusive", "disabled"])
+def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    import json
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+
+    import networkpolicy_runtime_real_fp
+
+    loader = importlib.util.spec_from_file_location(
+        "private_runner_final", ROOT / "scripts/k8s/networkpolicy_runtime_probe.py"
+    )
+    runner = importlib.util.module_from_spec(loader)
+    loader.loader.exec_module(runner)
+    args = SimpleNamespace(
+        receipt=tmp_path / "receipt.json",
+        kubernetes_version="fixture",
+        node_image="fixture",
+        calico_sha256="fixture",
+        real_processor_image=None if outcome == "disabled" else "fixture",
+        diagnostic_image=None if outcome == "disabled" else "fixture",
+        source_sha=None if outcome == "disabled" else "a" * 40,
+    )
+    pods = {
+        key: m.Pod("probe-a", key, ip="127.0.0.1", uid=key)
+        for key in ["a-fp", "a-redis", "b-redis"]
+    }
+    rows = [{"probe_id": str(i), "verdict": "pass"} for i in range(40)]
+    replacements = {
+        "runtime_base_image": "fixture",
+        "render_all": {},
+        "set_up_cluster": pods,
+        "cluster_ip": "127.0.0.1",
+        "build_targets": {},
+        "make_executor": None,
+        "measure_baseline": {},
+        "redis_ping": {"result": "redis-pong"},
+        "apply_policies": [],
+        "evaluate_rows": rows,
+        "resolver_status": {"verdict": "pass"},
+        "run_app_checks": {"fixture": {"verdict": "pass"}},
+        "policy_summary": [],
+    }
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                runner.argparse.ArgumentParser, "parse_args", return_value=args
+            )
+        )
+        for name, value in replacements.items():
+            stack.enter_context(patch.object(runner, name, return_value=value))
+        phase = stack.enter_context(
+            patch.object(
+                networkpolicy_runtime_real_fp,
+                "actual_processor_phase",
+                return_value={"verdict": outcome, "checks": []},
+            )
+        )
+        status = runner.main()
+    observed = json.loads(args.receipt.read_text())
+    assert status == (1 if outcome == "inconclusive" else 0)
+    assert observed["finished_utc"] is not None
+    assert observed["verdict"] == ("fail" if outcome == "inconclusive" else "pass")
+    assert len(observed["probes"]) == 40
+    if outcome == "disabled":
+        phase.assert_not_called()
+    else:
+        phase.assert_called_once()
+    assert any(r["finding"] == "AUD-169" for r in observed["not_run"]) == (
+        outcome != "pass"
+    )
+
+
+def test_runner_rejects_partial_source_arguments(tmp_path):
+    from unittest.mock import patch
+
+    import pytest
+
+    loader = importlib.util.spec_from_file_location(
+        "private_runner_arguments",
+        ROOT / "scripts/k8s/networkpolicy_runtime_probe.py",
+    )
+    runner = importlib.util.module_from_spec(loader)
+    loader.loader.exec_module(runner)
+    args = [
+        "fixture",
+        "--receipt",
+        str(tmp_path / "receipt.json"),
+        "--kubernetes-version",
+        "fixture",
+        "--node-image",
+        "fixture",
+        "--calico-sha256",
+        "fixture",
+        "--real-processor-image",
+        "only-one",
+    ]
+    with patch.object(sys, "argv", args), pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+
+
+def deployment():
+    env = {
+        "FP_ENVIRONMENT": "staging",
+        "FP_TEMPORAL_TLS_DISABLED": "false",
+        "FP_MINIO_SECURE": "true",
+        "FP_OTLP_INSECURE": "false",
+        "FP_GRPC_TLS_CERT_FILE": "cert",
+        "FP_GRPC_TLS_KEY_FILE": "key",
+        "FP_GRPC_CLIENT_CA_FILE": "ca",
+        "FP_GRPC_ALLOWED_CLIENT_URIS": "uri",
+        "FP_REVOCATION_REDIS_URL_FILE": "redis",
+        "FP_JWKS_URL": "http://backend:8000/.well-known/jwks.json",
+        "FP_TEMPORAL_HOST": "old",
+        "FP_TEMPORAL_API_KEY_FILE": "/run/temporal/token",
+    }
+    return {
+        "kind": "Deployment",
+        "metadata": {"name": "probe-a-file-processor"},
+        "spec": {
+            "replicas": 2,
+            "template": {
+                "metadata": {"labels": {"app": "original"}},
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "file-processor",
+                            "env": [{"name": k, "value": v} for k, v in env.items()],
+                        }
+                    ]
+                },
+            },
+        },
+    }
+
+
+def prepared(**changes):
+    processor = _real_runtime_module("networkpolicy_runtime_processor")
+    SHA = "a" * 40
+
+    arguments = {
+        "image": "local:" + SHA,
+        "diagnostic_image": "probe:" + SHA,
+        "source_sha": SHA,
+        "temporal_endpoint": "temporal:7233",
+        "temporal_ca_configmap": "public-ca",
+    }
+    arguments.update(changes)
+    return processor.real_processor_deployment([deployment()], "probe-a", **arguments)
+
+
+def test_valid_deployment_is_copy_and_wires_temporal():
+    from unittest.mock import patch
+
+    processor = _real_runtime_module("networkpolicy_runtime_processor")
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    original = deployment()
+    with patch.object(processor, "find", return_value=original):
+        result = prepared()
+    assert original == deployment()
+    assert result["spec"]["replicas"] == 2
+    temporal.wire_processor_temporal(
+        result,
+        dict(
+            result="ready",
+            endpoint="temporal:7233",
+            worker_secret=original["metadata"]["name"],
+        ),
+    )
+    container = result["spec"]["template"]["spec"]["containers"][0]
+    env = {e["name"]: e["value"] for e in container["env"]}
+    assert env["FP_TEMPORAL_API_KEY_FILE"] == "/run/netpol-temporal/token"
+    assert env["FP_TEMPORAL_TLS_DISABLED"] == "false"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"source_sha": "bad"},
+        {"image": ""},
+        {"image": "wrong:tag"},
+        {"diagnostic_image": "wrong:tag"},
+    ],
+)
+def test_deployment_rejects_invalid_source_inputs(changes):
+    with pytest.raises(ValueError):
+        prepared(**changes)
+
+
+@pytest.mark.parametrize(
+    "field,value", [("FP_ENVIRONMENT", "development"), ("FP_GRPC_TLS_KEY_FILE", "")]
+)
+def test_deployment_preserves_staging_security(field, value):
+    from unittest.mock import patch
+
+    processor = _real_runtime_module("networkpolicy_runtime_processor")
+
+    source = deployment()
+    next(
+        e
+        for e in source["spec"]["template"]["spec"]["containers"][0]["env"]
+        if e["name"] == field
+    )["value"] = value
+    with (
+        patch.object(processor, "find", return_value=source),
+        pytest.raises(ValueError),
+    ):
+        prepared()
+
+
+def test_temporal_wire_refuses_unready_or_cleartext():
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with pytest.raises(ValueError):
+        temporal.wire_processor_temporal({}, {"result": "inconclusive"})
+    result = prepared()
+    next(
+        e
+        for e in result["spec"]["template"]["spec"]["containers"][0]["env"]
+        if e["name"] == "FP_TEMPORAL_TLS_DISABLED"
+    )["value"] = "true"
+    with pytest.raises(ValueError):
+        temporal.wire_processor_temporal(result, {"result": "ready"})
+
+
+@pytest.mark.parametrize(
+    "observed,expected,verdict",
+    [
+        (
+            {"result": "grpc-status", "code": "InvalidArgument"},
+            "InvalidArgument",
+            "pass",
+        ),
+        (
+            {"result": "grpc-status", "code": "Unauthenticated"},
+            "InvalidArgument",
+            "fail",
+        ),
+        *[
+            ({"result": "grpc-status", "code": code}, "Unauthenticated", "inconclusive")
+            for code in [
+                "Unavailable",
+                "DeadlineExceeded",
+                "Unknown",
+                "Internal",
+                "Canceled",
+                None,
+            ]
+        ],
+    ],
+)
+def test_status_classification(observed, expected, verdict):
+    processor = _real_runtime_module("networkpolicy_runtime_processor")
+
+    assert processor.grpc_probe_verdict(observed, expected) == verdict
+
+
+def test_token_and_status_reject_invalid_inputs():
+    processor = _real_runtime_module("networkpolicy_runtime_processor")
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with pytest.raises(ValueError):
+        processor.processor_token(None, issuer="", audience="a", session_id="jti")
+    with pytest.raises(ValueError):
+        processor.grpc_probe_verdict({}, "OK")
+    signer = temporal.generate_signing_key("key")
+    token = processor.processor_token(
+        signer, issuer="issuer", audience="audience", session_id="jti", now=1
+    )
+    assert token.count(".") == 2
+
+
+def test_ephemeral_certificates():
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    from cryptography import x509
+
+    ca, server, issuer = temporal._credentials("probe-a")
+    assert "PRIVATE KEY" not in ca
+    assert x509.load_pem_x509_certificate(
+        server["tls.crt"].encode()
+    ).extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.DNSName) == ["temporal", "temporal.probe-a.svc"]
+    assert "PRIVATE KEY" in issuer["tls.key"]
+
+
+@pytest.mark.parametrize("change", ["auth", "internal"])
+def test_native_config_fails_closed_on_security_drift(tmp_path, change):
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    config = yaml.safe_load((ROOT / "services/temporal/config.yaml").read_text())
+    if change == "auth":
+        config["global"]["authorization"]["authorizer"] = ""
+    else:
+        config["services"]["history"]["rpc"]["bindOnIP"] = "192.0.2.1"
+    dest = tmp_path / "services/temporal"
+    dest.mkdir(parents=True)
+    (dest / "config.yaml").write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError):
+        temporal.native_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "services: {}",
+        "services:\n  temporal:\n    image: latest",
+        "services:\n  temporal:\n    image: []",
+    ],
+)
+def test_compose_pin_refuses_ambiguity_or_unpinned_image(tmp_path, document):
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    (tmp_path / "docker-compose.full.yml").write_text(document)
+    with pytest.raises(ValueError):
+        temporal.compose_image(tmp_path, "temporal")
+
+
+@pytest.mark.parametrize(
+    "namespace,python_image,postgres_image",
+    [("INVALID", "unused", "unused"), ("probe-a", "unpinned", "unpinned")],
+)
+def test_fixture_rejects_namespace_and_unpinned_images(
+    namespace, python_image, postgres_image
+):
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    with pytest.raises(ValueError):
+        temporal.fixture_objects(ROOT, namespace, python_image, postgres_image, None)
+
+
+def test_fixture_rejects_other_postgres_pin():
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+
+    python_image, postgres_image = pins()
+    with pytest.raises(ValueError):
+        temporal.fixture_objects(
+            ROOT,
+            "probe-a",
+            python_image,
+            postgres_image.replace("pgvector/pgvector", "other/image"),
+            None,
+        )
+
+
+def sample_deployment():
+    env = {
+        "FP_GRPC_ALLOWED_CLIENT_URIS": "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+        "FP_JWKS_URL": "http://probe-a-backend:8000/.well-known/jwks.json",
+        "FP_JWT_ISSUER": "https://fixture.example",
+        "FP_JWT_AUDIENCE": "fixture",
+        "FP_JWKS_REFRESH_INTERVAL": "300",
+    }
+    return {
+        "metadata": {"name": "probe-a-file-processor"},
+        "spec": {
+            "replicas": 2,
+            "selector": {"matchLabels": {"app": "fp"}},
+            "template": {
+                "spec": {
+                    "serviceAccountName": "probe-a-fp",
+                    "containers": [
+                        {
+                            "name": "file-processor",
+                            "env": [{"name": k, "value": v} for k, v in env.items()],
+                        }
+                    ],
+                }
+            },
+        },
+    }
+
+
+def run_phase(fault=""):
+    import base64
+    import json
+    import subprocess
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    pod = m.Pod("probe-a", "fixture", ip="127.0.0.1", uid="fixture")
+    pods = {k: pod for k in ["a-fp", "a-redis", "a-backend"]}
+    published = []
+    revoked = set()
+    counters = {"publish": 0, "replica": 0}
+    declaration = sample_deployment()
+    overrides = {
+        "mtls": ("FP_INTERNAL_HTTP_MTLS_ENABLED", "true"),
+        "identity": ("FP_GRPC_ALLOWED_CLIENT_URIS", "one,two"),
+        "scheme": ("FP_JWKS_URL", "https://backend:8000/.well-known/jwks.json"),
+        "port": ("FP_JWKS_URL", "http://backend:9000/.well-known/jwks.json"),
+        "path": ("FP_JWKS_URL", "http://backend:8000/wrong"),
+        "refresh": ("FP_JWKS_REFRESH_INTERVAL", "301"),
+    }
+    if fault in overrides:
+        key, value = overrides[fault]
+        declaration["spec"]["template"]["spec"]["containers"][0]["env"] = [
+            e
+            for e in declaration["spec"]["template"]["spec"]["containers"][0]["env"]
+            if e["name"] != key
+        ] + [{"name": key, "value": value}]
+
+    def find(resources, kind, name):
+        if kind == "ServiceAccount":
+            return {"kind": kind, "metadata": {"name": name}}
+        return {"spec": {"template": {"metadata": {"labels": {"gateway": "true"}}}}}
+
+    def publish(*args):
+        counters["publish"] += 1
+        if fault == "publish" + str(counters["publish"]):
+            return {"result": "error"}
+        published[:] = [k["kid"] for k in json.loads(args[1])["keys"]]
+        return {"result": "published"}
+
+    def replicas(*args):
+        counters["replica"] += 1
+        items = [
+            {
+                "uid": f"uid-{i}",
+                "name": f"fp-{i}",
+                "ip": f"127.0.0.{i + 1}",
+                "container_id": str(i),
+                "image_id": str(i),
+                "restarts": 0,
+            }
+            for i in range(2)
+        ]
+        if fault == "replica-count":
+            return items[:1]
+        if fault == "restart" and counters["replica"] == 2:
+            items[0]["restarts"] = 1
+        return items
+
+    def decode(segment):
+        return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+
+    def call(namespace, replica, server, token):
+        header, claims, _ = token.split(".")
+        denied = (
+            decode(header)["kid"] not in published or decode(claims)["jti"] in revoked
+        )
+        return {
+            "result": "grpc-status",
+            "code": "OK"
+            if fault == "status"
+            else "Unauthenticated"
+            if denied
+            else "InvalidArgument",
+        }
+
+    def redis(*args, **kwargs):
+        config = json.loads(kwargs["stdin"])
+        if config.get("action") == "check":
+            return {"result": "error" if fault == "unrevoked" else "unrevoked"}
+        revoked.add(config["jti"])
+        return {"result": "error" if fault == "revocation" else "revoked"}
+
+    def command(argv, **kwargs):
+        if fault == "network-command":
+            raise subprocess.CalledProcessError(1, argv, output="private-output")
+        if "redis-ping" in argv:
+            result = {"result": "redis-pong", "auth": "+OK"}
+        else:
+            result = {"result": "http", "status": "200"}
+        if fault == "network-result":
+            result = {"result": "timeout"}
+        return SimpleNamespace(stdout=json.dumps(result))
+
+    def kube(*args, **kwargs):
+        if fault == "cleanup" and "delete" in args:
+            raise subprocess.CalledProcessError(1, ["kubectl"])
+        if fault == "rollout" and "rollout" in args:
+            raise subprocess.CalledProcessError(1, ["kubectl"])
+
+    monotonic = (
+        [0, 541]
+        if fault == "revocation-expiry"
+        else [0, 1, 2, 543]
+        if fault == "new-expiry"
+        else [0, 1, 2, 3]
+    )
+    worker_resource = m._object("Secret", "worker", "probe-a")
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                _real_runtime_module("networkpolicy_runtime_startup"),
+                "run_command",
+                side_effect=OSError(
+                    "diagnostic transport unavailable in phase unit fixture"
+                ),
+            )
+        )
+        setup = stack.enter_context(
+            patch.object(
+                m,
+                "bootstrap_temporal",
+                return_value={
+                    "result": "ready",
+                    "endpoint": "temporal:7233",
+                    "ca_configmap": "ca",
+                    "worker_secret": worker_resource["metadata"]["name"],
+                },
+            )
+        )
+        stack.enter_context(
+            patch.object(m, "bootstrap_nats", return_value="nats://fixture")
+        )
+        stack.enter_context(
+            patch.object(m, "real_processor_deployment", return_value=declaration)
+        )
+        stack.enter_context(patch.object(m, "wire_processor_temporal"))
+        stack.enter_context(patch.object(m, "materialize_processor_secrets"))
+        stack.enter_context(patch.object(m, "grpc_credentials", return_value=({}, {})))
+        stack.enter_context(patch.object(m, "find", side_effect=find))
+        stack.enter_context(patch.object(m, "apply_objects"))
+        stack.enter_context(patch.object(m, "publish_jwks", side_effect=publish))
+        stack.enter_context(patch.object(m, "replica_state", side_effect=replicas))
+        stack.enter_context(patch.object(m, "call_processor", side_effect=call))
+        stack.enter_context(patch.object(m, "run_in_pod", side_effect=redis))
+        stack.enter_context(patch.object(m, "run_command", side_effect=command))
+        stack.enter_context(patch.object(m, "kubectl", side_effect=kube))
+        stack.enter_context(patch.object(m.time, "monotonic", side_effect=monotonic))
+        stack.enter_context(patch.object(m.time, "sleep"))
+        result = m.actual_processor_phase(
+            ROOT,
+            {"probe-a": ([], []), "probe-b": ([], [])},
+            pods,
+            {"probe-a": "private"},
+            python_image="python",
+            processor_image="fp",
+            diagnostic_image="probe",
+            source_sha="a" * 40,
+        )
+        assert setup.call_count == 1
+    return result
+
+
+def test_full_orchestration_uses_both_a_replicas_and_preserves_scope():
+    result = run_phase()
+    assert result["verdict"] == "pass"
+    assert len(result["checks"]) == 24
+    assert len(result["replicas"]) == 2
+    assert result["replica_state_unchanged"] is True
+    assert result["real_probe_b"].startswith("not_run")
+    assert all("private" not in str(row) for row in result["checks"])
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "mtls",
+        "identity",
+        "scheme",
+        "port",
+        "path",
+        "refresh",
+        "publish1",
+        "publish2",
+        "publish3",
+        "replica-count",
+        "restart",
+        "unrevoked",
+        "revocation",
+        "revocation-expiry",
+        "new-expiry",
+        "network-command",
+        "network-result",
+        "cleanup",
+        "rollout",
+    ],
+)
+def test_every_failed_precondition_is_inconclusive(fault):
+    result = run_phase(fault)
+    assert result["verdict"] == "inconclusive"
+    assert "private-output" not in str(result)
+    assert "replica_state_unchanged" not in result
+
+
+def test_wrong_actual_status_cannot_pass():
+    assert run_phase("status")["verdict"] == "fail"
+
+
+def test_nats_native_bootstrap_uses_tracked_image_and_authenticated_reply():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    with (
+        patch.object(m, "apply_objects") as applied,
+        patch.object(m, "kubectl"),
+        patch.object(
+            m, "run_command", return_value=SimpleNamespace(stdout='{"result":"ready"}')
+        ),
+    ):
+        url = m.bootstrap_nats(ROOT, "probe-a", "python")
+    assert url.startswith("nats://netpol:")
+    objects = applied.call_args.args[0]
+    assert objects[-1]["spec"]["containers"][0]["image"] == m.compose_image(
+        ROOT, "nats"
+    )
+    with (
+        patch.object(m, "apply_objects"),
+        patch.object(m, "kubectl"),
+        patch.object(
+            m, "run_command", return_value=SimpleNamespace(stdout='{"result":"failed"}')
+        ),
+        pytest.raises(ValueError),
+    ):
+        m.bootstrap_nats(ROOT, "probe-a", "python")
+
+
+def secret_deployment():
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+    original_volume = temporal.secret_volume("secret", "original")
+    original_volume["secret"]["items"] = [
+        {"key": name, "path": name} for name in ["cert", "key", "ca", "public"]
+    ]
+    values = {
+        "FP_GRPC_TLS_CERT_FILE": "/secret/cert",
+        "FP_GRPC_TLS_KEY_FILE": "/secret/key",
+        "FP_GRPC_CLIENT_CA_FILE": "/secret/ca",
+        "FP_RSA_PUBLIC_KEY_FILE": "/secret/public",
+    }
+    return {
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "file-processor",
+                            "env": [{"name": k, "value": v} for k, v in values.items()],
+                            "volumeMounts": [
+                                {"name": "secret", "mountPath": "/secret"}
+                            ],
+                        }
+                    ],
+                    "volumes": [
+                        {"name": "empty", "emptyDir": {}},
+                        temporal.secret_volume("netpol-temporal-worker", "worker"),
+                        original_volume,
+                    ],
+                }
+            }
+        }
+    }
+
+
+def test_secret_mapping_retains_rendered_names_and_fields():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    with patch.object(m, "apply_objects") as applied:
+        m.materialize_processor_secrets(
+            secret_deployment(),
+            "probe-a",
+            {"FP_RSA_PUBLIC_KEY_FILE": "public"},
+            {"tls.crt": "cert", "tls.key": "key", "ca.crt": "ca"},
+        )
+    assert applied.call_args.args[0][0]["stringData"] == {
+        "cert": "cert",
+        "key": "key",
+        "ca": "ca",
+        "public": "public",
+    }
+
+
+@pytest.mark.parametrize("fault", ["unmapped", "missing"])
+def test_secret_mapping_fails_closed(fault):
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    deployment = secret_deployment()
+    values = {}
+    if fault == "unmapped":
+        deployment["spec"]["template"]["spec"]["volumes"][-1]["secret"]["items"].append(
+            {"key": "extra", "path": "extra"}
+        )
+    else:
+        values = {}
+    if fault == "unmapped":
+        values = {"FP_RSA_PUBLIC_KEY_FILE": "public"}
+    with pytest.raises(ValueError):
+        m.materialize_processor_secrets(
+            deployment,
+            "probe-a",
+            values,
+            {"tls.crt": "cert", "tls.key": "key", "ca.crt": "ca"},
+        )
+
+
+def test_replica_inventory_keeps_exact_running_container():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    pod = {
+        "metadata": {"name": "fp", "uid": "uid"},
+        "status": {
+            "podIP": "127.0.0.1",
+            "containerStatuses": [
+                {
+                    "name": "file-processor",
+                    "ready": True,
+                    "containerID": "container",
+                    "imageID": "image",
+                    "restartCount": 0,
+                }
+            ],
+        },
+    }
+    with patch.object(m, "kubectl_json", return_value={"items": [{"status": {}}, pod]}):
+        assert m.replica_state("probe-a", {"app": "fp"}) == [
+            {
+                "name": "fp",
+                "uid": "uid",
+                "ip": "127.0.0.1",
+                "container_id": "container",
+                "image_id": "image",
+                "restarts": 0,
+            }
+        ]
+    pod["status"]["containerStatuses"][0]["ready"] = False
+    with (
+        patch.object(m, "kubectl_json", return_value={"items": [pod]}),
+        pytest.raises(ValueError),
+    ):
+        m.replica_state("probe-a", {})
+
+
+def test_client_stdout_nonobject_is_setup_error():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    with patch.object(m, "run_command", return_value=SimpleNamespace(stdout="[]")):
+        assert m.call_processor("probe-a", {"ip": "127.0.0.1"}, "fixture", "token") == {
+            "result": "setup-error"
+        }
+
+
+def test_client_returns_only_safe_status_object():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+
+    with patch.object(
+        m,
+        "run_command",
+        return_value=SimpleNamespace(
+            stdout='{"result":"grpc-status","code":"InvalidArgument"}'
+        ),
+    ):
+        assert m.call_processor("probe-a", {"ip": "127.0.0.1"}, "fixture", "token") == {
+            "result": "grpc-status",
+            "code": "InvalidArgument",
+        }
+
+
+def git(root, *args):
+    import shlex
+    import shutil
+    import subprocess
+
+    return subprocess.run(
+        ["/bin/bash", "-s"],
+        input=shlex.join([shutil.which("git"), "-C", str(root), *args]),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@pytest.fixture
+def committed(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / ".gitignore").write_text("cache/\n")
+    git(tmp_path, "add", ".")
+    git(
+        tmp_path,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    return tmp_path
+
+
+def check(root):
+    import os
+    import subprocess
+
+    script = (ROOT / "scripts/k8s/networkpolicy_runtime_proof.sh").read_text()
+    guard = script[
+        script.index("require_clean_source() {") : script.index(
+            "build_real_processor_images() {"
+        )
+    ]
+    program = (
+        'set -euo pipefail\nlog() { printf "%s\\n" "$*" >&2; }\n'
+        + guard
+        + "\nrequire_clean_source\n"
+    )
+    return subprocess.run(
+        ["/bin/bash", "-s"],
+        input=program,
+        env={**os.environ, "ROOT_DIR": str(root)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_clean_source_and_ignored_cache_allowed(committed):
+    (committed / "cache").mkdir()
+    (committed / "cache/private.go").write_text("synthetic ignored content")
+    assert check(committed).returncode == 0
+    # Docker context must come from committed archive, not ignored worktree data.
+    script = (ROOT / "scripts/k8s/networkpolicy_runtime_proof.sh").read_text()
+    assert 'git -C "$ROOT_DIR" archive --format=tar "$SOURCE_SHA"' in script
+    assert '-t "$FP_IMAGE" "$build_source"' in script
+    assert '-t "$DIAGNOSTIC_IMAGE" "$build_source"' in script
+
+
+@pytest.mark.parametrize("dirty", ["tracked", "untracked", "staged", "index-only"])
+def test_dirty_source_is_rejected_without_filenames(committed, dirty):
+    name = "untracked-sensitive-name.go" if dirty == "untracked" else "main.go"
+    (committed / name).write_text("package altered\n")
+    if dirty in {"staged", "index-only"}:
+        git(committed, "add", name)
+    if dirty == "index-only":
+        (committed / name).write_text("package main\n")
+    result = check(committed)
+    assert result.returncode != 0
+    assert "committed clean source tree" in result.stderr
+    assert name not in result.stdout + result.stderr
+    assert "package altered" not in result.stdout + result.stderr
+
+
+def test_real_runtime_loader_uses_the_current_proof_directory(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(
+        sys, "path", [entry for entry in sys.path if entry != str(PROBE_DIR)]
+    )
+    module = _real_runtime_module("networkpolicy_runtime_processor")
+    assert sys.path[0] == str(PROBE_DIR)
+    assert module.__name__ == "networkpolicy_runtime_processor"
+
+
+@pytest.mark.parametrize("failed_command", ["diff", "ls-files"])
+def test_real_source_guard_rejects_git_inspection_failure(tmp_path, failed_command):
+    import os
+    import subprocess
+
+    script = PROOF.read_text()
+    guard = script[
+        script.index("require_clean_source() {") : script.index(
+            "build_real_processor_images() {"
+        )
+    ]
+    shim = (
+        'git() { case "$*" in *"'
+        + failed_command
+        + '"*) return 2;; *) return 0;; esac; }\n'
+    )
+    program = (
+        'set -euo pipefail\nlog() { printf "%s\\n" "$*" >&2; }\n'
+        + shim
+        + guard
+        + "\nrequire_clean_source\n"
+    )
+    observed = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=program,
+        env={**os.environ, "ROOT_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert observed.returncode != 0
+    assert observed.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "",
+        "transient",
+        "missing",
+        "duplicate",
+        "save",
+        "import",
+        "inspect",
+        "bad-id",
+        "cri",
+        "json",
+        "mismatch",
+        "second",
+    ],
+)
+def test_native_image_import_fails_closed_and_verifies_both_ids(tmp_path, failure):
+    import os
+    import subprocess
+
+    source = PROOF.read_text()
+    loader = source[
+        source.index("load_real_processor_images() {") : source.index("main() {")
+    ]
+    shim = r"""
+set -euo pipefail
+CLUSTER_NAME=fixture
+FP_IMAGE=ue-netpol-fp:fixture
+DIAGNOSTIC_IMAGE=ue-netpol-diagnostic:fixture
+docker() {
+  printf '%s\n' "$*" >> "$WORK_DIR/calls"
+  case "$1 $2" in
+    'save --output')
+      [[ "$FAILURE" != save ]] || return 31
+      printf 'fixture archive' > "$3" ;;
+    'exec -i')
+      [[ "$*" == 'exec -i fixture-control-plane ctr --namespace=k8s.io images import --local --all-platforms --digests --snapshotter=overlayfs -' ]]
+      [[ "$(cat)" == 'fixture archive' ]]
+      [[ "$FAILURE" != import ]] || return 32 ;;
+    'image inspect')
+      [[ "$FAILURE" != inspect ]] || return 33
+      if [[ "$FAILURE" == bad-id ]]; then printf 'invalid'; else printf '%s' "$IMAGE_ID"; fi ;;
+    'exec fixture-control-plane')
+      [[ "$FAILURE" != cri ]] || return 34
+      if [[ "$4" == images ]]; then
+        [[ "$3 $4 $5 $6" == 'crictl images --output json' ]]
+        if [[ "$FAILURE" == json ]]; then printf 'invalid';
+        elif [[ "$FAILURE" == missing || ( "$FAILURE" == transient && ! -f "$WORK_DIR/seen" ) ]]; then
+          touch "$WORK_DIR/seen"; printf '{"images":[]}'
+        elif [[ "$FAILURE" == mismatch ]]; then
+          printf '{"images":[{"id":"wrong","repoTags":["docker.io/library/%s"]}]}' "$FP_IMAGE"
+        elif [[ "$FAILURE" == duplicate ]]; then
+          printf '{"images":[{"id":"%s","repoTags":["docker.io/library/%s"]},{"id":"%s","repoTags":["docker.io/library/%s"]}]}' "$IMAGE_ID" "$FP_IMAGE" "$IMAGE_ID" "$FP_IMAGE"
+        else printf '{"images":[{"id":"%s","repoTags":["docker.io/library/%s","docker.io/library/%s"]}]}' "$IMAGE_ID" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"; fi
+      else
+        [[ "$3 $4 $5 $6" == 'crictl inspecti --output json' ]]
+        if [[ "$FAILURE" == second && "$7" == "$DIAGNOSTIC_IMAGE" ]]; then
+          printf '{"status":{"id":"wrong"}}'
+        else printf '{"status":{"id":"%s"}}' "$IMAGE_ID"; fi
+      fi ;;
+    *) return 35 ;;
+  esac
+}
+uv() { "$TEST_PYTHON" "${@:4}"; }
+sleep() { printf "wait\n" >> "$WORK_DIR/waits"; }
+"""
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=shim + loader + "\nload_real_processor_images\nprintf completed\n",
+        env={
+            **os.environ,
+            "WORK_DIR": str(tmp_path),
+            "FAILURE": failure,
+            "IMAGE_ID": "sha256:" + "a" * 64,
+            "TEST_PYTHON": sys.executable,
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    success = failure in {"", "transient"}
+    assert (result.returncode == 0) == success
+    assert ("completed" in result.stdout) == success
+    if success:
+        calls = (tmp_path / "calls").read_text()
+        assert calls.count("crictl inspecti --output json") == 2
+        assert "ue-netpol-fp:fixture" in calls
+        assert "ue-netpol-diagnostic:fixture" in calls
+        assert not (tmp_path / "real-processor-images.tar").exists()
+    assert "kind load docker-image" not in source
+    assert "    load_real_processor_images\n" in source
+
+    if failure in {"missing", "transient"}:
+        assert (tmp_path / "waits").read_text().splitlines() == ["wait"] * (
+            29 if failure == "missing" else 1
+        )
+    else:
+        assert not (tmp_path / "waits").exists()
+
+
+def _strict_fixture_handshake(tmp_path, ca, credential, hostname):
+    import ssl
+
+    certificate = tmp_path / "tls.crt"
+    certificate.write_text(credential["tls.crt"])
+    key = tmp_path / "tls.key"
+    key.touch(mode=0o600)
+    key.write_text(credential["tls.key"])
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_context.minimum_version = ssl.TLSVersion.TLSv1_3
+    server_context.load_cert_chain(certificate, key)
+    client_context = ssl.create_default_context(cadata=ca)
+    client_context.minimum_version = ssl.TLSVersion.TLSv1_3
+    assert client_context.verify_flags & ssl.VERIFY_X509_STRICT
+    assert client_context.verify_mode == ssl.CERT_REQUIRED
+    assert client_context.check_hostname
+    client_in, client_out, server_in, server_out = [ssl.MemoryBIO() for _ in range(4)]
+    peers = [
+        client_context.wrap_bio(client_in, client_out, server_hostname=hostname),
+        server_context.wrap_bio(server_in, server_out, server_side=True),
+    ]
+    complete = set()
+    for _ in range(20):
+        for index, peer in enumerate(peers):
+            try:
+                peer.do_handshake()
+                complete.add(index)
+            except ssl.SSLWantReadError:
+                pass
+        if client_out.pending:
+            server_in.write(client_out.read())
+        if server_out.pending:
+            client_in.write(server_out.read())
+        if len(complete) == 2:
+            assert peers[0].version() == "TLSv1.3"
+            return
+    pytest.fail("bounded in-memory TLS handshake did not complete")
+
+
+@pytest.mark.parametrize("target", ["issuer", "server"])
+def test_native_fixture_certificates_pass_default_strict_tls(tmp_path, target):
+    from cryptography import x509
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    ca, server, issuer = m._credentials("probe-a")
+    root = x509.load_pem_x509_certificate(ca.encode())
+    assert root.extensions.get_extension_for_class(x509.KeyUsage).value.key_cert_sign
+    assert root.extensions.get_extension_for_class(x509.SubjectKeyIdentifier)
+    credential, hostname = (
+        (issuer, "127.0.0.1") if target == "issuer" else (server, "temporal")
+    )
+    leaf = x509.load_pem_x509_certificate(credential["tls.crt"].encode())
+    assert leaf.extensions.get_extension_for_class(x509.AuthorityKeyIdentifier)
+    _strict_fixture_handshake(tmp_path, ca, credential, hostname)
+
+
+@pytest.mark.parametrize("missing", ["authority", "ca-usage", "hostname"])
+def test_native_fixture_strict_tls_rejects_incomplete_chain(
+    tmp_path, monkeypatch, missing
+):
+    import ssl
+
+    from cryptography import x509
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    original = x509.CertificateBuilder.add_extension
+
+    def omit_extension(builder, extension, critical):
+        if (
+            missing == "authority"
+            and isinstance(extension, x509.AuthorityKeyIdentifier)
+        ) or (missing == "ca-usage" and isinstance(extension, x509.KeyUsage)):
+            return builder
+        return original(builder, extension, critical)
+
+    monkeypatch.setattr(x509.CertificateBuilder, "add_extension", omit_extension)
+    ca, _, issuer = m._credentials("probe-a")
+    with pytest.raises(ssl.SSLCertVerificationError):
+        _strict_fixture_handshake(
+            tmp_path,
+            ca,
+            issuer,
+            "wrong.example" if missing == "hostname" else "127.0.0.1",
+        )
+
+
+def test_temporal_status_diagnostics_emit_only_allowlisted_fields():
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    rows = [
+        {
+            "name": "jwks",
+            "state": {"running": {"message": "PRIVATE"}},
+            "ready": False,
+            "started": False,
+            "restartCount": 1,
+        },
+        {
+            "name": "render",
+            "state": {"waiting": {"reason": "PRIVATE"}},
+            "ready": True,
+            "started": True,
+        },
+        {
+            "name": "temporal",
+            "state": {"terminated": {"exitCode": 1, "message": "PRIVATE"}},
+            "restartCount": 100000,
+        },
+        {"name": "admin", "state": {}},
+        {"name": "PRIVATE", "state": {"running": {}}},
+    ]
+    response = {
+        "initContainerStatuses": rows[:2],
+        "containerStatuses": rows[2:],
+        "message": "PRIVATE",
+    }
+    with patch.object(
+        m, "run_command", return_value=SimpleNamespace(stdout=json.dumps(response))
+    ) as run:
+        result = m.temporal_startup_status("probe-a")
+    assert result["status"] == "collected"
+    assert [r["state"] for r in result["containers"]] == [
+        "running",
+        "waiting",
+        "terminated",
+        "unknown",
+    ]
+    assert result["containers"][2]["exit_code"] == 1
+    assert result["containers"][0]["restarts"] == 1
+    assert "PRIVATE" not in json.dumps(result)
+    assert run.call_args.kwargs == {"timeout": 10}
+    assert run.call_args.args[0] == [
+        "kubectl",
+        "--request-timeout=5s",
+        "-n",
+        "probe-a",
+        "get",
+        "pod/netpol-temporal",
+        "-o",
+        "jsonpath={.status}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "oversize",
+        "invalid-json",
+        "list",
+        "missing-name",
+        "invalid-state",
+        "too-many",
+        "command",
+        "restart-text",
+        "restart-bool",
+        "restart-low",
+        "restart-high",
+        "exit-text",
+        "exit-bool",
+        "exit-low",
+        "exit-high",
+    ],
+)
+def test_temporal_diagnostics_fail_closed_without_raw_error(case):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_temporal")
+    row = {"name": "jwks", "state": {"terminated": {"exitCode": 0}}, "restartCount": 0}
+    document = {"containerStatuses": [row]}
+    if case.startswith("restart-"):
+        row["restartCount"] = {
+            "text": "PRIVATE",
+            "bool": True,
+            "low": -1,
+            "high": 100001,
+        }[case.removeprefix("restart-")]
+    if case.startswith("exit-"):
+        row["state"]["terminated"]["exitCode"] = {
+            "text": "PRIVATE",
+            "bool": True,
+            "low": -1,
+            "high": 256,
+        }[case.removeprefix("exit-")]
+    if case == "missing-name":
+        del row["name"]
+    if case == "invalid-state":
+        row["state"] = None
+    if case == "too-many":
+        document["containerStatuses"] *= 9
+    raw = (
+        "x" * 65537
+        if case == "oversize"
+        else "PRIVATE"
+        if case == "invalid-json"
+        else "[]"
+        if case == "list"
+        else json.dumps(document)
+    )
+    failure = (
+        subprocess.CalledProcessError(
+            1, ["kubectl"], output="PRIVATE", stderr="PRIVATE"
+        )
+        if case == "command"
+        else None
+    )
+    with patch.object(
+        m, "run_command", return_value=SimpleNamespace(stdout=raw), side_effect=failure
+    ):
+        assert m.temporal_startup_status("probe-a") == {"status": "unavailable"}
+
+
+@pytest.fixture(scope="module")
+def real_staging_processor_resources():
+    runner = _real_runtime_module("networkpolicy_runtime_probe")
+    app, store = runner.load_render_contracts()
+    app._helm()
+    resources, _ = runner.render_release("probe-a", app, store)
+    return resources
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [
+        (None, None),
+        ("secrets", "processor-secrets"),
+        ("service", "processor-jwks-service"),
+        ("publication", "processor-jwks-publication"),
+        ("publication-command", "processor-jwks-publication"),
+        ("workloads", "processor-workloads"),
+    ],
+)
+def test_real_helm_processor_preparation_preserves_config_and_scopes_io_failure(
+    real_staging_processor_resources, failure, expected_stage
+):
+    import copy
+    import subprocess
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    original = copy.deepcopy(real_staging_processor_resources)
+    sha = "a" * 40
+    worker = m._object("Secret", "netpol-temporal-worker", "probe-a")
+    setup = {
+        "result": "ready",
+        "endpoint": "temporal:7233",
+        "ca_configmap": "netpol-temporal-ca",
+        "worker_secret": worker["metadata"]["name"],
+    }
+    observed_batches = []
+
+    def apply(objects):
+        observed_batches.append(objects)
+        stage = {1: "secrets", 2: "service", 3: "workloads"}[len(observed_batches)]
+        if stage == failure:
+            raise subprocess.CalledProcessError(
+                1,
+                ["kubectl"],
+                output="private-error-canary",
+                stderr="private-error-canary",
+            )
+
+    def publish(*args):
+        if failure == "publication-command":
+            raise subprocess.CalledProcessError(
+                1, ["kubectl"], output="private-error-canary"
+            )
+        return {"result": "exec-error" if failure == "publication" else "published"}
+
+    with (
+        patch.object(m, "apply_objects", side_effect=apply),
+        patch.object(m, "publish_jwks", side_effect=publish),
+    ):
+        arguments = {
+            "password": m.secrets.token_hex(32),
+            "nats_url": "nats://netpol-nats:4222",
+            "signer": m.generate_signing_key("primary"),
+            "processor_image": "ue-netpol-fp:" + sha,
+            "diagnostic_image": "ue-netpol-diagnostic:" + sha,
+            "source_sha": sha,
+        }
+        pods = {
+            "a-redis": m.Pod(
+                "probe-a", "probe-a-revocation-redis-master-0", "192.0.2.2"
+            ),
+            "a-backend": m.Pod("probe-a", "probe-a-backend", "192.0.2.3"),
+        }
+        if failure:
+            with pytest.raises(m.ProcessorSetupError) as error:
+                m.prepare_processor_fixture(
+                    original, "probe-a", pods, setup, **arguments
+                )
+            assert str(error.value) == expected_stage
+            assert error.value.__suppress_context__ is True
+            assert "private-error-canary" not in str(error.value)
+            return
+        prepared = m.prepare_processor_fixture(
+            original, "probe-a", pods, setup, **arguments
+        )
+    assert original == real_staging_processor_resources
+    assert [[obj["kind"] for obj in batch] for batch in observed_batches] == [
+        ["Secret", "Secret", "Secret"],
+        ["Service", "ServiceAccount"],
+        ["Secret", "Pod", "Deployment"],
+    ]
+    assert all(
+        obj["metadata"]["namespace"] == "probe-a"
+        for batch in observed_batches
+        for obj in batch
+    )
+    assert prepared.jwks_hostname == "probe-a-backend"
+    assert prepared.server_name == "probe-a-file-processor.probe-a.svc"
+    assert prepared.deployment["spec"]["replicas"] == 2
+    spec = prepared.deployment["spec"]["template"]["spec"]
+    env = {entry["name"]: entry["value"] for entry in spec["containers"][0]["env"]}
+    assert env["FP_ENVIRONMENT"] == "staging"
+    assert env["FP_TEMPORAL_TLS_DISABLED"] == "false"
+    assert env["FP_JWKS_REFRESH_INTERVAL"] == "300"
+    assert (
+        env["FP_GRPC_ALLOWED_CLIENT_URIS"]
+        == "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
+    )
+    assert env["FP_JWKS_URL"] == "http://probe-a-backend:8000/.well-known/jwks.json"
+    assert env["FP_TEMPORAL_API_KEY_FILE"] == "/run/netpol-temporal/token"
+    original_deployment = m.find(original, "Deployment", "probe-a-file-processor")
+    original_spec = original_deployment["spec"]["template"]["spec"]
+    assert spec["securityContext"] == original_spec["securityContext"]
+    assert (
+        spec["containers"][0]["securityContext"]
+        == original_spec["containers"][0]["securityContext"]
+    )
+    assert (
+        prepared.deployment["spec"]["template"]["metadata"]["labels"]
+        == original_deployment["spec"]["template"]["metadata"]["labels"]
+    )
+    assert observed_batches[1][0]["spec"] == {
+        "selector": {"probe-role": "a-backend"},
+        "ports": [{"port": 8000}],
+    }
+
+
+def test_processor_setup_substage_reaches_receipt_without_exception_payload():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    with patch.object(
+        m,
+        "prepare_processor_fixture",
+        side_effect=m.ProcessorSetupError("processor-workloads"),
+    ):
+        result = run_phase()
+    assert result == {
+        "verdict": "inconclusive",
+        "stage": "probe-a:processor-workloads",
+        "checks": [],
+    }
+
+
+def startup_api_fixture():
+    return [
+        {"metadata": {"uid": "deployment-id"}},
+        {
+            "metadata": {},
+            "items": [
+                {
+                    "metadata": {
+                        "uid": "replica-id",
+                        "ownerReferences": [
+                            {
+                                "controller": True,
+                                "kind": "Deployment",
+                                "uid": "deployment-id",
+                            }
+                        ],
+                    }
+                }
+            ],
+        },
+        {
+            "metadata": {},
+            "items": [
+                {
+                    "metadata": {
+                        "name": "probe-a-file-processor-abc-xyz",
+                        "namespace": "probe-a",
+                        "ownerReferences": [
+                            {
+                                "controller": True,
+                                "kind": "ReplicaSet",
+                                "uid": "replica-id",
+                            }
+                        ],
+                    },
+                    "status": {
+                        "containerStatuses": [
+                            {
+                                "name": "file-processor",
+                                "ready": False,
+                                "restartCount": 5,
+                                "state": {"waiting": {"message": "private-canary"}},
+                                "lastState": {
+                                    "terminated": {
+                                        "exitCode": 1,
+                                        "message": "private-canary",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "probe",
+                                "ready": True,
+                                "restartCount": 0,
+                                "state": {"running": {}},
+                            },
+                        ]
+                    },
+                }
+            ],
+        },
+    ]
+
+
+def test_actual_startup_diagnostic_projects_owned_status_and_fixed_messages():
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    documents = startup_api_fixture()
+    documents[2]["items"].append(
+        {
+            "metadata": {"name": "stand-in", "ownerReferences": []},
+            "status": {"message": "private-canary"},
+        }
+    )
+    payload = json.dumps(
+        {
+            "msg": "Failed to initialize session revocation Redis",
+            "err": "private-canary",
+            "env": "private-canary",
+        }
+    )
+    responses = [json.dumps(d) for d in documents] + [
+        payload,
+        "not JSON private-canary\n" + json.dumps({"msg": "private-canary"}),
+    ]
+    with patch.object(
+        m, "run_command", side_effect=[SimpleNamespace(stdout=s) for s in responses]
+    ) as command:
+        result = m.processor_startup_diagnostics()
+    assert result["status"] == "collected"
+    assert len(result["replicas"]) == 1
+    replica = result["replicas"][0]
+    assert replica["containers"][0] == {
+        "name": "file-processor",
+        "state": "waiting",
+        "ready": False,
+        "restarts": 5,
+        "exit_code": None,
+        "previous_exit_code": 1,
+    }
+    assert replica["current"] == {"status": "classified", "events": ["redis-failed"]}
+    assert replica["previous"] == {"status": "unknown", "events": []}
+    assert "private-canary" not in json.dumps(result)
+    assert "pass" not in json.dumps(result)
+    assert len(command.call_args_list) == 5
+    for call in command.call_args_list:
+        assert call.kwargs["timeout"] == 10
+        assert "--request-timeout=5s" in call.args[0]
+    for call in command.call_args_list[1:3]:
+        assert "limit=8" in call.args[0][-1]
+    for call in command.call_args_list[3:]:
+        assert "--tail=100" in call.args[0]
+        assert "--limit-bytes=16384" in call.args[0]
+        assert call.args[0][call.args[0].index("-c") + 1] == "file-processor"
+    assert "--previous=true" in command.call_args_list[-1].args[0]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "request",
+        "json",
+        "document-type",
+        "oversize",
+        "uid",
+        "continue",
+        "items-type",
+        "too-many-items",
+        "no-owner",
+        "too-many-pods",
+        "namespace",
+        "name",
+        "container-list",
+        "too-many-containers",
+        "container-name",
+        "duplicate-container",
+        "restarts-type",
+        "restarts-range",
+        "exit-type",
+        "exit-range",
+        "owner-type",
+    ],
+)
+def test_startup_diagnostics_fail_closed_on_untrusted_api_shape(fault):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    docs = startup_api_fixture()
+    pod = docs[2]["items"][0]
+    row = pod["status"]["containerStatuses"][0]
+    if fault == "uid":
+        docs[0]["metadata"]["uid"] = ""
+    if fault == "continue":
+        docs[1]["metadata"]["continue"] = "private-canary"
+    if fault == "items-type":
+        docs[1]["items"] = {}
+    if fault == "too-many-items":
+        docs[1]["items"] *= 9
+    if fault == "no-owner":
+        pod["metadata"]["ownerReferences"] = []
+    if fault == "too-many-pods":
+        docs[2]["items"] *= 3
+    if fault == "namespace":
+        pod["metadata"]["namespace"] = "unrelated"
+    if fault == "name":
+        pod["metadata"]["name"] = "stand-in"
+    if fault == "container-list":
+        pod["status"]["containerStatuses"] = {}
+    if fault == "too-many-containers":
+        pod["status"]["containerStatuses"] *= 2
+    if fault == "container-name":
+        row["name"] = "private-canary"
+    if fault == "duplicate-container":
+        pod["status"]["containerStatuses"] = [row, row]
+    if fault == "restarts-type":
+        row["restartCount"] = True
+    if fault == "restarts-range":
+        row["restartCount"] = -1
+    if fault == "exit-type":
+        row["state"] = {"terminated": {"exitCode": True}}
+    if fault == "exit-range":
+        row["state"] = {"terminated": {"exitCode": 256}}
+    if fault == "owner-type":
+        pod["metadata"]["ownerReferences"] = [None]
+    outputs = [json.dumps(d) for d in docs]
+    if fault == "json":
+        outputs[0] = "private-canary"
+    if fault == "document-type":
+        outputs[0] = "[]"
+    if fault == "oversize":
+        outputs[0] = "x" * 131073
+    with patch.object(
+        m,
+        "run_command",
+        side_effect=subprocess.CalledProcessError(
+            1, ["kubectl"], stderr="private-canary"
+        )
+        if fault == "request"
+        else [SimpleNamespace(stdout=s) for s in outputs],
+    ):
+        assert m.processor_startup_diagnostics() == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "case", ["all-messages", "unknown", "request", "oversize", "unicode-oversize"]
+)
+def test_startup_log_projection_never_exposes_payload(case):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    text = "\n".join(
+        json.dumps({"msg": msg, "err": "private-canary"}) for msg in m.MESSAGES
+    )
+    if case == "unknown":
+        text = '[]\nnull\n{"msg": []}\n{"msg": "unknown private-canary"}\n'
+    if case == "oversize":
+        text = "x" * 16385
+    if case == "unicode-oversize":
+        text = "я" * 9000
+    with patch.object(
+        m,
+        "run_command",
+        side_effect=subprocess.TimeoutExpired(["kubectl"], 10, output="private-canary")
+        if case == "request"
+        else None,
+        return_value=SimpleNamespace(stdout=text),
+    ):
+        result = m._logs("probe-a", "probe-a-file-processor-abc-xyz", False)
+    assert "private-canary" not in json.dumps(result)
+    if case == "all-messages":
+        assert result == {"status": "classified", "events": sorted(m.MESSAGES.values())}
+    else:
+        assert result == {
+            "status": "unknown" if case == "unknown" else "unavailable",
+            "events": [],
+        }
+
+
+def test_startup_container_unknown_state_and_exit_are_not_success():
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    pod = startup_api_fixture()[2]["items"][0]
+    row = pod["status"]["containerStatuses"][0]
+    row["state"] = {"terminated": {"exitCode": 1}, "waiting": {}}
+    assert m._containers(pod)[0]["state"] == "unknown"
+    assert m._containers(pod)[0]["exit_code"] == 1
+
+
+def test_readiness_failure_attaches_diagnostic_without_changing_verdict():
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_real_fp")
+    with patch.object(
+        m, "processor_startup_diagnostics", return_value={"status": "unavailable"}
+    ) as diagnostic:
+        result = run_phase("rollout")
+    diagnostic.assert_called_once_with()
+    assert result == {
+        "verdict": "inconclusive",
+        "stage": "probe-a:processor-ready",
+        "checks": [],
+        "diagnostics": {"status": "unavailable"},
+    }
+
+
+@pytest.mark.parametrize("source", ["api", "log"])
+def test_startup_deep_json_is_unavailable_without_interrupting_receipt(source):
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    m = _real_runtime_module("networkpolicy_runtime_startup")
+    phase = _real_runtime_module("networkpolicy_runtime_real_fp")
+    depth = 65527 if source == "api" else 4000
+    nested = "[" * depth + "0" + "]" * depth
+    assert len(nested.encode("utf-8")) < (131072 if source == "api" else 16384)
+
+    def collect():
+        with patch.object(
+            m, "run_command", return_value=SimpleNamespace(stdout=nested)
+        ):
+            if source == "api":
+                with pytest.raises(RecursionError):
+                    json.loads(nested)
+                return m.processor_startup_diagnostics()
+            # Python runtimes differ in decoder nesting limits. Exercise the
+            # log decoder error branch independently within its byte limit.
+            with patch.object(m.json, "loads", side_effect=RecursionError):
+                return m._logs("probe-a", "probe-a-file-processor-abc-xyz", False)
+
+    with patch.object(phase, "processor_startup_diagnostics", side_effect=collect):
+        receipt = run_phase("rollout")
+    assert receipt["verdict"] == "inconclusive"
+    assert receipt["stage"] == "probe-a:processor-ready"
+    assert receipt["checks"] == []
+    assert receipt["diagnostics"]["status"] == "unavailable"
+    assert nested not in json.dumps(receipt)
+    assert json.loads(json.dumps(receipt)) == receipt

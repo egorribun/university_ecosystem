@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import enCommon from "@/i18n/locales/en/common.json"
 import ruCommon from "@/i18n/locales/ru/common.json"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 const translationState = vi.hoisted(() => ({
   namespaces: [] as unknown[],
@@ -78,6 +79,35 @@ describe("NewsCardContent closure", () => {
     expect(onToggleLike).toHaveBeenCalledTimes(1)
     expect(onToggleBookmark).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    ["en", "ltr", enCommon],
+    ["ru", "ltr", ruCommon],
+    ["en", "rtl", enCommon],
+    ["ru", "rtl", ruCommon],
+  ] as const)(
+    "keeps the %s reading-time unit together in a %s footer",
+    (_language, direction, messages) => {
+      translationState.labels = {
+        "common:time.minuteShort": messages.time.minuteShort,
+        "common:cta.learnMore": messages.cta.learnMore,
+      }
+      render(
+        <div dir={direction}>
+          <NewsCardContent {...baseProps} readingTime={1} onToggleBookmark={vi.fn()} />
+        </div>
+      )
+      const readingTime = screen.getByText(`1 ${messages.time.minuteShort}`)
+      expect(readingTime.textContent).toBe(`1\u00a0${messages.time.minuteShort}`)
+      expectBaseUtility(readingTime.parentElement!, "flex-shrink", "0")
+      const cta = screen.getByText(messages.cta.learnMore).parentElement!
+      expectBaseUtility(cta.parentElement!, "flex-wrap", "wrap")
+      expectBaseUtility(cta.parentElement!, "column-gap", "var(--spacing-3)")
+      expectBaseUtility(cta.parentElement!, "row-gap", "var(--spacing-2)")
+      expectBaseUtility(cta, "flex-shrink", "0")
+      expectBaseUtility(cta, "margin-inline-start", "auto")
+    }
+  )
 
   it("does not start a celebration when an already-liked article is toggled", () => {
     const onToggleLike = vi.fn()

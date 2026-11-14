@@ -89,7 +89,7 @@ const NewsCardContent = ({
       <p className="text-sm leading-relaxed text-(--text-secondary) line-clamp-2">{preview}</p>
 
       {/* Footer — likes, comments, CTA */}
-      <div className="mt-auto flex items-center justify-between pt-3 border-t border-glass-border/[calc(var(--opacity-soft)*100%)]">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-3 border-t border-glass-border/[calc(var(--opacity-soft)*100%)]">
         <div className="relative z-deep flex items-center gap-4">
           {/* Like */}
           <button
@@ -117,10 +117,12 @@ const NewsCardContent = ({
 
           {/* Reading time (W59-10) */}
           {readingTime != null && (
-            <div className="flex items-center gap-1 text-(--text-secondary)">
+            <div className="flex shrink-0 items-center gap-1 text-(--text-secondary)">
               <ClockIcon size={14} />
               <span className="text-[11px] font-medium tabular-nums">
-                {readingTime} {t("common:time.minuteShort")}
+                {readingTime}
+                {"\u00a0"}
+                {t("common:time.minuteShort")}
               </span>
             </div>
           )}
@@ -153,7 +155,7 @@ const NewsCardContent = ({
         </div>
 
         {/* CTA — reveals on hover */}
-        <div className="flex items-center gap-1 text-brand opacity-0 translate-x-1 transition duration-base ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
+        <div className="ms-auto flex shrink-0 items-center gap-1 text-brand opacity-0 translate-x-1 transition duration-base ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
           <span className="text-xs font-semibold tracking-wide hidden sm:inline">
             {t("common:cta.learnMore")}
           </span>
