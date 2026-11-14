@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -17,6 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // These fixtures exercise client setup only. They are not evidence that the
@@ -91,6 +95,24 @@ func TestProbeSetupErrorsAreSanitized(t *testing.T) {
 	}
 }
 
+func TestProbeCleanupFailureIsSanitized(t *testing.T) {
+	connection, err := grpc.NewClient("passthrough:///127.0.0.1:1", grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS13,
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Closing a real connection twice exercises gRPC's cleanup error without
+	// replacing the client or allowing a request to reach a network endpoint.
+	if err := connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	observed := probeRPC(context.Background(), connection, "fixture-token-do-not-disclose")
+	if observed != (result{Result: "setup-error"}) {
+		t.Fatalf("cleanup failure did not produce a sanitized setup error: %+v", observed)
+	}
+}
+
 func TestMainWritesOnlySafeJSON(t *testing.T) {
 	directory := t.TempDir()
 	input, err := os.Create(filepath.Join(directory, "stdin"))
@@ -128,6 +150,19 @@ func TestMainWritesOnlySafeJSON(t *testing.T) {
 const outputFailureHelperEnvironment = "FP_NETWORKPOLICY_PROBE_OUTPUT_FAILURE_HELPER"
 
 func TestMainOutputFailureExitsSafely(t *testing.T) {
+	emptyCoverageFlags := flag.NewFlagSet("empty-coverage-directory", flag.ContinueOnError)
+	emptyCoverageFlags.String("test.gocoverdir", "", "test coverage directory")
+	for name, flags := range map[string]*flag.FlagSet{
+		"shared-coverage-directory": flag.CommandLine,
+		"missing-coverage-flag":     flag.NewFlagSet("missing-coverage-flag", flag.ContinueOnError),
+		"empty-coverage-directory":  emptyCoverageFlags,
+	} {
+		t.Run(name, func(t *testing.T) { assertMainOutputFailure(t, flags) })
+	}
+}
+
+func assertMainOutputFailure(t *testing.T, flags *flag.FlagSet) {
+	t.Helper()
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +177,10 @@ func TestMainOutputFailureExitsSafely(t *testing.T) {
 		// preserve those counters in the same directory the parent test
 		// harness consumes when it generates its final coverage profile.
 		// No production seam or synthetic coverage is needed.
-		directory := flag.Lookup("test.gocoverdir").Value.String()
+		var directory string
+		if coverageFlag := flags.Lookup("test.gocoverdir"); coverageFlag != nil {
+			directory = coverageFlag.Value.String()
+		}
 		if directory == "" {
 			// Standalone covered test binaries may omit -test.gocoverdir.
 			// Retain child coverage without introducing a stderr warning;

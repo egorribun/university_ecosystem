@@ -851,10 +851,51 @@ def test_grpc_certificates_only_certify_rendered_identity():
 
 
 def test_rotation_mints_fresh_retired_token_after_wait():
-    source = (ROOT / "scripts/k8s/networkpolicy_runtime_real_fp.py").read_text()
-    retired = source.index('"retired-old-rejected"')
-    assert "token(old, secrets.token_hex(16))" in source[retired : retired + 160]
-    assert source.rfind("time.sleep(refresh + 10)", 0, retired) > 0
+    import ast
+
+    tree = ast.parse(
+        (ROOT / "scripts/k8s/networkpolicy_runtime_real_fp.py").read_text()
+    )
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    retirement = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "check_all"
+        and any(
+            isinstance(arg, ast.Constant) and arg.value == "retired-old-rejected"
+            for arg in node.args
+        )
+    )
+    mint = next(
+        node
+        for node in ast.walk(retirement)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "token"
+    )
+    assert isinstance(mint.args[0], ast.Name) and mint.args[0].id == "old"
+    assert len(mint.args) == 2 and not mint.keywords
+    nonce = mint.args[1]
+    assert isinstance(nonce, ast.Call) and isinstance(nonce.func, ast.Attribute)
+    assert isinstance(nonce.func.value, ast.Name) and nonce.func.value.id == "secrets"
+    assert nonce.func.attr == "token_hex"
+    assert len(nonce.args) == 1 and not nonce.keywords
+    assert isinstance(nonce.args[0], ast.Constant) and nonce.args[0].value == 16
+    waits = [
+        node
+        for node in calls
+        if isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "time"
+        and node.func.attr == "sleep"
+    ]
+    final_wait = max(waits, key=lambda node: node.lineno)
+    assert final_wait.lineno < mint.lineno
+    delay = final_wait.args[0]
+    assert isinstance(delay, ast.BinOp) and isinstance(delay.op, ast.Add)
+    assert isinstance(delay.left, ast.Name) and delay.left.id == "refresh"
+    assert isinstance(delay.right, ast.Constant) and delay.right.value == 10
 
 
 def test_nats_stream_bootstrap_does_not_publish_work():
@@ -1128,7 +1169,7 @@ def deployment():
         "FP_REVOCATION_REDIS_URL_FILE": "redis",
         "FP_JWKS_URL": "http://backend:8000/.well-known/jwks.json",
         "FP_TEMPORAL_HOST": "old",
-        "FP_TEMPORAL_API_KEY_FILE": "oldkey",
+        "FP_TEMPORAL_API_KEY_FILE": "/run/temporal/token",
     }
     return {
         "kind": "Deployment",
@@ -1178,7 +1219,11 @@ def test_valid_deployment_is_copy_and_wires_temporal():
     assert result["spec"]["replicas"] == 2
     temporal.wire_processor_temporal(
         result,
-        {"result": "ready", "endpoint": "temporal:7233", "worker_secret": "worker"},
+        dict(
+            result="ready",
+            endpoint="temporal:7233",
+            worker_secret=original["metadata"]["name"],
+        ),
     )
     container = result["spec"]["template"]["spec"]["containers"][0]
     env = {e["name"]: e["value"] for e in container["env"]}
@@ -1496,6 +1541,7 @@ def run_phase(fault=""):
         if fault == "new-expiry"
         else [0, 1, 2, 3]
     )
+    worker_resource = m._object("Secret", "worker", "probe-a")
     with ExitStack() as stack:
         setup = stack.enter_context(
             patch.object(
@@ -1505,7 +1551,7 @@ def run_phase(fault=""):
                     "result": "ready",
                     "endpoint": "temporal:7233",
                     "ca_configmap": "ca",
-                    "worker_secret": "worker",
+                    "worker_secret": worker_resource["metadata"]["name"],
                 },
             )
         )
@@ -1618,6 +1664,11 @@ def test_nats_native_bootstrap_uses_tracked_image_and_authenticated_reply():
 
 
 def secret_deployment():
+    temporal = _real_runtime_module("networkpolicy_runtime_temporal")
+    original_volume = temporal.secret_volume("secret", "original")
+    original_volume["secret"]["items"] = [
+        {"key": name, "path": name} for name in ["cert", "key", "ca", "public"]
+    ]
     values = {
         "FP_GRPC_TLS_CERT_FILE": "/secret/cert",
         "FP_GRPC_TLS_KEY_FILE": "/secret/key",
@@ -1639,20 +1690,8 @@ def secret_deployment():
                     ],
                     "volumes": [
                         {"name": "empty", "emptyDir": {}},
-                        {
-                            "name": "netpol-temporal-worker",
-                            "secret": {"secretName": "worker"},
-                        },
-                        {
-                            "name": "secret",
-                            "secret": {
-                                "secretName": "original",
-                                "items": [
-                                    {"key": v, "path": v}
-                                    for v in ["cert", "key", "ca", "public"]
-                                ],
-                            },
-                        },
+                        temporal.secret_volume("netpol-temporal-worker", "worker"),
+                        original_volume,
                     ],
                 }
             }
@@ -1900,3 +1939,104 @@ def test_real_source_guard_rejects_git_inspection_failure(tmp_path, failed_comma
     )
     assert observed.returncode != 0
     assert observed.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "",
+        "transient",
+        "missing",
+        "duplicate",
+        "save",
+        "import",
+        "inspect",
+        "bad-id",
+        "cri",
+        "json",
+        "mismatch",
+        "second",
+    ],
+)
+def test_native_image_import_fails_closed_and_verifies_both_ids(tmp_path, failure):
+    import os
+    import subprocess
+
+    source = PROOF.read_text()
+    loader = source[
+        source.index("load_real_processor_images() {") : source.index("main() {")
+    ]
+    shim = r"""
+set -euo pipefail
+CLUSTER_NAME=fixture
+FP_IMAGE=ue-netpol-fp:fixture
+DIAGNOSTIC_IMAGE=ue-netpol-diagnostic:fixture
+docker() {
+  printf '%s\n' "$*" >> "$WORK_DIR/calls"
+  case "$1 $2" in
+    'save --output')
+      [[ "$FAILURE" != save ]] || return 31
+      printf 'fixture archive' > "$3" ;;
+    'exec -i')
+      [[ "$*" == 'exec -i fixture-control-plane ctr --namespace=k8s.io images import --local --all-platforms --digests --snapshotter=overlayfs -' ]]
+      [[ "$(cat)" == 'fixture archive' ]]
+      [[ "$FAILURE" != import ]] || return 32 ;;
+    'image inspect')
+      [[ "$FAILURE" != inspect ]] || return 33
+      if [[ "$FAILURE" == bad-id ]]; then printf 'invalid'; else printf '%s' "$IMAGE_ID"; fi ;;
+    'exec fixture-control-plane')
+      [[ "$FAILURE" != cri ]] || return 34
+      if [[ "$4" == images ]]; then
+        [[ "$3 $4 $5 $6" == 'crictl images --output json' ]]
+        if [[ "$FAILURE" == json ]]; then printf 'invalid';
+        elif [[ "$FAILURE" == missing || ( "$FAILURE" == transient && ! -f "$WORK_DIR/seen" ) ]]; then
+          touch "$WORK_DIR/seen"; printf '{"images":[]}'
+        elif [[ "$FAILURE" == mismatch ]]; then
+          printf '{"images":[{"id":"wrong","repoTags":["docker.io/library/%s"]}]}' "$FP_IMAGE"
+        elif [[ "$FAILURE" == duplicate ]]; then
+          printf '{"images":[{"id":"%s","repoTags":["docker.io/library/%s"]},{"id":"%s","repoTags":["docker.io/library/%s"]}]}' "$IMAGE_ID" "$FP_IMAGE" "$IMAGE_ID" "$FP_IMAGE"
+        else printf '{"images":[{"id":"%s","repoTags":["docker.io/library/%s","docker.io/library/%s"]}]}' "$IMAGE_ID" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"; fi
+      else
+        [[ "$3 $4 $5 $6" == 'crictl inspecti --output json' ]]
+        if [[ "$FAILURE" == second && "$7" == "$DIAGNOSTIC_IMAGE" ]]; then
+          printf '{"status":{"id":"wrong"}}'
+        else printf '{"status":{"id":"%s"}}' "$IMAGE_ID"; fi
+      fi ;;
+    *) return 35 ;;
+  esac
+}
+uv() { "$TEST_PYTHON" "${@:4}"; }
+sleep() { printf "wait\n" >> "$WORK_DIR/waits"; }
+"""
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=shim + loader + "\nload_real_processor_images\nprintf completed\n",
+        env={
+            **os.environ,
+            "WORK_DIR": str(tmp_path),
+            "FAILURE": failure,
+            "IMAGE_ID": "sha256:" + "a" * 64,
+            "TEST_PYTHON": sys.executable,
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    success = failure in {"", "transient"}
+    assert (result.returncode == 0) == success
+    assert ("completed" in result.stdout) == success
+    if success:
+        calls = (tmp_path / "calls").read_text()
+        assert calls.count("crictl inspecti --output json") == 2
+        assert "ue-netpol-fp:fixture" in calls
+        assert "ue-netpol-diagnostic:fixture" in calls
+        assert not (tmp_path / "real-processor-images.tar").exists()
+    assert "kind load docker-image" not in source
+    assert "    load_real_processor_images\n" in source
+
+    if failure in {"missing", "transient"}:
+        assert (tmp_path / "waits").read_text().splitlines() == ["wait"] * (
+            29 if failure == "missing" else 1
+        )
+    else:
+        assert not (tmp_path / "waits").exists()

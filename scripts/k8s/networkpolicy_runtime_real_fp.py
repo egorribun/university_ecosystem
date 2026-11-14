@@ -46,6 +46,7 @@ from networkpolicy_runtime_temporal import (
     _object,
     bootstrap_temporal,
     compose_image,
+    secret_volume,
     wire_processor_temporal,
 )
 
@@ -148,7 +149,7 @@ def bootstrap_nats(root: Path, namespace: str, python_image: str) -> str:
                     },
                 ],
                 "volumes": [
-                    {"name": "auth", "secret": {"secretName": "netpol-nats-auth"}},
+                    secret_volume("auth", "netpol-nats-auth"),
                     {"name": "data", "emptyDir": {}},
                 ],
             },
@@ -461,7 +462,7 @@ def actual_processor_phase(
                 "FP_MINIO_SECRET_KEY_FILE": secrets.token_hex(32),
                 "FP_PROCESSING_CAPABILITY_SECRET_FILE": secrets.token_hex(32),
                 "FP_RSA_PUBLIC_KEY_FILE": public,
-                "FP_TEMPORAL_API_KEY_FILE": "unused-fixture-mount",
+                "FP_TEMPORAL_API_KEY_FILE": secrets.token_urlsafe(32),
                 "FP_REVOCATION_REDIS_URL_FILE": f"redis://:{quote(passwords[release], safe='')}@{release}-revocation-redis-master:6379/0",
             }
             materialize_processor_secrets(deployment, release, values, server)
@@ -514,9 +515,7 @@ def actual_processor_phase(
                             "volumeMounts": [_mount("grpc", "/grpc")],
                         }
                     ],
-                    "volumes": [
-                        {"name": "grpc", "secret": {"secretName": "netpol-grpc-client"}}
-                    ],
+                    "volumes": [secret_volume("grpc", "netpol-grpc-client")],
                 },
             )
             client_pod["metadata"]["labels"] = copy.deepcopy(gateway)

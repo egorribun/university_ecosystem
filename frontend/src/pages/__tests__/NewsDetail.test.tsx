@@ -1,4 +1,5 @@
 type _MockedModuleType1 = typeof import("@/hooks/useShare")
+type NewsApiModule = typeof import("@/api/news")
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -68,7 +69,7 @@ vi.mock("@/contexts/LanguageContext", () => ({
 }))
 
 vi.mock("@/api/news", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/news")>()),
+  ...(await importOriginal<NewsApiModule>()),
   deleteNews: mocks.deleteNews,
 }))
 

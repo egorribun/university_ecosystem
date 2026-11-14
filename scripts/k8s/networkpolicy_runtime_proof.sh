@@ -173,6 +173,41 @@ build_real_processor_images() {
   docker build -f "${WORK_DIR}/diagnostic.Dockerfile" -t "$DIAGNOSTIC_IMAGE" "$build_source"
 }
 
+
+load_real_processor_images() {
+  local archive="${WORK_DIR}/real-processor-images.tar" image expected observed attempt
+  # kind v0.31.0 rejects config v4 before import (nodeutils/util.go).
+  # Use the pinned node's native ctr instead, including unpack into overlayfs,
+  # the rootful kind node's snapshotter. Do not mutate containerd configuration.
+  docker save --output "$archive" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"
+  docker exec -i "${CLUSTER_NAME}-control-plane" ctr --namespace=k8s.io images import \
+    --local --all-platforms --digests --snapshotter=overlayfs - < "$archive"
+  # The CRI must resolve each exact tag to the locally built image config ID.
+  # Successful tar ingestion alone is not evidence that kubelet can use it.
+  for image in "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"; do
+    expected="$(docker image inspect --format '{{.Id}}' "$image")"
+    [[ "$expected" =~ ^sha256:[0-9a-f]{64}$ ]]
+    # Image-created events reach the CRI cache asynchronously. Wait only for a
+    # missing tag (at most 29 one-second sleeps/image); malformed output, command errors or
+    # an already visible wrong identity must fail immediately, never be retried.
+    for attempt in {1..30}; do
+      observed="$(docker exec "${CLUSTER_NAME}-control-plane" crictl images --output json |
+        uv run --frozen python -c 'import json,sys
+matches = [item["id"] for item in json.load(sys.stdin)["images"] if sys.argv[1] in item.get("repoTags", [])]
+if len(matches) > 1: raise ValueError("ambiguous imported image reference")
+print(matches[0] if matches else "")' "docker.io/library/${image}")"
+      [[ -z "$observed" || "$observed" == "$expected" ]]
+      [[ "$observed" != "$expected" ]] || break
+      [[ "$attempt" -lt 30 ]]
+      sleep 1
+    done
+    observed="$(docker exec "${CLUSTER_NAME}-control-plane" crictl inspecti --output json "$image" |
+      uv run --frozen python -c 'import json,sys; print(json.load(sys.stdin)["status"]["id"])')"
+    [[ "$observed" == "$expected" ]]
+  done
+  rm "$archive"
+}
+
 main() {
   require_platform
   install_tools
@@ -185,7 +220,7 @@ main() {
   add_link_local_address
   local -a real_processor_args=()
   if [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]]; then
-    kind load docker-image --name "$CLUSTER_NAME" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"
+    load_real_processor_images
     real_processor_args=(--real-processor-image "$FP_IMAGE" --diagnostic-image "$DIAGNOSTIC_IMAGE" --source-sha "$SOURCE_SHA")
   fi
 

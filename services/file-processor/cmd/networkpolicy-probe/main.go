@@ -58,11 +58,19 @@ func probe(ctx context.Context, input request) result {
 	if err != nil {
 		return result{Result: "setup-error"}
 	}
-	defer func() { _ = connection.Close() }()
+	return probeRPC(ctx, connection, input.Token)
+}
+
+func probeRPC(ctx context.Context, connection *grpc.ClientConn, token string) (observed result) {
+	defer func() {
+		if err := connection.Close(); err != nil {
+			observed = result{Result: "setup-error"}
+		}
+	}()
 	deadline, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	deadline = metadata.AppendToOutgoingContext(deadline, "authorization", "Bearer "+input.Token)
-	_, err = pb.NewFileProcessingServiceClient(connection).ProcessFile(deadline, &pb.ProcessFileRequest{})
+	deadline = metadata.AppendToOutgoingContext(deadline, "authorization", "Bearer "+token)
+	_, err := pb.NewFileProcessingServiceClient(connection).ProcessFile(deadline, &pb.ProcessFileRequest{})
 	// A healthy authenticated call must reach empty-request validation and return
 	// InvalidArgument. OK, transport errors and all other statuses are NOT success.
 	return result{Result: "grpc-status", Code: status.Code(err).String()}

@@ -235,6 +235,11 @@ def _mount(name: str, path: str) -> dict[str, Any]:
     return {"name": name, "mountPath": path, "readOnly": True}
 
 
+def secret_volume(name: str, resource_name: str) -> dict[str, Any]:
+    """Reference a Kubernetes Secret resource; never embed credential contents."""
+    return {"name": name, "secret": {"secretName": resource_name}}
+
+
 def _env(name: str, key: str) -> dict[str, Any]:
     return {
         "name": name,
@@ -489,8 +494,8 @@ def fixture_objects(
                 {"name": "rendered", "emptyDir": {"medium": "Memory"}},
                 {"name": "config", "configMap": {"name": "netpol-temporal-config"}},
                 {"name": "ca", "configMap": {"name": "netpol-temporal-ca"}},
-                {"name": "server", "secret": {"secretName": "netpol-temporal-tls"}},
-                {"name": "issuer", "secret": {"secretName": "netpol-issuer-tls"}},
+                secret_volume("server", "netpol-temporal-tls"),
+                secret_volume("issuer", "netpol-issuer-tls"),
             ],
         },
     )
@@ -580,16 +585,13 @@ def bootstrap_temporal(
         )
         # Worker credential is minted after readiness, never inherited from admin.
         stage = "worker-credential"
-        apply_objects(
-            [
-                _object(
-                    "Secret",
-                    "netpol-temporal-worker",
-                    namespace,
-                    stringData={"token": _token(signer, "default:write", 3600)},
-                )
-            ]
+        worker = _object(
+            "Secret",
+            "netpol-temporal-worker",
+            namespace,
+            stringData={"token": _token(signer, "default:write", 3600)},
         )
+        apply_objects([worker])
     except (
         OSError,
         ValueError,
@@ -606,7 +608,7 @@ def bootstrap_temporal(
         "result": "ready",
         "endpoint": "temporal:7233",
         "ca_configmap": "netpol-temporal-ca",
-        "worker_secret": "netpol-temporal-worker",
+        "worker_secret": worker["metadata"]["name"],
     }
 
 
