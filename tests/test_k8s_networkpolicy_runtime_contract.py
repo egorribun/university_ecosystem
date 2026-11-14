@@ -513,3 +513,55 @@ def test_harness_status_describes_the_hosted_run_without_accepting_findings() ->
     assert "k8s-networkpolicy-runtime.yml" in text
     assert "scripts/k8s/networkpolicy_runtime_proof.sh" in text
     assert "not accepted" in text.lower()
+
+
+@pytest.mark.parametrize(
+    "probe_id",
+    ("aud189-linklocal-fp", "aud189-linklocal-backend", "aud189-linklocal-backup"),
+)
+@pytest.mark.parametrize("failed_endpoint", ("target_ok", "control_ok"))
+def test_link_local_setup_failure_never_counts_as_policy_denial(
+    probe_id: str,
+    failed_endpoint: str,
+) -> None:
+    module = _rows_module()
+    baseline = {"target_ok": True, "control_ok": True, failed_endpoint: False}
+
+    def unexpected_probe(*_args: Any) -> dict[str, Any]:
+        pytest.fail("An unreachable baseline must not be evaluated as policy denial")
+
+    result = module.evaluate_row(
+        _rows_by_id()[probe_id], baseline, unexpected_probe, ""
+    )
+
+    assert result["verdict"] == "inconclusive"
+    assert result["reason"] == "baseline reachability failed before policy"
+
+
+@pytest.mark.parametrize(
+    "probe_id",
+    ("aud189-linklocal-fp", "aud189-linklocal-backend", "aud189-linklocal-backup"),
+)
+@pytest.mark.parametrize("failed_control", (0, 2))
+def test_link_local_denial_requires_both_live_controls(
+    probe_id: str,
+    failed_control: int,
+) -> None:
+    module = _rows_module()
+    observations = [
+        {"result": "connected"},
+        {"result": "timeout"},
+        {"result": "connected"},
+    ]
+    observations[failed_control] = {"result": "timeout"}
+    pending = iter(observations)
+
+    result = module.evaluate_row(
+        _rows_by_id()[probe_id],
+        {"target_ok": True, "control_ok": True},
+        lambda *_args: next(pending),
+        "",
+    )
+
+    assert result["verdict"] == "inconclusive"
+    assert "live same-destination control" in result["reason"]

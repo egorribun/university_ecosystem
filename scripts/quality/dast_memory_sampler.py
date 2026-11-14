@@ -148,15 +148,23 @@ def sample(
     return 0
 
 
-def _load_records(path: Path) -> list[dict[str, Any]]:
+def _load_records(path: Path) -> tuple[list[dict[str, Any]], bool]:
     records: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for index, line in enumerate(lines):
         if not line.strip():
             continue
-        record = json.loads(line)
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            # A killed sampler can leave its final write incomplete. Preserve
+            # prior samples, but never silently skip corruption in complete lines.
+            if index == len(lines) - 1 and not line.endswith("\n"):
+                return records, True
+            raise
         if isinstance(record, dict) and "error" not in record:
             records.append(record)
-    return records
+    return records, False
 
 
 def summarize_records(records: list[dict[str, Any]]) -> str:
@@ -199,7 +207,11 @@ def summarize_records(records: list[dict[str, Any]]) -> str:
 
 
 def summarize(path: Path) -> str:
-    return summarize_records(_load_records(path))
+    records, incomplete = _load_records(path)
+    summary = summarize_records(records)
+    if incomplete:
+        summary += "Ignored incomplete trailing sample.\n"
+    return summary
 
 
 def _parser() -> argparse.ArgumentParser:

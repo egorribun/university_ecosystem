@@ -218,3 +218,144 @@ def test_main_summarize_prints_summary(
     out = capsys.readouterr().out
     assert "zap: 7" in out
     assert "Minimum MemAvailable: 5 kB" in out
+
+
+def test_summarize_preserves_complete_samples_after_interrupted_write(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "telemetry.jsonl"
+    path.write_text(
+        json.dumps({"timestamp": "t", "mem_available_kb": 7, "oom_kill": 2})
+        + '\n{"timestamp": "interrupted',
+        encoding="utf-8",
+    )
+
+    text = summarize(path)
+
+    assert "1 samples" in text
+    assert "Minimum MemAvailable: 7 kB at t" in text
+    assert "Ignored incomplete trailing sample." in text
+
+
+@pytest.mark.parametrize("suffix", ['{"broken":\n', '{"broken":\n{}'])
+def test_summarize_rejects_corrupt_complete_lines(tmp_path: Path, suffix: str) -> None:
+    path = tmp_path / "telemetry.jsonl"
+    path.write_text("{}\n" + suffix, encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        summarize(path)
+
+
+def test_summarize_accepts_complete_final_record_without_newline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "telemetry.jsonl"
+    path.write_text('{"timestamp": "t", "mem_available_kb": 7}', encoding="utf-8")
+
+    text = summarize(path)
+
+    assert "1 samples" in text
+    assert "Ignored incomplete" not in text
+
+
+def test_process_status_ignores_invalid_rss() -> None:
+    assert parse_process_status("Name: java\nVmRSS: unknown\n") is None
+
+
+def test_top_processes_tolerates_disappearing_process(tmp_path: Path) -> None:
+    (tmp_path / "123").mkdir()
+    assert top_processes(tmp_path) == []
+
+
+@pytest.mark.parametrize("with_vmstat", [False, True])
+def test_take_sample_reads_available_kernel_fields(
+    tmp_path: Path,
+    with_vmstat: bool,
+) -> None:
+    from scripts.quality.dast_memory_sampler import take_sample
+
+    (tmp_path / "meminfo").write_text(MEMINFO, encoding="utf-8")
+    if with_vmstat:
+        (tmp_path / "vmstat").write_text(VMSTAT, encoding="utf-8")
+
+    record = take_sample(tmp_path)
+
+    assert record["mem_available_kb"] == 8192000
+    assert record["mem_total_kb"] == 16384000
+    assert record["swap_free_kb"] == 1024000
+    assert record["oom_kill"] == (3 if with_vmstat else None)
+    assert record["top_processes"] == []
+    assert isinstance(record["timestamp"], str)
+
+
+def test_sample_records_collection_error_without_private_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.quality import dast_memory_sampler as sampler
+
+    stop = tmp_path / "stop"
+    output = tmp_path / "telemetry.jsonl"
+
+    def unavailable() -> dict[str, object]:
+        raise OSError("private error detail")
+
+    monkeypatch.setattr(sampler, "take_sample", unavailable)
+    monkeypatch.setattr(sampler.time, "sleep", lambda _seconds: stop.touch())
+
+    assert sample(output, stop, 1, 60) == 0
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert set(record) == {"timestamp", "error"}
+    assert record["error"] == "OSError"
+    assert "private" not in output.read_text(encoding="utf-8")
+
+
+def test_summarize_ignores_blank_lines_and_non_object_records(tmp_path: Path) -> None:
+    path = tmp_path / "telemetry.jsonl"
+    path.write_text("\n  \n[]\n{}\n", encoding="utf-8")
+    assert "1 samples" in summarize(path)
+
+
+def test_main_sample_routes_arguments(tmp_path: Path) -> None:
+    output = tmp_path / "telemetry.jsonl"
+    stop = tmp_path / "stop"
+    stop.touch()
+
+    assert (
+        main(
+            [
+                "sample",
+                "--output",
+                str(output),
+                "--stop-file",
+                str(stop),
+                "--interval-seconds",
+                "1",
+                "--max-seconds",
+                "60",
+            ]
+        )
+        == 0
+    )
+    assert output.read_text(encoding="utf-8") == ""
+
+
+def test_script_entrypoint_summarizes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import runpy
+    import sys
+
+    from scripts.quality import dast_memory_sampler as sampler
+
+    path = tmp_path / "telemetry.jsonl"
+    path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [sampler.__file__, "summarize", str(path)])
+
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(sampler.__file__, run_name="__main__")
+
+    assert exit_info.value.code == 0
+    assert "1 samples" in capsys.readouterr().out
