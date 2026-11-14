@@ -19,7 +19,7 @@ import type { SettingsSectionProps } from "@/pages/settings/types"
 export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, loading: identityLoading } = useAuth()
 
   const {
     avatarSrc,
@@ -72,7 +72,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   size="sm"
                   variant="solid"
                   onClick={triggerAvatarPick}
-                  disabled={avatarBusy}
+                  disabled={avatarBusy || identityLoading}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.change")}
@@ -82,7 +82,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   variant="outline"
                   color="error"
                   onClick={removeAvatar}
-                  disabled={avatarBusy}
+                  disabled={avatarBusy || identityLoading}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.delete")}
