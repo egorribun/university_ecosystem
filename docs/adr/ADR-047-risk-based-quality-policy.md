@@ -2767,3 +2767,23 @@ source SHA still needs its own evidence.
 - **Accepted cost.** Coverage is bounded by time rather than exhaustive; a scan
   that never completes provided no evidence at all. Raise the bounds together
   with the outer budgets if a later run shows unused headroom.
+
+
+## Decisions recorded on 2026-11-14
+
+### Exact two-template imagePullSecrets historical compatibility
+
+The owner explicitly approved test-only compatibility for the current
+`file-processor-deployment.yaml` and `gateway-deployment.yaml` under
+`charts/university-ecosystem/templates/`. The adapter in
+`tests/test_verify_secrets_baseline.py` requires each exact current whole-file
+SHA-256, reverses exactly one complete imagePullSecrets string-list rendering
+hunk in memory, and requires the exact predecessor whole-file SHA-256 before
+running the unchanged historical checks. All other changes fail closed.
+
+This approval changes no scanner identity, ledger record, source pin in the
+existing historical chain, approval metadata or expiry. The 512 dispositions,
+242 baseline identities, 15 Semgrep rows, 27 Gitleaks fingerprints, 78 required
+context/app pairs and all thresholds remain unchanged. It authorizes no other
+source binding, including `scripts/live_stand.py`, and does not establish a
+passing scan, hosted check, merge or deployment.

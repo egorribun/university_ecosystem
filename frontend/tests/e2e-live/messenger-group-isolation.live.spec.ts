@@ -22,11 +22,16 @@ type GroupMessageEvent = {
   content?: string
   editedAt?: string
   deletedAt?: string
+  sequence?: number
+  replayed?: boolean
+  senderId?: string
+  messageChatId?: string
 }
 
 type SocketObservation = {
   roomJoins: string[]
   groupEvents: GroupMessageEvent[]
+  sessions: { roomJoins: string[]; resumeRooms: string[]; groupEvents: GroupMessageEvent[] }[]
 }
 
 function parseFrame(frame: { payload: string | Buffer }): unknown {
@@ -57,6 +62,15 @@ function findGroupMessageEvents(value: unknown, chatId?: string): GroupMessageEv
   }
   if (!isRecord(value)) return []
 
+  // Preserve sequence/replay metadata from the hub envelope, rather than
+  // recursively discarding it when descending into payload.
+  if (isRecord(value.payload)) {
+    return findGroupMessageEvents(value.payload, chatId).map((event) => ({
+      ...event,
+      sequence: typeof value.seq === "number" ? value.seq : undefined,
+      replayed: value.replayed === true,
+    }))
+  }
   const events: GroupMessageEvent[] = []
   const frameChatId = typeof value.chat_id === "string" ? value.chat_id : null
   const matchesChat = frameChatId !== null && (chatId === undefined || frameChatId === chatId)
@@ -67,6 +81,9 @@ function findGroupMessageEvents(value: unknown, chatId?: string): GroupMessageEv
         chatId: frameChatId,
         messageId: value.message.id,
         content: value.message.content,
+        senderId: typeof value.message.sender_id === "string" ? value.message.sender_id : undefined,
+        messageChatId:
+          typeof value.message.chat_id === "string" ? value.message.chat_id : undefined,
       })
     }
   } else if (
@@ -104,13 +121,31 @@ function findGroupMessageEvents(value: unknown, chatId?: string): GroupMessageEv
 }
 
 function observeSocket(page: Page): SocketObservation {
-  const observation: SocketObservation = { roomJoins: [], groupEvents: [] }
+  const observation: SocketObservation = { roomJoins: [], groupEvents: [], sessions: [] }
   page.on("websocket", (socket) => {
+    const session: SocketObservation["sessions"][number] = {
+      roomJoins: [],
+      resumeRooms: [],
+      groupEvents: [],
+    }
+    observation.sessions.push(session)
     socket.on("framesent", (frame) => {
-      observation.roomJoins.push(...findRoomJoins(parseFrame(frame)))
+      const value = parseFrame(frame)
+      const joins = findRoomJoins(value)
+      observation.roomJoins.push(...joins)
+      session.roomJoins.push(...joins)
+      if (
+        isRecord(value) &&
+        typeof value.resume_token === "string" &&
+        value.resume_token.length > 0
+      ) {
+        session.resumeRooms.push(...joins)
+      }
     })
     socket.on("framereceived", (frame) => {
-      observation.groupEvents.push(...findGroupMessageEvents(parseFrame(frame)))
+      const events = findGroupMessageEvents(parseFrame(frame))
+      observation.groupEvents.push(...events)
+      session.groupEvents.push(...events)
     })
   })
   return observation
@@ -228,6 +263,11 @@ test.describe("live messenger group isolation", () => {
       viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
     }
     const contexts: BrowserContext[] = []
+    const reconnectMessages: { id: string; content: string }[] = []
+    let ownedChatId: string | undefined
+    let failed = false
+    let failure: unknown
+    const cleanupErrors: unknown[] = []
 
     try {
       const teacherContext = await browser.newContext(contextOptions)
@@ -295,6 +335,7 @@ test.describe("live messenger group isolation", () => {
       }
 
       const chatId = group.id
+      ownedChatId = chatId
       expect(chatId).toBeTruthy()
 
       await page.goto(`/messenger/${chatId}`)
@@ -347,6 +388,119 @@ test.describe("live messenger group isolation", () => {
       }
       await expect(teacherLog.getByText(message, { exact: true })).toBeVisible()
       await expect(secondMemberLog.getByText(message, { exact: true })).toBeVisible()
+
+      // The initial delivery proves admission; a join frame alone does not.
+      const baseline = eventsForMessage(teacherSocket, chatId, sentMessage.id)
+      expect(baseline).toHaveLength(1)
+      expect(baseline[0]?.sequence ?? 0).toBeGreaterThan(0)
+      const previousSessionCount = teacherSocket.sessions.length
+      await teacherContext.setOffline(true)
+      await expect.poll(() => teacherPage.evaluate(() => navigator.onLine)).toBe(false)
+
+      const sendReconnectMessage = async (label: string) => {
+        const content = `live-group-reconnect-${label}-${crypto.randomUUID()}`
+        const responsePromise = page.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" &&
+            new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
+        )
+        await page.locator("#chat-message-input").fill(content)
+        await page.locator("#chat-send-btn").click()
+        const response = await responsePromise
+        expect(response.ok()).toBe(true)
+        const created = (await response.json()) as { id: string; content: string }
+        expect(created.id).toBeTruthy()
+        reconnectMessages.push({ id: created.id, content })
+        expect(created.content).toBe(content)
+        return { id: created.id, content }
+      }
+      const missed = [await sendReconnectMessage("first"), await sendReconnectMessage("second")]
+      const missedIds = missed.map((item) => item.id)
+      for (const item of missed) {
+        // A second online member is the positive delivery control during the outage.
+        await expect
+          .poll(() => eventsForMessage(secondMemberSocket, chatId, item.id))
+          .toHaveLength(1)
+        expect(eventsForMessage(teacherSocket, chatId, item.id)).toEqual([])
+        await expect(teacherLog.getByText(item.content, { exact: true })).toHaveCount(0)
+      }
+
+      const historyPromise = teacherPage.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
+      )
+      await teacherContext.setOffline(false)
+      await expect.poll(() => teacherPage.evaluate(() => navigator.onLine)).toBe(true)
+      await expect
+        .poll(() =>
+          teacherSocket.sessions
+            .slice(previousSessionCount)
+            .some((session) => session.resumeRooms.includes(chatId))
+        )
+        .toBe(true)
+      expect((await historyPromise).ok()).toBe(true)
+      const replayDeliveries = () =>
+        teacherSocket.sessions
+          .slice(previousSessionCount)
+          .flatMap((session) => session.groupEvents)
+          .filter((event) => event.chatId === chatId && missedIds.includes(event.messageId))
+      await expect.poll(replayDeliveries).toHaveLength(2)
+      const replay = replayDeliveries()
+      expect(replay.map((event) => event.messageId)).toEqual(missedIds)
+      for (const [index, event] of replay.entries()) {
+        expect(event).toMatchObject({
+          type: "new_message",
+          chatId,
+          messageChatId: chatId,
+          senderId: owner.id,
+          content: missed[index]!.content,
+          replayed: true,
+        })
+        expect(Number.isSafeInteger(event.sequence)).toBe(true)
+        expect(event.sequence!).toBeGreaterThan(
+          index === 0 ? baseline[0]!.sequence! : replay[0]!.sequence!
+        )
+      }
+
+      // Same bounded replay-drain interval as the direct-message acceptance test:
+      // the hub's pull consumer finishes after its final one-second empty fetch.
+      await teacherPage.waitForTimeout(2_500)
+      const after = await sendReconnectMessage("after")
+      await expect.poll(() => eventsForMessage(teacherSocket, chatId, after.id)).toHaveLength(1)
+      const afterFrame = eventsForMessage(teacherSocket, chatId, after.id)[0]!
+      expect(afterFrame).toMatchObject({
+        type: "new_message",
+        chatId,
+        messageChatId: chatId,
+        senderId: owner.id,
+        content: after.content,
+        replayed: false,
+      })
+      expect(afterFrame.sequence!).toBeGreaterThan(replay[1]!.sequence!)
+      const expectedIds = [sentMessage.id, ...missedIds, after.id]
+      for (const socket of [teacherSocket, secondMemberSocket]) {
+        await expect
+          .poll(() =>
+            socket.groupEvents
+              .filter(
+                (event) =>
+                  event.type === "new_message" &&
+                  event.chatId === chatId &&
+                  expectedIds.includes(event.messageId)
+              )
+              .map((event) => event.messageId)
+          )
+          .toEqual(expectedIds)
+      }
+      for (const log of [teacherLog, secondMemberLog]) {
+        for (const item of reconnectMessages) {
+          await expect(log.getByText(item.content, { exact: true })).toHaveCount(1)
+        }
+      }
+      for (const id of expectedIds) {
+        expect(eventsForMessage(nonMemberSocket, chatId, id)).toEqual([])
+      }
 
       const nonMemberAttempt = `live-group-outsider-${crypto.randomUUID()}`
       const nonMemberSendAttempt = await nonMemberPage.evaluate(
@@ -476,8 +630,57 @@ test.describe("live messenger group isolation", () => {
       }
 
       expect(eventsForMessage(nonMemberSocket, chatId, sentMessage.id)).toEqual([])
+      // Recheck after later edit/delete traffic, not only at the first replay arrival.
+      for (const item of reconnectMessages) {
+        expect(eventsForMessage(nonMemberSocket, chatId, item.id)).toEqual([])
+        expect(eventsForMessage(teacherSocket, chatId, item.id)).toHaveLength(1)
+      }
+    } catch (error) {
+      failed = true
+      failure = error
     } finally {
-      await Promise.all(contexts.map((context) => context.close()))
+      try {
+        // Delete only ids created by this run; never clear the reusable group.
+        for (const item of reconnectMessages) {
+          try {
+            const status = await page.evaluate(
+              async ({ chatId, messageId }) => {
+                const cookie = document.cookie
+                  .split(";")
+                  .map((part) => part.trim())
+                  .find((part) => part.startsWith("csrf_token="))
+                if (!cookie) return 0
+                const response = await fetch(`/api/v1/chats/${chatId}/messages/${messageId}`, {
+                  method: "DELETE",
+                  credentials: "same-origin",
+                  headers: {
+                    "X-CSRF-Token": decodeURIComponent(cookie.slice("csrf_token=".length)),
+                  },
+                })
+                return response.status
+              },
+              { chatId: ownedChatId!, messageId: item.id }
+            )
+            expect(status).toBe(200)
+          } catch (error) {
+            cleanupErrors.push(error)
+          }
+        }
+      } finally {
+        await Promise.all(
+          contexts.map((context) =>
+            context.close().catch((error: unknown) => cleanupErrors.push(error))
+          )
+        )
+      }
     }
+    if (failed && cleanupErrors.length > 0)
+      throw new AggregateError(
+        [failure, ...cleanupErrors],
+        "group acceptance and owned-message cleanup failed"
+      )
+    if (failed) throw failure
+    if (cleanupErrors.length > 0)
+      throw new AggregateError(cleanupErrors, "owned group-message cleanup failed")
   })
 })

@@ -1610,7 +1610,7 @@ def _fetch_jobs(
     if run_attempt is not None:
         _positive_integer(run_attempt, "run_attempt")
         endpoint += f"/attempts/{run_attempt}"
-    endpoint += "/jobs?per_page=100"
+    endpoint += "/jobs?per_page=25"
     # ``repository`` is validated by the caller and the endpoint is passed as
     # one argv element, so no shell interpretation is possible.  Pipes are
     # drained incrementally below: redirecting to TemporaryFile and checking

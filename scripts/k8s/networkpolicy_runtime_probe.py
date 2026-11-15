@@ -620,7 +620,16 @@ def main() -> int:
     parser.add_argument("--kubernetes-version", required=True)
     parser.add_argument("--node-image", required=True)
     parser.add_argument("--calico-sha256", required=True)
+    parser.add_argument("--real-processor-image")
+    parser.add_argument("--diagnostic-image")
+    parser.add_argument("--source-sha")
     args = parser.parse_args()
+    if any(
+        (args.real_processor_image, args.diagnostic_image, args.source_sha)
+    ) and not all((args.real_processor_image, args.diagnostic_image, args.source_sha)):
+        parser.error(
+            "all source-bound real-processor image arguments are required together"
+        )
 
     started = datetime.now(UTC).isoformat()
     base_image = runtime_base_image()
@@ -647,8 +656,17 @@ def main() -> int:
     all_pass = (
         rows_pass and app_pass and baseline_pass and resolver["verdict"] == "pass"
     )
+    # Original40 rows/baselines remain independent and unmodified. Real process
+    # setup cannot overwrite their measured observations or turn failure to pass.
+    matrix_pass = all_pass
+    real_processor = {
+        "verdict": "not_run",
+        "reason": "real-process images not provided",
+    }
+    remaining = not_run_items()
     receipt = {
         "schema": RECEIPT_SCHEMA,
+        "source_sha": args.source_sha,
         "started_utc": started,
         "finished_utc": datetime.now(UTC).isoformat(),
         "cluster": {
@@ -677,13 +695,54 @@ def main() -> int:
         "policies": policy_summary(applied),
         "probes": results,
         "app_level": app_level,
-        "not_run": not_run_items(),
+        "not_run": remaining,
+        "matrix_verdict": "pass" if matrix_pass else "fail",
+        "real_processor": real_processor,
         "verdict": "pass" if all_pass else "fail",
     }
-    args.receipt.parent.mkdir(parents=True, exist_ok=True)
-    args.receipt.write_text(
-        json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+
+    def persist_receipt() -> None:
+        args.receipt.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.receipt.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        temporary.replace(args.receipt)
+
+    if args.real_processor_image:
+        # Persist completed matrix evidence before long startup/refresh waits.
+        # An interrupted real phase leaves an explicitly non-positive receipt.
+        receipt["matrix_finished_utc"] = receipt["finished_utc"]
+        receipt["finished_utc"] = None
+        receipt["real_processor"] = {
+            "verdict": "in_progress",
+            "scope": "probe-a both replicas; real probe-b not_run",
+        }
+        receipt["verdict"] = "inconclusive"
+        persist_receipt()
+        from networkpolicy_runtime_real_fp import actual_processor_phase
+
+        real_processor = actual_processor_phase(
+            ROOT,
+            rendered,
+            pods,
+            passwords,
+            python_image=base_image,
+            processor_image=args.real_processor_image,
+            diagnostic_image=args.diagnostic_image,
+            source_sha=args.source_sha,
+        )
+        all_pass = matrix_pass and real_processor["verdict"] == "pass"
+        receipt["real_processor"] = real_processor
+        if real_processor["verdict"] == "pass":
+            receipt["not_run"] = [
+                item
+                for item in remaining
+                if item["finding"] not in {"AUD-169", "AUD-188"}
+            ]
+        receipt["finished_utc"] = datetime.now(UTC).isoformat()
+        receipt["verdict"] = "pass" if all_pass else "fail"
+    persist_receipt()
     failed = [r["probe_id"] for r in results if r["verdict"] != "pass"]
     print(
         f"probes={len(results)} failed_or_inconclusive={len(failed)} verdict={receipt['verdict']}"

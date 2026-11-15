@@ -184,6 +184,7 @@ and supernets covering them; narrower configured subnets remain eligible peers.
     "broadIPv6HalfSpace" $isBroadIPv6HalfSpace
     "broadIPv6UniqueLocal" $broadIPv6UniqueLocal
     "broadIPv6GlobalUnicast" $broadIPv6GlobalUnicast
+    "ipv4Mapped" $isMapped
     "mappedNonLoopback" $isMappedNonLoopback
     "mappedUniversal" $isMappedUniversal
   -}}
@@ -221,6 +222,7 @@ and supernets covering them; narrower configured subnets remain eligible peers.
     "broadIPv6HalfSpace" false
     "broadIPv6UniqueLocal" false
     "broadIPv6GlobalUnicast" false
+    "ipv4Mapped" false
     "mappedNonLoopback" false
     "mappedUniversal" false
   -}}
@@ -314,13 +316,14 @@ and supernets covering them; narrower configured subnets remain eligible peers.
 
 {{/*
 Public frontend origin. An explicit backend.config.frontendOrigin wins;
-otherwise it is derived from the first ingress host. Empty (the application
-falls back to its local development default) when neither is configured.
+otherwise an enabled Ingress or Gateway API edge derives it from the first
+configured ingress host. Without either source, the application's local
+development default remains in effect.
 */}}
 {{- define "university-ecosystem.frontendOrigin" -}}
 {{- if .Values.backend.config.frontendOrigin -}}
 {{- .Values.backend.config.frontendOrigin | trimSuffix "/" -}}
-{{- else if and .Values.ingress.enabled .Values.ingress.hosts -}}
+{{- else if and (or .Values.ingress.enabled .Values.gatewayApi.enabled) .Values.ingress.hosts -}}
 {{- printf "https://%s" (index .Values.ingress.hosts 0).host -}}
 {{- end -}}
 {{- end }}

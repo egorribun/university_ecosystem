@@ -798,10 +798,14 @@ const unsubscribeOnlyNativeEndpoint = async (
       },
       body: JSON.stringify({ endpoint }),
     })
-    const body = (await response.json().catch(() => null)) as { removed?: unknown } | null
+    const body = (await response.json().catch(() => null)) as {
+      ok?: unknown
+      removed?: unknown
+    } | null
     const browserRevoked = subscription ? await subscription.unsubscribe() : true
     return {
-      serverRemoved: response.ok && body?.removed === true,
+      // The server also confirms absence when provider cleanup removed the row first.
+      serverRemoved: response.ok && body?.ok === true && typeof body.removed === "boolean",
       browserRevoked,
     }
   }, knownEndpoint)

@@ -307,7 +307,7 @@ test("logout fixture reads only Retry-After and the two rate-limit headers", asy
 })
 
 test("HTTP diagnostic helper has no browser, response, environment, or artifact access", async () => {
-  const source = await readFile(helperUrl, "utf8")
+  const source = (await readFile(helperUrl, "utf8")).split("// Stage A:")[0]
   assert.doesNotMatch(
     source,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
@@ -537,4 +537,254 @@ test("role-denial probes report status before preserving the strict forbidden as
     assert.match(denial.slice(assertion).split("\n")[0], /\.toBe\(403\)/u)
   }
   assert.doesNotMatch(denial, /Retry|retry|waitForTimeout|expect\.poll/u)
+})
+
+// Pure Stage A tests: no reporter, browser, subprocess, environment or network.
+// Catch lost immutable scope, unsafe scalar serialization and exhausted bounds.
+test("Stage A operation identity stays immutable across overlapping scopes", async () => {
+  const module = await import(helperUrl.href + "?stage-a-scopes")
+  assert.equal(typeof module.createLiveOperationScope, "function")
+  const output = []
+  const emit = (line) => output.push(line)
+  const input = {
+    project: "desktop",
+    source: "chat-attachment-isolation.live.spec.ts",
+    line: 229,
+    retry: 0,
+  }
+  const first = module.createLiveOperationScope(input, emit)
+  const second = module.createLiveOperationScope({ ...input, project: "mobile", retry: 1 }, emit)
+  const a = first.begin("auth-login", "setup")
+  const b = second.begin("chat-attachment-create", "body")
+  input.project = "private-value"
+  b.finish(502, 1, 1, 120001)
+  a.finish(null, 0, 0, 17)
+  a.finish(503, 1, 1, 20)
+  assert.deepEqual(output, [
+    "UE_LIVE_HTTP_OPERATION_V2 project=mobile source=chat-attachment-isolation.live.spec.ts line=229 retry=1 ordinal=1 phase=body operation=chat-attachment-create outcome=response status=502 elapsed_ms=120000 saturated=1 requests=1 responses=1\n",
+    "UE_LIVE_HTTP_OPERATION_V2 project=desktop source=chat-attachment-isolation.live.spec.ts line=229 retry=0 ordinal=1 phase=setup operation=auth-login outcome=no-response status=none elapsed_ms=17 saturated=0 requests=0 responses=0\n",
+  ])
+})
+
+test("Stage A rejects unsafe values and contains synchronous sink exceptions", async () => {
+  const module = await import(helperUrl.href + "?stage-a-invalid")
+  assert.equal(typeof module.createLiveOperationScope, "function")
+  const output = []
+  const emit = (line) => output.push(line)
+  for (const change of [
+    { source: "private-value" },
+    { line: 223 },
+    { retry: 2 },
+    { project: "desktop\n" },
+  ]) {
+    module
+      .createLiveOperationScope(
+        {
+          project: "desktop",
+          source: "chat-attachment-isolation.live.spec.ts",
+          line: 229,
+          retry: 0,
+          ...change,
+        },
+        emit
+      )
+      .begin("auth-login", "setup")
+      .finish(502, 1, 1, 1)
+  }
+  assert.ok(
+    output.every((line) => line === "UE_LIVE_HTTP_OPERATION_V2 completeness=invalid-scope\n")
+  )
+  const scope = module.createLiveOperationScope(
+    { project: "desktop", source: "chat-attachment-isolation.live.spec.ts", line: 229, retry: 0 },
+    emit
+  )
+  for (const value of [NaN, Infinity, -1, "502", {}, 99, 600])
+    scope.begin("auth-login", "setup").finish(value, 1, 1, 1)
+  assert.ok(output.every((line) => !line.includes("status=")))
+  const primary = new Error("private-value")
+  const failing = module.createLiveOperationScope(
+    { project: "mobile", source: "chat-attachment-isolation.live.spec.ts", line: 229, retry: 1 },
+    () => {
+      throw primary
+    }
+  )
+  assert.doesNotThrow(() => failing.begin("auth-login", "cleanup").finish(502, 1, 1, 1))
+})
+
+test("Stage A separately bounds case attempts and worker emission", async () => {
+  const module = await import(helperUrl.href + "?stage-a-budget")
+  assert.equal(typeof module.createLiveOperationScope, "function")
+  const output = []
+  const emit = (line) => output.push(line)
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const scope = module.createLiveOperationScope(
+      { project: "desktop", source: "chat-attachment-isolation.live.spec.ts", line: 229, retry: 0 },
+      emit
+    )
+    for (let index = 0; index < 20; index += 1)
+      scope.begin("auth-login", "setup").finish(502, 2, 2, 1)
+  }
+  const rows = output.filter((line) => line.includes("status="))
+  assert.equal(rows.length, 104)
+  assert.equal(output.filter((line) => line.includes("completeness=truncated")).length, 1)
+  assert.ok(rows.every((line) => line.length <= 512 && !/ordinal=(17|18|19|20) /.test(line)))
+  assert.ok(rows.every((line) => line.endsWith("requests=many responses=many\n")))
+})
+
+test("Stage A boundaries retain only closed scalar observations", async () => {
+  const module = await import(helperUrl.href + "?stage-a-boundaries")
+  const output = []
+  const scope = module.createLiveOperationScope(
+    { project: "desktop", source: "chat-attachment-isolation.live.spec.ts", line: 229, retry: 0 },
+    (line) => output.push(line)
+  )
+  for (const status of [100, 599]) scope.begin("auth-login", "cleanup").finish(status, 1, 1, 0)
+  scope.begin("chat-attachment-create", "body").finish(502, 0, 1, 120000)
+  scope.begin("auth-login", "setup").finish(null, 1, 0, 0.9)
+  for (const values of [
+    [502, -1, 1, 0],
+    [502, 1, NaN, 0],
+    [502, 1, 0, 0],
+    [null, 1, 1, 0],
+    [502, 1, 1, Infinity],
+  ]) {
+    scope.begin("auth-login", "setup").finish(...values)
+  }
+  for (const [operation, phase] of [
+    ["private-value", "setup"],
+    ["auth-login", "body"],
+    ["chat-attachment-create", "cleanup"],
+    ["auth-login", "private-value"],
+  ])
+    scope.begin(operation, phase).finish(502, 1, 1, 0)
+  const rows = output.filter((line) => line.includes("status="))
+  assert.equal(rows.length, 4)
+  assert.ok(rows[0].includes("status=100 elapsed_ms=0 saturated=0"))
+  assert.ok(rows[1].includes("status=599 elapsed_ms=0 saturated=0"))
+  assert.ok(rows[2].endsWith("elapsed_ms=120000 saturated=0 requests=0 responses=1\n"))
+  assert.ok(rows[3].endsWith("status=none elapsed_ms=0 saturated=0 requests=1 responses=0\n"))
+  assert.ok(output.every((line) => !line.includes("private-value")))
+})
+
+test("Stage A malformed identity cannot introduce a fixture failure", async () => {
+  const module = await import(helperUrl.href + "?stage-a-accessors")
+  const output = []
+  for (const identity of [
+    null,
+    undefined,
+    {
+      get project() {
+        throw Error("private-value")
+      },
+    },
+  ]) {
+    assert.doesNotThrow(() =>
+      module
+        .createLiveOperationScope(identity, (line) => output.push(line))
+        .begin("auth-login", "setup")
+        .finish(502, 1, 1, 0)
+    )
+  }
+  assert.deepEqual(output, ["UE_LIVE_HTTP_OPERATION_V2 completeness=invalid-scope\n"])
+})
+
+test("Stage A helper access boundary excludes browser, network and private data APIs", async () => {
+  const { default: ts } = await import("typescript")
+  const source = "// Stage A:" + (await readFile(helperUrl, "utf8")).split("// Stage A:")[1]
+  const deniedNames = new Set([
+    "request",
+    "response",
+    "page",
+    "browser",
+    "context",
+    "fetch",
+    "XMLHttpRequest",
+    "WebSocket",
+    "URL",
+    "require",
+    "console",
+    "globalThis",
+    "global",
+    "window",
+    "document",
+  ])
+  const deniedMembers = new Set([
+    "json",
+    "text",
+    "screenshot",
+    "storageState",
+    "attach",
+    "body",
+    "headers",
+  ])
+  const violatesBoundary = (input) => {
+    const tree = ts.createSourceFile(
+      "diagnostic.ts",
+      input,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    )
+    let denied = tree.parseDiagnostics.length !== 0
+    const visit = (node) => {
+      if (
+        ts.isImportDeclaration(node) ||
+        ts.isImportEqualsDeclaration(node) ||
+        node.kind === ts.SyntaxKind.ImportKeyword
+      )
+        denied = true
+      if (ts.isIdentifier(node) && deniedNames.has(node.text)) denied = true
+      if (ts.isIdentifier(node) && node.text === "process") {
+        const stdout = node.parent
+        const write = stdout?.parent
+        const call = write?.parent
+        if (!(
+          ts.isPropertyAccessExpression(stdout) &&
+          stdout.expression === node &&
+          stdout.name.text === "stdout" &&
+          ts.isPropertyAccessExpression(write) &&
+          write.expression === stdout &&
+          write.name.text === "write" &&
+          ts.isCallExpression(call) &&
+          call.expression === write
+        ))
+          denied = true
+      }
+      if (ts.isPropertyAccessExpression(node) && deniedMembers.has(node.name.text)) denied = true
+      if (
+        ts.isElementAccessExpression(node) &&
+        ts.isStringLiteral(node.argumentExpression) &&
+        deniedMembers.has(node.argumentExpression.text)
+      )
+        denied = true
+      ts.forEachChild(node, visit)
+    }
+    visit(tree)
+    return denied
+  }
+  assert.equal(violatesBoundary(source), false)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
+  // Inspect code identifiers, not protocol literals; aliases cannot hide their source.
+  for (const added of [
+    "process.env.PRIVATE_VALUE",
+    "process['env'].PRIVATE_VALUE",
+    "const hidden = process; hidden.env.PRIVATE_VALUE",
+    "page.context()",
+    "request.get('private-value')",
+    "request.post('private-value')",
+    "response.body()",
+    "response.headers()",
+    "response?.headers()",
+    "response['body']()",
+    "const hidden = response; hidden.body()",
+    "const { body: hidden } = response; hidden()",
+    "globalThis['request'].get('private-value')",
+    "fetch('private-value')",
+    "value.json()",
+    "value['json']()",
+    "import 'private-value'",
+    "import('private-value')",
+  ])
+    assert.equal(violatesBoundary(source + "\n" + added), true)
+  assert.equal(violatesBoundary(source + '\nconst safe = "response request process.env"'), false)
 })

@@ -161,7 +161,7 @@ test("the SSR and static HTML callers derive the option from the request headers
   )
   assert.equal(
     prodCallers?.length,
-    2,
-    "the static HTML and the 404 document both derive the option"
+    3,
+    "the static HTML, 404 and 500 documents all derive the option"
   )
 })

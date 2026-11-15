@@ -35,7 +35,9 @@ spec:
               type: RuntimeDefault
           {{- with .Values.global.imagePullSecrets }}
           imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
+            {{- range . }}
+            - name: {{ . | quote }}
+            {{- end }}
           {{- end }}
           initContainers:
             - name: database-dump

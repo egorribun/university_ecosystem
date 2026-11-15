@@ -95,3 +95,50 @@ test("the desktop spacing diagnostic emits bounded geometry only on failing samp
   assert.match(spec, /sample\.settingsRight > sample\.contentRight \+ 1/u)
   assert.match(spec, /sample\.scrollWidth > sample\.clientWidth \+ 1/u)
 })
+
+// Bottom navigation and the drawer share the production navbar shell. Keep
+// their rapid-input acceptance contract in this existing CI entrypoint.
+test("mobile navigation preserves native rapid input, final content, and history assertions", async () => {
+  const navigationSpec = await readFile(
+    new URL("./footer-bottom-navigation.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  assert.match(navigationSpec, /for \(const width of \[390, 360\]\)/u)
+  assert.match(
+    navigationSpec,
+    /await verifyRapidMobileNavigation\(page, testInfo\.project\.use\.hasTouch === true\)/u
+  )
+  assert.equal((navigationSpec.match(/^test\(/gmu) ?? []).length, 2)
+  const rapid = navigationSpec.slice(
+    navigationSpec.indexOf("async function verifyRapidMobileNavigation")
+  )
+  assert.match(
+    rapid,
+    /const rapidPaths = \["\/events", "\/schedule", "\/profile", "\/news"\] as const/u
+  )
+  const burst = rapid.slice(
+    rapid.indexOf("for (const point of points)"),
+    rapid.indexOf('await expectCurrentRoute("/news")')
+  )
+  assert.match(burst, /await page\.touchscreen\.tap\(point\.x, point\.y\)/u)
+  assert.match(burst, /await page\.mouse\.click\(point\.x, point\.y\)/u)
+  assert.doesNotMatch(burst, /expect|waitFor|goto|evaluate|locator|boundingBox/u)
+  assert.match(rapid, /a\[aria-current="page"\].*\.toHaveCount\(1\)/u)
+  assert.match(rapid, /new URL\(page\.url\(\)\)\.pathname\)\.toBe\(path\)/u)
+  assert.match(rapid, /path === "\/news" \? newsHeading : eventsTabs\)\.toBeVisible\(\)/u)
+  assert.match(rapid, /path === "\/news" \? eventsTabs : newsHeading\)\.toHaveCount\(0\)/u)
+  assert.match(rapid, /activation < 2/u)
+  assert.match(rapid, /window\.history\.length\)\)\.toBe\(historyLength\)/u)
+  assert.match(rapid, /await drawerEvents\.tap\(\)/u)
+  assert.match(rapid, /await page\.goBack\(\)\s+await expectCurrentRoute\("\/news"\)/u)
+  assert.match(rapid, /await page\.goForward\(\)\s+await expectCurrentRoute\("\/events"\)/u)
+  assert.equal((rapid.match(/await expect\(drawer\)\.toHaveCount\(0\)/gu) ?? []).length, 3)
+  assert.match(
+    rapid,
+    /consoleErrorCount, "rapid navigation must not emit console errors"\)\.toBe\(0\)/u
+  )
+  assert.doesNotMatch(
+    rapid,
+    /waitForTimeout|setTimeout|dispatchEvent\(|\.route\(|test\.skip|setDefaultTimeout|test\.setTimeout/u
+  )
+})

@@ -3235,15 +3235,71 @@ def _validated_reconnect_diagnostic(value: object) -> dict[str, object] | None:
     return {key: record[key] for key in _RECONNECT_KEYS}
 
 
+_FORWARDING_KEYS = (
+    "schema",
+    "scenario",
+    "project",
+    "attempt",
+    "sockets",
+    "joinSentSockets",
+    "openJoinSentSockets",
+    "sourceFrames",
+    "sourceFramesAfterJoinSent",
+    "sourceAccepted",
+    "socketsCapped",
+    "framesCapped",
+)
+
+
+def _validated_forwarding_diagnostic(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _FORWARDING_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 2:
+        return None
+    if record["scenario"] != "forwarding-source-receive" or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not _reconnect_integer(record["attempt"], 1):
+        return None
+    if any(
+        not _reconnect_integer(record[key], 32)
+        for key in (
+            "sockets",
+            "joinSentSockets",
+            "openJoinSentSockets",
+            "sourceFrames",
+            "sourceFramesAfterJoinSent",
+        )
+    ):
+        return None
+    if any(
+        type(record[key]) is not bool
+        for key in ("sourceAccepted", "socketsCapped", "framesCapped")
+    ):
+        return None
+    if (
+        not record["openJoinSentSockets"]
+        <= record["joinSentSockets"]
+        <= record["sockets"]
+        or record["sourceFramesAfterJoinSent"] > record["sourceFrames"]
+    ):
+        return None
+    return {key: record[key] for key in _FORWARDING_KEYS}
+
+
 def _live_playwright_reconnect_diagnostics(
     output: str,
     *,
     retained: bool = False,
 ) -> list[dict[str, object]]:
-    """Accept complete literal-newline records only, never reporter fragments."""
+    """Accept complete records under the legacy transport label, not a reconnect claim.
+
+    Schema 1 remains reconnect evidence; schema 2 names initial forwarding receipt.
+    """
     prefix = "live E2E reconnect " if retained else "UE_LIVE_RECONNECT_V1 "
     records: list[dict[str, object]] = []
-    seen: set[tuple[object, object]] = set()
+    seen: set[tuple[object, ...]] = set()
     for raw_line in output.split("\n")[:-1]:
         line = raw_line.removesuffix("\r")
         if not line.startswith(prefix) or not line.isprintable():
@@ -3256,12 +3312,14 @@ def _live_playwright_reconnect_diagnostics(
                 object_pairs_hook=_auth_diag_json_object,
                 parse_constant=_reject_auth_diag_json_constant,
             )
-            record = _validated_reconnect_diagnostic(value)
+            record = _validated_reconnect_diagnostic(
+                value
+            ) or _validated_forwarding_diagnostic(value)
         except (ValueError, RecursionError):
             continue
         if record is None:
             continue
-        identity = (record["project"], record["attempt"])
+        identity = (record["scenario"], record["project"], record["attempt"])
         if identity in seen:
             continue
         seen.add(identity)
@@ -3269,3 +3327,206 @@ def _live_playwright_reconnect_diagnostics(
         if len(records) == 4:
             break
     return records
+
+
+# Stage A: static literal declarations only; generated declarations are unsupported.
+_HTTP_OPERATION_CASE_LINES = {
+    "activity-dashboard.live.spec.ts": (22,),
+    "activity-summary.live.spec.ts": (148,),
+    "admin-audit-rbac.live.spec.ts": (3,),
+    "admin-feature-flags-rbac.live.spec.ts": (3,),
+    "admin-notifications-rbac.live.spec.ts": (27,),
+    "admin-stories-smoke.live.spec.ts": (8,),
+    "admin-users-rbac.live.spec.ts": (55,),
+    "aud178-reset-referer-csp.live.spec.ts": (124,),
+    "auth-login-lockout.live.spec.ts": (40,),
+    "auth-roles.live.spec.ts": (33, 210, 228),
+    "avatar-persistence.live.spec.ts": (173,),
+    "chat-attachment-isolation.live.spec.ts": (229,),
+    "core-a11y-live.live.spec.ts": (37,),
+    "email-otp-mfa-login.live.spec.ts": (378,),
+    "email-otp-verification.live.spec.ts": (102,),
+    "events-tab-keyboard.live.spec.ts": (3,),
+    "footer-bottom-navigation.live.spec.ts": (98, 282),
+    "map-gesture-isolation.live.spec.ts": (178, 209, 248),
+    "map-zoom-longtask.live.spec.ts": (116,),
+    "messenger-a11y.live.spec.ts": (5,),
+    "messenger-focus-trap.live.spec.ts": (3,),
+    "messenger-group-isolation.live.spec.ts": (254,),
+    "messenger-keyboard-focus.live.spec.ts": (58, 140),
+    "messenger-membership-revocation.live.spec.ts": (317,),
+    "messenger-realtime.live.spec.ts": (260, 417, 864, 1105, 1342, 1669, 2033),
+    "messenger-reconnect-ordering.live.spec.ts": (332,),
+    "messenger-reconnect.live.spec.ts": (261,),
+    "messenger-unread-read.live.spec.ts": (322,),
+    "navbar-layout-stability.live.spec.ts": (267, 375, 438, 476),
+    "new-chat-hit-targets.live.spec.ts": (3,),
+    "news-responsive-matrix.live.spec.ts": (336,),
+    "news-scroll-restoration.live.spec.ts": (304,),
+    "not-found-i18n.live.spec.ts": (11, 65),
+    "notification-in-app.live.spec.ts": (293,),
+    "notification-preferences.live.spec.ts": (217,),
+    "notification-topics-delivery.live.spec.ts": (1046,),
+    "password-reset.live.spec.ts": (129,),
+    "profile-csrf.live.spec.ts": (99,),
+    "profile-persistence.live.spec.ts": (102, 302),
+    "push-delivery.live.spec.ts": (435, 533, 810),
+    "push-permission-default.live.spec.ts": (17,),
+    "push-permission-denied.live.spec.ts": (44,),
+    "push-subscription.live.spec.ts": (115,),
+    "pwa-offline-shell.live.spec.ts": (239, 323),
+    "register-double-submit.live.spec.ts": (42,),
+    "schedule-200-equivalent-reflow.live.spec.ts": (5,),
+    "schedule-grid-keyboard.live.spec.ts": (5,),
+    "schedule-hydration-i18n.live.spec.ts": (87, 91),
+    "search-dialog-keyboard.live.spec.ts": (9, 62, 212, 219, 226),
+    "settings-password-change-rollback.live.spec.ts": (141,),
+    "settings-radio-focus.live.spec.ts": (20, 371, 444),
+    "settings-tabs-keyboard.live.spec.ts": (5,),
+    "settings-theme-roundtrip.live.spec.ts": (75,),
+    "ssr-hydration-i18n.live.spec.ts": (442, 454, 468),
+    "story-viewer-keyboard.live.spec.ts": (7,),
+    "story-viewer-reduced-motion.live.spec.ts": (15,),
+    "totp-recovery.live.spec.ts": (325,),
+    "zzz-aud174-prehydration-caddy-log.live.spec.ts": (8,),
+}
+_HTTP_OPERATION_PREFIX = "UE_LIVE_HTTP_OPERATION_V2 "
+_HTTP_OPERATION_LIMIT = 104
+_HTTP_OPERATION_BYTES_LIMIT = 53_248
+_HTTP_OPERATION_LINE = re.compile(
+    r"project=(?P<project>desktop|mobile) source=(?P<source>[a-z0-9-]+\.live\.spec\.ts) "
+    r"line=(?P<line>[1-9][0-9]{0,4}) retry=(?P<retry>0|1) "
+    r"ordinal=(?P<ordinal>[1-9]|1[0-6]) phase=(?P<phase>setup|body|cleanup) "
+    r"operation=(?P<operation>auth-login|chat-attachment-create) "
+    r"outcome=(?P<outcome>response|no-response) status=(?P<status>[1-5][0-9]{2}|none) "
+    r"elapsed_ms=(?P<elapsed_ms>0|[1-9][0-9]{0,5}) saturated=(?P<saturated>0|1) "
+    r"requests=(?P<requests>0|1|many) responses=(?P<responses>0|1|many)"
+)
+
+
+def _live_playwright_http_operations(output: str) -> dict[str, object]:
+    """Retain bounded case-attempt observations, never infer stream or service completeness.
+
+    Worker-local emission limits do not establish a run-wide bound. This consumer
+    independently caps retention across all worker output; malformed/partial rows
+    and explicit producer markers are surfaced using closed scalar categories.
+    """
+    records: list[dict[str, object]] = []
+    seen: dict[tuple[object, ...], dict[str, object]] = {}
+    attempt_counts: dict[tuple[object, ...], int] = {}
+    attempt_ordinals: set[tuple[object, ...]] = set()
+    completeness = "unavailable"
+    correlation = "unambiguous"
+    protocol_bytes = 0
+    cursor = 0
+    while cursor < len(output):
+        end = output.find("\n", cursor)
+        terminated = end != -1
+        if not terminated:
+            end = len(output)
+        # Inspect the prefix without allocating an arbitrary-length raw line.
+        relevant = output.startswith(_HTTP_OPERATION_PREFIX, cursor)
+        size = end - cursor + int(terminated)
+        if not relevant:
+            cursor = end + 1
+            continue
+        if completeness == "unavailable":
+            completeness = "unverified"
+        protocol_bytes += size
+        if protocol_bytes > _HTTP_OPERATION_BYTES_LIMIT:
+            completeness = "truncated"
+            break
+        if not terminated or size > 512:
+            completeness = "incomplete" if completeness != "truncated" else completeness
+            cursor = end + 1
+            continue
+        line = output[cursor:end].removesuffix("\r")
+        cursor = end + 1
+        if not line.isascii() or not line.isprintable():
+            completeness = "incomplete" if completeness != "truncated" else completeness
+            continue
+        payload = line[len(_HTTP_OPERATION_PREFIX) :]
+        if payload in (
+            "completeness=truncated",
+            "completeness=invalid-scope",
+            "completeness=unavailable",
+        ):
+            if payload == "completeness=truncated":
+                completeness = "truncated"
+            elif completeness != "truncated":
+                completeness = "incomplete"
+            continue
+        match = _HTTP_OPERATION_LINE.fullmatch(payload)
+        if match is None:
+            completeness = "incomplete" if completeness != "truncated" else completeness
+            continue
+        record: dict[str, object] = dict(match.groupdict())
+        for field in ("line", "retry", "ordinal", "elapsed_ms", "saturated"):
+            record[field] = int(match[field])
+        record["status"] = None if match["status"] == "none" else int(match["status"])
+        valid = (
+            record["line"] in _HTTP_OPERATION_CASE_LINES.get(match["source"], ())
+            and int(match["elapsed_ms"]) <= 120_000
+            and (not record["saturated"] or record["elapsed_ms"] == 120_000)
+            and (
+                (
+                    record["outcome"] == "response"
+                    and record["status"] is not None
+                    and record["responses"] != "0"
+                )
+                or (
+                    record["outcome"] == "no-response"
+                    and record["status"] is None
+                    and record["responses"] == "0"
+                )
+            )
+            and (
+                (
+                    record["operation"] == "auth-login"
+                    and record["phase"] in ("setup", "cleanup")
+                )
+                or (
+                    record["operation"] == "chat-attachment-create"
+                    and record["source"] == "chat-attachment-isolation.live.spec.ts"
+                    and record["line"] == 229
+                    and record["phase"] == "body"
+                )
+            )
+        )
+        if not valid:
+            completeness = "incomplete" if completeness != "truncated" else completeness
+            continue
+        identity = tuple(
+            record[key]
+            for key in ("project", "source", "line", "retry", "ordinal", "phase")
+        )
+        if identity in seen:
+            if seen[identity] != record:
+                correlation = "ambiguous"
+            continue
+        attempt = identity[:4]
+        ordinal_identity = identity[:5]
+        if ordinal_identity in attempt_ordinals:
+            correlation = "ambiguous"
+            if attempt_counts[attempt] >= 16:
+                completeness = "truncated"
+            elif completeness != "truncated":
+                completeness = "incomplete"
+            continue
+        if attempt_counts.get(attempt, 0) >= 16:
+            completeness = "truncated"
+            continue
+        if len(records) >= _HTTP_OPERATION_LIMIT:
+            completeness = "truncated"
+            break
+        attempt_counts[attempt] = attempt_counts.get(attempt, 0) + 1
+        attempt_ordinals.add(ordinal_identity)
+        seen[identity] = record
+        records.append(record)
+        if record["requests"] == "many" or record["responses"] == "many":
+            correlation = "ambiguous"
+    return {
+        "records": records,
+        "completeness": completeness,
+        "correlation": correlation,
+    }

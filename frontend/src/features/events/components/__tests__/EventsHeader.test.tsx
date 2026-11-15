@@ -4,6 +4,7 @@ import { EventsHeader } from "../EventsHeader"
 import i18n from "@/i18n/config"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: vi.fn(() => false) }))
 vi.mock("@/hooks/ui/useSlidingIndicator", () => ({
@@ -118,6 +119,29 @@ describe("EventsHeader", () => {
     expect(screen.getByRole("tablist")).toHaveClass("flex", "justify-center", "w-full")
     for (const tab of screen.getAllByRole("tab")) expect(tab).toHaveClass("min-h-11")
   })
+
+  it.each([
+    ["en", ["Upcoming", "Past events", "My events"]],
+    ["ru", ["Актуальные", "Прошедшие", "Мои события"]],
+  ] as const)(
+    "allows %s tab text to reflow inside the capsule without reducing targets",
+    async (language, labels) => {
+      await act(async () => {
+        await i18n.changeLanguage(language)
+      })
+      render(<EventsHeader {...defaultProps} />)
+      const tabs = screen.getAllByRole("tab")
+      expect(tabs.map((tab) => tab.textContent)).toEqual(labels)
+      const capsule = tabs[0]!.parentElement!
+      expectBaseUtility(capsule, "max-width", "100%")
+      for (const tab of tabs) {
+        expectBaseUtility(tab, "min-width", "calc(var(--spacing) * 11)")
+        expectBaseUtility(tab, "min-height", "calc(var(--spacing) * 11)")
+        expectBaseUtility(tab, "padding-inline", "var(--spacing-2)")
+        expectBaseUtility(tab.querySelector("span")!, "overflow-wrap", "break-word")
+      }
+    }
+  )
 
   it("uses roving focus and arrow keys for the status tabs", () => {
     render(<EventsHeader {...defaultProps} tab="active" />)

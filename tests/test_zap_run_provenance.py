@@ -291,3 +291,401 @@ def test_clean_report_target_site_is_sufficient(tmp_path, name):
     )
     module.finish_run(work, IDENTITY, nonce, 0, TARGET)
     assert module.verify_run(work, IDENTITY, nonce, TARGET) == report.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("log", "expected"),
+    [
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "startup_wait_expired",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\r\n",
+            "startup_wait_expired",
+        ),
+        (
+            b"private_secret_sentinel\nERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "startup_wait_expired",
+        ),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds", "unknown"),
+        (
+            b"prefix ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n",
+            "unknown",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds private_secret_sentinel\n",
+            "unknown",
+        ),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 03600 seconds\n", "unknown"),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after 600 seconds\n", "unknown"),
+        (b"ERROR [Errno 5] Failed to connect to ZAP after -3600 seconds\n", "unknown"),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\r\r\n",
+            "unknown",
+        ),
+        (
+            b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\x00\n",
+            "unknown",
+        ),
+        (
+            b"ERROR https://private_secret_sentinel.invalid/?token=private_secret_sentinel\n",
+            "unknown",
+        ),
+        (b"Authorization: Bearer private_secret_sentinel\n", "unknown"),
+        (b"ERROR <class 'private_secret_sentinel'>\n", "scanner_exception"),
+        (b"ERROR <class 'ValueError'>\n", "scanner_exception"),
+        (b"\xff\xfe\n", "unknown"),
+        (b"", "unknown"),
+    ],
+)
+def test_scanner_failure_reason_is_a_fixed_enum_from_complete_stdout_lines(
+    tmp_path: Path, log: bytes, expected: str
+) -> None:
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    (work / "stderr.log").write_bytes(b"private_secret_sentinel\n")
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == expected
+    assert "private_secret_sentinel" not in str(raised.value)
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("exit_code", [125, 137, -9, True, "3", 999])
+def test_startup_marker_does_not_reclassify_other_exit_codes(tmp_path, exit_code):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    )
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, exit_code, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    "mode", ["missing", "directory", "symlink", "fifo", "unreadable", "stderr-only"]
+)
+def test_missing_or_unsafe_stdout_is_unknown_without_reading_stderr(
+    tmp_path, monkeypatch, mode
+):
+    import os
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "stdout.log"
+    marker = b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    (work / "stderr.log").write_bytes(marker + b"private_secret_sentinel\n")
+    if mode == "directory":
+        path.mkdir()
+    elif mode == "symlink":
+        path.symlink_to(work / "stderr.log")
+    elif mode == "fifo":
+        os.mkfifo(path)
+    elif mode == "unreadable":
+        path.write_bytes(marker)
+        original = os.open
+
+        def denied(source, *args, **kwargs):
+            if source == path:
+                raise PermissionError("private_secret_sentinel")
+            return original(source, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", denied)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["outside-tail", "cut-line", "complete-line"])
+def test_startup_marker_requires_a_complete_line_within_bounded_tail(tmp_path, mode):
+    module, work, nonce, _ = _start(tmp_path)
+    marker = b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\n"
+    if mode == "outside-tail":
+        payload = marker + b"x" * 65536
+        expected = "unknown"
+    elif mode == "cut-line":
+        payload = b"private_secret_sentinel" + marker + b"x" * (65536 - len(marker))
+        expected = "unknown"
+    else:
+        payload = b"x" * 70000 + b"\n" + marker
+        expected = "startup_wait_expired"
+    (work / "stdout.log").write_bytes(payload)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == expected
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        b"ERROR <class 'bad class'>\n",
+        b"ERROR <class 'private_secret_sentinel'>",
+        b"ERROR <class 'private_secret_sentinel'> suffix\n",
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\nERROR unrecognized private_secret_sentinel\n",
+        b"ERROR <class 'ValueError'>\nERROR <class 'bad class'>\n",
+    ],
+)
+def test_malformed_or_later_unmatched_error_marker_is_unknown(tmp_path, log):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert getattr(raised.value, "reason", None) == "unknown"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "private_secret_sentinel",
+        "http://private_secret_sentinel.invalid",
+        None,
+        True,
+        3,
+        [],
+        {},
+    ],
+)
+def test_untrusted_exception_reason_is_normalized_to_unknown(reason):
+    error = zap_run_provenance.ScannerExitError(3, reason=reason)
+    assert error.reason == "unknown"
+    assert "private_secret_sentinel" not in str(error)
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        b"ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds\nERROR partial",
+        b"ERROR <class 'ValueError'>\r\r\n",
+    ],
+)
+def test_incomplete_final_output_and_malformed_class_ending_are_unknown(tmp_path, log):
+    module, work, nonce, _ = _start(tmp_path)
+    (work / "stdout.log").write_bytes(log)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.reason == "unknown"
+
+
+@pytest.mark.parametrize(
+    "kind", ["missing", "empty", "present", "sparse", "hostile-name"]
+)
+def test_failed_scan_projects_engine_metadata_without_reading_content(
+    tmp_path, monkeypatch, kind
+):
+    import os
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "scan" / "zap.out"
+    if kind == "hostile-name":
+        (path.parent / "zap.out-private_secret_sentinel").write_bytes(
+            b"private_secret_sentinel"
+        )
+    elif kind != "missing":
+        path.write_bytes(
+            b"" if kind == "empty" else b"\xffAuthorization: private_secret_sentinel\n"
+        )
+        if kind == "sparse":
+            with path.open("r+b") as handle:
+                handle.truncate(1 << 40)
+    original = os.open
+
+    def no_engine_open(source, *args, **kwargs):
+        assert str(source) not in {"zap.out", str(path)}, (
+            "engine content must not be opened"
+        )
+        return original(source, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", no_engine_open)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    expected = {
+        "missing": "unavailable",
+        "hostile-name": "unavailable",
+        "empty": "empty",
+    }.get(kind, "present")
+    assert raised.value.engine_output == expected
+    assert raised.value.reason == "unknown"
+    assert "private_secret_sentinel" not in str(raised.value)
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "symlink",
+        "directory",
+        "fifo",
+        "socket",
+        "device",
+        "hardlink",
+        "unreadable",
+        "foreign-owner",
+        "writable",
+    ],
+)
+def test_engine_metadata_rejects_unsafe_files(tmp_path, monkeypatch, kind):
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "scan" / "zap.out"
+    if kind == "symlink":
+        path.symlink_to("/dev/null")
+    elif kind == "directory":
+        path.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(path)
+    else:
+        path.write_bytes(b"private_secret_sentinel")
+        if kind == "hardlink":
+            os.link(path, path.with_name("private_secret_sentinel"))
+        elif kind == "unreadable":
+            path.chmod(0)
+        elif kind == "writable":
+            path.chmod(0o666)
+        elif kind in {"foreign-owner", "socket", "device"}:
+            # The sandbox disallows socket creation. Exercise the exact stat
+            # result without creating a socket/device or opening file contents.
+            original = os.stat
+
+            def unsafe(source, *args, **kwargs):
+                info = original(source, *args, **kwargs)
+                if source == "zap.out":
+                    mode = {"socket": stat.S_IFSOCK, "device": stat.S_IFCHR}.get(
+                        kind, stat.S_IFREG
+                    ) | 0o644
+                    return SimpleNamespace(
+                        st_mode=mode,
+                        st_uid=os.getuid() + (kind == "foreign-owner"),
+                        st_nlink=info.st_nlink,
+                        st_size=info.st_size,
+                    )
+                return info
+
+            monkeypatch.setattr(os, "stat", unsafe)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.engine_output == "unavailable"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("component", ["ancestor", "work", "scan"])
+def test_engine_metadata_never_traverses_symlink_directories(tmp_path, component):
+    module, work, _, _ = _start(tmp_path)
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    if component == "ancestor":
+        alias = tmp_path / "private_secret_sentinel"
+        alias.symlink_to(tmp_path, target_is_directory=True)
+        work = alias / "run"
+    else:
+        path = work if component == "work" else work / "scan"
+        saved = path.with_name(path.name + "-saved")
+        path.rename(saved)
+        path.symlink_to(saved, target_is_directory=True)
+    assert module._engine_output(work) == "unavailable"
+
+
+@pytest.mark.parametrize("component", ["work", "scan"])
+@pytest.mark.parametrize("kind", ["foreign-owner", "writable"])
+def test_engine_metadata_requires_owned_private_directories(
+    tmp_path, monkeypatch, component, kind
+):
+    import os
+    from types import SimpleNamespace
+
+    module, work, _, _ = _start(tmp_path)
+    path = work if component == "work" else work / "scan"
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    if kind == "writable":
+        path.chmod(0o777)
+    else:
+        inode = path.stat().st_ino
+        original = os.fstat
+
+        def foreign(fd):
+            info = original(fd)
+            if info.st_ino == inode:
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=os.getuid() + 1)
+            return info
+
+        monkeypatch.setattr(os, "fstat", foreign)
+    assert module._engine_output(work) == "unavailable"
+
+
+@pytest.mark.parametrize("operation", ["open", "fstat", "stat"])
+def test_engine_metadata_errors_are_private_and_close_descriptors(
+    tmp_path, monkeypatch, operation
+):
+    import os
+
+    module, work, _, _ = _start(tmp_path)
+    before = len(list(Path("/proc/self/fd").iterdir()))
+    original = getattr(os, operation)
+
+    def denied(*args, **kwargs):
+        raise PermissionError("private_secret_sentinel")
+
+    monkeypatch.setattr(os, operation, denied)
+    assert module._engine_output(work) == "unavailable"
+    monkeypatch.setattr(os, operation, original)
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+
+
+@pytest.mark.parametrize("exit_code", [0, 1, 2])
+def test_completed_scan_never_observes_engine_output(tmp_path, monkeypatch, exit_code):
+    module, work, nonce, _ = _start(tmp_path)
+
+    def forbidden(*args):
+        pytest.fail("successful scanner exits must not inspect engine output")
+
+    monkeypatch.setattr(module, "_engine_output", forbidden)
+    assert (
+        module.finish_run(work, IDENTITY, nonce, exit_code, TARGET)["scanner_exit_code"]
+        == exit_code
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["present", "empty", "unavailable", "private_secret_sentinel", True, None, [], {}],
+)
+def test_engine_output_public_enum_is_strict(value):
+    error = zap_run_provenance.ScannerExitError(3, engine_output=value)
+    assert error.engine_output == (
+        value if type(value) is str and value in {"present", "empty"} else "unavailable"
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [Path("/") / Path(*(["x"] * 128)), Path("/private_secret_sentinel/../run")]
+)
+def test_engine_metadata_rejects_unbounded_or_parent_traversal_paths(path, monkeypatch):
+    import os
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid directory traversal must not start")
+
+    monkeypatch.setattr(os, "open", forbidden)
+    assert zap_run_provenance._engine_output(path) == "unavailable"
+
+
+def test_hostile_work_directory_name_does_not_become_diagnostic(tmp_path):
+    hostile = tmp_path / "private_secret_sentinel\nERROR fake"
+    hostile.mkdir()
+    module, work, nonce, _ = _start(hostile)
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.engine_output == "present"
+    assert "private_secret_sentinel" not in str(raised.value)
+
+
+def test_engine_metadata_cwd_failure_is_unavailable(tmp_path, monkeypatch):
+    def unavailable(path):
+        raise OSError("private_secret_sentinel")
+
+    monkeypatch.setattr(Path, "absolute", unavailable)
+    assert zap_run_provenance._engine_output(Path("run")) == "unavailable"

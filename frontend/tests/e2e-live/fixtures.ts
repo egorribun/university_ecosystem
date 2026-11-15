@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url"
 import {
   expect,
   request,
@@ -27,6 +28,9 @@ import {
   runLiveRegistrationAdmission,
 } from "../../scripts/live-registration-admission.mjs"
 import {
+  createLiveOperationScope,
+  type LiveOperationScope,
+  type LiveOperationPhase,
   parseLiveRateLimitHeader,
   reportLiveHttpStatus,
   reportLiveRateLimitRetry,
@@ -148,10 +152,17 @@ type OwnedLoginLease = {
 type OwnedSessionCleanupCallback = (browser: Browser, deadlineAtMs: number) => Promise<void>
 
 type OwnedSessionScope = {
+  operationScope: LiveOperationScope
+  operationPhase: LiveOperationPhase
   leases: OwnedLoginLease[]
   issuedTokens: Set<string>
   captureFailed: boolean
   cleanupCallbacks: OwnedSessionCleanupCallback[]
+}
+
+// Capture phase at the call site, before any asynchronous work.
+export function beginOwnedLiveOperation(operation: "chat-attachment-create") {
+  return activeOwnedSessionScope?.operationScope.begin(operation, "body")
 }
 
 const MAX_OWNED_SESSION_CLEANUP_CALLBACKS = 1
@@ -719,6 +730,11 @@ export async function loginWith(
 ): Promise<void> {
   const scope = activeOwnedSessionScope
   if (!scope) throw new Error("Live login requires the owned-session cleanup fixture")
+  const operation = scope.operationScope.begin(
+    "auth-login",
+    cleanupDeadlineAtMs === undefined ? scope.operationPhase : "cleanup"
+  )
+  const operationStartedAt = performance.now()
   const origin = ownedSessionOrigin()
   const context = page.context()
   const beforeCookies = await context.cookies(origin)
@@ -830,7 +846,13 @@ export async function loginWith(
       scope.captureFailed = true
     }
     if (leasePromise) await leasePromise
-    if (loginDiagnosticPromise) await loginDiagnosticPromise
+    if (loginDiagnosticPromise) {
+      try {
+        await loginDiagnosticPromise
+      } catch {
+        /* Diagnostic failure is secondary. */
+      }
+    }
     if (
       matchingRequests !== 1 ||
       matchingResponses !== 1 ||
@@ -851,6 +873,18 @@ export async function loginWith(
       )
     } catch {
       scope.captureFailed = true
+    }
+  }
+  if (hasPrimaryFailure || !captured || captureSetupFailed) {
+    try {
+      operation.finish(
+        loginResponseStatus ?? null,
+        matchingRequests,
+        matchingResponses,
+        performance.now() - operationStartedAt
+      )
+    } catch {
+      /* Preserve the identical primary failure object. */
     }
   }
   if (hasPrimaryFailure) throw primaryFailure
@@ -974,7 +1008,24 @@ export const test = base.extend<{
       if (activeOwnedSessionScope) {
         throw new Error("Owned-session cleanup fixture scope overlapped")
       }
+      let operationSource = ""
+      try {
+        const source = testInfo.file.replace(/\\/g, "/").split("/").pop() ?? ""
+        if (testInfo.file === fileURLToPath(new URL(source, import.meta.url))) {
+          operationSource = source
+        }
+      } catch {
+        // Unknown source forms fail closed without changing the fixture outcome.
+      }
       const scope: OwnedSessionScope = {
+        operationScope: createLiveOperationScope({
+          project: testInfo.project.name,
+          source: operationSource,
+          line: testInfo.line,
+          retry: testInfo.retry,
+        }),
+        // "setup" means authentication preparation, not Playwright lifecycle inference.
+        operationPhase: "setup",
         leases: [],
         issuedTokens: new Set<string>(),
         captureFailed: false,
@@ -991,6 +1042,7 @@ export const test = base.extend<{
         primaryTestFailure = error
         hasPrimaryTestFailure = true
       } finally {
+        scope.operationPhase = "cleanup"
         const cleanupDeadlineAtMs =
           performance.now() +
           Math.max(

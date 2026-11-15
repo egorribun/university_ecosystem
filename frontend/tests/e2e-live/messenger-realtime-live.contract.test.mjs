@@ -576,3 +576,288 @@ test("Enter sender contract rejects asynchronous iteration in the critical windo
     message: "asynchronous iteration is forbidden in the critical window",
   })
 })
+
+const forwarding = await import("./messenger-forwarding-diagnostic.ts")
+const { EventEmitter } = await import("node:events")
+const { Buffer } = await import("node:buffer")
+const { default: process } = await import("node:process")
+const forwardingRecord = () => ({
+  schema: 2,
+  scenario: "forwarding-source-receive",
+  project: "desktop",
+  attempt: 0,
+  sockets: 1,
+  joinSentSockets: 1,
+  openJoinSentSockets: 1,
+  sourceFrames: 1,
+  sourceFramesAfterJoinSent: 1,
+  sourceAccepted: true,
+  socketsCapped: false,
+  framesCapped: false,
+})
+
+test("forwarding diagnostic observes synthetic receiver events without exposing frame contents", async () => {
+  const page = new EventEmitter()
+  const socket = new EventEmitter()
+  const output = []
+  const diagnostic = forwarding.observeForwardingSource(
+    page,
+    "private-room",
+    "private-body",
+    { project: { name: "desktop" }, retry: 0 },
+    (line) => output.push(line)
+  )
+  page.emit("websocket", socket)
+  socket.emit("framesent", {
+    payload: JSON.stringify({
+      type: "join",
+      room: "private-room",
+      token: "secret",
+    }),
+  })
+  socket.emit("framereceived", {
+    payload: JSON.stringify({
+      payload: {
+        type: "new_message",
+        chat_id: "private-room",
+        message: {
+          id: "private-id",
+          content: "private-body",
+          sender_id: "private-user",
+        },
+      },
+    }),
+  })
+  socket.emit("framereceived", {
+    payload: JSON.stringify({
+      type: "new_message",
+      chat_id: "wrong-room",
+      message: { content: "private-body" },
+    }),
+  })
+  socket.emit("framereceived", {
+    payload: JSON.stringify({
+      type: "new_message",
+      chat_id: "private-room",
+      message: { content: "private-body", forwarded_from_name: "private-name" },
+    }),
+  })
+  diagnostic.report(true)
+  assert.equal(output.length, 1)
+  diagnostic.report(true)
+  assert.equal(output.length, 1)
+  assert.deepEqual(JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length)), forwardingRecord())
+  assert.doesNotMatch(output[0], /private|secret|token|https?:|message|sender_id/u)
+})
+
+test("forwarding observer bounds sessions and frames, preserving cleanup on writer failure", async () => {
+  const page = new EventEmitter(),
+    output = []
+  const diagnostic = forwarding.observeForwardingSource(
+    page,
+    "r",
+    "s",
+    { project: { name: "mobile" }, retry: 1 },
+    (line) => output.push(line)
+  )
+  const socket = new EventEmitter()
+  page.emit("websocket", socket)
+  socket.emit("framesent", { payload: '{"type":"join","room":"r"}' })
+  for (let i = 0; i < 40; i++)
+    socket.emit("framereceived", {
+      payload: '{"type":"new_message","chat_id":"r","message":{"content":"s"}}',
+    })
+  for (let i = 0; i < 40; i++) page.emit("websocket", new EventEmitter())
+  socket.emit("close")
+  socket.emit("framereceived", { payload: "x".repeat(65_537) })
+  diagnostic.report(false)
+  const result = JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length))
+  assert.equal(result.sockets, 32)
+  assert.equal(result.sourceFrames, 32)
+  assert.equal(result.socketsCapped, true)
+  assert.equal(result.framesCapped, true)
+  assert.equal(result.openJoinSentSockets, 0)
+  const failing = forwarding.observeForwardingSource(
+    new EventEmitter(),
+    "r",
+    "s",
+    { project: { name: "desktop" }, retry: 0 },
+    () => {
+      throw Error("private-error")
+    }
+  )
+  assert.doesNotThrow(() => failing.report(false))
+})
+
+test("forwarding serializer rejects extra keys, types, bounds, inconsistent counts and PII", () => {
+  assert.ok(forwarding.serializeForwardingDiagnostic(forwardingRecord()))
+  for (const delta of [
+    { extra: "private" },
+    { project: "private@example.test" },
+    { scenario: "private" },
+    { schema: true },
+    { attempt: true },
+    { sourceAccepted: 1 },
+    { sockets: 33 },
+    { sourceFrames: -1 },
+    { sourceFrames: 1.5 },
+    { joinSentSockets: 2 },
+    { openJoinSentSockets: 2 },
+    { sourceFramesAfterJoinSent: 2 },
+    { framesCapped: "false" },
+    { sockets: "1" },
+    { message: "x".repeat(5000) },
+  ]) {
+    assert.equal(
+      forwarding.serializeForwardingDiagnostic({
+        ...forwardingRecord(),
+        ...delta,
+      }),
+      null
+    )
+  }
+  const missing = forwardingRecord()
+  delete missing.sourceAccepted
+  assert.equal(forwarding.serializeForwardingDiagnostic(missing), null)
+})
+
+test("forwarding instrumentation preserves the first source-message assertion and cleanup", () => {
+  const flow = spec.slice(
+    spec.indexOf('test("forwarding through'),
+    spec.indexOf('test("a peer typing')
+  )
+  assert.match(flow, /observeSource\(receiverPage, activeChatId, sourceContent, testInfo\)/u)
+  assert.match(
+    flow,
+    /await expect\(receiverLog\.getByText\(sourceContent, \{ exact: true \}\)\)\.toBeVisible\(\)/u
+  )
+  assert.match(flow, /sourceDiagnostic\.report\(sourceMessage !== null\)\s*throw error/u)
+})
+
+test("forwarding observer handles unjoined, malformed, nested and capped input without retaining it", async () => {
+  const page = new EventEmitter(),
+    output = []
+  const diagnostic = forwarding.observeForwardingSource(
+    page,
+    "r",
+    "s",
+    { project: { name: "desktop" }, retry: 0 },
+    (line) => output.push(line)
+  )
+  const socket = new EventEmitter()
+  page.emit("websocket", socket)
+  for (const payload of [
+    "bad-json",
+    "null",
+    "1",
+    "[]",
+    '{"type":"new_message","chat_id":"r"}',
+    '{"type":"new_message","chat_id":"r","message":1}',
+  ])
+    socket.emit("framereceived", { payload })
+  socket.emit("framereceived", {
+    payload: Buffer.from('[{"type":"new_message","chat_id":"r","message":{"content":"s"}}]'),
+  })
+  socket.emit("framereceived", {
+    payload: '{"type":"new_message","chat_id":"r","message":{"content":"other-private"}}',
+  })
+  socket.emit("framesent", { payload: '[{"type":"join","room":"r"}]' })
+  socket.emit("framereceived", {
+    payload: JSON.stringify(Array.from({ length: 128 }, () => ({ nested: [null] }))),
+  })
+  diagnostic.report(false)
+  const result = JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length))
+  assert.equal(result.sourceFrames, 1)
+  assert.equal(result.sourceFramesAfterJoinSent, 0)
+  assert.equal(result.framesCapped, true)
+  assert.doesNotMatch(output[0], /other-private/)
+  for (const invalid of [
+    null,
+    [],
+    1,
+    {},
+    { ...forwardingRecord(), attempt: 2 },
+    { ...forwardingRecord(), schema: 1 },
+    { ...forwardingRecord(), project: {} },
+    { ...forwardingRecord(), sockets: NaN },
+    { ...forwardingRecord(), sockets: Infinity },
+  ])
+    assert.equal(forwarding.serializeForwardingDiagnostic(invalid), null)
+  const invalidProject = forwarding.observeForwardingSource(
+    new EventEmitter(),
+    "r",
+    "s",
+    { project: { name: "private" }, retry: 0 },
+    () => assert.fail("invalid project must not emit")
+  )
+  invalidProject.report(false)
+})
+
+test("the actual visibility catch freezes facts and rethrows the identical failure before cleanup", async () => {
+  const flow = spec.slice(
+    spec.indexOf('test("forwarding through'),
+    spec.indexOf('test("a peer typing')
+  )
+  const start = flow.indexOf("      try {\n        await expect(receiverLog")
+  const end = flow.indexOf("      const sourceRow", start)
+  assert.ok(start > 0 && end > start)
+  const { runInNewContext } = await import("node:vm")
+  const page = new EventEmitter(),
+    socket = new EventEmitter(),
+    output = []
+  const diagnostic = forwarding.observeForwardingSource(
+    page,
+    "private-room",
+    "private-body",
+    { project: { name: "desktop" }, retry: 0 },
+    (line) => output.push(line)
+  )
+  page.emit("websocket", socket)
+  socket.emit("framesent", { payload: '{"type":"join","room":"private-room"}' })
+  const failure = new Error("private-original-error")
+  const context = {
+    sourceDiagnostic: diagnostic,
+    sourceMessage: { id: "private-id" },
+    sourceContent: "private-body",
+    receiverLog: { getByText: () => ({}) },
+    expect: () => ({
+      toBeVisible: async () => {
+        throw failure
+      },
+    }),
+  }
+  runInNewContext(`globalThis.check = async () => { ${flow.slice(start, end)} }`, context)
+  await assert.rejects(context.check, (error) => error === failure)
+  socket.emit("framereceived", {
+    payload: '{"type":"new_message","chat_id":"private-room","message":{"content":"private-body"}}',
+  })
+  diagnostic.report(true)
+  assert.equal(output.length, 1)
+  const snapshot = JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length))
+  assert.equal(snapshot.sourceFrames, 0)
+  assert.equal(snapshot.sourceAccepted, true)
+  assert.doesNotMatch(output[0], /private/)
+})
+
+test("the default diagnostic writer emits only validated evidence", () => {
+  const output = [],
+    original = process.stdout.write
+  process.stdout.write = (line) => {
+    output.push(line)
+    return true
+  }
+  try {
+    forwarding
+      .observeForwardingSource(new EventEmitter(), "r", "s", {
+        project: { name: "desktop" },
+        retry: 0,
+      })
+      .report(false)
+  } finally {
+    process.stdout.write = original
+  }
+  assert.equal(output.length, 1)
+  const sameSizeMissing = { ...forwardingRecord(), extra: "private" }
+  delete sameSizeMissing.sourceAccepted
+  assert.equal(forwarding.serializeForwardingDiagnostic(sameSizeMissing), null)
+})

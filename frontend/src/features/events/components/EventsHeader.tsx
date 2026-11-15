@@ -219,7 +219,7 @@ export const EventsHeader = ({
         >
           <div
             ref={tabsRef}
-            className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] p-1 backdrop-blur-md shadow-glass sm:w-auto"
+            className="relative inline-flex max-w-full items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] p-1 backdrop-blur-md shadow-glass sm:w-auto"
           >
             {tabRect && (
               <div
@@ -255,14 +255,14 @@ export const EventsHeader = ({
                 aria-controls="events-tabpanel"
                 onClick={() => onTabChange(tabItem.key)}
                 className={cn(
-                  "relative z-base min-h-11 min-w-11 px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
+                  "relative z-base min-h-11 min-w-11 px-2 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
                   "sm:px-6 sm:text-base",
                   tab === tabItem.key
                     ? "text-text-primary"
                     : "text-(--text-secondary) hover:text-text-primary"
                 )}
               >
-                <span className="relative z-base">{t(tabItem.labelKey)}</span>
+                <span className="relative z-base wrap-break-word">{t(tabItem.labelKey)}</span>
               </button>
             ))}
           </div>

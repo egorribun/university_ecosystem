@@ -43,6 +43,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -54,6 +55,7 @@ jobs:
 
       - name: Run NetworkPolicy runtime proof
         env:
+          UE_NETPOL_REAL_FP: "1"
           UE_NETPOL_DIAG_DIR: ${{ runner.temp }}/aud169-188-189-netpol
         run: bash scripts/k8s/networkpolicy_runtime_proof.sh
 

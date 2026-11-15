@@ -482,3 +482,194 @@ test("notification cleanup traverses all pages and keeps the DM fallback unique"
   }))
   assert.equal(await noMatch.findOnlyTestMessageNotificationId({}, path, "missing"), null)
 })
+
+// Execute the real permission scenario with browser boundaries replaced, so these
+// tests cover its ownership/error lifecycle without launching a browser.
+async function permissionScenarioHarness() {
+  const spec = await readFile(specUrl, "utf8")
+  const { default: ts } = await import("typescript")
+  const { expect: playwrightExpect } = await import("@playwright/test")
+  const ast = ts.createSourceFile("spec.ts", spec, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const declaration = ast.statements.find(
+    (statement) =>
+      ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(statement.expression) &&
+      statement.expression.expression.getText(ast) === "test" &&
+      statement.expression.arguments[0]?.text ===
+        "permission is requested only after the explicit settings action"
+  )
+  assert.ok(declaration, "the exact live permission scenario remains present")
+  const callback = declaration.expression.arguments[1]
+  const compiled = ts.transpileModule(`const scenario = ${callback.getText(ast)}; scenario`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText
+
+  return async (failures = {}, setupStage = "body") => {
+    const events = []
+    const cleanupCalls = []
+    const failPrimary = (stage) => {
+      if (stage === setupStage && Object.hasOwn(failures, "primary")) throw failures.primary
+    }
+    let clicked = false
+    const pushSwitch = {
+      click: async () => {
+        clicked = true
+      },
+    }
+    const expect = (value, ...rest) =>
+      value === pushSwitch
+        ? { toBeVisible: async () => {}, not: { toBeChecked: async () => {} } }
+        : playwrightExpect(value, ...rest)
+    expect.poll = playwrightExpect.poll
+    const page = {
+      evaluate: async () => {
+        failPrimary("body")
+        return { supported: true, permission: "default", hasSubscription: false }
+      },
+      on: () => {},
+      goto: async () => {},
+      getByRole: () => pushSwitch,
+    }
+    const adminPage = {}
+    const adminContext = {
+      newPage: async () => {
+        events.push("new-page")
+        failPrimary("new-page")
+        return adminPage
+      },
+      close: async () => {
+        events.push("close")
+        if (Object.hasOwn(failures, "close")) throw failures.close
+      },
+    }
+    const scenario = runInNewContext(compiled, {
+      AggregateError,
+      process: { env: { LIVE_BASE_URL: "https://localhost:41799" } },
+      randomUUID: () => "unit-identity",
+      freshPassword: () => "unused-by-unit-probe",
+      test: { skip: (condition) => assert.equal(condition, false) },
+      expect,
+      loginAs: async (candidate, role) => {
+        assert.equal(candidate, adminPage)
+        assert.equal(role, "admin")
+        failPrimary("login")
+      },
+      installPermissionAudit: async () => {},
+      registerSyntheticAccount: async (_page, _name, _email, _password, attempted) => {
+        events.push("register")
+        attempted()
+        failPrimary("registration")
+      },
+      expandPushAccordion: async () => {},
+      readPermissionAudit: async () => (clicked ? [{ isActive: true }] : []),
+      deleteOnlyCreatedAccount: async (...args) => {
+        events.push("cleanup")
+        cleanupCalls.push(args)
+        if (Object.hasOwn(failures, "cleanup")) throw failures.cleanup
+      },
+    })
+    let rejected = false
+    let error
+    try {
+      await scenario(
+        {
+          page,
+          browserName: "chromium",
+          browser: {
+            newContext: async () => {
+              events.push("new-context")
+              failPrimary("new-context")
+              return adminContext
+            },
+          },
+        },
+        { project: { name: "mobile" } }
+      )
+    } catch (caught) {
+      rejected = true
+      error = caught
+    }
+    for (const args of cleanupCalls) {
+      assert.deepEqual(
+        args,
+        [
+          adminPage,
+          "live-push-permission-mobile-unit-identity@university.dev",
+          "Live Push Permission mobile unit-identity",
+        ],
+        "cleanup remains limited to this scenario's exact generated account"
+      )
+    }
+    return { events, cleanupCalls, rejected, error }
+  }
+}
+
+test("permission lifecycle attempts cleanup and close independently in every failure combination", async () => {
+  const run = await permissionScenarioHarness()
+  const names = ["primary", "cleanup", "close"]
+  for (let mask = 0; mask < 8; mask++) {
+    const failures = Object.fromEntries(
+      names.flatMap((name, index) =>
+        mask & (1 << index) ? [[name, new Error(`${name} sentinel`)]] : []
+      )
+    )
+    const result = await run(failures)
+    assert.deepEqual(result.events, ["new-context", "new-page", "register", "cleanup", "close"])
+    const expected = names
+      .filter((name) => Object.hasOwn(failures, name))
+      .map((name) => failures[name])
+    assert.equal(result.rejected, expected.length > 0)
+    if (expected.length === 1) assert.equal(result.error, expected[0])
+    if (expected.length > 1) {
+      assert.ok(result.error instanceof AggregateError)
+      assert.deepEqual(Array.from(result.error.errors), expected)
+      expected.forEach((failure, index) => assert.equal(result.error.errors[index], failure))
+    }
+  }
+})
+
+test("permission lifecycle preserves falsy single failures and ordered aggregate members", async () => {
+  const run = await permissionScenarioHarness()
+  for (const value of [undefined, null, false, 0]) {
+    for (const stage of ["primary", "cleanup", "close"]) {
+      const result = await run({ [stage]: value })
+      assert.equal(result.rejected, true)
+      assert.equal(result.error, value)
+      assert.equal(result.events.at(-1), "close")
+    }
+    const result = await run({ primary: value, cleanup: value, close: value })
+    assert.equal(result.rejected, true)
+    assert.ok(result.error instanceof AggregateError)
+    assert.deepEqual(Array.from(result.error.errors), [value, value, value])
+  }
+})
+
+test("permission setup failures never delete an unattempted account and close only owned context", async () => {
+  const run = await permissionScenarioHarness()
+  for (const stage of ["new-context", "new-page", "login"]) {
+    for (const primary of [new Error("setup sentinel"), undefined]) {
+      const result = await run({ primary }, stage)
+      assert.equal(result.rejected, true)
+      assert.equal(result.error, primary)
+      assert.equal(result.cleanupCalls.length, 0)
+      assert.equal(result.events.includes("close"), stage !== "new-context")
+    }
+  }
+  for (const stage of ["new-page", "login"]) {
+    const primary = new Error("setup sentinel")
+    const close = new Error("close sentinel")
+    const result = await run({ primary, close }, stage)
+    assert.equal(result.cleanupCalls.length, 0)
+    assert.ok(result.error instanceof AggregateError)
+    assert.deepEqual(Array.from(result.error.errors), [primary, close])
+    assert.equal(result.error.errors[0], primary)
+    assert.equal(result.error.errors[1], close)
+  }
+  for (const primary of [new Error("registration result lost"), undefined, null, false, 0]) {
+    const result = await run({ primary }, "registration")
+    assert.equal(result.rejected, true)
+    assert.equal(result.error, primary)
+    assert.equal(result.cleanupCalls.length, 1)
+    assert.equal(result.events.at(-1), "close")
+  }
+})

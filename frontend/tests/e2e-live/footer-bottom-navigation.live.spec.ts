@@ -1,5 +1,5 @@
 import { expect, loginAs, test } from "./fixtures"
-import type { Page } from "@playwright/test"
+import type { ConsoleMessage, Page } from "@playwright/test"
 import { reportLiveFooterGeometry } from "./live-ui-diagnostic"
 
 const NAVIGATION_PATHS = ["/dashboard", "/news", "/events", "/schedule", "/profile"] as const
@@ -238,6 +238,8 @@ test("bottom navigation fits phones and the navbar drawer works at the tablet bo
       expect(target.width, `${width}px ${path} target width`).toBeGreaterThanOrEqual(44)
       expect(target.height, `${width}px ${path} target height`).toBeGreaterThanOrEqual(44)
     }
+
+    await verifyRapidMobileNavigation(page, testInfo.project.use.hasTouch === true)
   }
 
   const keyboardNewsLink = bottomNavigation.locator('a[data-tab-key="/news"]')
@@ -312,3 +314,85 @@ test("footer clears the bottom navigation on short and long production pages", a
     .toBe(true)
   await verifyFooterDoesNotOverlapBottomNavigation(page)
 })
+
+// Extend the existing collected scenario: no new live test identity, project skip,
+// fixture, retry, or timeout. Coordinates are captured before the burst so input
+// delivery never waits for an intermediate route, locator, or animation.
+async function verifyRapidMobileNavigation(page: Page, hasTouch: boolean): Promise<void> {
+  const bottomNavigation = page.locator('nav:has(a[data-tab-key="/dashboard"])')
+  const rapidPaths = ["/events", "/schedule", "/profile", "/news"] as const
+  const points = []
+  for (const path of rapidPaths) {
+    const link = bottomNavigation.locator(`a[data-tab-key="${path}"]`)
+    await expect(link).toBeVisible()
+    const box = await link.boundingBox()
+    if (box === null) throw new Error("rapid navigation target has no hit area")
+    points.push({ x: box.x + box.width / 2, y: box.y + box.height / 2 })
+  }
+
+  const newsHeading = page.getByRole("main").getByRole("heading", {
+    name: /^(?:Новости университета|University news)[ 0-9]*$/u,
+  })
+  const eventsTabs = page.getByRole("main").getByRole("tablist", { name: /Мероприятия|Events/u })
+  const expectCurrentRoute = async (path: "/news" | "/events") => {
+    await expect.poll(() => new URL(page.url()).pathname).toBe(path)
+    await expect(bottomNavigation.locator('a[aria-current="page"]')).toHaveCount(1)
+    await expect(bottomNavigation.locator(`a[data-tab-key="${path}"]`)).toHaveAttribute(
+      "aria-current",
+      "page"
+    )
+    await expect(path === "/news" ? newsHeading : eventsTabs).toBeVisible()
+    await expect(path === "/news" ? eventsTabs : newsHeading).toHaveCount(0)
+  }
+
+  let consoleErrorCount = 0
+  const onConsole = (message: ConsoleMessage) => {
+    if (message.type() === "error") consoleErrorCount += 1
+  }
+  page.on("console", onConsole)
+  try {
+    // Native browser input, not DOM.click/dispatchEvent. Await only input
+    // dispatch; there are deliberately no navigation waits between these taps.
+    for (const point of points) {
+      if (hasTouch) await page.touchscreen.tap(point.x, point.y)
+      else await page.mouse.click(point.x, point.y)
+    }
+    await expectCurrentRoute("/news")
+
+    const historyLength = await page.evaluate(() => window.history.length)
+    const newsPoint = points[3]
+    if (newsPoint === undefined) throw new Error("rapid news target is missing")
+    for (let activation = 0; activation < 2; activation += 1) {
+      if (hasTouch) await page.touchscreen.tap(newsPoint.x, newsPoint.y)
+      else await page.mouse.click(newsPoint.x, newsPoint.y)
+    }
+    await expectCurrentRoute("/news")
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+    expect(await page.evaluate(() => window.history.length)).toBe(historyLength)
+
+    // The drawer supplies a settled, known history boundary. Intermediate
+    // entries from the rapid burst are intentionally not assumed to commit.
+    const drawerTrigger = page.locator('button[aria-controls="mobile-drawer"]')
+    if (hasTouch) await drawerTrigger.tap()
+    else await drawerTrigger.click()
+    const drawer = page.locator('#mobile-drawer[role="dialog"]')
+    await expect(drawer).toBeVisible()
+    await expect(drawerTrigger).toHaveAttribute("aria-expanded", "true")
+    const drawerEvents = drawer.locator("#mobile-nav-link-events")
+    if (hasTouch) await drawerEvents.tap()
+    else await drawerEvents.click()
+    await expectCurrentRoute("/events")
+    await expect(drawer).toHaveCount(0)
+    await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
+
+    await page.goBack()
+    await expectCurrentRoute("/news")
+    await expect(drawer).toHaveCount(0)
+    await page.goForward()
+    await expectCurrentRoute("/events")
+    await expect(drawer).toHaveCount(0)
+    expect(consoleErrorCount, "rapid navigation must not emit console errors").toBe(0)
+  } finally {
+    page.off("console", onConsole)
+  }
+}

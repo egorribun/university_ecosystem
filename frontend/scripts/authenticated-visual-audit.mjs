@@ -1822,6 +1822,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   let scheduleErrorVisible = scheduleReadinessRequired ? true : null
   let scheduleReadinessError = null
   let screenshotPath = null
+  let navbarGeometry = null
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
   // axe-core sampling (W113 SW1 + W114 SW2b + W115 SW1 pattern).
@@ -2050,6 +2051,13 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
       scheduleReady,
     })
   ) {
+    if (captureConfig.width === 1440) {
+      try {
+        navbarGeometry = await page.evaluate(measureAuthenticatedNavbarGeometry)
+      } catch {
+        navbarGeometry = null
+      }
+    }
     const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
     screenshotPath = path.join(outDir, filename)
     try {
@@ -2072,6 +2080,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
         httpStatus,
         navigationError: navError ? redactDiagnostic(navError.message) : null,
         visualDiagnostics,
+        navbarGeometry,
         consoleMessages: consoleMessages.map((message) => ({
           type: message.type,
           text: redactDiagnostic(message.text),
@@ -2175,6 +2184,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     scheduleSelectedDayWeekend,
     scheduleErrorVisible,
     scheduleReadinessError,
+    navbarGeometry,
     viewportWidth: captureConfig?.width ?? null,
     screenshotPath: screenshotPath ? path.basename(screenshotPath) : null,
   }
@@ -2530,6 +2540,9 @@ async function main() {
           6
         )
       }
+      if (findNavbarGeometryIssues(summaries).length > 0) {
+        throw new Error("Desktop navbar geometry failed; inspect the captured screenshots")
+      }
       if (visualConfigurationIssues.length > 0) {
         throw setVisualExitCode(
           new Error(
@@ -2552,4 +2565,121 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     console.error("Fatal error:", redactDiagnostic(err.message))
     process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
   })
+}
+
+// Numeric/boolean-only evidence: names and DOM content stay in the page.
+export function measureAuthenticatedNavbarGeometry() {
+  const nav = globalThis.document.querySelector("nav.vt-navbar")
+  const name = nav?.querySelector(".navbar-user-name")
+  const label = name?.querySelector("button")
+  const avatar = name?.parentElement?.querySelector(":scope > button")
+  const icons = [
+    avatar,
+    ...["global-messenger-btn", "global-notifications-btn", "navbar-settings-btn"].map((id) =>
+      globalThis.document.getElementById(id)
+    ),
+  ]
+  const navigation = [
+    nav?.querySelector('#navbar-logo-link[href="/dashboard"]'),
+    ...["dashboard", "news", "schedule", "events", "activity", "map"].map((route) =>
+      nav?.querySelector(`.navbar-desktop-nav #navbar-link-${route}[href="/${route}"]`)
+    ),
+  ]
+  if (!nav || !name || !label || [...icons, ...navigation].some((element) => !element)) return null
+  const visible = (element) => {
+    for (let node = element; node; node = node.parentElement) {
+      const style = globalThis.window.getComputedStyle(node)
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0)
+        return false
+    }
+    const rect = element.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0
+  }
+  const navRect = nav.getBoundingClientRect()
+  const rects = icons.map((icon) => icon.getBoundingClientRect())
+  const interactiveRects = [...rects, ...navigation.map((link) => link.getBoundingClientRect())]
+  const contained = (rect) =>
+    rect.left >= navRect.left - 0.5 &&
+    rect.right <= navRect.right + 0.5 &&
+    rect.top >= navRect.top - 0.5 &&
+    rect.bottom <= navRect.bottom + 0.5
+  const controlsValid =
+    icons.every(
+      (icon, index) =>
+        visible(icon) &&
+        !icon.disabled &&
+        rects[index].width >= 44 &&
+        rects[index].height >= 44 &&
+        contained(rects[index])
+    ) &&
+    interactiveRects.every((rect, index) =>
+      interactiveRects
+        .slice(index + 1)
+        .every(
+          (other) =>
+            Math.min(rect.right, other.right) - Math.max(rect.left, other.left) <= 0.5 ||
+            Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) <= 0.5
+        )
+    )
+  const range = globalThis.document.createRange()
+  range.selectNodeContents(label)
+  const textRect = range.getBoundingClientRect()
+  const labelRect = label.getBoundingClientRect()
+  const nameRect = name.getBoundingClientRect()
+  const compact = label.disabled && label.getAttribute("aria-hidden") === "true"
+  const nameHidden = globalThis.window.getComputedStyle(name).display === "none" || compact
+  const description = avatar.getAttribute("aria-describedby")
+  const described = description ? globalThis.document.getElementById(description) : null
+  const fullName = label.textContent?.trim() ?? ""
+  return {
+    controlsValid,
+    headerContained:
+      navRect.left >= -0.5 &&
+      navRect.right <= globalThis.document.documentElement.clientWidth + 0.5 &&
+      nav.scrollWidth <= nav.clientWidth + 1 &&
+      navigation.every((link) => visible(link) && contained(link.getBoundingClientRect())),
+    nameHidden,
+    nameVisible: visible(label) && !label.disabled,
+    naturalWidth: textRect.width,
+    visibleWidth: Math.max(
+      0,
+      Math.min(labelRect.right, nameRect.right, navRect.right) -
+        Math.max(labelRect.left, nameRect.left, navRect.left)
+    ),
+    fallbackComplete: fullName.length > 0 && described?.textContent?.trim() === fullName,
+    labelExpected:
+      !compact &&
+      name.parentElement.parentElement.getBoundingClientRect().width >=
+        18 *
+          Number.parseFloat(
+            globalThis.window.getComputedStyle(globalThis.document.documentElement).fontSize
+          ),
+  }
+}
+
+export function isAuthenticatedNavbarGeometryValid(state) {
+  if (
+    !state ||
+    state.controlsValid !== true ||
+    state.headerContained !== true ||
+    !Number.isFinite(state.naturalWidth) ||
+    state.naturalWidth < 0 ||
+    !Number.isFinite(state.visibleWidth) ||
+    state.visibleWidth < 0
+  )
+    return false
+  if (state.nameHidden === true)
+    return state.labelExpected === false && state.fallbackComplete === true
+  return (
+    state.nameHidden === false &&
+    state.nameVisible === true &&
+    state.visibleWidth + 0.5 >= Math.min(state.naturalWidth, 44)
+  )
+}
+
+export function findNavbarGeometryIssues(summaries) {
+  return summaries.filter(
+    (summary) =>
+      summary.viewportWidth === 1440 && !isAuthenticatedNavbarGeometryValid(summary.navbarGeometry)
+  )
 }
