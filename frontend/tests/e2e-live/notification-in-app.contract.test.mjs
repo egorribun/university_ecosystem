@@ -213,3 +213,138 @@ test("the real notification reader keeps Russian pagination and rejects an Engli
     { code: "ERR_ASSERTION" }
   )
 })
+
+// Requiring a new deletion incorrectly rejects the route's idempotent success.
+const runNativeEndpointCleanup = async ({
+  body = { ok: true, removed: true },
+  httpOk = true,
+  nativeRevoked = true,
+  nativePresent = true,
+  knownEndpoint = "https://push.example.test/owned",
+  cookie = "csrf_token=owned-test-token",
+  invalidJson = false,
+} = {}) => {
+  const spec = await readFile(topicsSpecUrl, "utf8")
+  const start = spec.indexOf("const unsubscribeOnlyNativeEndpoint =")
+  const end = spec.indexOf("const findOnlyCreatedAccountId =", start)
+  assert.ok(start >= 0 && end > start)
+  const compiled = typescript.transpileModule(
+    `${spec.slice(start, end)}\nglobalThis.cleanup = unsubscribeOnlyNativeEndpoint`,
+    { compilerOptions: { target: typescript.ScriptTarget.ES2022 } }
+  )
+  const calls = []
+  const context = {
+    document: { cookie },
+    navigator: {
+      serviceWorker: {
+        getRegistration: async () => ({
+          pushManager: {
+            getSubscription: async () =>
+              nativePresent
+                ? {
+                    endpoint: "https://push.example.test/owned",
+                    unsubscribe: async () => {
+                      calls.push("native-unsubscribe")
+                      return nativeRevoked
+                    },
+                  }
+                : null,
+          },
+        }),
+      },
+    },
+    fetch: async (url, options) => {
+      calls.push({ url, options: JSON.parse(JSON.stringify(options)) })
+      return {
+        ok: httpOk,
+        json: async () => {
+          if (invalidJson) throw new SyntaxError("invalid JSON")
+          return body
+        },
+      }
+    },
+    expect: (value, message) => ({
+      toBe: (expected) => assert.equal(value, expected, message),
+    }),
+  }
+  runInNewContext(compiled.outputText, context)
+  let error
+  try {
+    await context.cleanup({ evaluate: (callback, arg) => callback(arg) }, knownEndpoint)
+  } catch (caught) {
+    error = caught
+  }
+  return { calls, error }
+}
+
+for (const removed of [true, false]) {
+  test(`native endpoint cleanup accepts confirmed server absence (removed=${removed})`, async () => {
+    const { calls, error } = await runNativeEndpointCleanup({ body: { ok: true, removed } })
+    assert.equal(error, undefined)
+    assert.deepEqual(calls, [
+      {
+        url: "/api/v1/push/unsubscribe",
+        options: {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": "owned-test-token",
+          },
+          body: '{"endpoint":"https://push.example.test/owned"}',
+        },
+      },
+      "native-unsubscribe",
+    ])
+  })
+}
+
+for (const [label, options] of [
+  ["HTTP failure", { httpOk: false }],
+  ["server rejection", { body: { ok: false, removed: true } }],
+  ["missing success", { body: { removed: true } }],
+  ["nonboolean success", { body: { ok: "true", removed: true } }],
+  ["numeric success", { body: { ok: 1, removed: true } }],
+  ["missing removal result", { body: { ok: true } }],
+  ["nonboolean removal result", { body: { ok: true, removed: "false" } }],
+  ["numeric removal result", { body: { ok: true, removed: 0 } }],
+  ["null removal result", { body: { ok: true, removed: null } }],
+  ["null response", { body: null }],
+  ["invalid JSON", { invalidJson: true }],
+  ["native revocation failure", { nativeRevoked: false }],
+  ["nonboolean native revocation", { nativeRevoked: "true" }],
+]) {
+  test(`native endpoint cleanup rejects ${label}`, async () => {
+    const { calls, error } = await runNativeEndpointCleanup(options)
+    assert.equal(error?.code, "ERR_ASSERTION")
+    assert.equal(calls.length, 2)
+    assert.equal(calls[1], "native-unsubscribe")
+  })
+}
+
+test("native endpoint cleanup uses only its recorded fallback when the browser subscription is absent", async () => {
+  const { calls, error } = await runNativeEndpointCleanup({
+    nativePresent: false,
+    body: { ok: true, removed: false },
+  })
+  assert.equal(error, undefined)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    endpoint: "https://push.example.test/owned",
+  })
+})
+
+test("native endpoint cleanup with no endpoint makes no mutation", async () => {
+  const { calls, error } = await runNativeEndpointCleanup({
+    nativePresent: false,
+    knownEndpoint: null,
+  })
+  assert.equal(error, undefined)
+  assert.deepEqual(calls, [])
+})
+
+test("native endpoint cleanup fails without CSRF and makes no mutation", async () => {
+  const { calls, error } = await runNativeEndpointCleanup({ cookie: "" })
+  assert.equal(error?.code, "ERR_ASSERTION")
+  assert.deepEqual(calls, [])
+})

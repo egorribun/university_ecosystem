@@ -295,3 +295,186 @@ export function reportLiveLoginFailure(
     // A closed diagnostic stream must never replace the original login failure.
   }
 }
+
+// Stage A: finite declaration coverage; template-expanded cases are not attributed.
+const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> = {
+  "activity-dashboard.live.spec.ts": [22],
+  "activity-summary.live.spec.ts": [148],
+  "admin-audit-rbac.live.spec.ts": [3],
+  "admin-feature-flags-rbac.live.spec.ts": [3],
+  "admin-notifications-rbac.live.spec.ts": [27],
+  "admin-stories-smoke.live.spec.ts": [8],
+  "admin-users-rbac.live.spec.ts": [55],
+  "aud178-reset-referer-csp.live.spec.ts": [124],
+  "auth-login-lockout.live.spec.ts": [40],
+  "auth-roles.live.spec.ts": [33, 210, 228],
+  "avatar-persistence.live.spec.ts": [173],
+  "chat-attachment-isolation.live.spec.ts": [229],
+  "core-a11y-live.live.spec.ts": [37],
+  "email-otp-mfa-login.live.spec.ts": [378],
+  "email-otp-verification.live.spec.ts": [102],
+  "events-tab-keyboard.live.spec.ts": [3],
+  "footer-bottom-navigation.live.spec.ts": [98, 282],
+  "map-gesture-isolation.live.spec.ts": [178, 209, 248],
+  "map-zoom-longtask.live.spec.ts": [116],
+  "messenger-a11y.live.spec.ts": [5],
+  "messenger-focus-trap.live.spec.ts": [3],
+  "messenger-group-isolation.live.spec.ts": [254],
+  "messenger-keyboard-focus.live.spec.ts": [58, 140],
+  "messenger-membership-revocation.live.spec.ts": [317],
+  "messenger-realtime.live.spec.ts": [260, 417, 864, 1105, 1342, 1669, 2033],
+  "messenger-reconnect-ordering.live.spec.ts": [332],
+  "messenger-reconnect.live.spec.ts": [261],
+  "messenger-unread-read.live.spec.ts": [322],
+  "navbar-layout-stability.live.spec.ts": [267, 375, 438, 476],
+  "new-chat-hit-targets.live.spec.ts": [3],
+  "news-responsive-matrix.live.spec.ts": [336],
+  "news-scroll-restoration.live.spec.ts": [304],
+  "not-found-i18n.live.spec.ts": [11, 65],
+  "notification-in-app.live.spec.ts": [293],
+  "notification-preferences.live.spec.ts": [217],
+  "notification-topics-delivery.live.spec.ts": [1046],
+  "password-reset.live.spec.ts": [129],
+  "profile-csrf.live.spec.ts": [99],
+  "profile-persistence.live.spec.ts": [102, 302],
+  "push-delivery.live.spec.ts": [435, 533, 810],
+  "push-permission-default.live.spec.ts": [17],
+  "push-permission-denied.live.spec.ts": [44],
+  "push-subscription.live.spec.ts": [115],
+  "pwa-offline-shell.live.spec.ts": [239, 323],
+  "register-double-submit.live.spec.ts": [42],
+  "schedule-200-equivalent-reflow.live.spec.ts": [5],
+  "schedule-grid-keyboard.live.spec.ts": [5],
+  "schedule-hydration-i18n.live.spec.ts": [87, 91],
+  "search-dialog-keyboard.live.spec.ts": [9, 62, 212, 219, 226],
+  "settings-password-change-rollback.live.spec.ts": [141],
+  "settings-radio-focus.live.spec.ts": [20, 371, 444],
+  "settings-tabs-keyboard.live.spec.ts": [5],
+  "settings-theme-roundtrip.live.spec.ts": [75],
+  "ssr-hydration-i18n.live.spec.ts": [442, 454, 468],
+  "story-viewer-keyboard.live.spec.ts": [7],
+  "story-viewer-reduced-motion.live.spec.ts": [15],
+  "totp-recovery.live.spec.ts": [325],
+  "zzz-aud174-prehydration-caddy-log.live.spec.ts": [8],
+}
+
+export type LiveOperationPhase = "setup" | "body" | "cleanup"
+type LiveOperationKind = "auth-login" | "chat-attachment-create"
+type LiveOperationIdentity = {
+  project: string
+  source: string
+  line: number
+  retry: number
+}
+type LiveOperation = {
+  finish: (status: number | null, requests: number, responses: number, elapsedMs: number) => void
+}
+export type LiveOperationScope = {
+  begin: (operation: LiveOperationKind, phase: LiveOperationPhase) => LiveOperation
+}
+
+// These are worker bounds, NOT a run-wide emission guarantee. Python retains globally.
+let liveOperationEmissions = 0
+const liveOperationMarkers = new Set<string>()
+const MAX_OPERATION_WORKER_ROWS = 104
+const MAX_OPERATION_ATTEMPT_ROWS = 16
+const inertLiveOperation: LiveOperation = Object.freeze({
+  finish: () => undefined,
+})
+
+export function createLiveOperationScope(
+  identity: LiveOperationIdentity,
+  emit: (line: string) => unknown = (line) => process.stdout.write(line)
+): LiveOperationScope {
+  // Copy closed scalar identity once. No asynchronous callback reads an active scope.
+  let ordinal = 0
+  const safeEmit = (record: string) => {
+    try {
+      emit(record)
+    } catch {
+      // A failed diagnostic sink cannot replace an assertion or cleanup failure.
+    }
+  }
+  const marker = (value: "invalid-scope" | "truncated" | "unavailable") => {
+    if (liveOperationMarkers.has(value)) return
+    liveOperationMarkers.add(value)
+    safeEmit(`UE_LIVE_HTTP_OPERATION_V2 completeness=${value}\n`)
+  }
+  let project = ""
+  let source = ""
+  let line = 0
+  let retry = -1
+  try {
+    ;({ project, source, line, retry } = identity)
+  } catch {
+    marker("invalid-scope")
+    return Object.freeze({ begin: () => inertLiveOperation })
+  }
+  const valid =
+    (project === "desktop" || project === "mobile") &&
+    typeof source === "string" &&
+    Object.hasOwn(LIVE_OPERATION_DECLARATIONS, source) &&
+    Number.isSafeInteger(line) &&
+    LIVE_OPERATION_DECLARATIONS[source]?.includes(line) &&
+    (retry === 0 || retry === 1)
+  if (!valid) marker("invalid-scope")
+  return Object.freeze({
+    begin(operation: LiveOperationKind, phase: LiveOperationPhase): LiveOperation {
+      if (!valid) return inertLiveOperation
+      if (
+        (operation !== "auth-login" && operation !== "chat-attachment-create") ||
+        (phase !== "setup" && phase !== "body" && phase !== "cleanup") ||
+        (operation === "auth-login" && phase === "body") ||
+        (operation === "chat-attachment-create" &&
+          (source !== "chat-attachment-isolation.live.spec.ts" || phase !== "body"))
+      ) {
+        marker("invalid-scope")
+        return inertLiveOperation
+      }
+      ordinal += 1
+      if (ordinal > MAX_OPERATION_ATTEMPT_ROWS) {
+        ordinal = MAX_OPERATION_ATTEMPT_ROWS + 1
+        marker("truncated")
+        return inertLiveOperation
+      }
+      const operationOrdinal = ordinal
+      let finished = false
+      return Object.freeze({
+        finish(status: number | null, requests: number, responses: number, elapsedMs: number) {
+          if (finished) return
+          finished = true
+          if (
+            (status !== null && (!Number.isInteger(status) || status < 100 || status > 599)) ||
+            !Number.isSafeInteger(requests) ||
+            requests < 0 ||
+            !Number.isSafeInteger(responses) ||
+            responses < 0 ||
+            !Number.isFinite(elapsedMs) ||
+            elapsedMs < 0 ||
+            (status === null ? responses !== 0 : responses === 0)
+          ) {
+            marker("unavailable")
+            return
+          }
+          if (liveOperationEmissions >= MAX_OPERATION_WORKER_ROWS) {
+            marker("truncated")
+            return
+          }
+          const count = (value: number) => (value > 1 ? "many" : String(value))
+          const record =
+            `UE_LIVE_HTTP_OPERATION_V2 project=${project} source=${source} line=${line} ` +
+            `retry=${retry} ordinal=${operationOrdinal} phase=${phase} operation=${operation} ` +
+            `outcome=${status === null ? "no-response" : "response"} status=${status ?? "none"} ` +
+            `elapsed_ms=${Math.min(120000, Math.floor(elapsedMs))} saturated=${elapsedMs > 120000 ? 1 : 0} ` +
+            `requests=${count(requests)} responses=${count(responses)}\n`
+          if (record.length > 512 || !/^[\x20-\x7e]+\n$/u.test(record)) {
+            marker("unavailable")
+            return
+          }
+          liveOperationEmissions += 1
+          safeEmit(record)
+        },
+      })
+    },
+  })
+}

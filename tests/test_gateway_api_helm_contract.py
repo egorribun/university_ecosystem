@@ -32,6 +32,7 @@ def _helm() -> str:
 
 def _render(
     *overrides: str,
+    chart: Path = CHART,
     with_apis: bool = True,
     omitted_apis: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
@@ -39,7 +40,7 @@ def _render(
         _helm(),
         "template",
         "gateway-contract",
-        str(CHART),
+        str(chart),
         "--namespace",
         "university-ecosystem",
         "--set-string",
@@ -505,7 +506,7 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
     assert "sectionName: http-{{ $hostIndex }}" in template
     assert "type: RequestRedirect" in template
     assert "scheme: https" in template
-    assert "statusCode: 301" in template
+    assert "statusCode: 308" in template
 
 
 def test_gateway_api_blocker_matches_the_retained_ingress_limit_contract() -> None:
@@ -755,6 +756,188 @@ def test_gateway_api_fails_closed_until_per_client_policy_parity_is_implemented(
     assert "20 concurrent connections per client" in result.stderr
     assert "source-CIDR" in result.stderr
     assert "requestBuffer" in result.stderr
+
+
+def _gateway_api_release_overrides(environment: str, *extra: str) -> tuple[str, ...]:
+    # Documentation-only peers and SPIFFE identities; never deployment defaults.
+    return _gateway_api_overrides(
+        "--set",
+        "ingress.enabled=false",
+        "--set-string",
+        f"global.environment={environment}",
+        "--set-string",
+        f"ingress.issuer.kind={'Issuer' if environment == 'staging' else 'ClusterIssuer'}",
+        "--set",
+        f"internalHttpMTLS.enabled={str(environment == 'production').lower()}",
+        "--set-string",
+        "internalHttpMTLS.trustDomain=university.example",
+        "--set-string",
+        "internalHttpMTLS.backendSpiffeID=spiffe://university.example/backend",
+        "--set-string",
+        "internalHttpMTLS.gatewaySpiffeID=spiffe://university.example/gateway",
+        "--set-string",
+        "internalHttpMTLS.wsHubSpiffeID=spiffe://university.example/ws-hub",
+        "--set-string",
+        "internalHttpMTLS.fileProcessorSpiffeID=spiffe://university.example/file-processor",
+        "--set-json",
+        'gateway.config.trustedProxies=["192.0.2.7/32","2001:db8::7/128"]',
+        "--set-json",
+        'wsHub.config.trustedProxies=["192.0.2.8/32","2001:db8::8/128"]',
+        *extra,
+    )
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize("environment", ("staging", "production"))
+@pytest.mark.parametrize("component", ("gateway", "wsHub"))
+@pytest.mark.parametrize(
+    ("peers", "expected_error"),
+    [
+        ([], "requires explicit non-loopback ingress proxy CIDRs"),
+        (["127.0.0.1", "::1"], "requires explicit non-loopback ingress proxy CIDRs"),
+        (["0.0.0.0/0"], "must not trust 0.0.0.0/0 or ::/0"),
+        (["::/0"], "must not trust 0.0.0.0/0 or ::/0"),
+        (["10.0.0.0/8"], "must not trust an RFC1918 block"),
+        (["fc00::/7"], "must not trust the IPv6 unique-local block"),
+        (["999.0.2.1"], "entries must be valid IP addresses or CIDRs"),
+        (["2001:db8:::1"], "entries must be valid IP addresses or CIDRs"),
+        (["192.0.2.7/32", "0.0.0.0/0"], "must not trust 0.0.0.0/0 or ::/0"),
+        (
+            ["192.0.2.7/32", "2001:db8:::1"],
+            "entries must be valid IP addresses or CIDRs",
+        ),
+    ],
+    ids=(
+        "missing",
+        "loopback-only",
+        "all-ipv4",
+        "all-ipv6",
+        "broad-private",
+        "broad-ula",
+        "invalid-ipv4",
+        "invalid-ipv6",
+        "explicit-peer-plus-universal",
+        "explicit-peer-plus-invalid",
+    ),
+)
+def test_gateway_api_release_rejects_unsafe_application_proxy_trust_before_parity(
+    environment: str,
+    component: str,
+    peers: list[str],
+    expected_error: str,
+) -> None:
+    field = f"{component}.config.trustedProxies"
+    result = _render(
+        *_gateway_api_release_overrides(
+            environment, "--set-json", f"{field}={json.dumps(peers)}"
+        )
+    )
+
+    assert result.returncode != 0
+    if component == "wsHub" and not peers:
+        # The existing schema rejects an empty list before Helm templates run.
+        assert "/wsHub/config/trustedProxies" in result.stderr
+        assert "minItems" in result.stderr
+        return
+    assert f"{field} {expected_error}" in result.stderr
+    assert "gatewayApi.enabled is blocked" not in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize("environment", ("staging", "production"))
+def test_gateway_api_release_with_explicit_proxy_peers_still_hits_parity_gate(
+    environment: str,
+) -> None:
+    result = _render(*_gateway_api_release_overrides(environment))
+
+    assert result.returncode != 0
+    assert "gatewayApi.enabled is blocked" in result.stderr
+    assert "trustedProxies" not in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize("environment", ("staging", "production"))
+@pytest.mark.parametrize("ws_hub_enabled", (True, False))
+def test_gateway_api_release_without_direct_ws_route_needs_no_external_ws_proxy_peers(
+    environment: str, ws_hub_enabled: bool
+) -> None:
+    hosts = [
+        {
+            "host": "university.example.com",
+            "paths": [{"path": "/", "pathType": "Prefix", "service": "gateway"}],
+        },
+        {
+            "host": "api.university.example.com",
+            "paths": [{"path": "/", "pathType": "Prefix", "service": "gateway"}],
+        },
+    ]
+    result = _render(
+        *_gateway_api_release_overrides(
+            environment,
+            "--set-json",
+            f"ingress.hosts={json.dumps(hosts)}",
+            "--set-json",
+            'wsHub.config.trustedProxies=["127.0.0.1","::1"]',
+            "--set",
+            f"wsHub.enabled={str(ws_hub_enabled).lower()}",
+        )
+    )
+
+    assert result.returncode != 0
+    assert "gatewayApi.enabled is blocked" in result.stderr
+    assert "trustedProxies" not in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_development_skips_release_trust_guard() -> None:
+    result = _render(
+        *_gateway_api_overrides(
+            "--set-json",
+            "gateway.config.trustedProxies=[]",
+            "--set-json",
+            'wsHub.config.trustedProxies=["127.0.0.1","::1"]',
+        )
+    )
+
+    assert result.returncode != 0
+    assert "gatewayApi.enabled is blocked" in result.stderr
+    assert "trustedProxies" not in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize("environment", ("staging", "production"))
+def test_gateway_api_release_checks_ws_proxy_trust_on_later_hosts(
+    environment: str,
+) -> None:
+    hosts = [
+        {
+            "host": "university.example.com",
+            "paths": [{"path": "/", "pathType": "Prefix", "service": "gateway"}],
+        },
+        {
+            "host": "api.university.example.com",
+            "paths": [
+                {"path": "/", "pathType": "Prefix", "service": "gateway"},
+                {"path": "/ws/chat", "pathType": "Exact", "service": "ws-hub"},
+            ],
+        },
+    ]
+    result = _render(
+        *_gateway_api_release_overrides(
+            environment,
+            "--set-json",
+            f"ingress.hosts={json.dumps(hosts)}",
+            "--set-json",
+            'wsHub.config.trustedProxies=["127.0.0.1","::1"]',
+        )
+    )
+
+    assert result.returncode != 0
+    assert (
+        "wsHub.config.trustedProxies requires explicit non-loopback ingress proxy CIDRs"
+        in result.stderr
+    )
+    assert "gatewayApi.enabled is blocked" not in result.stderr
 
 
 @pytest.mark.skipif(HELM is None, reason="Helm is not installed")

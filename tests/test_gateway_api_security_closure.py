@@ -23,6 +23,44 @@ API_VERSIONS = (
 )
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_rendered_http_redirects_preserve_request_method_for_each_origin() -> None:
+    """Public HTTP redirects must not permit POST to become GET on HTTPS."""
+    result = _render_gateway_api_template()
+    assert result.returncode == 0, result.stderr
+    resources = [
+        resource
+        for resource in yaml.safe_load_all(result.stdout)
+        if isinstance(resource, dict)
+    ]
+    http_routes = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "HTTPRoute"
+        and any(
+            parent.get("sectionName", "").startswith("http-")
+            for parent in resource["spec"].get("parentRefs", [])
+        )
+    ]
+    assert len(http_routes) == 2
+    assert {tuple(route["spec"]["hostnames"]) for route in http_routes} == {
+        ("university.example.com",),
+        ("api.university.example.com",),
+    }
+    for route in http_routes:
+        assert route["spec"]["rules"] == [
+            {
+                "matches": [{"path": {"type": "PathPrefix", "value": "/"}}],
+                "filters": [
+                    {
+                        "type": "RequestRedirect",
+                        "requestRedirect": {"scheme": "https", "statusCode": 308},
+                    }
+                ],
+            }
+        ], "all HTTP paths must redirect without changing their host, path or method"
+
+
 def _render_gateway_api_template(*overrides: str) -> subprocess.CompletedProcess[str]:
     assert HELM is not None, "Helm-dependent tests must be marked at collection"
 

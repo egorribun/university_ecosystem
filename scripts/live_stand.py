@@ -121,6 +121,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_footer_geometries as _live_playwright_footer_geometries,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_http_operations as _live_playwright_http_operations,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_http_statuses as _live_playwright_http_statuses,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5742,6 +5745,7 @@ def _run_live_playwright(
         )
     # Only the reviewed helpers' stdout protocols can emit these diagnostics.
     http_statuses = _live_playwright_http_statuses(stdout)
+    http_operations = _live_playwright_http_operations(stdout)
     push_observations = _live_playwright_push_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
     story_memory_cycle_trace_diagnostics = (
@@ -5879,6 +5883,11 @@ def _run_live_playwright(
             f"category={category} matcher={matcher} locator={locator}",
             flush=True,
         )
+    print(
+        "live E2E HTTP operations "
+        + json.dumps(http_operations, separators=(",", ":")),
+        flush=True,
+    )
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",

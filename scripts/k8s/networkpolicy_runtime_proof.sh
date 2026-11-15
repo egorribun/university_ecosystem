@@ -162,7 +162,8 @@ build_real_processor_images() {
   [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
   build_source="${WORK_DIR}/source"
   mkdir -p "$build_source"
-  git -C "$ROOT_DIR" archive --format=tar "$SOURCE_SHA" | tar -xf - -C "$build_source"
+  # Preserve committed source modes under the private 0700 context; keep secret umask 077.
+  git -C "$ROOT_DIR" archive --format=tar "$SOURCE_SHA" | tar --same-permissions -xf - -C "$build_source"
   FP_IMAGE="ue-netpol-fp:${SOURCE_SHA}"
   DIAGNOSTIC_IMAGE="ue-netpol-diagnostic:${SOURCE_SHA}"
   base_image="$(cd "$ROOT_DIR" && uv run --frozen python -c 'import sys; sys.path.insert(0,sys.argv[1]+"/scripts/k8s"); from networkpolicy_runtime_probe import runtime_base_image; print(runtime_base_image())' "$build_source")"

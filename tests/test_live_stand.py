@@ -69,6 +69,14 @@ def _patch_live_playwright_result(
     monkeypatch.setattr(live_stand.fast_preflight, "run_check", fake_run_check)
 
 
+# The runner always prints this line; stdout without V2 protocol rows yields the
+# default structure of _live_playwright_http_operations.
+_EMPTY_HTTP_OPERATIONS_LINE = (
+    "live E2E HTTP operations "
+    '{"records":[],"completeness":"unavailable","correlation":"unambiguous"}'
+)
+
+
 @pytest.fixture(scope="session")
 def git_executable() -> str:
     executable = shutil.which("git")
@@ -1980,6 +1988,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
             for project, source, line_number in identities
         ),
         "live E2E skip accounting=verified count=8",
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
     assert printed.out.splitlines() == expected_output
@@ -2250,6 +2259,7 @@ def test_live_playwright_emits_only_validated_profile_save_diagnostics(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E profile save project=desktop status=422 detail=array detail_count=1 "
         "detail_msg=true alert_count=0 save_disabled=false route=profile "
         "page_error_count=1 page_error=type-error",
@@ -2383,6 +2393,7 @@ def test_live_playwright_emits_only_bounded_a11y_contrast_values(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E a11y contrast project=desktop route=settings fg=#aabbcc "
         "bg=#000000 ratio_milli=2850",
         "live E2E outcome=failed exit_code=1",
@@ -2755,6 +2766,7 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E a11y paint project=desktop route=settings axe_fg=#8691a3 "
         "axe_bg=#f8fafc ratio_milli=3040 css_fg=#8691a3 text_color=opaque "
         "css_alpha_milli=1000 node_opacity_milli=800 ancestor_opacity_milli=750 "
@@ -3136,6 +3148,7 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E push project=mobile permission=granted ready=timeout "
         "state=activated controller=true subscription=true matches=0 probe=skipped",
         "live E2E outcome=failed exit_code=1",
@@ -3346,6 +3359,7 @@ def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
     expected = json.dumps(record, separators=(",", ":"))
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E story memory " + expected,
         "live E2E outcome=failed exit_code=1",
     ]
@@ -3456,7 +3470,11 @@ def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
     printed = capsys.readouterr()
     output_rows = printed.out.splitlines()[1:-1]
     assert output_rows == [
-        f"live E2E HTTP project=desktop check={check} status=202" for check in checks
+        _EMPTY_HTTP_OPERATIONS_LINE,
+        *(
+            f"live E2E HTTP project=desktop check={check} status=202"
+            for check in checks
+        ),
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
@@ -3569,6 +3587,7 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
     outcome = "failed" if return_code else "passed"
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E HTTP project=desktop check=admin-users status=503",
         "live E2E HTTP project=mobile check=auth-login status=401",
         "live E2E HTTP project=mobile check=auth-session-cap status=403",
@@ -3973,6 +3992,7 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
     outcome = "failed" if return_code else "passed"
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E page error project=desktop check=password-reset page=reset-password type=type-error count=2",
         "live E2E page error project=desktop check=auth-roles page=admin-users type=react-418 count=1",
         "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
@@ -4021,6 +4041,7 @@ def test_live_playwright_emits_only_bounded_news_and_page_error_details(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E news viewport project=desktop language=ru width=390 "
         "viewportHeight=900 scrollY=-12 top=-4 bottom=22 left=0 right=390",
         "live E2E page error project=desktop check=map-gesture page=map "
@@ -4058,6 +4079,7 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E HTTP project=mobile check=admin-feature-flags status=503",
         "live E2E page error project=mobile check=password-reset page=reset-password type=type-error count=1",
         "live E2E outcome=passed exit_code=0",
@@ -4145,6 +4167,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
         "live E2E diagnostic project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 category=unknown matcher=none locator=none",
         "live E2E diagnostic project=mobile source=tests/e2e-live/password-reset.live.spec.ts line=3 category=unknown matcher=none locator=none",
         "live E2E diagnostic project=desktop source=tests/e2e-live/auth-roles.live.spec.ts line=2 category=unknown matcher=none locator=none",
+        _EMPTY_HTTP_OPERATIONS_LINE,
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
@@ -4256,6 +4279,7 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
         "live E2E failure project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=3 kind=frame",
         "live E2E failure project=desktop source=tests/e2e-live/fixtures.ts line=2 kind=frame",
         "live E2E diagnostic project=desktop source=tests/e2e-live/activity-dashboard.live.spec.ts line=2 category=unknown matcher=none locator=none",
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=failed exit_code=1",
     ]
     assert private_details not in printed.out + printed.err
@@ -4649,6 +4673,7 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         "live E2E counts failed=1",
         f"live E2E failure project=desktop source={source_name} line=1 kind=declaration",
         f"live E2E diagnostic project=desktop source={source_name} line=1 category=unknown matcher=none locator=none",
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=failed exit_code=23",
     ]
     assert printed.err == ""
@@ -5061,6 +5086,7 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
     assert capsys.readouterr().out.splitlines() == [
         "live E2E scope=focused diagnostic_only=true",
         "+ " + " ".join(expected_command),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
 
@@ -8863,6 +8889,7 @@ def test_live_playwright_auth_diagnostics_are_failure_only(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
     assert "live E2E auth UI" not in printed.out
@@ -8896,6 +8923,7 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E auth UI " + json.dumps(ui_record, separators=(",", ":")),
         "live E2E auth HTTP " + json.dumps(http_record, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
@@ -9032,6 +9060,7 @@ def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E story setup " + json.dumps(record, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -9053,6 +9082,7 @@ def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
 
@@ -9250,6 +9280,7 @@ def test_live_playwright_emits_registration_diagnostics_only_from_failure_stdout
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -9271,6 +9302,7 @@ def test_live_playwright_suppresses_registration_diagnostics_on_success(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
 
@@ -9368,6 +9400,7 @@ def test_live_playwright_emits_only_validated_pwa_route_diagnostics_from_failure
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E PWA bundle route " + json.dumps(record, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -9389,6 +9422,7 @@ def test_live_playwright_suppresses_pwa_bundle_route_diagnostics_on_success(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
 
@@ -9753,6 +9787,7 @@ def test_live_playwright_emits_only_validated_new_diagnostics_on_failure(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         summary + json.dumps(record, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -9784,6 +9819,7 @@ def test_live_playwright_suppresses_new_diagnostics_on_success(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=passed exit_code=0",
     ]
 
@@ -9819,6 +9855,7 @@ def test_live_playwright_emits_closed_login_failure_observations(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         f"live E2E login failure {fields}",
         "live E2E outcome=failed exit_code=1",
     ]
@@ -9862,6 +9899,7 @@ def test_live_playwright_discards_malformed_login_failure_rows(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E outcome=failed exit_code=1",
     ]
     assert printed.err == ""
@@ -13552,7 +13590,7 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     captured = capsys.readouterr()
-    expected = ["+ " + " ".join(command)]
+    expected = ["+ " + " ".join(command), _EMPTY_HTTP_OPERATIONS_LINE]
     if return_code:
         expected.append("live E2E reset-registration project=desktop step=click")
     outcome = "failed" if return_code else "passed"
@@ -13753,7 +13791,7 @@ def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
     else:
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
-    expected = ["+ " + " ".join(command)]
+    expected = ["+ " + " ".join(command), _EMPTY_HTTP_OPERATIONS_LINE]
     if return_code:
         expected.append(
             "live E2E reset-registration-v3 "
@@ -14908,7 +14946,7 @@ def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
     else:
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
-    expected = ["+ " + " ".join(command)]
+    expected = ["+ " + " ".join(command), _EMPTY_HTTP_OPERATIONS_LINE]
     if return_code:
         expected.append(
             "live E2E reset-registration-v2 "
@@ -15019,7 +15057,7 @@ def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     captured = capsys.readouterr()
-    expected = ["+ " + " ".join(command)]
+    expected = ["+ " + " ".join(command), _EMPTY_HTTP_OPERATIONS_LINE]
     if return_code:
         expected.append(
             "live E2E reset-url project=desktop phase=reopen reset_route=false "
@@ -15660,7 +15698,7 @@ def test_live_password_forgot_runner_uses_only_failure_stdout_and_preserves_exit
     else:
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
-    expected = ["+ " + " ".join(command)]
+    expected = ["+ " + " ".join(command), _EMPTY_HTTP_OPERATIONS_LINE]
     if return_code:
         expected.append(
             "live E2E password-forgot " + json.dumps(record, separators=(",", ":"))
@@ -15785,6 +15823,7 @@ def test_live_forgot_runner_never_prints_forged_private_fields(
     captured = capsys.readouterr()
     assert captured.out.splitlines() == [
         "+ " + " ".join(command),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -15907,6 +15946,7 @@ def test_live_forgot_sink_rejects_private_values_when_parser_is_bypassed(
     captured = capsys.readouterr()
     assert captured.out.splitlines() == [
         "+ " + " ".join(command),
+        _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
         "live E2E outcome=failed exit_code=1",
     ]
@@ -16243,3 +16283,230 @@ def test_live_playwright_prints_layout_diagnostics_from_stdout(
         "messengerLeft=1000 referenceRight=1000 scrollWidth=1200 clientWidth=1200"
     ) in lines
     assert private not in printed.out + printed.err
+
+
+# Stage A: pure scalar protocol tests; no stand or reporter is started.
+def _stage_a_operation_parser():
+    from scripts.live_stand_playwright_evidence import _live_playwright_http_operations
+
+    return _live_playwright_http_operations
+
+
+def _stage_a_operation_row(**changes):
+    values = dict(
+        project="desktop",
+        source="chat-attachment-isolation.live.spec.ts",
+        line=229,
+        retry=0,
+        ordinal=1,
+        phase="body",
+        operation="chat-attachment-create",
+        outcome="response",
+        status=502,
+        elapsed_ms=12,
+        saturated=0,
+        requests="1",
+        responses="1",
+    )
+    values.update(changes)
+    return (
+        "UE_LIVE_HTTP_OPERATION_V2 "
+        + " ".join(f"{key}={value}" for key, value in values.items())
+        + "\n"
+    )
+
+
+def test_stage_a_operation_parser_retains_closed_rows_and_disjoint_attempts():
+    parse = _stage_a_operation_parser()
+    assert callable(parse), "the Stage A parser must exist"
+    rows = [
+        _stage_a_operation_row(),
+        _stage_a_operation_row(retry=1),
+        _stage_a_operation_row(project="mobile"),
+        _stage_a_operation_row(operation="auth-login", phase="cleanup", ordinal=2),
+    ]
+    result = parse("".join(rows))
+    assert len(result["records"]) == 4
+    assert result["completeness"] == "unverified"
+    assert result["correlation"] == "unambiguous"
+    assert result["records"][0]["status"] == 502
+    assert parse(rows[0] + rows[0])["records"] == parse(rows[0])["records"]
+    assert (
+        parse(rows[0] + _stage_a_operation_row(status=503))["correlation"]
+        == "ambiguous"
+    )
+    assert parse("".join(reversed(rows)))["records"] == list(
+        reversed(result["records"])
+    )
+
+
+def test_stage_a_operation_parser_rejects_hostile_and_inconsistent_rows():
+    parse = _stage_a_operation_parser()
+    assert callable(parse), "the Stage A parser must exist"
+    valid = _stage_a_operation_row()
+    hostile = [
+        valid[:-1],
+        valid.replace("\n", "\r"),
+        valid.replace("status=502", "status=099"),
+        valid.replace("status=502", "status=600"),
+        valid.replace("status=502", "status=NaN"),
+        valid.replace("project=desktop", "project=foreign"),
+        valid.replace("line=229", "line=230"),
+        valid.replace("retry=0", "retry=2"),
+        valid.replace("ordinal=1", "ordinal=17"),
+        valid.replace("body", "setup", 1),
+        valid.replace("elapsed_ms=12", "elapsed_ms=120001"),
+        valid.replace("saturated=0", "saturated=1"),
+        valid.replace("responses=1", "responses=0"),
+        valid.replace("status=502", "status=none"),
+        valid.replace("project=desktop", "project=desktop project=mobile"),
+        valid.replace("source=", "source=private-value/"),
+        valid.replace("\n", " private-value\n"),
+        valid.replace("\n", "\x00\n"),
+        valid.replace("\n", "é\n"),
+        "UE_LIVE_HTTP_OPERATION_V2 " + "x" * 600 + "\n",
+    ]
+    for row in hostile:
+        result = parse(row)
+        assert result["records"] == []
+        assert result["completeness"] == "incomplete"
+        assert "private-value" not in str(result)
+    assert len(parse(valid.replace("\n", "\r\n"))["records"]) == 1
+    for status in (100, 599):
+        assert (
+            parse(_stage_a_operation_row(status=status))["records"][0]["status"]
+            == status
+        )
+    assert parse(_stage_a_operation_row(elapsed_ms=120000, saturated=1))["records"]
+    assert parse(
+        _stage_a_operation_row(outcome="no-response", status="none", responses="0")
+    )["records"]
+
+
+def test_stage_a_operation_parser_global_cap_and_markers():
+    parse = _stage_a_operation_parser()
+    assert callable(parse), "the Stage A parser must exist"
+    # Distinct static declaration/project/retry/ordinal keys exceed the global cap.
+    rows = [
+        _stage_a_operation_row(
+            operation="auth-login",
+            phase="setup",
+            ordinal=ordinal,
+            retry=retry,
+            project=project,
+            line=line,
+            source="auth-roles.live.spec.ts",
+        )
+        for line in (33, 210, 228)
+        for project in ("desktop", "mobile")
+        for retry in (0, 1)
+        for ordinal in range(1, 17)
+    ]
+    result = parse("".join(rows))
+    assert len(result["records"]) == 104
+    assert result["completeness"] == "truncated"
+    for marker in ("truncated", "invalid-scope", "unavailable"):
+        result = parse("UE_LIVE_HTTP_OPERATION_V2 completeness=" + marker + "\n")
+        assert result["records"] == []
+        assert result["completeness"] == (
+            "truncated" if marker == "truncated" else "incomplete"
+        )
+    assert parse("")["completeness"] == "unavailable"
+
+
+def test_stage_a_operation_parser_observation_counts_and_byte_budget():
+    parse = _stage_a_operation_parser()
+    assert callable(parse), "the Stage A parser must exist"
+    assert parse(_stage_a_operation_row(requests="0"))["records"]
+    for field in ("requests", "responses"):
+        result = parse(_stage_a_operation_row(**{field: "many"}))
+        assert result["correlation"] == "ambiguous"
+    # Duplicate rows cannot bypass the independent serialized diagnostic budget.
+    result = parse(_stage_a_operation_row() * 1000)
+    assert len(result["records"]) == 1
+    assert result["completeness"] == "truncated"
+    assert (
+        parse(
+            "UE_LIVE_HTTP_OPERATION_V2 completeness=truncated\n"
+            + "UE_LIVE_HTTP_OPERATION_V2 completeness=invalid-scope\n"
+        )["completeness"]
+        == "truncated"
+    )
+
+
+def test_stage_a_operation_case_table_matches_literal_declarations():
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse(
+        (root / "scripts/live_stand_playwright_evidence.py").read_text(encoding="utf-8")
+    )
+    table = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_HTTP_OPERATION_CASE_LINES"
+            for target in node.targets
+        )
+    )
+    assert len(table) == 58
+    assert sum(map(len, table.values())) == 87
+    for source, declarations in table.items():
+        lines = (
+            (root / "frontend/tests/e2e-live" / source).read_text(encoding="utf-8")
+        ).splitlines()
+        assert len(set(declarations)) == len(declarations)
+        for line in declarations:
+            assert lines[line - 1].lstrip().startswith('test("')
+
+
+def test_stage_a_operation_parser_caps_each_attempt_across_phases():
+    parse = _stage_a_operation_parser()
+    assert callable(parse), "the Stage A parser must exist"
+    rows = [
+        _stage_a_operation_row(operation="auth-login", phase=phase, ordinal=ordinal)
+        for phase in ("setup", "cleanup")
+        for ordinal in range(1, 17)
+    ]
+    result = parse("".join(rows))
+    assert len(result["records"]) == 16
+    assert result["completeness"] == "truncated"
+    assert result["correlation"] == "ambiguous"
+    reused = parse(rows[0] + rows[16])
+    assert len(reused["records"]) == 1
+    assert reused["correlation"] == "ambiguous"
+    assert reused["completeness"] == "incomplete"
+    # The exhausted attempt must not consume another project's distinct budget.
+    result = parse("".join(rows) + _stage_a_operation_row(project="mobile"))
+    assert len(result["records"]) == 17
+
+
+def test_stage_a_operation_case_table_has_cross_language_parity():
+    import ast
+    import json
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse(
+        (root / "scripts/live_stand_playwright_evidence.py").read_text(encoding="utf-8")
+    )
+    python_table = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_HTTP_OPERATION_CASE_LINES"
+            for target in node.targets
+        )
+    )
+    source = (root / "frontend/tests/e2e-live/http-status-diagnostic.ts").read_text()
+    match = re.search(
+        r"const LIVE_OPERATION_DECLARATIONS:[^=]+=[ \n]*(\{.*?\})", source, re.S
+    )
+    assert match is not None
+    # The checked-in literal is JSON except for its final trailing comma.
+    typescript_table = json.loads(re.sub(r",\s*}", "}", match[1]))
+    assert typescript_table == {key: list(value) for key, value in python_table.items()}

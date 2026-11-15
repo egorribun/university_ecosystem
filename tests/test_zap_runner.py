@@ -47,6 +47,8 @@ scan = next(item.split("src=", 1)[1].split(",", 1)[0] for item in mounts if "dst
 target = next(item.split("src=", 1)[1].split(",", 1)[0] for item in mounts if "dst=/zap/target.txt" in item)
 print(pathlib.Path(target).read_text(), flush=True)
 print("private-zap-marker", file=sys.stderr, flush=True)
+if "FAKE_ENGINE_OUTPUT" in os.environ:
+    pathlib.Path(scan, "zap.out").write_text(os.environ["FAKE_ENGINE_OUTPUT"])
 if os.environ.get("FAKE_DIAGNOSTIC"):
     print(os.environ["FAKE_DIAGNOSTIC"], flush=True)
 if os.environ.get("FAKE_SLEEP"):
@@ -375,4 +377,30 @@ def test_real_process_exit_projects_only_fixed_diagnostic(
     assert "private_secret_sentinel" not in captured.out + captured.err + str(
         raised.value
     )
+    assert "private-zap-marker" not in captured.out + captured.err + str(raised.value)
+
+
+@pytest.mark.parametrize("payload", [None, "", "private-zap-marker"])
+def test_failed_process_observes_only_owned_engine_output_metadata(
+    runner_inputs, monkeypatch, capsys, payload
+):
+    from scripts.quality.zap_run_provenance import ScannerExitError
+
+    monkeypatch.setenv("FAKE_EXIT", "3")
+    monkeypatch.setenv(
+        "FAKE_DIAGNOSTIC", "ERROR [Errno 5] Failed to connect to ZAP after 3600 seconds"
+    )
+    if payload is not None:
+        monkeypatch.setenv("FAKE_ENGINE_OUTPUT", payload)
+    with pytest.raises(ScannerExitError) as raised:
+        _run(runner_inputs)
+    expected = "unavailable" if payload is None else "present" if payload else "empty"
+    assert raised.value.engine_output == expected
+    assert raised.value.reason == "startup_wait_expired"
+    assert raised.value.exit_code == 3
+    work = runner_inputs[3]
+    assert not (work / "receipt.json").exists()
+    assert not (work / "publication.json").exists()
+    assert not (work / "target.txt").exists()
+    captured = capsys.readouterr()
     assert "private-zap-marker" not in captured.out + captured.err + str(raised.value)

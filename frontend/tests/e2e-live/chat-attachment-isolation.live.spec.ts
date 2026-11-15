@@ -1,7 +1,14 @@
 import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
-import { devices, type BrowserContext, type Page } from "@playwright/test"
-import { expect, GROUP_CHAT_ACCOUNTS, loginAs, loginWith, test } from "./fixtures"
+import { devices, type BrowserContext, type Page, type Response } from "@playwright/test"
+import {
+  beginOwnedLiveOperation,
+  expect,
+  GROUP_CHAT_ACCOUNTS,
+  loginAs,
+  loginWith,
+  test,
+} from "./fixtures"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
@@ -346,6 +353,8 @@ test.describe("live private chat attachment isolation", () => {
       })
       await expect(page.locator("#chat-send-btn")).toBeEnabled()
 
+      const messageOperation = beginOwnedLiveOperation("chat-attachment-create")
+      const messageOperationStartedAt = performance.now()
       const messageResponsePromise = page.waitForResponse((response) => {
         const request = response.request()
         return (
@@ -353,8 +362,27 @@ test.describe("live private chat attachment isolation", () => {
           new URL(response.url()).pathname === `/api/v1/chats/${createdGroup?.id}/messages`
         )
       })
-      await page.locator("#chat-send-btn").click()
-      const messageResponse = await messageResponsePromise
+      let messageResponse: Response
+      let messageStatus: number | null = null
+      try {
+        await page.locator("#chat-send-btn").click()
+        messageResponse = await messageResponsePromise
+        messageStatus = messageResponse.status()
+      } finally {
+        // This existing observer sees responses only, not request events.
+        if (messageStatus === null || messageStatus < 200 || messageStatus >= 300) {
+          try {
+            messageOperation?.finish(
+              messageStatus,
+              0,
+              messageStatus === null ? 0 : 1,
+              performance.now() - messageOperationStartedAt
+            )
+          } catch {
+            /* Diagnostics must not replace the original scenario error. */
+          }
+        }
+      }
       if (!messageResponse.ok()) {
         reportLiveHttpStatus(
           testInfo.project.name,

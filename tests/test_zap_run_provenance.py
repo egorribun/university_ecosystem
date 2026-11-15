@@ -466,3 +466,226 @@ def test_incomplete_final_output_and_malformed_class_ending_are_unknown(tmp_path
     with pytest.raises(module.ScannerExitError) as raised:
         module.finish_run(work, IDENTITY, nonce, 3, TARGET)
     assert raised.value.reason == "unknown"
+
+
+@pytest.mark.parametrize(
+    "kind", ["missing", "empty", "present", "sparse", "hostile-name"]
+)
+def test_failed_scan_projects_engine_metadata_without_reading_content(
+    tmp_path, monkeypatch, kind
+):
+    import os
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "scan" / "zap.out"
+    if kind == "hostile-name":
+        (path.parent / "zap.out-private_secret_sentinel").write_bytes(
+            b"private_secret_sentinel"
+        )
+    elif kind != "missing":
+        path.write_bytes(
+            b"" if kind == "empty" else b"\xffAuthorization: private_secret_sentinel\n"
+        )
+        if kind == "sparse":
+            with path.open("r+b") as handle:
+                handle.truncate(1 << 40)
+    original = os.open
+
+    def no_engine_open(source, *args, **kwargs):
+        assert str(source) not in {"zap.out", str(path)}, (
+            "engine content must not be opened"
+        )
+        return original(source, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", no_engine_open)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    expected = {
+        "missing": "unavailable",
+        "hostile-name": "unavailable",
+        "empty": "empty",
+    }.get(kind, "present")
+    assert raised.value.engine_output == expected
+    assert raised.value.reason == "unknown"
+    assert "private_secret_sentinel" not in str(raised.value)
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "symlink",
+        "directory",
+        "fifo",
+        "socket",
+        "device",
+        "hardlink",
+        "unreadable",
+        "foreign-owner",
+        "writable",
+    ],
+)
+def test_engine_metadata_rejects_unsafe_files(tmp_path, monkeypatch, kind):
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    module, work, nonce, _ = _start(tmp_path)
+    path = work / "scan" / "zap.out"
+    if kind == "symlink":
+        path.symlink_to("/dev/null")
+    elif kind == "directory":
+        path.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(path)
+    else:
+        path.write_bytes(b"private_secret_sentinel")
+        if kind == "hardlink":
+            os.link(path, path.with_name("private_secret_sentinel"))
+        elif kind == "unreadable":
+            path.chmod(0)
+        elif kind == "writable":
+            path.chmod(0o666)
+        elif kind in {"foreign-owner", "socket", "device"}:
+            # The sandbox disallows socket creation. Exercise the exact stat
+            # result without creating a socket/device or opening file contents.
+            original = os.stat
+
+            def unsafe(source, *args, **kwargs):
+                info = original(source, *args, **kwargs)
+                if source == "zap.out":
+                    mode = {"socket": stat.S_IFSOCK, "device": stat.S_IFCHR}.get(
+                        kind, stat.S_IFREG
+                    ) | 0o644
+                    return SimpleNamespace(
+                        st_mode=mode,
+                        st_uid=os.getuid() + (kind == "foreign-owner"),
+                        st_nlink=info.st_nlink,
+                        st_size=info.st_size,
+                    )
+                return info
+
+            monkeypatch.setattr(os, "stat", unsafe)
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.engine_output == "unavailable"
+    assert not (work / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("component", ["ancestor", "work", "scan"])
+def test_engine_metadata_never_traverses_symlink_directories(tmp_path, component):
+    module, work, _, _ = _start(tmp_path)
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    if component == "ancestor":
+        alias = tmp_path / "private_secret_sentinel"
+        alias.symlink_to(tmp_path, target_is_directory=True)
+        work = alias / "run"
+    else:
+        path = work if component == "work" else work / "scan"
+        saved = path.with_name(path.name + "-saved")
+        path.rename(saved)
+        path.symlink_to(saved, target_is_directory=True)
+    assert module._engine_output(work) == "unavailable"
+
+
+@pytest.mark.parametrize("component", ["work", "scan"])
+@pytest.mark.parametrize("kind", ["foreign-owner", "writable"])
+def test_engine_metadata_requires_owned_private_directories(
+    tmp_path, monkeypatch, component, kind
+):
+    import os
+    from types import SimpleNamespace
+
+    module, work, _, _ = _start(tmp_path)
+    path = work if component == "work" else work / "scan"
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    if kind == "writable":
+        path.chmod(0o777)
+    else:
+        inode = path.stat().st_ino
+        original = os.fstat
+
+        def foreign(fd):
+            info = original(fd)
+            if info.st_ino == inode:
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=os.getuid() + 1)
+            return info
+
+        monkeypatch.setattr(os, "fstat", foreign)
+    assert module._engine_output(work) == "unavailable"
+
+
+@pytest.mark.parametrize("operation", ["open", "fstat", "stat"])
+def test_engine_metadata_errors_are_private_and_close_descriptors(
+    tmp_path, monkeypatch, operation
+):
+    import os
+
+    module, work, _, _ = _start(tmp_path)
+    before = len(list(Path("/proc/self/fd").iterdir()))
+    original = getattr(os, operation)
+
+    def denied(*args, **kwargs):
+        raise PermissionError("private_secret_sentinel")
+
+    monkeypatch.setattr(os, operation, denied)
+    assert module._engine_output(work) == "unavailable"
+    monkeypatch.setattr(os, operation, original)
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+
+
+@pytest.mark.parametrize("exit_code", [0, 1, 2])
+def test_completed_scan_never_observes_engine_output(tmp_path, monkeypatch, exit_code):
+    module, work, nonce, _ = _start(tmp_path)
+
+    def forbidden(*args):
+        pytest.fail("successful scanner exits must not inspect engine output")
+
+    monkeypatch.setattr(module, "_engine_output", forbidden)
+    assert (
+        module.finish_run(work, IDENTITY, nonce, exit_code, TARGET)["scanner_exit_code"]
+        == exit_code
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["present", "empty", "unavailable", "private_secret_sentinel", True, None, [], {}],
+)
+def test_engine_output_public_enum_is_strict(value):
+    error = zap_run_provenance.ScannerExitError(3, engine_output=value)
+    assert error.engine_output == (
+        value if type(value) is str and value in {"present", "empty"} else "unavailable"
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [Path("/") / Path(*(["x"] * 128)), Path("/private_secret_sentinel/../run")]
+)
+def test_engine_metadata_rejects_unbounded_or_parent_traversal_paths(path, monkeypatch):
+    import os
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid directory traversal must not start")
+
+    monkeypatch.setattr(os, "open", forbidden)
+    assert zap_run_provenance._engine_output(path) == "unavailable"
+
+
+def test_hostile_work_directory_name_does_not_become_diagnostic(tmp_path):
+    hostile = tmp_path / "private_secret_sentinel\nERROR fake"
+    hostile.mkdir()
+    module, work, nonce, _ = _start(hostile)
+    (work / "scan" / "zap.out").write_bytes(b"private_secret_sentinel")
+    with pytest.raises(module.ScannerExitError) as raised:
+        module.finish_run(work, IDENTITY, nonce, 3, TARGET)
+    assert raised.value.engine_output == "present"
+    assert "private_secret_sentinel" not in str(raised.value)
+
+
+def test_engine_metadata_cwd_failure_is_unavailable(tmp_path, monkeypatch):
+    def unavailable(path):
+        raise OSError("private_secret_sentinel")
+
+    monkeypatch.setattr(Path, "absolute", unavailable)
+    assert zap_run_provenance._engine_output(Path("run")) == "unavailable"

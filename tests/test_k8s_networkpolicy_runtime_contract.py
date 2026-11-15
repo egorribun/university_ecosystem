@@ -2712,7 +2712,7 @@ def test_readiness_failure_attaches_diagnostic_without_changing_verdict():
     }
 
 
-@pytest.mark.parametrize("source", ["api", "log"])
+@pytest.mark.parametrize("source", ["api", "api-recursion", "api-nonobject", "log"])
 def test_startup_deep_json_is_unavailable_without_interrupting_receipt(source):
     import json
     from types import SimpleNamespace
@@ -2720,20 +2720,25 @@ def test_startup_deep_json_is_unavailable_without_interrupting_receipt(source):
 
     m = _real_runtime_module("networkpolicy_runtime_startup")
     phase = _real_runtime_module("networkpolicy_runtime_real_fp")
-    depth = 65527 if source == "api" else 4000
+    depth = 65527 if source.startswith("api") else 4000
     nested = "[" * depth + "0" + "]" * depth
-    assert len(nested.encode("utf-8")) < (131072 if source == "api" else 16384)
+    assert len(nested.encode("utf-8")) < (131072 if source.startswith("api") else 16384)
 
     def collect():
         with patch.object(
             m, "run_command", return_value=SimpleNamespace(stdout=nested)
         ):
             if source == "api":
-                with pytest.raises(RecursionError):
-                    json.loads(nested)
+                # The decoder may accept this nesting or raise RecursionError;
+                # either outcome must yield an unavailable diagnostic receipt.
                 return m.processor_startup_diagnostics()
-            # Python runtimes differ in decoder nesting limits. Exercise the
-            # log decoder error branch independently within its byte limit.
+            if source == "api-recursion":
+                with patch.object(m.json, "loads", side_effect=RecursionError):
+                    return m.processor_startup_diagnostics()
+            if source == "api-nonobject":
+                with patch.object(m.json, "loads", return_value=[]):
+                    return m.processor_startup_diagnostics()
+            # Exercise the log decoder error independently of runtime depth limits.
             with patch.object(m.json, "loads", side_effect=RecursionError):
                 return m._logs("probe-a", "probe-a-file-processor-abc-xyz", False)
 
@@ -2745,3 +2750,79 @@ def test_startup_deep_json_is_unavailable_without_interrupting_receipt(source):
     assert receipt["diagnostics"]["status"] == "unavailable"
     assert nested not in json.dumps(receipt)
     assert json.loads(json.dumps(receipt)) == receipt
+
+
+@pytest.mark.parametrize(
+    "relative", ["services/file-processor/schema.graphql", "entrypoint.sh"]
+)
+def test_source_archive_preserves_committed_modes_inside_private_context(
+    committed, relative
+):
+    import os
+    import stat
+    import subprocess
+    import tarfile
+
+    source = committed / "services/file-processor"
+    source.mkdir(parents=True)
+    (source / "schema.graphql").write_text("type Query { health: String! }\n")
+    (source / "Dockerfile").write_text(
+        "FROM fixture AS builder\nFROM fixture AS health-probe\n"
+    )
+    entrypoint = committed / "entrypoint.sh"
+    entrypoint.write_text("#!/bin/sh\nexit 0\n")
+    entrypoint.chmod(0o755)
+    git(committed, "add", ".")
+    git(
+        committed,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "archive modes",
+    )
+    work = committed / "cache"
+    work.mkdir(mode=0o700)
+    archive = work / "expected.tar"
+    git(committed, "archive", "--format=tar", "--output=" + str(archive), "HEAD")
+    with tarfile.open(archive) as expected:
+        expected_mode = expected.getmember(relative).mode
+        expected_bytes = expected.extractfile(relative).read()
+    script = PROOF.read_text()
+    builder = script[
+        script.index("require_clean_source() {") : script.index(
+            "load_real_processor_images() {"
+        )
+    ]
+    program = (
+        "set -euo pipefail\numask 077\n"
+        "log() { :; }\nuv() { printf 'python:fixture'; }\ndocker() { :; }\n"
+        + builder
+        + '\nbuild_real_processor_images\nprintf private > "$WORK_DIR/generated-private"\n'
+        + "[[ $(umask) == 0077 ]]\n"
+    )
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=program,
+        env={
+            **os.environ,
+            "ROOT_DIR": str(committed),
+            "WORK_DIR": str(work),
+            "UE_NETPOL_REAL_FP": "1",
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    extracted = work / "source" / relative
+    assert extracted.read_bytes() == expected_bytes
+    assert stat.S_IMODE(extracted.stat().st_mode) == expected_mode
+    assert extracted.stat().st_mode & stat.S_IROTH
+    if relative == "entrypoint.sh":
+        assert extracted.stat().st_mode & stat.S_IXOTH
+    assert stat.S_IMODE(work.stat().st_mode) == 0o700
+    assert stat.S_IMODE((work / "source").stat().st_mode) == 0o700
+    assert stat.S_IMODE((work / "generated-private").stat().st_mode) == 0o600

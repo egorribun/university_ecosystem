@@ -586,8 +586,8 @@ def test_scanner_exit_is_reported_without_scanner_output(
     assert m.main(["prepare", *flags, "--status-in", status]) == 1
     err = capsys.readouterr().err
     assert (
-        f"ZAP scanner exited with code {shown}; diagnostic=unknown; scan result is unknown."
-        in err
+        f"ZAP scanner exited with code {shown}; diagnostic=unknown; "
+        "engine_output=unavailable; scan result is unknown." in err
     )
     assert "evidence validation failed" not in err
     assert TARGET not in err
@@ -626,8 +626,9 @@ def test_source_rejection_precedes_stand_status_read(source):
         (b"ERROR https://private_secret_sentinel.invalid/\n", "unknown"),
     ],
 )
+@pytest.mark.parametrize("engine_output", ["missing", "empty", "present"])
 def test_scanner_diagnostics_publish_only_fixed_reason_and_no_success_evidence(
-    source, monkeypatch, capsys, log, expected
+    source, monkeypatch, capsys, log, expected, engine_output
 ):
     root, env, work, public = source
     m = module()
@@ -638,6 +639,10 @@ def test_scanner_diagnostics_publish_only_fixed_reason_and_no_success_evidence(
     async def failed_scan(target_file, rules_file, work, identity, timeout_seconds):
         nonce = provenance.start_run(work, identity)
         (work / "stdout.log").write_bytes(log)
+        if engine_output != "missing":
+            (work / "scan" / "zap.out").write_bytes(
+                b"private_secret_sentinel" if engine_output == "present" else b""
+            )
         (work / "stderr.log").write_bytes(
             b"Authorization: Bearer private_secret_sentinel\n"
         )
@@ -649,6 +654,8 @@ def test_scanner_diagnostics_publish_only_fixed_reason_and_no_success_evidence(
     assert m.main(["prepare", *flags, "--status-in", str(status)]) == 1
     captured = capsys.readouterr()
     assert f"diagnostic={expected}" in captured.err
+    observed = "unavailable" if engine_output == "missing" else engine_output
+    assert f"engine_output={observed}" in captured.err
     assert "scan result is unknown" in captured.err
     assert "private_secret_sentinel" not in captured.out + captured.err
     assert TARGET not in captured.err

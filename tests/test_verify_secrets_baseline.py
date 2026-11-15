@@ -33051,7 +33051,195 @@ def _nov13_go_companion_historical_policy(policy: dict[str, Any]) -> dict[str, A
     return restored
 
 
+# NOV14 imagePullSecrets: explicit owner approval for test-only compatibility
+# of exactly these two Helm source files. Restore the unique complete hunk in
+# memory before the unchanged historical chain. No scanner identity or ledger
+# binding is changed, and no other source change is accepted.
+_NOV14_IMAGE_PULL_SOURCE_PINS = {
+    "charts/university-ecosystem/templates/file-processor-deployment.yaml": (
+        bytes.fromhex(
+            "12 ec 0a ae e9 e1 21 ab 92 af ba fd 9b 20 9d 45 d4 bb 8c 79 0e 00 d7 d0 e1 e4 7c a6 a1 a1 e5 ed"
+        ),
+        bytes.fromhex(
+            "a0 16 63 96 84 5c 8b 82 f0 e3 af 63 a8 7d cd ac af 8f bf 5d 57 6e 54 1b 32 0f eb 8e c4 a5 bc 75"
+        ),
+    ),
+    "charts/university-ecosystem/templates/gateway-deployment.yaml": (
+        bytes.fromhex(
+            "9d 60 df 6b d0 26 6a cd b3 0a 19 90 fe 17 75 f5 81 be dd 73 1e f9 6e 9a 27 40 2d 3c 31 a7 5f e6"
+        ),
+        bytes.fromhex(
+            "2d bc d7 6d e3 dd 1e bd 40 ed e7 3b 31 15 2e bc 5e 75 6b d3 b8 f9 7e aa bf 8e 48 98 89 0a f0 0c"
+        ),
+    ),
+}
+_NOV14_IMAGE_PULL_CURRENT_HUNK = (
+    b"        {{- range . }}\n        - name: {{ . | quote }}\n        {{- end }}\n"
+)
+_NOV14_IMAGE_PULL_PREVIOUS_HUNK = b"        {{- toYaml . | nindent 8 }}\n"
+
+
+def _nov14_image_pull_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    pins = _NOV14_IMAGE_PULL_SOURCE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous_sha, current_sha = pins
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    assert actual.count(_NOV14_IMAGE_PULL_CURRENT_HUNK) == 1, (
+        f"imagePullSecrets source hunk changed: {path}"
+    )
+    historical = actual.replace(
+        _NOV14_IMAGE_PULL_CURRENT_HUNK, _NOV14_IMAGE_PULL_PREVIOUS_HUNK, 1
+    )
+    assert hashlib.sha256(historical).digest() == previous_sha, (
+        f"imagePullSecrets predecessor SHA-256 changed: {path}"
+    )
+    return historical
+
+
+@pytest.mark.parametrize("path", tuple(_NOV14_IMAGE_PULL_SOURCE_PINS))
+def test_nov14_image_pull_projection_preserves_exact_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    # Independently spell out the only authorized edit, including all whitespace.
+    prefix, suffix = actual.split(
+        b"        {{- range . }}\n        - name: {{ . | quote }}\n        {{- end }}\n"
+    )
+    expected = prefix + b"        {{- toYaml . | nindent 8 }}\n" + suffix
+    previous_sha, current_sha = _NOV14_IMAGE_PULL_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current_sha
+    assert hashlib.sha256(expected).digest() == previous_sha
+    assert _nov14_image_pull_historical_source_bytes(path, actual) == expected
+    assert _aud154_historical_source_bytes(path, actual) == expected
+
+
+def _nov14_image_pull_mutated_source(path: str, mutation: str) -> bytes:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    hunk = _NOV14_IMAGE_PULL_CURRENT_HUNK
+    if mutation == "extra-byte":
+        return actual + b"x"
+    if mutation == "extra-newline":
+        return actual + b"\n"
+    if mutation == "unrelated-edit":
+        assert actual.count(b"kind: Deployment\n") == 1
+        return actual.replace(b"kind: Deployment\n", b"kind: StatefulSet\n", 1)
+    if mutation == "tls-companion-edit":
+        assert b".Values.internalHttpMTLS.enabled" in actual
+        return actual.replace(b".Values.internalHttpMTLS.enabled", b"false", 1)
+    if mutation == "missing-hunk":
+        return actual.replace(hunk, b"", 1)
+    if mutation == "malformed-hunk":
+        return actual.replace(hunk, hunk.replace(b"| quote", b"| squote"), 1)
+    if mutation == "duplicated-hunk":
+        return actual.replace(hunk, hunk + hunk, 1)
+    if mutation == "swapped-file":
+        other = next(p for p in _NOV14_IMAGE_PULL_SOURCE_PINS if p != path)
+        return (root / other).read_bytes()
+    raise AssertionError(f"unknown mutation: {mutation}")
+
+
+@pytest.mark.parametrize("path", tuple(_NOV14_IMAGE_PULL_SOURCE_PINS))
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "extra-byte",
+        "extra-newline",
+        "unrelated-edit",
+        "tls-companion-edit",
+        "missing-hunk",
+        "malformed-hunk",
+        "duplicated-hunk",
+        "swapped-file",
+    ],
+)
+def test_nov14_image_pull_projection_rejects_source_drift(
+    path: str, mutation: str
+) -> None:
+    actual = _nov14_image_pull_mutated_source(path, mutation)
+    with pytest.raises(
+        AssertionError, match="conditional disposition source file SHA-256 changed"
+    ):
+        _aud154_historical_source_bytes(path, actual)
+
+
+@pytest.mark.parametrize("path", tuple(_NOV14_IMAGE_PULL_SOURCE_PINS))
+@pytest.mark.parametrize(
+    "mutation", ["missing-hunk", "malformed-hunk", "duplicated-hunk"]
+)
+def test_nov14_image_pull_hunk_guard_is_independent(
+    path: str, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actual = _nov14_image_pull_mutated_source(path, mutation)
+    previous_sha, _ = _NOV14_IMAGE_PULL_SOURCE_PINS[path]
+    # Deliberately pass the outer digest guard to exercise the exact hunk guard.
+    monkeypatch.setitem(
+        _NOV14_IMAGE_PULL_SOURCE_PINS,
+        path,
+        (previous_sha, hashlib.sha256(actual).digest()),
+    )
+    with pytest.raises(AssertionError, match="imagePullSecrets source hunk changed"):
+        _nov14_image_pull_historical_source_bytes(path, actual)
+
+
+@pytest.mark.parametrize("path", tuple(_NOV14_IMAGE_PULL_SOURCE_PINS))
+@pytest.mark.parametrize(
+    "mutation",
+    ["extra-newline", "unrelated-edit", "tls-companion-edit", "swapped-file"],
+)
+def test_nov14_image_pull_predecessor_guard_is_independent(
+    path: str, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actual = _nov14_image_pull_mutated_source(path, mutation)
+    previous_sha, _ = _NOV14_IMAGE_PULL_SOURCE_PINS[path]
+    monkeypatch.setitem(
+        _NOV14_IMAGE_PULL_SOURCE_PINS,
+        path,
+        (previous_sha, hashlib.sha256(actual).digest()),
+    )
+    with pytest.raises(
+        AssertionError, match="imagePullSecrets predecessor SHA-256 changed"
+    ):
+        _nov14_image_pull_historical_source_bytes(path, actual)
+
+
+@pytest.mark.parametrize("path", tuple(_NOV14_IMAGE_PULL_SOURCE_PINS))
+@pytest.mark.parametrize("digest_index", [0, 1])
+def test_nov14_image_pull_projection_rejects_wrong_digest(
+    path: str, digest_index: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    pins = list(_NOV14_IMAGE_PULL_SOURCE_PINS[path])
+    pins[digest_index] = bytes(32)
+    monkeypatch.setitem(_NOV14_IMAGE_PULL_SOURCE_PINS, path, tuple(pins))
+    match = (
+        "imagePullSecrets predecessor SHA-256 changed"
+        if digest_index == 0
+        else "conditional disposition source file SHA-256 changed"
+    )
+    with pytest.raises(AssertionError, match=match):
+        _nov14_image_pull_historical_source_bytes(path, actual)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/live_stand.py",
+        "charts/university-ecosystem/templates/backend-deployment.yaml",
+        "charts/university-ecosystem/templates/gateway-deployment.yaml.extra",
+        "unknown",
+    ],
+)
+def test_nov14_image_pull_projection_leaves_other_paths_unchanged(path: str) -> None:
+    actual = b"unrelated\n" + _NOV14_IMAGE_PULL_CURRENT_HUNK
+    assert _nov14_image_pull_historical_source_bytes(path, actual) is actual
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov14_image_pull_historical_source_bytes(path, actual)
     actual = _nov12_chart_historical_source_bytes(path, actual)
     actual = _aud375_historical_source_bytes(path, actual)
     if path not in _AUD154_SOURCE_PINS:
@@ -34134,9 +34322,18 @@ def _push_probe_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
 def test_push_probe_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
-    assert hashlib.sha256(live).hexdigest() == _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+    projected_live = _nov15_http_operations_historical_source_bytes(
+        _PUSH_PROBE_LIVE_STAND_PATH, live
+    )
+    assert hashlib.sha256(projected_live).hexdigest() == (
+        _PUSH_PROBE_LIVE_STAND_CURRENT_SHA256
+    )
     ledger_bytes = (root / _PUSH_PROBE_LEDGER_PATH).read_bytes()
-    ledger = json.loads(ledger_bytes)
+    ledger = json.loads(
+        _nov15_http_operations_historical_source_bytes(
+            _PUSH_PROBE_LEDGER_PATH, ledger_bytes
+        )
+    )
     bound = [
         item["sha256"]
         for item in ledger["dispositions"][6]["companions"]
@@ -34173,7 +34370,11 @@ def test_push_probe_projection_rejects_drift(mutation: str) -> None:
         policy["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
             0
         ] ^= 1
-        with pytest.raises(AssertionError, match="push probe companion identity"):
+        # The NOV15 deps entry runs before the push probe guard and rejects the
+        # same row 495 identity drift first with its own message.
+        with pytest.raises(
+            AssertionError, match="http operations companion identity changed"
+        ):
             _push_probe_historical_policy(policy)
         return
     live = (root / _PUSH_PROBE_LIVE_STAND_PATH).read_bytes()
@@ -34601,6 +34802,7 @@ def _deps_actions_identity(digest_hex: str) -> list[int]:
 
 
 def _deps_actions_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov15_http_operations_historical_source_bytes(path, actual)
     if path == _DEPS_ACTIONS_LEDGER_PATH:
         ledger_current = hashlib.sha256(actual).digest()
         assert ledger_current == _DEPS_ACTIONS_LEDGER_CURRENT_SHA256, (
@@ -34645,7 +34847,7 @@ def _deps_actions_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _deps_actions_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov15_http_operations_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     for (
@@ -34743,3 +34945,179 @@ def test_deps_actions_projection_rejects_drift(mutation: str) -> None:
     actual = (root / path).read_bytes() + b"\n"
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _deps_actions_source_bytes(path, actual)
+
+
+# NOV15 live HTTP operation diagnostics: Stage A rebinds scripts/live_stand.py, its
+# Semgrep companion digest in the ledger and the SHA-1 identity of that companion
+# hex in policy row 495 one-to-one from the HEAD predecessor. No identity is added
+# and the inventory stays at 512. This is the newest projection: it restores the
+# exact predecessor before the aud154 and deps actions chains run.
+_NOV15_LIVE_PATH = "scripts/live_stand.py"
+_NOV15_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_NOV15_IDENTITY_ROW = 495
+_NOV15_LIVE_CURRENT_SHA256 = _rust_hex(
+    "74 73 2d 81 b3 bc d2 d1 88 bb 09 8d f5 5d 4f 30 e2 aa b5 7d 96 fd 5f 17 d7 31 f6 a7 54 3a e6 15"
+)
+_NOV15_LIVE_PREVIOUS_SHA256 = _rust_hex(
+    "24 59 fa 68 ca 3e a7 64 4f b9 1e 5f 32 35 6e 67 76 05 2e ce 06 cc 06 d3 7b b4 c8 94 2f 4b 61 20"
+)
+_NOV15_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "72 18 80 5b c4 e8 73 38 c1 c3 43 43 66 87 a5 c9 95 aa 39 1f dd 1d 12 94 ed 93 ab ca bb b3 87 6e"
+    )
+)
+_NOV15_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "69 56 ae d4 8b 00 9c 25 51 01 c4 fe 93 9e 38 51 57 03 ae 43 5a 62 c7 58 ef 1b 90 0a 45 50 74 4e"
+    )
+)
+# The three exact byte sequences that Stage A inserted into the live stand.
+_NOV15_LIVE_INSERTIONS = (
+    b"from scripts.live_stand_playwright_evidence import (\n"
+    b"    _live_playwright_http_operations as _live_playwright_http_operations,\n"
+    b")\n",
+    b"    http_operations = _live_playwright_http_operations(stdout)\n",
+    b"    print(\n"
+    b'        "live E2E HTTP operations "\n'
+    b'        + json.dumps(http_operations, separators=(",", ":")),\n'
+    b"        flush=True,\n"
+    b"    )\n",
+)
+
+
+def _nov15_identity(digest_hex: str) -> list[int]:
+    return list(
+        hashlib.sha1(digest_hex.encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _nov15_http_operations_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == _NOV15_LIVE_PATH:
+        assert hashlib.sha256(actual).hexdigest() == _NOV15_LIVE_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for inserted in _NOV15_LIVE_INSERTIONS:
+            assert historical.count(inserted) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(inserted, b"", 1)
+        assert hashlib.sha256(historical).hexdigest() == _NOV15_LIVE_PREVIOUS_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    if path != _NOV15_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV15_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _NOV15_LIVE_CURRENT_SHA256.encode("ascii")
+    assert actual.count(current) == 1, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual.replace(current, _NOV15_LIVE_PREVIOUS_SHA256.encode("ascii"), 1)
+    assert hashlib.sha256(historical).digest() == _NOV15_LEDGER_PREVIOUS_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+def _nov15_http_operations_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512, "live disposition count changed"
+    row = records[_NOV15_IDENTITY_ROW]
+    identity = row["identity"]
+    assert identity["path"] == _NOV15_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert row["owner"] == "egorribun", (
+        "approval metadata changed for http operations companion"
+    )
+    assert row["expires_on"] == "2027-01-10", (
+        "approval metadata changed for http operations companion"
+    )
+    assert bytes(identity["hashed_secret_bytes"]) == bytes(
+        _nov15_identity(_NOV15_LIVE_CURRENT_SHA256)
+    ), "live disposition http operations companion identity changed"
+    identity["hashed_secret_bytes"] = _nov15_identity(_NOV15_LIVE_PREVIOUS_SHA256)
+    return restored
+
+
+def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / _NOV15_LIVE_PATH).read_bytes()
+    assert hashlib.sha256(live).hexdigest() == _NOV15_LIVE_CURRENT_SHA256
+    ledger_bytes = (root / _NOV15_LEDGER_PATH).read_bytes()
+    assert hashlib.sha256(ledger_bytes).digest() == _NOV15_LEDGER_CURRENT_SHA256
+    ledger = json.loads(ledger_bytes)
+    bound = [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _NOV15_LIVE_PATH
+    ]
+    assert bound == [_NOV15_LIVE_CURRENT_SHA256]
+    historical_live = _nov15_http_operations_historical_source_bytes(
+        _NOV15_LIVE_PATH, live
+    )
+    assert hashlib.sha256(historical_live).hexdigest() == _NOV15_LIVE_PREVIOUS_SHA256
+    historical_ledger = _nov15_http_operations_historical_source_bytes(
+        _NOV15_LEDGER_PATH, ledger_bytes
+    )
+    assert hashlib.sha256(historical_ledger).digest() == _NOV15_LEDGER_PREVIOUS_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _nov15_http_operations_historical_policy(policy)
+    assert len(restored["records"]) == 512
+    assert restored["records"][_NOV15_IDENTITY_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _nov15_identity(_NOV15_LIVE_PREVIOUS_SHA256)
+    for index, (before, after) in enumerate(
+        zip(policy["records"], restored["records"], strict=True)
+    ):
+        if index != _NOV15_IDENTITY_ROW:
+            assert before == after
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["live_extra", "live_missing", "live_duplicated", "ledger_extra", "policy"],
+)
+def test_nov15_http_operations_projection_rejects_drift(
+    mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV15_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(
+            AssertionError, match="http operations companion identity changed"
+        ):
+            _nov15_http_operations_historical_policy(policy)
+        return
+    if mutation == "ledger_extra":
+        path = _NOV15_LEDGER_PATH
+        actual = (root / path).read_bytes() + b"\n"
+    else:
+        path = _NOV15_LIVE_PATH
+        live = (root / path).read_bytes()
+        if mutation == "live_extra":
+            actual = live + b"\n"
+        elif mutation == "live_missing":
+            actual = live.replace(_NOV15_LIVE_INSERTIONS[2], b"", 1)
+        else:
+            actual = live + _NOV15_LIVE_INSERTIONS[2]
+        if mutation != "live_extra":
+            # Pass the outer digest guard so the one-to-one count guard is the one that fires.
+            monkeypatch.setitem(
+                globals(),
+                "_NOV15_LIVE_CURRENT_SHA256",
+                hashlib.sha256(actual).hexdigest(),
+            )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov15_http_operations_historical_source_bytes(path, actual)

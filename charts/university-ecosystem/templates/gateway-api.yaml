@@ -213,6 +213,8 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: {{ $apiRouteName }}
+  # Retain the Gateway rate policy instead of replacing it with buffering alone.
+  mergeType: StrategicMerge
   requestBuffer:
     limit: {{ $root.Values.gatewayApi.requestBuffer.limit | quote }}
 {{- end }}
@@ -239,6 +241,6 @@ spec:
         - type: RequestRedirect
           requestRedirect:
             scheme: https
-            statusCode: 301
+            statusCode: 308
 {{- end }}
 {{- end }}

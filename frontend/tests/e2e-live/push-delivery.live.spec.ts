@@ -449,6 +449,7 @@ test("permission is requested only after the explicit settings action", async ({
   let registrationAttempted = false
   let adminContext: BrowserContext | null = null
   let adminPage: Page | null = null
+  const failures: unknown[] = []
 
   try {
     adminContext = await browser.newContext({
@@ -507,11 +508,25 @@ test("permission is requested only after the explicit settings action", async ({
     expect(requestsAfterAction[0]?.isActive, "the native permission call has a user gesture").toBe(
       true
     )
-  } finally {
+  } catch (error) {
+    failures.push(error)
+  }
+
+  try {
     if (registrationAttempted && adminPage) {
       await deleteOnlyCreatedAccount(adminPage, email, fullName)
     }
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
     if (adminContext) await adminContext.close()
+  } catch (error) {
+    failures.push(error)
+  }
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "push permission acceptance and owned cleanup failed")
   }
 })
 

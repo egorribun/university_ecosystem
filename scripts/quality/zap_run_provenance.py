@@ -15,6 +15,7 @@ import re
 import secrets
 import stat
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +151,7 @@ class ScannerExitError(ValueError):
         error_class: object = None,
         *,
         reason: object = "unknown",
+        engine_output: object = "unavailable",
     ) -> None:
         super().__init__("ZAP scanner did not complete")
         self.exit_code = (
@@ -162,12 +164,55 @@ class ScannerExitError(ValueError):
             else None
         )
 
+        self.engine_output = (
+            engine_output
+            if type(engine_output) is str and engine_output in {"empty", "present"}
+            else "unavailable"
+        )
         self.reason = "unknown"
         if self.exit_code == 3 and type(reason) is str:
             if reason == "startup_wait_expired":
                 self.reason = "startup_wait_expired"
             elif reason == "scanner_exception":
                 self.reason = "scanner_exception"
+
+
+def _engine_output(work: Path) -> str:
+    """Observe only owned engine-output metadata; never open or read its bytes.
+
+    The pinned scanner writes relative zap.out in the mounted scan directory,
+    while its failure dump looks elsewhere. Presence is not startup evidence.
+    Walk every directory without symlinks and keep only fixed public states.
+    """
+    try:
+        parts = (*work.absolute().parts, "scan")
+        if len(parts) > 128 or ".." in parts:
+            return "unavailable"
+        with ExitStack() as stack:
+            directory = None
+            for index, part in enumerate(parts):
+                directory = os.open(
+                    part,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=directory,
+                )
+                stack.callback(os.close, directory)
+                if index >= len(parts) - 2:
+                    info = os.fstat(directory)
+                    if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                        return "unavailable"
+            info = os.stat("zap.out", dir_fd=directory, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_nlink != 1
+                or not info.st_mode & 0o400
+                or info.st_mode & 0o022
+            ):
+                return "unavailable"
+            return "present" if info.st_size else "empty"
+    except OSError:
+        return "unavailable"
 
 
 def _scanner_log_tail(work: Path) -> bytes:
@@ -227,7 +272,10 @@ def finish_run(
     if type(exit_code) is not int or exit_code not in (0, 1, 2):
         tail = _scanner_log_tail(work)
         raise ScannerExitError(
-            exit_code, _scanner_error_class(tail), reason=_scanner_failure_reason(tail)
+            exit_code,
+            _scanner_error_class(tail),
+            reason=_scanner_failure_reason(tail),
+            engine_output=_engine_output(work),
         )
     payload = read_payload(work / "scan" / "report_json.json")
     build_report(payload)
