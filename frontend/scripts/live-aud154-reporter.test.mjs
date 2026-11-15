@@ -159,6 +159,18 @@ test("actual browser-free Playwright reports final teardown, skip, and retry out
         });
       `
       )
+      writeFileSync(
+        join(root, "tests", "e2e-live", "messenger-unread-read.live.spec.ts"),
+        `
+        import { test, expect } from '@playwright/test';
+        test.afterEach(() => { if ('${scenario}' === 'teardown') throw new Error('private-teardown'); });
+        test("a real DM read receipt clears only that chat's unread state", async ({}, info) => {
+          test.skip('${scenario}' === 'skipped');
+          if ('${scenario}' === 'retry' && info.retry === 0) throw new Error('private-first-attempt');
+          expect(true).toBe(true);
+        });
+      `
+      )
       let output
       try {
         output = execFileSync(
@@ -177,8 +189,15 @@ test("actual browser-free Playwright reports final teardown, skip, and retry out
         output = error.stdout
       }
       const lines = output.trim().split("\n")
-      assert.equal(lines.length, 4)
+      assert.equal(lines.length, 6)
       assert.doesNotMatch(output, /private/u)
+      assert.equal(
+        lines.filter(
+          (line) =>
+            JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length)).case_id === "aud154-read-receipt"
+        ).length,
+        2
+      )
       for (const line of lines) {
         const row = JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length))
         assert.equal(
@@ -220,4 +239,138 @@ test("retains Enter and button identities independently in both projects", () =>
     collect([subject("desktop", { title: enterTitle }), subject("desktop", { title: enterTitle })]),
     ["UE_LIVE_AUD154_V1 invalid\n"]
   )
+})
+
+test("retains the exact read-receipt case's final results for both projects", () => {
+  const readFile = fileURLToPath(
+    new URL("../tests/e2e-live/messenger-unread-read.live.spec.ts", import.meta.url)
+  )
+  const readTitle = "a real DM read receipt clears only that chat's unread state"
+  const readSubject = (project, changes = {}) =>
+    subject(project, {
+      title: readTitle,
+      location: { file: readFile },
+      parent: {
+        type: "file",
+        title: "messenger-unread-read.live.spec.ts",
+        project: () => ({ name: project }),
+      },
+      ...changes,
+    })
+
+  const output = collect([
+    readSubject("desktop"),
+    readSubject("mobile", {
+      results: [
+        { status: "failed", retry: 0 },
+        { status: "passed", retry: 1 },
+      ],
+      outcome: () => "flaky",
+    }),
+  ])
+  const rows = output.map((line) => JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length)))
+  assert.equal(rows.length, 2)
+  assert.deepEqual(rows[0], {
+    schema: 1,
+    case_id: "aud154-read-receipt",
+    project: "desktop",
+    final_status: "passed",
+    expected_status: "passed",
+    outcome: "expected",
+    attempts: ["passed"],
+    retry: 0,
+    skipped: false,
+  })
+  assert.equal(rows[1].case_id, "aud154-read-receipt")
+  assert.equal(rows[1].project, "mobile")
+  assert.deepEqual(rows[1].attempts, ["failed", "passed"])
+  assert.equal(rows[1].outcome, "flaky")
+  assert.doesNotMatch(output.join(""), /private|ticket|token|https?:/u)
+
+  for (const change of [
+    { location: { file } },
+    { title: readTitle + " private" },
+    { parent: { type: "describe", title: "private", project: () => ({ name: "desktop" }) } },
+    { parent: { type: "file", title: "private", project: () => ({ name: "private" }) } },
+  ]) {
+    assert.deepEqual(collect([readSubject("desktop", change)]), [])
+  }
+  assert.deepEqual(collect([readSubject("desktop"), readSubject("desktop")]), [])
+})
+
+test("read-receipt skip and failure outcomes remain visible", () => {
+  const readFile = fileURLToPath(
+    new URL("../tests/e2e-live/messenger-unread-read.live.spec.ts", import.meta.url)
+  )
+  for (const status of ["skipped", "failed", "timedOut", "interrupted"]) {
+    const output = collect(
+      ["desktop", "mobile"].map((project) =>
+        subject(project, {
+          title: "a real DM read receipt clears only that chat's unread state",
+          location: { file: readFile },
+          parent: {
+            type: "file",
+            title: "messenger-unread-read.live.spec.ts",
+            project: () => ({ name: project }),
+          },
+          results: [{ status, retry: 0 }],
+          outcome: () => (status === "skipped" ? "skipped" : "unexpected"),
+        })
+      )
+    )
+    assert.equal(output.length, 2)
+    for (const line of output) {
+      const row = JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length))
+      assert.equal(row.case_id, "aud154-read-receipt")
+      assert.equal(row.final_status, status)
+      assert.equal(row.skipped, status === "skipped")
+    }
+  }
+})
+
+test("invalid read evidence does not suppress complete delivery diagnostics", () => {
+  const readFile = fileURLToPath(
+    new URL("../tests/e2e-live/messenger-unread-read.live.spec.ts", import.meta.url)
+  )
+  const readSubject = (project, changes = {}) =>
+    subject(project, {
+      title: "a real DM read receipt clears only that chat's unread state",
+      location: { file: readFile },
+      parent: {
+        type: "file",
+        title: "messenger-unread-read.live.spec.ts",
+        project: () => ({ name: project }),
+      },
+      ...changes,
+    })
+  const delivery = [
+    subject(),
+    subject("mobile"),
+    subject("desktop", { title: enterTitle }),
+    subject("mobile", { title: enterTitle }),
+  ]
+  for (const readCases of [
+    [readSubject("desktop")],
+    [readSubject("desktop"), readSubject("mobile", { results: [] })],
+    [readSubject("desktop"), readSubject("mobile", { results: [{ status: "private", retry: 0 }] })],
+    [readSubject("desktop"), readSubject("mobile"), readSubject("desktop")],
+  ]) {
+    const output = collect([...delivery, ...readCases])
+    assert.equal(output.length, 4)
+    const rows = output.map((line) => JSON.parse(line.slice("UE_LIVE_AUD154_V1 ".length)))
+    assert.deepEqual(
+      new Set(rows.map((row) => `${row.case_id}:${row.project}`)),
+      new Set([
+        "aud154-sent-confirmation:desktop",
+        "aud154-sent-confirmation:mobile",
+        "aud154-enter-sent-confirmation:desktop",
+        "aud154-enter-sent-confirmation:mobile",
+      ])
+    )
+    assert.doesNotMatch(output.join(""), /aud154-read-receipt|private/u)
+  }
+
+  assert.deepEqual(collect([...delivery, subject(), readSubject("desktop")]), [
+    "UE_LIVE_AUD154_V1 invalid\n",
+  ])
 })

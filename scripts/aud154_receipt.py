@@ -23,6 +23,7 @@ CASE_TITLES = {
         "shows sent confirmation after the server accepts the message"
     ),
 }
+READ_CASE_ID = "aud154-read-receipt"
 SOURCE_PATHS = (
     "frontend/tests/e2e-live/messenger-realtime.live.spec.ts",
     "frontend/src/components/messenger/ChatWindow.tsx",
@@ -65,7 +66,7 @@ def _valid_record(record: Any) -> bool:
         type(record["schema"]) is not int
         or record["schema"] != 1
         or not isinstance(record["case_id"], str)
-        or record["case_id"] not in CASE_TITLES
+        or (record["case_id"] not in CASE_TITLES and record["case_id"] != READ_CASE_ID)
         or record["project"] not in ("desktop", "mobile")
         or type(record["retry"]) is not int
         or record["retry"] not in (0, 1)
@@ -188,7 +189,11 @@ def build_receipt(
         after, sort_keys=True
     ) or not re.fullmatch(r"0|[1-9][0-9]{0,4}", exit_code):
         raise ValueError(_FAILURE)
-    records = project_case_records(output, retained=True)
+    records = [
+        item
+        for item in project_case_records(output, retained=True)
+        if item["case_id"] in CASE_TITLES
+    ]
     counts = [
         line for line in output.split("\n") if line.startswith("live E2E counts ")
     ]
