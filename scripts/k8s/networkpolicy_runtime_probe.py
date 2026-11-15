@@ -579,6 +579,22 @@ def not_run_items() -> list[dict[str, str]]:
                 "rows prove reachability on /metrics, not the ws-hub metrics payload"
             ),
         },
+        {
+            "finding": "AUD-438",
+            "check": "actual ws-hub restricted peers and Prometheus server",
+            "reason": (
+                "the policy matrix uses stand-in targets and the authorized HTTP "
+                "client is a Prometheus-labelled Python probe, not Prometheus itself"
+            ),
+        },
+        {
+            "finding": "AUD-438",
+            "check": "actual ingress controller and public HTTP route",
+            "reason": (
+                "the ingress-labelled source is a Python stand-in; the existing "
+                "matrix does not exercise an ingress controller or its public route"
+            ),
+        },
     ]
 
 
@@ -623,6 +639,7 @@ def main() -> int:
     parser.add_argument("--real-processor-image")
     parser.add_argument("--diagnostic-image")
     parser.add_argument("--source-sha")
+    parser.add_argument("--real-ws-image")
     args = parser.parse_args()
     if any(
         (args.real_processor_image, args.diagnostic_image, args.source_sha)
@@ -630,6 +647,11 @@ def main() -> int:
         parser.error(
             "all source-bound real-processor image arguments are required together"
         )
+    real_ws_image = getattr(args, "real_ws_image", None)
+    if real_ws_image and not all(
+        (args.real_processor_image, args.diagnostic_image, args.source_sha)
+    ):
+        parser.error("real ws-hub requires the source-bound real-processor phase")
 
     started = datetime.now(UTC).isoformat()
     base_image = runtime_base_image()
@@ -698,6 +720,14 @@ def main() -> int:
         "not_run": remaining,
         "matrix_verdict": "pass" if matrix_pass else "fail",
         "real_processor": real_processor,
+        "real_ws_hub": {
+            "verdict": "not_run",
+            "reason": (
+                "awaiting successful real-processor phase"
+                if real_ws_image
+                else "real ws-hub image not provided"
+            ),
+        },
         "verdict": "pass" if all_pass else "fail",
     }
 
@@ -740,6 +770,36 @@ def main() -> int:
                 for item in remaining
                 if item["finding"] not in {"AUD-169", "AUD-188"}
             ]
+        if real_ws_image and real_processor["verdict"] == "pass":
+            receipt["real_ws_hub"] = {
+                "verdict": "in_progress",
+                "scope": "authorized positive scrape only",
+            }
+            persist_receipt()
+            from networkpolicy_runtime_real_ws import actual_ws_phase
+
+            real_ws = actual_ws_phase(
+                ROOT,
+                rendered,
+                pods,
+                passwords,
+                python_image=base_image,
+                image=real_ws_image,
+                source_sha=args.source_sha,
+            )
+            receipt["real_ws_hub"] = real_ws
+            all_pass = all_pass and real_ws["verdict"] == "pass"
+            if real_ws["verdict"] == "pass":
+                receipt["not_run"] = [
+                    item
+                    for item in receipt["not_run"]
+                    if item["check"] != "metrics exposition content"
+                ]
+        elif real_ws_image:
+            receipt["real_ws_hub"] = {
+                "verdict": "not_run",
+                "reason": "real-processor phase did not pass",
+            }
         receipt["finished_utc"] = datetime.now(UTC).isoformat()
         receipt["verdict"] = "pass" if all_pass else "fail"
     persist_receipt()

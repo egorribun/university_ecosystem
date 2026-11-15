@@ -5391,7 +5391,7 @@
       "events": [
         {
           "event": "pull_request",
-          "guard": "{\"paths\":[\"charts/**\",\"k8s/**\",\"backend.Dockerfile\",\"scripts/k8s/networkpolicy_runtime_*.py\",\"scripts/k8s/networkpolicy_runtime_proof.sh\",\"tests/test_helm_staging_contract.py\",\".github/workflows/k8s-networkpolicy-runtime.yml\"]}"
+          "guard": "{\"paths\":[\"charts/**\",\"k8s/**\",\"backend.Dockerfile\",\"services/ws-hub/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"gen/go/**\",\"go.mod\",\"go.sum\",\"scripts/k8s/networkpolicy_runtime_*.py\",\"scripts/k8s/networkpolicy_runtime_proof.sh\",\"tests/test_helm_staging_contract.py\",\"tests/test_aud438_real_ws_runtime.py\",\".github/workflows/k8s-networkpolicy-runtime.yml\"]}"
         },
         {
           "event": "schedule",

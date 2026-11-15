@@ -184,6 +184,33 @@ def test_minio_endpoint_port_must_match_the_declared_egress(
     _assert_fails(result, message)
 
 
+def test_outbox_cidr_opt_in_changes_only_its_policy_with_neutral_defaults() -> None:
+    default_resources = _rendered()
+    configured_resources = _rendered(
+        "--set-json",
+        f'networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs=["{TEST_NET_CIDR}"]',
+    )
+    default_policies = {
+        resource["metadata"]["name"]: resource
+        for resource in default_resources
+        if resource.get("kind") == "NetworkPolicy"
+    }
+    configured_policies = {
+        resource["metadata"]["name"]: resource
+        for resource in configured_resources
+        if resource.get("kind") == "NetworkPolicy"
+    }
+    assert _ipblock_egress(_policy(default_resources, "-outbox-worker-policy")) == []
+    egress = _policy(configured_resources, "-outbox-worker-policy")["spec"]["egress"]
+    expected_rule = {
+        "to": [{"ipBlock": {"cidr": TEST_NET_CIDR}}],
+        "ports": [{"protocol": "TCP", "port": 443}],
+    }
+    assert egress.count(expected_rule) == 1
+    egress.remove(expected_rule)
+    assert configured_policies == default_policies
+
+
 def test_external_elasticsearch_without_cidrs_fails_the_render() -> None:
     _assert_fails(
         _render(
