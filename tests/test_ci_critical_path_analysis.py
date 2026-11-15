@@ -1636,7 +1636,7 @@ def _attempt_cli_args(output: Path) -> list[str]:
 
 
 @pytest.mark.parametrize("run_attempt", [None, "3"])
-def test_cli_attempt_scope_and_legacy_endpoint(
+def test_cli_attempt_scope_and_legacy_endpoint_use_bounded_page_size(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     run_attempt: str | None,
@@ -1649,9 +1649,9 @@ def test_cli_attempt_scope_and_legacy_endpoint(
 
     assert _attempt_cli_exit_code(argv) == 0
     endpoint = (
-        "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=100"
+        "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=25"
         if run_attempt is not None
-        else "repos/owner/repo/actions/runs/777/jobs?per_page=100"
+        else "repos/owner/repo/actions/runs/777/jobs?per_page=25"
     )
     assert calls == [["gh", "api", "--paginate", "--slurp", endpoint]]
     report = json.loads(output.read_text(encoding="utf-8"))
@@ -1759,7 +1759,7 @@ def test_cli_explicit_attempt_does_not_fallback_after_fetch_failure(
             "api",
             "--paginate",
             "--slurp",
-            "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=100",
+            "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=25",
         ]
     ]
     assert not output.exists()
