@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { useTranslation } from "react-i18next"
@@ -20,6 +21,7 @@ export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
   const captureOperation = useProfileSessionGuard()
+  const identityPending = useConfirmedIdentityPending()
   const userId = user?.id
   const [actionLoading, setActionLoading] = useState(false)
   const [feedback, setFeedback] = useState<{
@@ -147,7 +149,7 @@ export default function SpotifyConnect() {
           <Button
             onClick={connect}
             variant="solid"
-            disabled={actionLoading}
+            disabled={identityPending || actionLoading}
             className="w-full h-12 rounded-2xl bg-none bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/[calc(var(--opacity-dim)*100%)]"
             loading={actionLoading}
           >
@@ -165,7 +167,7 @@ export default function SpotifyConnect() {
                   onClick={refresh}
                   variant="outline"
                   size="sm"
-                  disabled={actionLoading || refreshing}
+                  disabled={identityPending || actionLoading || refreshing}
                   className="rounded-xl h-9 px-4 font-black"
                   startIcon={<RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />}
                 >
@@ -175,7 +177,7 @@ export default function SpotifyConnect() {
                   onClick={disconnect}
                   variant="outline"
                   size="sm"
-                  disabled={actionLoading}
+                  disabled={identityPending || actionLoading}
                   className="rounded-xl h-9 px-4 font-black border-error/[calc(var(--opacity-dim)*100%)] text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)]"
                   startIcon={<LogOut className="h-4 w-4" />}
                 >

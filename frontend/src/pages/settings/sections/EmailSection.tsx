@@ -16,6 +16,7 @@ interface EmailSectionProps extends SettingsSectionProps {
   emailValue: string
   emailPassword: string
   emailBusy: boolean
+  identityPending: boolean
   emailError: string | null
   emailPasswordError: string | null
   pendingEmail: string | null
@@ -28,6 +29,7 @@ export function EmailSection({
   emailValue,
   emailPassword,
   emailBusy,
+  identityPending,
   emailError,
   emailPasswordError,
   pendingEmail,
@@ -53,7 +55,7 @@ export function EmailSection({
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault()
-              void onSubmit()
+              if (!identityPending) void onSubmit()
             }}
           >
             {pendingEmail ? (
@@ -72,7 +74,7 @@ export function EmailSection({
                 onChange={(e) => onEmailChange(e.target.value)}
                 error={Boolean(emailError)}
                 helperText={emailError ?? undefined}
-                disabled={emailBusy}
+                disabled={emailBusy || identityPending}
               />
               <TextField
                 fullWidth
@@ -83,13 +85,13 @@ export function EmailSection({
                 onChange={(e) => onPasswordChange(e.target.value)}
                 error={Boolean(emailPasswordError)}
                 helperText={emailPasswordError ?? undefined}
-                disabled={emailBusy}
+                disabled={emailBusy || identityPending}
                 autoComplete="current-password"
               />
               <Button
                 type="submit"
                 variant="solid"
-                disabled={emailBusy || !emailValue || !emailPassword}
+                disabled={emailBusy || identityPending || !emailValue || !emailPassword}
                 className="h-10 shrink-0 w-full sm:w-auto"
                 leadingIcon={emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
               >

@@ -13,6 +13,7 @@ interface PasswordSectionProps extends SettingsSectionProps {
   isNewPasswordError: boolean
   confirmPasswordMessage: string | null
   passwordBusy: boolean
+  identityPending: boolean
   onCurrentPasswordChange: (value: string) => void
   onNewPasswordChange: (value: string) => void
   onConfirmPasswordChange: (value: string) => void
@@ -28,6 +29,7 @@ export function PasswordSection({
   isNewPasswordError,
   confirmPasswordMessage,
   passwordBusy,
+  identityPending,
   onCurrentPasswordChange,
   onNewPasswordChange,
   onConfirmPasswordChange,
@@ -44,7 +46,7 @@ export function PasswordSection({
         className="flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault()
-          void onSubmit()
+          if (!identityPending) void onSubmit()
         }}
       >
         <div className="flex flex-col sm:flex-row gap-2.5">
@@ -58,6 +60,7 @@ export function PasswordSection({
             error={Boolean(currentPasswordError)}
             helperText={currentPasswordError ?? undefined}
             autoComplete="current-password"
+            disabled={identityPending}
           />
           <TextField
             fullWidth
@@ -69,6 +72,7 @@ export function PasswordSection({
             error={isNewPasswordError}
             helperText={isNewPasswordError ? (passwordError ?? undefined) : undefined}
             autoComplete="new-password"
+            disabled={identityPending}
           />
         </div>
         <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
@@ -82,11 +86,12 @@ export function PasswordSection({
             error={Boolean(confirmPasswordMessage)}
             helperText={confirmPasswordMessage ?? undefined}
             autoComplete="new-password"
+            disabled={identityPending}
           />
           <Button
             type="submit"
             variant="solid"
-            disabled={passwordBusy}
+            disabled={passwordBusy || identityPending}
             leadingIcon={passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
           >
             {passwordBusy

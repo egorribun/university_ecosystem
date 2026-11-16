@@ -19,6 +19,7 @@ const SpotifyLogo = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => 
 interface SpotifySectionProps extends SettingsSectionProps {
   connected: boolean
   displayName: string
+  identityPending: boolean
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
 }
@@ -26,6 +27,7 @@ interface SpotifySectionProps extends SettingsSectionProps {
 export function SpotifySection({
   connected,
   displayName,
+  identityPending,
   onConnect,
   onDisconnect,
 }: SpotifySectionProps) {
@@ -55,11 +57,22 @@ export function SpotifySection({
           {connected && !!displayName && <Chip label={displayName} />}
         </div>
         {!connected ? (
-          <Button variant="solid" onClick={onConnect} className="self-start">
+          <Button
+            variant="solid"
+            onClick={onConnect}
+            disabled={identityPending}
+            className="self-start"
+          >
             {t("settings:integrations.spotify.connect")}
           </Button>
         ) : (
-          <Button variant="outline" color="error" onClick={onDisconnect} className="self-start">
+          <Button
+            variant="outline"
+            color="error"
+            onClick={onDisconnect}
+            disabled={identityPending}
+            className="self-start"
+          >
             {t("settings:integrations.spotify.disconnect")}
           </Button>
         )}
