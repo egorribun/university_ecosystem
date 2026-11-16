@@ -20,6 +20,8 @@
     "minuteShort": "мин"
   },
   "search": {
+    "loading": "Поиск…",
+    "activeResult": "Выбранный результат: {{title}}",
     "title": "Поиск",
     "placeholder": "Поиск…",
     "inputLabel": "Поиск по приложению",
