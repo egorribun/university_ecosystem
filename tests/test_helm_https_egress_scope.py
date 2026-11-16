@@ -15,16 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
 STAGING_VALUES = CHART / "values-staging.yaml"
 
-# Public TCP/443 is granted only where a public dependency is declared (AUD-189).
+# Public TCP/443 is granted only where a public dependency is declared (AUD-189):
+# backup and backend, and outbox-worker for Web Push (ADR-054 addendum 2026-11-16).
 HTTPS_EGRESS_POLICIES = (
     "-backup-policy",
     "-backend-policy",
-)
-# No public 443 by default; owner-declared external endpoints only.
-NO_DEFAULT_HTTPS_EGRESS_POLICIES = (
-    "-file-processor-policy",
     "-outbox-worker-policy",
 )
+# No public 443 by default; owner-declared external endpoints only.
+NO_DEFAULT_HTTPS_EGRESS_POLICIES = ("-file-processor-policy",)
 # Reserved TEST-NET fixture only; never a deployment CIDR.
 TEST_NET_PRIVATE_CIDR = "198.51.100.0/24"
 
@@ -80,7 +79,9 @@ def test_no_network_policy_allows_tcp_443_without_a_destination() -> None:
 def test_public_https_egress_excludes_cluster_private_and_link_local_ranges(
     suffix: str,
 ) -> None:
-    policy = _policy(_render_https_egress(), suffix)
+    # Without declared external endpoints, so the shared public rule is the only
+    # TCP/443 rule (staging declares outbox-worker Elasticsearch CIDRs).
+    policy = _policy(_render_without_declared_external_endpoints(), suffix)
     rules = [rule for rule in policy["spec"]["egress"] if _allows_port_443(rule)]
 
     assert len(rules) == 1
@@ -111,7 +112,7 @@ def test_owner_verified_private_https_destinations_are_allowed_explicitly() -> N
 
 
 def test_default_https_egress_renders_no_private_destination_allowance() -> None:
-    resources = _render_https_egress()
+    resources = _render_without_declared_external_endpoints()
 
     for suffix in HTTPS_EGRESS_POLICIES:
         destinations = [
@@ -175,19 +176,26 @@ def test_file_processor_tcp_443_is_limited_to_declared_external_cidrs() -> None:
     assert "0.0.0.0/0" not in json.dumps(rules)
 
 
-def test_outbox_worker_tcp_443_stays_closed_even_with_declared_file_processor_cidrs() -> (
-    None
-):
+def test_outbox_worker_tcp_443_is_only_the_shared_public_rule() -> None:
+    """Web Push needs public TCP/443, never another workload's declared CIDRs."""
     resources = _render_without_declared_external_endpoints(
         "--set-json",
         "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs="
         f"{json.dumps([TEST_NET_PRIVATE_CIDR])}",
     )
 
-    assert not any(
-        _allows_port_443(rule)
+    outbox_rules = [
+        rule
         for rule in _policy(resources, "-outbox-worker-policy")["spec"]["egress"]
-    )
+        if _allows_port_443(rule)
+    ]
+    backend_rules = [
+        rule
+        for rule in _policy(resources, "-backend-policy")["spec"]["egress"]
+        if _allows_port_443(rule)
+    ]
+    assert outbox_rules == backend_rules
+    assert TEST_NET_PRIVATE_CIDR not in json.dumps(outbox_rules)
 
 
 def test_default_route_file_processor_external_cidr_is_rejected() -> None:

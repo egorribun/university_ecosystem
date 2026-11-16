@@ -322,9 +322,8 @@ ROWS: tuple[Row, ...] = (
         "public-https",
         "tcp",
         443,
-        False,
-        "outbox-worker TCP/443 to a public address (no public destination granted)",
-        control=("a-backend", "public-https", "tcp", 443),
+        True,
+        "outbox-worker TCP/443 to a public address (Web Push, ADR-054 2026-11-16)",
     ),
     Row(
         "AUD-189",

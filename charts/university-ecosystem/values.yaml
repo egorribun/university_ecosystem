@@ -584,7 +584,7 @@ networkPolicy:
   # Owner-verified CIDRs only, with the same prefix limits as fileProcessorHTTPSEgress.
   outboxWorkerHTTPSEgress:
     egressCIDRs: []
-  # TCP 443 egress for backup and backend only: their declared public
+  # TCP 443 egress for backup, backend and outbox-worker (Web Push) only: their declared public
   # dependencies (object storage, HIBP, Spotify OAuth). Public destinations stay
   # reachable; cluster, private and link-local ranges are excepted. The listed
   # baseline exclusions must remain when adding cluster CIDRs; owner-verified

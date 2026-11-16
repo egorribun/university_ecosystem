@@ -120,6 +120,23 @@ on Kubernetes. Before any Kubernetes deployment, the AUD-189 public TCP/443
 exception must be extended to `outbox-worker`, or push egress must move behind an
 egress proxy.
 
+## Addendum 2026-11-16: outbox-worker public TCP/443 in Helm
+
+Decision (owner, 2026-11-16): the Helm `outbox-worker` NetworkPolicy gets the
+AUD-189 public TCP/443 rule, the same `university-ecosystem.httpsEgressRules` rule
+as `backend` and the backup job: any public address on TCP/443, with the cluster,
+private, shared and link-local ranges excepted. `outbox-worker` sends Web Push to
+browser push services, which have no fixed address set, so without this rule Web
+Push fails on Kubernetes (addendum 2026-11-13b). Outbound requests still pass the
+application SSRF guard, and the owner-declared `outboxWorkerHTTPSEgress` CIDRs keep
+their meaning for other external endpoints. `gateway`, `ws-hub`, `frontend` and
+`file-processor` stay without public TCP/443.
+
+The kind proof row `aud189-public-outbox` now expects an allowed connection, and
+every other workload's public TCP/443 row still expects a denial. AUD-189 closes
+only on a hosted kind run on `main` that passes with this matrix. The post-MVP
+direction (an egress proxy or an FQDN-aware policy for push egress) is unchanged.
+
 ## Addendum 2026-11-13: kind + Calico proof environment
 
 Owner decision (2026-11-12): an ephemeral kind cluster with Calico, created by CI, is the accepted

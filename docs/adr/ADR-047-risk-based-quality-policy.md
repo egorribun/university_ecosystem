@@ -2845,10 +2845,14 @@ tell apart. The runner parser and the `live E2E push` line carry both fields.
 2026-10-31 approval for one-to-one rebinds applies: its ledger digest and the
 SHA-1 identity of that digest in policy row 495 bind the new bytes, and the
 NOV16 projection layer in `tests/test_verify_secrets_baseline.py` restores the
-exact predecessor ahead of the nov15 and AUD-189 layers. No identity is added;
-the inventory stays at 524 dispositions, 242 baseline identities, 27 Gitleaks
-fingerprints and 15 Semgrep rows. This adds no threshold, required check or
-audit status.
+exact predecessor ahead of the nov15 and AUD-189 layers. The same standing
+approval covers one comment line in `charts/university-ecosystem/values.yaml`
+(the TCP/443 egress note now names outbox-worker for Web Push, ADR-054 addendum
+2026-11-16): the line count is unchanged, and a dedicated NOV16 chart layer at the
+head of the AUD-154 chain restores the exact predecessor before the NOV12 chart
+pin is checked. No identity is added; the inventory stays at 524 dispositions,
+242 baseline identities, 27 Gitleaks fingerprints and 15 Semgrep rows. This adds
+no threshold, required check or audit status.
 
 ### Visual audit weather fixture
 
