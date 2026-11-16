@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794808293177,
+  "lastUpdate": 1794855794769,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -12042,6 +12042,150 @@ window.BENCHMARK_DATA = {
             "value": 10527,
             "unit": "ns/op",
             "extra": "103798 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0823bdb23f41190c07625fd996f0fc98ae565da7",
+          "message": "Merge pull request #1405 from egorribun/egorribun\n\ntest(contracts): verify real ws-hub scrapes with Prometheus",
+          "timestamp": "2026-11-16T20:43:28+02:00",
+          "tree_id": "c2874a45296424b549cccff6582128677df328ec",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/0823bdb23f41190c07625fd996f0fc98ae565da7"
+        },
+        "date": 1794855793336,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 43250,
+            "unit": "ns/op",
+            "extra": "27648 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 72.04,
+            "unit": "ns/op",
+            "extra": "16063513 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 450.4,
+            "unit": "ns/op",
+            "extra": "2721870 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 49.75,
+            "unit": "ns/op",
+            "extra": "23693457 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 120.4,
+            "unit": "ns/op",
+            "extra": "9790374 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 27.82,
+            "unit": "ns/op",
+            "extra": "43345826 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 305.3,
+            "unit": "ns/op",
+            "extra": "4288071 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 92.61,
+            "unit": "ns/op",
+            "extra": "11418165 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 54.71,
+            "unit": "ns/op",
+            "extra": "21469245 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 302.8,
+            "unit": "ns/op",
+            "extra": "3986811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 741.6,
+            "unit": "ns/op",
+            "extra": "1620067 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 12.9,
+            "unit": "ns/op",
+            "extra": "90481755 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 410.8,
+            "unit": "ns/op",
+            "extra": "2954438 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 28.71,
+            "unit": "ns/op",
+            "extra": "40707460 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 746.1,
+            "unit": "ns/op",
+            "extra": "1539247 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 30.9,
+            "unit": "ns/op",
+            "extra": "41920688 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 66.77,
+            "unit": "ns/op",
+            "extra": "18011077 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 42.28,
+            "unit": "ns/op",
+            "extra": "28463343 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 465.6,
+            "unit": "ns/op",
+            "extra": "2644585 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 8710,
+            "unit": "ns/op",
+            "extra": "119188 times\n4 procs"
           }
         ]
       }
