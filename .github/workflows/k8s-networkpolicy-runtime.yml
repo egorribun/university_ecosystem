@@ -11,6 +11,7 @@ on:
       - "charts/**"
       - "k8s/**"
       - "backend.Dockerfile"
+      - "docker-compose.full.yml"
       - "services/ws-hub/**"
       - "services/pkg/logging/**"
       - "services/pkg/spiffe/**"
@@ -21,6 +22,7 @@ on:
       - "scripts/k8s/networkpolicy_runtime_proof.sh"
       - "tests/test_helm_staging_contract.py"
       - "tests/test_aud438_real_ws_runtime.py"
+      - "tests/test_networkpolicy_runtime_real_prometheus.py"
       - ".github/workflows/k8s-networkpolicy-runtime.yml"
   schedule:
     - cron: "41 4 * * 1"

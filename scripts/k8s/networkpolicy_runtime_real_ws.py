@@ -1,8 +1,8 @@
 """Source-bound ws-hub positive scrape in the existing disposable kind proof.
 
-The matrix remains a stand-in policy proof. This separate phase only requests
-metrics from actual chart-selected ws-hub replicas through the Prometheus-labelled
-probe pod; it does not test denied peers or run a Prometheus server.
+The matrix remains a stand-in policy proof. This separate phase checks actual
+chart-selected ws-hub replicas from the labelled Python probe and a separately
+provisioned Prometheus instance; it does not test denied peers.
 """
 
 from __future__ import annotations
@@ -816,6 +816,78 @@ def retire_ws_fixture(app: list[dict[str, Any]], pod: Pod, image: str) -> None:
         time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
 
 
+PROMETHEUS_FAILURE_STAGES = frozenset(
+    {
+        "input",
+        "targets-before",
+        "create-config",
+        "create-policy",
+        "create-pod",
+        "pod-ready",
+        "source-before",
+        "scrape",
+        "source-after",
+        "targets-after",
+    }
+)
+KUBERNETES_UID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+
+
+def valid_prometheus_proof(
+    proof: Any, expected: Any, *, projected: bool = False
+) -> bool:
+    """Accept only complete sanitized results for exactly the confirmed replicas."""
+    if not isinstance(proof, dict) or set(proof) != {"verdict", "source", "checks"}:
+        return False
+    source, checks = proof["source"], proof["checks"]
+    if proof["verdict"] != "pass" or not isinstance(source, dict):
+        return False
+    fields = {"namespace", "name", "uid"}
+    if not projected:
+        fields |= {"image_id", "container_id"}
+    if set(source) != fields or source["namespace"] != "monitoring":
+        return False
+    if any(not isinstance(source[key], str) for key in fields):
+        return False
+    if not (
+        re.fullmatch(r"netpol-prom-[0-9a-f]{12}", source["name"])
+        and re.fullmatch(KUBERNETES_UID, source["uid"])
+    ):
+        return False
+    if not projected and not (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", source["image_id"])
+        and re.fullmatch(
+            r"(?:containerd|docker)://[0-9a-f]{64}", source["container_id"]
+        )
+    ):
+        return False
+    if (
+        not isinstance(expected, list)
+        or not expected
+        or not isinstance(checks, list)
+        or len(checks) != len(expected)
+        or any(
+            not isinstance(replica, dict)
+            or not isinstance(replica.get("uid"), str)
+            or not re.fullmatch(KUBERNETES_UID, replica["uid"])
+            for replica in expected
+        )
+    ):
+        return False
+    if any(
+        not isinstance(check, dict)
+        or set(check) != {"replica_uid", "verdict"}
+        or not isinstance(check["replica_uid"], str)
+        or check["verdict"] != "pass"
+        for check in checks
+    ):
+        return False
+    uids = [replica["uid"] for replica in expected]
+    return len(set(uids)) == len(uids) and sorted(
+        check["replica_uid"] for check in checks
+    ) == sorted(uids)
+
+
 def actual_ws_phase(
     root: Path,
     rendered: dict[str, Any],
@@ -830,6 +902,9 @@ def actual_ws_phase(
     stage = "render"
     service_progress = {"stage": "service-start"}
     direct_health = None
+    python_scrape = None
+    service = None
+    prometheus_stage = None
     checks: list[dict[str, str]] = []
     try:
         app, store = rendered["probe-a"]
@@ -937,6 +1012,10 @@ def actual_ws_phase(
             raise ValueError("replica changed during scrape")
         if not checks or any(check["verdict"] != "pass" for check in checks):
             raise ValueError("authorized scrape incomplete")
+        python_scrape = {
+            "verdict": "pass",
+            "source": "Prometheus-labelled Python probe",
+        }
         stage = "retire-fixture"
         retire_ws_fixture(app, pods["a-ws"], python_image)
         stage = "service-health"
@@ -963,6 +1042,30 @@ def actual_ws_phase(
         service_progress["stage"] = "replica-recheck"
         if replicas(deployment, image, source_sha) != before:
             raise ValueError("ws-hub Service proof or replica identity changed")
+        stage = "real-prometheus"
+        authorized_source(app, pods["prometheus"])
+        from networkpolicy_runtime_real_prometheus import prove_actual_prometheus
+
+        prometheus_proof = prove_actual_prometheus(root, app, copy.deepcopy(before))
+        if not valid_prometheus_proof(prometheus_proof, before):
+            if (
+                isinstance(prometheus_proof, dict)
+                and prometheus_proof.get("verdict") == "inconclusive"
+                and prometheus_proof.get("stage") in PROMETHEUS_FAILURE_STAGES
+            ):
+                prometheus_stage = prometheus_proof["stage"]
+            raise ValueError("real Prometheus proof incomplete")
+        authorized_source(app, pods["prometheus"])
+        if replicas(deployment, image, source_sha) != before:
+            raise ValueError("ws-hub replica identity changed")
+        prometheus = {
+            "verdict": "pass",
+            "source": {
+                key: prometheus_proof["source"][key]
+                for key in ("namespace", "name", "uid")
+            },
+            "checks": [dict(check) for check in prometheus_proof["checks"]],
+        }
     except (
         OSError,
         ValueError,
@@ -972,8 +1075,21 @@ def actual_ws_phase(
         SystemExit,
         yaml.YAMLError,
         subprocess.SubprocessError,
+        ImportError,
     ):
         failure = {"verdict": "inconclusive", "stage": stage, "checks": checks}
+        if python_scrape is not None:
+            failure["python_scrape"] = python_scrape
+        if (
+            stage == "real-prometheus"
+            and service is not None
+            and service.get("verdict") == "pass"
+        ):
+            failure["service"] = service
+        if stage == "real-prometheus":
+            failure["prometheus"] = {"verdict": "inconclusive"}
+            if prometheus_stage is not None:
+                failure["prometheus"]["stage"] = prometheus_stage
         if stage == "service-health":
             substage = service_progress.get("stage")
             failure["substage"] = (
@@ -1017,8 +1133,10 @@ def actual_ws_phase(
             for replica in before
         ],
         "checks": checks,
+        "python_scrape": python_scrape,
+        "prometheus": prometheus,
         "matrix_fixture": {"uid": pods["a-ws"].uid, "verdict": "retired"},
         "service": service,
         "source": "Prometheus-labelled Python probe",
-        "scope": "authorized scrape and in-cluster Service health; actual ingress not tested",
+        "scope": "authorized Python and Prometheus scrapes and in-cluster Service health; actual ingress not tested",
     }

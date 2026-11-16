@@ -122,6 +122,7 @@ def test_workflow_is_manual_scheduled_and_path_filtered_pr_only() -> None:
         "charts/**",
         "k8s/**",
         "backend.Dockerfile",
+        "docker-compose.full.yml",
         "services/ws-hub/**",
         "services/pkg/logging/**",
         "services/pkg/spiffe/**",

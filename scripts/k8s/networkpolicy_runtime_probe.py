@@ -611,11 +611,16 @@ def not_run_items() -> list[dict[str, str]]:
         },
         {
             "finding": "AUD-438",
-            "check": "actual ws-hub restricted peers and Prometheus server",
+            "check": "actual ws-hub restricted peers",
             "reason": (
-                "the policy matrix uses stand-in targets and the authorized HTTP "
-                "client is a Prometheus-labelled Python probe, not Prometheus itself"
+                "the policy matrix tests restricted peers against stand-in targets, "
+                "not actual ws-hub replicas"
             ),
+        },
+        {
+            "finding": "AUD-438",
+            "check": "actual Prometheus server",
+            "reason": "a source-bound scrape by an actual Prometheus server is not yet established",
         },
         {
             "finding": "AUD-438",
@@ -809,7 +814,10 @@ def main() -> int:
                 "scope": "authorized positive scrape only",
             }
             persist_receipt()
-            from networkpolicy_runtime_real_ws import actual_ws_phase
+            from networkpolicy_runtime_real_ws import (
+                actual_ws_phase,
+                valid_prometheus_proof,
+            )
 
             real_ws = actual_ws_phase(
                 ROOT,
@@ -821,12 +829,35 @@ def main() -> int:
                 source_sha=args.source_sha,
             )
             receipt["real_ws_hub"] = real_ws
-            all_pass = all_pass and real_ws["verdict"] == "pass"
-            if real_ws["verdict"] == "pass":
+            python_scrape = real_ws.get("python_scrape")
+            if (
+                isinstance(python_scrape, dict)
+                and python_scrape.get("verdict") == "pass"
+            ):
                 receipt["not_run"] = [
                     item
                     for item in receipt["not_run"]
                     if item["check"] != "metrics exposition content"
+                ]
+            prometheus = real_ws.get("prometheus")
+            actual_prometheus_pass = real_ws[
+                "verdict"
+            ] == "pass" and valid_prometheus_proof(
+                prometheus, real_ws.get("replicas"), projected=True
+            )
+            if real_ws["verdict"] == "pass" and not actual_prometheus_pass:
+                real_ws = {
+                    **real_ws,
+                    "verdict": "inconclusive",
+                    "stage": "real-prometheus",
+                }
+                receipt["real_ws_hub"] = real_ws
+            all_pass = all_pass and actual_prometheus_pass
+            if actual_prometheus_pass:
+                receipt["not_run"] = [
+                    item
+                    for item in receipt["not_run"]
+                    if item["check"] != "actual Prometheus server"
                 ]
         elif real_ws_image:
             receipt["real_ws_hub"] = {
