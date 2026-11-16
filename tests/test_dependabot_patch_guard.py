@@ -33,9 +33,7 @@ def test_auto_merge_executes_only_for_increasing_stable_patches(
     pytester, title: str, expected: int
 ) -> None:
     workflow = yaml.safe_load(
-        (ROOT / ".github/workflows/auto-merge-patches.yml").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / ".github/workflows/auto-merge-patches.yml").read_text(encoding="utf-8")
     )
     job = workflow["jobs"]["auto-merge"]
     assert job["if"] == "github.event.pull_request.user.id == 49699333"
