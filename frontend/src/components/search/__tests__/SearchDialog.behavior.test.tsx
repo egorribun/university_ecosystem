@@ -150,6 +150,52 @@ describe("SearchDialog user behavior", () => {
     localStorage.clear()
   })
 
+  it.each([
+    '"physics"',
+    '[{"query":"physics"}]',
+    '[42]',
+    '[null]',
+    '["physics", {"query":"lab"}]',
+  ])("ignores structurally invalid recent-search storage: %s", async (stored) => {
+    localStorage.setItem(RECENT_SEARCHES_KEY, stored)
+    await renderSearch()
+    expect(openSearch()).toHaveValue("")
+    expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument()
+    expect(screen.getByText("Use the arrow keys to navigate")).toBeInTheDocument()
+    expect(screen.queryByText("Recent searches")).not.toBeInTheDocument()
+  })
+
+  it("announces a failed search instead of an empty result and retries on request", async () => {
+    apiGet.mockRejectedValueOnce(new Error("Search unavailable"))
+    await renderSearch()
+    const input = openSearch()
+    fireEvent.change(input, { target: { value: "physics" } })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("An error occurred")
+    expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }))
+    expect(await screen.findByRole("button", { name: "Physics seminar" })).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
+    expect(apiGet).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not select retained stale results after a failed refresh", async () => {
+    const { client, router } = await renderSearch()
+    const input = await showResults()
+    press(input, "ArrowDown")
+    apiGet.mockRejectedValue(new Error("Search unavailable"))
+
+    await act(() => client.invalidateQueries({ queryKey: ["search", "physics"] }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("An error occurred")
+    expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
+    expect(press(input, "Enter").defaultPrevented).toBe(false)
+    expect(router.state.location.pathname).toBe("/")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
   it("waits for the 200ms typing pause and sends only the latest eligible query", async () => {
     await renderSearch()
     vi.useFakeTimers()
