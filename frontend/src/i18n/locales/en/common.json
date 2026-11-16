@@ -20,6 +20,8 @@
     "minuteShort": "min"
   },
   "search": {
+    "loading": "Searching…",
+    "activeResult": "Selected result: {{title}}",
     "title": "Search",
     "placeholder": "Search…",
     "inputLabel": "Search the application",
