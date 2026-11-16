@@ -124,6 +124,21 @@ describe("router-owned native view transitions", () => {
     expect(result).toBe(records[0]!.updateDone)
   })
 
+  it("finishes a slow update without an unhandled TimeoutError when the browser skips its animation", async () => {
+    const { records } = nativeTransitions()
+    const router = getRouter()
+    const update = vi.fn(async () => undefined)
+    const result = router.startViewTransition(update)
+    const ready = records[0]!
+    const observed = ready.observeReady.mock.results[0]?.value as Promise<void>
+    ready.ready.reject(
+      new DOMException("Transition was aborted because of timeout in DOM update", "TimeoutError")
+    )
+    await expect(observed).resolves.toBeUndefined()
+    await result
+    expect(update).toHaveBeenCalledOnce()
+  })
+
   it("keeps a non-cancellation readiness failure observable", async () => {
     const { records } = nativeTransitions()
     const router = getRouter()
