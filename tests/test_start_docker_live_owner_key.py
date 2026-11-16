@@ -27,7 +27,8 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet("inplace", "worktree")][string]$Mode,
     [string]$StateRoot = "",
     [string]$SourceSha = "",
-    [ValidateSet("0", "1")][string]$AllowUnbound = "0"
+    [ValidateSet("0", "1")][string]$AllowUnbound = "0",
+    [ValidateSet("0", "1")][string]$CheckTenant = "0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,8 +61,20 @@ $functionNames = @(
 if ($Mode -ceq "inplace") {
     $functionNames += @("Assert-LiveStandPrivatePath", "Resolve-OwnedLiveStandStateRoot")
 }
+if ($CheckTenant -ceq "1") {
+    $functionNames += "Ensure-OwnedLiveTenantEnvironment"
+}
 foreach ($name in $functionNames) {
     Invoke-Expression (Get-UniqueFunctionText $name)
+}
+foreach ($name in @('$script:LiveAcceptanceCoreRoots', '$script:LiveAcceptanceCoreClosure')) {
+    $assignments = @($sourceAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left.Extent.Text -ceq $name
+    }, $true))
+    if ($assignments.Count -ne 1) { throw "owner_constant_binding_failed" }
+    Invoke-Expression $assignments[0].Extent.Text
 }
 
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
@@ -92,7 +105,33 @@ function git {
 $result = $null
 $stage = "start"
 try {
-    if ($Mode -ceq "inplace") {
+    if ($CheckTenant -ceq "1") {
+        $stage = "tenant_owner_verification"
+        $ExtraCompose = @("docker-compose.live.yml")
+        $PrepareOnly = $AllowUnbound -ceq "1"
+        $EnvFile = Join-Path $ProjectRoot ".env.docker"
+        $EnvCompose = Join-Path $ProjectRoot ".env"
+        [System.IO.File]::WriteAllText($EnvFile, "")
+        [System.IO.File]::WriteAllText($EnvCompose, "")
+        $env:MVP_TENANT_ID = "fixture-tenant"
+        function Get-OwnedSeedTenantId { return "fixture-tenant" }
+        function Resolve-StatePath([string]$Path) { return $Path }
+        function Get-EnvEntry([string]$Path, [string]$Key) { return $null }
+        function Set-EnvEntry([string]$Path, [string]$Key, [string]$Value) {
+            Add-Content -LiteralPath $Path -Value "$Key=$Value"
+        }
+        Ensure-OwnedLiveTenantEnvironment
+        $result = [pscustomobject]@{
+            accepted = $true
+            version = 0
+            sameResolvedOwner = $null -ne $script:LiveStandOwner
+            resolvedPathMatches = $false
+            gitLookups = $script:gitLookupCount
+            failure = ""
+            stage = "complete"
+            errorType = ""
+        }
+    } elseif ($Mode -ceq "inplace") {
         $stage = "resolve_in_place_owner"
         $resolvedRoot = Resolve-OwnedLiveStandStateRoot -Path $StateRoot
         $stage = "cached_owner_verification"
@@ -180,6 +219,7 @@ def _run_powershell_owner_check(
     state_root: Path | None = None,
     source_sha: str = "",
     allow_unbound: bool = False,
+    check_tenant: bool = False,
 ) -> dict[str, object]:
     assert POWERSHELL is not None
     runner = tmp_path / "owner-key-contract.ps1"
@@ -208,6 +248,8 @@ def _run_powershell_owner_check(
         source_sha,
         "-AllowUnbound",
         "1" if allow_unbound else "0",
+        "-CheckTenant",
+        "1" if check_tenant else "0",
     ]
     result = subprocess.run(  # noqa: S603 - fixed PowerShell host and test-created runner
         arguments,
@@ -247,6 +289,8 @@ def _non_in_place_fixture(
     tamper_signature: bool = False,
     schema_version: int = live_stand.OWNER_SCHEMA_VERSION,
     compose_resource_fingerprint: str | None = "f" * 64,
+    stack: str = live_stand.LIVE_STACK_CORE,
+    owner_overrides: dict[str, object] | None = None,
 ) -> tuple[Path, Path, str]:
     assert GIT is not None
     repository = tmp_path / "source repository"
@@ -301,10 +345,24 @@ def _non_in_place_fixture(
         "compose_resource_fingerprint": compose_resource_fingerprint,
         "resume_compose_resource_fingerprint": None,
         "resume_compose_resource_schema_version": None,
-        "stack": live_stand.LIVE_STACK_CORE,
-        "service_roots": list(live_stand.LIVE_CORE_SERVICE_ROOTS),
-        "selected_services": list(live_stand.LIVE_CORE_EXPECTED_SERVICES),
+        "stack": stack,
+        "service_roots": (
+            list(live_stand.LIVE_CORE_SERVICE_ROOTS)
+            if stack == live_stand.LIVE_STACK_CORE
+            else (["backend"] if compose_resource_fingerprint is not None else [])
+        ),
+        "selected_services": (
+            (
+                list(live_stand.LIVE_CORE_EXPECTED_SERVICES)
+                if stack == live_stand.LIVE_STACK_CORE
+                else ["backend"]
+            )
+            if compose_resource_fingerprint is not None
+            else []
+        ),
     }
+    if owner_overrides is not None:
+        payload.update(owner_overrides)
     signature = live_stand._owner_signature(payload, key)
     if tamper_signature:
         payload["daemon_fingerprint"] = "e" * 64
@@ -559,13 +617,37 @@ _OWNER_CONTRACT_SKIP = pytest.mark.skipif(
 
 
 @_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize(
+    "stack", [live_stand.LIVE_STACK_CORE, live_stand.LIVE_STACK_FULL]
+)
+@pytest.mark.parametrize("resume", [False, True])
 def test_prepare_only_accepts_a_signed_owner_before_resource_binding(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stack: str,
+    resume: bool,
 ) -> None:
     """live_stand.py binds the Compose resource fingerprint after PrepareOnly."""
-    _repository, worktree, project_name = _non_in_place_fixture(
-        tmp_path, compose_resource_fingerprint=None
+    overrides = (
+        {
+            "resume_compose_resource_fingerprint": "a" * 64,
+            "resume_compose_resource_schema_version": live_stand.OWNER_SCHEMA_VERSION,
+        }
+        if resume
+        else None
     )
+    repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path,
+        compose_resource_fingerprint=None,
+        stack=stack,
+        owner_overrides=overrides,
+    )
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    owner = live_stand.load_stand_owner(worktree)
+    assert owner.compose_resource_fingerprint is None
+    assert owner.selected_services == ()
 
     result = _run_powershell_owner_check(
         tmp_path,
@@ -579,6 +661,82 @@ def test_prepare_only_accepts_a_signed_owner_before_resource_binding(
     assert result["version"] == live_stand.OWNER_SCHEMA_VERSION
     # An unbound owner is never cached for the later, binding-required callers.
     assert result["sameResolvedOwner"] is False
+
+
+@_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize(
+    ("stack", "overrides"),
+    [
+        ("core", {"service_roots": ["backend"]}),
+        ("core", {"selected_services": ["backend"]}),
+        ("full", {"service_roots": ["backend"]}),
+        ("full", {"selected_services": ["backend"]}),
+        ("core", {"resume_compose_resource_fingerprint": "a" * 64}),
+        ("core", {"resume_compose_resource_schema_version": 10}),
+        (
+            "core",
+            {
+                "resume_compose_resource_fingerprint": "a" * 64,
+                "resume_compose_resource_schema_version": 99,
+            },
+        ),
+    ],
+)
+def test_prepare_only_rejects_inconsistent_signed_reservations(
+    tmp_path: Path, stack: str, overrides: dict[str, object]
+) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path,
+        compose_resource_fingerprint=None,
+        stack=stack,
+        owner_overrides=overrides,
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=True,
+    )
+
+    assert result["accepted"] is False
+
+
+@_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize(
+    ("stack", "overrides"),
+    [
+        ("core", {"version": 10.0}),
+        ("core", {"daemon_fingerprint": "invalid"}),
+        ("core", {"service_roots": ["backend"]}),
+        ("core", {"selected_services": ["backend"]}),
+        ("full", {"selected_services": ["caddy"]}),
+        (
+            "core",
+            {
+                "resume_compose_resource_fingerprint": "a" * 64,
+                "resume_compose_resource_schema_version": 10,
+            },
+        ),
+    ],
+)
+def test_bound_owner_rejects_inconsistent_signed_metadata(
+    tmp_path: Path, stack: str, overrides: dict[str, object]
+) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, stack=stack, owner_overrides=overrides
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+    )
+
+    assert result["accepted"] is False
+    assert result["failure"] == "worktree_owner_mismatch"
 
 
 @_OWNER_CONTRACT_SKIP
@@ -651,3 +809,120 @@ def test_prepare_only_switch_still_verifies_the_signature(tmp_path: Path) -> Non
 
     assert result["accepted"] is False
     assert result["failure"] == "signature_invalid"
+
+
+@_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize(
+    ("fingerprint", "prepare", "accepted", "cached"),
+    [
+        (None, True, True, False),
+        (None, False, False, False),
+        ("f" * 64, False, True, True),
+    ],
+)
+def test_tenant_initialization_verifies_the_owner_for_the_current_phase(
+    tmp_path: Path,
+    fingerprint: str | None,
+    prepare: bool,
+    accepted: bool,
+    cached: bool,
+) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, compose_resource_fingerprint=fingerprint
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=prepare,
+        check_tenant=True,
+    )
+
+    assert result["accepted"] is accepted
+    assert result["sameResolvedOwner"] is cached
+
+
+@_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize(
+    "stack", [live_stand.LIVE_STACK_CORE, live_stand.LIVE_STACK_FULL]
+)
+def test_worktree_prepare_only_accepts_python_created_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stack: str
+) -> None:
+    """Exercise the full launcher with Python's real incomplete owner marker."""
+    from tests.test_start_docker_live_stand_state_root import _fixture_project
+
+    fixture_dir = tmp_path / "launcher-fixture"
+    fixture_dir.mkdir()
+    source, _ = _fixture_project(fixture_dir)
+    repository, worktree, _ = _non_in_place_fixture(tmp_path)
+    shutil.copytree(source, worktree, dirs_exist_ok=True)
+    for relative in (
+        "scripts/temporal/bootstrap-functions.ps1",
+        "scripts/temporal/namespace-init.sh",
+    ):
+        target = worktree / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target)
+
+    (worktree / ".secrets" / "live-stand.json").unlink()
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+    monkeypatch.delenv("MVP_TENANT_ID", raising=False)
+    ports = {
+        name: 32000 + index
+        for index, (name, _service, _container_port) in enumerate(
+            live_stand.LIVE_PORT_SPECS
+        )
+    }
+    owner = live_stand.create_stand_owner(worktree, published_ports=ports, stack=stack)
+    vapid = live_stand.load_or_create_vapid(worktree)
+    environment = live_stand.stand_environment(vapid, owner.project_name, ports)
+    environment["XDG_CACHE_HOME"] = str(tmp_path / "powershell-cache")
+
+    # PrepareOnly must never invoke Docker; put a sentinel ahead of the host CLI.
+    shim_dir = tmp_path / "docker-shim"
+    shim_dir.mkdir()
+    sentinel = shim_dir / "unexpected-call"
+    if os.name == "nt":
+        shim = shim_dir / "docker.cmd"
+        shim.write_text(
+            '@echo off\r\necho called > "%DOCKER_SENTINEL%"\r\nexit /b 91\r\n'
+        )
+    else:
+        shim = shim_dir / "docker"
+        shim.write_text('#!/bin/sh\necho called > "$DOCKER_SENTINEL"\nexit 91\n')
+        shim.chmod(0o755)
+    environment["DOCKER_SENTINEL"] = str(sentinel)
+    environment["PATH"] = str(shim_dir) + os.pathsep + environment.get("PATH", "")
+    assert POWERSHELL is not None
+    result = subprocess.run(  # noqa: S603 - fixed launcher in a pytest-owned worktree
+        [
+            POWERSHELL,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(worktree / "start-docker.ps1"),
+            "-PrepareOnly",
+            "-InitializeTrustedProxyBootstrap",
+            "-ExtraCompose",
+            "docker-compose.live.yml",
+        ],
+        cwd=worktree,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        timeout=40,
+    )
+
+    assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
+    assert not sentinel.exists()
+    assert (worktree / ".env").is_file()
+    assert (worktree / ".env.docker").is_file()
+    assert (worktree / ".env.docker.workers").is_file()
