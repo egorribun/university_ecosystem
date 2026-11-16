@@ -3715,6 +3715,61 @@ def test_live_playwright_page_errors_accept_schedule_keyboard_domain(
     ]
 
 
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "page", ["dashboard", "events", "schedule", "profile", "news", "login", "other"]
+)
+@pytest.mark.parametrize(
+    ("kind", "count", "newline"),
+    [
+        ("error", 1, "\n"),
+        ("abort-error", 999, "\r\n"),
+        ("invalid-state-error", 1, "\n"),
+        ("react-418", 999, "\r\n"),
+        ("other", 1, "\n"),
+    ],
+)
+def test_live_playwright_page_errors_accept_footer_navigation_domain(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=footer-navigation "
+        f"page={page} type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "footer-navigation", page, kind, count)
+    ]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("project=desktop", "project=private-project"),
+        ("check=footer-navigation", "check=footer-navigation-private"),
+        ("page=news", "page=/news"),
+        ("page=news", "page=news?token=private-token"),
+        ("page=news", "page=admin-users"),
+        ("page=news", "page=map"),
+        ("page=news", "page=reset-password"),
+        ("type=error", "type=private-error"),
+        ("count=1", "count=0"),
+        ("count=1", "count=1000"),
+        ("count=1", "count=1 private-message"),
+        ("\n", ""),
+        ("\n", "\r\r\n"),
+        ("UE_LIVE", "private UE_LIVE"),
+    ],
+)
+def test_live_playwright_page_errors_reject_hostile_footer_records(
+    replacement: tuple[str, str],
+) -> None:
+    sentinel = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=footer-navigation "
+        "page=news type=error count=1\n"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel.replace(*replacement)) == []
+
+
 def test_live_playwright_page_error_details_accept_only_matching_fixed_summaries() -> (
     None
 ):
@@ -3892,6 +3947,10 @@ def test_live_playwright_page_errors_reject_mobile_schedule_project() -> None:
         ("map-gesture", "reset-password", "error"),
         ("schedule-grid-keyboard", "map", "error"),
         ("schedule-grid-keyboard", "admin-users", "error"),
+        ("password-reset", "news", "error"),
+        ("auth-roles", "events", "error"),
+        ("map-gesture", "profile", "error"),
+        ("schedule-grid-keyboard", "news", "error"),
     ],
 )
 def test_live_playwright_page_errors_reject_cross_scenario_domains(
@@ -3997,6 +4056,41 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         "live E2E page error project=desktop check=auth-roles page=admin-users type=react-418 count=1",
         "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
         f"live E2E outcome={outcome} exit_code={return_code}",
+    ]
+    assert printed.err == ""
+
+
+def test_live_playwright_emits_only_bounded_footer_page_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_PAGE_ERROR_V1 project=mobile check=footer-navigation "
+        "page=news type=abort-error count=2\n"
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(
+            "private-title https://private.invalid/?token=private-token\n"
+            + row * 3
+            + row.replace("page=news", "page=news?token=private-token")
+            + row.replace("count=2", "count=2 private-message")
+        ).encode(),
+        stderr=(row + "private-stack private-browser-state\n").encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
+        "live E2E page error project=mobile check=footer-navigation "
+        "page=news type=abort-error count=2",
+        "live E2E outcome=failed exit_code=1",
     ]
     assert printed.err == ""
 

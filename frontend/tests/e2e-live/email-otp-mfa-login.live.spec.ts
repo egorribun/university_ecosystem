@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response, TestInfo } from "@playwright/t
 import * as v from "valibot"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import {
+  beginOwnedMfaOperation,
   withLiveRegistrationAdmission,
   assessLiveRateLimitRetry,
   expect,
@@ -32,7 +33,6 @@ const EMAIL_CODE = /(?:Verification code|Код подтверждения):\s*(
 const OTP_INPUTS = 'input[inputmode="numeric"][maxlength="1"]'
 const MFA_LOGIN_RETRY_REQUEST_BUDGET_MS = 20_000
 const MFA_LOGIN_RETRY_REMAINDER_RESERVE_MS = 100_000
-
 function boundedRetryRemainingMs(testInfo: TestInfo, deadlineAtMs: number | null): number {
   const deadline = deadlineAtMs ?? liveTestSlotDeadlineAtMs(testInfo)
   if (deadline === null || !Number.isFinite(deadline)) return 0
@@ -459,6 +459,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     await expect(emailOtpAccordion).toHaveAttribute("aria-expanded", "true")
 
     const priorVerificationMessages = new Set((await mailFor(email)).map((message) => message.ID))
+    const observeVerificationStart = beginOwnedMfaOperation("email-mfa-verification-start")
     const verificationStartPromise = page.waitForResponse(
       isApiResponse("/auth/mfa/email/verification/start")
     )
@@ -466,6 +467,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       .getByRole("button", { name: /Сначала подтвердить почту|Verify email first/iu })
       .click()
     const verificationStart = await verificationStartPromise
+    observeVerificationStart(verificationStart)
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-verification-start",
@@ -474,9 +476,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     expect(verificationStart.status()).toBe(200)
 
     const verificationCode = await awaitNewCode(email, priorVerificationMessages)
+    const observeVerificationAccept = beginOwnedMfaOperation("email-mfa-verification-accept")
     const verificationPromise = page.waitForResponse(isApiResponse("/auth/mfa/verify"))
     await enterCode(page, verificationCode)
     const emailVerification = await verificationPromise
+    observeVerificationAccept(emailVerification)
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-verification-accept",
@@ -495,17 +499,21 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       page.getByRole("button", { name: /Включить коды по почте|Enable email codes/iu })
     ).toBeVisible()
     const priorEnablementMessages = new Set((await mailFor(email)).map((message) => message.ID))
+    const observeEnablementStart = beginOwnedMfaOperation("email-mfa-enable-start")
     const enablementStartPromise = page.waitForResponse(isApiResponse("/auth/mfa/email/enable"))
     await page.getByRole("button", { name: /Включить коды по почте|Enable email codes/iu }).click()
     const enablementStart = await enablementStartPromise
+    observeEnablementStart(enablementStart)
     reportLiveHttpStatus(testInfo.project.name, "email-mfa-enable-start", enablementStart.status())
     expect(enablementStart.status()).toBe(200)
     await expectSiblingRevocationSocketOpen(siblingPage)
 
     const enablementCode = await awaitNewCode(email, priorEnablementMessages)
+    const observeEnablementAccept = beginOwnedMfaOperation("email-mfa-enable-accept")
     const enablementVerifyPromise = page.waitForResponse(isApiResponse("/auth/mfa/verify"))
     await enterCode(page, enablementCode)
     const enablementVerification = await enablementVerifyPromise
+    observeEnablementAccept(enablementVerification)
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-enable-accept",
@@ -546,9 +554,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     })
 
     const priorLoginMessages = new Set((await mailFor(email)).map((message) => message.ID))
+    const observeEnabledLogin = beginOwnedMfaOperation("email-mfa-enabled-login")
     const loginResponsePromise = login.page.waitForResponse(isApiResponse("/auth/login"))
     await submitLogin(login.page, email, password)
     let loginResponse = await loginResponsePromise
+    observeEnabledLogin(loginResponse)
     reportLiveHttpStatus(testInfo.project.name, "email-mfa-enabled-login", loginResponse.status())
     if (loginResponse.status() === 429) {
       const retryAfter = parseLiveRateLimitRetryAfter(loginResponse.headers()["retry-after"])
@@ -604,6 +614,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
         retryActionDeadlineAtMs,
         MFA_LOGIN_RETRY_REQUEST_BUDGET_MS
       )
+      const observeRetryEnabledLogin = beginOwnedMfaOperation("email-mfa-enabled-login")
       if (responseTimeoutMs === null || actionTimeoutMs === null) {
         reportLiveRateLimitRetry(
           testInfo.project.name,
@@ -639,6 +650,7 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
       if (retryResponseOutcome.status === "rejected") throw retryResponseOutcome.reason
       if (retryActionOutcome.status === "rejected") throw retryActionOutcome.reason
       loginResponse = retryResponseOutcome.value
+      observeRetryEnabledLogin(loginResponse)
       reportLiveHttpStatus(testInfo.project.name, "email-mfa-enabled-login", loginResponse.status())
     }
     expect(loginResponse.status()).toBe(202)
@@ -706,9 +718,11 @@ test("verified email OTP MFA is required and completes a fresh browser login", a
     expect(earlyResendResponse.headers()["retry-after"]).toBeUndefined()
 
     const loginCode = await awaitNewCode(email, priorLoginMessages)
+    const observeLoginAccept = beginOwnedMfaOperation("email-mfa-login-accept")
     const loginVerificationPromise = login.page.waitForResponse(isApiResponse("/auth/mfa/verify"))
     await enterCode(login.page, loginCode)
     const loginVerification = await loginVerificationPromise
+    observeLoginAccept(loginVerification)
     reportLiveHttpStatus(
       testInfo.project.name,
       "email-mfa-login-accept",

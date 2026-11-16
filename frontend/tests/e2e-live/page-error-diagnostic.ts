@@ -8,7 +8,12 @@ const MAX_STACK_CHARS = 8192
 const MAX_STACK_FRAMES = 24
 
 type DiagnosticCheck =
-  "password-reset" | "admin-notifications" | "auth-roles" | "map-gesture" | "schedule-grid-keyboard"
+  | "password-reset"
+  | "admin-notifications"
+  | "auth-roles"
+  | "map-gesture"
+  | "schedule-grid-keyboard"
+  | "footer-navigation"
 type DiagnosticSource =
   "map-worker" | "map-shared" | "map-bundle" | "schedule-bundle" | "remote-script" | "unknown"
 type SourceLocation = { source: DiagnosticSource; line: number; column: number }
@@ -29,6 +34,8 @@ const MAP_GESTURE_TITLES = new Set([
 ])
 const SCHEDULE_GRID_KEYBOARD_TITLE =
   "Enter opens the lesson in the keyboard-selected schedule grid cell"
+const FOOTER_NAVIGATION_TITLE =
+  "bottom navigation fits phones and the navbar drawer works at the tablet boundary"
 
 const ADMIN_NOTIFICATIONS_TITLES = new Set([
   "admin can read the seeded notification queue without changing it",
@@ -56,6 +63,19 @@ export function isLiveScheduleGridKeyboardScenario(
     return false
   }
   return title === SCHEDULE_GRID_KEYBOARD_TITLE
+}
+
+export function isLiveFooterNavigationScenario(
+  project: unknown,
+  file: unknown,
+  title: unknown
+): boolean {
+  if (project !== "desktop" && project !== "mobile") return false
+  if (typeof file !== "string") return false
+  if (!file.replace(/\\/g, "/").endsWith("/tests/e2e-live/footer-bottom-navigation.live.spec.ts")) {
+    return false
+  }
+  return title === FOOTER_NAVIGATION_TITLE
 }
 
 export function isLiveAdminNotificationsScenario(
@@ -185,6 +205,25 @@ function generatedSourceLocation(error: unknown, check: DiagnosticCheck): Source
 }
 
 function currentPage(pathname: unknown, check: DiagnosticCheck): string {
+  if (check === "footer-navigation") {
+    switch (pathname) {
+      case "/dashboard":
+        return "dashboard"
+      case "/events":
+        return "events"
+      case "/schedule":
+        return "schedule"
+      case "/profile":
+        return "profile"
+      case "/news":
+        return "news"
+      case "/login":
+        return "login"
+      default:
+        return "other"
+    }
+  }
+
   if (check === "admin-notifications") {
     switch (pathname) {
       case "/login":
@@ -270,7 +309,8 @@ export function createLivePageErrorDiagnostics() {
         check !== "admin-notifications" &&
         check !== "auth-roles" &&
         check !== "map-gesture" &&
-        check !== "schedule-grid-keyboard"
+        check !== "schedule-grid-keyboard" &&
+        check !== "footer-navigation"
       ) {
         return
       }
@@ -295,7 +335,8 @@ export function createLivePageErrorDiagnostics() {
           check !== "admin-notifications" &&
           check !== "auth-roles" &&
           check !== "map-gesture" &&
-          check !== "schedule-grid-keyboard")
+          check !== "schedule-grid-keyboard" &&
+          check !== "footer-navigation")
       )
         return
       for (const {

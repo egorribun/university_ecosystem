@@ -2510,14 +2510,14 @@ def _live_playwright_rate_limit_headers(output: str) -> list[_PlaywrightRateLimi
 _PLAYWRIGHT_PAGE_ERROR_LINE = re.compile(
     r"UE_LIVE_PAGE_ERROR_V1 project=(?P<project>desktop|mobile) "
     r"check=(?P<check>password-reset|admin-notifications|auth-roles|map-gesture|"
-    r"schedule-grid-keyboard) "
+    r"schedule-grid-keyboard|footer-navigation) "
     r"page=(?P<page>register|login|forgot-password|reset-password|dashboard|"
-    r"admin-notifications|admin-users|admin-feature-flags|map|schedule|other) "
+    r"admin-notifications|admin-users|admin-feature-flags|map|schedule|events|profile|news|other) "
     r"type=(?P<type>error|type-error|reference-error|syntax-error|range-error|uri-error|"
     r"eval-error|aggregate-error|abort-error|security-error|invalid-state-error|react-418|other) "
     r"count=(?P<count>[1-9][0-9]{0,2})"
 )
-# One aggregate per allowed project/check/page/type combination across all checks.
+# Fixed global output bound across all checks, not a count of every combination.
 _PLAYWRIGHT_PAGE_ERROR_LIMIT = 534
 
 _PLAYWRIGHT_PAGE_ERROR_DETAIL_LINE = re.compile(
@@ -2639,6 +2639,17 @@ def _live_playwright_page_errors(output: str) -> list[tuple[str, str, str, str, 
             if match["project"] != "desktop" or match["page"] not in {
                 "login",
                 "schedule",
+                "other",
+            }:
+                continue
+        elif match["check"] == "footer-navigation":
+            if match["page"] not in {
+                "dashboard",
+                "events",
+                "schedule",
+                "profile",
+                "news",
+                "login",
                 "other",
             }:
                 continue
@@ -3391,6 +3402,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "zzz-aud174-prehydration-caddy-log.live.spec.ts": (8,),
 }
 _HTTP_OPERATION_PREFIX = "UE_LIVE_HTTP_OPERATION_V2 "
+_HTTP_MFA_OPERATION_PREFIX = "UE_LIVE_HTTP_OPERATION_V3 "
 _HTTP_OPERATION_LIMIT = 104
 _HTTP_OPERATION_BYTES_LIMIT = 53_248
 _HTTP_OPERATION_LINE = re.compile(
@@ -3401,6 +3413,20 @@ _HTTP_OPERATION_LINE = re.compile(
     r"outcome=(?P<outcome>response|no-response) status=(?P<status>[1-5][0-9]{2}|none) "
     r"elapsed_ms=(?P<elapsed_ms>0|[1-9][0-9]{0,5}) saturated=(?P<saturated>0|1) "
     r"requests=(?P<requests>0|1|many) responses=(?P<responses>0|1|many)"
+)
+_HTTP_MFA_OPERATION_LINE = re.compile(
+    r"project=(?P<project>desktop|mobile) "
+    r"source=(?P<source>email-otp-mfa-login\.live\.spec\.ts) "
+    r"line=(?P<line>378) retry=(?P<retry>0|1) "
+    r"ordinal=(?P<ordinal>[1-9]|1[0-6]) phase=(?P<phase>body) "
+    r"operation=(?P<operation>email-mfa-verification-start|"
+    r"email-mfa-verification-accept|email-mfa-enable-start|email-mfa-enable-accept|"
+    r"email-mfa-enabled-login|email-mfa-login-accept) "
+    r"outcome=(?P<outcome>response|no-response) status=(?P<status>[1-5][0-9]{2}|none) "
+    r"elapsed_ms=(?P<elapsed_ms>0|[1-9][0-9]{0,5}) saturated=(?P<saturated>0|1) "
+    r"requests=(?P<requests>0|1|many) responses=(?P<responses>0|1|many) "
+    r"retry_after_seconds=(?P<retry_after_seconds>none|invalid|[1-9][0-9]{0,2}) "
+    r"limiter_signature=(?P<limiter_signature>domain-signature|other|unavailable|not-applicable)"
 )
 
 
@@ -3425,9 +3451,14 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
         if not terminated:
             end = len(output)
         # Inspect the prefix without allocating an arbitrary-length raw line.
-        relevant = output.startswith(_HTTP_OPERATION_PREFIX, cursor)
+        if output.startswith(_HTTP_OPERATION_PREFIX, cursor):
+            prefix = _HTTP_OPERATION_PREFIX
+        elif output.startswith(_HTTP_MFA_OPERATION_PREFIX, cursor):
+            prefix = _HTTP_MFA_OPERATION_PREFIX
+        else:
+            prefix = ""
         size = end - cursor + int(terminated)
-        if not relevant:
+        if not prefix:
             cursor = end + 1
             continue
         if completeness == "unavailable":
@@ -3445,7 +3476,7 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
         if not line.isascii() or not line.isprintable():
             completeness = "incomplete" if completeness != "truncated" else completeness
             continue
-        payload = line[len(_HTTP_OPERATION_PREFIX) :]
+        payload = line[len(prefix) :]
         if payload in (
             "completeness=truncated",
             "completeness=invalid-scope",
@@ -3456,7 +3487,12 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
             elif completeness != "truncated":
                 completeness = "incomplete"
             continue
-        match = _HTTP_OPERATION_LINE.fullmatch(payload)
+        is_mfa = prefix == _HTTP_MFA_OPERATION_PREFIX
+        match = (
+            _HTTP_MFA_OPERATION_LINE.fullmatch(payload)
+            if is_mfa
+            else _HTTP_OPERATION_LINE.fullmatch(payload)
+        )
         if match is None:
             completeness = "incomplete" if completeness != "truncated" else completeness
             continue
@@ -3464,6 +3500,12 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
         for field in ("line", "retry", "ordinal", "elapsed_ms", "saturated"):
             record[field] = int(match[field])
         record["status"] = None if match["status"] == "none" else int(match["status"])
+        retry_after = ""
+        if is_mfa:
+            retry_after = match["retry_after_seconds"]
+            record["retry_after_seconds"] = (
+                None if retry_after in {"none", "invalid"} else int(retry_after)
+            )
         valid = (
             record["line"] in _HTTP_OPERATION_CASE_LINES.get(match["source"], ())
             and int(match["elapsed_ms"]) <= 120_000
@@ -3481,15 +3523,40 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
                 )
             )
             and (
-                (
-                    record["operation"] == "auth-login"
-                    and record["phase"] in ("setup", "cleanup")
+                is_mfa
+                or (
+                    (
+                        record["operation"] == "auth-login"
+                        and record["phase"] in ("setup", "cleanup")
+                    )
+                    or (
+                        record["operation"] == "chat-attachment-create"
+                        and record["source"] == "chat-attachment-isolation.live.spec.ts"
+                        and record["line"] == 229
+                        and record["phase"] == "body"
+                    )
+                )
+            )
+            and (
+                not is_mfa
+                or (
+                    record["status"] == 429
+                    and retry_after != "none"
+                    and (
+                        record["retry_after_seconds"] is None
+                        or 1 <= int(retry_after) <= 600
+                    )
+                    and record["limiter_signature"]
+                    in {"domain-signature", "other", "unavailable"}
+                    and not (
+                        record["operation"] == "email-mfa-enabled-login"
+                        and record["limiter_signature"] == "domain-signature"
+                    )
                 )
                 or (
-                    record["operation"] == "chat-attachment-create"
-                    and record["source"] == "chat-attachment-isolation.live.spec.ts"
-                    and record["line"] == 229
-                    and record["phase"] == "body"
+                    record["status"] != 429
+                    and retry_after == "none"
+                    and record["limiter_signature"] == "not-applicable"
                 )
             )
         )

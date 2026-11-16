@@ -7,6 +7,34 @@ const specUrl = new URL("./email-otp-mfa-login.live.spec.ts", import.meta.url)
 const verificationSpecUrl = new URL("./email-otp-verification.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 
+test("email MFA operation observations retain the registered declaration and assertions", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec.split("\n")[377], /^test\("verified email OTP MFA/u)
+  const operations = [...spec.matchAll(/beginOwnedMfaOperation\("([^"]+)"\)/gu)].map(
+    (match) => match[1]
+  )
+  assert.deepEqual(operations, [
+    "email-mfa-verification-start",
+    "email-mfa-verification-accept",
+    "email-mfa-enable-start",
+    "email-mfa-enable-accept",
+    "email-mfa-enabled-login",
+    "email-mfa-enabled-login",
+    "email-mfa-login-accept",
+  ])
+  for (const assertion of [
+    "expect(verificationStart.status()).toBe(200)",
+    "expect(emailVerification.status()).toBe(200)",
+    "expect(enablementStart.status()).toBe(200)",
+    "expect(enablementVerification.status()).toBe(200)",
+    "expect(loginResponse.status()).toBe(202)",
+    "expect(loginVerification.status()).toBe(200)",
+    "test.setTimeout(180_000)",
+  ]) {
+    assert.ok(spec.includes(assertion), `missing existing requirement: ${assertion}`)
+  }
+})
+
 test("email OTP MFA login uses a live synthetic account without exposing challenge values", async () => {
   let spec
   try {
