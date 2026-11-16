@@ -340,3 +340,35 @@ def test_image_proxy_imports_without_the_avif_plugin():
     assert namespace["_cache_decode"](
         namespace["_cache_encode"](b"data", "image/png")
     ) == (b"data", "image/png")
+
+
+@pytest.mark.parametrize("mode", ["RGBA", "LA", "P"])
+def test_process_image_original_downscale_preserves_png_and_alpha(mode: str) -> None:
+    """Original-mode PNG resizing must not attempt the JPEG-only fallback."""
+    with Image.new(mode, (32, 16)) as source, BytesIO() as payload:
+        source.save(payload, format="PNG")
+        data, mime = _process_image(payload.getvalue(), 8, "original")
+
+    assert mime == "image/png"
+    with Image.open(BytesIO(data)) as resized:
+        assert resized.format == "PNG"
+        assert resized.size == (8, 4)
+        assert resized.mode == mode
+        if mode == "RGBA":
+            assert resized.getpixel((0, 0))[3] == 0
+        elif mode == "LA":
+            assert resized.getpixel((0, 0))[1] == 0
+
+
+@pytest.mark.parametrize("format_preference", ["original", "webp"])
+def test_process_image_downscale_keeps_at_least_one_row(
+    format_preference: str,
+) -> None:
+    """A valid panoramic source must not become a zero-height target."""
+    with Image.new("RGB", (2000, 1), "red") as source, BytesIO() as payload:
+        source.save(payload, format="PNG")
+        data, mime = _process_image(payload.getvalue(), 8, format_preference)
+
+    assert mime == ("image/png" if format_preference == "original" else "image/webp")
+    with Image.open(BytesIO(data)) as resized:
+        assert resized.size == (8, 1)
