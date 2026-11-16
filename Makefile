@@ -171,8 +171,9 @@ helm-lint:  ## Lint Helm charts (requires helm)
 
 docker-lint:  ## Lint Dockerfiles with hadolint (requires hadolint)
 	@which hadolint > /dev/null 2>&1 || (echo "Install hadolint: https://github.com/hadolint/hadolint/releases" && exit 1)
-	@find . -name "Dockerfile*" -not -path "*/node_modules/*" -not -path "*/.git/*" \
-		| xargs hadolint --ignore DL3008 --ignore DL3009
+	@find . -type f \( -name "Dockerfile" -o -name "Dockerfile.*" -o -name "*.Dockerfile" \) \
+		-not -name "*.dockerignore" -not -path "*/node_modules/*" -not -path "*/.git/*" \
+		-exec hadolint --ignore DL3008 --ignore DL3009 {} +
 	@echo "Dockerfile lint passed."
 
 sbom-local:  ## Generate SBOM locally and check for HIGH/CRITICAL CVEs (requires syft + grype)
