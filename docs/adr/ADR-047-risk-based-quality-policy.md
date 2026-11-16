@@ -2787,3 +2787,27 @@ existing historical chain, approval metadata or expiry. The 512 dispositions,
 context/app pairs and all thresholds remain unchanged. It authorizes no other
 source binding, including `scripts/live_stand.py`, and does not establish a
 passing scan, hosted check, merge or deployment.
+
+## Decisions recorded on 2026-11-16
+
+### Twelve exact AUD-189 backup/restore test identities
+
+The owner explicitly approved twelve exact detect-secrets identities in the new
+AUD-189 runtime-proof unit tests as false positives. Nine are Kubernetes Secret
+object names or keys (`external_kubernetes_secret_reference`) in
+`tests/test_networkpolicy_runtime_backup_postgres.py` and
+`tests/test_networkpolicy_runtime_backup_restore.py`. Three are test-only
+sentinels (`ci_test_contract_sentinel`): a placeholder passphrase in
+`tests/test_networkpolicy_runtime_backup_phase.py`, and a synthetic Docker owner
+label and a Caddy configuration path in
+`tests/test_networkpolicy_runtime_backup_runner.py`.
+
+The records are appended after the unchanged 512-record policy, each with
+owner `egorribun`, review date 2026-11-16 and expiry 2027-01-10. The
+`tests/test_verify_secrets_baseline.py` adapter requires those exact twelve
+identities and metadata, removes them in memory and runs the unchanged
+historical chain on the exact 512-record predecessor. The inventory is now 524
+dispositions; the 242 baseline identities, 15 Semgrep rows, 27 Gitleaks
+fingerprints and all thresholds are unchanged. This approval adds no inline
+allowlist pragma and establishes no passing scan, hosted check, merge or
+deployment.

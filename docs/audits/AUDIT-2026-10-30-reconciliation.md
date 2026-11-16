@@ -62,7 +62,7 @@ entries for the sole tracked migration, without an exception. No deleted-
 revision coverage, SQL coverage, runtime-safety or release claim is added.
 This decision left the then 506 dispositions, 242 baseline identities, 27 Gitleaks fingerprints,
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
-quality floors unchanged. The current policy inventory is 512 dispositions.
+quality floors unchanged. The current policy inventory is 524 dispositions.
 
 <a id="current-6-finding-reconciliation--2026-11-13"></a>
 

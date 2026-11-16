@@ -2677,6 +2677,330 @@ _AUD380_FINAL_KIND_SECRET_REFERENCE_IDENTITIES = frozenset(
     }
 )
 
+# Owner-approved 2026-11-16: exact AUD-189 backup/restore Secret name and key references.
+_AUD189_BACKUP_SECRET_REFERENCE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_networkpolicy_runtime_backup_postgres.py",
+            "Secret Keyword",
+            (
+                123,
+                77,
+                125,
+                47,
+                161,
+                133,
+                114,
+                12,
+                211,
+                156,
+                161,
+                83,
+                218,
+                176,
+                239,
+                161,
+                33,
+                63,
+                175,
+                3,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_postgres.py",
+            "Secret Keyword",
+            (
+                174,
+                96,
+                233,
+                16,
+                191,
+                201,
+                35,
+                3,
+                215,
+                86,
+                135,
+                152,
+                36,
+                60,
+                92,
+                195,
+                78,
+                164,
+                182,
+                180,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_postgres.py",
+            "Secret Keyword",
+            (
+                210,
+                157,
+                82,
+                199,
+                3,
+                160,
+                183,
+                223,
+                116,
+                121,
+                61,
+                2,
+                108,
+                134,
+                158,
+                93,
+                156,
+                25,
+                23,
+                211,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_postgres.py",
+            "Secret Keyword",
+            (
+                162,
+                8,
+                238,
+                202,
+                103,
+                142,
+                131,
+                175,
+                3,
+                187,
+                95,
+                216,
+                141,
+                123,
+                128,
+                173,
+                60,
+                11,
+                63,
+                45,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_restore.py",
+            "Secret Keyword",
+            (
+                223,
+                65,
+                140,
+                196,
+                154,
+                7,
+                46,
+                113,
+                6,
+                63,
+                194,
+                97,
+                244,
+                52,
+                146,
+                170,
+                39,
+                43,
+                187,
+                105,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_restore.py",
+            "Secret Keyword",
+            (
+                43,
+                121,
+                120,
+                15,
+                96,
+                137,
+                157,
+                206,
+                127,
+                123,
+                81,
+                244,
+                211,
+                54,
+                133,
+                182,
+                143,
+                140,
+                255,
+                137,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_restore.py",
+            "Secret Keyword",
+            (
+                214,
+                205,
+                213,
+                10,
+                182,
+                70,
+                220,
+                154,
+                179,
+                31,
+                99,
+                152,
+                108,
+                161,
+                14,
+                93,
+                75,
+                137,
+                149,
+                138,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_restore.py",
+            "Secret Keyword",
+            (
+                177,
+                98,
+                175,
+                0,
+                45,
+                192,
+                212,
+                143,
+                144,
+                174,
+                217,
+                158,
+                175,
+                246,
+                157,
+                65,
+                97,
+                117,
+                62,
+                67,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_restore.py",
+            "Secret Keyword",
+            (
+                133,
+                54,
+                241,
+                126,
+                100,
+                193,
+                130,
+                218,
+                142,
+                174,
+                106,
+                159,
+                255,
+                198,
+                169,
+                188,
+                149,
+                40,
+                190,
+                19,
+            ),
+        ),
+    }
+)
+
+# Owner-approved 2026-11-16: exact AUD-189 backup/restore test-only sentinels.
+_AUD189_BACKUP_CI_TEST_SENTINEL_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_networkpolicy_runtime_backup_phase.py",
+            "Secret Keyword",
+            (
+                184,
+                88,
+                207,
+                160,
+                215,
+                8,
+                234,
+                155,
+                159,
+                226,
+                175,
+                232,
+                113,
+                230,
+                176,
+                58,
+                2,
+                173,
+                144,
+                38,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_runner.py",
+            "Hex High Entropy String",
+            (
+                212,
+                251,
+                239,
+                146,
+                175,
+                51,
+                193,
+                120,
+                157,
+                145,
+                48,
+                56,
+                74,
+                86,
+                115,
+                125,
+                24,
+                28,
+                198,
+                223,
+            ),
+        ),
+        (
+            "tests/test_networkpolicy_runtime_backup_runner.py",
+            "Base64 High Entropy String",
+            (
+                174,
+                187,
+                64,
+                170,
+                193,
+                160,
+                14,
+                229,
+                101,
+                99,
+                47,
+                38,
+                89,
+                34,
+                213,
+                30,
+                192,
+                134,
+                248,
+                234,
+            ),
+        ),
+    }
+)
+
 _AUD380_N3_CI_TEST_SENTINEL_IDENTITIES = frozenset(
     {
         (
@@ -2772,6 +3096,7 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
         _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
         | _AUD380_HELM_EXTERNAL_SECRET_REFERENCE_IDENTITIES
         | _AUD380_FINAL_KIND_SECRET_REFERENCE_IDENTITIES
+        | _AUD189_BACKUP_SECRET_REFERENCE_IDENTITIES
         | frozenset(_NOV2_CHART_REFERENCE_EVIDENCE)
     ),
     "source_contract_identifier": (
@@ -5996,7 +6321,7 @@ _NOV9_WASM_CLI_PRIOR_IDENTITIES = frozenset(
 
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
-_FALSE_POSITIVE_RECORD_LIMIT = 512
+_FALSE_POSITIVE_RECORD_LIMIT = 524
 _FALSE_POSITIVE_EVIDENCE_LIMIT = 1000
 _FALSE_POSITIVE_OWNER_LIMIT = 120
 _FALSE_POSITIVE_PLACEHOLDER_OWNERS = frozenset(
@@ -6784,9 +7109,9 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: auth validation UI copy identity changed category"
             )
-        if (
-            category == "ci_test_contract_sentinel"
-            and exact_source_identity in _AUD380_N3_CI_TEST_SENTINEL_IDENTITIES
+        if category == "ci_test_contract_sentinel" and (
+            exact_source_identity in _AUD380_N3_CI_TEST_SENTINEL_IDENTITIES
+            or exact_source_identity in _AUD189_BACKUP_CI_TEST_SENTINEL_IDENTITIES
         ):
             category_matches = True
         elif category in _FALSE_POSITIVE_HEX_CATEGORIES:

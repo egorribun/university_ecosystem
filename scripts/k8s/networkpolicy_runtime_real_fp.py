@@ -9,7 +9,9 @@ from __future__ import annotations
 import base64
 import copy
 import datetime
+import ipaddress
 import json
+import re
 import secrets
 import subprocess
 import time
@@ -40,7 +42,8 @@ from networkpolicy_runtime_processor import (
     processor_token,
     real_processor_deployment,
 )
-from networkpolicy_runtime_standins import PROBE_SRC
+from networkpolicy_runtime_processor_topology import capture_topology, compare_topology
+from networkpolicy_runtime_standins import JWKS_WITNESS_READ_SRC, PROBE_SRC
 from networkpolicy_runtime_startup import processor_startup_diagnostics
 from networkpolicy_runtime_temporal import (
     _key_pem,
@@ -622,6 +625,192 @@ def check_processor_network(
                 raise ValueError("real network prerequisite failed")
 
 
+_OBSERVER_UID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
+_OBSERVER_EPOCH = re.compile(r"[0-9a-f]{16}\Z")
+_OBSERVER_KIDS = ["primary", "netpol-rotated"]
+
+
+def _observer_auth_checks(
+    checks: list[dict[str, Any]], uids: set[str], check_id: str, code: str
+) -> bool:
+    rows = [check for check in checks if check.get("check_id") == check_id]
+    return (
+        len(rows) == 2
+        and {row.get("pod_uid") for row in rows} == uids
+        and all(
+            row.get("verdict") == "pass"
+            and row.get("expected") == code
+            and row.get("observed") == {"result": "grpc-status", "code": code}
+            for row in rows
+        )
+    )
+
+
+def jwks_observer_config(
+    replicas: list[dict[str, Any]], publisher: Pod, checks: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Build an allowlist only for the two existing real-processor identities."""
+    try:
+        if (
+            (publisher.namespace, publisher.name) != ("probe-a", "probe-a-backend")
+            or not _OBSERVER_UID.fullmatch(publisher.uid)
+            or len(replicas) != 2
+        ):
+            return None
+        peers = {}
+        for replica in replicas:
+            uid, address = replica["uid"], replica["ip"]
+            if (
+                not isinstance(uid, str)
+                or not _OBSERVER_UID.fullmatch(uid)
+                or not isinstance(address, str)
+                or str(ipaddress.ip_address(address)) != address
+                or address in peers
+            ):
+                return None
+            peers[address] = uid
+        uids = set(peers.values())
+        if len(uids) != 2 or not _observer_auth_checks(
+            checks, uids, "unpublished-new-rejected", "Unauthenticated"
+        ):
+            return None
+        return {
+            "epoch": secrets.token_hex(8),
+            "peers": peers,
+            "key_ids": _OBSERVER_KIDS,
+        }
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
+def read_jwks_observation(
+    publisher: Pod,
+    observer: dict[str, Any],
+    *,
+    command_runner: Any = run_command,
+    timeout: float = 5,
+) -> dict[str, Any]:
+    """One bounded control-plane exec reads only the two sanitized event files."""
+    try:
+        if (publisher.namespace, publisher.name) != ("probe-a", "probe-a-backend"):
+            return {"result": "unavailable"}
+        if not 0 < timeout <= 5:
+            return {"result": "unavailable"}
+        payload = json.dumps(
+            {"epoch": observer["epoch"], "uids": list(observer["peers"].values())}
+        )
+        result = command_runner(
+            [
+                "kubectl",
+                "-n",
+                publisher.namespace,
+                "exec",
+                "-i",
+                publisher.name,
+                "-c",
+                "probe",
+                "--",
+                "python3",
+                "-I",
+                "-c",
+                JWKS_WITNESS_READ_SRC,
+            ],
+            stdin=payload,
+            timeout=timeout,
+        )
+        if len(result.stdout) > 4096:
+            return {"result": "unavailable"}
+        obj = json.loads(result.stdout)
+        return obj if isinstance(obj, dict) else {"result": "unavailable"}
+    except (Exception, SystemExit):
+        return {"result": "unavailable"}
+
+
+def jwks_observer_verdict(
+    observer: dict[str, Any],
+    published: dict[str, Any],
+    observation: dict[str, Any],
+    checks: list[dict[str, Any]],
+    replica_state_unchanged: bool,
+) -> dict[str, Any]:
+    """Correlate only the positive events, existing auth rows and stable replicas."""
+    try:
+        epoch, peers = observer["epoch"], observer["peers"]
+        if (
+            not isinstance(epoch, str)
+            or not _OBSERVER_EPOCH.fullmatch(epoch)
+            or observer["key_ids"] != _OBSERVER_KIDS
+            or not isinstance(peers, dict)
+            or len(peers) != 2
+            or len(set(peers.values())) != 2
+            or any(
+                not isinstance(uid, str) or not _OBSERVER_UID.fullmatch(uid)
+                for uid in peers.values()
+            )
+            or any(
+                not isinstance(ip, str) or str(ipaddress.ip_address(ip)) != ip
+                for ip in peers
+            )
+            or replica_state_unchanged is not True
+            or published.get("status") != "armed"
+            or type(published.get("publication_lower_bound_ns")) is not int
+            or not isinstance(observation, dict)
+            or set(observation) != {"result", "events", "collected_monotonic_ns"}
+            or observation.get("result") != "observed"
+        ):
+            return {"verdict": "inconclusive"}
+        started = published["publication_lower_bound_ns"]
+        collected = observation["collected_monotonic_ns"]
+        events = observation["events"]
+        if (
+            type(collected) is not int
+            or started <= 0
+            or collected <= started
+            or not isinstance(events, list)
+            or len(events) != 2
+        ):
+            return {"verdict": "inconclusive"}
+        uids = set(peers.values())
+        if (
+            not _observer_auth_checks(
+                checks, uids, "unpublished-new-rejected", "Unauthenticated"
+            )
+            or not _observer_auth_checks(
+                checks, uids, "overlap-old-accepted", "InvalidArgument"
+            )
+            or not _observer_auth_checks(
+                checks, uids, "overlap-new-accepted", "InvalidArgument"
+            )
+        ):
+            return {"verdict": "inconclusive"}
+        validated = []
+        for event in events:
+            if (
+                not isinstance(event, dict)
+                or set(event)
+                != {"pod_uid", "epoch", "status", "key_ids", "monotonic_ns"}
+                or event["pod_uid"] not in uids
+                or event["epoch"] != epoch
+                or event["status"] != 200
+                or event["key_ids"] != _OBSERVER_KIDS
+                or type(event["monotonic_ns"]) is not int
+                or not started < event["monotonic_ns"] < collected
+            ):
+                return {"verdict": "inconclusive"}
+            validated.append(dict(event))
+        if {event["pod_uid"] for event in validated} != uids:
+            return {"verdict": "inconclusive"}
+        return {
+            "verdict": "pass",
+            "scope": "positive overlap JWKS responses mapped to replica Pod IPs/UIDs in before/after samples",
+            "publication_lower_bound_ns": started,
+            "collected_monotonic_ns": collected,
+            "events": validated,
+        }
+    except (Exception, SystemExit):
+        return {"verdict": "inconclusive"}
+
+
 def verify_processor_authentication(
     fixture: ProcessorFixture,
     release: str,
@@ -720,15 +909,44 @@ def verify_processor_authentication(
         check_all("unpublished-new-rejected", new_token, "Unauthenticated")
         stage = "rotation-overlap"
         publication = datetime.datetime.now(datetime.UTC).isoformat()
-
-        if (
-            publish_jwks(pods[short + "-backend"], jwks_document([old, new])).get(
-                "result"
+        try:
+            observer = jwks_observer_config(before, pods[short + "-backend"], checks)
+        except (Exception, SystemExit):
+            observer = None
+        document = jwks_document([old, new])
+        if observer is None:
+            publication_result = publish_jwks(pods[short + "-backend"], document)
+        else:
+            publication_result = publish_jwks(
+                pods[short + "-backend"], document, observer=observer
             )
-            != "published"
-        ):
+        if publication_result.get("result") != "published":
             raise ValueError("publish failed")
-        time.sleep(refresh + 10)
+        published_observer = publication_result.get("observer", {})
+        observation = {"result": "unavailable"}
+        if (
+            observer is not None
+            and isinstance(published_observer, dict)
+            and published_observer.get("status") == "armed"
+        ):
+            wait_started = time.monotonic()
+            time.sleep(refresh)
+            remaining = refresh + 10 - (time.monotonic() - wait_started)
+            if remaining >= 5:
+                try:
+                    observation = read_jwks_observation(
+                        pods[short + "-backend"],
+                        observer,
+                        command_runner=run_command,
+                        timeout=5,
+                    )
+                except (Exception, SystemExit):
+                    observation = {"result": "unavailable"}
+            remaining = refresh + 10 - (time.monotonic() - wait_started)
+            if remaining > 0:
+                time.sleep(remaining)
+        else:
+            time.sleep(refresh + 10)
         if time.monotonic() - new_issued > 540:
             raise ValueError("new-key token expiry margin exhausted")
         validate_fixture_token(new, new_token, env, new_jti)
@@ -771,6 +989,13 @@ def verify_processor_authentication(
         )
         if replica_state(release, labels) != before:
             raise ValueError("replica restarted during proof")
+        try:
+            witness = jwks_observer_verdict(
+                observer or {}, published_observer, observation, checks, True
+            )
+        except (Exception, SystemExit):
+            witness = {"verdict": "inconclusive"}
+        rotations[-1]["jwks_witness"] = witness
     except (
         OSError,
         ValueError,
@@ -862,6 +1087,12 @@ def actual_processor_phase(
             before = replica_state(release, labels)
             if len(before) != deployment["spec"].get("replicas", 1):
                 raise ValueError("replica count mismatch")
+            try:
+                topology_before = capture_topology(
+                    release, fixture, pods, before, command_runner=run_command
+                )
+            except (Exception, SystemExit):
+                topology_before = {"status": "unavailable"}
             stage = f"{release}:real-network-paths"
             check_processor_network(
                 fixture, release, pods, passwords[release], before, checks
@@ -878,6 +1109,16 @@ def actual_processor_phase(
                 checks,
                 rotations,
             )
+            try:
+                topology_after = capture_topology(
+                    release, fixture, pods, before, command_runner=run_command
+                )
+            except (Exception, SystemExit):
+                topology_after = {"status": "unavailable"}
+            try:
+                topology = compare_topology(topology_before, topology_after)
+            except (Exception, SystemExit):
+                topology = {"verdict": "inconclusive", "reason": "snapshot-unavailable"}
             # Matrix cross-release checks already finished against the unchanged
             # original targets. Retire only actual phase workloads before the
             # next namespace, bounding peak runtime memory to one real stack.
@@ -945,4 +1186,5 @@ def actual_processor_phase(
         "rotations": rotations,
         "replicas": before,
         "replica_state_unchanged": True,
+        "topology": topology,
     }

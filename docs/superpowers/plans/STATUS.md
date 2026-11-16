@@ -1,5 +1,34 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
+## Дополнение — 2026-11-16
+
+- На момент среза ветка `main` указывает на
+  [`410b3967e2fc0fd0b8a20101b8dc84c22a837df8`](https://github.com/egorribun/university_ecosystem/commit/410b3967e2fc0fd0b8a20101b8dc84c22a837df8).
+  Формальный итог аудита остаётся [506/512 при 6 открытых находках](../../audits/INDEX.md).
+- Плановый Core на этом SHA завершился с 211 пройденными, 8 упавшими, 8 пропущенными
+  и 5 нестабильными тестами. Read-receipt на desktop и mobile прошёл с первой попытки.
+  Серия успешных плановых прогонов `main` составляет 0 из 2. [Run 43851258381](https://github.com/egorribun/university_ecosystem/actions/runs/43851258381).
+- В локальном Core на том же SHA прошли 7 из 8 выбранных проверок, включая все четыре
+  проверки истории Events. Мобильный сценарий нижней навигации воспроизвёл сбой
+  на проверке перехода в `/news` после серии касаний: снимок нативного
+  view transition перехватывал следующие касания. Исправление
+  [`2464f4fb4`](https://github.com/egorribun/university_ecosystem/commit/2464f4fb4)
+  отключает view transition у ссылок нижней навигации; подтверждение плановым
+  прогоном `main` ещё не получено.
+- На том же SHA прошли все 40 проверок матрицы и все 24 проверки реального
+  file-processor в Kind. [Run 43814164922](https://github.com/egorribun/university_ecosystem/actions/runs/43814164922),
+  [artifact 14201599930](https://github.com/egorribun/university_ecosystem/actions/runs/43814164922/artifacts/14201599930).
+- В черновом [PR #1405](https://github.com/egorribun/university_ecosystem/pull/1405)
+  на SHA [`5b5c582ad74eb1ca8d3ca863d33bbc9d4f746294`](https://github.com/egorribun/university_ecosystem/commit/5b5c582ad74eb1ca8d3ca863d33bbc9d4f746294)
+  [run 43820093055](https://github.com/egorribun/university_ecosystem/actions/runs/43820093055),
+  [artifact 14204863438](https://github.com/egorribun/university_ecosystem/actions/runs/43820093055/artifacts/14204863438)
+  подтвердил сбор метрик реальным Prometheus с двух реплик ws-hub. Остальные пробелы
+  доказательств остаются открытыми.
+- Трассировочная матрица и этап 3 MVP остаются последующими задачами после
+  подтверждённого завершения AUD-2026-10.
+
+## Срез от 2026-11-13
+
 Дата среза: **2026-11-13 (UTC)**. Текущие итоги аудита — в [docs/audits/INDEX.md](../../audits/INDEX.md).
 Полная предыдущая версия этого файла (8286 строк, датированные разделы
 2026-09 — 2026-11-11) сохранена в git: `git show d8891684f:docs/superpowers/plans/STATUS.md`.
@@ -25,7 +54,7 @@
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment,
 reconciliation, `AUDIT-2026-10.md`, этот файл и `docs/README.md`.
 
-The current policy-file inventory is **512 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
+The current policy-file inventory is **524 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
 
 ### Открытые находки и текущий план
 

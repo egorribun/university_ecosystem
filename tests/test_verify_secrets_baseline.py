@@ -1186,9 +1186,9 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
     live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 12)
+        repository_root=root, today=verifier.date(2026, 11, 16)
     )
-    assert len(live_validated) == 512
+    assert len(live_validated) == 524
     assert all(
         finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
     )
@@ -15491,7 +15491,7 @@ def test_oct30_integrity_adds_exact_89_and_preserves_405_prefix() -> None:
         )
         for record in policy["records"][:405]
     )
-    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
     assert (
         len(
             _nov13_verify_dispositions(
@@ -15842,7 +15842,7 @@ def test_aud447_allocation_adds_exact_five_and_preserves_all_prior_records() -> 
         _AUD447_CI_ALLOCATION_CATEGORY
     ]
     assert not any(path in _AUD447_CI_ALLOCATION_PATHS for path, _ in allowed_pairs)
-    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
     assert (
         len(
             _nov13_verify_dispositions(
@@ -15943,7 +15943,7 @@ def test_aud447_allocation_refuses_duplicates_sixth_identity_and_cap_growth() ->
             )
     with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
         _nov13_verify_dispositions(
-            _disposition_document(*([records[0]] * 513)),
+            _disposition_document(*([records[0]] * 525)),
             today=verifier.date(2026, 10, 31),
         )
     for today in (verifier.date(2026, 10, 30), verifier.date(2027, 1, 11)):
@@ -16449,12 +16449,12 @@ def test_nov1_v4_policy_rejects_each_duplicate_identity(index: int) -> None:
         )
 
 
-def test_nov1_v4_policy_keeps_the_512_record_cap() -> None:
-    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+def test_nov1_v4_policy_keeps_the_524_record_cap() -> None:
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
     record = _nov1_v4_binding_record(0)
     with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
         _nov13_verify_dispositions(
-            _disposition_document(*([record] * 513)),
+            _disposition_document(*([record] * 525)),
             today=verifier.date(2026, 11, 1),
         )
 
@@ -16639,7 +16639,7 @@ def test_nov2_integrity_policy_preserves_502_and_adds_only_two() -> None:
         )
         == 505
     )
-    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
 
 
 @pytest.mark.parametrize("index", range(2))
@@ -17752,14 +17752,13 @@ def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
 @pytest.mark.parametrize("record", _nov2_chart_reference_records())
 def test_nov2_chart_reference_exact_scope(record: dict[str, Any]) -> None:
     assert len(verifier._NOV2_CHART_REFERENCE_EVIDENCE) == 2
-    assert (
-        len(
-            verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
-                "external_kubernetes_secret_reference"
-            ]
-        )
-        == _AUD380_CURRENT_DELTA_CATEGORY_COUNTS["external_kubernetes_secret_reference"]
-    )
+    assert len(
+        verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
+            "external_kubernetes_secret_reference"
+        ]
+    ) == _AUD380_CURRENT_DELTA_CATEGORY_COUNTS[
+        "external_kubernetes_secret_reference"
+    ] + len(verifier._AUD189_BACKUP_SECRET_REFERENCE_IDENTITIES)
     accepted = _nov13_verify_dispositions(
         _disposition_document(record), today=verifier.date(2027, 1, 9)
     )
@@ -31531,7 +31530,7 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    if len(policy.get("records", [])) == 512:
+    if len(policy.get("records", [])) == 524:
         policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -32236,9 +32235,9 @@ def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
     historical_bytes = _nov11_historical_509_policy_bytes(policy_bytes)
     assert len(json.loads(historical_bytes)["records"]) == 509
     accepted = _nov13_verify_dispositions(
-        json.loads(policy_bytes), today=verifier.date(2026, 11, 12)
+        json.loads(policy_bytes), today=verifier.date(2026, 11, 16)
     )
-    assert len(accepted) == 512
+    assert len(accepted) == 524
 
 
 @pytest.mark.parametrize(
@@ -35023,7 +35022,7 @@ def _nov15_http_operations_historical_source_bytes(path: str, actual: bytes) -> 
 
 
 def _nov15_http_operations_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _aud189_backup_identities_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512, "live disposition count changed"
     row = records[_NOV15_IDENTITY_ROW]
@@ -35074,7 +35073,7 @@ def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
         "hashed_secret_bytes"
     ] == _nov15_identity(_NOV15_LIVE_PREVIOUS_SHA256)
     for index, (before, after) in enumerate(
-        zip(policy["records"], restored["records"], strict=True)
+        zip(policy["records"][:512], restored["records"], strict=True)
     ):
         if index != _NOV15_IDENTITY_ROW:
             assert before == after
@@ -35121,3 +35120,180 @@ def test_nov15_http_operations_projection_rejects_drift(
             )
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _nov15_http_operations_historical_source_bytes(path, actual)
+
+
+# 2026-11-16 owner decision: twelve exact AUD-189 backup/restore test identities
+# are approved false positives appended after the 512-record policy.
+_AUD189_BACKUP_IDENTITIES = (
+    (
+        "tests/test_networkpolicy_runtime_backup_phase.py",
+        "Secret Keyword",
+        "b8 58 cf a0 d7 08 ea 9b 9f e2 af e8 71 e6 b0 3a 02 ad 90 26",
+        "ci_test_contract_sentinel",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_postgres.py",
+        "Secret Keyword",
+        "7b 4d 7d 2f a1 85 72 0c d3 9c a1 53 da b0 ef a1 21 3f af 03",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_postgres.py",
+        "Secret Keyword",
+        "ae 60 e9 10 bf c9 23 03 d7 56 87 98 24 3c 5c c3 4e a4 b6 b4",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_postgres.py",
+        "Secret Keyword",
+        "d2 9d 52 c7 03 a0 b7 df 74 79 3d 02 6c 86 9e 5d 9c 19 17 d3",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_postgres.py",
+        "Secret Keyword",
+        "a2 08 ee ca 67 8e 83 af 03 bb 5f d8 8d 7b 80 ad 3c 0b 3f 2d",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_restore.py",
+        "Secret Keyword",
+        "df 41 8c c4 9a 07 2e 71 06 3f c2 61 f4 34 92 aa 27 2b bb 69",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_restore.py",
+        "Secret Keyword",
+        "2b 79 78 0f 60 89 9d ce 7f 7b 51 f4 d3 36 85 b6 8f 8c ff 89",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_restore.py",
+        "Secret Keyword",
+        "d6 cd d5 0a b6 46 dc 9a b3 1f 63 98 6c a1 0e 5d 4b 89 95 8a",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_restore.py",
+        "Secret Keyword",
+        "b1 62 af 00 2d c0 d4 8f 90 ae d9 9e af f6 9d 41 61 75 3e 43",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_restore.py",
+        "Secret Keyword",
+        "85 36 f1 7e 64 c1 82 da 8e ae 6a 9f ff c6 a9 bc 95 28 be 13",
+        "external_kubernetes_secret_reference",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_runner.py",
+        "Hex High Entropy String",
+        "d4 fb ef 92 af 33 c1 78 9d 91 30 38 4a 56 73 7d 18 1c c6 df",
+        "ci_test_contract_sentinel",
+    ),
+    (
+        "tests/test_networkpolicy_runtime_backup_runner.py",
+        "Base64 High Entropy String",
+        "ae bb 40 aa c1 a0 0e e5 65 63 2f 26 59 22 d5 1e c0 86 f8 ea",
+        "ci_test_contract_sentinel",
+    ),
+)
+
+
+def _aud189_backup_identities_historical_policy(
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512 + len(_AUD189_BACKUP_IDENTITIES), (
+        "live disposition count changed"
+    )
+    appended = records[512:]
+    for row, (path, kind, digest, category) in zip(
+        appended, _AUD189_BACKUP_IDENTITIES, strict=True
+    ):
+        identity = row["identity"]
+        assert identity["path"] == path, (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert identity["type"] == kind, (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert bytes(identity["hashed_secret_bytes"]) == bytes.fromhex(digest), (
+            "live disposition AUD-189 backup identity changed"
+        )
+        assert row["category"] == category, (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert row["approval_status"] == "approved", (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert row["owner"] == "egorribun", (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert row["reviewed_on"] == "2026-11-16", (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert row["expires_on"] == "2027-01-10", (
+            "live disposition AUD-189 approval metadata changed"
+        )
+        assert "not credential material" in row["evidence"], (
+            "live disposition AUD-189 approval metadata changed"
+        )
+    del records[512:]
+    return restored
+
+
+def test_aud189_backup_identities_append_after_exact_predecessor() -> None:
+    policy = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "quality/security-false-positive-dispositions.json"
+        ).read_text(encoding="utf-8")
+    )
+    restored = _aud189_backup_identities_historical_policy(policy)
+    assert restored["records"] == policy["records"][:512]
+    assert len(policy["records"]) == 524
+
+
+def test_aud189_backup_identities_projection_rejects_drift() -> None:
+    policy = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "quality/security-false-positive-dispositions.json"
+        ).read_text(encoding="utf-8")
+    )
+    drifted = copy.deepcopy(policy)
+    drifted["records"][-1]["identity"]["hashed_secret_bytes"][0] ^= 1
+    with pytest.raises(
+        AssertionError, match="live disposition AUD-189 backup identity changed"
+    ):
+        _aud189_backup_identities_historical_policy(drifted)
+    extended = copy.deepcopy(policy)
+    extended["records"].append(copy.deepcopy(policy["records"][-1]))
+    with pytest.raises(AssertionError, match="live disposition count changed"):
+        _aud189_backup_identities_historical_policy(extended)
+
+
+def test_aud189_verifier_identity_sets_match_the_appended_records() -> None:
+    expected = {
+        category: {
+            (path, kind, tuple(bytes.fromhex(digest)))
+            for path, kind, digest, row_category in _AUD189_BACKUP_IDENTITIES
+            if row_category == category
+        }
+        for category in (
+            "external_kubernetes_secret_reference",
+            "ci_test_contract_sentinel",
+        )
+    }
+    assert len(expected["external_kubernetes_secret_reference"]) == 9
+    assert len(expected["ci_test_contract_sentinel"]) == 3
+    assert (
+        verifier._AUD189_BACKUP_SECRET_REFERENCE_IDENTITIES
+        == expected["external_kubernetes_secret_reference"]
+    )
+    assert (
+        verifier._AUD189_BACKUP_CI_TEST_SENTINEL_IDENTITIES
+        == expected["ci_test_contract_sentinel"]
+    )

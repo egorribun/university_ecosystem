@@ -18,8 +18,8 @@ scripts/k8s/networkpolicy_runtime_proof.sh. The script:
    acceptance across rotation) in the same enforced cluster;
 5. writes a JSON receipt and exits non-zero on any mismatch or inconclusive row.
 
-The file-processor, backend, backup and Temporal/NATS workloads are not run as
-their real images. The receipt's not_run list states what remains unproven.
+Optional real-workload phases record their results alongside the stand-in
+matrix. The receipt's not_run list states what remains unproven.
 """
 
 from __future__ import annotations
@@ -90,6 +90,8 @@ EXPORTER_CONTAINER = "metrics"
 EXPORTER_VOLUME = "redis-exporter-auth"
 RECEIPT_SCHEMA = "aud169-188-189-aud438-kind-networkpolicy-receipt/v3"
 BACKUP_CRONJOB = "db-backup"
+BACKUP_STAND_IN_ENDPOINT = "https://backup-target.probe.invalid:443"
+BACKUP_FIXTURE_ENDPOINT = "https://198.18.42.10:443"
 
 Rendered = dict[str, tuple[list[dict[str, Any]], list[dict[str, Any]]]]
 
@@ -144,10 +146,10 @@ def strip_metrics_exporter(store: list[dict[str, Any]]) -> None:
         raise SystemExit("revocation Redis pod lost its redis-auth-acl init container")
 
 
-def render_release(
-    release: str, app_contract: Any, store_contract: Any
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    app = helm_template(
+def render_app(
+    release: str, app_contract: Any, backup_endpoint: str, extra: list[str]
+) -> list[dict[str, Any]]:
+    return helm_template(
         release,
         app_contract.CHART,
         app_contract.STAGING_VALUES,
@@ -157,13 +159,41 @@ def render_release(
             f"fullnameOverride={release}",
             "--set",
             "backup.enabled=true",
-            # Staging validation requires an https backup endpoint. The rendered
-            # backup policy grants TCP/443 generically, so this name is never resolved.
             "--set-string",
-            "backup.minioEndpoint=https://backup-target.probe.invalid:443",
+            f"backup.minioEndpoint={backup_endpoint}",
+            *extra,
         ],
         release,
     )
+
+
+def render_release(
+    release: str,
+    app_contract: Any,
+    store_contract: Any,
+    *,
+    backup_endpoint: str = BACKUP_STAND_IN_ENDPOINT,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    app = render_app(release, app_contract, BACKUP_STAND_IN_ENDPOINT, [])
+    if backup_endpoint != BACKUP_STAND_IN_ENDPOINT:
+        # The file processor also consumes the normal application Secret.
+        # Only the backup CronJob uses these separate fixture references.
+        backup_name = f"{release}-{BACKUP_CRONJOB}"
+        cronjob = find(app, "CronJob", backup_name)
+        backup = render_app(
+            release,
+            app_contract,
+            backup_endpoint,
+            [
+                "--show-only",
+                "templates/backup-cronjob.yaml",
+                "--set-string",
+                "applicationSecrets.existingSecret=netpol-backup-s3",
+                "--set-string",
+                "connections.existingSecret=netpol-backup-source",
+            ],
+        )
+        app[app.index(cronjob)] = find(backup, "CronJob", backup_name)
     store = helm_template(
         f"{release}-bootstrap",
         store_contract.CHART,
@@ -226,11 +256,14 @@ def assert_rendered_ports(
     find(store, "Service", f"{release}-revocation-redis-master")
 
 
-def render_all() -> Rendered:
+def render_all(*, backup_endpoint: str = BACKUP_STAND_IN_ENDPOINT) -> Rendered:
     app_contract, store_contract = load_render_contracts()
     rendered: Rendered = {}
     for release in RELEASES:
-        app, store = render_release(release, app_contract, store_contract)
+        endpoint = backup_endpoint if release == "probe-a" else BACKUP_STAND_IN_ENDPOINT
+        app, store = render_release(
+            release, app_contract, store_contract, backup_endpoint=endpoint
+        )
         assert_rendered_ports(app, store, release)
         rendered[release] = (app, store)
     return rendered
@@ -665,6 +698,25 @@ def run_app_checks(
     }
 
 
+def backup_fixture_files(ca_file: Path, credentials_file: Path) -> tuple[str, str, str]:
+    for path, maximum in ((ca_file, 64 * 1024), (credentials_file, 1024)):
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or not 0 < path.stat().st_size <= maximum
+        ):
+            raise ValueError("invalid backup fixture input file")
+    ca_certificate = ca_file.read_text(encoding="ascii")
+    credentials = re.fullmatch(
+        r"AWS_ACCESS_KEY_ID=([0-9a-f]{16,128})\n"
+        r"AWS_SECRET_ACCESS_KEY=([0-9a-f]{16,128})\n",
+        credentials_file.read_text(encoding="ascii"),
+    )
+    if credentials is None:
+        raise ValueError("invalid backup fixture credentials file")
+    return ca_certificate, credentials[1], credentials[2]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--receipt", required=True, type=Path)
@@ -675,6 +727,9 @@ def main() -> int:
     parser.add_argument("--diagnostic-image")
     parser.add_argument("--source-sha")
     parser.add_argument("--real-ws-image")
+    parser.add_argument("--backup-endpoint", choices=[BACKUP_FIXTURE_ENDPOINT])
+    parser.add_argument("--backup-ca-file", type=Path)
+    parser.add_argument("--backup-credentials-file", type=Path)
     args = parser.parse_args()
     if any(
         (args.real_processor_image, args.diagnostic_image, args.source_sha)
@@ -687,10 +742,31 @@ def main() -> int:
         (args.real_processor_image, args.diagnostic_image, args.source_sha)
     ):
         parser.error("real ws-hub requires the source-bound real-processor phase")
+    backup_endpoint = getattr(args, "backup_endpoint", None)
+    backup_ca_file = getattr(args, "backup_ca_file", None)
+    backup_credentials_file = getattr(args, "backup_credentials_file", None)
+    backup_fixture = None
+    if any((backup_endpoint, backup_ca_file, backup_credentials_file)):
+        if not all(
+            (backup_endpoint, backup_ca_file, backup_credentials_file, args.source_sha)
+        ):
+            parser.error(
+                "real backup requires its endpoint, CA, credentials and source SHA"
+            )
+        if not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
+            parser.error("real backup requires a full source SHA")
+        try:
+            backup_fixture = backup_fixture_files(
+                backup_ca_file, backup_credentials_file
+            )
+        except (OSError, ValueError):
+            parser.error("invalid real backup fixture input")
 
     started = datetime.now(UTC).isoformat()
     base_image = runtime_base_image()
-    rendered = render_all()
+    rendered = (
+        render_all(backup_endpoint=backup_endpoint) if backup_endpoint else render_all()
+    )
     passwords = {release: new_redis_password() for release in RELEASES}
     if real_ws_image:
         pods = set_up_cluster(base_image, rendered, passwords, own_ws=True)
@@ -864,6 +940,35 @@ def main() -> int:
                 "verdict": "not_run",
                 "reason": "real-processor phase did not pass",
             }
+        receipt["finished_utc"] = datetime.now(UTC).isoformat()
+        receipt["verdict"] = "pass" if all_pass else "fail"
+    if backup_fixture is not None:
+        real_backup = {
+            "verdict": "not_run",
+            "reason": "the original matrix did not pass",
+        }
+        if matrix_pass:
+            receipt["finished_utc"] = None
+            receipt["verdict"] = "inconclusive"
+            receipt["real_backup"] = {"verdict": "in_progress"}
+            persist_receipt()
+            from networkpolicy_runtime_backup_phase import run_backup_phase
+
+            ca_certificate, access_key, secret_key = backup_fixture
+            real_backup = run_backup_phase(
+                find(rendered["probe-a"][0], "CronJob", f"probe-a-{BACKUP_CRONJOB}"),
+                ca_certificate=ca_certificate,
+                access_key=access_key,
+                secret_key=secret_key,
+            )
+            all_pass = all_pass and real_backup["verdict"] == "pass"
+            if "backup_job" in real_backup:
+                receipt["not_run"] = [
+                    item
+                    for item in receipt["not_run"]
+                    if item["check"] != "backup job image behaviour"
+                ]
+        receipt["real_backup"] = {**real_backup, "fixture_endpoint": backup_endpoint}
         receipt["finished_utc"] = datetime.now(UTC).isoformat()
         receipt["verdict"] = "pass" if all_pass else "fail"
     persist_receipt()
