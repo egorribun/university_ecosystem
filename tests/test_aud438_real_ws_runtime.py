@@ -466,6 +466,18 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         "prove_ws_service": Mock(
             return_value={"verdict": "pass", "service_uid": "service-uid"}
         ),
+        "prove_restricted_scrapes": Mock(
+            return_value=[
+                {
+                    "source": source,
+                    "source_uid": f"{source}-uid",
+                    "replica_uid": replica["uid"],
+                    "verdict": "pass",
+                }
+                for source in ws.RESTRICTED_SCRAPE_SOURCES
+                for replica in copies
+            ]
+        ),
         "run_in_pod": Mock(
             side_effect=[
                 {"result": "valid"},
@@ -2398,3 +2410,104 @@ def test_service_proof_composes_real_helpers_with_mocked_transport(
     assert sum(argv[1] == "create" for argv, _ in calls) == 1
     assert all(kwargs["timeout"] <= 30 for _, kwargs in calls)
     probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=10)
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        ("served", "served"),
+        (TimeoutError("timed out"), "dropped"),
+        (ConnectionRefusedError(), "refused"),
+        (OSError("unreachable"), "error"),
+    ],
+)
+def test_restricted_scrape_only_reports_a_timeout_as_dropped(
+    monkeypatch, capsys, tmp_path, outcome, expected
+):
+    connection = Mock()
+    if isinstance(outcome, BaseException):
+        connection.request.side_effect = outcome
+    else:
+        connection.getresponse.return_value.read.return_value = b"#"
+    monkeypatch.setattr(http.client, "HTTPConnection", Mock(return_value=connection))
+    monkeypatch.setattr(sys, "argv", ["probe", "10.1.2.3"])
+    program = tmp_path / "restricted-scrape.py"
+    program.write_text(ws.RESTRICTED_SCRAPE, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": expected}
+    http.client.HTTPConnection.assert_called_once_with("10.1.2.3", 9108, timeout=3)
+    connection.close.assert_called_once_with()
+
+
+def test_restricted_scrapes_cover_every_unselected_source_and_actual_replica(
+    monkeypatch,
+):
+    pods = {
+        key: ws.Pod("ns-" + key, "pod-" + key, uid=key + "-uid")
+        for key in ws.RESTRICTED_SCRAPE_SOURCES
+    }
+    replicas = [
+        {"uid": WS_UID_1, "ip": "10.1.2.3"},
+        {"uid": WS_UID_2, "ip": "10.1.2.4"},
+    ]
+    probe = Mock(return_value={"result": "dropped"})
+    monkeypatch.setattr(ws, "run_in_pod", probe)
+
+    checks = ws.prove_restricted_scrapes(pods, replicas)
+
+    assert ws.RESTRICTED_SCRAPE_SOURCES == ("unrelated", "monitoring-other", "ingress")
+    assert [(check["source"], check["replica_uid"]) for check in checks] == [
+        (source, replica["uid"])
+        for source in ws.RESTRICTED_SCRAPE_SOURCES
+        for replica in replicas
+    ]
+    assert all(check["verdict"] == "pass" for check in checks)
+    assert all(check["source_uid"] == check["source"] + "-uid" for check in checks)
+    assert [call.args for call in probe.call_args_list] == [
+        (pods[source], ws.RESTRICTED_SCRAPE, [replica["ip"]])
+        for source in ws.RESTRICTED_SCRAPE_SOURCES
+        for replica in replicas
+    ]
+    assert all(call.kwargs == {"timeout": 8} for call in probe.call_args_list)
+    assert "10.1.2.3" not in json.dumps(checks)
+
+
+@pytest.mark.parametrize("observed", ["served", "refused", "error"])
+def test_restricted_scrape_that_reaches_a_replica_is_inconclusive(
+    monkeypatch, observed
+):
+    pods = {key: ws.Pod("ns", key, uid=key) for key in ws.RESTRICTED_SCRAPE_SOURCES}
+    replicas = [{"uid": WS_UID_1, "ip": "10.1.2.3"}]
+    monkeypatch.setattr(
+        ws,
+        "run_in_pod",
+        Mock(
+            side_effect=[
+                {"result": "dropped"},
+                {"result": observed},
+                {"result": "dropped"},
+            ]
+        ),
+    )
+    checks = ws.prove_restricted_scrapes(pods, replicas)
+    assert [check["verdict"] for check in checks] == ["pass", "inconclusive", "pass"]
+
+
+def test_phase_records_dropped_restricted_scrapes_and_fails_closed(
+    rendered, declaration, monkeypatch
+):
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "pass"
+    assert (
+        result["restricted_scrapes"] == mocks["prove_restricted_scrapes"].return_value
+    )
+    mocks["prove_restricted_scrapes"].assert_called_once_with(pods, copies)
+
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    failing = mocks["prove_restricted_scrapes"].return_value
+    failing[0] = {**failing[0], "verdict": "inconclusive"}
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "restricted-scrape"
+    mocks["retire_ws_fixture"].assert_not_called()

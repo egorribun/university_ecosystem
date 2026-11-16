@@ -935,6 +935,18 @@ def main() -> int:
                     for item in receipt["not_run"]
                     if item["check"] != "actual Prometheus server"
                 ]
+            restricted = real_ws.get("restricted_scrapes")
+            if (
+                real_ws["verdict"] == "pass"
+                and isinstance(restricted, list)
+                and restricted
+                and all(check.get("verdict") == "pass" for check in restricted)
+            ):
+                receipt["not_run"] = [
+                    item
+                    for item in receipt["not_run"]
+                    if item["check"] != "actual ws-hub restricted peers"
+                ]
         elif real_ws_image:
             receipt["real_ws_hub"] = {
                 "verdict": "not_run",

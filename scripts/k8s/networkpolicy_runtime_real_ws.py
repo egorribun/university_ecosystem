@@ -83,6 +83,30 @@ valid = (response.status == 200 and content_type == 'text/plain' and len(body) <
 print(json.dumps({'result': 'valid-exposition' if valid else 'invalid-exposition'}))
 """
 
+# HTTP GET /metrics from an unselected source. Calico drops the SYN, so only a
+# timeout proves the policy; a response or a refusal means the packet arrived.
+RESTRICTED_SCRAPE = r"""
+import http.client, json, sys
+connection = http.client.HTTPConnection(sys.argv[1], 9108, timeout=3)
+try:
+    connection.request('GET', '/metrics', headers={'Accept': 'text/plain; version=0.0.4'})
+    connection.getresponse().read(1)
+    result = 'served'
+except TimeoutError:
+    result = 'dropped'
+except ConnectionError:
+    result = 'refused'
+except OSError:
+    result = 'error'
+finally:
+    connection.close()
+print(json.dumps({'result': result}))
+"""
+
+# Sources the ws-hub metrics policy must not admit: another namespace, a
+# non-Prometheus monitoring pod and the ingress-labelled edge.
+RESTRICTED_SCRAPE_SOURCES = ("unrelated", "monitoring-other", "ingress")
+
 # Runs from the permitted probe to the ClusterIP or, on exhaustion, one bound replica.
 HEALTH = r"""
 import errno, http.client, json, sys, time
@@ -888,6 +912,28 @@ def valid_prometheus_proof(
     ) == sorted(uids)
 
 
+def prove_restricted_scrapes(
+    pods: dict[str, Pod], replicas_before: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Require every unselected source's HTTP GET /metrics to each actual replica to drop."""
+    checks: list[dict[str, str]] = []
+    for source_key in RESTRICTED_SCRAPE_SOURCES:
+        source = pods[source_key]
+        for replica in replicas_before:
+            observed = run_in_pod(source, RESTRICTED_SCRAPE, [replica["ip"]], timeout=8)
+            checks.append(
+                {
+                    "source": source_key,
+                    "source_uid": source.uid,
+                    "replica_uid": replica["uid"],
+                    "verdict": "pass"
+                    if observed == {"result": "dropped"}
+                    else "inconclusive",
+                }
+            )
+    return checks
+
+
 def actual_ws_phase(
     root: Path,
     rendered: dict[str, Any],
@@ -906,6 +952,7 @@ def actual_ws_phase(
     service = None
     prometheus_stage = None
     checks: list[dict[str, str]] = []
+    restricted_scrapes: list[dict[str, str]] = []
     try:
         app, store = rendered["probe-a"]
         deployment = ws_deployment(app, image, source_sha)
@@ -1016,6 +1063,12 @@ def actual_ws_phase(
             "verdict": "pass",
             "source": "Prometheus-labelled Python probe",
         }
+        stage = "restricted-scrape"
+        restricted_scrapes = prove_restricted_scrapes(pods, before)
+        if not restricted_scrapes or any(
+            check["verdict"] != "pass" for check in restricted_scrapes
+        ):
+            raise ValueError("restricted scrape was not dropped")
         stage = "retire-fixture"
         retire_ws_fixture(app, pods["a-ws"], python_image)
         stage = "service-health"
@@ -1134,9 +1187,10 @@ def actual_ws_phase(
         ],
         "checks": checks,
         "python_scrape": python_scrape,
+        "restricted_scrapes": restricted_scrapes,
         "prometheus": prometheus,
         "matrix_fixture": {"uid": pods["a-ws"].uid, "verdict": "retired"},
         "service": service,
         "source": "Prometheus-labelled Python probe",
-        "scope": "authorized Python and Prometheus scrapes and in-cluster Service health; actual ingress not tested",
+        "scope": "authorized Python and Prometheus scrapes, dropped HTTP scrapes from unselected sources and in-cluster Service health against the actual replicas; actual ingress controller not deployed",
     }
