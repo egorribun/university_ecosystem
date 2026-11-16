@@ -169,7 +169,7 @@ describe("SearchDialog user behavior", () => {
     const status = screen.getByRole("status")
     expect(status).toHaveAttribute("aria-live", "polite")
     expect(status).toHaveAttribute("aria-atomic", "true")
-    expect(status).toBeEmptyDOMElement()
+    expect(status).toHaveTextContent("Results found: 2")
 
     press(input, "ArrowDown")
     expect(status).toHaveTextContent("Selected result: Physics seminar")
@@ -183,9 +183,9 @@ describe("SearchDialog user behavior", () => {
   })
 
   it.each([
-    ["en", "Searching…"],
-    ["ru", "Поиск…"],
-  ])("announces an in-flight search in %s", async (language, announcement) => {
+    ["en", "Searching…", "Results found: 2"],
+    ["ru", "Поиск…", "Найдено результатов: 2"],
+  ])("announces an in-flight search in %s", async (language, announcement, completed) => {
     let settle: (value: { data: typeof response }) => void = () => {}
     apiGet.mockReturnValue(
       new Promise((resolve) => {
@@ -198,6 +198,20 @@ describe("SearchDialog user behavior", () => {
 
     await act(async () => settle({ data: response }))
     await screen.findByRole("button", { name: "Physics seminar" })
+    expect(screen.getByRole("status")).toHaveTextContent(completed)
+  })
+
+  it.each([
+    ["en", "Results found: 0"],
+    ["ru", "Найдено результатов: 0"],
+  ])("announces a successful empty search in %s", async (language, announcement) => {
+    apiGet.mockResolvedValue({ data: { query: "physics", results: {} } })
+    await renderSearch(language)
+    const input = openSearch()
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
+    fireEvent.change(input, { target: { value: "physics" } })
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(announcement))
+    fireEvent.change(input, { target: { value: "chemistry" } })
     expect(screen.getByRole("status")).toBeEmptyDOMElement()
   })
 
@@ -253,6 +267,7 @@ describe("SearchDialog user behavior", () => {
     fireEvent.change(input, { target: { value: "physics" } })
 
     expect(await screen.findByRole("alert")).toHaveTextContent("An error occurred")
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
     expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
 
