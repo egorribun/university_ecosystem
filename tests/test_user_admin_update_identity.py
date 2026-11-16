@@ -38,3 +38,19 @@ def test_admin_update_can_still_clear_nullable_fields() -> None:
         "full_name": None,
         "group_id": None,
     }
+
+
+def test_admin_update_schema_allows_omission_but_not_null_identity() -> None:
+    schema = UserAdminUpdate.model_json_schema()
+    properties = schema["properties"]
+
+    assert properties["email"] == {
+        "format": "email",
+        "title": "Email",
+        "type": "string",
+    }
+    assert properties["role"] == {"$ref": "#/$defs/UserRole"}
+    assert "email" not in schema.get("required", [])
+    assert "role" not in schema.get("required", [])
+    assert {"type": "null"} in properties["full_name"]["anyOf"]
+    assert {"type": "null"} in properties["group_id"]["anyOf"]
