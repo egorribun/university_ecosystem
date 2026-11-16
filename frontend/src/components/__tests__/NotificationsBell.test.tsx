@@ -89,6 +89,12 @@ vi.mock("framer-motion", () => {
       if (motionInitial !== undefined) filteredProps["data-motion-initial"] = String(motionInitial)
       if (motionAnimate !== undefined) filteredProps["data-motion-animate"] = String(motionAnimate)
       if (motionExit !== undefined) filteredProps["data-motion-exit"] = String(motionExit)
+      const motionStyle = filteredProps.style as Record<string, unknown> | undefined
+      if (motionStyle !== undefined && "x" in motionStyle) {
+        const { x: motionX, ...domStyle } = motionStyle
+        filteredProps["data-motion-x"] = String(motionX)
+        filteredProps.style = domStyle
+      }
 
       const Element = Tag as React.ElementType
       return (
@@ -938,6 +944,30 @@ describe("NotificationsBell", () => {
     })
   })
 
+  it("centres the phone panel on its first open", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 390,
+    })
+    try {
+      useNotificationsMock.mockReturnValue(baseState())
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+      const dropdown = screen.getByRole("dialog", { name: "Notifications" })
+      expect(dropdown).toHaveAttribute("data-motion-x", "-50%")
+      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        writable: true,
+        value: 1024,
+      })
+    }
+  })
+
   it("installs and removes the Escape listener only while open", async () => {
     useNotificationsMock.mockReturnValue(baseState())
     const addEventListener = vi.spyOn(document, "addEventListener")
@@ -1137,15 +1167,16 @@ describe("NotificationsBell", () => {
     }
     expect(variants.hidden).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
     expect(variants.visible).toMatchObject({ opacity: 1, y: 0, scale: 1 })
-    expect(variants.hidden.x).toBe(0)
-    expect(variants.visible.x).toBe(0)
+    expect(variants.hidden).not.toHaveProperty("x")
+    expect(variants.visible).not.toHaveProperty("x")
+    expect(dropdown).toHaveAttribute("data-motion-x", "0")
     expect(variants.visible.transition.duration).toBe(0)
     expect(variants.visible.transition).toMatchObject({
       ease: "easeOut",
       staggerChildren: 0.05,
     })
     expect(variants.exit).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
-    expect(variants.exit.x).toBe(0)
+    expect(variants.exit).not.toHaveProperty("x")
     expect(variants.exit.transition.duration).toBe(0)
     expect(variants.exit.transition.ease).toBe("easeIn")
   })
@@ -1221,9 +1252,10 @@ describe("NotificationsBell", () => {
         visible: { x: number | string }
         exit: { x: number | string }
       }
-      expect(variants.hidden.x).toBe("-50%")
-      expect(variants.visible.x).toBe("-50%")
-      expect(variants.exit.x).toBe("-50%")
+      expect(variants.hidden).not.toHaveProperty("x")
+      expect(variants.visible).not.toHaveProperty("x")
+      expect(variants.exit).not.toHaveProperty("x")
+      expect(dropdown).toHaveAttribute("data-motion-x", "-50%")
     })
 
     it("recomputes position when the window resizes", async () => {
