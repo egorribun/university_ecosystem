@@ -82,10 +82,9 @@ export default function NotificationsBell() {
   // by users or assistive technology before the positioning effect runs.
   const [coords, setCoords] = useState<{ top: number; right: number | null }>()
   // Read the breakpoint before the first open so the panel never renders with
-  // the desktop offset on a phone.
-  const [isMobile, setIsMobile] = useState<boolean | null>(() =>
-    typeof window === "undefined" ? null : window.innerWidth < 640
-  )
+  // the desktop offset on a phone. A server render has no innerWidth, so the
+  // comparison is false there; the panel is closed and not rendered anyway.
+  const [isMobile, setIsMobile] = useState(() => globalThis.innerWidth < 640)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Update position when opening

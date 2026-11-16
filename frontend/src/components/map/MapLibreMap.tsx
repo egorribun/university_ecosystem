@@ -170,9 +170,8 @@ export function MapLibreMapComponent({
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
   // pixelRatio is a MapLibre init option, so read it once when the map mounts.
-  const [mapPixelRatio] = useState(() =>
-    getMapPixelRatio(typeof window === "undefined" ? undefined : window.devicePixelRatio)
-  )
+  // A server render has no devicePixelRatio, which getMapPixelRatio maps to 1.
+  const [mapPixelRatio] = useState(() => getMapPixelRatio(globalThis.devicePixelRatio))
   /** Wave 120 SW5: latches when URL sync should fire. Programmatic moves
    *  during cinematic intro (or building easeTo before any user input) must
    *  NOT write to URL — only user-initiated panning/zooming should. After
