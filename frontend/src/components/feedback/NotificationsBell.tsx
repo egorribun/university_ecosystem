@@ -383,6 +383,7 @@ export default function NotificationsBell() {
                               }}
                               className={cn(
                                 "flex gap-3",
+                                !n.read && "[@media(hover:none)]:pr-10",
                                 n.link ? "cursor-pointer" : "cursor-default"
                               )}
                             >
@@ -419,7 +420,7 @@ export default function NotificationsBell() {
                               </div>
                             </a>
 
-                            {/* Mark read button (appears on hover) */}
+                            {/* Mark read button (always visible without hover) */}
                             {!n.read && (
                               <button
                                 disabled={isLoading}
@@ -428,7 +429,7 @@ export default function NotificationsBell() {
                                   e.stopPropagation()
                                   void Promise.resolve(markRead(n.id)).catch(() => undefined)
                                 }}
-                                className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] backdrop-blur-sm"
+                                className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 [@media(hover:none)]:opacity-100 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] backdrop-blur-sm"
                                 title={t("system:notificationsBell.markRead")}
                               >
                                 <CheckCheck className="w-3.5 h-3.5" />

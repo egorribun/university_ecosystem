@@ -436,7 +436,7 @@ describe("MapLibreMap", () => {
     )
   })
 
-  it("jumps straight to a restored URL viewport instead of the intro", async () => {
+  it("starts at a restored URL viewport without running the intro", async () => {
     const map = makeMap()
     render(
       <MapLibreMapComponent
@@ -445,14 +445,6 @@ describe("MapLibreMap", () => {
         urlInitialViewport={{ longitude: 37.8, latitude: 55.7, zoom: 17, pitch: 30, bearing: 90 }}
       />
     )
-    await waitFor(() =>
-      expect(map.jumpTo).toHaveBeenCalledWith({
-        center: [37.8, 55.7],
-        zoom: 17,
-        pitch: 30,
-        bearing: 90,
-      })
-    )
     expect(renderedMapProps.current.initialViewState).toEqual({
       longitude: 37.8,
       latitude: 55.7,
@@ -460,7 +452,64 @@ describe("MapLibreMap", () => {
       pitch: 30,
       bearing: 90,
     })
+    await waitFor(() => expect(map.resize).toHaveBeenCalled())
+    expect(map.jumpTo).not.toHaveBeenCalled()
     expect(map.flyTo).not.toHaveBeenCalled()
+  })
+
+  it("preserves a gesture made before a restored map finishes loading", () => {
+    let frame: FrameRequestCallback | undefined
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frame = callback
+        return 7
+      })
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    const map = makeMap()
+    const onMapMoveEnd = vi.fn()
+    const viewport = { longitude: 37.8, latitude: 55.7, zoom: 17, pitch: 30, bearing: 90 }
+    let zoom = viewport.zoom
+    map.loaded.mockReturnValue(false)
+    map.getZoom.mockImplementation(() => zoom)
+    map.getPitch.mockReturnValue(viewport.pitch)
+    map.getBearing.mockReturnValue(viewport.bearing)
+    map.jumpTo.mockImplementation(({ zoom: nextZoom }: { zoom: number }) => {
+      zoom = nextZoom
+      currentMoveEndHandler()({})
+    })
+
+    try {
+      render(
+        <MapLibreMapComponent
+          {...baseProps}
+          mapRef={makeRef(map)}
+          onMapMoveEnd={onMapMoveEnd}
+          urlInitialViewport={viewport}
+        />
+      )
+      expect(renderedMapProps.current.initialViewState).toEqual(viewport)
+
+      act(() => frame?.(0))
+      expect(map.resize).not.toHaveBeenCalled()
+
+      zoom = 18.6
+      act(() => currentMoveEndHandler()({ originalEvent: { type: "touchend" } }))
+      expect(onMapMoveEnd).toHaveBeenLastCalledWith({ ...viewport, zoom: 18.6 })
+
+      map.loaded.mockReturnValue(true)
+      act(() => frame?.(0))
+
+      expect(map.resize).toHaveBeenCalledOnce()
+      expect(map.setSky).toHaveBeenCalledOnce()
+      expect(map.project).toHaveBeenCalledWith([37.81165, 55.71405])
+      expect(zoom).toBe(18.6)
+      expect(onMapMoveEnd).toHaveBeenCalledTimes(1)
+      expect(map.flyTo).not.toHaveBeenCalled()
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
   })
 
   it("passes a restored flat viewport pitch to its controls", () => {

@@ -293,42 +293,34 @@ export function MapLibreMapComponent({
       map.setSky(getSkyConfig(isDark, timePeriod))
 
       // Cinematic intro — only once per component lifetime.
-      // Wave 120 SW5: if URL provided a saved viewport, jumpTo it instead
-      // of running the cinematic intro (the URL viewport already matches
-      // what we set in initialViewState; jumpTo guarantees parity even if
-      // tiles loaded slowly). Otherwise, run the intro as before.
-      if (!hasAnimatedIntro.current) {
-        hasAnimatedIntro.current = true
-        const prefersReduced =
-          lowPowerDevice || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      // A saved URL viewport is already applied by initialViewState. Do not
+      // reapply it after loading: the user may have moved the map meanwhile.
+      if (hasAnimatedIntro.current) return
+      hasAnimatedIntro.current = true
+      if (urlInitialViewport) return
 
-        if (urlInitialViewport) {
-          map.jumpTo({
-            center: [urlInitialViewport.longitude, urlInitialViewport.latitude],
-            zoom: urlInitialViewport.zoom,
-            pitch: urlInitialViewport.pitch,
-            bearing: urlInitialViewport.bearing,
-          })
-        } else if (prefersReduced) {
-          map.jumpTo({
+      const prefersReduced =
+        lowPowerDevice || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+      if (prefersReduced) {
+        map.jumpTo({
+          center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+          zoom: CAMPUS_DETAIL_ZOOM,
+          pitch: 45,
+          bearing: 0,
+        })
+      } else {
+        introTimeoutRef.current = setTimeout(() => {
+          if (cancelled) return
+          map.flyTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
             zoom: CAMPUS_DETAIL_ZOOM,
             pitch: 45,
             bearing: 0,
+            duration: 2500,
+            essential: true,
           })
-        } else {
-          introTimeoutRef.current = setTimeout(() => {
-            if (cancelled) return
-            map.flyTo({
-              center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-              zoom: CAMPUS_DETAIL_ZOOM,
-              pitch: 45,
-              bearing: 0,
-              duration: 2500,
-              essential: true,
-            })
-          }, 300)
-        }
+        }, 300)
       }
     }
 

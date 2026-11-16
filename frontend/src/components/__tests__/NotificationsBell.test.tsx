@@ -596,11 +596,12 @@ describe("NotificationsBell", () => {
     const scheduleLink = screen.getByText("Unread reminder").closest("a")!
     const readLink = screen.getByText("Read update").closest("a")!
     expect(chatLink).toHaveAttribute("href", "#")
-    expect(chatLink).toHaveClass("flex", "gap-3", "cursor-default")
+    expect(chatLink).toHaveClass("flex", "gap-3", "cursor-default", "[@media(hover:none)]:pr-10")
     expect(scheduleLink).toHaveAttribute("href", "/schedule")
     expect(scheduleLink).toHaveClass("cursor-pointer")
     expect(readLink).toHaveAttribute("href", "#")
     expect(readLink).toHaveClass("cursor-default")
+    expect(readLink).not.toHaveClass("[@media(hover:none)]:pr-10")
 
     const chatRow = chatLink.parentElement!
     const scheduleRow = scheduleLink.parentElement!
@@ -670,6 +671,7 @@ describe("NotificationsBell", () => {
       "min-h-11",
       "min-w-11",
       "opacity-0",
+      "[@media(hover:none)]:opacity-100",
       "group-hover:opacity-100",
       "focus:opacity-100"
     )
