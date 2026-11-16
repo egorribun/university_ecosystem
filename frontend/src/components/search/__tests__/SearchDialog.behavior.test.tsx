@@ -23,9 +23,21 @@ import { SearchDialog } from "@/components/search/SearchDialog"
 import enCommon from "@/i18n/locales/en/common.json"
 import ruCommon from "@/i18n/locales/ru/common.json"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+const motionProps = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }))
+vi.mock("framer-motion", async () => {
+  const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const motionDiv = base.m.div!
+  return {
+    ...base,
+    m: {
+      ...base.m,
+      div: (props: Parameters<typeof motionDiv>[0]) => {
+        motionProps.calls.push(props)
+        return motionDiv(props)
+      },
+    },
+  }
+})
 
 const apiGet = vi.hoisted(() => vi.fn())
 vi.mock("@/api/client", () => ({ default: { get: apiGet } }))
@@ -139,6 +151,7 @@ async function showSearchSummary(summary: string) {
 describe("SearchDialog user behavior", () => {
   beforeEach(() => {
     localStorage.clear()
+    motionProps.calls = []
     apiGet.mockReset().mockResolvedValue({ data: response })
   })
 
@@ -148,6 +161,74 @@ describe("SearchDialog user behavior", () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     localStorage.clear()
+  })
+
+  it("announces arrow-key selection and clears the announcement when the query is cleared", async () => {
+    await renderSearch()
+    const input = await showResults()
+    const status = screen.getByRole("status")
+    expect(status).toHaveAttribute("aria-live", "polite")
+    expect(status).toHaveAttribute("aria-atomic", "true")
+    expect(status).toBeEmptyDOMElement()
+
+    press(input, "ArrowDown")
+    expect(status).toHaveTextContent("Selected result: Physics seminar")
+    press(input, "ArrowDown")
+    expect(status).toHaveTextContent("Selected result: Physics news")
+    press(input, "ArrowUp")
+    expect(status).toHaveTextContent("Selected result: Physics seminar")
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }))
+    expect(status).toBeEmptyDOMElement()
+  })
+
+  it.each([
+    ["en", "Searching…"],
+    ["ru", "Поиск…"],
+  ])("announces an in-flight search in %s", async (language, announcement) => {
+    let settle: (value: { data: typeof response }) => void = () => {}
+    apiGet.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve
+      })
+    )
+    await renderSearch(language)
+    fireEvent.change(openSearch(), { target: { value: "physics" } })
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(announcement))
+
+    await act(async () => settle({ data: response }))
+    await screen.findByRole("button", { name: "Physics seminar" })
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
+  })
+
+  it.each([true, false])("respects reduced-motion preference %s when opening search", async (reduced) => {
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(prefers-reduced-motion: reduce)" && reduced,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    }))
+    await renderSearch()
+    openSearch()
+    const dialog = motionProps.calls.findLast((props) => props.role === "dialog")
+    const backdrop = motionProps.calls.findLast((props) => props.role === "presentation")
+    expect(dialog).toBeDefined()
+    expect(backdrop).toBeDefined()
+    if (reduced) {
+      expect(dialog?.initial).toBe(false)
+      expect(backdrop?.initial).toBe(false)
+      expect(dialog?.transition).toEqual({ duration: 0 })
+      expect(backdrop?.transition).toEqual({ duration: 0 })
+      expect(dialog?.exit).toEqual({ opacity: 0 })
+    } else {
+      expect(dialog?.initial).toEqual({ opacity: 0, scale: 0.95, y: -20 })
+      expect(dialog?.transition).toMatchObject({ type: "spring" })
+      expect(backdrop?.initial).toEqual({ opacity: 0 })
+    }
   })
 
   it.each([
