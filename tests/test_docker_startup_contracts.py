@@ -228,7 +228,7 @@ def test_launcher_validates_resolved_compose_config_before_start_without_printin
     assert "Write-Output" not in validation
     assert "Out-File" not in validation
     owner_validation = _powershell_function(
-        script, "Get-VerifiedLiveAcceptanceOwner", "Assert-LiveAcceptanceSelection"
+        script, "Get-VerifiedLiveAcceptanceOwner", "Resolve-OwnedLiveStandStateRoot"
     )
     assert (
         "[string]$env:COMPOSE_PROJECT_NAME -cne "
@@ -252,6 +252,25 @@ def test_launcher_validates_resolved_compose_config_before_start_without_printin
         )
     ]
     assert "-not $NoDockerFallback" in token_minter
+
+
+def test_live_owner_verifier_is_defined_before_its_first_top_level_call() -> None:
+    """PowerShell resolves functions at call time while the script body runs.
+
+    The default (worktree) PrepareOnly path verifies the live-stand owner before
+    Compose is prepared; with the definition about 1,800 lines later, pwsh failed
+    with "The term 'Get-VerifiedLiveAcceptanceOwner' is not recognized".
+    """
+    script = _read("start-docker.ps1")
+    key_path = script.index("function Get-CommonGitOwnerKeyPath {")
+    verifier = script.index("function Get-VerifiedLiveAcceptanceOwner {")
+    first_call = script.index("$prepareOwner = Get-VerifiedLiveAcceptanceOwner")
+    assert key_path < verifier < first_call
+    # The PrepareOnly gate still runs after every helper it reaches is defined.
+    assert script.index("function Assert-PrepareOnlyLiveInputs {") < script.index(
+        "if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }"
+    )
+    assert verifier < script.index("if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }")
 
 
 def test_managed_compose_volume_preflight_is_read_only_and_owner_scoped() -> None:
