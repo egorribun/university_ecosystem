@@ -51,10 +51,17 @@ def test_launcher_persists_owned_identity_before_worker_environment_and_start() 
         "\nfunction ", 1
     )[0]
     assert '$ExtraCompose[0] -cne "docker-compose.live.yml"' in function
-    assert "$script:LiveStandOwner.project_name" in function
+    assert "$owner.project_name -cne $project" in function
     assert "Get-OwnedSeedTenantId" in function
     assert 'throw "Owned live MVP_TENANT_ID' in function
     assert "foreach ($path in @($EnvFile, $EnvCompose))" in function
-    assert script.index("\nEnsure-OwnedLiveTenantEnvironment\n") < script.index(
-        "\nWrite-WorkerEnvironmentFile\n"
-    )
+    tenant_initialization = script.index("\nEnsure-OwnedLiveTenantEnvironment\n")
+    worker_environment = script.index("\nWrite-WorkerEnvironmentFile\n")
+    assert tenant_initialization < worker_environment
+    for startup in (
+        "docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 300 temporal",
+        "docker compose @ComposeArgs --env-file $EnvFile up -d @liveAcceptanceRootArgs",
+        "docker compose @ComposeArgs --env-file $EnvFile up -d $CoreBootstrapServices",
+        "\n    docker compose @ComposeArgs --env-file $EnvFile up -d\n",
+    ):
+        assert worker_environment < script.index(startup)

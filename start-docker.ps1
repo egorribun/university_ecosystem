@@ -711,21 +711,49 @@ function Get-VerifiedLiveAcceptanceOwner {
         "resume_compose_resource_schema_version", "stack", "service_roots",
         "selected_services", "signature"
     )
-    $resourcesBound = [string]$owner.compose_resource_fingerprint -cmatch '^[0-9a-f]{64}$'
+    $resourcesBound = $owner.compose_resource_fingerprint -is [string] -and
+        $owner.compose_resource_fingerprint -cmatch '^[0-9a-f]{64}$'
     $resourcesUnbound = $AllowUnboundResources -and $null -eq $owner.compose_resource_fingerprint
     if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
         -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio) -or
+        ($owner.version -isnot [int] -and $owner.version -isnot [long]) -or
         $owner.version -ne 10 -or
         [string]$owner.worktree -ine $ProjectRoot -or
         [string]::IsNullOrWhiteSpace([string]$owner.repository) -or
         [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
+        $owner.daemon_fingerprint -isnot [string] -or
+        $owner.daemon_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
         [string]$owner.stack -cnotin @("full", "core") -or
-        -not (Test-CanonicalLiveServiceList -Value $owner.service_roots) -or
-        -not (Test-CanonicalLiveServiceList -Value $owner.selected_services) -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.service_roots -AllowEmpty) -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.selected_services -AllowEmpty) -or
         -not ($resourcesBound -or $resourcesUnbound) -or
         [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
         $key.Length -ne 32 -or
         [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
+        [Array]::Clear($key, 0, $key.Length)
+        throw "Live acceptance owner does not match this worktree and Compose project."
+    }
+    # Match the Python owner's incomplete and complete service-selection states.
+    # An empty selection is valid only for a signed reservation before binding.
+    $ownerRootsText = [string]::Join("`n", [string[]]@($owner.service_roots))
+    $ownerServicesText = [string]::Join("`n", [string[]]@($owner.selected_services))
+    $validSelection = if ([string]$owner.stack -ceq "core") {
+        $ownerRootsText -ceq [string]::Join("`n", $script:LiveAcceptanceCoreRoots) -and
+            (($resourcesBound -and $ownerServicesText -ceq [string]::Join("`n", $script:LiveAcceptanceCoreClosure)) -or
+                ($resourcesUnbound -and @($owner.selected_services).Count -eq 0))
+    } elseif ($resourcesBound) {
+        @($owner.selected_services).Count -gt 0 -and $ownerRootsText -ceq $ownerServicesText
+    } else {
+        @($owner.service_roots).Count -eq 0 -and @($owner.selected_services).Count -eq 0
+    }
+    $resumeFingerprint = $owner.resume_compose_resource_fingerprint
+    $resumeSchema = $owner.resume_compose_resource_schema_version
+    $validResume = ($null -eq $resumeFingerprint -and $null -eq $resumeSchema) -or
+        ($resourcesUnbound -and $resumeFingerprint -is [string] -and
+            $resumeFingerprint -cmatch '^[0-9a-f]{64}$' -and
+            ($resumeSchema -is [int] -or $resumeSchema -is [long]) -and
+            $resumeSchema -in @(5, 6, 7, 8, 9, 10, 11))
+    if (-not $validSelection -or -not $validResume) {
         [Array]::Clear($key, 0, $key.Length)
         throw "Live acceptance owner does not match this worktree and Compose project."
     }
@@ -1781,8 +1809,13 @@ function Ensure-OwnedLiveTenantEnvironment {
         return
     }
     $project = [string]$env:COMPOSE_PROJECT_NAME
-    if ($null -eq $script:LiveStandOwner -or
-        [string]$script:LiveStandOwner.project_name -cne $project) {
+    $owner = $script:LiveStandOwner
+    if ($null -eq $owner) {
+        # Reservations are accepted only during PrepareOnly and are not cached;
+        # normal startup must verify and cache the bound owner instead.
+        $owner = Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources:$PrepareOnly
+    }
+    if ($null -eq $owner -or [string]$owner.project_name -cne $project) {
         throw "Owned live MVP_TENANT_ID requires verified project ownership."
     }
     $expected = Get-OwnedSeedTenantId -Project $project
