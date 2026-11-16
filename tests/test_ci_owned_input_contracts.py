@@ -1,7 +1,7 @@
 """Regression contracts for CI-owned mutation and timing inputs."""
 
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 import yaml
 
