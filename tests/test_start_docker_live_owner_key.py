@@ -813,22 +813,27 @@ def test_prepare_only_switch_still_verifies_the_signature(tmp_path: Path) -> Non
 
 @_OWNER_CONTRACT_SKIP
 @pytest.mark.parametrize(
-    ("fingerprint", "prepare", "accepted", "cached"),
+    ("fingerprint", "prepare", "tamper_signature", "accepted", "cached"),
     [
-        (None, True, True, False),
-        (None, False, False, False),
-        ("f" * 64, False, True, True),
+        (None, True, False, True, False),
+        (None, False, False, False, False),
+        ("f" * 64, False, False, True, True),
+        (None, True, True, False, False),
+        ("f" * 64, False, True, False, False),
     ],
 )
 def test_tenant_initialization_verifies_the_owner_for_the_current_phase(
     tmp_path: Path,
     fingerprint: str | None,
     prepare: bool,
+    tamper_signature: bool,
     accepted: bool,
     cached: bool,
 ) -> None:
     _repository, worktree, project_name = _non_in_place_fixture(
-        tmp_path, compose_resource_fingerprint=fingerprint
+        tmp_path,
+        compose_resource_fingerprint=fingerprint,
+        tamper_signature=tamper_signature,
     )
 
     result = _run_powershell_owner_check(
@@ -842,17 +847,27 @@ def test_tenant_initialization_verifies_the_owner_for_the_current_phase(
 
     assert result["accepted"] is accepted
     assert result["sameResolvedOwner"] is cached
+    if tamper_signature:
+        assert result["failure"] == "signature_invalid"
 
 
 @_OWNER_CONTRACT_SKIP
 @pytest.mark.parametrize(
-    "stack", [live_stand.LIVE_STACK_CORE, live_stand.LIVE_STACK_FULL]
+    ("stack", "tenant_mismatch"),
+    [
+        (live_stand.LIVE_STACK_CORE, False),
+        (live_stand.LIVE_STACK_FULL, False),
+        (live_stand.LIVE_STACK_CORE, True),
+    ],
 )
-def test_worktree_prepare_only_accepts_python_created_reservation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stack: str
+def test_worktree_prepare_only_enforces_signed_owner_and_tenant_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stack: str, tenant_mismatch: bool
 ) -> None:
     """Exercise the full launcher with Python's real incomplete owner marker."""
-    from tests.test_start_docker_live_stand_state_root import _fixture_project
+    from tests.test_start_docker_live_stand_state_root import (
+        _fixture_project,
+        _stderr_reports,
+    )
 
     fixture_dir = tmp_path / "launcher-fixture"
     fixture_dir.mkdir()
@@ -883,6 +898,8 @@ def test_worktree_prepare_only_accepts_python_created_reservation(
     vapid = live_stand.load_or_create_vapid(worktree)
     environment = live_stand.stand_environment(vapid, owner.project_name, ports)
     environment["XDG_CACHE_HOME"] = str(tmp_path / "powershell-cache")
+    if tenant_mismatch:
+        environment["MVP_TENANT_ID"] = "00000000-0000-4000-8000-000000000001"
 
     # PrepareOnly must never invoke Docker; put a sentinel ahead of the host CLI.
     shim_dir = tmp_path / "docker-shim"
@@ -921,8 +938,25 @@ def test_worktree_prepare_only_accepts_python_created_reservation(
         timeout=40,
     )
 
-    assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
     assert not sentinel.exists()
-    assert (worktree / ".env").is_file()
-    assert (worktree / ".env.docker").is_file()
-    assert (worktree / ".env.docker.workers").is_file()
+    if tenant_mismatch:
+        assert result.returncode != 0
+        assert _stderr_reports(
+            result, "Owned live MVP_TENANT_ID does not match the launcher project."
+        )
+        assert not (worktree / ".env.docker.workers").exists()
+        return
+    assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
+    tenant = uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"urn:university-ecosystem:owned-seed:{owner.project_name}",
+    )
+    for name in (".env", ".env.docker", ".env.docker.workers"):
+        path = worktree / name
+        assert path.is_file()
+        tenant_lines = [
+            line
+            for line in path.read_text(encoding="utf-8-sig").splitlines()
+            if line.startswith("MVP_TENANT_ID=")
+        ]
+        assert tenant_lines == [f"MVP_TENANT_ID={tenant}"]
