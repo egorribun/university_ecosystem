@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
@@ -1405,5 +1407,31 @@ describe("NotificationsBell", () => {
       // onSuccess callback flips isOpen → false, unmounting the dropdown
       expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument()
     })
+  })
+})
+
+describe("NotificationsBell stacking layer", () => {
+  const read = (path: string): string =>
+    readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/gu, "\n")
+  const layers = new Map(
+    [...read("src/styles/tokens/primitives.css").matchAll(/--z-([a-z]+): (-?\d+);/gu)].map(
+      ([, name, value]) => [name, Number(value)]
+    )
+  )
+
+  it("emits the popover layer so the fixed panel stays above page content", () => {
+    // Without the utility the class compiled to nothing and the phone
+    // notifications panel sat under footer content (z-surface).
+    expect(read("src/styles/tailwind.css")).toContain(
+      "@utility z-popover {\n  z-index: var(--z-popover);\n}"
+    )
+    expect(read("src/components/feedback/NotificationsBell.tsx")).toContain(
+      '"fixed z-popover origin-top-right"'
+    )
+    const popover = layers.get("popover") ?? Number.NaN
+    expect(popover).toBe(1200)
+    expect(popover).toBeGreaterThan(layers.get("surface") ?? Number.POSITIVE_INFINITY)
+    expect(popover).toBeGreaterThan(layers.get("dropdown") ?? Number.POSITIVE_INFINITY)
+    expect(popover).toBeLessThan(layers.get("modal") ?? Number.NEGATIVE_INFINITY)
   })
 })
