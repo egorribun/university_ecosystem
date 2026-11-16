@@ -252,10 +252,14 @@ describe("API client 429 retry loop", () => {
 
     try {
       const pending = api
-        .post("/chats/chat-1/messages", { content: "hello" }, {
-          headers: { "Idempotency-Key": key },
-          signal: controller.signal,
-        })
+        .post(
+          "/chats/chat-1/messages",
+          { content: "hello" },
+          {
+            headers: { "Idempotency-Key": key },
+            signal: controller.signal,
+          }
+        )
         .catch((error: unknown) => error)
       await vi.advanceTimersByTimeAsync(0)
       expect(adapter).not.toHaveBeenCalled()
@@ -266,9 +270,13 @@ describe("API client 429 retry loop", () => {
       await vi.advanceTimersByTimeAsync(1_000)
 
       await expect(
-        api.post("/chats/chat-1/messages", { content: "hello" }, {
-          headers: { "Idempotency-Key": key },
-        })
+        api.post(
+          "/chats/chat-1/messages",
+          { content: "hello" },
+          {
+            headers: { "Idempotency-Key": key },
+          }
+        )
       ).resolves.toMatchObject({ data: { id: "retried-message" } })
       expect(adapter).toHaveBeenCalledOnce()
     } finally {
