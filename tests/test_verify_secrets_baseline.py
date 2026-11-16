@@ -34369,10 +34369,10 @@ def test_push_probe_projection_rejects_drift(mutation: str) -> None:
         policy["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
             0
         ] ^= 1
-        # The NOV15 deps entry runs before the push probe guard and rejects the
-        # same row 495 identity drift first with its own message.
+        # The newest (NOV16) entry runs before the push probe guard and rejects
+        # the same row 495 identity drift first with its own message.
         with pytest.raises(
-            AssertionError, match="http operations companion identity changed"
+            AssertionError, match="push observation companion identity changed"
         ):
             _push_probe_historical_policy(policy)
         return
@@ -34991,6 +34991,7 @@ def _nov15_identity(digest_hex: str) -> list[int]:
 
 
 def _nov15_http_operations_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov16_push_observation_historical_source_bytes(path, actual)
     if path == _NOV15_LIVE_PATH:
         assert hashlib.sha256(actual).hexdigest() == _NOV15_LIVE_CURRENT_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -35046,10 +35047,18 @@ def _nov15_http_operations_historical_policy(policy: dict[str, Any]) -> dict[str
 def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     live = (root / _NOV15_LIVE_PATH).read_bytes()
-    assert hashlib.sha256(live).hexdigest() == _NOV15_LIVE_CURRENT_SHA256
+    assert (
+        hashlib.sha256(
+            _nov16_push_observation_historical_source_bytes(_NOV15_LIVE_PATH, live)
+        ).hexdigest()
+        == _NOV15_LIVE_CURRENT_SHA256
+    )
     ledger_bytes = (root / _NOV15_LEDGER_PATH).read_bytes()
-    assert hashlib.sha256(ledger_bytes).digest() == _NOV15_LEDGER_CURRENT_SHA256
-    ledger = json.loads(ledger_bytes)
+    projected_ledger = _nov16_push_observation_historical_source_bytes(
+        _NOV15_LEDGER_PATH, ledger_bytes
+    )
+    assert hashlib.sha256(projected_ledger).digest() == _NOV15_LEDGER_CURRENT_SHA256
+    ledger = json.loads(projected_ledger)
     bound = [
         item["sha256"]
         for item in ledger["dispositions"][6]["companions"]
@@ -35087,9 +35096,25 @@ def test_nov15_http_operations_projection_rejects_drift(
     mutation: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = Path(__file__).resolve().parents[1]
+    # Start from the nov16 predecessor and bypass that layer, so the nov15
+    # guards are the ones under test.
+    monkeypatch.setitem(
+        globals(),
+        "_nov16_push_observation_historical_policy",
+        copy.deepcopy,
+    )
+    monkeypatch.setitem(
+        globals(),
+        "_nov16_push_observation_historical_source_bytes",
+        lambda _path, actual: actual,
+    )
     if mutation == "policy":
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov16_push_observation_historical_policy_for_tests(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][_NOV15_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
             0
@@ -35101,10 +35126,17 @@ def test_nov15_http_operations_projection_rejects_drift(
         return
     if mutation == "ledger_extra":
         path = _NOV15_LEDGER_PATH
-        actual = (root / path).read_bytes() + b"\n"
+        actual = (
+            _nov16_push_observation_source_bytes_for_tests(
+                path, (root / path).read_bytes()
+            )
+            + b"\n"
+        )
     else:
         path = _NOV15_LIVE_PATH
-        live = (root / path).read_bytes()
+        live = _nov16_push_observation_source_bytes_for_tests(
+            path, (root / path).read_bytes()
+        )
         if mutation == "live_extra":
             actual = live + b"\n"
         elif mutation == "live_missing":
@@ -35203,7 +35235,7 @@ _AUD189_BACKUP_IDENTITIES = (
 def _aud189_backup_identities_historical_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov16_push_observation_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 512 + len(_AUD189_BACKUP_IDENTITIES), (
         "live disposition count changed"
@@ -35252,7 +35284,10 @@ def test_aud189_backup_identities_append_after_exact_predecessor() -> None:
         ).read_text(encoding="utf-8")
     )
     restored = _aud189_backup_identities_historical_policy(policy)
-    assert restored["records"] == policy["records"][:512]
+    assert (
+        restored["records"]
+        == _nov16_push_observation_historical_policy(policy)["records"][:512]
+    )
     assert len(policy["records"]) == 524
 
 
@@ -35297,3 +35332,192 @@ def test_aud189_verifier_identity_sets_match_the_appended_records() -> None:
         verifier._AUD189_BACKUP_CI_TEST_SENTINEL_IDENTITIES
         == expected["ci_test_contract_sentinel"]
     )
+
+
+# NOV16 push observation fields: the bounded browser push observation (V2) adds
+# the displayed-notification count and a generic-fallback flag. This rebinds
+# scripts/live_stand.py, its Semgrep companion digest in the ledger and the SHA-1
+# identity of that companion hex in policy row 495 one-to-one from the HEAD
+# predecessor. No identity is added and the inventory stays at 524. This is the
+# newest projection: it restores the exact predecessor before the nov15 chain runs.
+_NOV16_LIVE_PATH = "scripts/live_stand.py"
+_NOV16_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_NOV16_IDENTITY_ROW = 495
+_NOV16_LIVE_CURRENT_SHA256 = _rust_hex(
+    "d1 22 85 c6 10 33 8c 7d 24 ff 43 23 18 25 70 26 0a 3b 11 25 b9 85 ff 86 e3 89 18 e8 51 f3 01 a1"
+)
+_NOV16_LIVE_PREVIOUS_SHA256 = _rust_hex(
+    "74 73 2d 81 b3 bc d2 d1 88 bb 09 8d f5 5d 4f 30 e2 aa b5 7d 96 fd 5f 17 d7 31 f6 a7 54 3a e6 15"
+)
+_NOV16_LEDGER_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "d6 e2 44 d4 12 d6 2f ce b5 48 d3 9f 09 a9 d0 17 ed 9f db e7 ee 67 26 db 4a de 2c 62 fd ee 61 6a"
+    )
+)
+_NOV16_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "72 18 80 5b c4 e8 73 38 c1 c3 43 43 66 87 a5 c9 95 aa 39 1f dd 1d 12 94 ed 93 ab ca bb b3 87 6e"
+    )
+)
+
+
+# The two exact byte sequences that the V2 change replaced in the live stand,
+# as (current, predecessor) pairs.
+_NOV16_LIVE_REPLACEMENTS = (
+    (
+        b"        matches,\n        shown,\n        untagged,\n        probe,\n"
+        b"    ) in push_observations:\n",
+        b"        matches,\n        probe,\n    ) in push_observations:\n",
+    ),
+    (
+        b'            f"subscription={str(subscription).lower()} matches={matches} "\n'
+        b'            f"shown={shown} untagged={str(untagged).lower()} probe={probe}",\n',
+        b'            f"subscription={str(subscription).lower()} matches={matches} probe={probe}",\n',
+    ),
+)
+
+
+def _nov16_push_observation_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path == _NOV16_LIVE_PATH:
+        assert hashlib.sha256(actual).hexdigest() == _NOV16_LIVE_CURRENT_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        historical = actual
+        for current, previous in _NOV16_LIVE_REPLACEMENTS:
+            assert historical.count(current) == 1, (
+                f"conditional disposition source file SHA-256 changed: {path}"
+            )
+            historical = historical.replace(current, previous, 1)
+        assert hashlib.sha256(historical).hexdigest() == _NOV16_LIVE_PREVIOUS_SHA256, (
+            f"conditional disposition source file SHA-256 changed: {path}"
+        )
+        return historical
+    if path != _NOV16_LEDGER_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV16_LEDGER_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current = _NOV16_LIVE_CURRENT_SHA256.encode("ascii")
+    assert actual.count(current) == 1, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual.replace(current, _NOV16_LIVE_PREVIOUS_SHA256.encode("ascii"), 1)
+    assert hashlib.sha256(historical).digest() == _NOV16_LEDGER_PREVIOUS_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical
+
+
+def _nov16_push_observation_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 512 + len(_AUD189_BACKUP_IDENTITIES), (
+        "live disposition count changed"
+    )
+    row = records[_NOV16_IDENTITY_ROW]
+    identity = row["identity"]
+    assert identity["path"] == _NOV16_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert row["owner"] == "egorribun", (
+        "approval metadata changed for push observation companion"
+    )
+    assert row["expires_on"] == "2027-01-10", (
+        "approval metadata changed for push observation companion"
+    )
+    assert bytes(identity["hashed_secret_bytes"]) == bytes(
+        _nov15_identity(_NOV16_LIVE_CURRENT_SHA256)
+    ), "live disposition push observation companion identity changed"
+    identity["hashed_secret_bytes"] = _nov15_identity(_NOV16_LIVE_PREVIOUS_SHA256)
+    return restored
+
+
+def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / _NOV16_LIVE_PATH).read_bytes()
+    assert hashlib.sha256(live).hexdigest() == _NOV16_LIVE_CURRENT_SHA256
+    ledger_bytes = (root / _NOV16_LEDGER_PATH).read_bytes()
+    assert hashlib.sha256(ledger_bytes).digest() == _NOV16_LEDGER_CURRENT_SHA256
+    ledger = json.loads(ledger_bytes)
+    bound = [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _NOV16_LIVE_PATH
+    ]
+    assert bound == [_NOV16_LIVE_CURRENT_SHA256]
+    historical_live = _nov16_push_observation_historical_source_bytes(
+        _NOV16_LIVE_PATH, live
+    )
+    assert hashlib.sha256(historical_live).hexdigest() == _NOV16_LIVE_PREVIOUS_SHA256
+    historical_ledger = _nov16_push_observation_historical_source_bytes(
+        _NOV16_LEDGER_PATH, ledger_bytes
+    )
+    assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_PREVIOUS_SHA256
+    # The predecessor of this layer is exactly what the nov15 layer binds.
+    assert _NOV16_LIVE_PREVIOUS_SHA256 == _NOV15_LIVE_CURRENT_SHA256
+    assert _NOV16_LEDGER_PREVIOUS_SHA256 == _NOV15_LEDGER_CURRENT_SHA256
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _nov16_push_observation_historical_policy(policy)
+    assert len(restored["records"]) == 524
+    assert restored["records"][_NOV16_IDENTITY_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _nov15_identity(_NOV16_LIVE_PREVIOUS_SHA256)
+    for index, (before, after) in enumerate(
+        zip(policy["records"], restored["records"], strict=True)
+    ):
+        if index != _NOV16_IDENTITY_ROW:
+            assert before == after
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["live_extra", "live_missing", "live_duplicated", "ledger_extra", "policy"],
+)
+def test_nov16_push_observation_projection_rejects_drift(
+    mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "policy":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_NOV16_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
+            0
+        ] ^= 1
+        with pytest.raises(
+            AssertionError, match="push observation companion identity changed"
+        ):
+            _nov16_push_observation_historical_policy(policy)
+        return
+    if mutation == "ledger_extra":
+        path = _NOV16_LEDGER_PATH
+        actual = (root / path).read_bytes() + b"\n"
+    else:
+        path = _NOV16_LIVE_PATH
+        live = (root / path).read_bytes()
+        current = _NOV16_LIVE_REPLACEMENTS[1][0]
+        if mutation == "live_extra":
+            actual = live + b"\n"
+        elif mutation == "live_missing":
+            actual = live.replace(current, b"", 1)
+        else:
+            actual = live + current
+        if mutation != "live_extra":
+            # Pass the outer digest guard so the one-to-one count guard is the one that fires.
+            monkeypatch.setitem(
+                globals(),
+                "_NOV16_LIVE_CURRENT_SHA256",
+                hashlib.sha256(actual).hexdigest(),
+            )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov16_push_observation_historical_source_bytes(path, actual)
+
+
+_nov16_push_observation_historical_policy_for_tests = (
+    _nov16_push_observation_historical_policy
+)
+_nov16_push_observation_source_bytes_for_tests = (
+    _nov16_push_observation_historical_source_bytes
+)

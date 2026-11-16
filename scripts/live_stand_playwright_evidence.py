@@ -243,15 +243,16 @@ _PLAYWRIGHT_NAVBAR_GEOMETRY_LIMIT = 6
 _PlaywrightNavbarGeometry = tuple[str, int, int, int, int, int, int, int, int, int, int]
 
 
-_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int, str]
+_PlaywrightPushObservation = tuple[str, str, str, str, bool, bool, int, int, bool, str]
 _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
-    r"UE_LIVE_PUSH_OBS_V1 project=(?P<project>desktop|mobile) "
+    r"UE_LIVE_PUSH_OBS_V2 project=(?P<project>desktop|mobile) "
     r"permission=(?P<permission>default|granted|denied|unsupported) "
     r"ready=(?P<ready>resolved|timeout|error) "
     r"state=(?P<state>missing|installing|installed|activating|"
     r"activated|redundant|error) "
     r"controller=(?P<controller>[01]) subscription=(?P<subscription>[01]) "
     r"matches=(?P<matches>[01]) "
+    r"shown=(?P<shown>[0-3]) untagged=(?P<untagged>[01]) "
     r"probe=(?P<probe>skipped|subscribed|permission-denied|"
     r"push-service-unavailable|push-service-error|not-allowed|abort|"
     r"invalid-state|not-supported|other|timeout)"
@@ -2388,6 +2389,8 @@ def _live_playwright_push_observations(
             match["controller"] == "1",
             match["subscription"] == "1",
             int(match["matches"]),
+            int(match["shown"]),
+            match["untagged"] == "1",
             match["probe"],
         )
         if record in observations:
