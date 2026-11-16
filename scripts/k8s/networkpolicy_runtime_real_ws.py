@@ -13,12 +13,14 @@ import json
 import re
 import secrets
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
 import yaml
 from networkpolicy_runtime_kube import (
+    CreatedPod,
     Pod,
     apply_objects,
     find,
@@ -27,6 +29,7 @@ from networkpolicy_runtime_kube import (
     run_command,
     run_in_pod,
 )
+from networkpolicy_runtime_standins import stand_in_pod
 from networkpolicy_runtime_temporal import _mount, _object, compose_image, secret_volume
 
 # Runs in the authenticated, disposable NATS fixture's Python sidecar. It only
@@ -380,6 +383,96 @@ def authorized_source(app: list[dict[str, Any]], source: Pod) -> None:
         raise ValueError("monitoring pod does not match rendered policy")
 
 
+def retire_ws_fixture(app: list[dict[str, Any]], pod: Pod, image: str) -> None:
+    """Retire only this run's create-only matrix fixture, guarded by its UID."""
+    created = pod.created
+    if (
+        not isinstance(created, CreatedPod)
+        or (created.namespace, created.name) != ("probe-a", "probe-a-ws-hub")
+        or (pod.namespace, pod.name, pod.uid)
+        != (created.namespace, created.name, created.uid)
+        or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", created.uid)
+    ):
+        raise ValueError("ws-hub fixture has no matching creation identity")
+    labels = find(app, "Deployment", "probe-a-ws-hub")["spec"]["template"]["metadata"][
+        "labels"
+    ]
+    expected = stand_in_pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        {**labels, "probe-role": "a-ws"},
+        image,
+        "8081,9108",
+    )
+    live = kubectl_json("-n", "probe-a", "get", "pod", "probe-a-ws-hub", "-o", "json")
+    metadata, spec = live["metadata"], live["spec"]
+    if (
+        (metadata.get("namespace"), metadata.get("name"), metadata.get("uid"))
+        != (created.namespace, created.name, created.uid)
+        or metadata.get("ownerReferences")
+        or metadata.get("deletionTimestamp")
+        or any(
+            metadata.get("labels", {}).get(k) != v
+            for k, v in expected["metadata"]["labels"].items()
+        )
+        or live["status"].get("podIP") != pod.ip
+        or spec.get("automountServiceAccountToken") is not False
+        or spec.get("hostNetwork", False) is not False
+        or len(spec.get("containers", [])) != 1
+        or any(
+            spec["containers"][0].get(key) != value
+            for key, value in expected["spec"]["containers"][0].items()
+        )
+    ):
+        raise ValueError("ws-hub fixture identity or specification changed")
+    options = {
+        "apiVersion": "v1",
+        "kind": "DeleteOptions",
+        "preconditions": {"uid": created.uid},
+    }
+    run_command(
+        [
+            "kubectl",
+            "delete",
+            "--raw",
+            "/api/v1/namespaces/probe-a/pods/probe-a-ws-hub",
+            "-f",
+            "-",
+        ],
+        stdin=json.dumps(options),
+        timeout=30,
+    )
+    deadline = time.monotonic() + 45
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("ws-hub fixture deletion timed out")
+        observed = run_command(
+            [
+                "kubectl",
+                "-n",
+                "probe-a",
+                "get",
+                "pod",
+                "probe-a-ws-hub",
+                "--ignore-not-found",
+                "-o",
+                "json",
+            ],
+            timeout=min(5.0, remaining),
+        )
+        if not observed.stdout.strip():
+            return
+        pending = json.loads(observed.stdout)
+        if (
+            not isinstance(pending, dict)
+            or not isinstance(pending.get("metadata"), dict)
+            or pending["metadata"].get("uid") != created.uid
+        ):
+            raise ValueError("ws-hub fixture was replaced")
+        time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+
+
 def actual_ws_phase(
     root: Path,
     rendered: dict[str, Any],
@@ -497,6 +590,10 @@ def actual_ws_phase(
         authorized_source(app, pods["prometheus"])
         if replicas(deployment, image, source_sha) != before:
             raise ValueError("replica changed during scrape")
+        if not checks or any(check["verdict"] != "pass" for check in checks):
+            raise ValueError("authorized scrape incomplete")
+        stage = "retire-fixture"
+        retire_ws_fixture(app, pods["a-ws"], python_image)
     except (
         OSError,
         ValueError,
@@ -518,6 +615,7 @@ def actual_ws_phase(
             for replica in before
         ],
         "checks": checks,
+        "matrix_fixture": {"uid": pods["a-ws"].uid, "verdict": "retired"},
         "source": "Prometheus-labelled Python probe",
-        "scope": "authorized positive HTTP scrape only",
+        "scope": "authorized positive HTTP scrape and owned matrix fixture retirement",
     }

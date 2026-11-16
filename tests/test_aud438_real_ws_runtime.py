@@ -421,6 +421,7 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
     pods = {
         "a-backend": ws.Pod("probe-a", "backend", uid="backend"),
         "prometheus": ws.Pod("monitoring", "prometheus-0", uid="source"),
+        "a-ws": ws.Pod("probe-a", "probe-a-ws-hub", uid="fixture"),
     }
     copies = [
         {
@@ -450,6 +451,7 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         "run_command": Mock(return_value=SimpleNamespace(stdout='{"result":"ready"}')),
         "replicas": Mock(side_effect=[copies, copy.deepcopy(copies)]),
         "authorized_source": Mock(),
+        "retire_ws_fixture": Mock(),
         "run_in_pod": Mock(
             side_effect=[
                 {"result": "valid"},
@@ -487,6 +489,9 @@ def test_phase_scrapes_each_unchanged_replica_and_does_not_emit_private_details(
         row["uid"] for row in copies
     ]
     assert mocks["authorized_source"].call_count == 2
+    mocks["retire_ws_fixture"].assert_called_once_with(
+        rendered[0], pods["a-ws"], "python-fixture"
+    )
     assert mocks["run_in_pod"].call_args_list[0].args[:2] == (
         pods["a-backend"],
         ws.VERIFY_JWKS,
@@ -526,6 +531,7 @@ def test_phase_rejects_jwks_target_drift_before_creating_fixtures(
         ("authorized_source", "authorized-scrape"),
         ("scrape", "authorized-scrape"),
         ("changed_replica", "authorized-scrape"),
+        ("retire_ws_fixture", "retire-fixture"),
     ],
 )
 def test_phase_failures_cannot_pass_or_expose_exception_payload(
@@ -538,6 +544,7 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
         "ws_secrets",
         "replicas",
         "authorized_source",
+        "retire_ws_fixture",
     }:
         mocks[fault].side_effect = ValueError("private exception data")
     elif fault == "nats_result":
@@ -560,6 +567,8 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
         assert result["stage"] == stage
     assert "private exception data" not in json.dumps(result)
     assert "revocation-password" not in json.dumps(result)
+    if fault != "retire_ws_fixture":
+        mocks["retire_ws_fixture"].assert_not_called()
 
 
 def runner_fixture(monkeypatch, tmp_path, fp_result, ws_result, interrupt=False):
@@ -627,6 +636,7 @@ def test_runner_preserves_matrix_and_distinguishes_actual_phase(
 ):
     args, phase = runner_fixture(monkeypatch, tmp_path, fp_result, ws_result)
     assert runner.main() == (0 if expected == "pass" else 1)
+    assert runner.set_up_cluster.call_args.kwargs == {"own_ws": True}
     receipt = json.loads(args.receipt.read_text())
     assert receipt["verdict"] == expected
     assert receipt["matrix_verdict"] == "pass" and len(receipt["probes"]) == 40
@@ -816,3 +826,357 @@ def test_proof_keeps_exact_calico_line_and_cleans_only_its_ws_tag():
     assert 'WS_IMAGE="ue-netpol-ws:${SOURCE_SHA}-${RUN_SUFFIX}"' in text
     assert 'docker image rm "$WS_IMAGE"' in text
     assert "docker image prune" not in text and "docker system prune" not in text
+
+
+def test_create_only_ws_fixture_captures_returned_identity(monkeypatch):
+    import networkpolicy_runtime_kube as kube
+
+    uid = "01234567-89ab-cdef-0123-456789abcdef"
+    fixture = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"namespace": "probe-a", "name": "probe-a-ws-hub"},
+    }
+    response = copy.deepcopy(fixture)
+    response["metadata"]["uid"] = uid
+    command = Mock(return_value=SimpleNamespace(stdout=json.dumps(response)))
+    monkeypatch.setattr(kube, "run_command", command)
+
+    created = kube.create_pod(fixture)
+
+    assert (created.namespace, created.name, created.uid) == (
+        "probe-a",
+        "probe-a-ws-hub",
+        uid,
+    )
+    assert command.call_args.args[0] == ["kubectl", "create", "-f", "-", "-o", "json"]
+    assert json.loads(command.call_args.kwargs["stdin"]) == fixture
+    assert command.call_args.kwargs["timeout"] <= 30
+    with pytest.raises(AttributeError):
+        created.uid = "different"
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_setup_creates_only_ws_fixture_when_real_ws_is_requested(monkeypatch, owned):
+    import networkpolicy_runtime_kube as kube
+
+    fixture = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "namespace": "probe-a",
+            "name": "probe-a-ws-hub",
+            "labels": {"probe-role": "a-ws"},
+        },
+    }
+    other = {"kind": "Pod", "metadata": {"name": "other"}}
+    target = kube.Pod("probe-a", "probe-a-ws-hub")
+    witness = kube.CreatedPod(
+        "probe-a", "probe-a-ws-hub", "01234567-89ab-cdef-0123-456789abcdef"
+    )
+    applied = Mock()
+    create = Mock(return_value=witness)
+    monkeypatch.setattr(runner, "namespace_objects", lambda: [])
+    monkeypatch.setattr(runner, "credential_secret", lambda *args: {})
+    monkeypatch.setattr(runner, "apply_store_workloads", Mock())
+    monkeypatch.setattr(
+        runner, "standin_objects", lambda *args: ([fixture, other], {"a-ws": target})
+    )
+    monkeypatch.setattr(runner, "apply_objects", applied)
+    monkeypatch.setattr(runner, "create_pod", create)
+    monkeypatch.setattr(runner, "wait_ready", Mock())
+    monkeypatch.setattr(runner, "resolve_pod", Mock())
+    releases = {name: ([], []) for name in runner.RELEASES}
+
+    result = runner.set_up_cluster(
+        "fixture", releases, dict.fromkeys(runner.RELEASES, "p"), own_ws=owned
+    )
+
+    assert result["a-ws"].created == (witness if owned else None)
+    if owned:
+        create.assert_called_once_with(fixture)
+        assert applied.call_args_list[-1].args[0] == [other]
+    else:
+        create.assert_not_called()
+        assert applied.call_args_list[-1].args[0] == [fixture, other]
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_refresh_cannot_replace_creation_witness(monkeypatch, changed):
+    import networkpolicy_runtime_kube as kube
+
+    uid = "01234567-89ab-cdef-0123-456789abcdef"
+    created = kube.CreatedPod("probe-a", "probe-a-ws-hub", uid)
+    pod = kube.Pod("probe-a", "probe-a-ws-hub", created=created)
+    monkeypatch.setattr(
+        runner,
+        "kubectl_json",
+        lambda *args: {
+            "metadata": {"uid": "different" if changed else uid},
+            "status": {"podIP": "10.1.2.3"},
+        },
+    )
+    if changed:
+        with pytest.raises(ValueError):
+            runner.resolve_pod(pod)
+        assert pod.uid == ""
+    else:
+        runner.resolve_pod(pod)
+        assert pod.uid == uid and pod.ip == "10.1.2.3"
+    assert pod.created is created
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [None, "missing-witness", "observed-uid", "live-uid", "role", "image", "owner"],
+)
+def test_retire_only_the_created_unchanged_fixture(rendered, monkeypatch, fault):
+    from networkpolicy_runtime_kube import CreatedPod, Pod
+    from networkpolicy_runtime_standins import stand_in_pod
+
+    uid = "01234567-89ab-cdef-0123-456789abcdef"
+    created = CreatedPod("probe-a", "probe-a-ws-hub", uid)
+    fixture = Pod("probe-a", "probe-a-ws-hub", "10.1.2.3", uid, created)
+    labels = ws.find(rendered[0], "Deployment", "probe-a-ws-hub")["spec"]["template"][
+        "metadata"
+    ]["labels"]
+    live = stand_in_pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        {**labels, "probe-role": "a-ws"},
+        "python-fixture",
+        "8081,9108",
+    )
+    live["metadata"]["uid"] = uid
+    live["status"] = {"podIP": fixture.ip}
+    if fault == "missing-witness":
+        fixture.created = None
+    elif fault == "observed-uid":
+        fixture.uid = "another"
+    elif fault == "live-uid":
+        live["metadata"]["uid"] = "another"
+    elif fault == "role":
+        live["metadata"]["labels"]["probe-role"] = "other"
+    elif fault == "image":
+        live["spec"]["containers"][0]["image"] = "other"
+    elif fault == "owner":
+        live["metadata"]["ownerReferences"] = [{"uid": "other"}]
+    monkeypatch.setattr(ws, "kubectl_json", Mock(return_value=live))
+    commands = Mock(return_value=SimpleNamespace(stdout=""))
+    monkeypatch.setattr(ws, "run_command", commands)
+
+    if fault is not None:
+        with pytest.raises(ValueError):
+            ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
+        commands.assert_not_called()
+        return
+
+    ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
+    deletion = commands.call_args_list[0]
+    assert deletion.args[0] == [
+        "kubectl",
+        "delete",
+        "--raw",
+        "/api/v1/namespaces/probe-a/pods/probe-a-ws-hub",
+        "-f",
+        "-",
+    ]
+    assert json.loads(deletion.kwargs["stdin"])["preconditions"] == {"uid": uid}
+    assert deletion.kwargs["timeout"] <= 30
+    assert commands.call_count == 2
+    assert "--ignore-not-found" in commands.call_args_list[1].args[0]
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_retirement_polls_owned_uid_and_rejects_replacement(
+    rendered, monkeypatch, replacement
+):
+    from networkpolicy_runtime_kube import CreatedPod, Pod
+    from networkpolicy_runtime_standins import stand_in_pod
+
+    uid = "01234567-89ab-cdef-0123-456789abcdef"
+    fixture = Pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        "10.1.2.3",
+        uid,
+        CreatedPod("probe-a", "probe-a-ws-hub", uid),
+    )
+    labels = ws.find(rendered[0], "Deployment", "probe-a-ws-hub")["spec"]["template"][
+        "metadata"
+    ]["labels"]
+    live = stand_in_pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        {**labels, "probe-role": "a-ws"},
+        "python-fixture",
+        "8081,9108",
+    )
+    live["metadata"]["uid"] = uid
+    live["status"] = {"podIP": fixture.ip}
+    monkeypatch.setattr(ws, "kubectl_json", Mock(return_value=live))
+    pending = {"metadata": {"uid": "replacement" if replacement else uid}}
+    commands = Mock(
+        side_effect=[
+            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout=json.dumps(pending)),
+            SimpleNamespace(stdout=""),
+        ]
+    )
+    monkeypatch.setattr(ws, "run_command", commands)
+    monkeypatch.setattr(
+        ws, "time", SimpleNamespace(monotonic=Mock(return_value=0), sleep=Mock())
+    )
+    if replacement:
+        with pytest.raises(ValueError):
+            ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
+        assert commands.call_count == 2
+    else:
+        ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
+        assert commands.call_count == 3
+    assert sum("delete" in call.args[0] for call in commands.call_args_list) == 1
+
+
+@pytest.mark.parametrize("fault", ["missing", "duplicate-name"])
+def test_setup_rejects_ambiguous_owned_fixture_without_creating(monkeypatch, fault):
+    import networkpolicy_runtime_kube as kube
+
+    fixture = {
+        "kind": "Pod",
+        "metadata": {
+            "namespace": "probe-a",
+            "name": "probe-a-ws-hub",
+            "labels": {"probe-role": "a-ws"},
+        },
+    }
+    objects = [] if fault == "missing" else [fixture, copy.deepcopy(fixture)]
+    if objects:
+        objects[1]["metadata"]["labels"]["probe-role"] = "different"
+    monkeypatch.setattr(runner, "namespace_objects", lambda: [])
+    monkeypatch.setattr(runner, "credential_secret", lambda *args: {})
+    monkeypatch.setattr(runner, "apply_store_workloads", Mock())
+    monkeypatch.setattr(
+        runner,
+        "standin_objects",
+        lambda *args: (objects, {"a-ws": kube.Pod("probe-a", "probe-a-ws-hub")}),
+    )
+    monkeypatch.setattr(runner, "apply_objects", Mock())
+    create = Mock()
+    monkeypatch.setattr(runner, "create_pod", create)
+    monkeypatch.setattr(
+        runner, "wait_ready", Mock(side_effect=AssertionError("unexpected wait"))
+    )
+    monkeypatch.setattr(
+        runner, "resolve_pod", Mock(side_effect=AssertionError("unexpected resolve"))
+    )
+    releases = {name: ([], []) for name in runner.RELEASES}
+
+    with pytest.raises(ValueError):
+        runner.set_up_cluster(
+            "fixture", releases, dict.fromkeys(runner.RELEASES, "p"), own_ws=True
+        )
+    create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fault", ["identity", "uid", "uid-format", "shape", "null", "metadata", "conflict"]
+)
+def test_create_only_rejects_untrusted_response_and_never_falls_back(
+    monkeypatch, fault
+):
+    import networkpolicy_runtime_kube as kube
+
+    fixture = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"namespace": "probe-a", "name": "probe-a-ws-hub"},
+    }
+    response = copy.deepcopy(fixture)
+    response["metadata"]["uid"] = "01234567-89ab-cdef-0123-456789abcdef"
+    if fault == "identity":
+        response["metadata"]["name"] = "other"
+    elif fault == "uid":
+        response["metadata"]["uid"] = None
+    elif fault == "uid-format":
+        response["metadata"]["uid"] = "not-a-uid"
+    elif fault == "shape":
+        response = []
+    elif fault == "null":
+        response = None
+    elif fault == "metadata":
+        response["metadata"] = None
+    command = Mock(return_value=SimpleNamespace(stdout=json.dumps(response)))
+    if fault == "conflict":
+        command.side_effect = subprocess.CalledProcessError(1, "kubectl create")
+    monkeypatch.setattr(kube, "run_command", command)
+
+    with pytest.raises((ValueError, subprocess.CalledProcessError)):
+        kube.create_pod(fixture)
+    assert command.call_count == 1
+    assert command.call_args.args[0][1] == "create"
+
+
+@pytest.mark.parametrize(
+    "fault", ["kind", "namespace", "name", "uid", "owner", "generated", "metadata"]
+)
+def test_create_rejects_wrong_fixture_before_kubectl(monkeypatch, fault):
+    import networkpolicy_runtime_kube as kube
+
+    fixture = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"namespace": "probe-a", "name": "probe-a-ws-hub"},
+    }
+    if fault == "kind":
+        fixture["kind"] = "Service"
+    elif fault == "namespace":
+        fixture["metadata"]["namespace"] = "other"
+    elif fault == "name":
+        fixture["metadata"]["name"] = "other"
+    elif fault == "metadata":
+        fixture["metadata"] = None
+    else:
+        field = {"uid": "uid", "owner": "ownerReferences", "generated": "generateName"}[
+            fault
+        ]
+        fixture["metadata"][field] = "not-allowed"
+    command = Mock(side_effect=AssertionError("must not execute"))
+    monkeypatch.setattr(kube, "run_command", command)
+    with pytest.raises(ValueError):
+        kube.create_pod(fixture)
+    command.assert_not_called()
+
+
+def test_retirement_timeout_does_not_repeat_delete(rendered, monkeypatch):
+    from networkpolicy_runtime_kube import CreatedPod, Pod
+    from networkpolicy_runtime_standins import stand_in_pod
+
+    uid = "01234567-89ab-cdef-0123-456789abcdef"
+    fixture = Pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        "10.1.2.3",
+        uid,
+        CreatedPod("probe-a", "probe-a-ws-hub", uid),
+    )
+    labels = ws.find(rendered[0], "Deployment", "probe-a-ws-hub")["spec"]["template"][
+        "metadata"
+    ]["labels"]
+    live = stand_in_pod(
+        "probe-a",
+        "probe-a-ws-hub",
+        {**labels, "probe-role": "a-ws"},
+        "python-fixture",
+        "8081,9108",
+    )
+    live["metadata"]["uid"] = uid
+    live["status"] = {"podIP": fixture.ip}
+    monkeypatch.setattr(ws, "kubectl_json", Mock(return_value=live))
+    command = Mock(return_value=SimpleNamespace(stdout=""))
+    monkeypatch.setattr(ws, "run_command", command)
+    monkeypatch.setattr(
+        ws, "time", SimpleNamespace(monotonic=Mock(side_effect=[0, 46]), sleep=Mock())
+    )
+    with pytest.raises(ValueError, match="timed out"):
+        ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
+    assert command.call_count == 1

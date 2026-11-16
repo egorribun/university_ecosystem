@@ -46,6 +46,7 @@ from networkpolicy_runtime_app import (
 from networkpolicy_runtime_kube import (
     Pod,
     apply_objects,
+    create_pod,
     cronjob_template_labels,
     find,
     helm_template,
@@ -436,8 +437,14 @@ def wait_ready(namespace: str) -> None:
 
 def resolve_pod(pod: Pod) -> None:
     info = kubectl_json("-n", pod.namespace, "get", "pod", pod.name, "-o", "json")
+    uid = info["metadata"]["uid"]
+    if pod.created is not None and (
+        (pod.created.namespace, pod.created.name) != (pod.namespace, pod.name)
+        or pod.created.uid != uid
+    ):
+        raise ValueError("created fixture identity changed")
     pod.ip = info["status"]["podIP"]
-    pod.uid = info["metadata"]["uid"]
+    pod.uid = uid
 
 
 def cluster_ip(namespace: str, name: str) -> str:
@@ -477,13 +484,36 @@ def build_targets(pods: dict[str, Pod], kube_dns_ip: str) -> dict[str, tuple[str
 
 
 def set_up_cluster(
-    base_image: str, rendered: Rendered, passwords: dict[str, str]
+    base_image: str,
+    rendered: Rendered,
+    passwords: dict[str, str],
+    *,
+    own_ws: bool = False,
 ) -> dict[str, Pod]:
     apply_objects(namespace_objects())
     for release in RELEASES:
         apply_objects([credential_secret(release, passwords[release])])
         apply_store_workloads(release, rendered[release][1])
     objects, pods = standin_objects(rendered, base_image)
+    if own_ws:
+        target = pods["a-ws"]
+        matches = [
+            obj
+            for obj in objects
+            if obj.get("kind") == "Pod"
+            and obj.get("metadata", {}).get("namespace") == "probe-a"
+            and obj.get("metadata", {}).get("name") == "probe-a-ws-hub"
+        ]
+        if (
+            (target.namespace, target.name) != ("probe-a", "probe-a-ws-hub")
+            or len(matches) != 1
+            or matches[0].get("metadata", {}).get("labels", {}).get("probe-role")
+            != "a-ws"
+        ):
+            raise ValueError("ambiguous ws-hub fixture")
+        fixture = matches[0]
+        target.created = create_pod(fixture)
+        objects = [obj for obj in objects if obj is not fixture]
     apply_objects(objects)
     for namespace in [*RELEASES, UNRELATED_NS, MONITORING_NS, INGRESS_NS]:
         wait_ready(namespace)
@@ -657,7 +687,10 @@ def main() -> int:
     base_image = runtime_base_image()
     rendered = render_all()
     passwords = {release: new_redis_password() for release in RELEASES}
-    pods = set_up_cluster(base_image, rendered, passwords)
+    if real_ws_image:
+        pods = set_up_cluster(base_image, rendered, passwords, own_ws=True)
+    else:
+        pods = set_up_cluster(base_image, rendered, passwords)
 
     kube_dns_ip = cluster_ip("kube-system", "kube-dns")
     kubernetes_ip = cluster_ip("default", "kubernetes")
