@@ -233,6 +233,49 @@ describe("API client 429 retry loop", () => {
     expect(adapter).toHaveBeenCalledTimes(1)
   })
 
+  it("releases a mutation key when aborted before dispatch during an active rate-limit window", async () => {
+    const { default: api } = await import("@/api/client")
+    const { scheduleRateLimitWindow } = await import("@/api/interceptors/rateLimit")
+    const controller = new AbortController()
+    const key = "aborted-before-dispatch-operation"
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { id: "retried-message" },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    api.defaults.adapter = adapter
+    document.cookie = "csrf_token=dedup-regression; path=/"
+    scheduleRateLimitWindow(1_000)
+
+    try {
+      const pending = api
+        .post("/chats/chat-1/messages", { content: "hello" }, {
+          headers: { "Idempotency-Key": key },
+          signal: controller.signal,
+        })
+        .catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(adapter).not.toHaveBeenCalled()
+
+      controller.abort()
+      await vi.advanceTimersByTimeAsync(0)
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" })
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      await expect(
+        api.post("/chats/chat-1/messages", { content: "hello" }, {
+          headers: { "Idempotency-Key": key },
+        })
+      ).resolves.toMatchObject({ data: { id: "retried-message" } })
+      expect(adapter).toHaveBeenCalledOnce()
+    } finally {
+      document.cookie = "csrf_token=; Max-Age=0; path=/"
+    }
+  })
+
   it("does not retry a 429 when skipRateLimitQueue bypasses the queue", async () => {
     const { default: api } = await import("@/api/client")
 
