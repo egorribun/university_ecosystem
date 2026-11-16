@@ -221,6 +221,14 @@ class UserAdminUpdate(BaseModel):
     group_id: uuid.UUID | None = None
     reset_mfa: bool | None = None
 
+    @field_validator("email", "role", mode="before")
+    @classmethod
+    def _reject_null_identity_fields(cls, value: Any) -> Any:
+        """Omission is a partial update; explicit null cannot clear identity."""
+        if value is None:
+            raise ValueError("Email and role cannot be null; omit unchanged fields.")
+        return value
+
 
 class DataExportOut(BaseModel):
     profile: dict[str, Any]
