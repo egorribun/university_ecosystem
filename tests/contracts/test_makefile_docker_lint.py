@@ -46,7 +46,7 @@ def docker_lint_fixture(tmp_path: Path):
     root.mkdir()
     bin_path = root / "bin"
     bin_path.mkdir()
-    for tool in ("find", "which"):
+    for tool in ("find", "which", "xargs"):
         executable = shutil.which(tool)
         assert executable is not None, f"Hosted runner must provide {tool}"
         (bin_path / tool).symlink_to(Path(executable).resolve())
