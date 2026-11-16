@@ -27,6 +27,7 @@ import { m, AnimatePresence } from "framer-motion"
 import { Search, X, FileText, Calendar, ArrowRight, Clock } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
+import * as v from "valibot"
 import api from "@/api/client"
 import { cn } from "@/utils/cn"
 import { useDebounced } from "@/hooks/useDebounced"
@@ -51,6 +52,7 @@ interface SearchResponse {
 
 const RECENT_SEARCHES_KEY = "ue:recent-searches"
 const MAX_RECENT = 5
+const RecentSearchesSchema = v.array(v.string())
 
 const HIGHLIGHT_OPEN = "\u0000MARK_OPEN\u0000"
 const HIGHLIGHT_CLOSE = "\u0000MARK_CLOSE\u0000"
@@ -74,7 +76,9 @@ function renderSearchSummary(summary: string): ReactNode {
 function getRecentSearches(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_SEARCHES_KEY)
-    return raw ? (JSON.parse(raw) as string[]).slice(0, MAX_RECENT) : []
+    if (!raw) return []
+    const parsed = v.safeParse(RecentSearchesSchema, JSON.parse(raw))
+    return parsed.success ? parsed.output.slice(0, MAX_RECENT) : []
   } catch {
     return []
   }
@@ -139,7 +143,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   }, [open])
 
   // Search query
-  const { data, isLoading } = useQuery<SearchResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<SearchResponse>({
     queryKey: ["search", debouncedQuery],
     queryFn: async () => {
       const res = await api.get<SearchResponse>("/search", {
@@ -168,7 +172,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      if (!showResults) return
+      if (!showResults || isError) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
         setActiveIndex((prev) => Math.min(prev + 1, allResults.length - 1))
@@ -180,7 +184,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
         handleSelect(allResults[activeIndex])
       }
     },
-    [activeIndex, allResults, handleSelect, showResults]
+    [activeIndex, allResults, handleSelect, isError, showResults]
   )
 
   // Scroll active item into view
@@ -283,7 +287,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
             )}
 
             {/* Search Results */}
-            {!isLoading && showResults && allResults.length > 0 && (
+            {!isLoading && !isError && showResults && allResults.length > 0 && (
               <div className="p-2">
                 {allResults.map((result, idx) => {
                   const Icon = TypeIcon[result.type] ?? FileText
@@ -331,8 +335,24 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
               </div>
             )}
 
+            {/* A transport failure is not an empty successful search. */}
+            {!isLoading && isError && showResults && (
+              <div className="py-8 text-center" role="alert">
+                <p className="text-sm font-medium text-(--text-tertiary)">
+                  {t("common:errors.generic")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  className="min-h-[44px] min-w-[44px] px-3 py-2 text-sm font-medium text-brand"
+                >
+                  {t("common:errorBoundary.retry")}
+                </button>
+              </div>
+            )}
+
             {/* No Results */}
-            {!isLoading && showResults && allResults.length === 0 && (
+            {!isLoading && !isError && showResults && allResults.length === 0 && (
               <div className="py-8 text-center">
                 <p className="text-sm font-medium text-(--text-tertiary)">
                   {t("common:search.noResults")}
