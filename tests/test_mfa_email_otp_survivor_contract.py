@@ -310,6 +310,41 @@ def test_runtime_rate_limiter_uses_action_and_identifier_namespace() -> None:
     )
 
 
+@pytest.mark.parametrize(("configured", "expected"), [(5, 5), (60, 60)])
+def test_runtime_rate_limiter_uses_the_configured_client_ip_budget(
+    monkeypatch: pytest.MonkeyPatch, configured: int, expected: int
+) -> None:
+    monkeypatch.setattr(settings, "rate_limit_mfa_email_otp_client_ip", configured)
+    limiter = RuntimeMfaRateLimiter()
+    with (
+        patch(
+            "app.core.ratelimit.enforce_rate_limit", new_callable=AsyncMock
+        ) as enforce,
+        patch("app.core.ratelimit.get_default_strategy", return_value="mfa"),
+    ):
+        import asyncio
+
+        asyncio.run(limiter.enforce(action="verify", identifier="ip:203.0.113.7"))
+        asyncio.run(limiter.enforce(action="verify", identifier="user:abc"))
+    assert enforce.await_args_list[0].kwargs == {
+        "identifier": "mfa-email:verify:ip:203.0.113.7",
+        "limit": expected,
+        "window_seconds": 600,
+        "strategy": "mfa",
+    }
+    # The per-user budget never follows the client-IP setting.
+    assert enforce.await_args_list[1].kwargs["limit"] == 5
+
+
+def test_client_ip_budget_defaults_to_five_and_rejects_non_positive_values() -> None:
+    from app.core.config.mixins.rate_limit_settings import RateLimitSettingsMixin
+
+    assert RateLimitSettingsMixin.rate_limit_mfa_email_otp_client_ip == 5
+    for value in (0, -1):
+        with pytest.raises(ValueError, match="RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP"):
+            type(settings)(rate_limit_mfa_email_otp_client_ip=value)
+
+
 def test_configured_builder_preserves_injected_limiter_and_worker_is_inert(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

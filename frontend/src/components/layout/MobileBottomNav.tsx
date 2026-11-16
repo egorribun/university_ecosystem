@@ -205,10 +205,12 @@ export default function MobileBottomNav() {
         {items.map((it) => {
           const isActive = isNavSectionActive(pathname, it.to)
           const Icon = it.icon
+          // Native view-transition snapshots can intercept subsequent taps.
           return (
             <Link
               key={it.to}
               to={it.to}
+              viewTransition={false}
               data-tab-key={it.to}
               onPointerDown={markIfFromBottom}
               onClick={(e) => {

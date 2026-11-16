@@ -108,6 +108,17 @@ services:
       # account. Reserve enough room for that burst; outside this overlay the
       # application default is unchanged.
       RATE_LIMIT_SENSITIVE: "120/minute"
+      # Pre-login MFA verify and resend have no access token yet, so their
+      # dedicated 5/minute budget is keyed by the shared client IP and the
+      # desktop and mobile MFA specs exhaust it together. The OTP resend
+      # cooldown still returns its own 429; outside this overlay the
+      # application default is unchanged.
+      RATE_LIMIT_AUTH_MFA: "60/minute"
+      # Email OTP issue, verify and resend also hold a per-client-IP budget of
+      # five per OTP lifetime. Every email OTP spec in both projects shares the
+      # stand's one IP, so the hosted run returned 429 to later verifications.
+      # The per-user budget and the application default are unchanged.
+      RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP: "60"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       SMTP_SECURITY: none

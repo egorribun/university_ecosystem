@@ -5,10 +5,219 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import process from "node:process"
 import test from "node:test"
+import { setImmediate, setTimeout } from "node:timers"
 import { fileURLToPath, URL } from "node:url"
 
 const helperUrl = new URL("./http-status-diagnostic.ts", import.meta.url)
 const profileHelperUrl = new URL("./profile-save-diagnostic.ts", import.meta.url)
+
+test("MFA operation records keep attempt identity and bounded rate-limit metadata", async () => {
+  const module = await import(helperUrl.href + "?mfa-operation-red")
+  const output = []
+  const scope = module.createLiveOperationScope(
+    { project: "mobile", source: "email-otp-mfa-login.live.spec.ts", line: 378, retry: 1 },
+    (line) => output.push(line)
+  )
+  scope.begin("email-mfa-verification-accept", "body").finish(429, 0, 1, 12, {
+    retryAfterSeconds: 321,
+    limiterSignature: "domain-signature",
+  })
+  assert.deepEqual(output, [
+    "UE_LIVE_HTTP_OPERATION_V3 project=mobile source=email-otp-mfa-login.live.spec.ts line=378 retry=1 ordinal=1 phase=body operation=email-mfa-verification-accept outcome=response status=429 elapsed_ms=12 saturated=0 requests=0 responses=1 retry_after_seconds=321 limiter_signature=domain-signature\n",
+  ])
+})
+
+test("MFA observation classifies a response without delaying the caller or exposing it", async () => {
+  let observer
+  try {
+    observer = await import(new URL("./email-mfa-operation-observer.ts", import.meta.url).href)
+  } catch (error) {
+    if (error.code !== "ERR_MODULE_NOT_FOUND") throw error
+  }
+  assert.equal(typeof observer?.observeEmailMfaOperation, "function")
+  const { parseLiveRateLimitRetryAfterForDiagnostic } = await import(helperUrl.href)
+  const finished = []
+  const operation = { finish: (...args) => finished.push(args) }
+  const result = observer.observeEmailMfaOperation(
+    operation,
+    {
+      status: () => 429,
+      headers: () => ({ "retry-after": "321", private: "must-not-appear" }),
+      json: async () => ({ detail: "MFA verification failed", private: "must-not-appear" }),
+    },
+    12,
+    "email-mfa-verification-accept",
+    parseLiveRateLimitRetryAfterForDiagnostic
+  )
+  assert.equal(result, undefined)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(finished, [
+    [429, 0, 1, 12, { retryAfterSeconds: 321, limiterSignature: "domain-signature" }],
+  ])
+  assert.doesNotMatch(JSON.stringify(finished), /must-not-appear/u)
+})
+
+test("MFA operation serializer rejects an unsupported login provenance claim", async () => {
+  const module = await import(helperUrl.href + "?mfa-operation-invalid-login")
+  const output = []
+  const scope = module.createLiveOperationScope(
+    { project: "desktop", source: "email-otp-mfa-login.live.spec.ts", line: 378, retry: 0 },
+    (line) => output.push(line)
+  )
+  scope.begin("email-mfa-enabled-login", "body").finish(429, 0, 1, 1, {
+    retryAfterSeconds: 1,
+    limiterSignature: "domain-signature",
+  })
+  assert.deepEqual(output, ["UE_LIVE_HTTP_OPERATION_V2 completeness=unavailable\n"])
+})
+
+test("MFA operation serializer accepts only the owned scenario and closed scalar values", async () => {
+  const module = await import(helperUrl.href + "?mfa-operation-boundaries")
+  const output = []
+  const emit = (line) => output.push(line)
+  const identity = {
+    project: "desktop",
+    source: "email-otp-mfa-login.live.spec.ts",
+    line: 378,
+    retry: 0,
+  }
+  const scope = module.createLiveOperationScope(identity, emit)
+  for (const operation of [
+    "email-mfa-verification-start",
+    "email-mfa-verification-accept",
+    "email-mfa-enable-start",
+    "email-mfa-enable-accept",
+    "email-mfa-enabled-login",
+    "email-mfa-login-accept",
+  ]) {
+    scope.begin(operation, "body").finish(200, 0, 1, 1)
+  }
+  scope.begin("email-mfa-login-accept", "body").finish(429, 0, 1, 1, {
+    retryAfterSeconds: null,
+    limiterSignature: "unavailable",
+  })
+  scope.begin("email-mfa-login-accept", "body").finish(429, 0, 1, 1, {
+    retryAfterSeconds: 601,
+    limiterSignature: "private-value",
+  })
+  scope.begin("email-mfa-login-accept", "setup").finish(200, 0, 1, 1)
+  module
+    .createLiveOperationScope({ ...identity, source: "auth-roles.live.spec.ts", line: 33 }, emit)
+    .begin("email-mfa-login-accept", "body")
+    .finish(200, 0, 1, 1)
+  const rows = output.filter((line) => line.startsWith("UE_LIVE_HTTP_OPERATION_V3 "))
+  assert.equal(rows.length, 7)
+  assert.ok(
+    rows
+      .slice(0, 6)
+      .every((line) => line.endsWith("retry_after_seconds=none limiter_signature=not-applicable\n"))
+  )
+  assert.ok(rows[6].endsWith("retry_after_seconds=invalid limiter_signature=unavailable\n"))
+  assert.ok(output.some((line) => line.endsWith("completeness=unavailable\n")))
+  assert.ok(output.some((line) => line.endsWith("completeness=invalid-scope\n")))
+  assert.ok(output.every((line) => !line.includes("private-value")))
+})
+
+test("MFA response observation handles success, alternate details, and unavailable values", async () => {
+  const { observeEmailMfaOperation } = await import(
+    new URL("./email-mfa-operation-observer.ts", import.meta.url).href
+  )
+  const { parseLiveRateLimitRetryAfterForDiagnostic } = await import(helperUrl.href)
+  const results = []
+  const operation = { finish: (...values) => results.push(values) }
+  const observe = (kind, observed) =>
+    observeEmailMfaOperation(
+      operation,
+      observed,
+      10,
+      kind,
+      parseLiveRateLimitRetryAfterForDiagnostic
+    )
+  observe("email-mfa-verification-start", {
+    status: () => 200,
+    headers: () => {
+      throw new Error("private-value")
+    },
+    json: () => {
+      throw new Error("private-value")
+    },
+  })
+  observe("email-mfa-enable-start", {
+    status: () => 429,
+    headers: () => ({ "retry-after": "600" }),
+    json: async () => ({ detail: "MFA request rejected", private: "private-value" }),
+  })
+  observe("email-mfa-enable-accept", {
+    status: () => 429,
+    headers: () => ({ "retry-after": "601" }),
+    json: async () => ({ detail: "different", private: "private-value" }),
+  })
+  observe("email-mfa-login-accept", {
+    status: () => 429,
+    headers: () => {
+      throw new Error("private-value")
+    },
+    json: async () => {
+      throw new Error("private-value")
+    },
+  })
+  observe("email-mfa-enabled-login", {
+    status: () => 429,
+    headers: () => ({ "retry-after": "1" }),
+    json: () => {
+      throw new Error("must not read login body")
+    },
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(results, [
+    [200, 0, 1, 10],
+    [429, 0, 1, 10, { retryAfterSeconds: 1, limiterSignature: "unavailable" }],
+    [429, 0, 1, 10, { retryAfterSeconds: 600, limiterSignature: "domain-signature" }],
+    [429, 0, 1, 10, { retryAfterSeconds: null, limiterSignature: "other" }],
+    [429, 0, 1, 10, { retryAfterSeconds: null, limiterSignature: "unavailable" }],
+  ])
+  assert.doesNotMatch(JSON.stringify(results), /private-value/u)
+  assert.doesNotThrow(() =>
+    observeEmailMfaOperation(
+      {
+        finish: () => {
+          throw new Error("private-value")
+        },
+      },
+      { status: () => 200 },
+      10,
+      "email-mfa-login-accept",
+      parseLiveRateLimitRetryAfterForDiagnostic
+    )
+  )
+})
+
+test("MFA response observation times out without delaying or later revising the result", async () => {
+  const { observeEmailMfaOperation } = await import(
+    new URL("./email-mfa-operation-observer.ts", import.meta.url).href
+  )
+  const { parseLiveRateLimitRetryAfterForDiagnostic } = await import(helperUrl.href)
+  let resolveBody
+  const body = new Promise((resolve) => {
+    resolveBody = resolve
+  })
+  const results = []
+  observeEmailMfaOperation(
+    { finish: (...values) => results.push(values) },
+    { status: () => 429, headers: () => ({ "retry-after": "5" }), json: () => body },
+    10,
+    "email-mfa-login-accept",
+    parseLiveRateLimitRetryAfterForDiagnostic
+  )
+  assert.deepEqual(results, [])
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  assert.deepEqual(results, [
+    [429, 0, 1, 10, { retryAfterSeconds: 5, limiterSignature: "unavailable" }],
+  ])
+  resolveBody({ detail: "MFA verification failed" })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(results.length, 1)
+})
 
 function reportInChild(calls) {
   const result = spawnSync(

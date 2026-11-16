@@ -246,6 +246,7 @@ test("admin page-error diagnostics are scoped to these exact scenarios and prese
       "auth-roles",
       "map-gesture",
       "schedule-grid-keyboard",
+      "footer-navigation",
     ],
     "the emitted check label is the exact finite union"
   )

@@ -29,6 +29,8 @@ import networkpolicy_runtime_real_ws as ws
 
 SHA = "a" * 40
 IMAGE = f"ue-netpol-ws:{SHA}-123456abcdef"
+WS_UID_1 = "11111111-1111-4111-8111-111111111111"
+WS_UID_2 = "22222222-2222-4222-8222-222222222222"
 
 
 @pytest.fixture(scope="module")
@@ -428,7 +430,7 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
     copies = [
         {
             "name": "ws-1",
-            "uid": "uid-1",
+            "uid": WS_UID_1,
             "ip": "10.1.2.3",
             "container_id": "containerd://a",
             "image_id": "sha256:a",
@@ -436,7 +438,7 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         },
         {
             "name": "ws-2",
-            "uid": "uid-2",
+            "uid": WS_UID_2,
             "ip": "10.1.2.4",
             "container_id": "containerd://b",
             "image_id": "sha256:b",
@@ -452,12 +454,29 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         "kubectl": Mock(),
         "run_command": Mock(return_value=SimpleNamespace(stdout='{"result":"ready"}')),
         "replicas": Mock(
-            side_effect=[copies, copy.deepcopy(copies), copy.deepcopy(copies)]
+            side_effect=[
+                copies,
+                copy.deepcopy(copies),
+                copy.deepcopy(copies),
+                copy.deepcopy(copies),
+            ]
         ),
         "authorized_source": Mock(),
         "retire_ws_fixture": Mock(),
         "prove_ws_service": Mock(
             return_value={"verdict": "pass", "service_uid": "service-uid"}
+        ),
+        "prove_restricted_scrapes": Mock(
+            return_value=[
+                {
+                    "source": source,
+                    "source_uid": f"{source}-uid",
+                    "replica_uid": replica["uid"],
+                    "verdict": "pass",
+                }
+                for source in ws.RESTRICTED_SCRAPE_SOURCES
+                for replica in copies
+            ]
         ),
         "run_in_pod": Mock(
             side_effect=[
@@ -469,6 +488,27 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
     }
     for name, mock in mocks.items():
         monkeypatch.setattr(ws, name, mock)
+    prometheus = Mock(
+        return_value={
+            "verdict": "pass",
+            "source": {
+                "namespace": "monitoring",
+                "name": "netpol-prom-123456abcdef",
+                "uid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "image_id": "sha256:" + "a" * 64,
+                "container_id": "containerd://" + "b" * 64,
+            },
+            "checks": [
+                {"replica_uid": replica["uid"], "verdict": "pass"} for replica in copies
+            ],
+        }
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "networkpolicy_runtime_real_prometheus",
+        SimpleNamespace(prove_actual_prometheus=prometheus),
+    )
+    mocks["prove_actual_prometheus"] = prometheus
     return {"probe-a": rendered}, pods, copies, mocks
 
 
@@ -495,7 +535,7 @@ def test_phase_scrapes_each_unchanged_replica_and_does_not_emit_private_details(
     assert [check["replica_uid"] for check in result["checks"]] == [
         row["uid"] for row in copies
     ]
-    assert mocks["authorized_source"].call_count == 2
+    assert mocks["authorized_source"].call_count == 4
     mocks["retire_ws_fixture"].assert_called_once_with(
         rendered[0], pods["a-ws"], "python-fixture"
     )
@@ -504,6 +544,23 @@ def test_phase_scrapes_each_unchanged_replica_and_does_not_emit_private_details(
     assert call.args == (rendered[0], declaration, copies, pods["ingress"])
     assert call.kwargs == {"progress": {"stage": "replica-recheck"}}
     assert result["service"] == {"verdict": "pass", "service_uid": "service-uid"}
+    assert result["python_scrape"] == {
+        "verdict": "pass",
+        "source": "Prometheus-labelled Python probe",
+    }
+    source = result["prometheus"]["source"]
+    assert source == {
+        "namespace": "monitoring",
+        "name": "netpol-prom-123456abcdef",
+        "uid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }
+    assert (
+        result["prometheus"]["checks"]
+        == mocks["prove_actual_prometheus"].return_value["checks"]
+    )
+    assert "image_id" not in source and "container_id" not in source
+    mocks["prove_actual_prometheus"].assert_called_once_with(ROOT, rendered[0], copies)
+    assert mocks["replicas"].call_count == 4
     assert mocks["run_in_pod"].call_args_list[0].args[:2] == (
         pods["a-backend"],
         ws.VERIFY_JWKS,
@@ -529,6 +586,108 @@ def test_phase_rejects_jwks_target_drift_before_creating_fixtures(
     result = run_phase(tree, pods)
     assert result["verdict"] == "inconclusive" and result["stage"] == "render"
     mocks["apply_objects"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "inconclusive",
+        "exception",
+        "missing-check",
+        "wrong-uid",
+        "bad-source",
+        "not-pass",
+        "source-type",
+        "source-value",
+        "image-id",
+        "container-id",
+        "invalid-check",
+        "extra-field",
+        "source-drift",
+        "replica-drift",
+    ],
+)
+def test_real_prometheus_is_required_and_prior_positive_evidence_is_retained(
+    rendered, declaration, monkeypatch, fault
+):
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    helper = mocks["prove_actual_prometheus"]
+    if fault == "inconclusive":
+        helper.return_value = {"verdict": "inconclusive", "stage": "helper-stage"}
+    elif fault == "exception":
+        helper.side_effect = ValueError("private exception data")
+    elif fault == "missing-check":
+        helper.return_value["checks"].pop()
+    elif fault == "wrong-uid":
+        helper.return_value["checks"][0]["replica_uid"] = "wrong"
+    elif fault == "bad-source":
+        helper.return_value["source"]["namespace"] = "unrelated"
+    elif fault == "not-pass":
+        helper.return_value["verdict"] = "inconclusive"
+    elif fault == "source-type":
+        helper.return_value["source"]["uid"] = None
+    elif fault == "source-value":
+        helper.return_value["source"]["uid"] = "invalid\nvalue"
+    elif fault == "image-id":
+        helper.return_value["source"]["image_id"] = "not-an-image-id"
+    elif fault == "container-id":
+        helper.return_value["source"]["container_id"] = "not-a-container-id"
+    elif fault == "invalid-check":
+        helper.return_value["checks"][0]["replica_uid"] = None
+    elif fault == "extra-field":
+        helper.return_value["checks"][0]["raw"] = "private endpoint response"
+    elif fault == "source-drift":
+        mocks["authorized_source"].side_effect = [
+            None,
+            None,
+            None,
+            ValueError("private exception data"),
+        ]
+    else:
+        altered = copy.deepcopy(copies)
+        altered[0]["restarts"] = 1
+        mocks["replicas"].side_effect = [copies, copies, copies, altered]
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "real-prometheus"
+    assert result["prometheus"] == {"verdict": "inconclusive"}
+    assert result["python_scrape"]["verdict"] == "pass"
+    assert result["service"]["verdict"] == "pass"
+    assert all(check["verdict"] == "pass" for check in result["checks"])
+    assert "private" not in json.dumps(result)
+    assert "10.1.2." not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "input",
+        "targets-before",
+        "create-config",
+        "create-policy",
+        "create-pod",
+        "pod-ready",
+        "source-before",
+        "scrape",
+        "source-after",
+        "targets-after",
+        "private diagnostic",
+    ],
+)
+def test_prometheus_failure_stage_is_only_recorded_from_the_fixed_enum(
+    rendered, declaration, monkeypatch, stage
+):
+    tree, pods, _, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    mocks["prove_actual_prometheus"].return_value = {
+        "verdict": "inconclusive",
+        "stage": stage,
+    }
+    result = run_phase(tree, pods)
+    expected = {"verdict": "inconclusive"}
+    if stage in ws.PROMETHEUS_FAILURE_STAGES:
+        expected["stage"] = stage
+    assert result["prometheus"] == expected
+    assert "private diagnostic" not in json.dumps(result)
 
 
 @pytest.mark.parametrize(
@@ -588,6 +747,7 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
         assert result["substage"] == "service-start"
     if fault == "service_replica":
         assert result["substage"] == "replica-recheck"
+        assert "service" not in result
     assert "private exception data" not in json.dumps(result)
     assert "revocation-password" not in json.dumps(result)
     if fault not in {"retire_ws_fixture", "prove_ws_service", "service_replica"}:
@@ -720,7 +880,27 @@ def runner_fixture(monkeypatch, tmp_path, fp_result, ws_result, interrupt=False)
         monkeypatch.setattr(runner, name, Mock(return_value=value))
     fp = Mock(return_value={"verdict": fp_result})
     monkeypatch.setattr(real_fp, "actual_processor_phase", fp)
-    phase = Mock(return_value={"verdict": ws_result})
+    ws_receipt = {"verdict": ws_result}
+    if ws_result == "pass":
+        ws_receipt.update(
+            {
+                "python_scrape": {"verdict": "pass"},
+                "replicas": [{"uid": WS_UID_1}, {"uid": WS_UID_2}],
+                "prometheus": {
+                    "verdict": "pass",
+                    "source": {
+                        "namespace": "monitoring",
+                        "name": "netpol-prom-123456abcdef",
+                        "uid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    },
+                    "checks": [
+                        {"replica_uid": WS_UID_1, "verdict": "pass"},
+                        {"replica_uid": WS_UID_2, "verdict": "pass"},
+                    ],
+                },
+            }
+        )
+    phase = Mock(return_value=ws_receipt)
     if interrupt:
 
         def interrupted(*_args, **_kwargs):
@@ -759,9 +939,106 @@ def test_runner_preserves_matrix_and_distinguishes_actual_phase(
     )
     assert phase.called == (fp_result == "pass")
     outstanding = {item["check"] for item in receipt["not_run"]}
-    assert "actual ws-hub restricted peers and Prometheus server" in outstanding
+    assert "actual ws-hub restricted peers" in outstanding
+    assert ("actual Prometheus server" in outstanding) == (expected != "pass")
     assert "actual ingress controller and public HTTP route" in outstanding
     assert ("metrics exposition content" in outstanding) == (expected != "pass")
+
+
+def test_runner_retains_earlier_evidence_after_inconclusive_real_prometheus(
+    monkeypatch, tmp_path
+):
+    args, phase = runner_fixture(monkeypatch, tmp_path, "pass", "inconclusive")
+    phase.return_value = {
+        "verdict": "inconclusive",
+        "stage": "real-prometheus",
+        "python_scrape": {"verdict": "pass"},
+        "service": {"verdict": "pass"},
+        "prometheus": {"verdict": "inconclusive"},
+    }
+    assert runner.main() == 1
+    receipt = json.loads(args.receipt.read_text())
+    outstanding = {item["check"] for item in receipt["not_run"]}
+    assert "metrics exposition content" not in outstanding
+    assert {
+        "actual Prometheus server",
+        "actual ws-hub restricted peers",
+        "actual ingress controller and public HTTP route",
+    } <= outstanding
+    assert receipt["real_ws_hub"]["service"]["verdict"] == "pass"
+
+
+@pytest.mark.parametrize("prometheus", [None, {"verdict": "inconclusive"}])
+def test_runner_downgrades_pass_without_real_prometheus_evidence(
+    monkeypatch, tmp_path, prometheus
+):
+    args, phase = runner_fixture(monkeypatch, tmp_path, "pass", "pass")
+    phase.return_value["prometheus"] = prometheus
+    assert runner.main() == 1
+    receipt = json.loads(args.receipt.read_text())
+    assert receipt["real_ws_hub"]["verdict"] == "inconclusive"
+    assert receipt["real_ws_hub"]["stage"] == "real-prometheus"
+    assert "actual Prometheus server" in {item["check"] for item in receipt["not_run"]}
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing-source",
+        "missing-row",
+        "wrong-uid",
+        "extra-source",
+        "missing-replicas",
+        "duplicate-replicas",
+    ],
+)
+def test_runner_rejects_malformed_pass_projections(monkeypatch, tmp_path, fault):
+    args, phase = runner_fixture(monkeypatch, tmp_path, "pass", "pass")
+    result = phase.return_value
+    if fault == "missing-source":
+        del result["prometheus"]["source"]
+    elif fault == "missing-row":
+        result["prometheus"]["checks"].pop()
+    elif fault == "wrong-uid":
+        result["prometheus"]["checks"][0]["replica_uid"] = "other"
+    elif fault == "extra-source":
+        result["prometheus"]["source"]["image_id"] = "unexpected"
+    elif fault == "missing-replicas":
+        del result["replicas"]
+    else:
+        result["replicas"][1]["uid"] = WS_UID_1
+        result["prometheus"]["checks"][1]["replica_uid"] = WS_UID_1
+    assert runner.main() == 1
+    receipt = json.loads(args.receipt.read_text())
+    assert receipt["real_ws_hub"]["verdict"] == "inconclusive"
+    assert "actual Prometheus server" in {item["check"] for item in receipt["not_run"]}
+
+
+def test_prometheus_test_path_matches_the_workflow_catalog():
+    import yaml
+
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/k8s-networkpolicy-runtime.yml").read_text()
+    )
+    guard = workflow[True]["pull_request"]
+    assert "tests/test_networkpolicy_runtime_real_prometheus.py" in guard["paths"]
+    assert "docker-compose.full.yml" in guard["paths"]
+    catalog = json.loads((ROOT / "quality/ci-check-catalog.json").read_text())
+    item = next(
+        row
+        for row in catalog["workflows"]
+        if row["path"] == ".github/workflows/k8s-networkpolicy-runtime.yml"
+    )
+    assert (
+        json.loads(
+            next(
+                event["guard"]
+                for event in item["events"]
+                if event["event"] == "pull_request"
+            )
+        )
+        == guard
+    )
 
 
 def test_interrupted_ws_phase_preserves_nonpositive_checkpoint(monkeypatch, tmp_path):
@@ -2133,3 +2410,104 @@ def test_service_proof_composes_real_helpers_with_mocked_transport(
     assert sum(argv[1] == "create" for argv, _ in calls) == 1
     assert all(kwargs["timeout"] <= 30 for _, kwargs in calls)
     probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=10)
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        ("served", "served"),
+        (TimeoutError("timed out"), "dropped"),
+        (ConnectionRefusedError(), "refused"),
+        (OSError("unreachable"), "error"),
+    ],
+)
+def test_restricted_scrape_only_reports_a_timeout_as_dropped(
+    monkeypatch, capsys, tmp_path, outcome, expected
+):
+    connection = Mock()
+    if isinstance(outcome, BaseException):
+        connection.request.side_effect = outcome
+    else:
+        connection.getresponse.return_value.read.return_value = b"#"
+    monkeypatch.setattr(http.client, "HTTPConnection", Mock(return_value=connection))
+    monkeypatch.setattr(sys, "argv", ["probe", "10.1.2.3"])
+    program = tmp_path / "restricted-scrape.py"
+    program.write_text(ws.RESTRICTED_SCRAPE, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": expected}
+    http.client.HTTPConnection.assert_called_once_with("10.1.2.3", 9108, timeout=3)
+    connection.close.assert_called_once_with()
+
+
+def test_restricted_scrapes_cover_every_unselected_source_and_actual_replica(
+    monkeypatch,
+):
+    pods = {
+        key: ws.Pod("ns-" + key, "pod-" + key, uid=key + "-uid")
+        for key in ws.RESTRICTED_SCRAPE_SOURCES
+    }
+    replicas = [
+        {"uid": WS_UID_1, "ip": "10.1.2.3"},
+        {"uid": WS_UID_2, "ip": "10.1.2.4"},
+    ]
+    probe = Mock(return_value={"result": "dropped"})
+    monkeypatch.setattr(ws, "run_in_pod", probe)
+
+    checks = ws.prove_restricted_scrapes(pods, replicas)
+
+    assert ws.RESTRICTED_SCRAPE_SOURCES == ("unrelated", "monitoring-other", "ingress")
+    assert [(check["source"], check["replica_uid"]) for check in checks] == [
+        (source, replica["uid"])
+        for source in ws.RESTRICTED_SCRAPE_SOURCES
+        for replica in replicas
+    ]
+    assert all(check["verdict"] == "pass" for check in checks)
+    assert all(check["source_uid"] == check["source"] + "-uid" for check in checks)
+    assert [call.args for call in probe.call_args_list] == [
+        (pods[source], ws.RESTRICTED_SCRAPE, [replica["ip"]])
+        for source in ws.RESTRICTED_SCRAPE_SOURCES
+        for replica in replicas
+    ]
+    assert all(call.kwargs == {"timeout": 8} for call in probe.call_args_list)
+    assert "10.1.2.3" not in json.dumps(checks)
+
+
+@pytest.mark.parametrize("observed", ["served", "refused", "error"])
+def test_restricted_scrape_that_reaches_a_replica_is_inconclusive(
+    monkeypatch, observed
+):
+    pods = {key: ws.Pod("ns", key, uid=key) for key in ws.RESTRICTED_SCRAPE_SOURCES}
+    replicas = [{"uid": WS_UID_1, "ip": "10.1.2.3"}]
+    monkeypatch.setattr(
+        ws,
+        "run_in_pod",
+        Mock(
+            side_effect=[
+                {"result": "dropped"},
+                {"result": observed},
+                {"result": "dropped"},
+            ]
+        ),
+    )
+    checks = ws.prove_restricted_scrapes(pods, replicas)
+    assert [check["verdict"] for check in checks] == ["pass", "inconclusive", "pass"]
+
+
+def test_phase_records_dropped_restricted_scrapes_and_fails_closed(
+    rendered, declaration, monkeypatch
+):
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "pass"
+    assert (
+        result["restricted_scrapes"] == mocks["prove_restricted_scrapes"].return_value
+    )
+    mocks["prove_restricted_scrapes"].assert_called_once_with(pods, copies)
+
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    failing = mocks["prove_restricted_scrapes"].return_value
+    failing[0] = {**failing[0], "verdict": "inconclusive"}
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "restricted-scrape"
+    mocks["retire_ws_fixture"].assert_not_called()

@@ -43,6 +43,20 @@ class RateLimitSettingsMixin:
 
     auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
     auth_lockout_history_minutes: int = 1_440
+    # Email OTP issue, verify and resend each allow this many actions per
+    # client IP within one OTP lifetime; the per-user budget stays at five.
+    # Operators behind a shared NAT, and the owned live stand whose browsers
+    # share one IP, may raise it.
+    rate_limit_mfa_email_otp_client_ip: int = 5
+
+    @field_validator("rate_limit_mfa_email_otp_client_ip")
+    @classmethod
+    def _validate_rate_limit_mfa_email_otp_client_ip(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError(
+                "RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP must be greater than zero"
+            )
+        return value
 
     @field_validator("rate_limit_storage_backend")
     @classmethod

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
@@ -89,6 +91,12 @@ vi.mock("framer-motion", () => {
       if (motionInitial !== undefined) filteredProps["data-motion-initial"] = String(motionInitial)
       if (motionAnimate !== undefined) filteredProps["data-motion-animate"] = String(motionAnimate)
       if (motionExit !== undefined) filteredProps["data-motion-exit"] = String(motionExit)
+      const motionStyle = filteredProps.style as Record<string, unknown> | undefined
+      if (motionStyle !== undefined && "x" in motionStyle) {
+        const { x: motionX, ...domStyle } = motionStyle
+        filteredProps["data-motion-x"] = String(motionX)
+        filteredProps.style = domStyle
+      }
 
       const Element = Tag as React.ElementType
       return (
@@ -938,6 +946,30 @@ describe("NotificationsBell", () => {
     })
   })
 
+  it("centres the phone panel on its first open", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 390,
+    })
+    try {
+      useNotificationsMock.mockReturnValue(baseState())
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+      const dropdown = screen.getByRole("dialog", { name: "Notifications" })
+      expect(dropdown).toHaveAttribute("data-motion-x", "-50%")
+      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        writable: true,
+        value: 1024,
+      })
+    }
+  })
+
   it("installs and removes the Escape listener only while open", async () => {
     useNotificationsMock.mockReturnValue(baseState())
     const addEventListener = vi.spyOn(document, "addEventListener")
@@ -1137,15 +1169,16 @@ describe("NotificationsBell", () => {
     }
     expect(variants.hidden).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
     expect(variants.visible).toMatchObject({ opacity: 1, y: 0, scale: 1 })
-    expect(variants.hidden.x).toBe(0)
-    expect(variants.visible.x).toBe(0)
+    expect(variants.hidden).not.toHaveProperty("x")
+    expect(variants.visible).not.toHaveProperty("x")
+    expect(dropdown).toHaveAttribute("data-motion-x", "0")
     expect(variants.visible.transition.duration).toBe(0)
     expect(variants.visible.transition).toMatchObject({
       ease: "easeOut",
       staggerChildren: 0.05,
     })
     expect(variants.exit).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
-    expect(variants.exit.x).toBe(0)
+    expect(variants.exit).not.toHaveProperty("x")
     expect(variants.exit.transition.duration).toBe(0)
     expect(variants.exit.transition.ease).toBe("easeIn")
   })
@@ -1221,9 +1254,10 @@ describe("NotificationsBell", () => {
         visible: { x: number | string }
         exit: { x: number | string }
       }
-      expect(variants.hidden.x).toBe("-50%")
-      expect(variants.visible.x).toBe("-50%")
-      expect(variants.exit.x).toBe("-50%")
+      expect(variants.hidden).not.toHaveProperty("x")
+      expect(variants.visible).not.toHaveProperty("x")
+      expect(variants.exit).not.toHaveProperty("x")
+      expect(dropdown).toHaveAttribute("data-motion-x", "-50%")
     })
 
     it("recomputes position when the window resizes", async () => {
@@ -1373,5 +1407,31 @@ describe("NotificationsBell", () => {
       // onSuccess callback flips isOpen → false, unmounting the dropdown
       expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument()
     })
+  })
+})
+
+describe("NotificationsBell stacking layer", () => {
+  const read = (path: string): string =>
+    readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/gu, "\n")
+  const layers = new Map(
+    [...read("src/styles/tokens/primitives.css").matchAll(/--z-([a-z]+): (-?\d+);/gu)].map(
+      ([, name, value]) => [name, Number(value)]
+    )
+  )
+
+  it("emits the popover layer so the fixed panel stays above page content", () => {
+    // Without the utility the class compiled to nothing and the phone
+    // notifications panel sat under footer content (z-surface).
+    expect(read("src/styles/tailwind.css")).toContain(
+      "@utility z-popover {\n  z-index: var(--z-popover);\n}"
+    )
+    expect(read("src/components/feedback/NotificationsBell.tsx")).toContain(
+      '"fixed z-popover origin-top-right"'
+    )
+    const popover = layers.get("popover") ?? Number.NaN
+    expect(popover).toBe(1200)
+    expect(popover).toBeGreaterThan(layers.get("surface") ?? Number.POSITIVE_INFINITY)
+    expect(popover).toBeGreaterThan(layers.get("dropdown") ?? Number.POSITIVE_INFINITY)
+    expect(popover).toBeLessThan(layers.get("modal") ?? Number.NEGATIVE_INFINITY)
   })
 })

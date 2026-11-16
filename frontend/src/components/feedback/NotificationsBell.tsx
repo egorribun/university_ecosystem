@@ -81,7 +81,10 @@ export default function NotificationsBell() {
   // closed state empty avoids carrying an object that can never be observed
   // by users or assistive technology before the positioning effect runs.
   const [coords, setCoords] = useState<{ top: number; right: number | null }>()
-  const [isMobile, setIsMobile] = useState<boolean | null>(null)
+  // Read the breakpoint before the first open so the panel never renders with
+  // the desktop offset on a phone. A server render has no innerWidth, so the
+  // comparison is false there; the panel is closed and not rendered anyway.
+  const [isMobile, setIsMobile] = useState(() => globalThis.innerWidth < 640)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Update position when opening
@@ -135,13 +138,11 @@ export default function NotificationsBell() {
       opacity: 0,
       y: -10,
       scale: 0.95,
-      x: isMobile ? "-50%" : 0,
     },
     visible: {
       opacity: 1,
       y: 0,
       scale: 1,
-      x: isMobile ? "-50%" : 0,
       transition: {
         duration: prefersReducedMotion ? 0 : 0.2,
         ease: "easeOut",
@@ -152,7 +153,6 @@ export default function NotificationsBell() {
       opacity: 0,
       y: -10,
       scale: 0.95,
-      x: isMobile ? "-50%" : 0,
       transition: { duration: prefersReducedMotion ? 0 : 0.15, ease: "easeIn" },
     },
   }
@@ -207,7 +207,7 @@ export default function NotificationsBell() {
                   variants={listVariants}
                   className={cn(
                     "fixed z-popover origin-top-right",
-                    // Mobile styles: we handle translation in framer motion to avoid conflict
+                    // Mobile styles: the -50% translation is a motion style to avoid conflicts
                     "max-sm:left-1/2",
                     // Desktop styles
                     "sm:w-96",
@@ -215,6 +215,10 @@ export default function NotificationsBell() {
                     "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/[calc(var(--opacity-faint)*100%)]"
                   )}
                   style={{
+                    // The centring offset lives in style, not in the variants:
+                    // variants keep the value from the first open, so a later
+                    // breakpoint read would leave the phone panel half off-screen.
+                    x: isMobile ? "-50%" : 0,
                     top: coords?.top ?? 0,
                     right: coords?.right ?? undefined,
                     width: isMobile ? "calc(100vw - 2rem)" : undefined,

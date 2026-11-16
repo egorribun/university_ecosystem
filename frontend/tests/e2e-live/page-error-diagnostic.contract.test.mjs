@@ -708,3 +708,160 @@ test("page error diagnostics cannot replace an assertion when stdout writing fai
     ""
   )
 })
+
+test("footer navigation page errors require the exact project, file, and test title", () => {
+  const file = "/workspace/frontend/tests/e2e-live/footer-bottom-navigation.live.spec.ts"
+  const title = "bottom navigation fits phones and the navbar drawer works at the tablet boundary"
+  const childSource = `
+    import { isLiveFooterNavigationScenario } from ${JSON.stringify(helperUrl.href)};
+    const file = ${JSON.stringify(file)};
+    const title = ${JSON.stringify(title)};
+    const privateValue = { toString() { throw new Error("private-value") } };
+    console.log(JSON.stringify([
+      isLiveFooterNavigationScenario("desktop", file, title),
+      isLiveFooterNavigationScenario("mobile", file.replaceAll("/", "\\\\"), title),
+      isLiveFooterNavigationScenario("private-project", file, title),
+      isLiveFooterNavigationScenario("desktop", file + ".backup", title),
+      isLiveFooterNavigationScenario("desktop", file, title + " private-title"),
+      isLiveFooterNavigationScenario("desktop", privateValue, title),
+      isLiveFooterNavigationScenario("desktop", file, privateValue)
+    ]));
+  `
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], {
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, "")
+  assert.equal(result.stdout, "[true,true,false,false,false,false,false]\n")
+})
+
+test("footer navigation page errors emit only fixed page and error categories", () => {
+  const output = reportInChild(`
+    for (const project of ["desktop", "mobile"]) {
+      const diagnostics = createLivePageErrorDiagnostics();
+      diagnostics.record(new Error("private-message"), "/dashboard", "footer-navigation");
+      diagnostics.record(new TypeError("private-message"), "/events", "footer-navigation");
+      diagnostics.record({ name: "AbortError" }, "/schedule", "footer-navigation");
+      diagnostics.record({ name: "InvalidStateError", get stack() { throw new Error("private-stack") } }, "/profile", "footer-navigation");
+      diagnostics.record(new Error("Minified React error #418; private-token"), "/news", "footer-navigation");
+      diagnostics.record(new RangeError("private-message"), "/login", "footer-navigation");
+      diagnostics.record(new SyntaxError("private-message"), "/news?private-token", "footer-navigation");
+      diagnostics.record(new SyntaxError("private-message"), "/news/", "footer-navigation");
+      diagnostics.report("private-project", "footer-navigation");
+      diagnostics.report(project, "footer-navigation");
+    }
+  `)
+  const expected = ["desktop", "mobile"].flatMap((project) => [
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=dashboard type=error count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=events type=type-error count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=schedule type=abort-error count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=profile type=invalid-state-error count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=news type=react-418 count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=login type=range-error count=1\n`,
+    `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=other type=syntax-error count=2\n`,
+  ])
+  assert.equal(output, expected.join(""))
+  assert.doesNotMatch(output, /private-|UE_LIVE_PAGE_ERROR_DETAIL/u)
+})
+
+test("footer navigation retains the existing error taxonomy and count saturation", () => {
+  const output = reportInChild(`
+    const diagnostics = createLivePageErrorDiagnostics();
+    for (const name of ${JSON.stringify(types.map(([name]) => name))}) {
+      diagnostics.record({ name, message: "private-message" }, "/news", "footer-navigation");
+    }
+    diagnostics.record(new Error("Minified React error #418; private-token"), "/news", "footer-navigation");
+    diagnostics.report("desktop", "footer-navigation");
+  `)
+  const expected = types.map(
+    ([, type]) =>
+      `UE_LIVE_PAGE_ERROR_V1 project=desktop check=footer-navigation page=news type=${type} count=1\n`
+  )
+  expected.push(
+    "UE_LIVE_PAGE_ERROR_V1 project=desktop check=footer-navigation page=news type=react-418 count=1\n"
+  )
+  assert.equal(output, expected.join(""))
+  assert.doesNotMatch(output, /private-|UE_LIVE_PAGE_ERROR_DETAIL/u)
+
+  assert.equal(
+    reportInChild(`
+      const diagnostics = createLivePageErrorDiagnostics();
+      for (let index = 0; index < 1200; index += 1) {
+        diagnostics.record(new TypeError("private-message"), "/events", "footer-navigation");
+      }
+      diagnostics.report("mobile", "footer-navigation");
+      diagnostics.report("mobile", "footer-navigation");
+    `),
+    "UE_LIVE_PAGE_ERROR_V1 project=mobile check=footer-navigation page=events type=type-error count=999\n"
+  )
+})
+
+test("the automatic footer fixture emits only scoped diagnostics and retains the hard error assertion", async (t) => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "ue-footer-diagnostic-"))
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }))
+  const testDir = path.join(temporaryRoot, "tests", "e2e-live")
+  await mkdir(testDir, { recursive: true })
+  const cliPath = fileURLToPath(
+    new URL("../../node_modules/@playwright/test/cli.js", import.meta.url)
+  )
+  const configPath = path.join(temporaryRoot, "playwright.config.mjs")
+  const outputPath = path.join(temporaryRoot, "output")
+  await writeFile(
+    configPath,
+    `export default {
+      testDir: ${JSON.stringify(testDir)}, testMatch: "*.live.spec.ts", reporter: "list",
+      workers: 1, retries: 0, preserveOutput: "never", outputDir: ${JSON.stringify(outputPath)},
+      use: { trace: "off", screenshot: "off", video: "off" },
+      projects: [{ name: "desktop" }, { name: "mobile" }, { name: "private-project" }]
+    }`
+  )
+  await writeFile(path.join(temporaryRoot, "package.json"), JSON.stringify({ type: "module" }))
+  const title = "bottom navigation fits phones and the navbar drawer works at the tablet boundary"
+  const fixtureImport = `
+    import { EventEmitter } from "node:events";
+    import { test as base } from ${JSON.stringify(fileURLToPath(fixtureUrl))};
+    const test = base.extend({
+      ownedSessionCleanup: [async ({}, use) => { await use(); }, { auto: true }],
+      page: async ({}, use) => {
+        const page = new EventEmitter();
+        page.url = () => "https://private.invalid/news?token=private-token#private-fragment";
+        await use(page);
+      },
+    });
+  `
+  const failure = `page.emit("pageerror", Object.assign(new Error("private-message"), { name: "AbortError" }));`
+  await writeFile(
+    path.join(testDir, "footer-bottom-navigation.live.spec.ts"),
+    `${fixtureImport}
+      test(${JSON.stringify(title)}, async ({ page }) => { ${failure} ${failure} });
+      test("different private-title", async ({ page }) => { ${failure} });
+    `
+  )
+  await writeFile(
+    path.join(testDir, "other.live.spec.ts"),
+    `${fixtureImport} test(${JSON.stringify(title)}, async ({ page }) => { ${failure} });`
+  )
+
+  const result = spawnSync(process.execPath, [cliPath, "test", "--config", configPath], {
+    encoding: "utf8",
+    timeout: 30_000,
+    env: {
+      ...process.env,
+      FORCE_COLOR: "0",
+      TEST_PASSWORD: freshPassword(),
+      LIVE_MAILPIT_URL: "http://127.0.0.1:25000",
+    },
+  })
+  assert.equal(result.status, 1, "uncaught page errors must still fail the real fixture")
+  assert.match(result.stdout, /9 failed/u)
+  const records = result.stdout.split("\n").filter((line) => line.startsWith("UE_LIVE_"))
+  assert.deepEqual(
+    records,
+    ["desktop", "mobile"].map(
+      (project) =>
+        `UE_LIVE_PAGE_ERROR_V1 project=${project} check=footer-navigation page=news type=abort-error count=2`
+    )
+  )
+  assert.doesNotMatch(records.join("\n"), /private-|https?:|UE_LIVE_PAGE_ERROR_DETAIL/u)
+  assert.deepEqual(await readdir(outputPath), [".last-run.json"])
+})

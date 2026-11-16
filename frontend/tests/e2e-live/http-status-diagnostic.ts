@@ -359,15 +359,33 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
 }
 
 export type LiveOperationPhase = "setup" | "body" | "cleanup"
-type LiveOperationKind = "auth-login" | "chat-attachment-create"
+export type LiveMfaOperationKind =
+  | "email-mfa-verification-start"
+  | "email-mfa-verification-accept"
+  | "email-mfa-enable-start"
+  | "email-mfa-enable-accept"
+  | "email-mfa-enabled-login"
+  | "email-mfa-login-accept"
+type LiveOperationKind = "auth-login" | "chat-attachment-create" | LiveMfaOperationKind
+export type LiveMfaLimiterSignature = "domain-signature" | "other" | "unavailable"
+export type LiveMfaRateLimitObservation = {
+  retryAfterSeconds: number | null
+  limiterSignature: LiveMfaLimiterSignature
+}
 type LiveOperationIdentity = {
   project: string
   source: string
   line: number
   retry: number
 }
-type LiveOperation = {
-  finish: (status: number | null, requests: number, responses: number, elapsedMs: number) => void
+export type LiveOperation = {
+  finish: (
+    status: number | null,
+    requests: number,
+    responses: number,
+    elapsedMs: number,
+    rateLimit?: LiveMfaRateLimitObservation
+  ) => void
 }
 export type LiveOperationScope = {
   begin: (operation: LiveOperationKind, phase: LiveOperationPhase) => LiveOperation
@@ -378,6 +396,14 @@ let liveOperationEmissions = 0
 const liveOperationMarkers = new Set<string>()
 const MAX_OPERATION_WORKER_ROWS = 104
 const MAX_OPERATION_ATTEMPT_ROWS = 16
+const LIVE_MFA_OPERATIONS: ReadonlySet<string> = new Set([
+  "email-mfa-verification-start",
+  "email-mfa-verification-accept",
+  "email-mfa-enable-start",
+  "email-mfa-enable-accept",
+  "email-mfa-enabled-login",
+  "email-mfa-login-accept",
+])
 const inertLiveOperation: LiveOperation = Object.freeze({
   finish: () => undefined,
 })
@@ -421,12 +447,15 @@ export function createLiveOperationScope(
   return Object.freeze({
     begin(operation: LiveOperationKind, phase: LiveOperationPhase): LiveOperation {
       if (!valid) return inertLiveOperation
+      const isMfa = LIVE_MFA_OPERATIONS.has(operation)
       if (
-        (operation !== "auth-login" && operation !== "chat-attachment-create") ||
+        (operation !== "auth-login" && operation !== "chat-attachment-create" && !isMfa) ||
         (phase !== "setup" && phase !== "body" && phase !== "cleanup") ||
         (operation === "auth-login" && phase === "body") ||
         (operation === "chat-attachment-create" &&
-          (source !== "chat-attachment-isolation.live.spec.ts" || phase !== "body"))
+          (source !== "chat-attachment-isolation.live.spec.ts" || phase !== "body")) ||
+        (isMfa &&
+          (source !== "email-otp-mfa-login.live.spec.ts" || line !== 378 || phase !== "body"))
       ) {
         marker("invalid-scope")
         return inertLiveOperation
@@ -440,7 +469,13 @@ export function createLiveOperationScope(
       const operationOrdinal = ordinal
       let finished = false
       return Object.freeze({
-        finish(status: number | null, requests: number, responses: number, elapsedMs: number) {
+        finish(
+          status: number | null,
+          requests: number,
+          responses: number,
+          elapsedMs: number,
+          rateLimit?: LiveMfaRateLimitObservation
+        ) {
           if (finished) return
           finished = true
           if (
@@ -456,17 +491,47 @@ export function createLiveOperationScope(
             marker("unavailable")
             return
           }
+          let retryAfter = "none"
+          let limiterSignature = "not-applicable"
+          if (isMfa && status === 429) {
+            try {
+              const seconds = rateLimit?.retryAfterSeconds ?? null
+              const signature = rateLimit?.limiterSignature ?? "unavailable"
+              if (
+                (seconds !== null &&
+                  (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 600)) ||
+                (signature !== "domain-signature" &&
+                  signature !== "other" &&
+                  signature !== "unavailable") ||
+                (signature === "domain-signature" && operation === "email-mfa-enabled-login")
+              ) {
+                marker("unavailable")
+                return
+              }
+              retryAfter = seconds === null ? "invalid" : String(seconds)
+              limiterSignature = signature
+            } catch {
+              marker("unavailable")
+              return
+            }
+          } else if (rateLimit !== undefined) {
+            marker("unavailable")
+            return
+          }
           if (liveOperationEmissions >= MAX_OPERATION_WORKER_ROWS) {
             marker("truncated")
             return
           }
           const count = (value: number) => (value > 1 ? "many" : String(value))
           const record =
-            `UE_LIVE_HTTP_OPERATION_V2 project=${project} source=${source} line=${line} ` +
+            `UE_LIVE_HTTP_OPERATION_${isMfa ? "V3" : "V2"} project=${project} source=${source} line=${line} ` +
             `retry=${retry} ordinal=${operationOrdinal} phase=${phase} operation=${operation} ` +
             `outcome=${status === null ? "no-response" : "response"} status=${status ?? "none"} ` +
             `elapsed_ms=${Math.min(120000, Math.floor(elapsedMs))} saturated=${elapsedMs > 120000 ? 1 : 0} ` +
-            `requests=${count(requests)} responses=${count(responses)}\n`
+            `requests=${count(requests)} responses=${count(responses)}` +
+            (isMfa
+              ? ` retry_after_seconds=${retryAfter} limiter_signature=${limiterSignature}\n`
+              : "\n")
           if (record.length > 512 || !/^[\x20-\x7e]+\n$/u.test(record)) {
             marker("unavailable")
             return

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { configureRouterViewTransitions } from "@/app/routerViewTransitions"
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import i18n from "@/i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -181,6 +182,41 @@ describe("MobileBottomNav", () => {
     })
     expect(await screen.findByText("News destination")).toBeInTheDocument()
     expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it("avoids native snapshots for bottom links while preserving other route transitions", async () => {
+    const originalStart = Object.getOwnPropertyDescriptor(document, "startViewTransition")
+    const start = vi.fn((update: () => Promise<void>) => ({
+      ready: Promise.resolve(),
+      updateCallbackDone: Promise.resolve().then(update),
+    }))
+    Object.defineProperty(document, "startViewTransition", { configurable: true, value: start })
+
+    try {
+      const { router } = await renderWithRouter({
+        ui: MobileBottomNav,
+        path: "/dashboard",
+        initialPath: "/dashboard",
+        extraRoutes: [{ path: "/news", Component: () => <div>News destination</div> }],
+      })
+      router.options.defaultViewTransition = true
+      configureRouterViewTransitions(router)
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("link", { name: /news/i }))
+      })
+      expect(await screen.findByText("News destination")).toBeInTheDocument()
+      expect(start).not.toHaveBeenCalled()
+
+      await act(async () => {
+        void router.navigate({ to: "/dashboard" })
+      })
+      expect(await screen.findByRole("navigation", { name: mainNavLabel() })).toBeInTheDocument()
+      expect(start).toHaveBeenCalledOnce()
+    } finally {
+      if (originalStart) Object.defineProperty(document, "startViewTransition", originalStart)
+      else Reflect.deleteProperty(document, "startViewTransition")
+    }
   })
 
   it("treats a trailing slash as the same active section", async () => {

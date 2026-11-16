@@ -5901,12 +5901,15 @@ def _run_live_playwright(
         controller,
         subscription,
         matches,
+        shown,
+        untagged,
         probe,
     ) in push_observations:
         print(
             f"live E2E push project={project} permission={permission} ready={ready} "
             f"state={state} controller={str(controller).lower()} "
-            f"subscription={str(subscription).lower()} matches={matches} probe={probe}",
+            f"subscription={str(subscription).lower()} matches={matches} "
+            f"shown={shown} untagged={str(untagged).lower()} probe={probe}",
             flush=True,
         )
     for record in story_setup_diagnostics:

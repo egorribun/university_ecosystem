@@ -37,13 +37,16 @@ function probeChild({
   subscription = "null",
   subscribe = DEFAULT_SUBSCRIBE,
   phase = "report",
+  notifications = "[]",
 } = {}) {
   const call =
     phase === "subscribe"
       ? "await awaitPushSubscribeWithObservation(Promise.reject(new Error('save failed')), page, 'desktop').catch(() => {});\n"
       : "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n"
   const registration = registered
-    ? "{ active: { state: 'activated' }, getNotifications: async () => [], pushManager: { " +
+    ? "{ active: { state: 'activated' }, getNotifications: async () => " +
+      notifications +
+      ", pushManager: { " +
       "getSubscription: async () => " +
       subscription +
       ", subscribe: async (options) => { log.subscribeCalls += 1; " +
@@ -146,7 +149,13 @@ test("failure observation is armed around the unchanged native poll and runs dur
   assert.match(helper, /if \(capturedPermission === null\) return null/u)
   assert.match(helper, /navigator\.serviceWorker\.controller !== null/u)
   assert.match(helper, /registration\.pushManager\.getSubscription\(\)/u)
-  assert.match(helper, /matches = notificationsResult\.value\.some[\s\S]*?\? 1\s*:\s*0/u)
+  assert.match(helper, /const notifications = notificationsResult\.value/u)
+  assert.match(helper, /matches = notifications\.some[\s\S]*?\? 1\s*:\s*0/u)
+  assert.match(helper, /shown = count >= 3 \? 3 : count === 2 \? 2 : count === 1 \? 1 : 0/u)
+  assert.match(
+    helper,
+    /untagged = notifications\.some\(\(notification\) => notification\.tag === ""\) \? 1 : 0/u
+  )
   assert.match(helper, /MAX_RECORDS = 4/u)
   assert.match(helper, /notification\.tag === expectedTag/u)
   assert.doesNotMatch(
@@ -167,7 +176,7 @@ test("push observation emits only bounded closed browser state and never the not
       " || options.budgetMs !== 1200 || options.permission !== 'granted') " +
       "throw new Error('private-probe-failure');\n" +
       "  return { permission: options.permission, ready: 'resolved', state: 'activated', " +
-      "controller: true, subscription: true, matches: 0, probe: 'skipped' };\n" +
+      "controller: true, subscription: true, matches: 0, shown: 0, untagged: 0, probe: 'skipped' };\n" +
       "} };\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', " +
       JSON.stringify(privateId) +
@@ -175,8 +184,8 @@ test("push observation emits only bounded closed browser state and never the not
   )
   assert.equal(
     output,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved " +
-      "state=activated controller=1 subscription=1 matches=0 probe=skipped\n"
+    "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved " +
+      "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n"
   )
   assert.doesNotMatch(output, /private-notification-identity|private-probe-failure/u)
 })
@@ -188,34 +197,34 @@ test("push observation snapshots accessor values once before formatting", () => 
       "const changing = { get permission() { permissionReads += 1; " +
       "return permissionReads === 1 ? 'granted' : 'private-value'; }, " +
       "ready: 'resolved', state: 'activated', controller: true, " +
-      "subscription: true, matches: 1, probe: 'skipped' };\n" +
+      "subscription: true, matches: 1, shown: 0, untagged: 0, probe: 'skipped' };\n" +
       "const page = { evaluate: async () => { evaluations += 1; " +
       "return evaluations === 1 ? 'granted' : changing; } };\n" +
       "await reportLivePushDeliveryObservation(page, 'mobile', 'private-id');\n"
   )
   assert.equal(
     output,
-    "UE_LIVE_PUSH_OBS_V1 project=mobile permission=granted ready=resolved " +
-      "state=activated controller=1 subscription=1 matches=1 probe=skipped\n"
+    "UE_LIVE_PUSH_OBS_V2 project=mobile permission=granted ready=resolved " +
+      "state=activated controller=1 subscription=1 matches=1 shown=0 untagged=0 probe=skipped\n"
   )
   assert.doesNotMatch(output, /private-value|private-id/u)
 })
 test("push observation rejects invalid domains and private values without coercion", () => {
   const output = reportInChild(
     "const page = { evaluate: async () => ({ permission: 'granted', ready: 'resolved', " +
-      "state: 'activated', controller: true, subscription: true, matches: 0, probe: 'skipped' }) };\n" +
+      "state: 'activated', controller: true, subscription: true, matches: 0, shown: 0, untagged: 0, probe: 'skipped' }) };\n" +
       "const privateValue = { toString() { throw new Error('private-value'); } };\n" +
       "await reportLivePushDeliveryObservation(page, 'private-project', 'private-id');\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', privateValue);\n" +
       "let invalidEvaluations = 0;\n" +
       "const invalidPage = { evaluate: async () => { invalidEvaluations += 1; " +
       "return invalidEvaluations === 1 ? 'granted' : ({ permission: privateValue, " +
-      "ready: 'resolved', state: 'activated', controller: true, subscription: true, matches: 2, probe: 'skipped' }); } };\n" +
+      "ready: 'resolved', state: 'activated', controller: true, subscription: true, matches: 2, shown: 0, untagged: 0, probe: 'skipped' }); } };\n" +
       "await reportLivePushDeliveryObservation(invalidPage, 'mobile', 'private-id');\n" +
       "let probeEvaluations = 0;\n" +
       "const invalidProbePage = { evaluate: async () => { probeEvaluations += 1; " +
       "return probeEvaluations === 1 ? 'granted' : ({ permission: 'granted', ready: 'resolved', " +
-      "state: 'activated', controller: true, subscription: true, matches: 0, probe: 'private-probe' }); } };\n" +
+      "state: 'activated', controller: true, subscription: true, matches: 0, shown: 0, untagged: 0, probe: 'private-probe' }); } };\n" +
       "await reportLivePushDeliveryObservation(invalidProbePage, 'desktop', 'private-id');\n"
   )
   assert.equal(output, "")
@@ -229,16 +238,16 @@ test("push observation deduplicates and caps output at four records", () => {
       "const page = { evaluate: async (_probe, options) => { evaluations += 1; " +
       "if (evaluations % 2 === 1) return permissions[(evaluations - 1) / 2]; " +
       "return { permission: options.permission, ready: 'timeout', state: 'missing', " +
-      "controller: false, subscription: false, matches: 0, probe: 'skipped' }; } };\n" +
+      "controller: false, subscription: false, matches: 0, shown: 0, untagged: 0, probe: 'skipped' }; } };\n" +
       "for (const permission of permissions) await reportLivePushDeliveryObservation(page, 'mobile', permission);\n"
   )
   assert.equal(
     output,
     [
-      "UE_LIVE_PUSH_OBS_V1 project=mobile permission=default ready=timeout state=missing controller=0 subscription=0 matches=0 probe=skipped\n",
-      "UE_LIVE_PUSH_OBS_V1 project=mobile permission=granted ready=timeout state=missing controller=0 subscription=0 matches=0 probe=skipped\n",
-      "UE_LIVE_PUSH_OBS_V1 project=mobile permission=denied ready=timeout state=missing controller=0 subscription=0 matches=0 probe=skipped\n",
-      "UE_LIVE_PUSH_OBS_V1 project=mobile permission=unsupported ready=timeout state=missing controller=0 subscription=0 matches=0 probe=skipped\n",
+      "UE_LIVE_PUSH_OBS_V2 project=mobile permission=default ready=timeout state=missing controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n",
+      "UE_LIVE_PUSH_OBS_V2 project=mobile permission=granted ready=timeout state=missing controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n",
+      "UE_LIVE_PUSH_OBS_V2 project=mobile permission=denied ready=timeout state=missing controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n",
+      "UE_LIVE_PUSH_OBS_V2 project=mobile permission=unsupported ready=timeout state=missing controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n",
     ].join("")
   )
 })
@@ -261,8 +270,8 @@ test("push observation reports unsupported when Notification is absent", () => {
   )
   assert.equal(
     output,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported ready=error " +
-      "state=missing controller=0 subscription=0 matches=0 probe=skipped\n"
+    "UE_LIVE_PUSH_OBS_V2 project=desktop permission=unsupported ready=error " +
+      "state=missing controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n"
   )
 })
 
@@ -284,8 +293,8 @@ test("push observation preserves captured permission when host capture times out
   )
   assert.equal(
     output,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied ready=timeout " +
-      "state=error controller=0 subscription=0 matches=0 probe=skipped\n"
+    "UE_LIVE_PUSH_OBS_V2 project=desktop permission=denied ready=timeout " +
+      "state=error controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n"
   )
 })
 
@@ -296,7 +305,7 @@ test("a stdout write failure is contained after a valid observation", () => {
       "const page = { evaluate: async () => { evaluations += 1; " +
       "if (evaluations === 1) return 'denied'; " +
       "return { permission: 'denied', ready: 'error', state: 'error', " +
-      "controller: false, subscription: false, matches: 0, probe: 'skipped' }; } };\n" +
+      "controller: false, subscription: false, matches: 0, shown: 0, untagged: 0, probe: 'skipped' }; } };\n" +
       "process.stdout.write = () => { writeAttempts += 1; " +
       "throw new Error('private-write-error'); };\n" +
       "await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n" +
@@ -310,16 +319,16 @@ test("the subscribe probe runs only for the subscribe-phase helper", () => {
   const plain = runProbeChild({ phase: "report" })
   assert.equal(
     plain.record,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved " +
-      "state=activated controller=0 subscription=0 matches=0 probe=skipped\n"
+    "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved " +
+      "state=activated controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=skipped\n"
   )
   assert.equal(plain.log.subscribeCalls, 0)
 
   const subscribePhase = runProbeChild({ phase: "subscribe" })
   assert.equal(
     subscribePhase.record,
-    "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved " +
-      "state=activated controller=0 subscription=0 matches=0 probe=subscribed\n"
+    "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved " +
+      "state=activated controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=subscribed\n"
   )
   assert.equal(subscribePhase.log.subscribeCalls, 1)
 })
@@ -369,8 +378,8 @@ test("each subscribe rejection is classified to its closed probe value without e
     const { output, record, log } = runProbeChild({ phase: "subscribe", subscribe })
     assert.equal(
       record,
-      "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved " +
-        "state=activated controller=0 subscription=0 matches=0 probe=" +
+      "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved " +
+        "state=activated controller=0 subscription=0 matches=0 shown=0 untagged=0 probe=" +
         probe +
         "\n",
       name
@@ -388,4 +397,50 @@ test("a subscribe that outlives the probe budget is reported as timeout", () => 
   assert.match(record, / probe=timeout\n$/u)
   assert.equal(log.subscribeCalls, 1)
   assert.doesNotMatch(output, /private/u)
+})
+
+test("displayed notifications are reported as a capped count and a tag-presence flag only", () => {
+  const cases = [
+    ["[]", "matches=0 shown=0 untagged=0"],
+    ["[{ tag: 'private-id', title: 'private-title' }]", "matches=1 shown=1 untagged=0"],
+    ["[{ tag: '', body: 'private-body' }]", "matches=0 shown=1 untagged=1"],
+    ["[{ tag: 'private-other' }, { tag: 'private-id' }]", "matches=1 shown=2 untagged=0"],
+    [
+      "[{ tag: 'private-a' }, { tag: '' }, { tag: 'private-b' }, { tag: 'private-c' }]",
+      "matches=0 shown=3 untagged=1",
+    ],
+  ]
+  for (const [notifications, fields] of cases) {
+    const { output, record } = runProbeChild({ phase: "report", notifications })
+    assert.equal(
+      record,
+      "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved " +
+        "state=activated controller=0 subscription=0 " +
+        fields +
+        " probe=skipped\n",
+      notifications
+    )
+    assert.doesNotMatch(output, /private/u)
+  }
+})
+
+test("an unreadable notification list reports no displayed notifications", () => {
+  const { record } = runProbeChild({
+    phase: "report",
+    notifications: "[{ get tag() { throw new Error('private-tag'); } }]",
+  })
+  assert.match(record, / matches=0 shown=0 untagged=0 probe=skipped\n$/u)
+})
+
+test("push observation rejects out-of-domain notification counts and flags", () => {
+  const output = reportInChild(
+    "for (const extra of [{ shown: 4, untagged: 0 }, { shown: 1, untagged: 2 }, { shown: '1', untagged: 0 }]) {\n" +
+      "  let evaluations = 0;\n" +
+      "  const page = { evaluate: async () => { evaluations += 1; " +
+      "return evaluations === 1 ? 'granted' : ({ permission: 'granted', ready: 'resolved', " +
+      "state: 'activated', controller: true, subscription: true, matches: 0, probe: 'skipped', ...extra }); } };\n" +
+      "  await reportLivePushDeliveryObservation(page, 'desktop', 'private-id');\n" +
+      "}\n"
+  )
+  assert.equal(output, "")
 })

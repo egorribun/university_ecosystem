@@ -47,6 +47,7 @@ _PENDING_DIGEST = "0" * 64
 OTP_DIGITS = 6
 OTP_TTL_SECONDS = 600
 OTP_MAX_FAILED_ATTEMPTS = 5
+_CLIENT_IP_IDENTIFIER_PREFIX = "ip:"
 OTP_RESEND_COOLDOWN_SECONDS = 60
 _TEMPLATE = "mfa_email_otp"
 _ALLOWED_FLOWS = frozenset(
@@ -107,11 +108,17 @@ class _DeliveryOnlyRateLimiter:
 
 class RuntimeMfaRateLimiter:
     async def enforce(self, *, action: str, identifier: str) -> None:
+        from app.core.config import settings
         from app.core.ratelimit import enforce_rate_limit, get_default_strategy
 
+        limit = (
+            settings.rate_limit_mfa_email_otp_client_ip
+            if identifier.startswith(_CLIENT_IP_IDENTIFIER_PREFIX)
+            else OTP_MAX_FAILED_ATTEMPTS
+        )
         await enforce_rate_limit(
             identifier=f"mfa-email:{action}:{identifier}",
-            limit=OTP_MAX_FAILED_ATTEMPTS,
+            limit=limit,
             window_seconds=OTP_TTL_SECONDS,
             strategy=get_default_strategy("mfa"),
         )
@@ -304,7 +311,7 @@ class EmailOtpService:
                 action=action, identifier=f"user:{user_id}"
             )
             await self._rate_limiter.enforce(
-                action=action, identifier=f"ip:{client_ip}"
+                action=action, identifier=f"{_CLIENT_IP_IDENTIFIER_PREFIX}{client_ip}"
             )
         except RateLimitExceeded:
             raise

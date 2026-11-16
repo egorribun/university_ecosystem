@@ -415,14 +415,15 @@ test("chat message creates one in-app notification during quiet hours and remain
     await expect(notificationCard).toHaveCount(1)
     await expect(notificationCard.getByTitle("Прочитано", { exact: true })).toBeVisible()
 
-    const markReadResponsePromise = recipientPage.waitForResponse((response) => {
-      return (
-        response.request().method() === "PATCH" &&
-        new URL(response.url()).pathname === `/api/v1/notifications/${notificationId}/read`
-      )
-    })
-    await notificationCard.getByTitle("Прочитано", { exact: true }).click()
-    const markReadResponse = await markReadResponsePromise
+    const [markReadResponse] = await Promise.all([
+      recipientPage.waitForResponse((response) => {
+        return (
+          response.request().method() === "PATCH" &&
+          new URL(response.url()).pathname === `/api/v1/notifications/${notificationId}/read`
+        )
+      }),
+      notificationCard.getByTitle("Прочитано", { exact: true }).click(),
+    ])
     expect(markReadResponse.status(), "the owner marks the in-app notification as read").toBe(200)
 
     await expect

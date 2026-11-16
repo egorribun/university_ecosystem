@@ -183,8 +183,18 @@ def redis_checks(
     return results
 
 
-def publish_jwks(publisher: Pod, document: str) -> dict[str, Any]:
-    return run_in_pod(publisher, PUBLISH_SRC, [], stdin=document, timeout=APP_TIMEOUT)
+def publish_jwks(
+    publisher: Pod, document: str, *, observer: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    args: list[str] = []
+    payload = document
+    if observer is not None:
+        try:
+            payload = json.dumps({"document": document, "observer": observer})
+            args = ["observe"]
+        except (TypeError, ValueError):
+            payload = document
+    return run_in_pod(publisher, PUBLISH_SRC, args, stdin=payload, timeout=APP_TIMEOUT)
 
 
 def verify_token(consumer: Pod, jwks_url: str, token: str) -> dict[str, Any]:

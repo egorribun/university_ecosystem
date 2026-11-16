@@ -32,6 +32,22 @@ import {
 } from "@/features/map/markerCollisionLayout"
 import "maplibre-gl/dist/maplibre-gl.css"
 
+/* ── Canvas density ── */
+/** High-DPR phones render the WebGL canvas at up to 2x; denser canvases cost
+ *  proportionally more per frame (2.6x phones about 1.7x) for no visible gain. */
+export const MAX_MAP_PIXEL_RATIO = 2
+
+/** Device pixel ratio for the map canvas, capped at MAX_MAP_PIXEL_RATIO. */
+export const getMapPixelRatio = (devicePixelRatio: number | undefined): number => {
+  const ratio =
+    typeof devicePixelRatio === "number" &&
+    Number.isFinite(devicePixelRatio) &&
+    devicePixelRatio > 0
+      ? devicePixelRatio
+      : 1
+  return Math.min(ratio, MAX_MAP_PIXEL_RATIO)
+}
+
 /* ── Tile styles ── */
 const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/bright"
 const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
@@ -153,6 +169,9 @@ export function MapLibreMapComponent({
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
+  // pixelRatio is a MapLibre init option, so read it once when the map mounts.
+  // A server render has no devicePixelRatio, which getMapPixelRatio maps to 1.
+  const [mapPixelRatio] = useState(() => getMapPixelRatio(globalThis.devicePixelRatio))
   /** Wave 120 SW5: latches when URL sync should fire. Programmatic moves
    *  during cinematic intro (or building easeTo before any user input) must
    *  NOT write to URL — only user-initiated panning/zooming should. After
@@ -420,6 +439,7 @@ export function MapLibreMapComponent({
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
         attributionControl={false}
+        pixelRatio={mapPixelRatio}
         onClick={() => {
           onDeselectBuilding()
           setActivePopupId(null)

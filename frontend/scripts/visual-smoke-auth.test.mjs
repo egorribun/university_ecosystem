@@ -902,12 +902,17 @@ test("authenticated audit answers only the seeded placeholder CDN with a pinned 
   assert.match(source, /import \{ mkdir, mkdtemp, readFile, realpath, writeFile \}/u)
 
   const routeCalls = [...source.matchAll(/\b(?:context|page|routePage)\.route\s*\(/gu)]
-  assert.equal(routeCalls.length, 1, "the audit must install exactly one network route")
+  assert.equal(routeCalls.length, 2, "the audit installs exactly the image and weather routes")
   const routeIndex = source.indexOf("await context.route(PINNED_EXTERNAL_IMAGE_ROUTE")
+  const weatherRouteIndex = source.indexOf("await context.route(PINNED_WEATHER_ROUTE")
   const newPageIndex = source.indexOf("const page = await context.newPage()")
   assert.ok(routeIndex > 0 && newPageIndex > routeIndex, "route must precede every page")
+  assert.ok(
+    weatherRouteIndex > routeIndex && newPageIndex > weatherRouteIndex,
+    "the weather route must precede every page"
+  )
   assert.match(
-    source.slice(routeIndex, newPageIndex),
+    source.slice(routeIndex, weatherRouteIndex),
     /route\.fulfill\(\{\s*status:\s*200,\s*contentType:\s*"image\/png",\s*body:\s*pinnedExternalImage,?\s*\}\)/u
   )
 
@@ -925,6 +930,44 @@ test("authenticated audit answers only the seeded placeholder CDN with a pinned 
   })
   assert.equal(externalOutage.httpStatusClassCounts["5xx"], 2)
   assert.equal(externalOutage.httpFailureOriginCounts.external, 2)
+})
+
+test("authenticated audit answers only the Open-Meteo forecast endpoint with a pinned forecast", async () => {
+  const source = await readFile(new URL("authenticated-visual-audit.mjs", import.meta.url), "utf8")
+
+  // Exactly the forecast endpoint the dashboard calls; no other weather or tile host.
+  assert.match(
+    source,
+    /const PINNED_WEATHER_ROUTE = "https:\/\/api\.open-meteo\.com\/v1\/forecast\*\*"/u
+  )
+  const weatherClient = await readFile(new URL("../src/api/weather.ts", import.meta.url), "utf8")
+  assert.match(weatherClient, /new URL\("https:\/\/api\.open-meteo\.com\/v1\/forecast"\)/u)
+
+  const weatherRouteIndex = source.indexOf("await context.route(PINNED_WEATHER_ROUTE")
+  const newPageIndex = source.indexOf("const page = await context.newPage()")
+  const fulfil = source.slice(weatherRouteIndex, newPageIndex)
+  assert.match(fulfil, /status:\s*200/u)
+  assert.match(fulfil, /contentType:\s*"application\/json"/u)
+  // The page fetches cross-origin, so the pinned answer must pass the CORS check.
+  assert.match(fulfil, /headers:\s*\{\s*"access-control-allow-origin":\s*"\*"\s*\}/u)
+  assert.match(fulfil, /body:\s*pinnedWeatherForecast/u)
+
+  // The pinned forecast carries every current field the product reads.
+  const start = source.indexOf("const pinnedWeatherForecast = JSON.stringify(")
+  const end = source.indexOf("await context.route(PINNED_WEATHER_ROUTE", start)
+  const declaration = source.slice(start, end)
+  for (const field of [
+    "temperature_2m",
+    "weather_code",
+    "is_day",
+    "apparent_temperature",
+    "wind_speed_10m",
+    "relative_humidity_2m",
+    "uv_index",
+  ]) {
+    assert.match(declaration, new RegExp(`\\b${field}:`, "u"), field)
+  }
+  assert.match(source, /externalWeatherFixture:\s*\{\s*route:\s*PINNED_WEATHER_ROUTE,/u)
 })
 
 // Include authenticated capture diagnostics in the existing hosted visual contract lane.

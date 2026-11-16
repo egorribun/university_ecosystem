@@ -122,6 +122,7 @@ def test_workflow_is_manual_scheduled_and_path_filtered_pr_only() -> None:
         "charts/**",
         "k8s/**",
         "backend.Dockerfile",
+        "docker-compose.full.yml",
         "services/ws-hub/**",
         "services/pkg/logging/**",
         "services/pkg/spiffe/**",
@@ -993,6 +994,7 @@ def test_real_processor_workflow_activation_is_source_bound():
         if step.get("run") == "bash scripts/k8s/networkpolicy_runtime_proof.sh"
     )
     assert run["env"]["UE_NETPOL_REAL_FP"] == "1"
+    assert run["env"]["UE_NETPOL_REAL_BACKUP"] == "1"
     catalog = json.loads((ROOT / "quality/ci-check-catalog.json").read_text())
     entry = next(
         row
@@ -1084,8 +1086,20 @@ def test_completed_matrix_receipt_survives_interrupted_actual_phase(tmp_path):
     assert not receipt.with_suffix(".tmp").exists()
 
 
-@pytest.mark.parametrize("outcome", ["pass", "inconclusive", "disabled"])
-def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
+@pytest.mark.parametrize(
+    ("outcome", "backup_outcome"),
+    [
+        ("pass", None),
+        ("inconclusive", None),
+        ("disabled", None),
+        ("pass", "pass"),
+        ("pass", "fail"),
+        ("pass", "interrupted"),
+    ],
+)
+def test_runner_finishes_atomic_receipt_and_exit_status(
+    tmp_path, outcome, backup_outcome
+):
     from unittest.mock import patch
 
     m = _real_runtime_module("networkpolicy_runtime_real_fp")
@@ -1110,6 +1124,16 @@ def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
         diagnostic_image=None if outcome == "disabled" else "fixture",
         source_sha=None if outcome == "disabled" else "a" * 40,
     )
+    cronjob = {"kind": "CronJob", "metadata": {"name": "probe-a-db-backup"}}
+    if backup_outcome:
+        args.backup_endpoint = runner.BACKUP_FIXTURE_ENDPOINT
+        args.backup_ca_file = tmp_path / "ca.pem"
+        args.backup_ca_file.write_text("fixture certificate", encoding="ascii")
+        args.backup_credentials_file = tmp_path / "s3.env"
+        args.backup_credentials_file.write_text(
+            f"AWS_ACCESS_KEY_ID={'a' * 16}\nAWS_SECRET_ACCESS_KEY={'b' * 32}\n",
+            encoding="ascii",
+        )
     pods = {
         key: m.Pod("probe-a", key, ip="127.0.0.1", uid=key)
         for key in ["a-fp", "a-redis", "b-redis"]
@@ -1117,7 +1141,7 @@ def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
     rows = [{"probe_id": str(i), "verdict": "pass"} for i in range(40)]
     replacements = {
         "runtime_base_image": "fixture",
-        "render_all": {},
+        "render_all": {"probe-a": ([cronjob], [])},
         "set_up_cluster": pods,
         "cluster_ip": "127.0.0.1",
         "build_targets": {},
@@ -1145,11 +1169,47 @@ def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
                 return_value={"verdict": outcome, "checks": []},
             )
         )
+        if backup_outcome:
+            import networkpolicy_runtime_backup_phase
+
+            def backup_phase(
+                rendered_cronjob, *, ca_certificate, access_key, secret_key
+            ):
+                assert args.receipt.exists()
+                checkpoint = json.loads(args.receipt.read_text())
+                assert checkpoint["verdict"] == "inconclusive"
+                assert checkpoint["real_backup"] == {"verdict": "in_progress"}
+                assert rendered_cronjob == cronjob
+                assert ca_certificate == "fixture certificate"
+                assert access_key == "a" * 16
+                assert secret_key == "b" * 32
+                if backup_outcome == "interrupted":
+                    raise KeyboardInterrupt
+                result = {"verdict": backup_outcome, "backup_job_attempted": True}
+                if backup_outcome == "pass":
+                    result["backup_job"] = {"name": "probe-a-db-backup-proof"}
+                return result
+
+            stack.enter_context(
+                patch.object(
+                    networkpolicy_runtime_backup_phase,
+                    "run_backup_phase",
+                    side_effect=backup_phase,
+                )
+            )
+        if backup_outcome == "interrupted":
+            with pytest.raises(KeyboardInterrupt):
+                runner.main()
+            observed = json.loads(args.receipt.read_text())
+            assert observed["verdict"] == "inconclusive"
+            assert observed["finished_utc"] is None
+            return
         status = runner.main()
     observed = json.loads(args.receipt.read_text())
-    assert status == (1 if outcome == "inconclusive" else 0)
+    passed = outcome != "inconclusive" and backup_outcome != "fail"
+    assert status == (0 if passed else 1)
     assert observed["finished_utc"] is not None
-    assert observed["verdict"] == ("fail" if outcome == "inconclusive" else "pass")
+    assert observed["verdict"] == ("pass" if passed else "fail")
     assert len(observed["probes"]) == 40
     if outcome == "disabled":
         phase.assert_not_called()
@@ -1158,6 +1218,16 @@ def test_runner_finishes_atomic_receipt_and_exit_status(tmp_path, outcome):
     assert any(r["finding"] == "AUD-169" for r in observed["not_run"]) == (
         outcome != "pass"
     )
+    if backup_outcome:
+        assert observed["real_backup"]["verdict"] == backup_outcome
+        assert observed["real_backup"]["fixture_endpoint"] == args.backup_endpoint
+        assert any(
+            r["check"] == "backup job image behaviour" for r in observed["not_run"]
+        ) == (backup_outcome == "fail")
+        assert "a" * 16 not in json.dumps(observed["real_backup"])
+        assert "b" * 32 not in json.dumps(observed["real_backup"])
+    else:
+        assert "real_backup" not in observed
 
 
 def test_runner_rejects_partial_source_arguments(tmp_path):
@@ -2308,6 +2378,40 @@ def real_staging_processor_resources():
     app._helm()
     resources, _ = runner.render_release("probe-a", app, store)
     return resources
+
+
+def test_real_helm_backup_fixture_uses_its_own_credentials(
+    real_staging_processor_resources,
+):
+    runner = _real_runtime_module("networkpolicy_runtime_probe")
+    app, store = runner.load_render_contracts()
+    resources, _ = runner.render_release(
+        "probe-a", app, store, backup_endpoint=runner.BACKUP_FIXTURE_ENDPOINT
+    )
+    for kind, name in (
+        ("Deployment", "probe-a-file-processor"),
+        ("NetworkPolicy", "probe-a-backup-policy"),
+    ):
+        assert runner.find(resources, kind, name) == runner.find(
+            real_staging_processor_resources, kind, name
+        )
+    cronjob = runner.find(resources, "CronJob", "probe-a-db-backup")
+    spec = cronjob["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    init_env = {item["name"]: item for item in spec["initContainers"][0]["env"]}
+    assert init_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"]["name"] == (
+        "netpol-backup-source"
+    )
+    upload_env = {item["name"]: item for item in spec["containers"][0]["env"]}
+    assert upload_env["RCLONE_CONFIG_BACKUP_ENDPOINT"]["value"] == (
+        runner.BACKUP_FIXTURE_ENDPOINT
+    )
+    for variable in (
+        "RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID",
+        "RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY",
+    ):
+        assert upload_env[variable]["valueFrom"]["secretKeyRef"]["name"] == (
+            "netpol-backup-s3"
+        )
 
 
 @pytest.mark.parametrize(

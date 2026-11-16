@@ -29,6 +29,13 @@
 # 40014: Cross Site Scripting (Persistent)
 40014	WARN	Review persistent XSS findings manually
 
+# 40026: Cross Site Scripting (DOM Based)
+# Owner-approved 2026-11-16 (ADR-047, expires 2027-01-10): the rule's headless
+# browsers never finish, so the active scan cannot complete. In the full scan,
+# IGNORE also stops the active rule from running. Trusted Types enforcement
+# (require-trusted-types-for 'script') blocks DOM sinks in the browser.
+40026	IGNORE	DOM XSS sinks are blocked by enforced Trusted Types
+
 # 90022: Application Error Disclosure
 # Health endpoints expose partial service state intentionally
 90022	IGNORE	Health endpoints expose service state by design

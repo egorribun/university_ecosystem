@@ -494,7 +494,7 @@ published before the tests-only e3fe278e repair. An actual authorized-target
 scan, pinned-container runtime and GitHub SARIF ingestion acceptance have not
 been established. Green source checks are not completion of those runtime steps.
 
-The current inventory remains **512 dispositions / 242 baseline identities /
+The current inventory remains **524 dispositions / 242 baseline identities /
 27 Gitleaks fingerprints / 15 Semgrep rows**. Approved Go/ZAP identities,
 expiry values and historical authorized one-to-one rebinds are preserved.
 At 307cfb7a, two exact owner-authorized facade/package companion identities
@@ -830,7 +830,7 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **512 dispositions / 242 baseline identities /
+current policy-file inventory is **524 dispositions / 242 baseline identities /
 27 Gitleaks fingerprints / 15 Semgrep rows**. The 512 total includes the previous 506 approved records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
 ADR-047 addendum and the owner-approved AUD-428 row13 public-integrity identity,

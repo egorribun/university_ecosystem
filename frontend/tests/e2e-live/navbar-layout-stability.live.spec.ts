@@ -136,7 +136,7 @@ async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
       const settings = navbar.locator("#navbar-settings-btn")
       const username = navbar.locator(".navbar-user-name button")
 
-      for (const width of [1440, 1349, 1350]) {
+      for (const width of [1440, 1349, 1350, 1920]) {
         const label = preferenceLabel + "/" + width
         await page.setViewportSize({ width, height: 900 })
         await page.evaluate(
@@ -159,9 +159,9 @@ async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
         const referenceBox = await reference.boundingBox()
         const messengerBox = await messenger.boundingBox()
         const settingsBox = await settings.boundingBox()
-        const nameBox = await navbar.locator(".navbar-user-name").boundingBox()
+        const nameBox = await assertProfileNameGeometry(page, label, width)
         const contentBox = await page.locator("nav.vt-navbar > div > div").boundingBox()
-        if (!referenceBox || !messengerBox || !settingsBox || !nameBox || !contentBox) {
+        if (!referenceBox || !messengerBox || !settingsBox || !contentBox) {
           throw new Error(label + " navbar geometry was unavailable")
         }
         const contentMetrics = await page
@@ -213,7 +213,7 @@ async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
                   requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
                 )
             )
-            const syntheticNameBox = await navbar.locator(".navbar-user-name").boundingBox()
+            const syntheticNameBox = await assertProfileNameGeometry(page, label, width, true)
             const syntheticReferenceBox = await reference.boundingBox()
             const syntheticMessengerBox = await messenger.boundingBox()
             const syntheticSettingsBox = await settings.boundingBox()
@@ -227,7 +227,7 @@ async function assertDesktopNavbarSpacingMatrix(page: Page): Promise<void> {
                 scrollWidth: element.scrollWidth,
               }))
             if (
-              !syntheticNameBox ||
+              // Name geometry has already been checked against the container width.
               !syntheticReferenceBox ||
               !syntheticMessengerBox ||
               !syntheticSettingsBox ||
@@ -532,3 +532,63 @@ test("tablet overflow navigation is keyboard operable and restores focus on Esca
   await expect(overflowMenu).toBeHidden()
   await expect(overflowTrigger).toBeFocused()
 })
+
+// Keep helpers below the live declarations: their line numbers identify diagnostic evidence.
+async function assertProfileNameGeometry(
+  page: Page,
+  label: string,
+  viewportWidth: number,
+  synthetic = false
+): Promise<{ x: number; width: number }> {
+  const navbar = page.locator("nav.vt-navbar")
+  const nameContainer = navbar.locator(".navbar-user-name")
+  const username = nameContainer.locator("button")
+  const avatar = username.locator("xpath=../preceding-sibling::button[1]")
+  const profileActions = navbar.locator('[class~="@container/profile-actions"]')
+
+  await expect(nameContainer, label + " username container").toHaveCount(1)
+  await expect(username, label + " username").toHaveCount(1)
+  await expect(profileActions, label + " profile actions").toHaveCount(1)
+  await expect(avatar, label + " profile avatar").toBeVisible()
+  await expect(avatar, label + " profile avatar").toHaveAccessibleName(/\S/u)
+  await expect(username, label + " profile name").toHaveText(/\S/u)
+  await expect(username, label + " profile name").toBeEnabled()
+
+  const accessibleName = await username.getAttribute("aria-label")
+  const nameText = (await username.textContent())?.trim()
+  if (!accessibleName || !nameText) throw new Error(label + " profile identity was unavailable")
+  if (!synthetic) expect(accessibleName, label + " profile identity").toContain(nameText)
+  await expect(avatar, label + " profile identity fallback").toHaveAccessibleDescription(
+    accessibleName
+  )
+
+  const actionsWidthRem = await profileActions.evaluate(
+    (element) =>
+      element.getBoundingClientRect().width /
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+  )
+  expect(actionsWidthRem, label + " profile action width").toBeGreaterThan(0)
+  if (viewportWidth === 1920) {
+    expect(actionsWidthRem, label + " wide profile actions").toBeGreaterThanOrEqual(18)
+  }
+  if (actionsWidthRem < 18) {
+    await expect(nameContainer, label + " constrained username").toHaveCSS("display", "none")
+    await expect(username, label + " constrained username").toBeHidden()
+    expect(await nameContainer.boundingBox(), label + " hidden username box").toBeNull()
+  } else {
+    await expect(nameContainer, label + " expanded username").toHaveCSS("display", "block")
+    await expect(username, label + " expanded username").toBeVisible()
+  }
+
+  // A CSS-hidden element has a real zero rectangle for the existing diagnostic.
+  const rect = await nameContainer.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { x: box.x, width: box.width }
+  })
+  if (actionsWidthRem < 18) {
+    expect(rect.width, label + " hidden username width").toBe(0)
+  } else {
+    expect(rect.width, label + " visible username width").toBeGreaterThan(0)
+  }
+  return rect
+}

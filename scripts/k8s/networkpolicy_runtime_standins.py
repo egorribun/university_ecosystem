@@ -9,7 +9,153 @@ from __future__ import annotations
 
 from typing import Any
 
-LISTENER_SRC = r"""
+JWKS_WITNESS_READ_LIBRARY_SRC = r"""
+import json, os, re, time
+
+_WITNESS_DIR = "/tmp/netpol-jwks-witness"
+_WITNESS_KIDS = ["primary", "netpol-rotated"]
+_WITNESS_UID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
+_WITNESS_EPOCH = re.compile(r"[0-9a-f]{16}\Z")
+
+def read_jwks_witness(epoch, uids):
+    try:
+        if not isinstance(epoch, str) or not _WITNESS_EPOCH.fullmatch(epoch): return {"result": "unavailable"}
+        if not isinstance(uids, list) or len(uids) != 2 or len(set(uids)) != 2: return {"result": "unavailable"}
+        events = []
+        for uid in sorted(uids):
+            if not isinstance(uid, str) or not _WITNESS_UID.fullmatch(uid): return {"result": "unavailable"}
+            with open(os.path.join(_WITNESS_DIR, epoch, uid + ".json"), "rb") as source:
+                raw = source.read(1025)
+            if len(raw) > 1024: return {"result": "unavailable"}
+            event = json.loads(raw)
+            if not isinstance(event, dict) or set(event) != {"pod_uid", "epoch", "status", "key_ids", "monotonic_ns"}: return {"result": "unavailable"}
+            if event["pod_uid"] != uid or event["epoch"] != epoch or event["status"] != 200 or event["key_ids"] != _WITNESS_KIDS: return {"result": "unavailable"}
+            if type(event["monotonic_ns"]) is not int or event["monotonic_ns"] <= 0: return {"result": "unavailable"}
+            events.append(event)
+        return {"result": "observed", "events": events, "collected_monotonic_ns": time.monotonic_ns()}
+    except Exception:
+        return {"result": "unavailable"}
+"""
+
+
+JWKS_WITNESS_COMMON_SRC = (
+    JWKS_WITNESS_READ_LIBRARY_SRC
+    + r"""
+import ipaddress, tempfile
+
+_JWKS_PATH = "/tmp/jwks.json"
+
+def _witness_atomic(path, value):
+    fd, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".event-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(value, output, separators=(",", ":"))
+        os.replace(temp, path)
+    finally:
+        if os.path.exists(temp): os.unlink(temp)
+
+def _witness_publish_bytes(path, value):
+    fd, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".jwks-")
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(value)
+        os.replace(temp, path)
+    finally:
+        if os.path.exists(temp): os.unlink(temp)
+
+def _witness_first(path, value):
+    fd, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".event-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(value, output, separators=(",", ":"))
+        try:
+            os.link(temp, path)
+        except FileExistsError:
+            pass
+    finally:
+        if os.path.exists(temp): os.unlink(temp)
+
+def _witness_config(config):
+    if not isinstance(config, dict) or set(config) != {"epoch", "peers", "key_ids"}:
+        return False
+    epoch, peers, kids = config["epoch"], config["peers"], config["key_ids"]
+    if not isinstance(epoch, str) or not _WITNESS_EPOCH.fullmatch(epoch): return False
+    if kids != _WITNESS_KIDS or not isinstance(peers, dict) or len(peers) != 2: return False
+    if len(set(peers.values())) != 2: return False
+    for ip, uid in peers.items():
+        if not isinstance(uid, str) or not _WITNESS_UID.fullmatch(uid): return False
+        if not isinstance(ip, str) or str(ipaddress.ip_address(ip)) != ip: return False
+    return True
+
+def arm_jwks_witness(config):
+    try:
+        if not _witness_config(config): return False
+        os.makedirs(_WITNESS_DIR, mode=0o700, exist_ok=True)
+        os.mkdir(os.path.join(_WITNESS_DIR, config["epoch"]), 0o700)
+        _witness_atomic(os.path.join(_WITNESS_DIR, "active.json"), config)
+        return True
+    except Exception:
+        return False
+
+def publish_jwks_document(document, observer=None):
+    data = document.encode("utf-8") if isinstance(document, str) else document
+    parsed = json.loads(data)
+    armed = False
+    if observer is not None:
+        try:
+            with open(_JWKS_PATH, "rb") as source:
+                previous = source.read(16385)
+            old_keys = json.loads(previous).get("keys")
+            new_keys = parsed.get("keys")
+            if (len(previous) <= 16384 and isinstance(old_keys, list) and len(old_keys) == 1
+                    and old_keys[0].get("kid") == "primary" and isinstance(new_keys, list)
+                    and len(new_keys) == 2
+                    and sorted(key.get("kid") for key in new_keys) == sorted(_WITNESS_KIDS)):
+                armed = arm_jwks_witness(observer)
+        except Exception:
+            armed = False
+    lower_bound = None
+    if armed:
+        try:
+            lower_bound = time.monotonic_ns()
+        except Exception:
+            armed = False
+    _witness_publish_bytes(_JWKS_PATH, data)
+    result = {"result": "published"}
+    if observer is not None:
+        result["observer"] = ({"status": "armed", "publication_lower_bound_ns": lower_bound}
+                              if armed else {"status": "unavailable"})
+    return result
+
+def record_jwks_witness(request, payload, peer, port):
+    try:
+        if port != 8000 or len(payload) > 16384: return
+        line, separator, _ = request.partition(b"\r\n")
+        if not separator or line not in (b"GET /.well-known/jwks.json HTTP/1.1", b"GET /.well-known/jwks.json HTTP/1.0"): return
+        with open(os.path.join(_WITNESS_DIR, "active.json"), "rb") as source:
+            raw = source.read(4097)
+        if len(raw) > 4096: return
+        config = json.loads(raw)
+        if not _witness_config(config): return
+        uid = config["peers"].get(peer)
+        if uid is None: return
+        document = json.loads(payload)
+        keys = document.get("keys")
+        if not isinstance(keys, list) or len(keys) != 2: return
+        if sorted(key.get("kid") for key in keys) != sorted(_WITNESS_KIDS): return
+        event = {"pod_uid": uid, "epoch": config["epoch"], "status": 200,
+                 "key_ids": _WITNESS_KIDS, "monotonic_ns": time.monotonic_ns()}
+        _witness_first(os.path.join(_WITNESS_DIR, config["epoch"], uid + ".json"), event)
+    except Exception:
+        return
+
+"""
+)
+
+
+LISTENER_SRC = (
+    JWKS_WITNESS_COMMON_SRC
+    + r"""
 import os, socket, threading
 JWKS_PATH = "/tmp/jwks.json"
 EMPTY_JWKS = b'{"keys":[]}'
@@ -21,7 +167,7 @@ def document():
     except OSError:
         return EMPTY_JWKS
 
-def handle(conn):
+def handle(conn, peer, port):
     try:
         conn.settimeout(3)
         data = conn.recv(512)
@@ -30,6 +176,10 @@ def handle(conn):
             conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                          b"Content-Length: " + str(len(payload)).encode() +
                          b"\r\nConnection: close\r\n\r\n" + payload)
+            try:
+                record_jwks_witness(data, payload, peer, port)
+            except Exception:
+                pass
     except OSError:
         pass
     finally:
@@ -41,8 +191,8 @@ def tcp(port):
     s.bind(("0.0.0.0", port))
     s.listen(64)
     while True:
-        conn, _ = s.accept()
-        threading.Thread(target=handle, args=(conn,), daemon=True).start()
+        conn, peer = s.accept()
+        threading.Thread(target=handle, args=(conn, peer[0], port), daemon=True).start()
 
 def udp(port):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -57,18 +207,34 @@ for port in [int(p) for p in os.environ.get("LISTEN_UDP", "").split(",") if p]:
     threading.Thread(target=udp, args=(port,), daemon=True).start()
 threading.Event().wait()
 """
+)
 
 # Replaces the JWKS document served by the publisher stand-in. Written atomically.
-PUBLISH_SRC = r"""
-import json, os, sys
+PUBLISH_SRC = (
+    JWKS_WITNESS_COMMON_SRC
+    + r"""
+import sys
 data = sys.stdin.buffer.read()
-json.loads(data)
-temporary = "/tmp/jwks.json.tmp"
-with open(temporary, "wb") as handle:
-    handle.write(data)
-os.replace(temporary, "/tmp/jwks.json")
-print(json.dumps({"result": "published"}))
+if sys.argv[1:] == ["observe"]:
+    payload = json.loads(data)
+    print(json.dumps(publish_jwks_document(payload["document"], payload["observer"])))
+else:
+    print(json.dumps(publish_jwks_document(data)))
 """
+)
+
+JWKS_WITNESS_READ_SRC = (
+    JWKS_WITNESS_READ_LIBRARY_SRC
+    + r"""
+import sys
+try:
+    payload = json.loads(sys.stdin.buffer.read())
+    result = read_jwks_witness(payload["epoch"], payload["uids"])
+except Exception:
+    result = {"result": "unavailable"}
+print(json.dumps(result))
+"""
+)
 
 PROBE_SRC = r"""
 import json, socket, struct, sys

@@ -77,11 +77,19 @@ export function configureRouterViewTransitions(router: AnyRouter): void {
     // The browser also mirrors callback failure into ready, marking it handled
     // to avoid a duplicate error. Preserve that ownership without observing
     // updateCallbackDone here; an unhandled callback failure must stay visible.
+    // A DOM update that outlasts the browser's capture budget skips only the
+    // animation with a TimeoutError; the update still runs to completion and
+    // settles updateCallbackDone, so it is the same cancellation class.
     // Independent readiness failures remain observable.
     // https://www.w3.org/TR/css-view-transitions-1/#viewtransition
     void transition.ready.catch((error: unknown) => {
       if (callbackFailed && Object.is(error, callbackFailure)) return
-      if (!(error instanceof DOMException && error.name === "AbortError")) throw error
+      if (!(
+        error instanceof DOMException &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      )) {
+        throw error
+      }
     })
     return transition.updateCallbackDone
   }

@@ -2787,3 +2787,82 @@ existing historical chain, approval metadata or expiry. The 512 dispositions,
 context/app pairs and all thresholds remain unchanged. It authorizes no other
 source binding, including `scripts/live_stand.py`, and does not establish a
 passing scan, hosted check, merge or deployment.
+
+## Decisions recorded on 2026-11-16
+
+### Twelve exact AUD-189 backup/restore test identities
+
+The owner explicitly approved twelve exact detect-secrets identities in the new
+AUD-189 runtime-proof unit tests as false positives. Nine are Kubernetes Secret
+object names or keys (`external_kubernetes_secret_reference`) in
+`tests/test_networkpolicy_runtime_backup_postgres.py` and
+`tests/test_networkpolicy_runtime_backup_restore.py`. Three are test-only
+sentinels (`ci_test_contract_sentinel`): a placeholder passphrase in
+`tests/test_networkpolicy_runtime_backup_phase.py`, and a synthetic Docker owner
+label and a Caddy configuration path in
+`tests/test_networkpolicy_runtime_backup_runner.py`.
+
+The records are appended after the unchanged 512-record policy, each with
+owner `egorribun`, review date 2026-11-16 and expiry 2027-01-10. The
+`tests/test_verify_secrets_baseline.py` adapter requires those exact twelve
+identities and metadata, removes them in memory and runs the unchanged
+historical chain on the exact 512-record predecessor. The inventory is now 524
+dispositions; the 242 baseline identities, 15 Semgrep rows, 27 Gitleaks
+fingerprints and all thresholds are unchanged. This approval adds no inline
+allowlist pragma and establishes no passing scan, hosted check, merge or
+deployment.
+
+### ZAP DOM XSS rule 40026 excluded from the full scan
+
+The owner explicitly approved excluding ZAP active scan rule 40026
+(Cross Site Scripting, DOM Based) from the scheduled full scan.
+`.zap/rules.tsv` sets it to `IGNORE`; in the full scan that also switches the
+active rule off. In hosted and local runs the rule kept launching headless
+browsers after the `scanner.maxScanDurationInMins` cap stopped it, the active
+scan never reached 100%, and ZAP exited with code 3, so no run produced
+evidence. The frontend enforces Trusted Types
+(`require-trusted-types-for 'script'`), which blocks the DOM sinks this rule
+probes, and ZAP plans to deprecate the rule.
+
+- **Scope.** Only rule 40026. All other rules, the AJAX spider, the phase
+  bounds, the 60-minute limit and the medium+ gate are unchanged.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10. Re-enable the rule
+  or replace it with a bounded browser-based DOM XSS check before then.
+- **Not established.** This exclusion is not a passing scan; AUD-381 still
+  needs a green hosted ZAP run on `main` with a verified report.
+
+### Push observation display fields and live stand companion rebind
+
+The bounded browser push observation (`UE_LIVE_PUSH_OBS_V2`) adds two closed
+fields read from the same `getNotifications()` call: `shown`, the number of
+displayed notifications capped at 3, and `untagged`, whether any of them has no
+tag (the service worker's generic fallback). No title, body or tag value leaves
+the page. This separates a push that never arrived from one shown as the generic
+fallback, which the full-run `notification-topics-delivery` failures could not
+tell apart. The runner parser and the `live E2E push` line carry both fields.
+
+`scripts/live_stand.py` is a Semgrep companion, so the owner's standing
+2026-10-31 approval for one-to-one rebinds applies: its ledger digest and the
+SHA-1 identity of that digest in policy row 495 bind the new bytes, and the
+NOV16 projection layer in `tests/test_verify_secrets_baseline.py` restores the
+exact predecessor ahead of the nov15 and AUD-189 layers. No identity is added;
+the inventory stays at 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This adds no threshold, required check or
+audit status.
+
+### Visual audit weather fixture
+
+The dashboard fetches current weather from the public Open-Meteo API straight
+from the browser. On the 2026-11-16 PR run of the required live-realtime-visual
+check, every Russian-locale dashboard capture reported two external 4xx
+responses while the English captures earlier in the same matrix had none; the
+free tier limits requests per client IP, which a shared hosted runner can
+exhaust. `frontend/scripts/authenticated-visual-audit.mjs` now answers exactly
+`https://api.open-meteo.com/v1/forecast**` with a pinned, valid forecast (with a
+CORS header, since the page fetches cross-origin), as it already does for the
+demo-image CDN. The widget still renders from a real browser fetch, every other
+external host still reaches the network and is counted, and `matrix.json`
+records the fixture as `externalWeatherFixture`. The change sits below the
+file's Semgrep row-2 anchor, so the reviewed finding keeps its lines; no byte
+digest pins this file or its test. This adds no scanner threshold, required
+check or audit status.

@@ -26,6 +26,10 @@ interface Observation {
   controller: boolean
   subscription: boolean
   matches: 0 | 1
+  // Displayed notifications of the registration, capped at 3 (3 means three or more).
+  shown: 0 | 1 | 2 | 3
+  // 1 when a displayed notification has no tag: the worker's generic fallback.
+  untagged: 0 | 1
   probe: Probe
 }
 
@@ -56,6 +60,8 @@ function fallbackObservation(permission: Permission): Observation {
     controller: false,
     subscription: false,
     matches: 0,
+    shown: 0,
+    untagged: 0,
     probe: "skipped",
   }
 }
@@ -83,6 +89,8 @@ function normalizeObservation(value: unknown): Observation | null {
     const controller = value.controller
     const subscription = value.subscription
     const matches = value.matches
+    const shown = value.shown
+    const untagged = value.untagged
     const probe = normalizeProbe(value.probe)
     if (
       (permission !== "default" &&
@@ -100,11 +108,13 @@ function normalizeObservation(value: unknown): Observation | null {
       typeof controller !== "boolean" ||
       typeof subscription !== "boolean" ||
       (matches !== 0 && matches !== 1) ||
+      (shown !== 0 && shown !== 1 && shown !== 2 && shown !== 3) ||
+      (untagged !== 0 && untagged !== 1) ||
       probe === null
     ) {
       return null
     }
-    return { permission, ready, state, controller, subscription, matches, probe }
+    return { permission, ready, state, controller, subscription, matches, shown, untagged, probe }
   } catch {
     return null
   }
@@ -271,6 +281,8 @@ async function observe(
               controller: false,
               subscription: false,
               matches: 0,
+              shown: 0,
+              untagged: 0,
               probe: "skipped",
             }
           }
@@ -326,6 +338,8 @@ async function observe(
           let subscription = false
           let subscriptionAbsent = false
           let matches: 0 | 1 = 0
+          let shown: 0 | 1 | 2 | 3 = 0
+          let untagged: 0 | 1 = 0
           if (registration) {
             const [subscriptionResult, notificationsResult] = await Promise.all([
               withinBudget(
@@ -339,13 +353,18 @@ async function observe(
             }
             if (notificationsResult.kind === "resolved") {
               try {
-                matches = notificationsResult.value.some(
-                  (notification) => notification.tag === expectedTag
-                )
+                const notifications = notificationsResult.value
+                matches = notifications.some((notification) => notification.tag === expectedTag)
                   ? 1
                   : 0
+                // A count and a tag-presence flag only: titles, bodies and tags stay in the page.
+                const count = notifications.length
+                shown = count >= 3 ? 3 : count === 2 ? 2 : count === 1 ? 1 : 0
+                untagged = notifications.some((notification) => notification.tag === "") ? 1 : 0
               } catch {
                 matches = 0
+                shown = 0
+                untagged = 0
               }
             }
           }
@@ -355,7 +374,17 @@ async function observe(
             probe = await runSubscribeProbe(registration, probeKey, probeBudgetMs)
           }
 
-          return { permission, ready, state, controller, subscription, matches, probe }
+          return {
+            permission,
+            ready,
+            state,
+            controller,
+            subscription,
+            matches,
+            shown,
+            untagged,
+            probe,
+          }
         },
         {
           expectedTag: expectedNotificationId,
@@ -401,7 +430,7 @@ export async function reportLivePushDeliveryObservation(
     )
     if (!observed) return
     const record =
-      "UE_LIVE_PUSH_OBS_V1 project=" +
+      "UE_LIVE_PUSH_OBS_V2 project=" +
       project +
       " permission=" +
       observed.permission +
@@ -415,6 +444,10 @@ export async function reportLivePushDeliveryObservation(
       (observed.subscription ? "1" : "0") +
       " matches=" +
       observed.matches +
+      " shown=" +
+      observed.shown +
+      " untagged=" +
+      observed.untagged +
       " probe=" +
       observed.probe +
       "\n"

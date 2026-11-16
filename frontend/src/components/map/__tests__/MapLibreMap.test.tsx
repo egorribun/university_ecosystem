@@ -172,6 +172,8 @@ vi.mock("@/components/map/WeatherParticles", () => ({
 }))
 
 let MapLibreMapComponent: (typeof import("@/components/map/MapLibreMap"))["MapLibreMapComponent"]
+let getMapPixelRatio: (typeof import("@/components/map/MapLibreMap"))["getMapPixelRatio"]
+let MAX_MAP_PIXEL_RATIO: number
 
 type MockMap = {
   loaded: ReturnType<typeof vi.fn>
@@ -314,13 +316,37 @@ describe("MapLibreMap", () => {
     translationState.language = "en"
     translationState.namespaces = []
     vi.resetModules()
-    ;({ MapLibreMapComponent } = await import("@/components/map/MapLibreMap"))
+    ;({ MapLibreMapComponent, getMapPixelRatio, MAX_MAP_PIXEL_RATIO } =
+      await import("@/components/map/MapLibreMap"))
   })
 
   afterEach(() => {
     window.matchMedia = originalMatchMedia
     translationState.language = "en"
     translationState.resolvedLanguage = "en"
+  })
+
+  it.each([
+    [2.625, 2],
+    [2, 2],
+    [1.5, 1.5],
+    [1, 1],
+    [Number.NaN, 1],
+    [0, 1],
+    [undefined, 1],
+  ])("caps the canvas pixel ratio for device ratio %s at %s", (device, expected) => {
+    expect(getMapPixelRatio(device)).toBe(expected)
+  })
+
+  it("passes the capped device pixel ratio to MapLibre once at mount", () => {
+    const original = window.devicePixelRatio
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 2.625 })
+    try {
+      render(<MapLibreMapComponent {...baseProps} />)
+      expect(renderedMapProps.current.pixelRatio).toBe(MAX_MAP_PIXEL_RATIO)
+    } finally {
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: original })
+    }
   })
 
   it("renders the map application container with the a11y keyboard hint", () => {

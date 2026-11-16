@@ -16,6 +16,7 @@ import {
   isLiveScheduleGridKeyboardScenario,
   isLiveAdminNotificationsScenario,
   isLiveAuthRoleDenialScenario,
+  isLiveFooterNavigationScenario,
 } from "./page-error-diagnostic"
 import {
   requireLiveAdminPassword,
@@ -29,9 +30,11 @@ import {
 } from "../../scripts/live-registration-admission.mjs"
 import {
   createLiveOperationScope,
+  type LiveMfaOperationKind,
   type LiveOperationScope,
   type LiveOperationPhase,
   parseLiveRateLimitHeader,
+  parseLiveRateLimitRetryAfterForDiagnostic,
   reportLiveHttpStatus,
   reportLiveRateLimitRetry,
   reportLiveLoginFailure,
@@ -39,6 +42,7 @@ import {
   type LiveLoginFailureStage,
   type LiveLoginObservationCount,
 } from "./http-status-diagnostic"
+import { observeEmailMfaOperation } from "./email-mfa-operation-observer"
 
 /**
  * Accounts created by scripts/seed_demo_data.py and scripts/seed_admin_data.py
@@ -163,6 +167,28 @@ type OwnedSessionScope = {
 // Capture phase at the call site, before any asynchronous work.
 export function beginOwnedLiveOperation(operation: "chat-attachment-create") {
   return activeOwnedSessionScope?.operationScope.begin(operation, "body")
+}
+
+export function beginOwnedMfaOperation(kind: LiveMfaOperationKind): (observed: Response) => void {
+  try {
+    const operation = activeOwnedSessionScope?.operationScope.begin(kind, "body")
+    const startedAt = performance.now()
+    return (observed) => {
+      try {
+        observeEmailMfaOperation(
+          operation,
+          observed,
+          performance.now() - startedAt,
+          kind,
+          parseLiveRateLimitRetryAfterForDiagnostic
+        )
+      } catch {
+        // Diagnostic failures cannot change the live scenario's result.
+      }
+    }
+  } catch {
+    return () => undefined
+  }
 }
 
 const MAX_OWNED_SESSION_CLEANUP_CALLBACKS = 1
@@ -1103,6 +1129,11 @@ export const test = base.extend<{
         testInfo.file,
         testInfo.title
       )
+      const isFooterNavigationScenario = isLiveFooterNavigationScenario(
+        testInfo.project.name,
+        testInfo.file,
+        testInfo.title
+      )
       const diagnosticCheck = isResetScenario
         ? "password-reset"
         : isAdminNotificationsScenario
@@ -1113,7 +1144,9 @@ export const test = base.extend<{
               ? "map-gesture"
               : isScheduleGridKeyboardScenario
                 ? "schedule-grid-keyboard"
-                : null
+                : isFooterNavigationScenario
+                  ? "footer-navigation"
+                  : null
       const pageErrorDiagnostics = createLivePageErrorDiagnostics()
       page.on("pageerror", (error) => {
         errors.push(error)

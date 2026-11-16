@@ -3038,15 +3038,24 @@ def test_live_playwright_retry_diagnostics_deduplicate_and_bound_records() -> No
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 @pytest.mark.parametrize(
-    ("permission", "ready", "state", "controller", "subscription", "matches"),
+    (
+        "permission",
+        "ready",
+        "state",
+        "controller",
+        "subscription",
+        "matches",
+        "shown",
+        "untagged",
+    ),
     [
-        ("default", "resolved", "installing", "0", "0", "0"),
-        ("granted", "timeout", "installed", "1", "1", "1"),
-        ("denied", "error", "activating", "0", "1", "0"),
-        ("unsupported", "resolved", "activated", "1", "0", "1"),
-        ("default", "timeout", "redundant", "0", "1", "0"),
-        ("granted", "error", "missing", "1", "0", "1"),
-        ("denied", "resolved", "error", "0", "0", "0"),
+        ("default", "resolved", "installing", "0", "0", "0", "0", "0"),
+        ("granted", "timeout", "installed", "1", "1", "1", "1", "0"),
+        ("denied", "error", "activating", "0", "1", "0", "2", "1"),
+        ("unsupported", "resolved", "activated", "1", "0", "1", "3", "1"),
+        ("default", "timeout", "redundant", "0", "1", "0", "1", "1"),
+        ("granted", "error", "missing", "1", "0", "1", "3", "0"),
+        ("denied", "resolved", "error", "0", "0", "0", "0", "0"),
     ],
 )
 def test_live_playwright_push_observation_accepts_closed_records(
@@ -3058,10 +3067,13 @@ def test_live_playwright_push_observation_accepts_closed_records(
     controller: str,
     subscription: str,
     matches: str,
+    shown: str,
+    untagged: str,
 ) -> None:
     row = (
-        f"UE_LIVE_PUSH_OBS_V1 project={project} permission={permission} ready={ready} "
-        f"state={state} controller={controller} subscription={subscription} matches={matches} probe=skipped{newline}"
+        f"UE_LIVE_PUSH_OBS_V2 project={project} permission={permission} ready={ready} "
+        f"state={state} controller={controller} subscription={subscription} matches={matches} "
+        f"shown={shown} untagged={untagged} probe=skipped{newline}"
     )
     assert live_stand._live_playwright_push_observations(row) == [
         (
@@ -3072,6 +3084,8 @@ def test_live_playwright_push_observation_accepts_closed_records(
             controller == "1",
             subscription == "1",
             int(matches),
+            int(shown),
+            untagged == "1",
             "skipped",
         )
     ]
@@ -3079,8 +3093,8 @@ def test_live_playwright_push_observation_accepts_closed_records(
 
 def test_live_playwright_push_observation_rejects_malformed_records() -> None:
     valid = (
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
-        "state=activated controller=1 subscription=1 matches=1 probe=skipped\n"
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=1 shown=0 untagged=0 probe=skipped\n"
     )
     malformed = (
         valid.replace("project=desktop", "project=private-project"),
@@ -3089,6 +3103,12 @@ def test_live_playwright_push_observation_rejects_malformed_records() -> None:
         valid.replace("state=activated", "state=private"),
         valid.replace("controller=1", "controller=true"),
         valid.replace("matches=1", "matches=2"),
+        valid.replace("shown=0", "shown=4"),
+        valid.replace("shown=0", "shown=-1"),
+        valid.replace("untagged=0", "untagged=2"),
+        valid.replace("untagged=0", "untagged=true"),
+        valid.replace(" shown=0 untagged=0", ""),
+        valid.replace("UE_LIVE_PUSH_OBS_V2", "UE_LIVE_PUSH_OBS_V1"),
         valid[:-1] + " private-url\n",
         "private " + valid,
         valid[:-1] + " \n",
@@ -3103,25 +3123,69 @@ def test_live_playwright_push_observation_rejects_malformed_records() -> None:
 
 def test_live_playwright_push_observation_caps_and_deduplicates() -> None:
     rows = [
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=default ready=resolved "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=denied ready=resolved "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=unsupported ready=resolved "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
-        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=default ready=resolved "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=default ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=denied ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=unsupported ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n",
+        "UE_LIVE_PUSH_OBS_V2 project=mobile permission=default ready=resolved "
+        "state=activated controller=1 subscription=1 matches=0 shown=0 untagged=0 probe=skipped\n",
     ]
     parsed = live_stand._live_playwright_push_observations(
         rows[0] + rows[1] + rows[0] + rows[2] + rows[3] + rows[4]
     )
     assert parsed == [
-        ("desktop", "default", "resolved", "activated", True, True, 0, "skipped"),
-        ("desktop", "granted", "resolved", "activated", True, True, 0, "skipped"),
-        ("desktop", "denied", "resolved", "activated", True, True, 0, "skipped"),
-        ("desktop", "unsupported", "resolved", "activated", True, True, 0, "skipped"),
+        (
+            "desktop",
+            "default",
+            "resolved",
+            "activated",
+            True,
+            True,
+            0,
+            0,
+            False,
+            "skipped",
+        ),
+        (
+            "desktop",
+            "granted",
+            "resolved",
+            "activated",
+            True,
+            True,
+            0,
+            0,
+            False,
+            "skipped",
+        ),
+        (
+            "desktop",
+            "denied",
+            "resolved",
+            "activated",
+            True,
+            True,
+            0,
+            0,
+            False,
+            "skipped",
+        ),
+        (
+            "desktop",
+            "unsupported",
+            "resolved",
+            "activated",
+            True,
+            True,
+            0,
+            0,
+            False,
+            "skipped",
+        ),
     ]
 
 
@@ -3131,8 +3195,9 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     tmp_path: Path,
 ) -> None:
     row = (
-        "UE_LIVE_PUSH_OBS_V1 project=mobile permission=granted ready=timeout "
-        "state=activated controller=1 subscription=1 matches=0 probe=skipped\n"
+        "UE_LIVE_PUSH_OBS_V2 project=mobile permission=granted ready=timeout "
+        "state=activated controller=1 subscription=1 matches=0 shown=2 untagged=1 "
+        "probe=skipped\n"
     )
     private = "private push endpoint notification-id message-content raw-error"
     completed = subprocess.CompletedProcess(
@@ -3150,7 +3215,8 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         _EMPTY_HTTP_OPERATIONS_LINE,
         "live E2E push project=mobile permission=granted ready=timeout "
-        "state=activated controller=true subscription=true matches=0 probe=skipped",
+        "state=activated controller=true subscription=true matches=0 "
+        "shown=2 untagged=true probe=skipped",
         "live E2E outcome=failed exit_code=1",
     ]
     assert private not in printed.out + printed.err
@@ -3715,6 +3781,61 @@ def test_live_playwright_page_errors_accept_schedule_keyboard_domain(
     ]
 
 
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize(
+    "page", ["dashboard", "events", "schedule", "profile", "news", "login", "other"]
+)
+@pytest.mark.parametrize(
+    ("kind", "count", "newline"),
+    [
+        ("error", 1, "\n"),
+        ("abort-error", 999, "\r\n"),
+        ("invalid-state-error", 1, "\n"),
+        ("react-418", 999, "\r\n"),
+        ("other", 1, "\n"),
+    ],
+)
+def test_live_playwright_page_errors_accept_footer_navigation_domain(
+    project: str, page: str, kind: str, count: int, newline: str
+) -> None:
+    sentinel = (
+        f"UE_LIVE_PAGE_ERROR_V1 project={project} check=footer-navigation "
+        f"page={page} type={kind} count={count}{newline}"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel) == [
+        (project, "footer-navigation", page, kind, count)
+    ]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("project=desktop", "project=private-project"),
+        ("check=footer-navigation", "check=footer-navigation-private"),
+        ("page=news", "page=/news"),
+        ("page=news", "page=news?token=private-token"),
+        ("page=news", "page=admin-users"),
+        ("page=news", "page=map"),
+        ("page=news", "page=reset-password"),
+        ("type=error", "type=private-error"),
+        ("count=1", "count=0"),
+        ("count=1", "count=1000"),
+        ("count=1", "count=1 private-message"),
+        ("\n", ""),
+        ("\n", "\r\r\n"),
+        ("UE_LIVE", "private UE_LIVE"),
+    ],
+)
+def test_live_playwright_page_errors_reject_hostile_footer_records(
+    replacement: tuple[str, str],
+) -> None:
+    sentinel = (
+        "UE_LIVE_PAGE_ERROR_V1 project=desktop check=footer-navigation "
+        "page=news type=error count=1\n"
+    )
+    assert live_stand._live_playwright_page_errors(sentinel.replace(*replacement)) == []
+
+
 def test_live_playwright_page_error_details_accept_only_matching_fixed_summaries() -> (
     None
 ):
@@ -3892,6 +4013,10 @@ def test_live_playwright_page_errors_reject_mobile_schedule_project() -> None:
         ("map-gesture", "reset-password", "error"),
         ("schedule-grid-keyboard", "map", "error"),
         ("schedule-grid-keyboard", "admin-users", "error"),
+        ("password-reset", "news", "error"),
+        ("auth-roles", "events", "error"),
+        ("map-gesture", "profile", "error"),
+        ("schedule-grid-keyboard", "news", "error"),
     ],
 )
 def test_live_playwright_page_errors_reject_cross_scenario_domains(
@@ -3997,6 +4122,41 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         "live E2E page error project=desktop check=auth-roles page=admin-users type=react-418 count=1",
         "live E2E page error project=mobile check=password-reset page=reset-password type=other count=999",
         f"live E2E outcome={outcome} exit_code={return_code}",
+    ]
+    assert printed.err == ""
+
+
+def test_live_playwright_emits_only_bounded_footer_page_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_PAGE_ERROR_V1 project=mobile check=footer-navigation "
+        "page=news type=abort-error count=2\n"
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(
+            "private-title https://private.invalid/?token=private-token\n"
+            + row * 3
+            + row.replace("page=news", "page=news?token=private-token")
+            + row.replace("count=2", "count=2 private-message")
+        ).encode(),
+        stderr=(row + "private-stack private-browser-state\n").encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
+        "live E2E page error project=mobile check=footer-navigation "
+        "page=news type=abort-error count=2",
+        "live E2E outcome=failed exit_code=1",
     ]
     assert printed.err == ""
 
@@ -8407,6 +8567,8 @@ def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> N
 
     assert backend_environment["RATE_LIMIT_SENSITIVE"] == "120/minute"
     assert backend_environment["RATE_LIMIT_AUTH_LOGIN"] == "60/minute"
+    assert backend_environment["RATE_LIMIT_AUTH_MFA"] == "60/minute"
+    assert backend_environment["RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP"] == "60"
     assert "RATE_LIMIT_DEFAULT" not in backend_environment
 
 
@@ -16127,18 +16289,18 @@ def test_live_stand_exercises_the_default_socket_budget_at_both_edges() -> None:
 )
 def test_live_playwright_push_observation_accepts_each_closed_probe(probe: str) -> None:
     row = (
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
-        f"state=activated controller=1 subscription=0 matches=0 probe={probe}\n"
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved "
+        f"state=activated controller=1 subscription=0 matches=0 shown=0 untagged=0 probe={probe}\n"
     )
     assert live_stand._live_playwright_push_observations(row) == [
-        ("desktop", "granted", "resolved", "activated", True, False, 0, probe)
+        ("desktop", "granted", "resolved", "activated", True, False, 0, 0, False, probe)
     ]
 
 
 def test_live_playwright_push_observation_rejects_unknown_or_missing_probe() -> None:
     valid = (
-        "UE_LIVE_PUSH_OBS_V1 project=desktop permission=granted ready=resolved "
-        "state=activated controller=1 subscription=1 matches=1 probe=skipped\n"
+        "UE_LIVE_PUSH_OBS_V2 project=desktop permission=granted ready=resolved "
+        "state=activated controller=1 subscription=1 matches=1 shown=0 untagged=0 probe=skipped\n"
     )
     malformed = (
         valid.replace("probe=skipped", "probe=private"),

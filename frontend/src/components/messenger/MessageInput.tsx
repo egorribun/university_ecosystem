@@ -265,7 +265,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   }
 
   return (
-    <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/[calc(var(--opacity-soft)*100%)] backdrop-blur-xl">
+    <div className="shrink-0 p-3 relative border-t border-glass-border bg-surface/[calc(var(--opacity-soft)*100%)] backdrop-blur-xl">
       <AnimatePresence>
         {svgRejected && (
           <m.div

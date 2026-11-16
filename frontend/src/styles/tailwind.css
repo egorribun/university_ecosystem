@@ -1438,6 +1438,10 @@
   z-index: var(--z-dropdown);
 }
 
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+
 @utility z-overlay {
   z-index: var(--z-overlay);
 }
