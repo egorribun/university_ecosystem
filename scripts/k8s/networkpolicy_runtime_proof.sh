@@ -247,14 +247,13 @@ backup_wait_bucket() {
 
 backup_create_server() {
   local address created
-  mkdir -m 0700 "${WORK_DIR}/backup-data" || return 1
   BACKUP_SERVER_INTENT=1
   created="$(docker container create --name "$BACKUP_SERVER_NAME" \
     --label "org.university-ecosystem.netpol-owner=${RUN_SUFFIX}" \
     --network "$BACKUP_BRIDGE_ID" --ip 198.18.42.11 \
     --env-file "${WORK_DIR}/backup-credentials.env" \
     --env "S3_BUCKET=${BACKUP_BUCKET}" \
-    --mount "type=bind,src=${WORK_DIR}/backup-data,dst=/data" \
+    --mount "type=tmpfs,dst=/data,tmpfs-mode=0700" \
     "$BACKUP_IMAGE" mini -dir=/data -master.telemetry=false -s3.port=9000)" || return 1
   [[ "$created" =~ ^[0-9a-f]{64}$ ]] || return 1
   BACKUP_SERVER_ID="$created"

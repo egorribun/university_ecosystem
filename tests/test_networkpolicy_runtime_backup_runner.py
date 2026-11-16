@@ -635,6 +635,13 @@ printf 'result=%s intent=%s id=%s\n' "$result" "$BACKUP_SERVER_INTENT" "$BACKUP_
     assert "-master.telemetry=false" in arguments
     assert "-s3.port=9000" in arguments
     assert not any("s3.cert" in arg or "s3.key" in arg for arg in arguments)
+    # Object data stays in container memory: a root-owned bind mount under the
+    # runner's work directory could not be removed by the EXIT cleanup.
+    assert arguments[arguments.index("--mount") + 1] == (
+        "type=tmpfs,dst=/data,tmpfs-mode=0700"
+    )
+    assert not any("type=bind" in arg for arg in arguments)
+    assert not (tmp_path / "backup-data").exists()
 
 
 def test_proxy_config_terminates_supplied_tls_and_preserves_host(
