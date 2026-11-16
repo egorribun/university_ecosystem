@@ -79,6 +79,13 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
     csrfCookieClear > profileHydrated,
     "the CSRF cookie is cleared only after the profile settles"
   )
+  // Any backend response to a request sent without the cookie issues a new one, so
+  // the cookie is removed only after the draft, right before the click.
+  const draftTyped = spec.indexOf("await nameInput.fill(acceptedName)")
+  assert.ok(
+    draftTyped > profileHydrated && csrfCookieClear > draftTyped,
+    "the CSRF cookie is removed after the draft is typed"
+  )
   assert.ok(
     bootstrapRegistered > csrfCookieClear,
     "the bootstrap wait is registered after the cookie is cleared"
