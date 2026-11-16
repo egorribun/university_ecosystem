@@ -116,6 +116,16 @@ async function canonicalTemporaryRoot(): Promise<string> {
  */
 export const PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS = 60_000
 
+/**
+ * Minimum test budget for a spec that drives a real native Push profile. Such a
+ * test waits on up to two FCM-bound steps (a subscription save or a native
+ * delivery poll, each bounded at 60 s) besides account setup and cleanup, so the
+ * suite-wide 60 s test timeout cannot hold the step budgets it declares: on hosted
+ * runs where FCM registration is slow, the test timed out inside a bounded step.
+ * Each step keeps its own bound; a spec may still set a larger budget itself.
+ */
+export const NATIVE_PUSH_TEST_TIMEOUT_MS = 180_000
+
 export const NATIVE_PUSH_BROWSER_ARGS = ["--disable-features=NativeNotifications"] as const
 
 function contextOptionsForProject(
@@ -297,6 +307,10 @@ function removeVerifiedProfile(canonicalPath: string): void {
 export const test = liveTest.extend<NativePushProfileFixtures & NativePushProfileOptions>({
   nativePushChannel: [NATIVE_PUSH_BROWSER_CHANNEL, { option: true }],
   nativePushProfiles: async ({ browser, nativePushChannel }, provideFixture, testInfo) => {
+    // A zero timeout means "unbounded" and stays so; a smaller budget is raised.
+    if (testInfo.timeout !== 0 && testInfo.timeout < NATIVE_PUSH_TEST_TIMEOUT_MS) {
+      testInfo.setTimeout(NATIVE_PUSH_TEST_TIMEOUT_MS)
+    }
     const records: OwnedProfile[] = []
     let testFailure: unknown
     let testFailed = false

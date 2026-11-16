@@ -155,3 +155,40 @@ test("native push profiles default to persistent branded Google Chrome, never of
     "native push profiles must not be created as off-the-record contexts"
   )
 })
+
+test("a native Push test budget holds the bounded FCM steps it declares", async () => {
+  const [fixtureSource, configSource] = await Promise.all([
+    readFile(new URL("./native-push-profile-fixtures.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../playwright.live.config.ts", import.meta.url), "utf8"),
+  ])
+  const stepBudget = Number(
+    fixtureSource
+      .match(/export const PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS = ([0-9_]+)/u)?.[1]
+      .replaceAll("_", "")
+  )
+  const testBudget = Number(
+    fixtureSource
+      .match(/export const NATIVE_PUSH_TEST_TIMEOUT_MS = ([0-9_]+)/u)?.[1]
+      .replaceAll("_", "")
+  )
+  const suiteBudget = Number(
+    configSource.match(/^ {2}timeout: ([0-9_]+),$/mu)?.[1].replaceAll("_", "")
+  )
+  assert.equal(stepBudget, 60_000)
+  assert.equal(suiteBudget, 60_000)
+  // Two FCM-bound steps plus the ordinary suite budget for setup and cleanup.
+  assert.ok(testBudget >= 2 * stepBudget + suiteBudget, "the test budget must hold its steps")
+
+  const fixtureStart = fixtureSource.indexOf("  nativePushProfiles: async (")
+  const profileCreation = fixtureSource.indexOf("await createOwnedProfile(", fixtureStart)
+  const raise = fixtureSource.indexOf(
+    "testInfo.setTimeout(NATIVE_PUSH_TEST_TIMEOUT_MS)",
+    fixtureStart
+  )
+  assert.ok(fixtureStart > 0 && raise > fixtureStart && profileCreation > raise)
+  // Only a smaller, bounded budget is raised; an unbounded (0) or larger one is kept.
+  assert.match(
+    fixtureSource.slice(fixtureStart, raise),
+    /if \(testInfo\.timeout !== 0 && testInfo\.timeout < NATIVE_PUSH_TEST_TIMEOUT_MS\) \{\s*$/u
+  )
+})
