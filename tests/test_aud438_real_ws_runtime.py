@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import http.client
 import io
 import json
@@ -1615,8 +1616,291 @@ def test_service_health_probe_is_bounded_and_returns_only_verdict(
     assert json.loads(capsys.readouterr().out) == {"result": expected}
     factory.assert_called_once_with("10.96.0.42", 8081, timeout=3)
     connection.request.assert_called_once_with("GET", "/health/live")
-    response.read.assert_called_once_with(1025)
+    if status == 200:
+        response.read.assert_called_once_with(1025)
+    else:
+        response.read.assert_not_called()
     connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionRefusedError("private"),
+        OSError(errno.ENETUNREACH, "private"),
+        OSError(errno.EHOSTUNREACH, "private"),
+    ],
+)
+def test_health_probe_retries_transport_only_within_fixed_window(
+    monkeypatch, capsys, tmp_path, exhausted, error
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    first = Mock()
+    first.request.side_effect = error
+    response = Mock(status=200)
+    response.read.return_value = b'{"status":"alive"}'
+    second = Mock()
+    second.getresponse.return_value = response
+    factory = Mock(side_effect=[first, second])
+    monkeypatch.setattr(http.client, "HTTPConnection", factory)
+    times = [0, 0, 11] if exhausted else [0, 0, 1, 1, 2]
+    clock = SimpleNamespace(monotonic=Mock(side_effect=times), sleep=Mock())
+    monkeypatch.setitem(sys.modules, "time", clock)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.96.0.42"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+
+    runpy.run_path(str(program), run_name="__main__")
+
+    assert json.loads(capsys.readouterr().out) == {
+        "result": "transport-unavailable" if exhausted else "healthy"
+    }
+    assert factory.call_count == (1 if exhausted else 2)
+    assert first.request.call_args.args == ("GET", "/health/live")
+    assert clock.sleep.call_count == (0 if exhausted else 1)
+
+
+def test_health_probe_rejects_non_200_without_read_or_retry(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    response = Mock(status=503)
+    response.read.side_effect = TimeoutError("private response")
+    connection = Mock()
+    connection.getresponse.return_value = response
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(http.client, "HTTPConnection", factory)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.96.0.42"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": "invalid"}
+    response.read.assert_not_called()
+    factory.assert_called_once()
+
+
+def test_direct_health_diagnostic_does_not_retry_unavailable_transport(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    connection = Mock()
+    connection.request.side_effect = TimeoutError("private network detail")
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(http.client, "HTTPConnection", factory)
+    clock = SimpleNamespace(monotonic=Mock(side_effect=[0, 0]), sleep=Mock())
+    monkeypatch.setitem(sys.modules, "time", clock)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.1.2.3", "single"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": "transport-unavailable"}
+    factory.assert_called_once()
+    clock.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (PermissionError(13, "private"), "exec-error"),
+        (http.client.BadStatusLine("private"), "invalid"),
+    ],
+)
+def test_health_probe_does_not_retry_nontransport_errors(
+    monkeypatch, capsys, tmp_path, error, expected
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    connection = Mock()
+    connection.request.side_effect = error
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(http.client, "HTTPConnection", factory)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.96.0.42"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": expected}
+    factory.assert_called_once()
+
+
+def test_health_probe_rejects_a_success_after_its_deadline(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    response = Mock(status=200)
+    response.read.return_value = b'{"status":"alive"}'
+    connection = Mock()
+    connection.getresponse.return_value = response
+    monkeypatch.setattr(http.client, "HTTPConnection", Mock(return_value=connection))
+    clock = SimpleNamespace(monotonic=Mock(side_effect=[0, 0, 11]), sleep=Mock())
+    monkeypatch.setitem(sys.modules, "time", clock)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.96.0.42"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": "window-expired"}
+    clock.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "direct", ["healthy", "transport-unavailable", "invalid", "exec-error"]
+)
+def test_vip_transport_exhaustion_records_only_bound_direct_diagnostic(
+    rendered, declaration, monkeypatch, direct
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    prove = ws.prove_ws_service
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    mocks["prove_ws_service"].side_effect = prove
+    source_state = {"uid": "source", "container_id": "container", "restarts": 0}
+    monkeypatch.setattr(
+        ws, "authorized_ingress_source", Mock(return_value=source_state)
+    )
+    monkeypatch.setattr(
+        ws,
+        "create_ws_service",
+        Mock(return_value={"uid": "service", "cluster_ip": "10.96.0.42"}),
+    )
+    snapshot = {"service_uid": "service", "slice_uids": ["slice"]}
+    monkeypatch.setattr(ws, "ws_service_snapshot", Mock(return_value=snapshot))
+    mocks["run_in_pod"].side_effect = [
+        {"result": "valid"},
+        {"result": "valid-exposition"},
+        {"result": "valid-exposition"},
+        {"result": "transport-unavailable"},
+        {"result": direct},
+    ]
+
+    result = run_phase(tree, pods)
+
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "service-health"
+    assert result["substage"] == "health-transport-exhausted"
+    assert result["direct_health"] == direct
+    calls = mocks["run_in_pod"].call_args_list
+    assert calls[-2].args == (pods["ingress"], ws.HEALTH, ["10.96.0.42"])
+    assert calls[-1].args == (pods["ingress"], ws.HEALTH, [copies[0]["ip"], "single"])
+    assert mocks["replicas"].call_count == 3
+    assert "10.96.0.42" not in json.dumps(result)
+    assert copies[0]["ip"] not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "observation,expected",
+    [
+        ({"result": "invalid"}, "health-invalid"),
+        ({"result": "window-expired"}, "health-window-expired"),
+        ({"result": "exec-error"}, "health-exec-error"),
+        ({"result": "exec-timeout"}, "health-exec-error"),
+        ({"result": "healthy", "unexpected": "private"}, "health-exec-error"),
+    ],
+)
+def test_unexpected_health_or_exec_results_fail_without_direct_diagnostic(
+    rendered, declaration, monkeypatch, observation, expected
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    prove = ws.prove_ws_service
+    tree, pods, _, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    mocks["prove_ws_service"].side_effect = prove
+    monkeypatch.setattr(
+        ws, "authorized_ingress_source", Mock(return_value={"uid": "source"})
+    )
+    monkeypatch.setattr(
+        ws,
+        "create_ws_service",
+        Mock(return_value={"uid": "service", "cluster_ip": "10.96.0.42"}),
+    )
+    monkeypatch.setattr(
+        ws, "ws_service_snapshot", Mock(return_value={"slice_uids": ["slice"]})
+    )
+    mocks["run_in_pod"].side_effect = [
+        {"result": "valid"},
+        {"result": "valid-exposition"},
+        {"result": "valid-exposition"},
+        observation,
+    ]
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["substage"] == expected
+    assert mocks["run_in_pod"].call_count == 4
+    assert "direct_health" not in result
+    assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "drift,expected",
+    [
+        ("source", "source-post-health"),
+        ("slice", "endpoints-after"),
+        ("replica", "replica-recheck"),
+    ],
+)
+def test_direct_diagnostic_is_discarded_if_identity_changes(
+    rendered, declaration, monkeypatch, drift, expected
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    prove = ws.prove_ws_service
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    mocks["prove_ws_service"].side_effect = prove
+    source = {"uid": "source", "restarts": 0}
+    altered_source = {"uid": "source", "restarts": 1}
+    monkeypatch.setattr(
+        ws,
+        "authorized_ingress_source",
+        Mock(
+            side_effect=[
+                source,
+                source,
+                altered_source if drift == "source" else source,
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        ws,
+        "create_ws_service",
+        Mock(return_value={"uid": "service", "cluster_ip": "10.96.0.42"}),
+    )
+    snapshot = {"slice_uids": ["slice"]}
+    monkeypatch.setattr(
+        ws,
+        "ws_service_snapshot",
+        Mock(
+            side_effect=[
+                snapshot,
+                {"slice_uids": ["other"]} if drift == "slice" else snapshot,
+            ]
+        ),
+    )
+    mocks["run_in_pod"].side_effect = [
+        {"result": "valid"},
+        {"result": "valid-exposition"},
+        {"result": "valid-exposition"},
+        {"result": "transport-unavailable"},
+        {"result": "healthy"},
+    ]
+    if drift == "replica":
+        altered = copy.deepcopy(copies)
+        altered[0]["restarts"] = 1
+        mocks["replicas"].side_effect = [copies, copies, altered]
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["substage"] == expected
+    assert "direct_health" not in result
 
 
 @pytest.mark.parametrize(
@@ -1684,7 +1968,7 @@ def test_service_proof_brackets_health_with_matching_witnesses(
             "verdict": "pass",
         }
         assert "10.96.0.42" not in json.dumps(result)
-        probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=3)
+        probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=10)
 
 
 @pytest.mark.parametrize("payload", ["{}", "null", "[]"])
@@ -1848,4 +2132,4 @@ def test_service_proof_composes_real_helpers_with_mocked_transport(
     }
     assert sum(argv[1] == "create" for argv, _ in calls) == 1
     assert all(kwargs["timeout"] <= 30 for _, kwargs in calls)
-    probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=3)
+    probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=10)

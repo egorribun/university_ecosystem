@@ -83,21 +83,40 @@ valid = (response.status == 200 and content_type == 'text/plain' and len(body) <
 print(json.dumps({'result': 'valid-exposition' if valid else 'invalid-exposition'}))
 """
 
-# Runs only from the existing permitted probe to the created ClusterIP.
+# Runs from the permitted probe to the ClusterIP or, on exhaustion, one bound replica.
 HEALTH = r"""
-import http.client, json, sys
-connection = http.client.HTTPConnection(sys.argv[1], 8081, timeout=3)
-valid = False
-try:
-    connection.request('GET', '/health/live')
-    response = connection.getresponse()
-    body = response.read(1025)
-    valid = response.status == 200 and len(body) <= 1024 and json.loads(body) == {'status': 'alive'}
-except (OSError, ValueError, http.client.HTTPException):
-    pass
-finally:
-    connection.close()
-print(json.dumps({'result': 'healthy' if valid else 'invalid'}))
+import errno, http.client, json, sys, time
+single = len(sys.argv) > 2 and sys.argv[2] == 'single'
+deadline = time.monotonic() + (3 if single else 10)
+result = 'window-expired'
+while True:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0: break
+    connection = http.client.HTTPConnection(sys.argv[1], 8081, timeout=min(3, remaining))
+    try:
+        connection.request('GET', '/health/live')
+        response = connection.getresponse()
+        if response.status != 200:
+            result = 'invalid'
+        else:
+            body = response.read(1025)
+            valid = len(body) <= 1024 and json.loads(body) == {'status': 'alive'}
+            result = 'healthy' if valid else 'invalid'
+            if valid and time.monotonic() > deadline: result = 'window-expired'
+    except OSError as exc:
+        if isinstance(exc, (TimeoutError, ConnectionError)) or exc.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
+            result = 'transport-unavailable'
+        else:
+            result = 'exec-error'
+    except (ValueError, http.client.HTTPException):
+        result = 'invalid'
+    finally:
+        connection.close()
+    if result != 'transport-unavailable' or single: break
+    remaining = deadline - time.monotonic()
+    if remaining <= 0: break
+    time.sleep(min(0.5, remaining))
+print(json.dumps({'result': result}))
 """
 
 # Verify the processor phase's final JWKS in place without returning it.
@@ -659,9 +678,32 @@ def prove_ws_service(
     if authorized_ingress_source(app, source) != source_before:
         raise ValueError("service probe source changed")
     progress["stage"] = "health-request"
-    if run_in_pod(source, HEALTH, [identity["cluster_ip"]], timeout=3) != {
-        "result": "healthy"
-    }:
+    observed = run_in_pod(source, HEALTH, [identity["cluster_ip"]], timeout=10)
+    direct_result = None
+    if observed == {"result": "transport-unavailable"}:
+        progress["stage"] = "health-direct"
+        direct = run_in_pod(source, HEALTH, [replicas[0]["ip"], "single"], timeout=3)
+        direct_result = next(
+            (
+                category
+                for category in (
+                    "healthy",
+                    "transport-unavailable",
+                    "invalid",
+                    "window-expired",
+                )
+                if direct == {"result": category}
+            ),
+            "exec-error",
+        )
+    elif observed != {"result": "healthy"}:
+        progress["stage"] = (
+            "health-invalid"
+            if observed == {"result": "invalid"}
+            else "health-window-expired"
+            if observed == {"result": "window-expired"}
+            else "health-exec-error"
+        )
         raise ValueError("ws-hub Service health check failed")
     progress["stage"] = "source-post-health"
     if authorized_ingress_source(app, source) != source_before:
@@ -669,6 +711,12 @@ def prove_ws_service(
     progress["stage"] = "endpoints-after"
     if ws_service_snapshot(deployment, identity, replicas) != snapshot:
         raise ValueError("ws-hub Service endpoints changed")
+    if direct_result is not None:
+        return {
+            "verdict": "inconclusive",
+            "reason": "transport-unavailable",
+            "direct_health": direct_result,
+        }
     return {
         **snapshot,
         "source_uid": source.uid,
@@ -781,6 +829,7 @@ def actual_ws_phase(
     """Run only the authorized positive scrape; retain fixed, secret-free failures."""
     stage = "render"
     service_progress = {"stage": "service-start"}
+    direct_health = None
     checks: list[dict[str, str]] = []
     try:
         app, store = rendered["probe-a"]
@@ -896,6 +945,20 @@ def actual_ws_phase(
         )
         service_progress["stage"] = "service-verdict"
         if service.get("verdict") != "pass":
+            if service.get("reason") == "transport-unavailable" and service.get(
+                "direct_health"
+            ) in (
+                "healthy",
+                "transport-unavailable",
+                "invalid",
+                "window-expired",
+                "exec-error",
+            ):
+                service_progress["stage"] = "replica-recheck"
+                if replicas(deployment, image, source_sha) != before:
+                    raise ValueError("ws-hub replica identity changed")
+                service_progress["stage"] = "health-transport-exhausted"
+                direct_health = service["direct_health"]
             raise ValueError("ws-hub Service proof or replica identity changed")
         service_progress["stage"] = "replica-recheck"
         if replicas(deployment, image, source_sha) != before:
@@ -923,6 +986,11 @@ def actual_ws_phase(
                     "endpoints-before",
                     "source-pre-health",
                     "health-request",
+                    "health-direct",
+                    "health-invalid",
+                    "health-window-expired",
+                    "health-exec-error",
+                    "health-transport-exhausted",
                     "source-post-health",
                     "endpoints-after",
                     "service-verdict",
@@ -930,6 +998,14 @@ def actual_ws_phase(
                 )
                 else "service-unknown"
             )
+            if substage == "health-transport-exhausted" and direct_health in (
+                "healthy",
+                "transport-unavailable",
+                "invalid",
+                "window-expired",
+                "exec-error",
+            ):
+                failure["direct_health"] = direct_health
         return failure
     return {
         "verdict": "pass"
