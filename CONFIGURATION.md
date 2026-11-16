@@ -405,6 +405,7 @@ and are not part of this inventory.
 | `RATE_LIMIT_GRAPHQL` | Rate limit graphql. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `30/minute` |
 | `RATE_LIMIT_HEADERS_ENABLED` | Rate limit headers enabled. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `true` |
 | `RATE_LIMIT_INTERACTIONS` | Rate limit interactions. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `200/minute` |
+| `RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP` | Email OTP issue, verify or resend actions per client IP within one OTP lifetime; the per-user budget stays 5. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5` |
 | `RATE_LIMIT_NEWS` | Rate limit news. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
 | `RATE_LIMIT_SENSITIVE` | Rate limit sensitive. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
 | `RATE_LIMIT_STATIC` | Rate limit static. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
