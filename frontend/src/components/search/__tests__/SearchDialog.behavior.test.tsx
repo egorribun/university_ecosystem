@@ -201,7 +201,7 @@ describe("SearchDialog user behavior", () => {
     expect(screen.getByRole("status")).toBeEmptyDOMElement()
   })
 
-  it.each([true, false])("respects reduced-motion preference %s when opening search", async (reduced) => {
+  it.each([true, false])("honors reduced motion: %s", async (reduced) => {
     vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       matches: query === "(prefers-reduced-motion: reduce)" && reduced,
       media: query,
@@ -214,8 +214,8 @@ describe("SearchDialog user behavior", () => {
     }))
     await renderSearch()
     openSearch()
-    const dialog = motionProps.calls.findLast((props) => props.role === "dialog")
-    const backdrop = motionProps.calls.findLast((props) => props.role === "presentation")
+    const dialog = motionProps.calls.filter((props) => props.role === "dialog").pop()
+    const backdrop = motionProps.calls.filter((props) => props.role === "presentation").pop()
     expect(dialog).toBeDefined()
     expect(backdrop).toBeDefined()
     if (reduced) {
@@ -509,6 +509,7 @@ describe("SearchDialog user behavior", () => {
     fireEvent.change(input, { target: { value: "unknown" } })
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1))
     expect(container.querySelector(".animate-spin")).toBeInTheDocument()
+    expect(container.querySelector(".animate-spin")).toHaveClass("motion-reduce:animate-none")
     expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
     await act(async () =>
       resolve({ data: { query: "unknown", results: { news: [], events: [] } } })
