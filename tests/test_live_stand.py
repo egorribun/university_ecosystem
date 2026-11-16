@@ -8501,6 +8501,7 @@ def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> N
 
     assert backend_environment["RATE_LIMIT_SENSITIVE"] == "120/minute"
     assert backend_environment["RATE_LIMIT_AUTH_LOGIN"] == "60/minute"
+    assert backend_environment["RATE_LIMIT_AUTH_MFA"] == "60/minute"
     assert "RATE_LIMIT_DEFAULT" not in backend_environment
 
 
