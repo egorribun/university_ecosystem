@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import postcss from "postcss"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import newsStyles from "@/styles/tokens/news.css?inline"
 
-const transitionStore = vi.hoisted(() => ({ clearNewsHeroId: vi.fn() }))
+const transitionStore = vi.hoisted(() => ({ clearNewsHeroId: vi.fn(), previewExiting: false }))
 
 vi.mock("@/utils/newsTransition", () => ({
   clearNewsHeroId: transitionStore.clearNewsHeroId,
@@ -49,7 +51,11 @@ vi.mock("@/components/ui/Spotlight", () => ({
 
 vi.mock("@/components/news/NewsQuickView", () => ({
   NewsQuickView: ({ visible, position }: { visible: boolean; position: string }) =>
-    visible ? <div data-testid="quick-view">quick:{position}</div> : null,
+    visible || transitionStore.previewExiting ? (
+      <div className="z-floating" data-testid="quick-view">
+        quick:{position}
+      </div>
+    ) : null,
 }))
 
 vi.mock("@/components/news/NewsCategoryBadge", () => ({
@@ -165,6 +171,7 @@ const createProps = (): NewsCardViewProps & { editTargetId?: string } => ({
 afterEach(() => {
   vi.restoreAllMocks()
   transitionStore.clearNewsHeroId.mockReset()
+  transitionStore.previewExiting = false
 })
 
 describe("NewsCardView — interactions and optional overlays", () => {
@@ -192,6 +199,9 @@ describe("NewsCardView — interactions and optional overlays", () => {
     fireEvent.mouseMove(article)
     fireEvent.mouseEnter(article)
     expect(screen.getByTestId("quick-view")).toHaveTextContent("quick:bottom")
+    expect(article).toHaveClass("overflow-hidden")
+    expect(screen.getByTestId("quick-view").parentElement).toBe(article.parentElement)
+    expect(article).not.toContainElement(screen.getByTestId("quick-view"))
     expect(screen.getByTestId("hero")).toHaveAttribute("data-transitioning", "false")
 
     fireEvent.pointerDown(article)
@@ -212,6 +222,39 @@ describe("NewsCardView — interactions and optional overlays", () => {
     view.unmount()
   })
 
+  it("raises the grid item until its quick view finishes exiting", () => {
+    const view = () => (
+      <div className="news-theme">
+        <div className="css-stagger-item" data-testid="grid-item">
+          <NewsCardView {...createProps()} />
+        </div>
+      </div>
+    )
+    const { rerender } = render(view())
+    const gridItem = screen.getByTestId("grid-item")
+    const card = screen.getByTestId("news-card")
+    const elevated = () => {
+      const values: string[] = []
+      postcss.parse(newsStyles).walkRules((rule) => {
+        if (!rule.selector.includes(":has(") || !gridItem.matches(rule.selector)) return
+        rule.walkDecls("z-index", (declaration) => {
+          values.push(declaration.value)
+        })
+      })
+      return values.includes("var(--z-surface)")
+    }
+
+    expect(elevated()).toBe(false)
+    fireEvent.mouseEnter(card)
+    expect(elevated()).toBe(true)
+    transitionStore.previewExiting = true
+    fireEvent.mouseLeave(card)
+    expect(elevated()).toBe(true)
+    transitionStore.previewExiting = false
+    rerender(view())
+    expect(elevated()).toBe(false)
+  })
+
   it("does not open hover or transition interactions when disabled", async () => {
     const props = createProps()
     props.hoveringDisabled = true
@@ -228,6 +271,21 @@ describe("NewsCardView — interactions and optional overlays", () => {
     })
     view.unmount()
   })
+
+  it.each(["hoveringDisabled", "editOpen", "confirmDeleteOpen"] as const)(
+    "hides an open preview when %s becomes active",
+    async (state) => {
+      const props = createProps()
+      const { rerender } = render(<NewsCardView {...props} />)
+      const card = screen.getByTestId("news-card")
+      fireEvent.mouseEnter(card)
+      expect(screen.getByTestId("quick-view")).toBeInTheDocument()
+
+      rerender(<NewsCardView {...props} {...{ [state]: true }} />)
+      expect(screen.queryByTestId("quick-view")).not.toBeInTheDocument()
+      await act(async () => undefined)
+    }
+  )
 
   it("forwards content and admin callbacks and renders edit/delete/error overlays", async () => {
     const props = createProps()
