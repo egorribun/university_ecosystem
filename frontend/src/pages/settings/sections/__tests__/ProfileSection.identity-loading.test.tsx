@@ -7,6 +7,7 @@ const profileState = vi.hoisted(() => ({
   avatarInputRef: { current: null as HTMLInputElement | null },
   coverInputRef: { current: null as HTMLInputElement | null },
   identityLoading: false,
+  userId: "8b1f0c3e-5d2a-4e7b-9c41-2f6a8d0e1b35",
   avatarBusy: false,
   coverBusy: false,
   triggerAvatarPick: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    user: { full_name: "Test User" },
+    user: { id: profileState.userId, full_name: "Test User" },
     loading: profileState.identityLoading,
   }),
 }))
@@ -59,6 +60,7 @@ import { ProfileSection } from "../ProfileSection"
 beforeEach(() => {
   vi.clearAllMocks()
   profileState.identityLoading = false
+  profileState.userId = "8b1f0c3e-5d2a-4e7b-9c41-2f6a8d0e1b35"
   profileState.avatarBusy = false
   profileState.coverBusy = false
   profileState.avatarInputRef.current = null
@@ -120,4 +122,34 @@ describe("ProfileSection identity readiness", () => {
       expect(remove).toBeDisabled()
     }
   )
+
+  it.each([
+    ["the server-render role stub", "ssr-stub"],
+    ["the encrypted-cache placeholder", "-1"],
+  ])("keeps media actions disabled for %s until the confirmed account arrives", async (_, id) => {
+    const user = userEvent.setup()
+    profileState.userId = id
+    const view = () => (
+      <LazyMotion features={domAnimation}>
+        <ProfileSection setSnackbar={vi.fn()} />
+      </LazyMotion>
+    )
+    const { rerender } = render(view())
+    await user.click(screen.getByRole("button", { name: /settings:media\.avatar\.title/ }))
+    const change = screen.getByRole("button", { name: "settings:media.avatar.change" })
+    const remove = screen.getByRole("button", { name: "settings:media.avatar.delete" })
+
+    // Loading has finished, but the click would be dropped by the session guard.
+    expect(change).toBeDisabled()
+    expect(remove).toBeDisabled()
+    await user.click(remove)
+    expect(profileState.removeAvatar).not.toHaveBeenCalled()
+
+    profileState.userId = "8b1f0c3e-5d2a-4e7b-9c41-2f6a8d0e1b35"
+    rerender(view())
+    expect(change).toBeEnabled()
+    expect(remove).toBeEnabled()
+    await user.click(remove)
+    expect(profileState.removeAvatar).toHaveBeenCalledTimes(1)
+  })
 })
