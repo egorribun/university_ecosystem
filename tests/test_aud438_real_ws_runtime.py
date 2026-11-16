@@ -422,6 +422,7 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         "a-backend": ws.Pod("probe-a", "backend", uid="backend"),
         "prometheus": ws.Pod("monitoring", "prometheus-0", uid="source"),
         "a-ws": ws.Pod("probe-a", "probe-a-ws-hub", uid="fixture"),
+        "ingress": ws.Pod("ingress-nginx", "ingress-controller", uid="edge-source"),
     }
     copies = [
         {
@@ -449,9 +450,14 @@ def install_phase_fakes(monkeypatch, rendered, declaration):
         "apply_objects": Mock(),
         "kubectl": Mock(),
         "run_command": Mock(return_value=SimpleNamespace(stdout='{"result":"ready"}')),
-        "replicas": Mock(side_effect=[copies, copy.deepcopy(copies)]),
+        "replicas": Mock(
+            side_effect=[copies, copy.deepcopy(copies), copy.deepcopy(copies)]
+        ),
         "authorized_source": Mock(),
         "retire_ws_fixture": Mock(),
+        "prove_ws_service": Mock(
+            return_value={"verdict": "pass", "service_uid": "service-uid"}
+        ),
         "run_in_pod": Mock(
             side_effect=[
                 {"result": "valid"},
@@ -492,6 +498,10 @@ def test_phase_scrapes_each_unchanged_replica_and_does_not_emit_private_details(
     mocks["retire_ws_fixture"].assert_called_once_with(
         rendered[0], pods["a-ws"], "python-fixture"
     )
+    mocks["prove_ws_service"].assert_called_once_with(
+        rendered[0], declaration, copies, pods["ingress"]
+    )
+    assert result["service"] == {"verdict": "pass", "service_uid": "service-uid"}
     assert mocks["run_in_pod"].call_args_list[0].args[:2] == (
         pods["a-backend"],
         ws.VERIFY_JWKS,
@@ -532,6 +542,8 @@ def test_phase_rejects_jwks_target_drift_before_creating_fixtures(
         ("scrape", "authorized-scrape"),
         ("changed_replica", "authorized-scrape"),
         ("retire_ws_fixture", "retire-fixture"),
+        ("prove_ws_service", "service-health"),
+        ("service_replica", "service-health"),
     ],
 )
 def test_phase_failures_cannot_pass_or_expose_exception_payload(
@@ -545,6 +557,7 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
         "replicas",
         "authorized_source",
         "retire_ws_fixture",
+        "prove_ws_service",
     }:
         mocks[fault].side_effect = ValueError("private exception data")
     elif fault == "nats_result":
@@ -560,14 +573,18 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
     else:
         altered = copy.deepcopy(copies)
         altered[0]["restarts"] = 1
-        mocks["replicas"].side_effect = [copies, altered]
+        mocks["replicas"].side_effect = (
+            [copies, copies, altered]
+            if fault == "service_replica"
+            else [copies, altered]
+        )
     result = run_phase(tree, pods)
     assert result["verdict"] == "inconclusive"
     if fault != "scrape":
         assert result["stage"] == stage
     assert "private exception data" not in json.dumps(result)
     assert "revocation-password" not in json.dumps(result)
-    if fault != "retire_ws_fixture":
+    if fault not in {"retire_ws_fixture", "prove_ws_service", "service_replica"}:
         mocks["retire_ws_fixture"].assert_not_called()
 
 
@@ -1180,3 +1197,473 @@ def test_retirement_timeout_does_not_repeat_delete(rendered, monkeypatch):
     with pytest.raises(ValueError, match="timed out"):
         ws.retire_ws_fixture(rendered[0], fixture, "python-fixture")
     assert command.call_count == 1
+
+
+def test_create_service_uses_unmodified_rendered_manifest(
+    rendered, declaration, monkeypatch
+):
+    service = ws.find(rendered[0], "Service", "probe-a-ws-hub")
+    original = copy.deepcopy(service)
+    created = copy.deepcopy(service)
+    created["metadata"]["uid"] = "01234567-89ab-cdef-0123-456789abcdef"
+    created["spec"]["clusterIP"] = "10.96.0.42"
+    command = Mock(return_value=SimpleNamespace(stdout=json.dumps(created)))
+    monkeypatch.setattr(ws, "run_command", command)
+
+    identity = ws.create_ws_service(rendered[0], declaration)
+
+    assert identity == {"uid": created["metadata"]["uid"], "cluster_ip": "10.96.0.42"}
+    assert service == original
+    assert command.call_args.args[0] == ["kubectl", "create", "-f", "-", "-o", "json"]
+    assert json.loads(command.call_args.kwargs["stdin"]) == original
+    assert command.call_args.kwargs["timeout"] <= 30
+
+
+def service_and_endpoints(rendered):
+    service = copy.deepcopy(ws.find(rendered[0], "Service", "probe-a-ws-hub"))
+    service["metadata"]["uid"] = "01234567-89ab-cdef-0123-456789abcdef"
+    service["spec"]["clusterIP"] = "10.96.0.42"
+
+    def endpoint(name, uid, ip):
+        return {
+            "addresses": [ip],
+            "conditions": {"ready": True},
+            "targetRef": {
+                "kind": "Pod",
+                "namespace": "probe-a",
+                "name": name,
+                "uid": uid,
+            },
+        }
+
+    replicas = [
+        {"name": "ws-1", "uid": "uid-1", "ip": "10.1.2.3"},
+        {"name": "ws-2", "uid": "uid-2", "ip": "10.1.2.4"},
+    ]
+    slices = {
+        "items": [
+            {
+                "metadata": {
+                    "namespace": "probe-a",
+                    "name": "slice-1",
+                    "uid": "slice-uid",
+                    "labels": {"kubernetes.io/service-name": "probe-a-ws-hub"},
+                    "ownerReferences": [
+                        {
+                            "kind": "Service",
+                            "name": "probe-a-ws-hub",
+                            "uid": service["metadata"]["uid"],
+                            "controller": True,
+                        }
+                    ],
+                },
+                "addressType": "IPv4",
+                "ports": [{"name": "http", "protocol": "TCP", "port": 8081}],
+                "endpoints": [
+                    endpoint("ws-1", "uid-1", "10.1.2.3"),
+                    endpoint("ws-2", "uid-2", "10.1.2.4"),
+                ],
+            }
+        ]
+    }
+    return service, slices, replicas
+
+
+def test_service_snapshot_binds_ready_slice_endpoints_to_real_replicas(
+    rendered, declaration, monkeypatch
+):
+    service, slices, replicas = service_and_endpoints(rendered)
+    reads = Mock(side_effect=[service, slices])
+    monkeypatch.setattr(ws, "bounded_kubectl_json", reads)
+    identity = {
+        "uid": service["metadata"]["uid"],
+        "cluster_ip": service["spec"]["clusterIP"],
+    }
+
+    snapshot = ws.ws_service_snapshot(declaration, identity, replicas)
+
+    assert snapshot == {
+        "service_uid": identity["uid"],
+        "slice_uids": ["slice-uid"],
+        "replica_uids": ["uid-1", "uid-2"],
+    }
+    assert reads.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "source", "uid", "labels", "restarts", "no-grant"]
+)
+def test_service_source_is_original_pod_selected_by_rendered_policy(
+    rendered, monkeypatch, fault
+):
+    app = copy.deepcopy(rendered[0])
+    source = ws.Pod("ingress-nginx", "ingress-controller", "10.1.1.5", "source-uid")
+    namespace = {
+        "metadata": {
+            "name": "ingress-nginx",
+            "labels": {"kubernetes.io/metadata.name": "ingress-nginx"},
+        }
+    }
+    pod = {
+        "metadata": {
+            "namespace": source.namespace,
+            "name": source.name,
+            "uid": source.uid,
+            "labels": {"app.kubernetes.io/name": "ingress-nginx"},
+        },
+        "spec": {"containers": [{"name": "probe"}], "hostNetwork": False},
+        "status": {
+            "podIP": source.ip,
+            "containerStatuses": [
+                {
+                    "name": "probe",
+                    "ready": True,
+                    "containerID": "containerd://a",
+                    "restartCount": 0,
+                }
+            ],
+        },
+    }
+    if fault == "source":
+        source.uid = ""
+    elif fault == "uid":
+        pod["metadata"]["uid"] = "other"
+    elif fault == "labels":
+        pod["metadata"]["labels"] = {}
+    elif fault == "restarts":
+        pod["status"]["containerStatuses"][0]["restartCount"] = -1
+    elif fault == "no-grant":
+        ws.find(app, "NetworkPolicy", "probe-a-ws-hub-policy")["spec"]["ingress"] = []
+    monkeypatch.setattr(ws, "bounded_kubectl_json", Mock(side_effect=[namespace, pod]))
+    if fault:
+        with pytest.raises(ValueError):
+            ws.authorized_ingress_source(app, source)
+    else:
+        assert ws.authorized_ingress_source(app, source) == {
+            "uid": "source-uid",
+            "container_id": "containerd://a",
+            "restarts": 0,
+        }
+
+
+@pytest.mark.parametrize(
+    "fault, pending",
+    [
+        ("empty-list", True),
+        ("empty-slice", True),
+        ("unready", True),
+        ("missing", True),
+        ("service-uid", False),
+        ("slice-owner", False),
+        ("slice-port", False),
+        ("endpoint-uid", False),
+        ("endpoint-ip", False),
+        ("duplicate", False),
+        ("duplicate-replicas", False),
+        ("duplicate-slice", False),
+    ],
+)
+def test_service_snapshot_rejects_drift_and_waits_for_reconciliation(
+    rendered, declaration, monkeypatch, fault, pending
+):
+    service, slices, replicas = service_and_endpoints(rendered)
+    identity = {
+        "uid": service["metadata"]["uid"],
+        "cluster_ip": service["spec"]["clusterIP"],
+    }
+    item = slices["items"][0]
+    if fault == "empty-list":
+        slices["items"] = []
+    elif fault == "empty-slice":
+        item["endpoints"] = []
+        item["ports"] = []
+    elif fault == "unready":
+        item["endpoints"][0]["conditions"]["ready"] = False
+    elif fault == "missing":
+        item["endpoints"].pop()
+    elif fault == "service-uid":
+        service["metadata"]["uid"] = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    elif fault == "slice-owner":
+        item["metadata"]["ownerReferences"][0]["uid"] = "other"
+    elif fault == "slice-port":
+        item["ports"][0]["port"] = 9108
+    elif fault == "endpoint-uid":
+        item["endpoints"][0]["targetRef"]["uid"] = "stand-in"
+    elif fault == "endpoint-ip":
+        item["endpoints"][0]["addresses"] = ["10.9.9.9"]
+    elif fault == "duplicate":
+        item["endpoints"].append(copy.deepcopy(item["endpoints"][0]))
+    elif fault == "duplicate-replicas":
+        replicas.append(copy.deepcopy(replicas[0]))
+    elif fault == "duplicate-slice":
+        extra = copy.deepcopy(item)
+        extra["endpoints"] = []
+        slices["items"].append(extra)
+    monkeypatch.setattr(ws, "bounded_kubectl_json", Mock(side_effect=[service, slices]))
+    if pending:
+        assert ws.ws_service_snapshot(declaration, identity, replicas) is None
+    else:
+        with pytest.raises(ValueError):
+            ws.ws_service_snapshot(declaration, identity, replicas)
+
+
+@pytest.mark.parametrize(
+    "status,body,expected",
+    [
+        (200, b'{"status":"alive"}', "healthy"),
+        (503, b'{"status":"alive"}', "invalid"),
+        (200, b'{"status":"other"}', "invalid"),
+        (200, b"x" * 1025, "invalid"),
+        (200, b"not json", "invalid"),
+    ],
+)
+def test_service_health_probe_is_bounded_and_returns_only_verdict(
+    monkeypatch, capsys, tmp_path, status, body, expected
+):
+    response = Mock(status=status)
+    response.read.return_value = body
+    connection = Mock()
+    connection.getresponse.return_value = response
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(http.client, "HTTPConnection", factory)
+    monkeypatch.setattr(sys, "argv", ["probe", "10.96.0.42"])
+    program = tmp_path / "health.py"
+    program.write_text(ws.HEALTH, encoding="utf-8")
+    runpy.run_path(str(program), run_name="__main__")
+    assert json.loads(capsys.readouterr().out) == {"result": expected}
+    factory.assert_called_once_with("10.96.0.42", 8081, timeout=3)
+    connection.request.assert_called_once_with("GET", "/health/live")
+    response.read.assert_called_once_with(1025)
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "health",
+        "source-before",
+        "source-drift",
+        "slice-drift",
+        "timeout",
+        "late-ready",
+    ],
+)
+def test_service_proof_brackets_health_with_matching_witnesses(
+    rendered, declaration, monkeypatch, fault
+):
+    service, _, replicas = service_and_endpoints(rendered)
+    source = ws.Pod("ingress-nginx", "ingress-controller", "10.1.1.5", "source-uid")
+    identity = {
+        "uid": service["metadata"]["uid"],
+        "cluster_ip": service["spec"]["clusterIP"],
+    }
+    snapshot = {
+        "service_uid": identity["uid"],
+        "slice_uids": ["slice-uid"],
+        "replica_uids": ["uid-1", "uid-2"],
+    }
+    source_state = {
+        "uid": "source-uid",
+        "container_id": "containerd://a",
+        "restarts": 0,
+    }
+    monkeypatch.setattr(ws, "create_ws_service", Mock(return_value=identity))
+    states = [
+        ({**source_state, "restarts": 1} if fault == "source-before" else source_state),
+        source_state,
+        ({**source_state, "restarts": 1} if fault == "source-drift" else source_state),
+    ]
+    monkeypatch.setattr(ws, "authorized_ingress_source", Mock(side_effect=states))
+    snapshots = [
+        None,
+        snapshot,
+        ({**snapshot, "slice_uids": ["other"]} if fault == "slice-drift" else snapshot),
+    ]
+    if fault == "late-ready":
+        snapshots = [snapshot, snapshot]
+    monkeypatch.setattr(ws, "ws_service_snapshot", Mock(side_effect=snapshots))
+    probe = Mock(return_value={"result": "invalid" if fault == "health" else "healthy"})
+    monkeypatch.setattr(ws, "run_in_pod", probe)
+    times = [0, 31] if fault in {"timeout", "late-ready"} else [0, 1, 2]
+    monkeypatch.setattr(
+        ws, "time", SimpleNamespace(monotonic=Mock(side_effect=times), sleep=Mock())
+    )
+    if fault:
+        with pytest.raises(ValueError):
+            ws.prove_ws_service(rendered[0], declaration, replicas, source)
+    else:
+        result = ws.prove_ws_service(rendered[0], declaration, replicas, source)
+        assert result == {
+            **snapshot,
+            "source_uid": source.uid,
+            "source": "ingress-labelled Python probe",
+            "request": "GET /health/live",
+            "verdict": "pass",
+        }
+        assert "10.96.0.42" not in json.dumps(result)
+        probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=3)
+
+
+@pytest.mark.parametrize("payload", ["{}", "null", "[]"])
+def test_service_reads_have_bounded_transport_and_require_object(monkeypatch, payload):
+    command = Mock(return_value=SimpleNamespace(stdout=payload))
+    monkeypatch.setattr(ws, "run_command", command)
+    if payload == "{}":
+        assert ws.bounded_kubectl_json("get", "service") == {}
+    else:
+        with pytest.raises(ValueError):
+            ws.bounded_kubectl_json("get", "service")
+    assert command.call_args.args[0] == ["kubectl", "get", "service"]
+    assert command.call_args.kwargs["timeout"] <= 10
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "declaration-port",
+        "target-port",
+        "conflict",
+        "uid",
+        "ip",
+        "selector",
+        "extra-port",
+        "shape",
+    ],
+)
+def test_service_creation_fails_closed_on_conflict_or_drift(
+    rendered, declaration, monkeypatch, fault
+):
+    app = copy.deepcopy(rendered[0])
+    service = ws.find(app, "Service", "probe-a-ws-hub")
+    response = copy.deepcopy(service)
+    response["metadata"]["uid"] = "01234567-89ab-cdef-0123-456789abcdef"
+    response["spec"]["clusterIP"] = "10.96.0.42"
+    if fault == "declaration-port":
+        service["spec"]["ports"][0]["port"] = 9108
+    elif fault == "target-port":
+        declaration["spec"]["template"]["spec"]["containers"][0]["ports"][0][
+            "containerPort"
+        ] = 9108
+    elif fault == "uid":
+        response["metadata"]["uid"] = "bad"
+    elif fault == "ip":
+        response["spec"]["clusterIP"] = "8.8.8.8"
+    elif fault == "selector":
+        response["spec"]["selector"] = {"different": "pod"}
+    elif fault == "extra-port":
+        response["spec"]["ports"].append({"name": "metrics", "port": 9108})
+    elif fault == "shape":
+        response = None
+    command = Mock(return_value=SimpleNamespace(stdout=json.dumps(response)))
+    if fault == "conflict":
+        command.side_effect = subprocess.CalledProcessError(1, "kubectl create")
+    monkeypatch.setattr(ws, "run_command", command)
+    with pytest.raises((ValueError, subprocess.CalledProcessError)):
+        ws.create_ws_service(app, declaration)
+    assert command.call_count == (
+        0 if fault in {"declaration-port", "target-port"} else 1
+    )
+
+
+def test_service_proof_composes_real_helpers_with_mocked_transport(
+    rendered, declaration, monkeypatch
+):
+    service, slices, replicas = service_and_endpoints(rendered)
+    source = ws.Pod("ingress-nginx", "ingress-controller", "10.1.1.5", "source-uid")
+    namespace = {
+        "metadata": {
+            "name": "ingress-nginx",
+            "labels": {"kubernetes.io/metadata.name": "ingress-nginx"},
+        }
+    }
+    pod = {
+        "metadata": {
+            "namespace": source.namespace,
+            "name": source.name,
+            "uid": source.uid,
+            "labels": {"app.kubernetes.io/name": "ingress-nginx"},
+        },
+        "spec": {"containers": [{"name": "probe"}], "hostNetwork": False},
+        "status": {
+            "podIP": source.ip,
+            "containerStatuses": [
+                {
+                    "name": "probe",
+                    "ready": True,
+                    "containerID": "containerd://a",
+                    "restartCount": 0,
+                }
+            ],
+        },
+    }
+    calls = []
+
+    def transport(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv == ["kubectl", "create", "-f", "-", "-o", "json"]:
+            assert json.loads(kwargs["stdin"]) == ws.find(
+                rendered[0], "Service", "probe-a-ws-hub"
+            )
+            document = service
+        elif argv == ["kubectl", "get", "namespace", "ingress-nginx", "-o", "json"]:
+            document = namespace
+        elif argv == [
+            "kubectl",
+            "-n",
+            "ingress-nginx",
+            "get",
+            "pod",
+            "ingress-controller",
+            "-o",
+            "json",
+        ]:
+            document = pod
+        elif argv == [
+            "kubectl",
+            "-n",
+            "probe-a",
+            "get",
+            "service",
+            "probe-a-ws-hub",
+            "-o",
+            "json",
+        ]:
+            document = service
+        elif argv == [
+            "kubectl",
+            "-n",
+            "probe-a",
+            "get",
+            "endpointslices",
+            "-l",
+            "kubernetes.io/service-name=probe-a-ws-hub",
+            "-o",
+            "json",
+        ]:
+            document = slices
+        else:
+            raise AssertionError("unexpected transport request")
+        return SimpleNamespace(stdout=json.dumps(document))
+
+    monkeypatch.setattr(ws, "run_command", Mock(side_effect=transport))
+    probe = Mock(return_value={"result": "healthy"})
+    monkeypatch.setattr(ws, "run_in_pod", probe)
+    monkeypatch.setattr(
+        ws, "time", SimpleNamespace(monotonic=Mock(return_value=0), sleep=Mock())
+    )
+
+    result = ws.prove_ws_service(rendered[0], declaration, replicas, source)
+
+    assert result == {
+        "verdict": "pass",
+        "source_uid": source.uid,
+        "source": "ingress-labelled Python probe",
+        "request": "GET /health/live",
+        "service_uid": service["metadata"]["uid"],
+        "slice_uids": ["slice-uid"],
+        "replica_uids": ["uid-1", "uid-2"],
+    }
+    assert sum(argv[1] == "create" for argv, _ in calls) == 1
+    assert all(kwargs["timeout"] <= 30 for _, kwargs in calls)
+    probe.assert_called_once_with(source, ws.HEALTH, ["10.96.0.42"], timeout=3)

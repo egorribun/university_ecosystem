@@ -83,6 +83,23 @@ valid = (response.status == 200 and content_type == 'text/plain' and len(body) <
 print(json.dumps({'result': 'valid-exposition' if valid else 'invalid-exposition'}))
 """
 
+# Runs only from the existing permitted probe to the created ClusterIP.
+HEALTH = r"""
+import http.client, json, sys
+connection = http.client.HTTPConnection(sys.argv[1], 8081, timeout=3)
+valid = False
+try:
+    connection.request('GET', '/health/live')
+    response = connection.getresponse()
+    body = response.read(1025)
+    valid = response.status == 200 and len(body) <= 1024 and json.loads(body) == {'status': 'alive'}
+except (OSError, ValueError, http.client.HTTPException):
+    pass
+finally:
+    connection.close()
+print(json.dumps({'result': 'healthy' if valid else 'invalid'}))
+"""
+
 # Verify the processor phase's final JWKS in place without returning it.
 VERIFY_JWKS = r"""
 import json
@@ -383,6 +400,270 @@ def authorized_source(app: list[dict[str, Any]], source: Pod) -> None:
         raise ValueError("monitoring pod does not match rendered policy")
 
 
+def bounded_kubectl_json(*args: str) -> dict[str, Any]:
+    """Keep Service and source identity reads within a fixed local deadline."""
+    result = run_command(["kubectl", *args], timeout=10)
+    document = json.loads(result.stdout)
+    if not isinstance(document, dict):
+        raise ValueError("non-object Kubernetes response")
+    return document
+
+
+def authorized_ingress_source(app: list[dict[str, Any]], source: Pod) -> dict[str, Any]:
+    """Bind the existing ingress-labelled probe to the rendered 8081 grant."""
+    if (source.namespace, source.name) != (
+        "ingress-nginx",
+        "ingress-controller",
+    ) or not source.uid:
+        raise ValueError("unexpected ingress-labelled source")
+    namespace = bounded_kubectl_json("get", "namespace", source.namespace, "-o", "json")
+    pod = bounded_kubectl_json(
+        "-n", source.namespace, "get", "pod", source.name, "-o", "json"
+    )
+    meta, spec, status = pod["metadata"], pod["spec"], pod["status"]
+    grants = [
+        peer
+        for rule in find(app, "NetworkPolicy", "probe-a-ws-hub-policy")["spec"][
+            "ingress"
+        ]
+        if {"protocol": "TCP", "port": 8081} in rule.get("ports", [])
+        for peer in rule.get("from", [])
+    ]
+    if len(grants) != 1:
+        raise ValueError("public-port grant is ambiguous")
+    ns_labels = grants[0]["namespaceSelector"]["matchLabels"]
+    pod_labels = grants[0]["podSelector"]["matchLabels"]
+    container = next(
+        item for item in status["containerStatuses"] if item["name"] == "probe"
+    )
+    if (
+        namespace["metadata"].get("name") != source.namespace
+        or (meta.get("namespace"), meta.get("name"), meta.get("uid"))
+        != (source.namespace, source.name, source.uid)
+        or status.get("podIP") != source.ip
+        or spec.get("hostNetwork", False) is not False
+        or [item["name"] for item in spec["containers"]] != ["probe"]
+        or container.get("ready") is not True
+        or not container.get("containerID")
+        or type(container.get("restartCount")) is not int
+        or container["restartCount"] < 0
+        or not ns_labels
+        or not pod_labels
+        or any(
+            namespace["metadata"].get("labels", {}).get(k) != v
+            for k, v in ns_labels.items()
+        )
+        or any(meta.get("labels", {}).get(k) != v for k, v in pod_labels.items())
+    ):
+        raise ValueError("ingress-labelled source identity or grant changed")
+    return {
+        "uid": source.uid,
+        "container_id": container["containerID"],
+        "restarts": container["restartCount"],
+    }
+
+
+def check_ws_service_shape(service: dict[str, Any], selector: dict[str, str]) -> None:
+    """Check the rendered or live public-port-only ClusterIP Service."""
+    meta, spec = service["metadata"], service["spec"]
+    if (
+        service.get("apiVersion") != "v1"
+        or service.get("kind") != "Service"
+        or (meta.get("namespace"), meta.get("name")) != ("probe-a", "probe-a-ws-hub")
+        or spec.get("type") != "ClusterIP"
+        or spec.get("selector") != selector
+        or spec.get("ports")
+        != [{"name": "http", "port": 8081, "targetPort": "http", "protocol": "TCP"}]
+        or spec.get("externalIPs")
+        or spec.get("externalName")
+        or spec.get("publishNotReadyAddresses", False) is not False
+    ):
+        raise ValueError("unexpected ws-hub Service")
+
+
+def ws_service_identity(
+    service: dict[str, Any], selector: dict[str, str]
+) -> dict[str, str]:
+    """Check the Service and return its allocated identity."""
+    check_ws_service_shape(service, selector)
+    meta, spec = service["metadata"], service["spec"]
+    uid = meta.get("uid")
+    ip = ipaddress.ip_address(spec.get("clusterIP", ""))
+    private = any(
+        ip in ipaddress.ip_network(net)
+        for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+    )
+    if (
+        not isinstance(uid, str)
+        or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", uid)
+        or ip.version != 4
+        or not private
+    ):
+        raise ValueError("invalid ws-hub Service identity")
+    return {"uid": uid, "cluster_ip": str(ip)}
+
+
+def create_ws_service(
+    app: list[dict[str, Any]], deployment: dict[str, Any]
+) -> dict[str, str]:
+    """Create the unmodified rendered Service; an existing name is a failure."""
+    service = find(app, "Service", "probe-a-ws-hub")
+    selector = deployment["spec"]["selector"]["matchLabels"]
+    container = next(
+        c
+        for c in deployment["spec"]["template"]["spec"]["containers"]
+        if c["name"] == "ws-hub"
+    )
+    if (
+        service["metadata"].get("uid")
+        or not selector
+        or {"name": "http", "containerPort": 8081, "protocol": "TCP"}
+        not in container.get("ports", [])
+    ):
+        raise ValueError("unexpected rendered ws-hub Service target")
+    check_ws_service_shape(service, selector)
+    result = run_command(
+        ["kubectl", "create", "-f", "-", "-o", "json"],
+        stdin=json.dumps(service),
+        timeout=30,
+    )
+    created = json.loads(result.stdout)
+    if not isinstance(created, dict):
+        raise ValueError("invalid created Service")
+    return ws_service_identity(created, selector)
+
+
+def ws_service_snapshot(
+    deployment: dict[str, Any], identity: dict[str, str], replicas: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Bind ready EndpointSlices to the created Service and real replica UIDs."""
+    service = bounded_kubectl_json(
+        "-n", "probe-a", "get", "service", "probe-a-ws-hub", "-o", "json"
+    )
+    if (
+        ws_service_identity(service, deployment["spec"]["selector"]["matchLabels"])
+        != identity
+    ):
+        raise ValueError("ws-hub Service identity changed")
+    expected = {
+        replica["uid"]: (replica["name"], replica["ip"]) for replica in replicas
+    }
+    if not expected or len(expected) != len(replicas):
+        raise ValueError("ambiguous real ws-hub replicas")
+    slices = bounded_kubectl_json(
+        "-n",
+        "probe-a",
+        "get",
+        "endpointslices",
+        "-l",
+        "kubernetes.io/service-name=probe-a-ws-hub",
+        "-o",
+        "json",
+    )["items"]
+    seen: set[str] = set()
+    slice_uids: list[str] = []
+    ready = True
+    for item in slices:
+        meta = item["metadata"]
+        endpoints = item["endpoints"]
+        ports = item.get("ports", [])
+        if (
+            meta.get("namespace") != "probe-a"
+            or meta.get("labels", {}).get("kubernetes.io/service-name")
+            != "probe-a-ws-hub"
+            or not meta.get("uid")
+            or not any(
+                ref.get("kind") == "Service"
+                and ref.get("name") == "probe-a-ws-hub"
+                and ref.get("uid") == identity["uid"]
+                and ref.get("controller") is True
+                for ref in meta.get("ownerReferences", [])
+            )
+            or item.get("addressType") != "IPv4"
+            or not isinstance(endpoints, list)
+            or not isinstance(ports, list)
+            or len(ports) > 1
+            or (bool(endpoints) and len(ports) != 1)
+            or (
+                ports
+                and (ports[0].get("name"), ports[0].get("protocol")) != ("http", "TCP")
+            )
+            or (
+                ports
+                and ports[0].get("port") not in ((8081,) if endpoints else (None, 8081))
+            )
+        ):
+            raise ValueError("unexpected ws-hub EndpointSlice")
+        slice_uids.append(meta["uid"])
+        if not endpoints:
+            ready = False
+        for endpoint in endpoints:
+            ref = endpoint["targetRef"]
+            uid = ref.get("uid")
+            if (
+                uid not in expected
+                or uid in seen
+                or (ref.get("kind"), ref.get("namespace"), ref.get("name"))
+                != ("Pod", "probe-a", expected[uid][0])
+                or endpoint.get("addresses") != [expected[uid][1]]
+            ):
+                raise ValueError("unexpected ws-hub endpoint")
+            seen.add(uid)
+            conditions = endpoint.get("conditions", {})
+            ready = (
+                ready
+                and conditions.get("ready") is True
+                and conditions.get("serving", True) is not False
+                and conditions.get("terminating", False) is not True
+            )
+    if len(set(slice_uids)) != len(slice_uids):
+        raise ValueError("duplicate EndpointSlice identity")
+    if seen != set(expected) or not ready:
+        return None
+    return {
+        "service_uid": identity["uid"],
+        "slice_uids": sorted(slice_uids),
+        "replica_uids": sorted(seen),
+    }
+
+
+def prove_ws_service(
+    app: list[dict[str, Any]],
+    deployment: dict[str, Any],
+    replicas: list[dict[str, Any]],
+    source: Pod,
+) -> dict[str, Any]:
+    """Prove only the in-cluster Service's ordinary public-port health route."""
+    source_before = authorized_ingress_source(app, source)
+    identity = create_ws_service(app, deployment)
+    deadline = time.monotonic() + 30
+    while True:
+        snapshot = ws_service_snapshot(deployment, identity, replicas)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("ws-hub Service endpoints not ready")
+        if snapshot is not None:
+            break
+        time.sleep(min(1.0, remaining))
+    if authorized_ingress_source(app, source) != source_before:
+        raise ValueError("service probe source changed")
+    if run_in_pod(source, HEALTH, [identity["cluster_ip"]], timeout=3) != {
+        "result": "healthy"
+    }:
+        raise ValueError("ws-hub Service health check failed")
+    if authorized_ingress_source(app, source) != source_before:
+        raise ValueError("service probe source changed")
+    if ws_service_snapshot(deployment, identity, replicas) != snapshot:
+        raise ValueError("ws-hub Service endpoints changed")
+    return {
+        **snapshot,
+        "source_uid": source.uid,
+        "source": "ingress-labelled Python probe",
+        "request": "GET /health/live",
+        "verdict": "pass",
+    }
+
+
 def retire_ws_fixture(app: list[dict[str, Any]], pod: Pod, image: str) -> None:
     """Retire only this run's create-only matrix fixture, guarded by its UID."""
     created = pod.created
@@ -594,6 +875,13 @@ def actual_ws_phase(
             raise ValueError("authorized scrape incomplete")
         stage = "retire-fixture"
         retire_ws_fixture(app, pods["a-ws"], python_image)
+        stage = "service-health"
+        service = prove_ws_service(app, deployment, before, pods["ingress"])
+        if (
+            service.get("verdict") != "pass"
+            or replicas(deployment, image, source_sha) != before
+        ):
+            raise ValueError("ws-hub Service proof or replica identity changed")
     except (
         OSError,
         ValueError,
@@ -616,6 +904,7 @@ def actual_ws_phase(
         ],
         "checks": checks,
         "matrix_fixture": {"uid": pods["a-ws"].uid, "verdict": "retired"},
+        "service": service,
         "source": "Prometheus-labelled Python probe",
-        "scope": "authorized positive HTTP scrape and owned matrix fixture retirement",
+        "scope": "authorized scrape and in-cluster Service health; actual ingress not tested",
     }
