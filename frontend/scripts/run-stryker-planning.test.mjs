@@ -10,14 +10,32 @@ test("stages the canonical coverage policy beside every Stryker sandbox", async 
   const { stageStrykerSandboxInputs } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-sandbox-inputs-"))
   t.after(() => rm(root, { recursive: true, force: true }))
-  const sourceRoot = path.join(root, "source")
+  const sourceRoot = path.join(root, "source", "quality")
   const shardTemp = path.join(root, "shard-000")
   const sourcePolicy = path.join(sourceRoot, "coverage-source-policy.json")
   const policyText = '{"frontend":{"include":["src/**/*.ts"],"exclude":[]}}\n'
   await Promise.all([mkdir(sourceRoot, { recursive: true }), mkdir(shardTemp, { recursive: true })])
   await writeFile(sourcePolicy, policyText)
 
+  const manifests = [
+    "k8s/backend/configmap.yaml",
+    "k8s/backend/deployment.yaml",
+    "k8s/frontend/deployment.yaml",
+  ]
+  for (const manifest of manifests) {
+    const source = path.join(root, "source", manifest)
+    await mkdir(path.dirname(source), { recursive: true })
+    await writeFile(source, `fixture: ${manifest}\n`)
+  }
+
   const stagedPolicy = await stageStrykerSandboxInputs(shardTemp, sourcePolicy)
+
+  for (const manifest of manifests) {
+    assert.equal(
+      await readFile(path.join(shardTemp, manifest), "utf8"),
+      await readFile(path.join(root, "source", manifest), "utf8")
+    )
+  }
 
   assert.equal(stagedPolicy, path.join(shardTemp, "quality", "coverage-source-policy.json"))
   assert.equal(await readFile(stagedPolicy, "utf8"), policyText)
