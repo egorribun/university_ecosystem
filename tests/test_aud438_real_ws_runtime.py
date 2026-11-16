@@ -702,17 +702,24 @@ def test_runner_rejects_ws_without_source_bound_processor(monkeypatch, tmp_path)
     assert not args.receipt.exists()
 
 
-@pytest.mark.parametrize("include_ws", [False, True])
-def test_source_archive_build_adds_only_requested_ws_image(
-    monkeypatch, tmp_path, include_ws
-):
+def _require_native_bash() -> Path:
     bash = (
         Path("C:/Program Files/Git/bin/bash.exe")
         if os.name == "nt"
         else Path("/bin/bash")
     )
     if not bash.is_file():
-        pytest.skip("native Bash is unavailable")
+        pytest.fail(
+            f"native Bash is required for shell contracts: {bash}", pytrace=False
+        )
+    return bash
+
+
+@pytest.mark.parametrize("include_ws", [False, True])
+def test_source_archive_build_adds_only_requested_ws_image(
+    monkeypatch, tmp_path, include_ws
+):
+    bash = _require_native_bash()
     archive = tmp_path / "fixture.tar"
     with tarfile.open(archive, "w") as handle:
         for name, data in [
@@ -771,13 +778,7 @@ uv() { printf 'python:fixture'; }
 def test_image_loader_verifies_every_owned_tag_without_docker(
     monkeypatch, tmp_path, include_ws, bad_ws
 ):
-    bash = (
-        Path("C:/Program Files/Git/bin/bash.exe")
-        if os.name == "nt"
-        else Path("/bin/bash")
-    )
-    if not bash.is_file():
-        pytest.skip("native Bash is unavailable")
+    bash = _require_native_bash()
     work = tmp_path.as_posix()
     if os.name == "nt":
         work = "/" + work[0].lower() + work[2:]
@@ -832,6 +833,13 @@ uv() { "$TEST_PYTHON" "${@:4}"; }
         "image inspect --format {{.Id}} ue-netpol-ws:fixture" in calls
     ) == include_ws
     assert ("ue-netpol-ws:fixture" in calls.splitlines()[0]) == include_ws
+
+
+def test_required_native_bash_fails_when_unavailable(monkeypatch):
+    with monkeypatch.context() as missing_bash:
+        missing_bash.setattr(Path, "is_file", lambda _path: False)
+        with pytest.raises(pytest.fail.Exception, match="native Bash is required"):
+            _require_native_bash()
 
 
 def test_proof_keeps_exact_calico_line_and_cleans_only_its_ws_tag():
