@@ -2337,6 +2337,44 @@ async function main() {
           body: pinnedExternalImage,
         })
       )
+      // The dashboard reads current weather straight from the public Open-Meteo API
+      // (src/api/weather.ts). Its free tier limits requests per client IP, and a shared
+      // hosted runner can exhaust it mid-matrix (4xx on later routes). Answer exactly its
+      // forecast endpoint with a pinned, valid forecast so that host cannot decide the
+      // gate either. The widget still renders from a real browser fetch, and every other
+      // external host still reaches the network and is counted.
+      const PINNED_WEATHER_ROUTE = "https://api.open-meteo.com/v1/forecast**"
+      const pinnedWeatherForecast = JSON.stringify({
+        latitude: 55.75,
+        longitude: 37.62,
+        timezone: "Europe/Moscow",
+        current: {
+          time: "2026-01-15T12:00",
+          temperature_2m: -4,
+          weather_code: 3,
+          is_day: 1,
+          apparent_temperature: -8,
+          wind_speed_10m: 3,
+          relative_humidity_2m: 80,
+          uv_index: 0,
+        },
+        hourly: {
+          time: Array.from(
+            { length: 12 },
+            (_, hour) => `2026-01-15T${String(12 + hour).padStart(2, "0")}:00`
+          ),
+          temperature_2m: Array.from({ length: 12 }, () => -4),
+          weather_code: Array.from({ length: 12 }, () => 3),
+        },
+      })
+      await context.route(PINNED_WEATHER_ROUTE, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          headers: { "access-control-allow-origin": "*" },
+          body: pinnedWeatherForecast,
+        })
+      )
       const page = await context.newPage()
       page.setDefaultTimeout(30_000)
       page.setDefaultNavigationTimeout(30_000)
@@ -2364,6 +2402,10 @@ async function main() {
               externalImageFixture: {
                 route: PINNED_EXTERNAL_IMAGE_ROUTE,
                 source: "frontend/public/fallbacks/placeholder.png",
+              },
+              externalWeatherFixture: {
+                route: PINNED_WEATHER_ROUTE,
+                source: "inline pinned Open-Meteo forecast",
               },
               browserTransport: remoteBrowserConnection
                 ? "playwright-websocket"

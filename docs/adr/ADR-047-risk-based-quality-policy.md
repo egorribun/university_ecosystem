@@ -2830,3 +2830,39 @@ probes, and ZAP plans to deprecate the rule.
   or replace it with a bounded browser-based DOM XSS check before then.
 - **Not established.** This exclusion is not a passing scan; AUD-381 still
   needs a green hosted ZAP run on `main` with a verified report.
+
+### Push observation display fields and live stand companion rebind
+
+The bounded browser push observation (`UE_LIVE_PUSH_OBS_V2`) adds two closed
+fields read from the same `getNotifications()` call: `shown`, the number of
+displayed notifications capped at 3, and `untagged`, whether any of them has no
+tag (the service worker's generic fallback). No title, body or tag value leaves
+the page. This separates a push that never arrived from one shown as the generic
+fallback, which the full-run `notification-topics-delivery` failures could not
+tell apart. The runner parser and the `live E2E push` line carry both fields.
+
+`scripts/live_stand.py` is a Semgrep companion, so the owner's standing
+2026-10-31 approval for one-to-one rebinds applies: its ledger digest and the
+SHA-1 identity of that digest in policy row 495 bind the new bytes, and the
+NOV16 projection layer in `tests/test_verify_secrets_baseline.py` restores the
+exact predecessor ahead of the nov15 and AUD-189 layers. No identity is added;
+the inventory stays at 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This adds no threshold, required check or
+audit status.
+
+### Visual audit weather fixture
+
+The dashboard fetches current weather from the public Open-Meteo API straight
+from the browser. On the 2026-11-16 PR run of the required live-realtime-visual
+check, every Russian-locale dashboard capture reported two external 4xx
+responses while the English captures earlier in the same matrix had none; the
+free tier limits requests per client IP, which a shared hosted runner can
+exhaust. `frontend/scripts/authenticated-visual-audit.mjs` now answers exactly
+`https://api.open-meteo.com/v1/forecast**` with a pinned, valid forecast (with a
+CORS header, since the page fetches cross-origin), as it already does for the
+demo-image CDN. The widget still renders from a real browser fetch, every other
+external host still reaches the network and is counted, and `matrix.json`
+records the fixture as `externalWeatherFixture`. The change sits below the
+file's Semgrep row-2 anchor, so the reviewed finding keeps its lines; no byte
+digest pins this file or its test. This adds no scanner threshold, required
+check or audit status.
