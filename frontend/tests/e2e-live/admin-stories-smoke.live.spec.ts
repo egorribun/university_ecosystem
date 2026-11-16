@@ -19,11 +19,14 @@ test("admin can review seeded active stories through the real admin page", async
     }
   })
 
+  // Login lands on the dashboard, which reads the same story list. Arm the wait only
+  // once the admin document has committed: the dashboard's requests are cancelled by
+  // then, so its late response can no longer satisfy the wait and lose its body.
+  await page.goto("/admin/stories", { waitUntil: "commit" })
   const storyListResponse = page.waitForResponse((response) => {
     const requestUrl = new URL(response.url())
     return requestUrl.pathname === STORY_LIST_PATH && response.request().method() === "GET"
   })
-  await page.goto("/admin/stories")
 
   await expect(page).toHaveURL(/\/admin\/stories$/u)
   await expect(
