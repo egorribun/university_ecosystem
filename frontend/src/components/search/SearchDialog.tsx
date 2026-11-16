@@ -163,12 +163,16 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   ].sort((a, b) => b.score - a.score)
   const showResults = query.length >= 2 && debouncedQuery.length >= 2
   const activeResult = showResults && !isLoading && !isError ? allResults[activeIndex] : undefined
-  const searchStatus =
-    isLoading && showResults
-      ? t("common:search.loading")
-      : activeResult
-        ? t("common:search.activeResult", { title: activeResult.title })
-        : ""
+  let searchStatus = ""
+  if (showResults && query === debouncedQuery && !isError) {
+    if (isLoading) {
+      searchStatus = t("common:search.loading")
+    } else if (activeResult) {
+      searchStatus = t("common:search.activeResult", { title: activeResult.title })
+    } else if (data) {
+      searchStatus = t("common:search.resultCount", { count: allResults.length })
+    }
+  }
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
