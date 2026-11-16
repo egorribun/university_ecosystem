@@ -1027,6 +1027,7 @@ def test_fixture_certificate_rejects_a_symlinked_work_directory(
     try:
         linked.symlink_to(actual, target_is_directory=True)
     except OSError:
+        # QUALITY-123 @egorribun — Windows symlink privilege varies by runner.
         pytest.skip("directory symlinks unavailable on this platform")
     with pytest.raises(ValueError):
         proof.generate_fixture_certificate(
