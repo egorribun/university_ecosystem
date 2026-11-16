@@ -122,6 +122,13 @@ def test_workflow_is_manual_scheduled_and_path_filtered_pr_only() -> None:
         "charts/**",
         "k8s/**",
         "backend.Dockerfile",
+        "services/ws-hub/**",
+        "services/pkg/logging/**",
+        "services/pkg/spiffe/**",
+        "gen/go/**",
+        "go.mod",
+        "go.sum",
+        "tests/test_aud438_real_ws_runtime.py",
         "scripts/k8s/networkpolicy_runtime_*.py",
         ".github/workflows/k8s-networkpolicy-runtime.yml",
     } <= paths

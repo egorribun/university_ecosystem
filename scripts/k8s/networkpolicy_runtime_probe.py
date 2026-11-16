@@ -46,6 +46,7 @@ from networkpolicy_runtime_app import (
 from networkpolicy_runtime_kube import (
     Pod,
     apply_objects,
+    create_pod,
     cronjob_template_labels,
     find,
     helm_template,
@@ -436,8 +437,14 @@ def wait_ready(namespace: str) -> None:
 
 def resolve_pod(pod: Pod) -> None:
     info = kubectl_json("-n", pod.namespace, "get", "pod", pod.name, "-o", "json")
+    uid = info["metadata"]["uid"]
+    if pod.created is not None and (
+        (pod.created.namespace, pod.created.name) != (pod.namespace, pod.name)
+        or pod.created.uid != uid
+    ):
+        raise ValueError("created fixture identity changed")
     pod.ip = info["status"]["podIP"]
-    pod.uid = info["metadata"]["uid"]
+    pod.uid = uid
 
 
 def cluster_ip(namespace: str, name: str) -> str:
@@ -477,13 +484,36 @@ def build_targets(pods: dict[str, Pod], kube_dns_ip: str) -> dict[str, tuple[str
 
 
 def set_up_cluster(
-    base_image: str, rendered: Rendered, passwords: dict[str, str]
+    base_image: str,
+    rendered: Rendered,
+    passwords: dict[str, str],
+    *,
+    own_ws: bool = False,
 ) -> dict[str, Pod]:
     apply_objects(namespace_objects())
     for release in RELEASES:
         apply_objects([credential_secret(release, passwords[release])])
         apply_store_workloads(release, rendered[release][1])
     objects, pods = standin_objects(rendered, base_image)
+    if own_ws:
+        target = pods["a-ws"]
+        matches = [
+            obj
+            for obj in objects
+            if obj.get("kind") == "Pod"
+            and obj.get("metadata", {}).get("namespace") == "probe-a"
+            and obj.get("metadata", {}).get("name") == "probe-a-ws-hub"
+        ]
+        if (
+            (target.namespace, target.name) != ("probe-a", "probe-a-ws-hub")
+            or len(matches) != 1
+            or matches[0].get("metadata", {}).get("labels", {}).get("probe-role")
+            != "a-ws"
+        ):
+            raise ValueError("ambiguous ws-hub fixture")
+        fixture = matches[0]
+        target.created = create_pod(fixture)
+        objects = [obj for obj in objects if obj is not fixture]
     apply_objects(objects)
     for namespace in [*RELEASES, UNRELATED_NS, MONITORING_NS, INGRESS_NS]:
         wait_ready(namespace)
@@ -579,6 +609,22 @@ def not_run_items() -> list[dict[str, str]]:
                 "rows prove reachability on /metrics, not the ws-hub metrics payload"
             ),
         },
+        {
+            "finding": "AUD-438",
+            "check": "actual ws-hub restricted peers and Prometheus server",
+            "reason": (
+                "the policy matrix uses stand-in targets and the authorized HTTP "
+                "client is a Prometheus-labelled Python probe, not Prometheus itself"
+            ),
+        },
+        {
+            "finding": "AUD-438",
+            "check": "actual ingress controller and public HTTP route",
+            "reason": (
+                "the ingress-labelled source is a Python stand-in; the existing "
+                "matrix does not exercise an ingress controller or its public route"
+            ),
+        },
     ]
 
 
@@ -623,6 +669,7 @@ def main() -> int:
     parser.add_argument("--real-processor-image")
     parser.add_argument("--diagnostic-image")
     parser.add_argument("--source-sha")
+    parser.add_argument("--real-ws-image")
     args = parser.parse_args()
     if any(
         (args.real_processor_image, args.diagnostic_image, args.source_sha)
@@ -630,12 +677,20 @@ def main() -> int:
         parser.error(
             "all source-bound real-processor image arguments are required together"
         )
+    real_ws_image = getattr(args, "real_ws_image", None)
+    if real_ws_image and not all(
+        (args.real_processor_image, args.diagnostic_image, args.source_sha)
+    ):
+        parser.error("real ws-hub requires the source-bound real-processor phase")
 
     started = datetime.now(UTC).isoformat()
     base_image = runtime_base_image()
     rendered = render_all()
     passwords = {release: new_redis_password() for release in RELEASES}
-    pods = set_up_cluster(base_image, rendered, passwords)
+    if real_ws_image:
+        pods = set_up_cluster(base_image, rendered, passwords, own_ws=True)
+    else:
+        pods = set_up_cluster(base_image, rendered, passwords)
 
     kube_dns_ip = cluster_ip("kube-system", "kube-dns")
     kubernetes_ip = cluster_ip("default", "kubernetes")
@@ -698,6 +753,14 @@ def main() -> int:
         "not_run": remaining,
         "matrix_verdict": "pass" if matrix_pass else "fail",
         "real_processor": real_processor,
+        "real_ws_hub": {
+            "verdict": "not_run",
+            "reason": (
+                "awaiting successful real-processor phase"
+                if real_ws_image
+                else "real ws-hub image not provided"
+            ),
+        },
         "verdict": "pass" if all_pass else "fail",
     }
 
@@ -740,6 +803,36 @@ def main() -> int:
                 for item in remaining
                 if item["finding"] not in {"AUD-169", "AUD-188"}
             ]
+        if real_ws_image and real_processor["verdict"] == "pass":
+            receipt["real_ws_hub"] = {
+                "verdict": "in_progress",
+                "scope": "authorized positive scrape only",
+            }
+            persist_receipt()
+            from networkpolicy_runtime_real_ws import actual_ws_phase
+
+            real_ws = actual_ws_phase(
+                ROOT,
+                rendered,
+                pods,
+                passwords,
+                python_image=base_image,
+                image=real_ws_image,
+                source_sha=args.source_sha,
+            )
+            receipt["real_ws_hub"] = real_ws
+            all_pass = all_pass and real_ws["verdict"] == "pass"
+            if real_ws["verdict"] == "pass":
+                receipt["not_run"] = [
+                    item
+                    for item in receipt["not_run"]
+                    if item["check"] != "metrics exposition content"
+                ]
+        elif real_ws_image:
+            receipt["real_ws_hub"] = {
+                "verdict": "not_run",
+                "reason": "real-processor phase did not pass",
+            }
         receipt["finished_utc"] = datetime.now(UTC).isoformat()
         receipt["verdict"] = "pass" if all_pass else "fail"
     persist_receipt()

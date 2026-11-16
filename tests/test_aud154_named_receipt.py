@@ -555,3 +555,56 @@ def test_historical_button_only_projection_cannot_satisfy_v2_receipt(tmp_path):
     assert receipt["case_titles"]["aud154-enter-sent-confirmation"] == (
         "shows sent confirmation after the server accepts the message"
     )
+
+
+def test_read_receipt_records_pass_through_the_existing_redaction_boundary(
+    tmp_path, monkeypatch, capsys
+):
+    from scripts import live_stand
+
+    desktop = _record(case_id="aud154-read-receipt")
+    mobile = _record(
+        "mobile",
+        case_id="aud154-read-receipt",
+        final_status="skipped",
+        outcome="skipped",
+        attempts=["skipped"],
+        skipped=True,
+    )
+    monkeypatch.setattr(
+        live_stand.fast_preflight,
+        "run_check",
+        lambda *a, **kw: SimpleNamespace(
+            status="passed",
+            exit_code=0,
+            stdout=_line(desktop) + _line(mobile) + "private-body\n  16 passed\n",
+            stderr="private-error\n",
+        ),
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    output = capsys.readouterr()
+    assert _module().project_case_records(output.out, retained=True) == [
+        desktop,
+        mobile,
+    ]
+    assert "private" not in output.out
+    assert output.err == ""
+
+
+def test_read_receipt_records_leave_the_delivery_receipt_scope_unchanged(
+    tmp_path, monkeypatch
+):
+    module = _module()
+    monkeypatch.setattr(module, "source_snapshot", lambda *a: {})
+    before = {}
+    original = module.build_receipt(
+        _summary(), before, root=tmp_path, environment={}, exit_code="0"
+    )
+    extra = _line(_record(case_id="aud154-read-receipt"), retained=True) + _line(
+        _record("mobile", case_id="aud154-read-receipt"), retained=True
+    )
+    actual = module.build_receipt(
+        _summary() + extra, before, root=tmp_path, environment={}, exit_code="0"
+    )
+    assert original["accepted"] is True
+    assert actual == original

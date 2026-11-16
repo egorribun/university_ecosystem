@@ -154,6 +154,8 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     }
   })
 
+  let testFailure: unknown
+  let testFailed = false
   try {
     const origin = new URL(liveBaseUrl).origin
     // Playwright pre-grants the native permission so Chromium does not block on
@@ -472,40 +474,57 @@ test("Chromium push opt-in persists one native subscription and removes it on op
     ).toBe(false)
 
     subscriptionMayExist = false
-  } finally {
+  } catch (error) {
+    testFailure = error
+    testFailed = true
+  }
+
+  const cleanupErrors: unknown[] = []
+  const attemptCleanup = async (action: () => Promise<void>) => {
     try {
-      if (subscriptionMayExist) {
-        const ownSubscriptionCleaned = await cleanupOwnedBrowserSubscription(page, ownEndpoint)
-        expect(
-          ownSubscriptionCleaned,
-          "a failed acceptance run must remove only its own browser and server subscription"
-        ).toBe(true)
-      }
-    } finally {
-      try {
-        if (foreignSubscriptionMayExist && foreignPage) {
-          const foreignSubscriptionCleaned = await cleanupOwnedBrowserSubscription(
-            foreignPage,
-            foreignEndpoint
-          )
-          expect(
-            foreignSubscriptionCleaned,
-            "cleanup removes only the second synthetic owner's browser and server subscription"
-          ).toBe(true)
-        }
-      } finally {
-        try {
-          if (foreignRegistrationAttempted) {
-            await deleteOnlyCreatedAccount(adminPage, foreignEmail, foreignFullName)
-          }
-        } finally {
-          try {
-            if (registrationAttempted) await deleteOnlyCreatedAccount(adminPage, email, fullName)
-          } finally {
-            await adminContext.close()
-          }
-        }
-      }
+      await action()
+    } catch (error) {
+      cleanupErrors.push(error)
     }
+  }
+
+  if (subscriptionMayExist) {
+    await attemptCleanup(async () => {
+      const ownSubscriptionCleaned = await cleanupOwnedBrowserSubscription(page, ownEndpoint)
+      expect(
+        ownSubscriptionCleaned,
+        "a failed acceptance run must remove only its own browser and server subscription"
+      ).toBe(true)
+    })
+  }
+  if (foreignSubscriptionMayExist && foreignPage) {
+    await attemptCleanup(async () => {
+      const foreignSubscriptionCleaned = await cleanupOwnedBrowserSubscription(
+        foreignPage,
+        foreignEndpoint
+      )
+      expect(
+        foreignSubscriptionCleaned,
+        "cleanup removes only the second synthetic owner's browser and server subscription"
+      ).toBe(true)
+    })
+  }
+  if (foreignRegistrationAttempted) {
+    await attemptCleanup(() => deleteOnlyCreatedAccount(adminPage, foreignEmail, foreignFullName))
+  }
+  if (registrationAttempted) {
+    await attemptCleanup(() => deleteOnlyCreatedAccount(adminPage, email, fullName))
+  }
+  await attemptCleanup(() => adminContext.close())
+
+  if (testFailed && cleanupErrors.length > 0) {
+    throw new AggregateError(
+      [testFailure, ...cleanupErrors],
+      "live Web Push subscription acceptance and cleanup both failed"
+    )
+  }
+  if (testFailed) throw testFailure
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "test-owned Web Push subscription cleanup failed")
   }
 })

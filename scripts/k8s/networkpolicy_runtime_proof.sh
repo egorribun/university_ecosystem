@@ -46,6 +46,7 @@ readonly DIAG_DIR="${UE_NETPOL_DIAG_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/aud169-
 export KUBECONFIG="${WORK_DIR}/kubeconfig"
 export PATH="${WORK_DIR}/bin:${PATH}"
 CLUSTER_CREATED=0
+WS_IMAGE_CREATED=0
 
 log() {
   printf '%s\n' "$*" >&2
@@ -132,6 +133,9 @@ cleanup() {
   if [[ "$CLUSTER_CREATED" -eq 1 ]]; then
     kind delete cluster --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
   fi
+  if [[ "$WS_IMAGE_CREATED" -eq 1 ]]; then
+    docker image rm "$WS_IMAGE" >/dev/null 2>&1 || true
+  fi
   rm -rf "$WORK_DIR"
   exit "$status"
 }
@@ -172,20 +176,29 @@ build_real_processor_images() {
   sed '/^FROM .* AS health-probe/,$d' "${build_source}/services/file-processor/Dockerfile" > "${WORK_DIR}/diagnostic.Dockerfile"
   printf '\nRUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /networkpolicy-probe ./cmd/networkpolicy-probe\nFROM %s\nCOPY --from=builder /networkpolicy-probe /usr/local/bin/networkpolicy-probe\n' "$base_image" >> "${WORK_DIR}/diagnostic.Dockerfile"
   docker build -f "${WORK_DIR}/diagnostic.Dockerfile" -t "$DIAGNOSTIC_IMAGE" "$build_source"
+  if [[ "${UE_NETPOL_REAL_WS:-0}" == 1 ]]; then
+    WS_IMAGE="ue-netpol-ws:${SOURCE_SHA}-${RUN_SUFFIX}"
+    docker build -f "${build_source}/services/ws-hub/Dockerfile" -t "$WS_IMAGE" "$build_source"
+    WS_IMAGE_CREATED=1
+  fi
 }
 
 
 load_real_processor_images() {
   local archive="${WORK_DIR}/real-processor-images.tar" image expected observed attempt
+  local -a images=("$FP_IMAGE" "$DIAGNOSTIC_IMAGE")
+  if [[ "${UE_NETPOL_REAL_WS:-0}" == 1 ]]; then
+    images+=("$WS_IMAGE")
+  fi
   # kind v0.31.0 rejects config v4 before import (nodeutils/util.go).
   # Use the pinned node's native ctr instead, including unpack into overlayfs,
   # the rootful kind node's snapshotter. Do not mutate containerd configuration.
-  docker save --output "$archive" "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"
+  docker save --output "$archive" "${images[@]}"
   docker exec -i "${CLUSTER_NAME}-control-plane" ctr --namespace=k8s.io images import \
     --local --all-platforms --digests --snapshotter=overlayfs - < "$archive"
   # The CRI must resolve each exact tag to the locally built image config ID.
   # Successful tar ingestion alone is not evidence that kubelet can use it.
-  for image in "$FP_IMAGE" "$DIAGNOSTIC_IMAGE"; do
+  for image in "${images[@]}"; do
     expected="$(docker image inspect --format '{{.Id}}' "$image")"
     [[ "$expected" =~ ^sha256:[0-9a-f]{64}$ ]]
     # Image-created events reach the CRI cache asynchronously. Wait only for a
@@ -210,6 +223,10 @@ print(matches[0] if matches else "")' "docker.io/library/${image}")"
 }
 
 main() {
+  if [[ "${UE_NETPOL_REAL_WS:-0}" == 1 && "${UE_NETPOL_REAL_FP:-0}" != 1 ]]; then
+    log "real ws-hub proof requires the real-processor phase"
+    return 1
+  fi
   require_platform
   install_tools
   write_kind_config
@@ -223,6 +240,9 @@ main() {
   if [[ "${UE_NETPOL_REAL_FP:-0}" == 1 ]]; then
     load_real_processor_images
     real_processor_args=(--real-processor-image "$FP_IMAGE" --diagnostic-image "$DIAGNOSTIC_IMAGE" --source-sha "$SOURCE_SHA")
+    if [[ "${UE_NETPOL_REAL_WS:-0}" == 1 ]]; then
+      real_processor_args+=(--real-ws-image "$WS_IMAGE")
+    fi
   fi
 
   download_pinned "$CALICO_URL" "$CALICO_SHA256" "${WORK_DIR}/calico.yaml"

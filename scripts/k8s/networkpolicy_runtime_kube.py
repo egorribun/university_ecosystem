@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,12 +16,22 @@ PROBE_TIMEOUT = 3.0
 EXEC_OVERHEAD_SECONDS = 60
 
 
+@dataclass(frozen=True)
+class CreatedPod:
+    """Identity returned by a successful create, never an observed preexisting Pod."""
+
+    namespace: str
+    name: str
+    uid: str
+
+
 @dataclass
 class Pod:
     namespace: str
     name: str
     ip: str = ""
     uid: str = ""
+    created: CreatedPod | None = None
 
 
 def run_command(
@@ -51,6 +62,43 @@ def kubectl_json(*args: str) -> dict[str, Any]:
 def apply_objects(objects: list[dict[str, Any]]) -> None:
     payload = json.dumps({"apiVersion": "v1", "kind": "List", "items": objects})
     kubectl("apply", "-f", "-", stdin=payload)
+
+
+def create_pod(pod: dict[str, Any]) -> CreatedPod:
+    """Create the one matrix fixture whose identity must later be retired."""
+    metadata = pod.get("metadata", {})
+    if (
+        not isinstance(metadata, dict)
+        or pod.get("apiVersion") != "v1"
+        or pod.get("kind") != "Pod"
+        or metadata.get("namespace") != "probe-a"
+        or metadata.get("name") != "probe-a-ws-hub"
+        or any(key in metadata for key in ("uid", "generateName", "ownerReferences"))
+    ):
+        raise ValueError("unexpected ws-hub fixture")
+    result = run_command(
+        ["kubectl", "create", "-f", "-", "-o", "json"],
+        stdin=json.dumps(pod),
+        timeout=30,
+    )
+    created = json.loads(result.stdout)
+    if not isinstance(created, dict) or not isinstance(created.get("metadata"), dict):
+        raise ValueError("create returned an invalid ws-hub fixture identity")
+    created_metadata = created["metadata"]
+    uid = created_metadata.get("uid")
+    if (
+        created.get("apiVersion") != "v1"
+        or created.get("kind") != "Pod"
+        or created_metadata.get("namespace") != "probe-a"
+        or created_metadata.get("name") != "probe-a-ws-hub"
+        or not isinstance(uid, str)
+        or not re.fullmatch(
+            r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+            uid,
+        )
+    ):
+        raise ValueError("create returned an invalid ws-hub fixture identity")
+    return CreatedPod("probe-a", "probe-a-ws-hub", uid)
 
 
 def helm_template(

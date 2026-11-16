@@ -15,8 +15,23 @@ const CASE_IDS = new Map([
 const CASE_FILE = fileURLToPath(
   new URL("../tests/e2e-live/messenger-realtime.live.spec.ts", import.meta.url)
 )
+const READ_CASE_FILE = fileURLToPath(
+  new URL("../tests/e2e-live/messenger-unread-read.live.spec.ts", import.meta.url)
+)
+const READ_CASE_TITLE = "a real DM read receipt clears only that chat's unread state"
+const READ_CASE_ID = "aud154-read-receipt"
 const STATUSES = new Set(["passed", "failed", "timedOut", "skipped", "interrupted"])
 const OUTCOMES = new Set(["expected", "unexpected", "flaky", "skipped"])
+
+function caseIdFor(item) {
+  const file = resolve(item.location.file)
+  if (file === CASE_FILE && item.parent.title === "live messenger delivery") {
+    return CASE_IDS.get(item.title)
+  }
+  if (file === READ_CASE_FILE && item.parent.type === "file" && item.title === READ_CASE_TITLE) {
+    return READ_CASE_ID
+  }
+}
 
 // Read final Playwright results, not a success marker emitted inside the test.
 // Never serialize titles, errors, attachments, stdout, URLs, or fixture values.
@@ -30,20 +45,17 @@ export default class Aud154Reporter {
     this.tests = suite
       .allTests()
       .filter(
-        (item) =>
-          resolve(item.location.file) === CASE_FILE &&
-          CASE_IDS.has(item.title) &&
-          item.parent.title === "live messenger delivery" &&
-          ["desktop", "mobile"].includes(item.parent.project()?.name)
+        (item) => caseIdFor(item) && ["desktop", "mobile"].includes(item.parent.project()?.name)
       )
   }
 
   onEnd() {
     const records = []
     const identities = new Set()
+    let invalidRead = false
     for (const item of this.tests) {
       const project = item.parent.project().name
-      const caseId = CASE_IDS.get(item.title)
+      const caseId = caseIdFor(item)
       const identity = `${caseId}:${project}`
       const attempts = item.results.map((result) => result.status)
       const outcome = item.outcome()
@@ -57,6 +69,10 @@ export default class Aud154Reporter {
         !STATUSES.has(item.expectedStatus) ||
         !OUTCOMES.has(outcome)
       ) {
+        if (caseId === READ_CASE_ID) {
+          invalidRead = true
+          continue
+        }
         this.write("UE_LIVE_AUD154_V1 invalid\n")
         return
       }
@@ -73,6 +89,13 @@ export default class Aud154Reporter {
         skipped: attempts.includes("skipped"),
       })
     }
-    for (const record of records) this.write(`UE_LIVE_AUD154_V1 ${JSON.stringify(record)}\n`)
+    const completeRead =
+      !invalidRead &&
+      ["desktop", "mobile"].every((project) => identities.has(`${READ_CASE_ID}:${project}`))
+    for (const record of records) {
+      if (record.case_id !== READ_CASE_ID || completeRead) {
+        this.write(`UE_LIVE_AUD154_V1 ${JSON.stringify(record)}\n`)
+      }
+    }
   }
 }

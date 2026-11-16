@@ -1,19 +1,62 @@
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { renderHook, render, act, fireEvent, screen, waitFor } from "@testing-library/react"
 import type { PushTopicsResponse } from "@/types/notifications"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import { createElement } from "react"
+import {
+  createMemoryHistory,
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router"
+import { domAnimation, LazyMotion } from "framer-motion"
+import { Route as AuthRoute } from "@/routes/_auth"
+import { Route as SettingsRoute } from "@/routes/_auth/settings"
+import { evaluateAuthGuard } from "@/routes/guards"
+import { NotificationsSection } from "@/pages/settings/sections/NotificationsSection"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+
+// Motion values are not evaluated by jsdom; retain the real controls while
+// rendering their decorative animated elements as ordinary DOM elements.
+vi.mock("framer-motion", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof import("framer-motion")
+  const { createElement: element } = await import("react")
+  type SpanProps = ComponentProps<"span"> &
+    Pick<ComponentProps<typeof actual.m.span>, "initial" | "animate" | "transition">
+  type SvgProps = ComponentProps<"svg"> &
+    Pick<ComponentProps<typeof actual.m.svg>, "initial" | "animate" | "transition">
+  const StaticSpan = ({
+    initial: _initial,
+    animate: _animate,
+    transition: _transition,
+    ...props
+  }: SpanProps) => element("span", props)
+  const StaticSvg = ({
+    initial: _initial,
+    animate: _animate,
+    transition: _transition,
+    ...props
+  }: SvgProps) => element("svg", props)
+  return { ...actual, m: { ...actual.m, span: StaticSpan, svg: StaticSvg } }
+})
 
 // ---- Module mocks (NEVER hit MSW for /api/ paths) ----
 const mockDeleteSubscription = vi.fn(async (..._a: unknown[]) => undefined)
 const mockFetchPushTopics = vi.fn(async (): Promise<PushTopicsResponse> => serverTopics(false))
 const mockUpdatePushTopics = vi.fn(async (..._a: unknown[]) => undefined)
+const mockSaveSubscription = vi.fn(async (..._a: unknown[]) => ({ topics: [] }))
+const mockGetVapidPublicKey = vi.fn(async () => "AQID")
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: (...args: unknown[]) => mockDeleteSubscription(...args),
   fetchPushTopics: () => mockFetchPushTopics(),
   updatePushTopics: (...args: unknown[]) => mockUpdatePushTopics(...args),
+  saveSubscription: (...args: unknown[]) => mockSaveSubscription(...args),
+  getVapidPublicKey: () => mockGetVapidPublicKey(),
+  fetchSessionUserId: vi.fn(),
 }))
 
 function serverTopics(hasPreferences: boolean, topics: string[] = []): PushTopicsResponse {
@@ -146,6 +189,158 @@ describe("usePushPreferences", () => {
     delete (globalThis as any).Notification
     delete (globalThis.navigator as any).permissions
   })
+
+  it.each([
+    ["loading", null, true],
+    ["SSR stub", "ssr-stub", false],
+  ] as const)(
+    "keeps Settings opt-in unavailable until %s identity settles",
+    async (_label, id, loading) => {
+      setIdentity(id, loading)
+      const notification = {
+        permission: "default" as NotificationPermission,
+        requestPermission: vi.fn(() => {
+          notification.permission = "granted"
+          return Promise.resolve("granted" as NotificationPermission)
+        }),
+      }
+      vi.stubGlobal("Notification", notification)
+      vi.stubGlobal("PushManager", class PushManager {})
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "AQID")
+      const originalServiceWorker = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: {} })
+
+      const subscription = {
+        endpoint: "https://push.example.invalid/owned",
+        options: { applicationServerKey: new Uint8Array([1, 2, 3]).buffer },
+        toJSON: () => ({ endpoint: "https://push.example.invalid/owned", keys: {} }),
+      }
+      const subscribe = vi.fn(async () => subscription)
+      const registration = {
+        pushManager: { getSubscription: vi.fn(async () => null), subscribe },
+      } as unknown as ServiceWorkerRegistration
+      const actualPush =
+        await vi.importActual<typeof import("@/push/subscribe")>("@/push/subscribe")
+      mockGetExistingPushSubscription.mockImplementation((...args) =>
+        actualPush.getOwnedPushSubscription(
+          args[0] as string | null,
+          args[1] as ServiceWorkerRegistration | undefined
+        )
+      )
+      mockResolveServiceWorkerRegistration.mockResolvedValue(registration)
+      mockEnsurePushSubscription.mockImplementation((...args) =>
+        actualPush.ensurePushSubscription(
+          args[0] as Parameters<typeof actualPush.ensurePushSubscription>[0]
+        )
+      )
+      mockFetchPushTopics.mockResolvedValue(serverTopics(false))
+      const ownerAtSave: Array<string | null> = []
+      mockSaveSubscription.mockImplementation(async () => {
+        ownerAtSave.push(getConfirmedUserId(useAuthStore.getState()))
+        return { topics: [] }
+      })
+
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: 0 } },
+      })
+      // The Settings loader can consume prefetched profile data before the
+      // independent auth bootstrap has committed the browser identity.
+      queryClient.setQueryData(["users", "me"], { id: "7" })
+      const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+        component: () => <Outlet />,
+      })
+      const layout = createRoute({
+        getParentRoute: () => root,
+        id: "_auth",
+        beforeLoad: ({ location }) => evaluateAuthGuard(useAuthStore.getState(), location),
+        component: AuthRoute.options.component,
+      })
+      const setSnackbar = vi.fn()
+      const settings = createRoute({
+        getParentRoute: () => layout,
+        path: "/settings",
+        loader: SettingsRoute.options.loader as never,
+        component: () => (
+          <NotificationsSection
+            setSnackbar={setSnackbar}
+            dndEnabled={false}
+            dndStart="22:00"
+            dndEnd="07:00"
+            dndSaving={false}
+            onDndToggle={vi.fn()}
+            onDndStartChange={vi.fn()}
+            onDndStartBlur={vi.fn()}
+            onDndEndChange={vi.fn()}
+            onDndEndBlur={vi.fn()}
+          />
+        ),
+      })
+      const router = createRouter({
+        routeTree: root.addChildren([layout.addChildren([settings as never])]),
+        history: createMemoryHistory({ initialEntries: ["/settings?tab=3"] }),
+        context: { queryClient },
+      })
+
+      try {
+        await router.load()
+        render(
+          <QueryClientProvider client={queryClient}>
+            <LazyMotion features={domAnimation}>
+              <RouterProvider router={router as never} />
+            </LazyMotion>
+          </QueryClientProvider>
+        )
+        fireEvent.click(
+          await screen.findByRole("button", { name: /settings:notifications\.push\.title/u })
+        )
+        const toggle = await screen.findByRole("switch", {
+          name: "settings:notifications.toggles.notifications.aria",
+        })
+        await waitFor(() => expect(toggle).toBeDisabled(), { timeout: 2_000 })
+        fireEvent.click(toggle)
+        expect(mockEnsurePushSubscription).not.toHaveBeenCalled()
+        expect(notification.requestPermission).not.toHaveBeenCalled()
+        expect(subscribe).not.toHaveBeenCalled()
+        expect(mockSaveSubscription).not.toHaveBeenCalled()
+
+        act(() => setIdentity("7"))
+        expect(getConfirmedUserId(useAuthStore.getState())).toBe("7")
+        await waitFor(() =>
+          expect(
+            screen.getByRole("switch", {
+              name: "settings:notifications.toggles.notifications.aria",
+            })
+          ).toBeEnabled()
+        )
+        fireEvent.click(
+          screen.getByRole("switch", { name: "settings:notifications.toggles.notifications.aria" })
+        )
+        expect(notification.requestPermission).toHaveBeenCalledOnce()
+        await waitFor(() => expect(mockSaveSubscription).toHaveBeenCalledOnce(), { timeout: 2_000 })
+        expect(ownerAtSave).toEqual(["7"])
+        expect(subscribe).toHaveBeenCalledOnce()
+        await waitFor(() =>
+          expect(
+            screen.getByRole("switch", {
+              name: "settings:notifications.toggles.notifications.aria",
+            })
+          ).toBeChecked()
+        )
+      } finally {
+        if (originalServiceWorker) {
+          Object.defineProperty(navigator, "serviceWorker", originalServiceWorker)
+        } else {
+          Reflect.deleteProperty(navigator, "serviceWorker")
+        }
+        for (const key of ["push:last_payload", "push:last_owner"]) localStorage.removeItem(key)
+        vi.unstubAllGlobals()
+        vi.unstubAllEnvs()
+        mockGetExistingPushSubscription.mockReset()
+        mockEnsurePushSubscription.mockReset()
+        mockSaveSubscription.mockReset()
+      }
+    }
+  )
 
   it("returns defaults + derived values (selectedTopicsDescription with all topics)", async () => {
     const { result } = renderHook(() => usePushPreferences(), { wrapper })
