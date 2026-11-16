@@ -144,6 +144,12 @@ async def run_scan(
             f"{os.getuid()}:{os.getgid()}",
             "--env",
             "HOME=/zap/wrk/home",
+            # The runner's uid has no passwd entry in the image, so Java resolves
+            # user.home to "?" and ZAP exits at once ("Unable to create home
+            # directory: /zap/?/.ZAP/") while the wrapper waits out -T. Pin the
+            # JVM home to the same private, writable directory as HOME.
+            "--env",
+            "JAVA_TOOL_OPTIONS=-Duser.home=/zap/wrk/home",
             "--workdir",
             "/zap/wrk",
             "--mount",

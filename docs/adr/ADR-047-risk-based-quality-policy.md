@@ -2866,3 +2866,23 @@ records the fixture as `externalWeatherFixture`. The change sits below the
 file's Semgrep row-2 anchor, so the reviewed finding keeps its lines; no byte
 digest pins this file or its test. This adds no scanner threshold, required
 check or audit status.
+
+### ZAP engine start on hosted runners
+
+Every hosted DAST run failed with scanner exit code 3. The memory telemetry of
+run 43931891703 (main `0823bdb23`) shows why: the scan container stayed at about
+27 MB for the whole hour and no Java process ever ran, and the wrapper reported
+`startup_wait_expired` (it could not reach the ZAP API within `-T 60`). The
+runner's uid has no passwd entry in the pinned ZAP image, so Java resolves
+`user.home` to `?` and ZAP exits at start with "Unable to create home directory:
+/zap/?/.ZAP/". A local probe with the same image and a uid without a passwd
+entry reproduces this, and with `JAVA_TOOL_OPTIONS=-Duser.home=/zap/wrk/home`
+ZAP 2.17.0 starts and answers its API. `scripts/quality/zap_runner.py` now passes
+that option next to `HOME`, and a runner test pins both.
+
+This corrects the hosted part of the rule 40026 rationale above: on hosted runs
+the engine never started, so no rule ran. The local leak observation (headless
+Firefox launches, 12.6 GB) still stands, and the exclusion keeps its owner,
+scope and 2027-01-10 expiry. Whether to re-enable rule 40026 is the owner's
+call once a hosted run produces evidence. This adds no threshold, required check
+or audit status, and is not itself a passing scan.
