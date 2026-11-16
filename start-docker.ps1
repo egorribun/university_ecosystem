@@ -670,6 +670,13 @@ function Get-CommonGitOwnerKeyPath {
 }
 
 function Get-VerifiedLiveAcceptanceOwner {
+    param(
+        # PrepareOnly runs before live_stand.py binds the Compose resources, so the
+        # signed marker legitimately has no resource fingerprint yet. Only those
+        # callers pass this switch; every other check, including the signature,
+        # still applies, and an unbound owner is never cached for later callers.
+        [switch]$AllowUnboundResources
+    )
     if ($null -ne $script:LiveStandOwner) { return $script:LiveStandOwner }
     if ($LiveStateMode) {
         throw "Live acceptance state owner has not been validated."
@@ -704,6 +711,8 @@ function Get-VerifiedLiveAcceptanceOwner {
         "resume_compose_resource_schema_version", "stack", "service_roots",
         "selected_services", "signature"
     )
+    $resourcesBound = [string]$owner.compose_resource_fingerprint -cmatch '^[0-9a-f]{64}$'
+    $resourcesUnbound = $AllowUnboundResources -and $null -eq $owner.compose_resource_fingerprint
     if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
         -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio) -or
         $owner.version -ne 10 -or
@@ -713,7 +722,7 @@ function Get-VerifiedLiveAcceptanceOwner {
         [string]$owner.stack -cnotin @("full", "core") -or
         -not (Test-CanonicalLiveServiceList -Value $owner.service_roots) -or
         -not (Test-CanonicalLiveServiceList -Value $owner.selected_services) -or
-        [string]$owner.compose_resource_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
+        -not ($resourcesBound -or $resourcesUnbound) -or
         [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
         $key.Length -ne 32 -or
         [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
@@ -741,7 +750,7 @@ function Get-VerifiedLiveAcceptanceOwner {
     )) {
         throw "Live acceptance owner signature is invalid."
     }
-    $script:LiveStandOwner = $owner
+    if ($resourcesBound) { $script:LiveStandOwner = $owner }
     return $owner
 }
 
@@ -1043,7 +1052,7 @@ if ($LiveStateMode) {
     if ($PrepareOnly -and @($ExtraCompose).Count -eq 1 -and
         $ExtraCompose[0] -ceq 'docker-compose.live.yml' -and
         (Test-Path -LiteralPath (Join-Path $ProjectRoot '.secrets/live-stand.json') -PathType Leaf)) {
-        $prepareOwner = Get-VerifiedLiveAcceptanceOwner
+        $prepareOwner = Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources
         $prepareManagedFull = $prepareOwner.version -eq 7 -or [string]$prepareOwner.stack -ceq 'full'
     }
     if (-not $PrepareOnly -or $prepareManagedFull) {
@@ -1254,7 +1263,7 @@ function Assert-PrepareOnlyLiveInputs {
 
     $owner = $script:LiveStandOwner
     if ($null -eq $owner) {
-        $owner = Get-VerifiedLiveAcceptanceOwner
+        $owner = Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources
     }
     if ($null -eq $owner -or $owner.version -notin @(7, 10, 11)) {
         throw "PrepareOnly requires a validated live-stand owner."
