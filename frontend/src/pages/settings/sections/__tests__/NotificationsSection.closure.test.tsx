@@ -1,7 +1,9 @@
-import { fireEvent, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { testUser } from "@/tests/mocks/handlers"
 
 const topicApi = vi.hoisted(() => () => {
   const topicKeys = [
@@ -82,6 +84,7 @@ const renderSection = async (overrides: Partial<ReturnType<typeof createProps>> 
 
 beforeEach(async () => {
   await i18n.changeLanguage("en")
+  useAuthStore.setState({ user: testUser, loading: false })
   pushState.value = {
     pushSupported: true,
     notificationPermission: "default",
@@ -96,6 +99,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
   vi.restoreAllMocks()
 })
 
@@ -159,6 +164,21 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
     openNotificationAccordion()
     expect(screen.getByRole("switch", { name: "Turn on quiet hours" })).toBeDisabled()
     expect(screen.getAllByDisplayValue(/:/)[0]).toBeDisabled()
+  })
+
+  it("does not start opt-in when auth resumes loading before the switch rerenders", async () => {
+    await renderSection()
+    const toggle = screen.getByRole("switch", { name: "Turn on notifications" })
+    expect(toggle).toBeEnabled()
+
+    act(() => {
+      useAuthStore.setState({ loading: true })
+      expect(toggle).toBeEnabled()
+      fireEvent.click(toggle)
+    })
+
+    expect(pushState.value.enableNotifications).not.toHaveBeenCalled()
+    expect(toggle).toBeDisabled()
   })
 
   it("groups the five canonical topics and toggles each one", async () => {

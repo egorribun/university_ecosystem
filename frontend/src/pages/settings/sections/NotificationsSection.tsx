@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next"
 import { Bell } from "lucide-react"
 
 import { usePushPreferences } from "@/hooks/usePushPreferences"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 import {
   Alert,
@@ -42,6 +44,7 @@ export function NotificationsSection({
   onDndEndBlur,
 }: NotificationsSectionProps) {
   const { t } = useTranslation(["settings", "notifications", "common"])
+  const confirmedUserId = useAuthStore(getConfirmedUserId)
 
   const {
     pushSupported,
@@ -64,11 +67,17 @@ export function NotificationsSection({
 
   const handleNotificationsToggle = useCallback(
     (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (pushBusy || pushInitializing) return
+      if (
+        pushBusy ||
+        pushInitializing ||
+        !confirmedUserId ||
+        getConfirmedUserId(useAuthStore.getState()) !== confirmedUserId
+      )
+        return
       if (checked) void enableNotifications()
       else void disableNotifications()
     },
-    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
+    [confirmedUserId, disableNotifications, enableNotifications, pushBusy, pushInitializing]
   )
 
   const permissionDenied = notificationPermission === "denied"
@@ -108,7 +117,7 @@ export function NotificationsSection({
               <SwitchControl
                 checked={notificationsEnabled}
                 onChange={handleNotificationsToggle}
-                disabled={pushBusy || pushInitializing}
+                disabled={pushBusy || pushInitializing || !confirmedUserId}
                 aria-label={t("settings:notifications.toggles.notifications.aria")}
               />
               <span className="font-semibold text-text-soft">
