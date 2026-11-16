@@ -6,6 +6,7 @@ import runpy
 import sys
 from io import BytesIO
 from pathlib import Path
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -235,9 +236,7 @@ def test_process_image_resize_preserves_aspect_ratio():
 
     with Image.open(BytesIO(data)) as resized:
         assert resized.size == (5, 10)
-    # Pillow's resized image has no source ``format`` metadata, so the
-    # existing original-mode fallback intentionally encodes it as JPEG.
-    assert mime == "image/jpeg"
+    assert mime == "image/png"
 
 
 def test_process_image_original_without_format_uses_canonical_jpeg_encoder_name():
@@ -362,7 +361,7 @@ def test_process_image_original_downscale_preserves_png_and_alpha(mode: str) -> 
 
 @pytest.mark.parametrize("format_preference", ["original", "webp"])
 def test_process_image_downscale_keeps_at_least_one_row(
-    format_preference: str,
+    format_preference: Literal["original", "webp"],
 ) -> None:
     """A valid panoramic source must not become a zero-height target."""
     with Image.new("RGB", (2000, 1), "red") as source, BytesIO() as payload:
