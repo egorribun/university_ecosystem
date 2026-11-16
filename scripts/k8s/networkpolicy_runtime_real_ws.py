@@ -565,8 +565,12 @@ def ws_service_snapshot(
     ready = True
     for item in slices:
         meta = item["metadata"]
-        endpoints = item["endpoints"]
-        ports = item.get("ports", [])
+        endpoints = item.get("endpoints")
+        ports = item.get("ports")
+        if endpoints is None:
+            endpoints = []
+        if ports is None:
+            ports = []
         if (
             meta.get("namespace") != "probe-a"
             or meta.get("labels", {}).get("kubernetes.io/service-name")

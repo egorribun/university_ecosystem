@@ -1393,6 +1393,85 @@ def test_service_snapshot_binds_ready_slice_endpoints_to_real_replicas(
     assert reads.call_count == 2
 
 
+@pytest.mark.parametrize("endpoints", ["empty", "null", "missing"])
+@pytest.mark.parametrize("ports", ["empty", "null", "missing", "valid"])
+def test_empty_controller_slice_waits_until_real_endpoints_are_ready(
+    rendered, declaration, monkeypatch, endpoints, ports
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    service, slices, replicas = service_and_endpoints(rendered)
+    ready = copy.deepcopy(slices)
+    item = slices["items"][0]
+    for field, value in (("endpoints", endpoints), ("ports", ports)):
+        if value == "missing":
+            del item[field]
+        elif value == "null":
+            item[field] = None
+        elif value == "empty":
+            item[field] = []
+    reads = Mock(side_effect=[service, slices, service, ready])
+    monkeypatch.setattr(ws, "bounded_kubectl_json", reads)
+    identity = {
+        "uid": service["metadata"]["uid"],
+        "cluster_ip": service["spec"]["clusterIP"],
+    }
+
+    assert ws.ws_service_snapshot(declaration, identity, replicas) is None
+    assert ws.ws_service_snapshot(declaration, identity, replicas) == {
+        "service_uid": identity["uid"],
+        "slice_uids": ["slice-uid"],
+        "replica_uids": ["uid-1", "uid-2"],
+    }
+    assert reads.call_count == 4
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "endpoints-false",
+        "endpoints-object",
+        "ports-false",
+        "ports-object",
+        "populated-ports-null",
+        "populated-ports-missing",
+        "empty-wrong-owner",
+    ],
+)
+def test_controller_slice_still_rejects_malformed_or_unowned_data(
+    rendered, declaration, monkeypatch, fault
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    service, slices, replicas = service_and_endpoints(rendered)
+    item = slices["items"][0]
+    if fault == "endpoints-false":
+        item["endpoints"] = False
+    elif fault == "endpoints-object":
+        item["endpoints"] = {}
+    elif fault == "ports-false":
+        item["ports"] = False
+    elif fault == "ports-object":
+        item["ports"] = {}
+    elif fault == "populated-ports-null":
+        item["ports"] = None
+    elif fault == "populated-ports-missing":
+        del item["ports"]
+    else:
+        item["endpoints"] = None
+        item["ports"] = None
+        item["metadata"]["ownerReferences"][0]["uid"] = "other"
+    monkeypatch.setattr(ws, "bounded_kubectl_json", Mock(side_effect=[service, slices]))
+    identity = {
+        "uid": service["metadata"]["uid"],
+        "cluster_ip": service["spec"]["clusterIP"],
+    }
+    with pytest.raises(ValueError, match="unexpected ws-hub EndpointSlice"):
+        ws.ws_service_snapshot(declaration, identity, replicas)
+
+
 @pytest.mark.parametrize(
     "fault", [None, "source", "uid", "labels", "restarts", "no-grant"]
 )
