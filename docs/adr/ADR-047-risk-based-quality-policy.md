@@ -2811,3 +2811,22 @@ dispositions; the 242 baseline identities, 15 Semgrep rows, 27 Gitleaks
 fingerprints and all thresholds are unchanged. This approval adds no inline
 allowlist pragma and establishes no passing scan, hosted check, merge or
 deployment.
+
+### ZAP DOM XSS rule 40026 excluded from the full scan
+
+The owner explicitly approved excluding ZAP active scan rule 40026
+(Cross Site Scripting, DOM Based) from the scheduled full scan.
+`.zap/rules.tsv` sets it to `IGNORE`; in the full scan that also switches the
+active rule off. In hosted and local runs the rule kept launching headless
+browsers after the `scanner.maxScanDurationInMins` cap stopped it, the active
+scan never reached 100%, and ZAP exited with code 3, so no run produced
+evidence. The frontend enforces Trusted Types
+(`require-trusted-types-for 'script'`), which blocks the DOM sinks this rule
+probes, and ZAP plans to deprecate the rule.
+
+- **Scope.** Only rule 40026. All other rules, the AJAX spider, the phase
+  bounds, the 60-minute limit and the medium+ gate are unchanged.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10. Re-enable the rule
+  or replace it with a bounded browser-based DOM XSS check before then.
+- **Not established.** This exclusion is not a passing scan; AUD-381 still
+  needs a green hosted ZAP run on `main` with a verified report.
