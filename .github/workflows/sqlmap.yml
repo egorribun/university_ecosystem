@@ -38,6 +38,7 @@ jobs:
     timeout-minutes: 20
     env:
       SCAN_RATE_LIMIT_CEILING: "100000/minute"
+      SCAN_RATE_LIMIT_COUNT_CEILING: "100000"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,7 +80,8 @@ jobs:
           # scan-only ceiling so probe volume is never mistaken for a rate-limit
           # verdict (429 still fails the gate). Source: app/core/config/mixins/
           # rate_limit_settings.py, every rate_limit_* field except enabled,
-          # headers and storage.
+          # headers and storage. Count-only budgets (an integer per window
+          # owned by the limiter) get the count ceiling instead.
           RATE_LIMIT_DEFAULT: ${{ env.SCAN_RATE_LIMIT_CEILING }}
           RATE_LIMIT_SENSITIVE: ${{ env.SCAN_RATE_LIMIT_CEILING }}
           RATE_LIMIT_AUTH_LOGIN: ${{ env.SCAN_RATE_LIMIT_CEILING }}
@@ -97,6 +99,7 @@ jobs:
           RATE_LIMIT_WEBSOCKET: ${{ env.SCAN_RATE_LIMIT_CEILING }}
           RATE_LIMIT_STATIC: ${{ env.SCAN_RATE_LIMIT_CEILING }}
           RATE_LIMIT_GRAPHQL: ${{ env.SCAN_RATE_LIMIT_CEILING }}
+          RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP: ${{ env.SCAN_RATE_LIMIT_COUNT_CEILING }}
         run: |
           set -euo pipefail
           unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY

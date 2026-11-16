@@ -1563,10 +1563,24 @@ def test_workflow_rate_limit_budgets_cover_every_anonymous_setting() -> None:
     ]
     assert len(budgets) >= 15
     assert workflow["jobs"]["sqlmap"]["env"] == {
-        "SCAN_RATE_LIMIT_CEILING": "100000/minute"
+        "SCAN_RATE_LIMIT_CEILING": "100000/minute",
+        "SCAN_RATE_LIMIT_COUNT_CEILING": "100000",
     }
+    # A count-only budget is an integer per limiter-owned window, so it takes
+    # the integer ceiling; every '<count>/<window>' budget takes the rate one.
+    count_budgets = [
+        field
+        for field in budgets
+        if RateLimitSettingsMixin.__annotations__[field.lower()] == "int"
+    ]
+    assert count_budgets == ["RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP"]
     for field in budgets:
-        assert env[field] == "${{ env.SCAN_RATE_LIMIT_CEILING }}", field
+        ceiling = (
+            "SCAN_RATE_LIMIT_COUNT_CEILING"
+            if field in count_budgets
+            else "SCAN_RATE_LIMIT_CEILING"
+        )
+        assert env[field] == "${{ env." + ceiling + " }}", field
     assert "RATE_LIMIT_ENABLED" not in env
 
 
