@@ -20,6 +20,7 @@
     "minuteShort": "мин"
   },
   "search": {
+    "resultCount": "Найдено результатов: {{count}}",
     "loading": "Поиск…",
     "activeResult": "Выбранный результат: {{title}}",
     "title": "Поиск",
