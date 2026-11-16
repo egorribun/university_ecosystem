@@ -404,3 +404,23 @@ def test_failed_process_observes_only_owned_engine_output_metadata(
     assert not (work / "target.txt").exists()
     captured = capsys.readouterr()
     assert "private-zap-marker" not in captured.out + captured.err + str(raised.value)
+
+
+def test_runner_pins_the_jvm_home_to_the_private_writable_home(runner_inputs) -> None:
+    """A uid without a passwd entry must not leave Java's user.home unresolved."""
+    _run(runner_inputs)
+    arguments = json.loads(runner_inputs[4].read_text().splitlines()[0])
+    environment = [
+        arguments[index + 1]
+        for index, value in enumerate(arguments)
+        if value == "--env"
+    ]
+    assert "HOME=/zap/wrk/home" in environment
+    assert "JAVA_TOOL_OPTIONS=-Duser.home=/zap/wrk/home" in environment
+    assert sum(item.startswith("JAVA_TOOL_OPTIONS=") for item in environment) == 1
+    # The home lives inside the private bind mount at /zap/wrk.
+    assert arguments[arguments.index("--workdir") + 1] == "/zap/wrk"
+    assert any(
+        item.startswith("type=bind,") and item.endswith(",dst=/zap/wrk")
+        for item in arguments
+    )

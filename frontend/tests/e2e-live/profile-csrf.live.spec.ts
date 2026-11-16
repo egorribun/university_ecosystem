@@ -267,8 +267,12 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     expect((await readOwnerProfile(page)).full_name).toBe(initialName)
 
     // Ordering contract: (1) the signed-in profile refresh settles and seeds the editor,
-    // (2) the CSRF cookie is removed, (3) the CSRF bootstrap is registered and observed
-    // before the save, (4) the PUT carries the proof and the edited name.
+    // (2) the draft is typed, (3) the CSRF cookie is removed, (4) the CSRF bootstrap is
+    // registered and observed before the save, (5) the PUT carries the proof and the
+    // edited name. The backend issues a fresh CSRF cookie on any response to a request
+    // sent without one, so a background read (the shell's idle chat-badge fetch) landing
+    // between the removal and the click would restore the cookie and skip the bootstrap
+    // this test proves. Removing it right before the click keeps that window minimal.
     const profileSettled = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === "/api/v1/users/me" &&
@@ -279,15 +283,6 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     await profileSettled
     const nameInput = page.getByLabel("Имя", { exact: true })
     await expect(nameInput).toHaveValue(initialName)
-
-    await page.context().clearCookies({ name: "csrf_token" })
-    const cookiesAfterExpiry = (await page.context().cookies()).map((cookie) => cookie.name)
-    expect(cookiesAfterExpiry, "only the CSRF cookie is removed before UI recovery").not.toContain(
-      "csrf_token"
-    )
-    expect(cookiesAfterExpiry, "the authenticated session remains available").toContain(
-      "access_token_v2"
-    )
 
     const requestOrder: string[] = []
     const recordOrder = (response: Response) => {
@@ -300,6 +295,15 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     page.on("response", recordOrder)
     try {
       await nameInput.fill(acceptedName)
+      await page.context().clearCookies({ name: "csrf_token" })
+      const cookiesAfterExpiry = (await page.context().cookies()).map((cookie) => cookie.name)
+      expect(
+        cookiesAfterExpiry,
+        "only the CSRF cookie is removed before UI recovery"
+      ).not.toContain("csrf_token")
+      expect(cookiesAfterExpiry, "the authenticated session remains available").toContain(
+        "access_token_v2"
+      )
       const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)
       const saveResponsePromise = waitForProfileUpdate(page)
       await page.getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()

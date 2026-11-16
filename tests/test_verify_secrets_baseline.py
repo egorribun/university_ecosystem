@@ -33238,6 +33238,7 @@ def test_nov14_image_pull_projection_leaves_other_paths_unchanged(path: str) -> 
 
 
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov16_chart_comment_historical_source_bytes(path, actual)
     actual = _nov14_image_pull_historical_source_bytes(path, actual)
     actual = _nov12_chart_historical_source_bytes(path, actual)
     actual = _aud375_historical_source_bytes(path, actual)
@@ -35338,8 +35339,11 @@ def test_aud189_verifier_identity_sets_match_the_appended_records() -> None:
 # the displayed-notification count and a generic-fallback flag. This rebinds
 # scripts/live_stand.py, its Semgrep companion digest in the ledger and the SHA-1
 # identity of that companion hex in policy row 495 one-to-one from the HEAD
-# predecessor. No identity is added and the inventory stays at 524. This is the
-# newest projection: it restores the exact predecessor before the nov15 chain runs.
+# predecessor. The same layer restores the one-line AUD-189 egress comment in
+# charts/university-ecosystem/values.yaml (outbox-worker Web Push, ADR-054
+# 2026-11-16) before the NOV12 chart pin is checked. No identity is added and the
+# inventory stays at 524. This is the newest projection: it restores the exact
+# predecessor before the nov15 chain runs.
 _NOV16_LIVE_PATH = "scripts/live_stand.py"
 _NOV16_LEDGER_PATH = "quality/semgrep-dispositions.json"
 _NOV16_IDENTITY_ROW = 495
@@ -35358,6 +35362,23 @@ _NOV16_LEDGER_PREVIOUS_SHA256 = bytes.fromhex(
     _rust_hex(
         "72 18 80 5b c4 e8 73 38 c1 c3 43 43 66 87 a5 c9 95 aa 39 1f dd 1d 12 94 ed 93 ab ca bb b3 87 6e"
     )
+)
+_NOV16_VALUES_PATH = "charts/university-ecosystem/values.yaml"
+_NOV16_VALUES_CURRENT_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "9b dd fa 79 5b cb 50 4d 67 c5 7e 6b c8 75 1f 61 e3 00 f8 e7 86 fa f3 48 08 eb a9 af 55 af 63 bd"
+    )
+)
+_NOV16_VALUES_PREVIOUS_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "c3 da 7a a0 99 2e b6 0c 82 b2 53 b0 81 e7 41 1a ca 3e 4e 55 82 73 17 93 cd 22 de 7e 5e 07 eb d4"
+    )
+)
+# The one comment line changed in place (same line count), as (current, predecessor).
+_NOV16_VALUES_REPLACEMENT = (
+    b"  # TCP 443 egress for backup, backend and outbox-worker (Web Push) only: "
+    b"their declared public\n",
+    b"  # TCP 443 egress for backup and backend only: their declared public\n",
 )
 
 
@@ -35453,6 +35474,17 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
         _NOV16_LEDGER_PATH, ledger_bytes
     )
     assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_PREVIOUS_SHA256
+    values = (root / _NOV16_VALUES_PATH).read_bytes()
+    assert hashlib.sha256(values).digest() == _NOV16_VALUES_CURRENT_SHA256
+    historical_values = _nov16_chart_comment_historical_source_bytes(
+        _NOV16_VALUES_PATH, values
+    )
+    assert hashlib.sha256(historical_values).digest() == _NOV16_VALUES_PREVIOUS_SHA256
+    assert len(historical_values.splitlines()) == len(values.splitlines())
+    assert (
+        _NOV16_VALUES_PREVIOUS_SHA256
+        == _NOV12_CHART_REBINDS["charts/university-ecosystem/values.yaml"][3]
+    )
     # The predecessor of this layer is exactly what the nov15 layer binds.
     assert _NOV16_LIVE_PREVIOUS_SHA256 == _NOV15_LIVE_CURRENT_SHA256
     assert _NOV16_LEDGER_PREVIOUS_SHA256 == _NOV15_LEDGER_CURRENT_SHA256
@@ -35473,7 +35505,15 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
 
 @pytest.mark.parametrize(
     "mutation",
-    ["live_extra", "live_missing", "live_duplicated", "ledger_extra", "policy"],
+    [
+        "live_extra",
+        "live_missing",
+        "live_duplicated",
+        "ledger_extra",
+        "values_extra",
+        "values_missing",
+        "policy",
+    ],
 )
 def test_nov16_push_observation_projection_rejects_drift(
     mutation: str, monkeypatch: pytest.MonkeyPatch
@@ -35494,6 +35534,19 @@ def test_nov16_push_observation_projection_rejects_drift(
     if mutation == "ledger_extra":
         path = _NOV16_LEDGER_PATH
         actual = (root / path).read_bytes() + b"\n"
+    elif mutation.startswith("values_"):
+        path = _NOV16_VALUES_PATH
+        values = (root / path).read_bytes()
+        if mutation == "values_extra":
+            actual = values + b"\n"
+        else:
+            actual = values.replace(_NOV16_VALUES_REPLACEMENT[0], b"", 1)
+            # Pass the digest guard so the one-to-one count guard fires.
+            monkeypatch.setitem(
+                globals(),
+                "_NOV16_VALUES_CURRENT_SHA256",
+                hashlib.sha256(actual).digest(),
+            )
     else:
         path = _NOV16_LIVE_PATH
         live = (root / path).read_bytes()
@@ -35511,8 +35564,13 @@ def test_nov16_push_observation_projection_rejects_drift(
                 "_NOV16_LIVE_CURRENT_SHA256",
                 hashlib.sha256(actual).hexdigest(),
             )
+    layer = (
+        _nov16_chart_comment_historical_source_bytes
+        if path == _NOV16_VALUES_PATH
+        else _nov16_push_observation_historical_source_bytes
+    )
     with pytest.raises(AssertionError, match="conditional disposition source"):
-        _nov16_push_observation_historical_source_bytes(path, actual)
+        layer(path, actual)
 
 
 _nov16_push_observation_historical_policy_for_tests = (
@@ -35521,3 +35579,21 @@ _nov16_push_observation_historical_policy_for_tests = (
 _nov16_push_observation_source_bytes_for_tests = (
     _nov16_push_observation_historical_source_bytes
 )
+
+
+def _nov16_chart_comment_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    """Restore the HEAD values.yaml bytes before the NOV12 chart pin is checked."""
+    if path != _NOV16_VALUES_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV16_VALUES_CURRENT_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    current, previous = _NOV16_VALUES_REPLACEMENT
+    assert actual.count(current) == 1, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    historical = actual.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == _NOV16_VALUES_PREVIOUS_SHA256, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    return historical

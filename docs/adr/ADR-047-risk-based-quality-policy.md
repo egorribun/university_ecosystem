@@ -2845,10 +2845,14 @@ tell apart. The runner parser and the `live E2E push` line carry both fields.
 2026-10-31 approval for one-to-one rebinds applies: its ledger digest and the
 SHA-1 identity of that digest in policy row 495 bind the new bytes, and the
 NOV16 projection layer in `tests/test_verify_secrets_baseline.py` restores the
-exact predecessor ahead of the nov15 and AUD-189 layers. No identity is added;
-the inventory stays at 524 dispositions, 242 baseline identities, 27 Gitleaks
-fingerprints and 15 Semgrep rows. This adds no threshold, required check or
-audit status.
+exact predecessor ahead of the nov15 and AUD-189 layers. The same standing
+approval covers one comment line in `charts/university-ecosystem/values.yaml`
+(the TCP/443 egress note now names outbox-worker for Web Push, ADR-054 addendum
+2026-11-16): the line count is unchanged, and a dedicated NOV16 chart layer at the
+head of the AUD-154 chain restores the exact predecessor before the NOV12 chart
+pin is checked. No identity is added; the inventory stays at 524 dispositions,
+242 baseline identities, 27 Gitleaks fingerprints and 15 Semgrep rows. This adds
+no threshold, required check or audit status.
 
 ### Visual audit weather fixture
 
@@ -2866,3 +2870,23 @@ records the fixture as `externalWeatherFixture`. The change sits below the
 file's Semgrep row-2 anchor, so the reviewed finding keeps its lines; no byte
 digest pins this file or its test. This adds no scanner threshold, required
 check or audit status.
+
+### ZAP engine start on hosted runners
+
+Every hosted DAST run failed with scanner exit code 3. The memory telemetry of
+run 43931891703 (main `0823bdb23`) shows why: the scan container stayed at about
+27 MB for the whole hour and no Java process ever ran, and the wrapper reported
+`startup_wait_expired` (it could not reach the ZAP API within `-T 60`). The
+runner's uid has no passwd entry in the pinned ZAP image, so Java resolves
+`user.home` to `?` and ZAP exits at start with "Unable to create home directory:
+/zap/?/.ZAP/". A local probe with the same image and a uid without a passwd
+entry reproduces this, and with `JAVA_TOOL_OPTIONS=-Duser.home=/zap/wrk/home`
+ZAP 2.17.0 starts and answers its API. `scripts/quality/zap_runner.py` now passes
+that option next to `HOME`, and a runner test pins both.
+
+This corrects the hosted part of the rule 40026 rationale above: on hosted runs
+the engine never started, so no rule ran. The local leak observation (headless
+Firefox launches, 12.6 GB) still stands, and the exclusion keeps its owner,
+scope and 2027-01-10 expiry. Whether to re-enable rule 40026 is the owner's
+call once a hosted run produces evidence. This adds no threshold, required check
+or audit status, and is not itself a passing scan.

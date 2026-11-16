@@ -19,12 +19,21 @@ test("admin story smoke exercises the real read-only story list and seeded conte
   ])
 
   assert.match(spec, /await loginAs\(page, "admin"\)/u)
-  assert.match(spec, /page\.goto\("\/admin\/stories"\)/u)
+  assert.match(spec, /page\.goto\("\/admin\/stories", \{ waitUntil: "commit" \}\)/u)
   assert.match(spec, /const STORY_LIST_PATH = ["']\/api\/v1\/stories["']/u)
   assert.match(
     spec,
     /waitForResponse\([\s\S]*?requestUrl\.pathname === STORY_LIST_PATH[\s\S]*?method\(\) === ["']GET["']/u
   )
+  // The dashboard reached by login reads the same list; only the admin document's
+  // request may satisfy the wait, so the wait is armed after the navigation commits.
+  const navigation = spec.indexOf('await page.goto("/admin/stories", { waitUntil: "commit" })')
+  const wait = spec.indexOf("const storyListResponse = page.waitForResponse(")
+  assert.ok(
+    navigation > 0 && wait > navigation,
+    "the list wait must follow the committed navigation"
+  )
+  assert.equal(spec.match(/page\.goto\(/gu)?.length, 1, "the smoke navigates exactly once")
   assert.match(spec, /response\.status\(\)[\s\S]*?\.toBe\(200\)/u)
   assert.match(spec, /Текущие сторис/u)
   assert.match(spec, /🎓 Сессия: советы по подготовке/u)

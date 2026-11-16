@@ -925,9 +925,14 @@ spec:
         - protocol: TCP
           port: {{ $elasticsearchPort | int }}
     {{- end }}
-    # TCP 443 only to owner-declared external endpoints (AUD-189), such as an
-    # external Elasticsearch HTTPS endpoint used by search indexing. No public
-    # destination is granted by default; NATS, PostgreSQL, SpiceDB and OTLP
+    # Web Push (AUD-189, ADR-054 addendum 2026-11-16): outbox-worker delivers
+    # notification pushes to browser push services (FCM, Mozilla autopush, Apple,
+    # WNS), which have no fixed address set. It gets the same public TCP/443 rule
+    # as backend: any public address except the private, shared and link-local
+    # ranges. Outbound requests still pass the application SSRF guard.
+    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
+    # Owner-declared external HTTPS endpoints (AUD-189), such as an external
+    # Elasticsearch used by search indexing. NATS, PostgreSQL, SpiceDB and OTLP
     # peers are selected by pod labels above.
     {{- range $cidr := .Values.networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs }}
     - to:

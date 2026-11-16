@@ -341,7 +341,12 @@ def test_public_egress_exception_rows_are_scoped_to_backend_and_backup() -> None
         for row in rows
         if row.target == "public-https" and row.expect_allow
     }
-    assert allowed == {"aud189-public-backend", "aud189-backup-public"}
+    # outbox-worker sends Web Push (ADR-054 addendum 2026-11-16).
+    assert allowed == {
+        "aud189-public-backend",
+        "aud189-public-outbox",
+        "aud189-backup-public",
+    }
     denied = {
         row.probe_id
         for row in rows
@@ -352,7 +357,6 @@ def test_public_egress_exception_rows_are_scoped_to_backend_and_backup() -> None
         "aud189-public-ws",
         "aud189-public-gateway",
         "aud189-public-frontend",
-        "aud189-public-outbox",
     }
     assert {row.port for row in rows if row.target == "public-https"} == {443}
 

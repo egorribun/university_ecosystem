@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
 import { useAuth } from "@/contexts/AuthContext"
+import { getConfirmedUserId } from "@/stores/authIdentity"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
 import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
 
@@ -20,6 +21,11 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])
   const navigate = useNavigate()
   const { user, loading: identityLoading } = useAuth()
+  // Media actions run only for a confirmed account (useProfileSessionGuard drops
+  // them otherwise). The SSR role stub and the encrypted-cache placeholder are not
+  // one, so keep the controls disabled until the real identity arrives instead of
+  // offering a click that silently does nothing.
+  const identityPending = getConfirmedUserId({ user, loading: identityLoading }) === null
 
   const {
     avatarSrc,
@@ -72,7 +78,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   size="sm"
                   variant="solid"
                   onClick={triggerAvatarPick}
-                  disabled={avatarBusy || identityLoading}
+                  disabled={avatarBusy || identityPending}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.change")}
@@ -82,7 +88,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   variant="outline"
                   color="error"
                   onClick={removeAvatar}
-                  disabled={avatarBusy || identityLoading}
+                  disabled={avatarBusy || identityPending}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.avatar.delete")}
@@ -114,7 +120,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   size="sm"
                   variant="solid"
                   onClick={triggerCoverPick}
-                  disabled={coverBusy || identityLoading}
+                  disabled={coverBusy || identityPending}
                   className="w-full sm:w-auto"
                 >
                   {t("settings:media.cover.change")}
@@ -125,7 +131,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                     variant="outline"
                     color="error"
                     onClick={removeCover}
-                    disabled={coverBusy || identityLoading}
+                    disabled={coverBusy || identityPending}
                     className="w-full sm:w-auto"
                   >
                     {t("settings:media.cover.remove")}

@@ -621,6 +621,139 @@ function Test-CanonicalLivePublishedPorts {
     return $true
 }
 
+# The live acceptance owner is verified while the script body still runs: the
+# PrepareOnly path calls Get-VerifiedLiveAcceptanceOwner before Compose is
+# prepared, so these two functions are defined ahead of that first call.
+function Get-CommonGitOwnerKeyPath {
+    $gitCommonOutput = @()
+    try {
+        $gitCommonOutput = @(& git -C $ProjectRoot rev-parse --git-common-dir 2>$null)
+        $gitExitCode = $LASTEXITCODE
+    } catch {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    if ($gitExitCode -ne 0 -or $gitCommonOutput.Count -ne 1 -or
+        [string]::IsNullOrWhiteSpace([string]$gitCommonOutput[0])) {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    $reportedDirectory = [string]$gitCommonOutput[0]
+    if ($reportedDirectory -cne $reportedDirectory.Trim() -or
+        $reportedDirectory.Contains([char]0)) {
+        throw "Live acceptance Git metadata cannot be validated."
+    }
+    try {
+        $commonDirectoryInput = if ([System.IO.Path]::IsPathRooted($reportedDirectory)) {
+            $reportedDirectory
+        } else {
+            Join-Path $ProjectRoot $reportedDirectory
+        }
+        $commonDirectory = [System.IO.Path]::GetFullPath($commonDirectoryInput)
+        if (-not (Test-Path -LiteralPath $commonDirectory -PathType Container)) {
+            throw "missing"
+        }
+        $current = $commonDirectory
+        while ($current) {
+            $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "reparse"
+            }
+            $parent = [System.IO.Path]::GetDirectoryName($current)
+            if (-not $parent -or $parent -ceq $current) { break }
+            $current = $parent
+        }
+        return [System.IO.Path]::GetFullPath(
+            (Join-Path $commonDirectory "live-stand-owner.key")
+        )
+    } catch {
+        throw "Live acceptance Git metadata path is missing or unsafe."
+    }
+}
+
+function Get-VerifiedLiveAcceptanceOwner {
+    param(
+        # PrepareOnly runs before live_stand.py binds the Compose resources, so the
+        # signed marker legitimately has no resource fingerprint yet. Only those
+        # callers pass this switch; every other check, including the signature,
+        # still applies, and an unbound owner is never cached for later callers.
+        [switch]$AllowUnboundResources
+    )
+    if ($null -ne $script:LiveStandOwner) { return $script:LiveStandOwner }
+    if ($LiveStateMode) {
+        throw "Live acceptance state owner has not been validated."
+    }
+    $ownerPath = Join-Path $ProjectRoot ".secrets/live-stand.json"
+    $keyPath = Get-CommonGitOwnerKeyPath
+    $secretsPath = Join-Path $ProjectRoot ".secrets"
+    if (-not (Test-Path -LiteralPath $secretsPath -PathType Container) -or
+        ((Get-Item -LiteralPath $secretsPath -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Live acceptance owner directory is missing or unsafe."
+    }
+    foreach ($path in @($ownerPath, $keyPath)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Live acceptance requires a signed owner marker and key."
+        }
+        $item = Get-Item -LiteralPath $path -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Live acceptance owner paths refuse reparse points."
+        }
+    }
+    try {
+        $owner = [System.IO.File]::ReadAllText($ownerPath) |
+            ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $key = [System.IO.File]::ReadAllBytes($keyPath)
+    } catch {
+        throw "Live acceptance owner metadata cannot be validated."
+    }
+    $expectedOwnerFields = @(
+        "version", "repository", "worktree", "project_name", "published_ports",
+        "daemon_fingerprint", "compose_resource_fingerprint",
+        "resume_compose_resource_fingerprint",
+        "resume_compose_resource_schema_version", "stack", "service_roots",
+        "selected_services", "signature"
+    )
+    $resourcesBound = [string]$owner.compose_resource_fingerprint -cmatch '^[0-9a-f]{64}$'
+    $resourcesUnbound = $AllowUnboundResources -and $null -eq $owner.compose_resource_fingerprint
+    if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
+        -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio) -or
+        $owner.version -ne 10 -or
+        [string]$owner.worktree -ine $ProjectRoot -or
+        [string]::IsNullOrWhiteSpace([string]$owner.repository) -or
+        [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
+        [string]$owner.stack -cnotin @("full", "core") -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.service_roots) -or
+        -not (Test-CanonicalLiveServiceList -Value $owner.selected_services) -or
+        -not ($resourcesBound -or $resourcesUnbound) -or
+        [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
+        $key.Length -ne 32 -or
+        [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
+        [Array]::Clear($key, 0, $key.Length)
+        throw "Live acceptance owner does not match this worktree and Compose project."
+    }
+    $payload = [ordered]@{}
+    foreach ($name in ($owner.Keys | Where-Object { $_ -cne "signature" } | Sort-Object -CaseSensitive)) {
+        $payload[$name] = $owner[$name]
+    }
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
+    try {
+        $actualSignature = [Convert]::ToHexString(
+            $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(
+                (ConvertTo-CanonicalLiveOwnerJson -Value $payload)
+            ))
+        ).ToLowerInvariant()
+    } finally {
+        $hmac.Dispose()
+        [Array]::Clear($key, 0, $key.Length)
+    }
+    if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
+        [Convert]::FromHexString([string]$owner.signature),
+        [Convert]::FromHexString($actualSignature)
+    )) {
+        throw "Live acceptance owner signature is invalid."
+    }
+    if ($resourcesBound) { $script:LiveStandOwner = $owner }
+    return $owner
+}
+
 function Resolve-OwnedLiveStandStateRoot {
     param([Parameter(Mandatory=$true)][string]$Path)
     $candidate = [System.IO.Path]::GetFullPath($Path)
@@ -919,7 +1052,7 @@ if ($LiveStateMode) {
     if ($PrepareOnly -and @($ExtraCompose).Count -eq 1 -and
         $ExtraCompose[0] -ceq 'docker-compose.live.yml' -and
         (Test-Path -LiteralPath (Join-Path $ProjectRoot '.secrets/live-stand.json') -PathType Leaf)) {
-        $prepareOwner = Get-VerifiedLiveAcceptanceOwner
+        $prepareOwner = Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources
         $prepareManagedFull = $prepareOwner.version -eq 7 -or [string]$prepareOwner.stack -ceq 'full'
     }
     if (-not $PrepareOnly -or $prepareManagedFull) {
@@ -1130,7 +1263,7 @@ function Assert-PrepareOnlyLiveInputs {
 
     $owner = $script:LiveStandOwner
     if ($null -eq $owner) {
-        $owner = Get-VerifiedLiveAcceptanceOwner
+        $owner = Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources
     }
     if ($null -eq $owner -or $owner.version -notin @(7, 10, 11)) {
         throw "PrepareOnly requires a validated live-stand owner."
@@ -2717,127 +2850,6 @@ function Resolve-LiveAcceptanceSelection {
         Roots = @($script:LiveAcceptanceCoreRoots | Sort-Object -CaseSensitive)
         Services = $selectedNames
     }
-}
-
-function Get-CommonGitOwnerKeyPath {
-    $gitCommonOutput = @()
-    try {
-        $gitCommonOutput = @(& git -C $ProjectRoot rev-parse --git-common-dir 2>$null)
-        $gitExitCode = $LASTEXITCODE
-    } catch {
-        throw "Live acceptance Git metadata cannot be validated."
-    }
-    if ($gitExitCode -ne 0 -or $gitCommonOutput.Count -ne 1 -or
-        [string]::IsNullOrWhiteSpace([string]$gitCommonOutput[0])) {
-        throw "Live acceptance Git metadata cannot be validated."
-    }
-    $reportedDirectory = [string]$gitCommonOutput[0]
-    if ($reportedDirectory -cne $reportedDirectory.Trim() -or
-        $reportedDirectory.Contains([char]0)) {
-        throw "Live acceptance Git metadata cannot be validated."
-    }
-    try {
-        $commonDirectoryInput = if ([System.IO.Path]::IsPathRooted($reportedDirectory)) {
-            $reportedDirectory
-        } else {
-            Join-Path $ProjectRoot $reportedDirectory
-        }
-        $commonDirectory = [System.IO.Path]::GetFullPath($commonDirectoryInput)
-        if (-not (Test-Path -LiteralPath $commonDirectory -PathType Container)) {
-            throw "missing"
-        }
-        $current = $commonDirectory
-        while ($current) {
-            $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
-            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                throw "reparse"
-            }
-            $parent = [System.IO.Path]::GetDirectoryName($current)
-            if (-not $parent -or $parent -ceq $current) { break }
-            $current = $parent
-        }
-        return [System.IO.Path]::GetFullPath(
-            (Join-Path $commonDirectory "live-stand-owner.key")
-        )
-    } catch {
-        throw "Live acceptance Git metadata path is missing or unsafe."
-    }
-}
-
-function Get-VerifiedLiveAcceptanceOwner {
-    if ($null -ne $script:LiveStandOwner) { return $script:LiveStandOwner }
-    if ($LiveStateMode) {
-        throw "Live acceptance state owner has not been validated."
-    }
-    $ownerPath = Join-Path $ProjectRoot ".secrets/live-stand.json"
-    $keyPath = Get-CommonGitOwnerKeyPath
-    $secretsPath = Join-Path $ProjectRoot ".secrets"
-    if (-not (Test-Path -LiteralPath $secretsPath -PathType Container) -or
-        ((Get-Item -LiteralPath $secretsPath -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-        throw "Live acceptance owner directory is missing or unsafe."
-    }
-    foreach ($path in @($ownerPath, $keyPath)) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "Live acceptance requires a signed owner marker and key."
-        }
-        $item = Get-Item -LiteralPath $path -Force
-        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-            throw "Live acceptance owner paths refuse reparse points."
-        }
-    }
-    try {
-        $owner = [System.IO.File]::ReadAllText($ownerPath) |
-            ConvertFrom-Json -AsHashtable -ErrorAction Stop
-        $key = [System.IO.File]::ReadAllBytes($keyPath)
-    } catch {
-        throw "Live acceptance owner metadata cannot be validated."
-    }
-    $expectedOwnerFields = @(
-        "version", "repository", "worktree", "project_name", "published_ports",
-        "daemon_fingerprint", "compose_resource_fingerprint",
-        "resume_compose_resource_fingerprint",
-        "resume_compose_resource_schema_version", "stack", "service_roots",
-        "selected_services", "signature"
-    )
-    if (-not (Test-ExactLiveOwnerFields -Owner $owner -ExpectedFields $expectedOwnerFields) -or
-        -not (Test-CanonicalLivePublishedPorts -Value $owner.published_ports -IncludeMinio) -or
-        $owner.version -ne 10 -or
-        [string]$owner.worktree -ine $ProjectRoot -or
-        [string]::IsNullOrWhiteSpace([string]$owner.repository) -or
-        [string]$owner.project_name -cnotmatch '^ue-live-[0-9a-f]{16}$' -or
-        [string]$owner.stack -cnotin @("full", "core") -or
-        -not (Test-CanonicalLiveServiceList -Value $owner.service_roots) -or
-        -not (Test-CanonicalLiveServiceList -Value $owner.selected_services) -or
-        [string]$owner.compose_resource_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
-        [string]$env:COMPOSE_PROJECT_NAME -cne [string]$owner.project_name -or
-        $key.Length -ne 32 -or
-        [string]$owner.signature -cnotmatch '^[0-9a-f]{64}$') {
-        [Array]::Clear($key, 0, $key.Length)
-        throw "Live acceptance owner does not match this worktree and Compose project."
-    }
-    $payload = [ordered]@{}
-    foreach ($name in ($owner.Keys | Where-Object { $_ -cne "signature" } | Sort-Object -CaseSensitive)) {
-        $payload[$name] = $owner[$name]
-    }
-    $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
-    try {
-        $actualSignature = [Convert]::ToHexString(
-            $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(
-                (ConvertTo-CanonicalLiveOwnerJson -Value $payload)
-            ))
-        ).ToLowerInvariant()
-    } finally {
-        $hmac.Dispose()
-        [Array]::Clear($key, 0, $key.Length)
-    }
-    if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
-        [Convert]::FromHexString([string]$owner.signature),
-        [Convert]::FromHexString($actualSignature)
-    )) {
-        throw "Live acceptance owner signature is invalid."
-    }
-    $script:LiveStandOwner = $owner
-    return $owner
 }
 
 if ($PrepareOnly) { Assert-PrepareOnlyLiveInputs }

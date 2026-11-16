@@ -26,7 +26,8 @@ param(
     [Parameter(Mandatory=$true)][string]$GitExecutable,
     [Parameter(Mandatory=$true)][ValidateSet("inplace", "worktree")][string]$Mode,
     [string]$StateRoot = "",
-    [string]$SourceSha = ""
+    [string]$SourceSha = "",
+    [ValidateSet("0", "1")][string]$AllowUnbound = "0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -112,11 +113,17 @@ try {
         }
     } else {
         $stage = "worktree_owner_verification"
-        $owner = Get-VerifiedLiveAcceptanceOwner
+        $owner = if ($AllowUnbound -ceq "1") {
+            Get-VerifiedLiveAcceptanceOwner -AllowUnboundResources
+        } else {
+            Get-VerifiedLiveAcceptanceOwner
+        }
         $result = [pscustomobject]@{
             accepted = $true
             version = [int]$owner.version
-            sameResolvedOwner = $false
+            # With the PrepareOnly switch this reports whether the owner was cached.
+            sameResolvedOwner = ($AllowUnbound -ceq "1") -and
+                [object]::ReferenceEquals($owner, $script:LiveStandOwner)
             resolvedPathMatches = $false
             gitLookups = $script:gitLookupCount
             failure = ""
@@ -135,6 +142,8 @@ try {
         $failure = "signed_owner_material_missing"
     } elseif ($message -ceq "Live acceptance owner signature is invalid.") {
         $failure = "signature_invalid"
+    } elseif ($message -ceq "Live acceptance owner does not match this worktree and Compose project.") {
+        $failure = "worktree_owner_mismatch"
     } elseif ($message -ceq "Live stand owner does not match this source checkout and run root.") {
         $failure = "in_place_owner_mismatch"
     } elseif ($message -like "Live stand state ACL *") {
@@ -170,6 +179,7 @@ def _run_powershell_owner_check(
     project_name: str,
     state_root: Path | None = None,
     source_sha: str = "",
+    allow_unbound: bool = False,
 ) -> dict[str, object]:
     assert POWERSHELL is not None
     runner = tmp_path / "owner-key-contract.ps1"
@@ -196,6 +206,8 @@ def _run_powershell_owner_check(
         str((state_root or project_root).resolve()),
         "-SourceSha",
         source_sha,
+        "-AllowUnbound",
+        "1" if allow_unbound else "0",
     ]
     result = subprocess.run(  # noqa: S603 - fixed PowerShell host and test-created runner
         arguments,
@@ -234,6 +246,7 @@ def _non_in_place_fixture(
     common_key: bytes | None = None,
     tamper_signature: bool = False,
     schema_version: int = live_stand.OWNER_SCHEMA_VERSION,
+    compose_resource_fingerprint: str | None = "f" * 64,
 ) -> tuple[Path, Path, str]:
     assert GIT is not None
     repository = tmp_path / "source repository"
@@ -285,7 +298,7 @@ def _non_in_place_fixture(
         "project_name": project_name,
         "published_ports": ports,
         "daemon_fingerprint": "d" * 64,
-        "compose_resource_fingerprint": "f" * 64,
+        "compose_resource_fingerprint": compose_resource_fingerprint,
         "resume_compose_resource_fingerprint": None,
         "resume_compose_resource_schema_version": None,
         "stack": live_stand.LIVE_STACK_CORE,
@@ -537,3 +550,104 @@ def test_in_place_resolver_rejects_signed_pre_minio_v9_owner(
     assert result["failure"] == "in_place_owner_mismatch"
     assert result["stage"] == "resolve_in_place_owner"
     assert result["gitLookups"] == 0
+
+
+_OWNER_CONTRACT_SKIP = pytest.mark.skipif(
+    POWERSHELL is None or GIT is None,
+    reason="PowerShell 7 and Git are required for owner verification contracts",
+)
+
+
+@_OWNER_CONTRACT_SKIP
+def test_prepare_only_accepts_a_signed_owner_before_resource_binding(
+    tmp_path: Path,
+) -> None:
+    """live_stand.py binds the Compose resource fingerprint after PrepareOnly."""
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, compose_resource_fingerprint=None
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=True,
+    )
+
+    assert result["accepted"] is True
+    assert result["version"] == live_stand.OWNER_SCHEMA_VERSION
+    # An unbound owner is never cached for the later, binding-required callers.
+    assert result["sameResolvedOwner"] is False
+
+
+@_OWNER_CONTRACT_SKIP
+def test_unbound_owner_is_rejected_outside_prepare_only(tmp_path: Path) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, compose_resource_fingerprint=None
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+    )
+
+    assert result["accepted"] is False
+    assert result["failure"] == "worktree_owner_mismatch"
+
+
+@_OWNER_CONTRACT_SKIP
+def test_prepare_only_switch_still_caches_a_bound_owner(tmp_path: Path) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(tmp_path)
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=True,
+    )
+
+    assert result["accepted"] is True
+    assert result["sameResolvedOwner"] is True
+
+
+@_OWNER_CONTRACT_SKIP
+@pytest.mark.parametrize("fingerprint", ["", "F" * 64, "f" * 63])
+def test_prepare_only_switch_still_rejects_a_malformed_fingerprint(
+    tmp_path: Path, fingerprint: str
+) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, compose_resource_fingerprint=fingerprint
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=True,
+    )
+
+    assert result["accepted"] is False
+    assert result["failure"] == "worktree_owner_mismatch"
+
+
+@_OWNER_CONTRACT_SKIP
+def test_prepare_only_switch_still_verifies_the_signature(tmp_path: Path) -> None:
+    _repository, worktree, project_name = _non_in_place_fixture(
+        tmp_path, compose_resource_fingerprint=None, tamper_signature=True
+    )
+
+    result = _run_powershell_owner_check(
+        tmp_path,
+        mode="worktree",
+        project_root=worktree,
+        project_name=project_name,
+        allow_unbound=True,
+    )
+
+    assert result["accepted"] is False
+    assert result["failure"] == "signature_invalid"
