@@ -1,14 +1,27 @@
 # Audit trail
 
-## Current reconciliation — 2026-11-13
+## Current reconciliation — 2026-11-17
 
-The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
-**4S / 2P / 0U / 0N**. This update accepts AUD-167, AUD-251, AUD-432 and AUD-484,
+The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
+**1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
+and AUD-438 on the owner-accepted kind + Calico proof; AUD-154 and AUD-381
+remain open. The [evidence, exact source and limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17)
+and [current 2-finding complement](AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17)
+record the decisions. The actual ingress controller and public HTTP route were
+not tested. No overall CI, release or deployment acceptance is implied; this
+documentation change and each later source SHA require their own checks.
+
+<a id="current-reconciliation--2026-11-13"></a>
+
+## Dated reconciliation — 2026-11-13 (506/6; superseded)
+
+At this dated checkpoint the formal total was **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. That update accepted AUD-167, AUD-251, AUD-432 and AUD-484,
 each for its own stated criterion. [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13)
 bind them to hosted runs on main `a061735136fa4fb56805929fe716affbc952f4fc`; the AUD-251 evidence also cites the earlier
-main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings are AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
-and AUD-438. The [current 6-finding complement](AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
-lists what each still needs. The Kubernetes proof environment is recorded in the
+main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings at that time were AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
+and AUD-438. The [then 6-finding complement](AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
+listed what each needed at that checkpoint. The Kubernetes proof environment is recorded in the
 [ADR-054 addendum of 2026-11-13](../adr/ADR-054-mvp-docker-compose-deployment-target.md#addendum-2026-11-13-kind--calico-proof-environment).
 No overall CI, release or deployment acceptance is implied; this documentation commit needs
 its own checks.
@@ -98,7 +111,8 @@ files or authorize routine backup, copying, publication, or distribution. AUD-42
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 506 / 512 (98.8%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — preserves the prior 452 decisions, adds 53 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 6-ID complement](AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13): 4S / 2P / 0U / 0N.
+- [Current accepted audit lower bound: 510 / 512 (99.6%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — preserves the prior 452 decisions, adds 57 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 2-ID complement](AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17): 1S / 1P / 0U / 0N.
+- [Dated accepted audit checkpoint: 506 / 512 (98.8%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 6 open (4S / 2P / 0U / 0N), retained as history.
 - [Dated accepted audit checkpoint: 502 / 512 (98.0%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 10 open (4S / 6P / 0U / 0N), retained as history. Evidence is bound to its source snapshots, not the later current index; overall CI and release readiness are not accepted.
 - [Dated accepted audit checkpoint: 494 / 512 (96.5%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
 - [Dated accepted audit checkpoint: 490 / 512 (95.7%)](AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09) — 22 open (13S / 9P / 0U / 0N), retained as history.

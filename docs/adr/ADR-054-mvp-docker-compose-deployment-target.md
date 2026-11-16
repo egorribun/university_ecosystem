@@ -15,7 +15,7 @@ actual CNI. Other findings needed a named target topology to be judged at all.
 
 MVP v1.0.0 runs on Docker Compose on one host.
 
-*Superseded in part by the 2026-11-13 addendum below: AUD-251 is accepted on the kind proof, and AUD-169, AUD-188, AUD-189 and AUD-438 stay open until the listed checks run.*
+*Superseded in part by the 2026-11-13 and 2026-11-17 addenda below: AUD-251, AUD-169, AUD-188, AUD-189 and AUD-438 are accepted within their recorded kind proof scopes.*
 
 **Kubernetes findings stay open (original 2026-11-07 text).** AUD-169, AUD-188, AUD-189, AUD-251 and AUD-438 are
 not resolved and are not marked as not applicable. The Helm chart remains in the
@@ -132,12 +132,16 @@ application SSRF guard, and the owner-declared `outboxWorkerHTTPSEgress` CIDRs k
 their meaning for other external endpoints. `gateway`, `ws-hub`, `frontend` and
 `file-processor` stay without public TCP/443.
 
-The kind proof row `aud189-public-outbox` now expects an allowed connection, and
-every other workload's public TCP/443 row still expects a denial. AUD-189 closes
-only on a hosted kind run on `main` that passes with this matrix. The post-MVP
+The kind proof row `aud189-public-outbox` expects an allowed connection, while the
+ws-hub, gateway and frontend public TCP/443 rows expect denial; backend and backup
+retain their documented allowances. AUD-189 required a hosted kind run on `main`
+passing this matrix; the 2026-11-17 addendum records that proof. The post-MVP
 direction (an egress proxy or an FQDN-aware policy for push egress) is unchanged.
 
 ## Addendum 2026-11-13: kind + Calico proof environment
+
+The finding status in this dated addendum is superseded by the 2026-11-17
+addendum; its evidence remains historical.
 
 Owner decision (2026-11-12): an ephemeral kind cluster with Calico, created by CI, is the accepted
 proof environment for the Kubernetes NetworkPolicy and SPIRE findings. It is not a deployment
@@ -165,3 +169,23 @@ exercised.
 
 This addendum supersedes the "Kubernetes findings stay open" statement and the "cannot reach
 512/512" consequence above. Those original statements are kept as history.
+
+## Addendum 2026-11-17: scoped kind proof for four findings
+
+On main `057ccd2cb835f82d97144e97413b185cf8bd7a03`, the owner-accepted ephemeral
+kind + Calico proof passed: [run 43969553490](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490),
+[job 133657797517](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/job/133657797517),
+[receipt artifact 14279491890](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/artifacts/14279491890).
+The receipt records 40/40 passing matrix probes, two actual file-processor replicas
+with token-revocation and JWKS-rotation checks, the backup and restore jobs against
+an HTTPS fixture, and actual ws-hub replicas with authorized and restricted scrapes.
+The outbox-worker public TCP/443 probe connected while the ws-hub, gateway and
+frontend public TCP/443 probes timed out. AUD-169, AUD-188, AUD-189 and AUD-438 are
+accepted for the [recorded scopes and limits](../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+
+The real processor was exercised in one proof namespace; namespace isolation used
+the matrix stand-ins. The actual ingress controller and public HTTP route were not
+run: the ingress-labelled source was a Python stand-in. The backup fixture is not
+the separate MVP paired DB/S3 restore proof. The accepted public TCP/443 exception,
+its risks and the post-MVP egress-proxy/FQDN-aware direction remain unchanged.
+This evidence selects no production Kubernetes profile and authorizes no deployment.
