@@ -32,6 +32,7 @@ import api from "@/api/client"
 import { cn } from "@/utils/cn"
 import { useDebounced } from "@/hooks/useDebounced"
 import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface SearchResult {
   id: string
@@ -101,6 +102,7 @@ interface SearchDialogProps {
 export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   const { t } = useTranslation(["common"])
   const navigate = useNavigate()
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -160,6 +162,13 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
     ...(data?.results.events ?? []),
   ].sort((a, b) => b.score - a.score)
   const showResults = query.length >= 2 && debouncedQuery.length >= 2
+  const activeResult = showResults && !isLoading && !isError ? allResults[activeIndex] : undefined
+  const searchStatus =
+    isLoading && showResults
+      ? t("common:search.loading")
+      : activeResult
+        ? t("common:search.activeResult", { title: activeResult.title })
+        : ""
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -204,19 +213,24 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   return (
     <AnimatePresence>
       <m.div
-        initial={{ opacity: 0 }}
+        initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={prefersReducedMotion ? { duration: 0 } : undefined}
         className="fixed inset-0 z-modal flex items-start justify-center pt-[15vh] bg-overlay/[calc(var(--opacity-strong)*100%)] backdrop-blur-md"
         onClick={() => setOpen(false)}
         role="presentation"
       >
         <m.div
           ref={dialogRef}
-          initial={{ opacity: 0, scale: 0.95, y: -20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -20 }}
-          transition={{ type: "spring" as const, stiffness: 400, damping: 30 }}
+          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: -20 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { type: "spring" as const, stiffness: 400, damping: 30 }
+          }
           className="glass-layer-floating w-full max-w-[36rem] rounded-2xl overflow-hidden"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
@@ -257,6 +271,10 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
             </kbd>
           </div>
 
+          <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+            {searchStatus}
+          </p>
+
           {/* Results */}
           <div ref={resultsRef} className="max-h-80 overflow-y-auto custom-scrollbar">
             {/* Recent Searches */}
@@ -282,7 +300,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
             {/* Loading */}
             {isLoading && showResults && (
               <div className="flex items-center justify-center py-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-(--text-tertiary) border-t-brand" />
+                <div className="h-5 w-5 animate-spin motion-reduce:animate-none rounded-full border-2 border-(--text-tertiary) border-t-brand" />
               </div>
             )}
 
