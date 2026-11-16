@@ -739,6 +739,8 @@ also_copy = [
     "frontend/src/styles",
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
+    # Live evidence contracts derive their identities from authored specs.
+    "frontend/tests/e2e-live",
     "frontend/tests/e2e/utils",
     # test_frontend_knip_asset_contract reads the direct axe-core users.
     "frontend/tests/e2e/accessibility.spec.ts",
