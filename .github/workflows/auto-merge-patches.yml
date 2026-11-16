@@ -28,8 +28,14 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            // Regex: only patch-level bumps (e.g., bump pkg from 1.2.3 to 1.2.4)
-            if (/bump .+ from \d+\.\d+\.\d+ to \d+\.\d+\.\d+$/.test(pr.title)) {
+            // Accept only increasing stable patches within the same major/minor.
+            // Compare arbitrary-length numeric identifiers without precision loss.
+            const versions = pr.title.match(/\bbump .+ from (0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*) to (0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/i);
+            const isPatch = versions !== null
+              && versions[1] === versions[4]
+              && versions[2] === versions[5]
+              && BigInt(versions[6]) > BigInt(versions[3]);
+            if (isPatch) {
               // RZ-22-01: Use enableAutoMerge instead of direct merge.
               // enableAutoMerge gates on branch protection required status checks,
               // preventing merge before CI (tests, security audit, lint) passes.
