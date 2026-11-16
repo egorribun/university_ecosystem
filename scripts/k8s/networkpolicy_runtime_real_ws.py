@@ -632,10 +632,16 @@ def prove_ws_service(
     deployment: dict[str, Any],
     replicas: list[dict[str, Any]],
     source: Pod,
+    *,
+    progress: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Prove only the in-cluster Service's ordinary public-port health route."""
+    progress = progress if progress is not None else {}
+    progress["stage"] = "source-before"
     source_before = authorized_ingress_source(app, source)
+    progress["stage"] = "create-service"
     identity = create_ws_service(app, deployment)
+    progress["stage"] = "endpoints-before"
     deadline = time.monotonic() + 30
     while True:
         snapshot = ws_service_snapshot(deployment, identity, replicas)
@@ -645,14 +651,18 @@ def prove_ws_service(
         if snapshot is not None:
             break
         time.sleep(min(1.0, remaining))
+    progress["stage"] = "source-pre-health"
     if authorized_ingress_source(app, source) != source_before:
         raise ValueError("service probe source changed")
+    progress["stage"] = "health-request"
     if run_in_pod(source, HEALTH, [identity["cluster_ip"]], timeout=3) != {
         "result": "healthy"
     }:
         raise ValueError("ws-hub Service health check failed")
+    progress["stage"] = "source-post-health"
     if authorized_ingress_source(app, source) != source_before:
         raise ValueError("service probe source changed")
+    progress["stage"] = "endpoints-after"
     if ws_service_snapshot(deployment, identity, replicas) != snapshot:
         raise ValueError("ws-hub Service endpoints changed")
     return {
@@ -766,6 +776,7 @@ def actual_ws_phase(
 ) -> dict[str, Any]:
     """Run only the authorized positive scrape; retain fixed, secret-free failures."""
     stage = "render"
+    service_progress = {"stage": "service-start"}
     checks: list[dict[str, str]] = []
     try:
         app, store = rendered["probe-a"]
@@ -876,11 +887,14 @@ def actual_ws_phase(
         stage = "retire-fixture"
         retire_ws_fixture(app, pods["a-ws"], python_image)
         stage = "service-health"
-        service = prove_ws_service(app, deployment, before, pods["ingress"])
-        if (
-            service.get("verdict") != "pass"
-            or replicas(deployment, image, source_sha) != before
-        ):
+        service = prove_ws_service(
+            app, deployment, before, pods["ingress"], progress=service_progress
+        )
+        service_progress["stage"] = "service-verdict"
+        if service.get("verdict") != "pass":
+            raise ValueError("ws-hub Service proof or replica identity changed")
+        service_progress["stage"] = "replica-recheck"
+        if replicas(deployment, image, source_sha) != before:
             raise ValueError("ws-hub Service proof or replica identity changed")
     except (
         OSError,
@@ -892,7 +906,27 @@ def actual_ws_phase(
         yaml.YAMLError,
         subprocess.SubprocessError,
     ):
-        return {"verdict": "inconclusive", "stage": stage, "checks": checks}
+        failure = {"verdict": "inconclusive", "stage": stage, "checks": checks}
+        if stage == "service-health":
+            substage = service_progress.get("stage")
+            failure["substage"] = (
+                substage
+                if substage
+                in (
+                    "service-start",
+                    "source-before",
+                    "create-service",
+                    "endpoints-before",
+                    "source-pre-health",
+                    "health-request",
+                    "source-post-health",
+                    "endpoints-after",
+                    "service-verdict",
+                    "replica-recheck",
+                )
+                else "service-unknown"
+            )
+        return failure
     return {
         "verdict": "pass"
         if checks and all(check["verdict"] == "pass" for check in checks)

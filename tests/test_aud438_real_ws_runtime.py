@@ -498,9 +498,10 @@ def test_phase_scrapes_each_unchanged_replica_and_does_not_emit_private_details(
     mocks["retire_ws_fixture"].assert_called_once_with(
         rendered[0], pods["a-ws"], "python-fixture"
     )
-    mocks["prove_ws_service"].assert_called_once_with(
-        rendered[0], declaration, copies, pods["ingress"]
-    )
+    call = mocks["prove_ws_service"].call_args
+    assert mocks["prove_ws_service"].call_count == 1
+    assert call.args == (rendered[0], declaration, copies, pods["ingress"])
+    assert call.kwargs == {"progress": {"stage": "replica-recheck"}}
     assert result["service"] == {"verdict": "pass", "service_uid": "service-uid"}
     assert mocks["run_in_pod"].call_args_list[0].args[:2] == (
         pods["a-backend"],
@@ -582,10 +583,104 @@ def test_phase_failures_cannot_pass_or_expose_exception_payload(
     assert result["verdict"] == "inconclusive"
     if fault != "scrape":
         assert result["stage"] == stage
+    if fault == "prove_ws_service":
+        assert result["substage"] == "service-start"
+    if fault == "service_replica":
+        assert result["substage"] == "replica-recheck"
     assert "private exception data" not in json.dumps(result)
     assert "revocation-password" not in json.dumps(result)
     if fault not in {"retire_ws_fixture", "prove_ws_service", "service_replica"}:
         mocks["retire_ws_fixture"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "substage",
+    [
+        "source-before",
+        "create-service",
+        "endpoints-before",
+        "source-pre-health",
+        "health-request",
+        "source-post-health",
+        "endpoints-after",
+        "replica-recheck",
+    ],
+)
+def test_service_failure_receipt_reports_only_fixed_substage(
+    rendered, declaration, monkeypatch, substage
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    prove = ws.prove_ws_service
+    tree, pods, copies, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    mocks["prove_ws_service"].side_effect = prove
+    failure = ValueError("private exception data")
+    source = {"uid": "source", "container_id": "container", "restarts": 0}
+    source_results = [source, source, source]
+    source_fault = {
+        "source-before": 0,
+        "source-pre-health": 1,
+        "source-post-health": 2,
+    }
+    if substage in source_fault:
+        source_results[source_fault[substage]] = failure
+    monkeypatch.setattr(
+        ws, "authorized_ingress_source", Mock(side_effect=source_results)
+    )
+    create = Mock(return_value={"uid": "service", "cluster_ip": "10.96.0.42"})
+    if substage == "create-service":
+        create.side_effect = failure
+    monkeypatch.setattr(ws, "create_ws_service", create)
+    snapshot = {"service_uid": "service", "slice_uids": ["slice"]}
+    snapshots = [snapshot, snapshot]
+    if substage in {"endpoints-before", "endpoints-after"}:
+        snapshots[0 if substage == "endpoints-before" else 1] = failure
+    monkeypatch.setattr(ws, "ws_service_snapshot", Mock(side_effect=snapshots))
+    mocks["run_in_pod"].side_effect = [
+        {"result": "valid"},
+        {"result": "valid-exposition"},
+        {"result": "valid-exposition"},
+        failure if substage == "health-request" else {"result": "healthy"},
+    ]
+    if substage == "replica-recheck":
+        altered = copy.deepcopy(copies)
+        altered[0]["restarts"] = 1
+        mocks["replicas"].side_effect = [copies, copies, altered]
+
+    result = run_phase(tree, pods)
+
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "service-health"
+    assert result["substage"] == substage
+    assert "private exception data" not in json.dumps(result)
+    assert "10.96.0.42" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "fault,expected", [("verdict", "service-verdict"), ("invalid", "service-unknown")]
+)
+def test_service_failure_substage_is_allowlisted(
+    rendered, declaration, monkeypatch, fault, expected
+):
+    monkeypatch.setattr(
+        ws.subprocess, "run", Mock(side_effect=AssertionError("unexpected subprocess"))
+    )
+    tree, pods, _, mocks = install_phase_fakes(monkeypatch, rendered, declaration)
+    if fault == "verdict":
+        mocks["prove_ws_service"].return_value = {"verdict": "inconclusive"}
+    else:
+
+        def fail(*args, progress):
+            progress["stage"] = "private exception data"
+            raise ValueError("private exception data")
+
+        mocks["prove_ws_service"].side_effect = fail
+    result = run_phase(tree, pods)
+    assert result["verdict"] == "inconclusive"
+    assert result["stage"] == "service-health"
+    assert result["substage"] == expected
+    assert "private exception data" not in json.dumps(result)
 
 
 def runner_fixture(monkeypatch, tmp_path, fp_result, ws_result, interrupt=False):
