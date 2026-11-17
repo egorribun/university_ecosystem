@@ -466,13 +466,18 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
     const alert = feedback.getByRole("alert")
     await expect(alert).toHaveCount(0)
 
-    const pauseTime = await page.evaluate(() => Date.now() + 1000)
-    await page.clock.pauseAt(pauseTime)
-    const pausedNow = await page.evaluate(() => Date.now())
-
-    // This production handler only opens local feedback; it does not copy or navigate.
+    // The real handler awaits the browser clipboard. Let that asynchronous
+    // operation and its feedback render before isolating pointer dismissal.
     await email.click({ timeout: 3000 })
     await expect(page).toHaveURL(/\/profile$/u)
+    await expect(alert).toHaveCount(1)
+    await expect(alert).toBeVisible()
+
+    // Freeze only the dismissal phase: removal must follow the pointer click,
+    // never the auto-hide timer. Do not grant permissions or mock clipboard.
+    const pauseTime = await page.evaluate(() => Date.now())
+    await page.clock.pauseAt(pauseTime)
+    const pausedNow = await page.evaluate(() => Date.now())
     await expect(alert).toHaveCount(1)
     await expect(alert).toBeVisible()
 
