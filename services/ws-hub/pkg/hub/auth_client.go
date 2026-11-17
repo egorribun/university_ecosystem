@@ -448,20 +448,42 @@ func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key
 		return generation, entry.allowed, true
 	}
 	if c.redis != nil {
-		redisKey := "auth:perms:" + key
-		val, err := c.redis.Get(ctx, redisKey).Result()
-		if err == nil {
-			allowed := val == "1"
-			// Populate L1 from L2 — use same TTL constant so L1 never outlives L2.
+		allowed, expiresAt, ok := c.cachedRedisRoomAuthorization(ctx, "auth:perms:"+key)
+		if ok {
 			c.cache.Add(key, cacheEntry{
 				allowed:    allowed,
-				expiresAt:  time.Now().Add(authCacheTTL),
+				expiresAt:  expiresAt,
 				generation: generation,
 			})
 			return generation, allowed, true
 		}
 	}
 	return generation, false, false
+}
+
+// cachedRedisRoomAuthorization reads a decision and its remaining lease in one
+// MULTI/EXEC transaction, so a concurrent writer cannot pair an old value with a
+// new TTL. Anchor expiry before the round trip: network/queue time must shorten,
+// never extend, the shared lease. Invalid/unbounded leases are cache misses.
+func (c *InternalAPIAuthClient) cachedRedisRoomAuthorization(
+	ctx context.Context, key string,
+) (bool, time.Time, bool) {
+	started := time.Now()
+	var value *redis.StringCmd
+	var remaining *redis.DurationCmd
+	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		value = pipe.Get(ctx, key)
+		remaining = pipe.PTTL(ctx, key)
+		return nil
+	})
+	if err != nil || ctx.Err() != nil || remaining.Val() <= 0 {
+		return false, time.Time{}, false
+	}
+	expiresAt := started.Add(min(remaining.Val(), authCacheTTL))
+	if !time.Now().Before(expiresAt) {
+		return false, time.Time{}, false
+	}
+	return value.Val() == "1", expiresAt, true
 }
 
 func (c *InternalAPIAuthClient) requestRoomAuthorization(
