@@ -247,3 +247,91 @@ def test_storybook_security_floor_and_aligned_lock() -> None:
     assert manifest["devDependencies"][chromatic] == f"^{chromatic_version}"
     assert lock["packages"][""]["devDependencies"][chromatic] == f"^{chromatic_version}"
     assert chromatic not in manifest["dependencies"]
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode"),
+    [
+        ("", 0),
+        ("", 1),
+        ("{}", 0),
+        ("{}", 1),
+        ('{"error": {"code": "ENOAUDIT"}}', 1),
+        ('{"message": "audit endpoint returned an error", "statusCode": 503}', 1),
+        ('{"error": null, "vulnerabilities": {}}', 0),
+        ('{"vulnerabilities": []}', 0),
+        ('{"vulnerabilities": null}', 0),
+        ('{"vulnerabilities": {}}', 1),
+        ('{"vulnerabilities": {"pkg": {"severity": "unknown", "via": []}}}', 0),
+        ('{"vulnerabilities": {"pkg": {"severity": "high", "via": []}}}', 1),
+        ('{"vulnerabilities": {"pkg": {"severity": "high", "via": [{}]}}}', 1),
+        ('{"vulnerabilities": {"pkg": {"severity": "high", "via": [null]}}}', 1),
+        ('{"vulnerabilities": {"pkg": {"severity": "high", "via": ["pkg"]}}}', 0),
+    ],
+)
+def test_npm_operational_or_incomplete_report_fails_closed(
+    stdout: str,
+    returncode: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        audit_dependencies.subprocess,
+        "run",
+        Mock(return_value=Namespace(returncode=returncode, stdout=stdout, stderr="")),
+    )
+    with pytest.raises(AuditFailure):
+        audit_dependencies.collect_npm_advisory_ids(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("vulnerabilities", "returncode", "expected"),
+    [
+        ({}, 0, set()),
+        ({"pkg": {"severity": "moderate", "via": ["other"]}}, 0, set()),
+        ({"pkg": {"severity": "high", "via": ["other"]}}, 1, {"other"}),
+        (
+            {"pkg": {"severity": "critical", "via": [{"source": 123}]}},
+            1,
+            {"123"},
+        ),
+    ],
+)
+def test_npm_valid_reports_preserve_high_critical_policy(
+    vulnerabilities: dict,
+    returncode: int,
+    expected: set[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = json.dumps({"auditReportVersion": 2, "vulnerabilities": vulnerabilities})
+    monkeypatch.setattr(
+        audit_dependencies.subprocess,
+        "run",
+        Mock(return_value=Namespace(returncode=returncode, stdout=stdout, stderr="")),
+    )
+    assert audit_dependencies.collect_npm_advisory_ids(tmp_path) == expected
+
+
+def test_npm_endpoint_error_cannot_print_cli_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    policy = tmp_path / "allowlist.yaml"
+    policy.write_text("npm: {overrides: [], advisories: []}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        audit_dependencies.subprocess,
+        "run",
+        Mock(
+            return_value=Namespace(
+                returncode=1,
+                stdout='{"error": {"code": "ENOAUDIT"}}',
+                stderr="",
+            )
+        ),
+    )
+    result = audit_dependencies.main(["--allowlist", str(policy), "--npm", str(tmp_path)])
+    output = capsys.readouterr()
+    assert result == 1
+    assert "Dependency audits passed" not in output.out
+    assert "::error::" in output.err
