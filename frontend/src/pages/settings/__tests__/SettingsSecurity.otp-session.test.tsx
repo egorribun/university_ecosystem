@@ -253,12 +253,27 @@ describe("security OTP session readiness with real MFA hooks", () => {
   )
 
   it.each(["totp", "email"] as const)(
+    "clears the %s challenge after rotation without a parent rerender",
+    async (kind) => {
+      const { firstInput, request } = await beginChallenge(kind)
+      await act(async () => {
+        fireEvent.paste(firstInput, { clipboardData: { getData: () => "12345" } })
+        rotateBrowserSession()
+        await Promise.resolve()
+      })
+      expect(screen.queryAllByRole("textbox")).toHaveLength(0)
+      expect(request).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(["totp", "email"] as const)(
     "does not submit an old %s challenge when the session rotates before rerender",
     async (kind) => {
       const { firstInput, request } = await beginChallenge(kind)
-      act(() => {
+      await act(async () => {
         fireEvent.paste(firstInput, { clipboardData: { getData: () => "123456" } })
         rotateBrowserSession()
+        await Promise.resolve()
       })
       expect(request).not.toHaveBeenCalled()
     }
@@ -268,13 +283,14 @@ describe("security OTP session readiness with real MFA hooks", () => {
     "does not submit an old %s challenge after a browser-session generation change",
     async (kind) => {
       const { firstInput, request } = await beginChallenge(kind)
-      act(() => {
+      await act(async () => {
         fireEvent.paste(firstInput, { clipboardData: { getData: () => "123456" } })
         localStorage.setItem(
           "ecosystem.session.generation.v1",
           JSON.stringify({ nonce: "other-session", hash: null })
         )
         acceptBrowserSessionGeneration()
+        await Promise.resolve()
       })
       expect(request).not.toHaveBeenCalled()
     }
