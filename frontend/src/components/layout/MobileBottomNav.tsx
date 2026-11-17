@@ -155,8 +155,16 @@ export default function MobileBottomNav() {
   // surfaced by W128 plan exploration code-explorer audit). Behavior
   // identical on client.
   useIsomorphicLayoutEffect(() => {
-    if (sessionStorage.getItem("__scrollTopNext") === "1") {
-      sessionStorage.removeItem("__scrollTopNext")
+    let shouldRestoreScroll = false
+    try {
+      if (sessionStorage.getItem("__scrollTopNext") === "1") {
+        sessionStorage.removeItem("__scrollTopNext")
+        shouldRestoreScroll = true
+      }
+    } catch {
+      // An optional scroll hint must not make navigation depend on browser storage.
+    }
+    if (shouldRestoreScroll) {
       deferredScrollFrame.current = requestAnimationFrame(() => {
         deferredScrollFrame.current = null
         smoothToTop(getScrollRoot(), navScrollBehavior(prefersReducedMotion))
