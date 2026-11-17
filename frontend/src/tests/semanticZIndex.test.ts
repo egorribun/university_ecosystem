@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import postcss, { type AnyNode } from "postcss"
 import { describe, expect, it } from "vitest"
 
 import compiledCss from "@/styles/tailwind.css?inline"
 
 const stylesheet = postcss.parse(compiledCss)
+const authoredSource = readFileSync(resolve(process.cwd(), "src/styles/tailwind.css"), "utf8")
 
 function zIndexRules(className: string) {
   const rules: { value: string; layers: string[] }[] = []
@@ -37,6 +40,14 @@ describe("semantic stacking utilities", () => {
     ["z-floating", "--z-floating"],
   ])("emits %s from its existing token in the utilities layer", (className, token) => {
     expect(zIndexRules(className)).toEqual([{ value: `var(${token})`, layers: ["utilities"] }])
+  })
+
+  it.each([
+    ["z-negative", "--z-negative"],
+    ["z-floating", "--z-floating"],
+  ])("declares %s exactly once in the authored stylesheet", (className, token) => {
+    const declaration = `@utility ${className} {\n  z-index: var(${token});\n}`
+    expect(authoredSource.split(declaration)).toHaveLength(2)
   })
 
   it("keeps the indicator and floating layers ordered around their neighboring layers", () => {

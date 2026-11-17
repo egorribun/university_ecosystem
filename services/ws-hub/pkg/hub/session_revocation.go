@@ -256,13 +256,12 @@ func (h *Hub) registerSessionRevocationBootstrap(
 	return generation, previousCancel, nil
 }
 
-func (h *Hub) sessionRevocationBootstrapError(
+// sessionRevocationBootstrapErrorLocked requires lifecycleMu.
+func (h *Hub) sessionRevocationBootstrapErrorLocked(
 	generation uint64,
 	startupErr error,
 	listenerCtx context.Context,
 ) error {
-	h.lifecycleMu.Lock()
-	defer h.lifecycleMu.Unlock()
 	if !h.stopped.Load() &&
 		h.sessionRevocationGeneration == generation &&
 		startupErr == nil &&
@@ -278,22 +277,23 @@ func (h *Hub) sessionRevocationBootstrapError(
 	return fmt.Errorf("session revocation listener startup was cancelled")
 }
 
-// installSessionRevocationStop rechecks ownership atomically with publishing
-// the concrete subscription closer. A newer Start or Stop can win after the
-// earlier bootstrap validation; the superseded startup must not replace its
-// successor's shutdown callback.
+// installSessionRevocationStop validates the bootstrap and publishes the
+// concrete subscription closer in one lifecycleMu critical section. A newer
+// Start or Stop may win at any point before it; a superseded startup must not
+// replace its successor's shutdown callback.
 func (h *Hub) installSessionRevocationStop(
 	generation uint64,
+	startupErr error,
 	listenerCtx context.Context,
 	stop context.CancelFunc,
-) bool {
+) error {
 	h.lifecycleMu.Lock()
 	defer h.lifecycleMu.Unlock()
-	if h.stopped.Load() || h.sessionRevocationGeneration != generation || listenerCtx.Err() != nil {
-		return false
+	if err := h.sessionRevocationBootstrapErrorLocked(generation, startupErr, listenerCtx); err != nil {
+		return err
 	}
 	h.sessionRevocationCancel = stop
-	return true
+	return nil
 }
 
 // StartSessionRevocationListener consumes canonical session revocation events
@@ -354,10 +354,6 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 		h.sessionRevocationWG.Done()
 	}
 
-	if startupFailure := h.sessionRevocationBootstrapError(generation, startupErr, listenerCtx); startupFailure != nil {
-		finish()
-		return startupFailure
-	}
 	// Replace the provisional bootstrap stop function with a concrete Pub/Sub
 	// close. PubSub.Receive only observes a context deadline captured when it
 	// starts; closing the socket is therefore required to wake an already-blocked
@@ -367,9 +363,9 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 		closeSubscriber(listenerCtx)
 		closePubSub(listenerCtx)
 	}
-	if !h.installSessionRevocationStop(generation, listenerCtx, stopSubscription) {
+	if startupFailure := h.installSessionRevocationStop(generation, startupErr, listenerCtx, stopSubscription); startupFailure != nil {
 		finish()
-		return fmt.Errorf("session revocation listener startup was cancelled")
+		return startupFailure
 	}
 
 	if _, err := pubsub.Receive(listenerCtx); err != nil {

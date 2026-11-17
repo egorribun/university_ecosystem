@@ -78,9 +78,10 @@ def test_memory_rate_limit_stays_atomic_across_event_loop_threads(
     first_checking = threading.Event()
     second_attempting_lock = threading.Event()
 
-    class CoordinatedWindow(deque[float]):
+    # Use the production window type so check() keeps this exact instance.
+    class CoordinatedWindow(memory._MemoryWindow):
         def __init__(self) -> None:
-            super().__init__()
+            super().__init__((), 60)
             self._wait_for_second = True
 
         def __bool__(self) -> bool:
