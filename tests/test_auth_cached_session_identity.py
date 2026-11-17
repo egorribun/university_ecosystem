@@ -128,9 +128,7 @@ async def test_matching_cached_pk_keeps_fast_path(monkeypatch):
     h = _harness(monkeypatch)
     h.db.get.side_effect = [h.user, h.session]
 
-    assert (
-        await auth._resolve_current_user(h.request, "token", h.db, h.cache) is h.user
-    )
+    assert await auth._resolve_current_user(h.request, "token", h.db, h.cache) is h.user
 
     assert h.request.state.active_session is h.session
     h.db.execute.assert_not_awaited()
