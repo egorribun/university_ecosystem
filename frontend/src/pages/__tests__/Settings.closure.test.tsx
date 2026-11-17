@@ -1,8 +1,11 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import * as v from "valibot"
 import { settingsSearchSchema } from "@/features/settings/schema"
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { User } from "@/types/User"
 
 const mocks = vi.hoisted(() => ({
   initialSearch: { tab: 0 as number | undefined, spotify: undefined as string | undefined },
@@ -170,12 +173,6 @@ vi.mock("@/pages/settings/SettingsSecurity", () => ({
       <button type="button" onClick={() => openStepUpFor(mocks.action)}>
         open step up
       </button>
-      <button
-        type="button"
-        onClick={() => openStepUpFor(undefined as unknown as () => Promise<void>)}
-      >
-        open empty step up
-      </button>
     </div>
   ),
 }))
@@ -183,7 +180,12 @@ vi.mock("@/pages/settings/SettingsSecurity", () => ({
 import Settings from "@/pages/Settings"
 
 describe("Settings container closure", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await act(async () => {
+      rotateBrowserSession()
+      useAuthStore.setState({ user: { id: "account-a" } as User, loading: false })
+      await Promise.resolve()
+    })
     mocks.initialSearch = { tab: 0, spotify: undefined }
     mocks.navigate.mockReset()
     mocks.navigate.mockImplementation(
@@ -195,6 +197,13 @@ describe("Settings container closure", () => {
     )
     mocks.setSearch = null
     mocks.action.mockClear()
+  })
+
+  afterEach(async () => {
+    await act(async () => {
+      useAuthStore.setState({ user: null, loading: true })
+      await Promise.resolve()
+    })
   })
 
   it("lets long settings panels determine the page height", () => {
@@ -272,7 +281,7 @@ describe("Settings container closure", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
-  it("runs step-up actions, closes the dialog, and handles an empty callback", async () => {
+  it("runs step-up actions and discards a closed dialog's action", async () => {
     const user = userEvent.setup()
     render(<Settings />)
     expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
@@ -284,13 +293,13 @@ describe("Settings container closure", () => {
     await waitFor(() => expect(mocks.action).toHaveBeenCalledOnce())
     expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "open empty step up" }))
+    await user.click(screen.getByRole("button", { name: "open step up" }))
     await user.click(screen.getByRole("button", { name: "close step up" }))
     expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "open empty step up" }))
+    await user.click(screen.getByRole("button", { name: "open step up" }))
     await user.click(screen.getByRole("button", { name: "complete step up" }))
-    expect(mocks.action).toHaveBeenCalledOnce()
+    expect(mocks.action).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("tab", { name: "settings:tabs.general" }))

@@ -27,7 +27,7 @@ export type AuthContextType = {
   setUser: Dispatch<SetUserArg>
   refresh: () => Promise<void>
   pendingMfa: PendingMfaState | null
-  submitMfaChallenge: (payload: SubmitMfaChallengePayload) => Promise<void>
+  submitMfaChallenge: (payload: SubmitMfaChallengePayload) => Promise<boolean>
   requireMfa: () => Promise<PendingMfaState | null>
   resetEtagCache: () => void
 }
