@@ -76,7 +76,9 @@ if (process.argv.includes("--run")) {
   let stage = "configuration"
   try {
     await proveSsrAuthentication({
-      onStage: (value) => { stage = value },
+      onStage: (value) => {
+        stage = value
+      },
       privateKey: readFileSync(0, "utf8"),
       issuer: process.env.JWT_ISSUER,
       port: process.env.PORT,
