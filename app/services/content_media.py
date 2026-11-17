@@ -94,6 +94,9 @@ async def delete_unreferenced_owned_event_image(
 
     The database check runs after the caller commits its image-URL change. If
     the query cannot establish that the key is unreferenced, retain the object.
+    Active PostgreSQL RLS defers cleanup, including genuine orphan images; this
+    helper never elevates database privileges or schedules automatic reclamation.
+    The visibility check and lookup do not serialize concurrent reference inserts.
     """
     owned_storage = _owned_event_image_storage(file_url, event_id)
     if owned_storage is None:
@@ -105,6 +108,19 @@ async def delete_unreferenced_owned_event_image(
         from sqlalchemy import func, select
 
         from app.models import Event
+
+        # Absence under tenant RLS cannot prove that a shared legacy key is
+        # globally unreferenced. Retain even genuine orphans rather than acquire
+        # bypass privileges. SQLite has no row-security filtering.
+        dialect = db_session.get_bind().dialect.name
+        if dialect == "postgresql":
+            active = await db_session.scalar(
+                select(func.pg_catalog.row_security_active("events"))
+            )
+            if active is not False:
+                return False
+        elif dialect != "sqlite":
+            return False
 
         references = await db_session.execute(
             select(Event.image_url).where(
