@@ -470,7 +470,17 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
     // operation and its feedback render before isolating pointer dismissal.
     await email.click({ timeout: 3000 })
     await expect(page).toHaveURL(/\/profile$/u)
-    await expect(alert).toHaveCount(1)
+    try {
+      await expect(alert).toHaveCount(1)
+    } catch (error) {
+      try {
+        const { sampleSnackbarClipboardFailure } = await import("./snackbar-clipboard-diagnostic")
+        await sampleSnackbarClipboardFailure(page, email, alert, test.info().project.name)
+      } catch {
+        // Diagnostic failure must never replace the original assertion.
+      }
+      throw error
+    }
     await expect(alert).toBeVisible()
 
     // Freeze only the dismissal phase: removal must follow the pointer click,
