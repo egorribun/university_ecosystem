@@ -9,20 +9,22 @@ import (
 	"testing"
 )
 
+// canary is an opaque URL credential that must never reach log output.
+const canary = "opaqueCredentialCanary"
+
 func TestMalformedURLCredentialsFailClosedAcrossLoggerPaths(t *testing.T) {
-	const secret = "opaqueCredentialCanary"
 	for _, endpoint := range []string{
-		"redis://reader:" + secret + "@localhost:bad",
-		"redis://reader:" + secret + "@localhost/%zz",
-		"redis://reader:" + secret + "%zz@localhost",
-		"redis://reader:" + secret + "@[::1",
+		"redis://reader:" + canary + "@localhost:bad",
+		"redis://reader:" + canary + "@localhost/%zz",
+		"redis://reader:" + canary + "%zz@localhost",
+		"redis://reader:" + canary + "@[::1",
 	} {
 		t.Run(endpoint, func(t *testing.T) {
 			_, parseErr := url.Parse(endpoint)
 			if parseErr == nil {
 				t.Fatal("fixture must exercise actual URL parser failure")
 			}
-			assertContains(t, parseErr.Error(), secret)
+			assertContains(t, parseErr.Error(), canary)
 			for _, path := range []string{
 				"message", "attribute", "error", "stringer", "with",
 				"group", "map", "bytes", "struct", "replacement",
@@ -61,7 +63,7 @@ func TestMalformedURLCredentialsFailClosedAcrossLoggerPaths(t *testing.T) {
 					case "replacement":
 						logger.Error("connection failed", "diagnostic", "safe")
 					}
-					assertNotContains(t, output.String(), secret, "reader")
+					assertNotContains(t, output.String(), canary, "reader")
 					assertContains(t, output.String(), "connection failed", "REDACTED")
 				})
 			}
@@ -87,7 +89,7 @@ func TestURLRedactionPreservesSafeTextAndValidHostlessPaths(t *testing.T) {
 	}
 	// Hostless URLs can still carry userinfo; successful parsing must not
 	// bypass the ordinary credential sanitizer merely because Host is empty.
-	assertNotContains(t, redactString("redis://reader:opaqueCredentialCanary@"), "reader", "opaqueCredentialCanary")
+	assertNotContains(t, redactString("redis://reader:"+canary+"@"), "reader", canary)
 }
 
 func TestURLSuffixPreservesBalancedIPv6Brackets(t *testing.T) {
@@ -97,7 +99,7 @@ func TestURLSuffixPreservesBalancedIPv6Brackets(t *testing.T) {
 			t.Fatalf("IPv6 URL boundary changed: %q + %q", trimmed, suffix)
 		}
 	}
-	assertNotContains(t, redactString("redis://reader:opaqueCredentialCanary@[::1"), "opaqueCredentialCanary")
+	assertNotContains(t, redactString("redis://reader:"+canary+"@[::1"), canary)
 }
 
 func TestURLSuffixHandlesLongUnmatchedBrackets(t *testing.T) {

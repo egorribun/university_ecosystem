@@ -20,7 +20,7 @@ import (
 	gatewaymiddleware "github.com/university-ecosystem/gateway/middleware"
 )
 
-const identityBoundarySecret = "test-secret-key-for-testing-purposes"
+const identityBoundaryHMAC = "test-secret-key-for-testing-purposes"
 
 // Use public middleware construction: this cross-layer test must not become
 // part of the middleware package that handlers itself imports.
@@ -31,7 +31,7 @@ func newIdentityBoundaryMiddleware(t *testing.T) *gatewaymiddleware.JWTMiddlewar
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	require.NoError(t, client.Ping(t.Context()).Err())
 	return gatewaymiddleware.NewJWTMiddlewareWithConfig(
-		identityBoundarySecret, "", client, gatewaymiddleware.DefaultL1CacheConfig(),
+		identityBoundaryHMAC, "", client, gatewaymiddleware.DefaultL1CacheConfig(),
 	)
 }
 
@@ -54,7 +54,7 @@ func identityBoundaryToken(t *testing.T, subject, tokenID string) string {
 		"is_active": true,
 		"role":      "student",
 	}
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(identityBoundarySecret))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(identityBoundaryHMAC))
 	require.NoError(t, err)
 	return token
 }
@@ -133,7 +133,7 @@ func identityBoundaryClaimsToken(t *testing.T, claims gatewaymiddleware.Claims) 
 	if claims.Issuer == "" {
 		claims.Issuer = gatewaymiddleware.DefaultJWTIssuer
 	}
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(identityBoundarySecret))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(identityBoundaryHMAC))
 	require.NoError(t, err)
 	return token
 }
