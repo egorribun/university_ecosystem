@@ -1,4 +1,5 @@
 import type { jsPDF } from "jspdf"
+import i18n from "@/i18n/config"
 
 const PDF_FONT_LOAD_TIMEOUT_MS = 10_000
 const PDF_FONT_FILE = "inter-latin-cyrillic-400.ttf"
@@ -23,13 +24,15 @@ async function loadPdfFont(fontUrl: string, label: string): Promise<ArrayBuffer>
     rejectTimeout = reject
   })
   const timeoutId = setTimeout(() => {
-    rejectTimeout(new Error(`${label} PDF font load timed out`))
+    rejectTimeout(new Error(i18n.t("common:errors.pdfFontTimeout", { label })))
     controller.abort()
   }, PDF_FONT_LOAD_TIMEOUT_MS)
   const request = async () => {
     const response = await fetch(fontUrl, { signal: controller.signal })
-    if (controller.signal.aborted) throw new Error(`${label} PDF font load timed out`)
-    if (!response.ok) throw new Error(`${label} PDF font could not be loaded`)
+    if (controller.signal.aborted) {
+      throw new Error(i18n.t("common:errors.pdfFontTimeout", { label }))
+    }
+    if (!response.ok) throw new Error(i18n.t("common:errors.pdfFontLoad", { label }))
     return response.arrayBuffer()
   }
 
@@ -40,7 +43,7 @@ async function loadPdfFont(fontUrl: string, label: string): Promise<ArrayBuffer>
   }
 }
 
-export async function registerPdfFont(pdf: jsPDF, label = "Activity"): Promise<void> {
+export async function registerPdfFont(pdf: jsPDF, label = i18n.t("activity:title")): Promise<void> {
   const { default: fontUrl } = await import("@/assets/fonts/inter-latin-cyrillic-400.ttf?url")
   const fontBase64 = arrayBufferToBase64(await loadPdfFont(fontUrl, label))
   pdf.addFileToVFS(PDF_FONT_FILE, fontBase64)
