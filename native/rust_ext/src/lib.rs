@@ -6,7 +6,6 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::any::Any;
 use std::fmt::Display;
-use std::sync::{LockResult, Mutex, MutexGuard};
 use subtle::{Choice, ConstantTimeEq};
 use zeroize::Zeroizing;
 
@@ -33,28 +32,15 @@ impl<'py> FromPyObject<'_, 'py> for ScheduleItem {
     type Error = PyErr;
 
     fn extract(obj: pyo3::Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
-        Ok(obj.cast::<Self>()?.borrow().clone())
+        Ok(obj.cast::<Self>()?.try_borrow()?.clone())
     }
 }
 
-// Python 3.13+ free-threaded builds can enter the same PyO3 function from
-// multiple OS threads without a process-wide GIL. The manual `FromPyObject`
-// implementation therefore needs a small serialization point while it borrows
-// the Python object and clones its fields. After extraction, `ScheduleItem` is
-// owned Rust data and all conflict work remains fully parallel.
-static SCHEDULE_ITEM_EXTRACT_LOCK: Mutex<()> = Mutex::new(());
-
-fn mutex_guard_or_py_err<'a>(
-    result: LockResult<MutexGuard<'a, ()>>,
-) -> PyResult<MutexGuard<'a, ()>> {
-    result.map_err(|_| {
-        pyo3::exceptions::PyRuntimeError::new_err("ScheduleItem extraction lock is poisoned")
-    })
-}
-
-fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
-    mutex_guard_or_py_err(SCHEDULE_ITEM_EXTRACT_LOCK.lock())
-}
+// Extraction may invoke Python sequence callbacks which re-enter these APIs.
+// Never hold a process-wide lock across that boundary. PyO3's per-object
+// try_borrow guard protects each clone against concurrent setters, including
+// free-threaded Python, and reports borrow conflicts as PyErr instead of panic.
+// All detached computation below receives only owned Rust snapshots.
 
 fn panic_to_py_err(context: &str, panic: Box<dyn Any + Send>) -> PyErr {
     let msg = if let Some(s) = panic.downcast_ref::<&str>() {
@@ -272,10 +258,8 @@ fn detect_conflicts_py(
     target: Bound<'_, PyAny>,
     existing: Bound<'_, PyAny>,
 ) -> PyResult<Vec<ScheduleItem>> {
-    let _extract_guard = schedule_item_extract_guard()?;
     let target: ScheduleItem = target.extract()?;
     let existing: Vec<ScheduleItem> = existing.extract()?;
-    drop(_extract_guard);
 
     if existing.len() > MAX_CONFLICT_ITEMS {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -579,9 +563,7 @@ fn batch_detect_conflicts_py(
     py: Python<'_>,
     items: Bound<'_, PyAny>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
-    let _extract_guard = schedule_item_extract_guard()?;
     let items: Vec<ScheduleItem> = items.extract()?;
-    drop(_extract_guard);
 
     // Rayon performs CPU-intensive pairwise work on owned Rust values.  Detach
     // from Python while it runs so concurrent asyncio/worker threads can make
@@ -603,10 +585,8 @@ fn find_optimal_slot_py(
     existing_schedule: Bound<'_, PyAny>,
     available_blocks: Bound<'_, PyAny>,
 ) -> PyResult<Option<ScheduleItem>> {
-    let _extract_guard = schedule_item_extract_guard()?;
     let existing_schedule: Vec<ScheduleItem> = existing_schedule.extract()?;
     let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
-    drop(_extract_guard);
 
     validate_optimal_slot_inputs(&existing_schedule, &available_blocks)?;
 
@@ -750,7 +730,7 @@ impl<'py> FromPyObject<'_, 'py> for PartitionInfo {
     type Error = PyErr;
 
     fn extract(obj: pyo3::Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
-        Ok(obj.cast::<Self>()?.borrow().clone())
+        Ok(obj.cast::<Self>()?.try_borrow()?.clone())
     }
 }
 
@@ -2082,22 +2062,42 @@ mod tests {
     }
 
     #[test]
-    fn poisoned_mutex_is_converted_to_python_error() {
+    fn extraction_reports_mutable_borrow_conflicts_without_panicking() {
         Python::initialize();
-        let lock = std::sync::Arc::new(Mutex::new(()));
-        let worker_lock = std::sync::Arc::clone(&lock);
-        let worker = std::thread::spawn(move || {
-            let _guard = worker_lock.lock().unwrap();
-            panic!("poison test");
-        });
-        assert!(worker.join().is_err());
+        Python::attach(|py| {
+            let item = Bound::new(
+                py,
+                ScheduleItem::new("monday".to_owned(), 0, 3600, "both".to_owned(), None),
+            )
+            .unwrap();
+            let item_guard = item.borrow_mut();
+            let result = item.as_any().extract::<ScheduleItem>();
+            assert!(result
+                .unwrap_err()
+                .is_instance_of::<pyo3::exceptions::PyRuntimeError>(py));
+            drop(item_guard);
+            assert_eq!(item.as_any().extract::<ScheduleItem>().unwrap().start_time, 0);
 
-        let result = mutex_guard_or_py_err(lock.lock());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("ScheduleItem extraction lock is poisoned"));
+            let partition = Bound::new(
+                py,
+                PartitionInfo {
+                    name: "events_y2026m01".to_owned(),
+                    start_date: "2026-01-01".to_owned(),
+                    end_date: "2026-02-01".to_owned(),
+                },
+            )
+            .unwrap();
+            let partition_guard = partition.borrow_mut();
+            let result = partition.as_any().extract::<PartitionInfo>();
+            assert!(result
+                .unwrap_err()
+                .is_instance_of::<pyo3::exceptions::PyRuntimeError>(py));
+            drop(partition_guard);
+            assert_eq!(
+                partition.as_any().extract::<PartitionInfo>().unwrap().name,
+                "events_y2026m01"
+            );
+        });
     }
 
     #[test]

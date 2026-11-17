@@ -707,6 +707,9 @@ also_copy = [
     # each workspace manifest. Use the small fuzz_targets directories as
     # parent providers so the exact Cargo files can be copied without
     # dragging ignored Cargo target/build trees into every isolated checkout.
+    # Native FFI ownership contracts read lib.rs in the mutation baseline.
+    # Copy only authored sources, not Cargo build/target directories.
+    "native/rust_ext/src",
     "native/rust_ext/fuzz/fuzz_targets",
     "native/rust_ext/Cargo.toml",
     "native/rust_ext/fuzz/Cargo.toml",
