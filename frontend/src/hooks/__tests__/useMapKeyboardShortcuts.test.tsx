@@ -55,7 +55,6 @@ describe("useMapKeyboardShortcuts hook", () => {
     unmount()
   })
 
-
   it.each(["true", "", "plaintext-only", "TRUE"])(
     "preserves typing inside contenteditable=%j and its descendants",
     (value) => {
