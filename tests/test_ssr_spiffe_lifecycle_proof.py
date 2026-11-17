@@ -133,3 +133,98 @@ def test_source_outage_restores_selector_even_when_stream_fails() -> None:
     assert restored["spec"]["template"]["spec"]["nodeSelector"] == {
         **original, proof.LABEL: None,
     }
+
+
+@pytest.mark.parametrize(
+    ("failure", "last_check"),
+    [
+        ("peer", "ssr-live-production-peer-renewal"),
+        ("cleanup", "ssr-live-fixture-cleanup"),
+        ("restart", "ssr-live-application-restart-invariant"),
+        (None, None),
+    ],
+)
+def test_final_lifecycle_diagnostics_keep_failures_fatal(
+    monkeypatch, capsys, failure, last_check
+) -> None:
+    from contextlib import nullcontext
+
+    item = lifecycle()
+    state = {"issuer": "ab", "roots": ["ab"]}
+    original = {"backend": "production"}
+
+    def material(identity):
+        return {
+            "selfID": identity,
+            "leafSHA256": ("a" if state["issuer"] == "ab" else "b") * 64,
+            "leafNotAfterUnix": 4102444800,
+            "issuerKeyID": state["issuer"],
+            "roots": list(state["roots"]),
+        }
+
+    frozen = material(item.peer_id)
+
+    def command(*args, **kwargs):
+        if args[0] == "get":
+            return json.dumps({"spec": {"selector": original}})
+        if args[0] == "logs":
+            return json.dumps(frozen)
+        if args[0] == "delete" and failure == "cleanup":
+            raise proof.ProofError("secret-bearing command output")
+        return "CHECK=200"
+
+    def ca(action, *args):
+        if action == "prepare":
+            state["roots"] = ["ab", "cd"]
+            return {"prepared_authority": {"authority_id": "cd"}}
+        if action == "activate":
+            state["issuer"] = "cd"
+        if action == "revoke":
+            state["roots"] = ["cd"]
+        return {"active": {"authority_id": state["issuer"]}}
+
+    def fixture(name, *args):
+        item.pods.append(name)
+        return name
+
+    def peer(client):
+        value = material(item.peer_id)
+        if failure == "peer" and state["issuer"] == "cd":
+            value["leafSHA256"] = "a" * 64
+        return value
+
+    def wait(check, **kwargs):
+        value = check()
+        assert value
+        return value
+
+    item.kubectl = Mock(side_effect=command)
+    item.fixture = Mock(side_effect=fixture)
+    item.route = Mock()
+    item.source_failure = Mock()
+    item.stream = Mock(side_effect=lambda: nullcontext())
+    item.inspect = Mock(side_effect=lambda pod, identity: material(identity))
+    item.peer = Mock(side_effect=peer)
+    item.ca = Mock(side_effect=ca)
+    item.proxy_status = Mock(side_effect=[200, 502, 200, 200, 502, 200, 200, 200])
+    item.identities = Mock(side_effect=[
+        {"pods": []}, {"pods": []},
+        {"pods": ["restarted"]} if failure == "restart" else {"pods": []},
+    ])
+    monkeypatch.setattr(proof, "wait_for", wait)
+
+    if failure:
+        with pytest.raises(proof.ProofError):
+            item.run()
+    else:
+        item.run()
+    output = capsys.readouterr().out
+    assert "secret-bearing" not in output
+    if failure:
+        assert f"CHECK {last_check}\n" in output
+        assert "PASS ssr-live-production-backend-recovered" not in output
+    else:
+        assert "PASS ssr-live-production-backend-recovered" in output
+    if failure != "cleanup":
+        assert "PASS ssr-live-fixture-cleanup" in output
+    item.route.assert_called_with(original)

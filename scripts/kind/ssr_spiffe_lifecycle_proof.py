@@ -313,21 +313,30 @@ try {
             self.route({LABEL: fresh})
             wait_for(lambda: self.proxy_status() == 200)
             print("PASS ssr-live-old-root-rejected-new-root-accepted", flush=True)
+            print("CHECK ssr-live-production-route-restoration", flush=True)
             self.route(original)
             wait_for(lambda: self.proxy_status() == 200)
+            print("PASS ssr-live-production-route-restoration", flush=True)
             # Observe the actual application's authenticated TLS leaf, not just
             # another process using the same SPIRE registration.
+            print("CHECK ssr-live-production-peer-renewal", flush=True)
             wait_for(lambda: self.peer(client)["issuerKeyID"] == new)
             production_peer = self.peer(client)
             if production_peer["leafSHA256"] == original_peer["leafSHA256"]:
                 raise ProofError("production backend TLS identity was not renewed")
             if set(production_peer["roots"]) != {new}:
                 raise ProofError("production backend check retained the old root")
+            print("PASS ssr-live-production-peer-renewal", flush=True)
         finally:
+            print("CHECK ssr-live-fixture-cleanup", flush=True)
             self.route(original)
             for pod in reversed(self.pods):
                 self.kubectl("delete", "pod", pod, "--wait=true", "--timeout=60s", timeout=70)
+            print("PASS ssr-live-fixture-cleanup", flush=True)
+        print("CHECK ssr-live-production-readiness-after-cleanup", flush=True)
         wait_for(lambda: self.proxy_status() == 200)
+        print("PASS ssr-live-production-readiness-after-cleanup", flush=True)
+        print("CHECK ssr-live-application-restart-invariant", flush=True)
         if self.identities() != baseline:
             raise ProofError("application restarted during CA lifecycle")
         print("PASS ssr-live-production-backend-recovered", flush=True)
