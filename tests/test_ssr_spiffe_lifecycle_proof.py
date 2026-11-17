@@ -4,7 +4,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -291,3 +291,57 @@ def test_fixture_retirement_tracks_success_and_retries_failures() -> None:
         "--timeout=60s",
     )
     assert item.kubectl.call_args.kwargs == {"timeout": 70}
+
+
+def test_kubectl_resolution_is_absolute_and_rejects_missing_cli(tmp_path, monkeypatch):
+    executable = tmp_path / "kubectl"
+    executable.write_text("synthetic CLI fixture")
+    executable.chmod(0o700)
+    monkeypatch.setattr(proof.shutil, "which", lambda name: str(executable))
+    assert proof.kubectl_executable() == str(executable.resolve())
+    executable.chmod(0o600)
+    with pytest.raises(proof.ProofError, match="Kubernetes CLI is unavailable"):
+        proof.kubectl_executable()
+    executable.unlink()
+    with pytest.raises(proof.ProofError, match="Kubernetes CLI is unavailable"):
+        proof.kubectl_executable()
+    monkeypatch.setattr(proof.shutil, "which", lambda name: None)
+    with pytest.raises(proof.ProofError, match="Kubernetes CLI is unavailable"):
+        proof.kubectl_executable()
+
+
+def test_command_uses_resolved_cli_and_never_shell(monkeypatch):
+    monkeypatch.setattr(proof, "kubectl_executable", lambda: "/owned/tools/kubectl")
+    run = Mock(return_value=argparse.Namespace(returncode=0, stdout="receipt"))
+    monkeypatch.setattr(proof.subprocess, "run", run)
+    assert lifecycle().command("get", "pods", data="input", timeout=7) == "receipt"
+    run.assert_called_once_with(
+        ["/owned/tools/kubectl", "get", "pods"],
+        input="input",
+        text=True,
+        capture_output=True,
+        timeout=7,
+        check=False,
+        shell=False,
+    )
+
+
+def test_stream_uses_same_resolved_cli_and_preserves_cleanup(monkeypatch):
+    monkeypatch.setattr(proof, "kubectl_executable", lambda: "/owned/tools/kubectl")
+    process = Mock(returncode=0)
+    process.stdout.readline.return_value = "OPEN\n"
+    process.communicate.return_value = ("CANCELLED\n", None)
+    process.poll.return_value = 0
+    popen = Mock(return_value=process)
+    monkeypatch.setattr(proof.subprocess, "Popen", popen)
+    monkeypatch.setattr(proof.select, "select", lambda *args: ([process.stdout], [], []))
+    with lifecycle().stream() as active:
+        assert active is process
+    argv = popen.call_args.args[0]
+    assert argv[:4] == ["/owned/tools/kubectl", "-n", "proof", "exec"]
+    assert popen.call_args.kwargs["shell"] is False
+    assert process.communicate.call_args_list == [
+        call(timeout=12),
+        call(timeout=5),
+    ]
+    process.kill.assert_not_called()

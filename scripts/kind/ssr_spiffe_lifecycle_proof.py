@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import select
+import shutil
 import subprocess
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 HEX = re.compile(r"[0-9a-f]+")
@@ -19,6 +22,20 @@ SOCKET = "unix:///spiffe-workload-api/agent.sock"
 
 class ProofError(RuntimeError):
     """A required observation was absent or inconsistent."""
+
+
+def kubectl_executable() -> str:
+    """Resolve the harness-installed CLI; never let subprocess search PATH."""
+    executable = shutil.which("kubectl")
+    if executable is None:
+        raise ProofError("Kubernetes CLI is unavailable")
+    try:
+        path = Path(executable).resolve(strict=True)
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise ProofError("Kubernetes CLI is unavailable")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ProofError("Kubernetes CLI is unavailable") from error
+    return str(path)
 
 
 def receipt(text: str, expected: str) -> dict[str, Any]:
@@ -91,12 +108,13 @@ class Lifecycle:
 
     def command(self, *args: str, data: str | None = None, timeout: int = 30) -> str:
         result = subprocess.run(
-            ["kubectl", *args],
+            [kubectl_executable(), *args],
             input=data,
             text=True,
             capture_output=True,
             timeout=timeout,
             check=False,
+            shell=False,
         )
         if result.returncode:
             raise ProofError("Kubernetes operation failed")
@@ -291,7 +309,7 @@ try {
 """
         process = subprocess.Popen(
             [
-                "kubectl",
+                kubectl_executable(),
                 "-n",
                 self.ns,
                 "exec",
@@ -304,6 +322,7 @@ try {
                 "-e",
                 script,
             ],
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
