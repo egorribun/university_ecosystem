@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
 import { ArrowUp } from "lucide-react"
 import Magnetic from "./Magnetic"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 const BASE_BOTTOM = 24 // px — default distance from viewport bottom
 const FOOTER_GAP = 16 // px — gap between FAB and footer top edge
 
-const scrollToTop = (): void => {
+const scrollToTop = (reduceMotion: boolean): void => {
   try {
-    window.scrollTo({ top: 0, behavior: "smooth" })
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "instant" : "smooth" })
   } catch {
     window.scrollTo(0, 0)
   }
@@ -21,6 +22,7 @@ export const disconnectBackToTopObserver = (observer: IntersectionObserver | nul
 
 export default function BackToTop({ footerVisible = true }: { footerVisible?: boolean }) {
   const { t } = useTranslation(["common"])
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const [show, setShow] = useState(false)
   const [footerOffset, setFooterOffset] = useState(0)
@@ -67,7 +69,7 @@ export default function BackToTop({ footerVisible = true }: { footerVisible?: bo
     }
   }, [footerVisible])
 
-  const onClick = scrollToTop
+  const onClick = () => scrollToTop(reduceMotion)
 
   return (
     <AnimatePresence>
@@ -79,16 +81,18 @@ export default function BackToTop({ footerVisible = true }: { footerVisible?: bo
             pointerEvents: "auto",
           }}
         >
-          <Magnetic strength={0.3}>
+          <Magnetic strength={0.3} disabled={reduceMotion}>
             <m.button
               type="button"
-              initial={{ opacity: 0, scale: 0.5, y: 20 }}
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.5, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.5, y: 20 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.5, y: 20 }}
+              transition={
+                reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 25 }
+              }
               className="back-to-top-fab"
-              whileHover={{ scale: 1.1, y: -3 }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={reduceMotion ? undefined : { scale: 1.1, y: -3 }}
+              whileTap={reduceMotion ? undefined : { scale: 0.92 }}
               aria-label={t("common:buttons.backToTop")}
               onClick={onClick}
             >
