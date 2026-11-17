@@ -3,6 +3,7 @@ import { m, AnimatePresence } from "framer-motion"
 import { ChevronDown } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface SelectOption {
   value: string
@@ -51,6 +52,7 @@ const Select = ({
   "aria-describedby": ariaDescribedBy,
 }: SelectProps) => {
   const { t } = useTranslation("common")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const defaultPlaceholder = placeholder ?? t("select.placeholder")
   const generatedId = React.useId()
   const baseId = externalId ?? generatedId
@@ -268,10 +270,14 @@ const Select = ({
             id={listboxId}
             aria-label={ariaLabel}
             tabIndex={-1}
-            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -10, scale: 0.98 }}
             animate={{ opacity: 1, y: 4, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
+            }
             className={cn(
               "absolute z-dropdown mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
               "p-1.5"
