@@ -1227,30 +1227,27 @@ async def test_spotify_refresh_provider_failures_preserve_authorization(
 
 
 @pytest.mark.asyncio
-async def test_spotify_refresh_no_access_token():
-    user = MagicMock()
-    user.spotify = MagicMock()
-    user.spotify.access_token = "old_token"
-    user.spotify.token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    user.spotify.refresh_token = "refresh_token"
-
+async def test_spotify_refresh_no_access_token(expired_spotify_runtime_user):
+    user = expired_spotify_runtime_user
+    before = vars(user.spotify).copy()
     db = AsyncMock()
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {}
+    provider_response = httpx.Response(200, json={})
 
     with (
         patch(
             "app.api.spotify._spotify_http_client.post",
-            AsyncMock(return_value=mock_resp),
+            AsyncMock(return_value=provider_response),
         ),
-        patch("app.api.spotify._disconnect_user") as mock_disconnect,
+        patch(
+            "app.api.spotify._disconnect_user", wraps=spotify_api._disconnect_user
+        ) as disconnect,
     ):
         with pytest.raises(HTTPException) as exc:
             await spotify_api._ensure_access_token(db, user)
-        assert exc.value.status_code == 401
-        mock_disconnect.assert_called_once()
+        assert exc.value.status_code == 503
+        disconnect.assert_not_called()
+    db.commit.assert_not_awaited()
+    assert vars(user.spotify) == before
 
 
 @pytest.mark.asyncio
