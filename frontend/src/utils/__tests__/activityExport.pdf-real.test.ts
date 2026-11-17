@@ -2,6 +2,7 @@ type _MockedModuleType1 = typeof import("jspdf")
 import { readFile } from "node:fs/promises"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import fontUrl from "@/assets/fonts/inter-latin-cyrillic-400.ttf?url"
+import i18n from "@/i18n/config"
 
 const { documents, useBuiltinFont } = vi.hoisted(() => ({
   documents: [] as { save: ReturnType<typeof vi.fn>; bytes: Uint8Array | undefined }[],
@@ -149,14 +150,33 @@ describe.each([
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(fontBytes)))
     useBuiltinFont.current = true
 
-    await expect(
-      exportPdf(document.createElement("section"), "Активность")
-    ).resolves.toEqual({
+    await expect(exportPdf(document.createElement("section"), "Активность")).resolves.toEqual({
       success: true,
     })
     const bytes = documents[0]?.bytes
     if (!bytes) throw new Error("Negative-control PDF was not saved")
     expect(() => extractPageText(bytes)).toThrow("Active text font has no Unicode map")
+  })
+
+  it("localizes font loading failures without saving a partial PDF", async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage("ru")
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })))
+
+    try {
+      const result = await exportPdf(document.createElement("section"), "Проверка")
+      const expectedLabel = name === "Activity" ? "Активность" : "Расписание"
+
+      expect(result).toEqual({
+        success: false,
+        error: `Не удалось загрузить шрифт PDF: ${expectedLabel}`,
+      })
+      expect(documents).toHaveLength(1)
+      expect(documents[0]?.save).not.toHaveBeenCalled()
+      expect(documents[0]?.bytes).toBeUndefined()
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
   })
 
   it.each([
@@ -182,9 +202,10 @@ describe.each([
   ])("does not save when font loading fails with $scenario", async ({ load, error }) => {
     vi.stubGlobal("fetch", vi.fn(load))
 
-    await expect(
-      exportPdf(document.createElement("section"), "Активность")
-    ).resolves.toEqual({ success: false, error })
+    await expect(exportPdf(document.createElement("section"), "Активность")).resolves.toEqual({
+      success: false,
+      error,
+    })
     expect(documents).toHaveLength(1)
     expect(documents[0]?.save).not.toHaveBeenCalled()
     expect(documents[0]?.bytes).toBeUndefined()
