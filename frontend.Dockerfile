@@ -189,6 +189,7 @@ FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c
 # This stage starts from Node directly and does not inherit the build base.
 # The moving index can drop older fixes. Fetch the mature signed APK by
 # architecture and checksum; APK still verifies Alpine's signature and exact version.
+COPY frontend/scripts/fetch-alpine-zlib-archive.mjs /tmp/fetch-alpine-zlib-archive.mjs
 RUN zlib_arch="$(apk --print-arch)" \
     && case "$zlib_arch" in \
       x86_64) zlib_sha256="63aeea03c15a2f9018f81805cfc8aa926bdf5cd68921f22149c2fbb5d0ee9f47" ;; \
@@ -196,7 +197,7 @@ RUN zlib_arch="$(apk --print-arch)" \
       *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;; \
     esac \
     && attempt=1 \
-    && until timeout -s KILL 20 wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/${zlib_arch}/zlib-1.3.2-r1.apk"; do \
+    && until timeout -s KILL 20 node /tmp/fetch-alpine-zlib-archive.mjs "$zlib_arch"; do \
       if [ "$attempt" -ge 3 ]; then exit 1; fi; \
       attempt=$((attempt + 1)); \
       sleep 2 || exit 1; \
@@ -206,7 +207,7 @@ RUN zlib_arch="$(apk --print-arch)" \
       musl=1.2.6-r3 \
       musl-utils=1.2.6-r3 \
       zlib=1.3.2-r1 /tmp/zlib.apk \
-    && rm /tmp/zlib.apk
+    && rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs
 
 # npm is used in build/install stages only; the production entrypoint runs Node directly.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
