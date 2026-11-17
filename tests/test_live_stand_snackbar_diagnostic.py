@@ -20,9 +20,12 @@ ROW = (
 def test_snackbar_diagnostic_accepts_closed_record_and_crlf() -> None:
     expected = [ROW.removeprefix("UE_LIVE_SNACKBAR_CLIPBOARD_V1 ").rstrip()]
     assert evidence._live_playwright_snackbar_clipboard_diagnostics(ROW) == expected
-    assert evidence._live_playwright_snackbar_clipboard_diagnostics(
-        ROW.replace("\n", "\r\n")
-    ) == expected
+    assert (
+        evidence._live_playwright_snackbar_clipboard_diagnostics(
+            ROW.replace("\n", "\r\n")
+        )
+        == expected
+    )
 
 
 @pytest.mark.parametrize(
@@ -44,9 +47,10 @@ def test_snackbar_diagnostic_accepts_closed_record_and_crlf() -> None:
     ],
 )
 def test_snackbar_diagnostic_rejects_non_protocol_text(old: str, new: str) -> None:
-    assert evidence._live_playwright_snackbar_clipboard_diagnostics(
-        ROW.replace(old, new)
-    ) == []
+    assert (
+        evidence._live_playwright_snackbar_clipboard_diagnostics(ROW.replace(old, new))
+        == []
+    )
 
 
 def test_snackbar_diagnostic_deduplicates_and_caps_run_records() -> None:
@@ -54,8 +58,7 @@ def test_snackbar_diagnostic_deduplicates_and_caps_run_records() -> None:
     assert evidence._live_playwright_snackbar_clipboard_diagnostics(
         "".join(row * 2 for row in rows)
     ) == [
-        row.removeprefix("UE_LIVE_SNACKBAR_CLIPBOARD_V1 ").rstrip()
-        for row in rows[:4]
+        row.removeprefix("UE_LIVE_SNACKBAR_CLIPBOARD_V1 ").rstrip() for row in rows[:4]
     ]
 
 
