@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event"
 import { renderHook, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -198,6 +199,49 @@ describe("useNewsKeyboardNav", () => {
       params: { id: "a" },
     })
   })
+
+  it("preserves native button activation after selecting an article", async () => {
+    const user = userEvent.setup()
+    renderHook(() => useNewsKeyboardNav(ITEMS))
+    dispatchKey("j")
+    const button = document.createElement("button")
+    button.textContent = "Create news"
+    const click = vi.fn()
+    button.addEventListener("click", click)
+    document.body.appendChild(button)
+    button.focus()
+
+    await user.keyboard("{Enter}")
+
+    expect(click).toHaveBeenCalledOnce()
+    expect(mockNavigateFn).not.toHaveBeenCalled()
+  })
+
+  it.each(["button", "a", "role-button", "role-link"])(
+    "does not hijack Enter from a child of %s",
+    (kind) => {
+      renderHook(() => useNewsKeyboardNav(ITEMS))
+      dispatchKey("j")
+      const control = document.createElement(kind === "button" || kind === "a" ? kind : "div")
+      if (kind === "a") control.setAttribute("href", "/profile")
+      if (kind.startsWith("role-")) control.setAttribute("role", kind.slice(5))
+      const child = document.createElement("span")
+      control.appendChild(child)
+      document.body.appendChild(control)
+      const event = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      })
+
+      act(() => {
+        child.dispatchEvent(event)
+      })
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(mockNavigateFn).not.toHaveBeenCalled()
+    }
+  )
 
   it("'Enter' does nothing when no card is active (line 63 guard false)", () => {
     const { result } = renderHook(() => useNewsKeyboardNav(ITEMS))
