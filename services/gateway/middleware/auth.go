@@ -552,9 +552,15 @@ func fetchJWKSBody(ctx context.Context, client *http.Client, endpoint string) ([
 		return nil, fmt.Errorf("jwks: unexpected status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024)) // 64 KB limit
+	// Read one sentinel byte so an oversized response cannot be accepted as a
+	// complete key set merely because its truncated prefix is valid JSON or PEM.
+	const maxJWKSBodyBytes = 64 * 1024
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBodyBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("jwks: read body: %w", err)
+	}
+	if len(body) > maxJWKSBodyBytes {
+		return nil, fmt.Errorf("jwks: response body exceeds 64 KiB limit")
 	}
 	return body, nil
 }
