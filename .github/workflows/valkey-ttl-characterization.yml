@@ -9,6 +9,7 @@ on:
       - "tests/test_owned_valkey_ttl_characterization.py"
       - "pyproject.toml"
       - "uv.lock"
+      - "docker-compose.yml"
 
 permissions:
   contents: read

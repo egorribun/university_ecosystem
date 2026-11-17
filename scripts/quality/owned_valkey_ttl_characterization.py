@@ -14,14 +14,12 @@ import re
 import secrets
 import stat
 from dataclasses import dataclass
+from pathlib import Path
 
 import redis
+import yaml
 from redis.exceptions import NoPermissionError, ResponseError
 
-IMAGE = (
-    "valkey/valkey:9.1.2-alpine@sha256:"
-    "48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11"
-)
 PORT = 6382
 LABEL = "university-ecosystem.valkey-ttl-acceptance"
 SCRIPT = """
@@ -45,6 +43,75 @@ return redis.call('EXPIRE', KEYS[1], ttl)
 
 class Rejected(RuntimeError):
     """Fixed diagnostic only: never expose provider or Docker output."""
+
+
+class _PinLoader(yaml.SafeLoader):
+    """Do not let YAML duplicate keys override reviewed image authority."""
+
+
+def _pin_mapping(loader, node):
+    result = {}
+    for key_node, value_node in node.value:
+        if key_node.value == "<<":
+            raise Rejected("IMAGE_PIN_REJECTED")
+        key = loader.construct_object(key_node, deep=True)
+        if not isinstance(key, (str, int, bool)) or key in result:
+            raise Rejected("IMAGE_PIN_REJECTED")
+        result[key] = loader.construct_object(value_node, deep=True)
+    return result
+
+
+_PinLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _pin_mapping)
+
+
+def _pin_document(path: Path):
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            raise Rejected("IMAGE_PIN_REJECTED")
+        with path.open("rb") as stream:
+            raw = stream.read(131073)
+        if len(raw) > 131072:
+            raise Rejected("IMAGE_PIN_REJECTED")
+        text = raw.decode("utf-8")
+        if any(isinstance(event, yaml.AliasEvent) for event in yaml.parse(text)):
+            raise Rejected("IMAGE_PIN_REJECTED")
+        loader = _PinLoader(text)
+        try:
+            value = loader.get_single_data()
+        finally:
+            loader.dispose()
+        if not isinstance(value, dict):
+            raise Rejected("IMAGE_PIN_REJECTED")
+        return value
+    except (OSError, UnicodeError, yaml.YAMLError):
+        raise Rejected("IMAGE_PIN_REJECTED") from None
+
+
+def _image_pin(root: Path) -> str:
+    """Compose is the reviewed pin authority; the job must use that same pin."""
+    try:
+        compose = _pin_document(root / "docker-compose.yml")
+        workflow = _pin_document(
+            root / ".github/workflows/valkey-ttl-characterization.yml"
+        )
+        cache = compose["services"]["valkey"]["image"]
+        revocation = compose["services"]["revocation-valkey"]["image"]
+        job = workflow["jobs"]["characterize"]["services"]["valkey"]["image"]
+        if (
+            not isinstance(cache, str)
+            or re.fullmatch(r"valkey/valkey:9\.1\.2-alpine@sha256:[0-9a-f]{64}", cache)
+            is None
+            or cache != revocation
+            or cache != job
+        ):
+            raise Rejected("IMAGE_PIN_REJECTED")
+        return cache
+    except (KeyError, TypeError):
+        raise Rejected("IMAGE_PIN_REJECTED") from None
+
+
+def load_image_pin() -> str:
+    return _image_pin(Path(__file__).resolve().parents[2])
 
 
 @dataclass(frozen=True)
@@ -160,7 +227,7 @@ def inspect_owned(owner: Ownership) -> None:
         valid = (
             record["Id"] == owner.container_id
             and record["State"]["Running"] is True
-            and record["Config"]["Image"] == IMAGE
+            and record["Config"]["Image"] == load_image_pin()
             and labels[LABEL] == "true"
             and labels[LABEL + ".run"] == owner.run
             and labels[LABEL + ".attempt"] == owner.attempt
