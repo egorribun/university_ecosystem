@@ -460,6 +460,39 @@ describe("useEventCardLogic (branches)", () => {
 
   // ---- handleEdit (lines 123-150) ----
 
+  it("finishes an upload that settles after unmount without touching unmounted state", async () => {
+    let finishUpload!: () => void
+    mockPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = () => resolve({ data: { url: "late-upload.png" } })
+        })
+    )
+    const onChange = vi.fn()
+    const { result, unmount } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+    act(() => {
+      result.current.setNewImage(new File(["img"], "late.png", { type: "image/png" }))
+      result.current.setEditOpen(true)
+    })
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.handleEdit()
+    })
+    unmount()
+
+    await act(async () => {
+      finishUpload()
+      await pending
+    })
+
+    // The dispatched write chain completes; no unmounted consumer is refreshed.
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ image_url: "late-upload.png" })
+    )
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it("handleEdit: with new image → uploads then patches with returned url (126-144)", async () => {
     const onChange = vi.fn()
     const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))

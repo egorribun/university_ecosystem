@@ -228,7 +228,7 @@ export function ScheduleMobileView({
       <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
         {activeDayIdx >= 0 && (
           <m.div
-            key={`${weekOffset}-${weekdayBackend[activeDayIdx] ?? activeDayIdx}`}
+            key={`${weekOffset}-${weekdayBackend[activeDayIdx]!}`}
             custom={swipeDir}
             variants={panelVariants}
             initial="enter"
@@ -250,7 +250,7 @@ export function ScheduleMobileView({
                   }}
                   day={activeDay}
                   label={activeLabel}
-                  lessons={lessonsByDay.get(activeDay) ?? []}
+                  lessons={lessonsByDay.get(activeDay)!}
                   isToday={hasToday && activeDayIdx === todayIdx}
                   isOnline={isOnline}
                   hasSchedule={rawSchedule.length > 0}

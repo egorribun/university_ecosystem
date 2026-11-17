@@ -182,6 +182,32 @@ describe("MessageInput", () => {
     expect(cancel).toHaveBeenCalledWith(timer)
   })
 
+  it("restarts the SVG rejection notice when another SVG is rejected", async () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      const rejectSvg = async () => {
+        await act(async () => {
+          fireEvent.change(input, {
+            target: { files: [new File(["<svg/>"], "bad.svg", { type: "image/svg+xml" })] },
+          })
+        })
+      }
+      await rejectSvg()
+      act(() => vi.advanceTimersByTime(2000))
+      await rejectSvg()
+
+      // The first notice's deadline passes without hiding the restarted notice.
+      act(() => vi.advanceTimersByTime(1000))
+      expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+      act(() => vi.advanceTimersByTime(2000))
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   describe("a11y (W183 SW4)", () => {
     it("textarea has aria-label", () => {
       render(<MessageInput onSend={() => {}} />)

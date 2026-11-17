@@ -106,17 +106,13 @@ export function useScheduleKeyboardNav({
         }
         case "e":
         case "E":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault()
-            onEdit?.()
-          }
+          e.preventDefault()
+          onEdit?.()
           break
         case "Delete":
         case "Backspace":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault()
-            onDelete?.()
-          }
+          e.preventDefault()
+          onDelete?.()
           break
         case "t":
         case "T":

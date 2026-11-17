@@ -231,7 +231,8 @@ export function useEventCardLogic({
     } catch {
       if (isCurrentEdit()) setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
-      if (activeSaveSessionRef.current === session) activeSaveSessionRef.current = null
+      // Only this save could claim the slot: every other save returns while it is held.
+      activeSaveSessionRef.current = null
       if (mountedRef.current) {
         setImageLoading(false)
         setLoading(false)
