@@ -85,7 +85,7 @@ func TestFileRPCForwardsMiddlewareSelectedCredential(t *testing.T) {
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set(pb.ProcessingCapabilityHeader, capability)
 			if testCase.cookie != "" || testCase.name == "empty cookie falls back" {
-				request.AddCookie(&http.Cookie{Name: middleware.AccessTokenCookieName, Value: testCase.cookie, HttpOnly: true})
+				request.AddCookie(&http.Cookie{Name: middleware.AccessTokenCookieName, Value: testCase.cookie, HttpOnly: true, Secure: true})
 			}
 			if testCase.header != "" {
 				request.Header.Set("Authorization", testCase.header)
