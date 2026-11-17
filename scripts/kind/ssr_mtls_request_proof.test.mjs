@@ -28,7 +28,12 @@ function fixture(change = {}) {
       assert.deepEqual(options.headers, {})
       return new Response("", { status: change.userStatus ?? 401 })
     }
-    assert.equal(url, "http://127.0.0.1:3000/login?redirect=%2Fdashboard")
+    assert.equal(
+      url,
+      calls === 5
+        ? "http://127.0.0.1:3000/dashboard"
+        : "http://127.0.0.1:3000/login?redirect=%2Fdashboard"
+    )
     const parts = options.headers.cookie.slice("access_token_v2=".length).split(".")
     const valid = verify(
       "RSA-SHA256",
@@ -47,6 +52,12 @@ function fixture(change = {}) {
           location: change.location ?? "/dashboard",
           "cache-control": change.acceptedCache ?? "no-store, private, max-age=0",
         },
+      })
+    }
+    if (calls === 5) {
+      return new Response("", {
+        status: change.protectedStatus ?? 307,
+        headers: { location: change.protectedLocation ?? "/login?redirect=%2Fdashboard" },
       })
     }
     assert.equal(calls, 4)
@@ -68,13 +79,13 @@ function fixture(change = {}) {
 test("real signed and forged tokens require independent SSR outcomes", async () => {
   const control = fixture()
   await proveSsrAuthentication({ ...config, request: control.request })
-  assert.equal(control.calls(), 4)
+  assert.equal(control.calls(), 5)
 })
 
 test("accepts the real CSP policy on unauthenticated HTML without treating privacy as auth", async () => {
   const control = fixture({ productionCsp: true, rejectedCache: "public, max-age=600" })
   await proveSsrAuthentication({ ...config, request: control.request })
-  assert.equal(control.calls(), 4)
+  assert.equal(control.calls(), 5)
 })
 
 for (const [name, change] of Object.entries({
@@ -90,6 +101,8 @@ for (const [name, change] of Object.entries({
   forgedRedirectHeader: { forgedLocation: "/dashboard" },
   forgedNonHtmlType: { contentType: "application/json" },
   missingHtml: { body: "not a document" },
+  protectedContent: { protectedStatus: 200 },
+  protectedWrongRedirect: { protectedLocation: "/dashboard" },
 })) {
   test("rejects incomplete proof: " + name, async () => {
     await assert.rejects(proveSsrAuthentication({ ...config, request: fixture(change).request }))
