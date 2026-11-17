@@ -27,7 +27,6 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
             now = time.time()
             # Prune entries where all timestamps are older than this (1 hour default)
             max_age = max(interval_seconds * 12, 3600)
-            cutoff = now - max_age
 
             # Create a copy of keys to avoid modification during iteration
             keys = _snapshot_memory_window_keys()
@@ -37,6 +36,10 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
                     window = _memory_windows.get(key)
                     if not window:
                         continue
+
+                    # Never erase timestamps still inside a configured long
+                    # window. Metadata shares the window's shard lock/lifetime.
+                    cutoff = now - max(max_age, getattr(window, "retention_seconds", 0))
 
                     # Prune old entries from the front of the deque
                     while window and window[0] <= cutoff:
