@@ -486,8 +486,13 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
     // Freeze only the dismissal phase: removal must follow the pointer click,
     // never the auto-hide timer. Do not grant permissions or mock clipboard.
     const pauseTime = await page.evaluate(() => Date.now())
+    // Pin wall time across protocol calls, then pause timers at zero delta.
+    // Restore advancing wall-time semantics so the final clock guard is real.
+    await page.clock.setFixedTime(pauseTime)
     await page.clock.pauseAt(pauseTime)
+    await page.clock.setSystemTime(pauseTime)
     const pausedNow = await page.evaluate(() => Date.now())
+    const pausedTicks = await page.evaluate(() => performance.now())
     await expect(alert).toHaveCount(1)
     await expect(alert).toBeVisible()
 
@@ -518,6 +523,7 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
     await close.click({ timeout: 3000 })
     await expect(alert).toHaveCount(0)
     expect(await page.evaluate(() => Date.now())).toBe(pausedNow)
+    expect(await page.evaluate(() => performance.now())).toBe(pausedTicks)
   } finally {
     // Resume even on the intended RED, before owned-session fixture cleanup.
     await page.clock.resume()
