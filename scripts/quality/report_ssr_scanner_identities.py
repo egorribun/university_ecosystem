@@ -3,19 +3,67 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 
 EXPECTED = (
     ("services/gateway/cmd/ssr-mtls-fixture/main.go", "Secret Keyword", 94),
-    ("services/gateway/cmd/ssr-mtls-fixture/main_test.go", "Basic Auth Credentials", 112),
+    (
+        "services/gateway/cmd/ssr-mtls-fixture/main_test.go",
+        "Basic Auth Credentials",
+        112,
+    ),
     ("services/gateway/cmd/ssr-proxy/main_test.go", "Basic Auth Credentials", 39),
 )
+EXPECTED_BLOBS = {
+    "services/gateway/cmd/ssr-mtls-fixture/main.go": bytes((
+        212, 113, 252, 9, 61, 29, 21, 14, 229, 180,
+        218, 208, 161, 136, 11, 98, 12, 225, 173, 81,
+    )),
+    "services/gateway/cmd/ssr-mtls-fixture/main_test.go": bytes((
+        68, 3, 255, 104, 113, 146, 134, 159, 24, 124,
+        44, 38, 65, 233, 52, 45, 52, 106, 93, 46,
+    )),
+    "services/gateway/cmd/ssr-proxy/main_test.go": bytes((
+        237, 199, 26, 229, 186, 179, 216, 201, 65, 163,
+        207, 219, 58, 246, 75, 124, 216, 184, 249, 150,
+    )),
+}
+MAX_SOURCE_BYTES = 1024 * 1024
 MAX_SCAN_BYTES = 8 * 1024 * 1024
 _HEX = re.compile(r"[0-9a-f]{40}")
 
+
+
+def read_regular(path, limit):
+    # The diagnostic runs on Linux. Refuse unsupported no-follow platforms.
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            raise ValueError("not a bounded regular file")
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("file grew beyond limit")
+    return data
+
+
+def validate_sources(root):
+    for relative_path, expected in EXPECTED_BLOBS.items():
+        path = root / relative_path
+        if path.parent.resolve() != path.parent:
+            raise ValueError("source directory is redirected")
+        data = read_regular(path, MAX_SOURCE_BYTES)
+        blob = b"blob " + str(len(data)).encode("ascii") + b"\\0" + data
+        actual = hashlib.sha1(blob, usedforsecurity=False).digest()
+        if actual != expected:
+            raise ValueError("reviewed source changed")
 
 def unique_object(pairs):
     result = {}
@@ -72,13 +120,11 @@ def main(argv=None):
     parser.add_argument("--source-sha", required=True)
     args = parser.parse_args(argv)
     try:
-        with Path(args.scan).open("rb") as stream:
-            raw = stream.read(MAX_SCAN_BYTES + 1)
-        if len(raw) > MAX_SCAN_BYTES:
-            raise ValueError("scan too large")
+        validate_sources(Path(__file__).resolve().parents[2])
+        raw = read_regular(Path(args.scan), MAX_SCAN_BYTES)
         document = json.loads(raw, object_pairs_hook=unique_object)
         receipt = reviewed_identities(document, args.source_sha)
-    except (OSError, ValueError, TypeError, RecursionError):
+    except (OSError, ValueError, TypeError, RecursionError, AttributeError):
         print("ERROR: reviewed SSR identity receipt unavailable.", file=sys.stderr)
         return 1
     print(json.dumps(receipt, sort_keys=True))

@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 
 import pytest
 
@@ -108,7 +109,7 @@ def test_main_success_outputs_only_receipt(tmp_path, capsys):
     [
         b"private-canary",
         b'{"results":{},"results":{}}',
-        b"\\xff",
+        bytes([255]),
         json.dumps({"results": {}}).encode(),
     ],
 )
@@ -130,3 +131,55 @@ def test_oversized_and_missing_scan_are_safe(tmp_path, capsys, monkeypatch):
     output = capsys.readouterr()
     assert output.out == ""
     assert output.err.count("receipt unavailable") == 2
+
+
+def test_late_invalid_identity_emits_no_partial_receipt(tmp_path, capsys):
+    document = scan()
+    document["results"][report.EXPECTED[-1][0]][0]["hashed_secret"] = "private-canary"
+    path = tmp_path / "scan.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert report.main([str(path), "--source-sha", "b" * 40]) == 1
+    assert capsys.readouterr().out == ""
+
+
+def test_reviewed_repository_sources_match_exact_blobs():
+    report.validate_sources(report.Path(__file__).resolve().parents[1])
+
+
+def test_changed_or_redirected_source_is_rejected(tmp_path, monkeypatch):
+    relative = "source.go"
+    path = tmp_path / relative
+    path.write_bytes(b"reviewed")
+    blob = b"blob 8\\0reviewed"
+    digest = report.hashlib.sha1(blob, usedforsecurity=False).digest()
+    monkeypatch.setattr(report, "EXPECTED_BLOBS", {relative: digest})
+    report.validate_sources(tmp_path)
+    path.write_bytes(b"changed")
+    with pytest.raises(ValueError):
+        report.validate_sources(tmp_path)
+    path.unlink()
+    target = tmp_path / "target.go"
+    target.write_bytes(b"reviewed")
+    path.symlink_to(target)
+    with pytest.raises(OSError):
+        report.validate_sources(tmp_path)
+
+
+def test_fifo_and_directory_are_rejected_without_blocking(tmp_path):
+    fifo = tmp_path / "fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError):
+        report.read_regular(fifo, 100)
+    with pytest.raises((OSError, ValueError)):
+        report.read_regular(tmp_path, 100)
+
+
+def test_source_validation_failure_has_generic_error(tmp_path, capsys, monkeypatch):
+    def fail(_root):
+        raise ValueError("private-source-content")
+
+    monkeypatch.setattr(report, "validate_sources", fail)
+    assert report.main([str(tmp_path / "unused"), "--source-sha", "b" * 40]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "ERROR: reviewed SSR identity receipt unavailable.\n"

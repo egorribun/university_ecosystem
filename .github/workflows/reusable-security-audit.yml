@@ -1185,6 +1185,7 @@ jobs:
           fi
 
       - name: Report reviewed SSR scanner identities (diagnostic only)
+        timeout-minutes: 1
         if: ${{ failure() && steps.baseline_scan.outcome == 'success' && steps.baseline_verify.outcome == 'failure' && github.event_name == 'pull_request' && github.event.number == 1426 }}
         shell: bash
         run: |
