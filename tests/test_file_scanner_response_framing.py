@@ -100,22 +100,16 @@ async def test_response_frame_exact_size_boundary(length):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cancel", [False, True])
-async def test_unterminated_reply_is_bounded_and_closes_connection(
-    monkeypatch, cancel
-):
+async def test_unterminated_reply_is_bounded_and_closes_connection(monkeypatch, cancel):
     waiting = asyncio.Event()
 
     async def stalled_read(size):
         waiting.set()
         await asyncio.Event().wait()
 
-    _, writer = connection(
-        monkeypatch, stalled_read, timeout=1 if cancel else 0.02
-    )
+    _, writer = connection(monkeypatch, stalled_read, timeout=1 if cancel else 0.02)
     upload = UploadFile(file=io.BytesIO(b"payload"), filename="sample.bin")
-    task = asyncio.create_task(
-        scanner._scan_upload_with_clamd(upload, size_limit=100)
-    )
+    task = asyncio.create_task(scanner._scan_upload_with_clamd(upload, size_limit=100))
     try:
         await asyncio.wait_for(waiting.wait(), timeout=1)
         if cancel:
@@ -123,9 +117,7 @@ async def test_unterminated_reply_is_bounded_and_closes_connection(
             with pytest.raises(asyncio.CancelledError):
                 await task
         else:
-            with pytest.raises(
-                scanner.FileScannerUnavailableError, match="timed out"
-            ):
+            with pytest.raises(scanner.FileScannerUnavailableError, match="timed out"):
                 await asyncio.wait_for(task, timeout=1)
         writer.close.assert_called_once()
         writer.wait_closed.assert_awaited_once()
