@@ -1,0 +1,63 @@
+name: Temporary workflow admission diagnostic
+# Evidence only: no collector or package verification is executed by this workflow.
+on:
+  pull_request:
+    types: [opened]
+    branches: [egorribun]
+    paths:
+      - .github/workflows/temporary-workflow-admission.yml
+
+permissions: {}
+
+jobs:
+  admission:
+    if: >-
+      github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' &&
+      github.event.pull_request.head.ref == 'coff/evidence-workflow-admission' &&
+      github.event.pull_request.base.sha == '1f110064685fc847ded55d324a7a3caf9d5297e8'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Emit only fixed admission booleans
+        shell: bash
+        env:
+          WORKFLOW_PRESENT: ${{ github.workflow_sha != '' }}
+          SHA_PRESENT: ${{ github.sha != '' }}
+          MERGE_PRESENT: ${{ github.event.pull_request.merge_commit_sha != '' }}
+          HEAD_PRESENT: ${{ github.event.pull_request.head.sha != '' }}
+          WORKFLOW_EQUALS_MERGE: ${{ github.workflow_sha == github.event.pull_request.merge_commit_sha }}
+          WORKFLOW_EQUALS_SHA: ${{ github.workflow_sha == github.sha }}
+          WORKFLOW_EQUALS_HEAD: ${{ github.workflow_sha == github.event.pull_request.head.sha }}
+          SHA_EQUALS_MERGE: ${{ github.sha == github.event.pull_request.merge_commit_sha }}
+          SHA_EQUALS_HEAD: ${{ github.sha == github.event.pull_request.head.sha }}
+          REPO_MATCH: ${{ github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' }}
+          BRANCH_MATCH: ${{ github.event.pull_request.head.ref == 'coff/evidence-workflow-admission' }}
+          BASE_MATCH: ${{ github.event.pull_request.base.sha == '1f110064685fc847ded55d324a7a3caf9d5297e8' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          names = (
+              "WORKFLOW_PRESENT",
+              "SHA_PRESENT",
+              "MERGE_PRESENT",
+              "HEAD_PRESENT",
+              "WORKFLOW_EQUALS_MERGE",
+              "WORKFLOW_EQUALS_SHA",
+              "WORKFLOW_EQUALS_HEAD",
+              "SHA_EQUALS_MERGE",
+              "SHA_EQUALS_HEAD",
+              "REPO_MATCH",
+              "BRANCH_MATCH",
+              "BASE_MATCH",
+          )
+          values = {name: os.environ.get(name) for name in names}
+          if any(value not in {"true", "false"} for value in values.values()):
+              raise SystemExit("Invalid finite admission evidence")
+          print(json.dumps(
+              {name.lower(): value == "true" for name, value in values.items()},
+              sort_keys=True,
+          ))
+          PY
