@@ -13,6 +13,22 @@ _SERVICES = ("caddy", "gateway")
 _CATEGORIES = ("eof", "timeout", "refused", "reset", "dns", "other")
 _MAX_BYTES = 65_536
 _PREFIX = "live E2E transport diagnostic"
+_UNAVAILABLE_STAGES = frozenset(
+    {
+        "admission-context",
+        "admission-pins",
+        "capture-missing",
+        "capture-window",
+        "prepins",
+        "logread-caddy",
+        "parse-caddy",
+        "logread-gateway",
+        "parse-gateway",
+        "postpins",
+        "output",
+        "internal",
+    }
+)
 _TIMESTAMP = re.compile(rb"^\d{4}-\d\d-\d\dT[0-9:.]+Z ")
 _STARTED = re.compile(r"\d{4}-\d\d-\d\dT[0-9:.]+Z")
 
@@ -129,32 +145,54 @@ def _pins(live: Any, owner: Any, context: Any, deadline: float) -> tuple:
     return tuple(pins)
 
 
-def prepare(live: Any, owner: Any) -> Capture | None:
+@dataclass(frozen=True)
+class Unavailable:
+    stage: str
+
+
+def _emit_unavailable(stage: object) -> None:
+    # Never interpolate unknown objects, exception text, or caller-provided labels.
+    safe = stage if type(stage) is str and stage in _UNAVAILABLE_STAGES else "internal"
+    print(f"{_PREFIX} state=unavailable stage={safe}", flush=True)
+
+
+def prepare(live: Any, owner: Any) -> Capture | Unavailable | None:
     """Diagnostic admission failures never change the acceptance outcome."""
     if owner.stack != live.LIVE_STACK_CORE:
         return None
+    stage = "admission-context"
     try:
         context = live._new_live_docker_read_context()
+        stage = "admission-pins"
         pins = _pins(live, owner, context, time.monotonic() + 15)
         return Capture(context, pins, time.time_ns() // 1_000_000)
     except Exception:
-        return None
+        return Unavailable(stage)
 
 
-def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
+def emit_failure(
+    live: Any, owner: Any, capture: Capture | Unavailable | None
+) -> None:
     """Read only pinned containers, reverify afterwards, emit finite aggregates."""
+    stage = "output"
     try:
         if capture is None:
-            print(f"{_PREFIX} state=unavailable", flush=True)
+            _emit_unavailable("capture-missing")
             return
+        if type(capture) is Unavailable:
+            _emit_unavailable(capture.stage)
+            return
+        stage = "capture-window"
         until = time.time_ns() // 1_000_000
         if not 0 <= until - capture.since <= 3_600_000:
             raise ValueError("invalid capture window")
         deadline = time.monotonic() + 20
+        stage = "prepins"
         if _pins(live, owner, capture.context, deadline) != capture.pins:
             raise ValueError("service identity changed")
         summaries = []
         for service, identifier, _, _, _ in capture.pins:
+            stage = "logread-caddy" if service == "caddy" else "logread-gateway"
             result = live._run_live_bounded_read(
                 [
                     "docker",
@@ -177,6 +215,7 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
                 raise ValueError("log read failed")
             # Docker separates container stdout/stderr. Parse each independently;
             # never join an unterminated record to the other stream.
+            stage = "parse-caddy" if service == "caddy" else "parse-gateway"
             first = summarize(service, result.stdout)
             second = summarize(service, result.stderr)
             summaries.append(
@@ -185,8 +224,10 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
                     {key: min(512, first[key] + second[key]) for key in _CATEGORIES},
                 )
             )
+        stage = "postpins"
         if _pins(live, owner, capture.context, deadline) != capture.pins:
             raise ValueError("service identity changed")
+        stage = "output"
         for service, counts in summaries:
             fields = " ".join(f"{key}={counts[key]}" for key in _CATEGORIES)
             print(
@@ -197,7 +238,7 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
     except Exception:
         # No exception messages, raw bytes, paths, identifiers or headers escape.
         with contextlib.suppress(Exception):
-            print(f"{_PREFIX} state=unavailable", flush=True)
+            _emit_unavailable(stage)
 
 
 def run(live: Any, owner: Any, arguments: dict[str, Any]) -> None:

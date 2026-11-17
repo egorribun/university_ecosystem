@@ -154,8 +154,9 @@ def test_changed_pin_or_read_failure_discards_all_observations(
     if stage == "read":
         live._run_live_bounded_read.side_effect = RuntimeError("private secret")
     diagnostic.emit_failure(live, object(), pinned)
+    expected = {"before": "prepins", "after": "postpins", "read": "logread-caddy"}
     assert capsys.readouterr().out == (
-        "live E2E transport diagnostic state=unavailable\n"
+        f"live E2E transport diagnostic state=unavailable stage={expected[stage]}\n"
     )
     if stage == "before":
         live._run_live_bounded_read.assert_not_called()
@@ -318,7 +319,9 @@ def test_admission_errors_are_secondary_and_private(monkeypatch, capsys):
     live._new_live_docker_read_context = Mock(
         side_effect=RuntimeError("private password")
     )
-    assert diagnostic.prepare(live, SimpleNamespace(stack="core")) is None
+    assert diagnostic.prepare(live, SimpleNamespace(stack="core")) == (
+        diagnostic.Unavailable("admission-context")
+    )
     assert capsys.readouterr().out == ""
 
 
@@ -329,7 +332,7 @@ def test_invalid_window_never_reads_logs(until, monkeypatch, capsys):
     diagnostic.emit_failure(live, object(), capture())
     live._run_live_bounded_read.assert_not_called()
     assert capsys.readouterr().out == (
-        "live E2E transport diagnostic state=unavailable\n"
+        "live E2E transport diagnostic state=unavailable stage=capture-window\n"
     )
 
 
@@ -360,7 +363,7 @@ def test_failed_admission_preserves_original_failure(monkeypatch, capsys):
     assert raised.value is failure
     live._run_live_playwright.assert_called_once_with()
     assert capsys.readouterr().out == (
-        "live E2E transport diagnostic state=unavailable\n"
+        "live E2E transport diagnostic state=unavailable stage=admission-context\n"
     )
 
 
@@ -384,3 +387,92 @@ def test_missing_or_duplicate_owned_service_rejects_before_logs(count):
     with pytest.raises(ValueError, match="ambiguous owned service"):
         diagnostic._pins(live, object(), object(), 100)
     live._run_live_bounded_read.assert_not_called()
+
+
+def test_pin_admission_stage_is_retained_without_emitting(monkeypatch, capsys):
+    live = fake_live()
+    live._new_live_docker_read_context = Mock(return_value=object())
+    monkeypatch.setattr(
+        diagnostic, "_pins", Mock(side_effect=RuntimeError("private admission token"))
+    )
+    result = diagnostic.prepare(live, SimpleNamespace(stack="core"))
+    assert result == diagnostic.Unavailable("admission-pins")
+    assert capsys.readouterr().out == ""
+    diagnostic.emit_failure(live, object(), result)
+    assert capsys.readouterr().out == (
+        "live E2E transport diagnostic state=unavailable stage=admission-pins\n"
+    )
+    live._run_live_bounded_read.assert_not_called()
+
+
+@pytest.mark.parametrize("service", ["caddy", "gateway"])
+@pytest.mark.parametrize("phase", ["logread", "parse"])
+def test_service_failure_stage_remains_closed(service, phase, monkeypatch, capsys):
+    live, pinned = fake_live(), capture()
+    monkeypatch.setattr(diagnostic, "_pins", Mock(return_value=pinned.pins))
+    monkeypatch.setattr(diagnostic.time, "time_ns", lambda: 2000_000_000)
+    good = SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+    failed = (
+        RuntimeError("private credential bytes")
+        if phase == "logread"
+        else SimpleNamespace(returncode=0, stdout=b"x" * 65_537, stderr=b"")
+    )
+    live._run_live_bounded_read.side_effect = (
+        [failed] if service == "caddy" else [good, failed]
+    )
+    diagnostic.emit_failure(live, object(), pinned)
+    assert capsys.readouterr().out == (
+        f"live E2E transport diagnostic state=unavailable stage={phase}-{service}\n"
+    )
+    assert live._run_live_bounded_read.call_count == (1 if service == "caddy" else 2)
+
+
+def test_unknown_stage_objects_are_never_formatted(capsys):
+    class Private:
+        def __str__(self):
+            raise AssertionError("private stage must not be rendered")
+
+        def __hash__(self):
+            raise AssertionError("private stage must not be hashed")
+
+    for stage in ("credential-value", Private()):
+        diagnostic._emit_unavailable(stage)
+        assert capsys.readouterr().out == (
+            "live E2E transport diagnostic state=unavailable stage=internal\n"
+        )
+    diagnostic.emit_failure(fake_live(), object(), diagnostic.Unavailable("secret"))
+    assert capsys.readouterr().out == (
+        "live E2E transport diagnostic state=unavailable stage=internal\n"
+    )
+
+
+def test_missing_capture_has_no_reads(capsys):
+    live = fake_live()
+    diagnostic.emit_failure(live, object(), None)
+    assert capsys.readouterr().out == (
+        "live E2E transport diagnostic state=unavailable stage=capture-missing\n"
+    )
+    live._run_live_bounded_read.assert_not_called()
+
+
+def test_output_failure_cannot_replace_original_error(monkeypatch):
+    live, pinned = fake_live(), capture()
+    owner = SimpleNamespace(stack="core")
+    original = RuntimeError("original failure")
+    live._run_live_playwright.side_effect = original
+    live._run_live_bounded_read.return_value = SimpleNamespace(
+        returncode=0, stdout=b"", stderr=b""
+    )
+    monkeypatch.setattr(diagnostic, "prepare", Mock(return_value=pinned))
+    monkeypatch.setattr(diagnostic, "_pins", Mock(return_value=pinned.pins))
+    monkeypatch.setattr(diagnostic.time, "time_ns", lambda: 2000_000_000)
+    # First observed line may already be emitted; output failures cannot undo it.
+    output = Mock(side_effect=[None, OSError("private stdout failure"), None])
+    monkeypatch.setattr("builtins.print", output)
+    with pytest.raises(RuntimeError) as raised:
+        diagnostic.run(live, owner, {})
+    assert raised.value is original
+    live._run_live_playwright.assert_called_once_with()
+    assert output.call_args.args == (
+        "live E2E transport diagnostic state=unavailable stage=output",
+    )
