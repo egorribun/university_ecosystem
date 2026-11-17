@@ -1104,6 +1104,7 @@ jobs:
           -r security/detect-secrets-requirements.txt
 
       - name: Scan repo (no baseline)
+        id: baseline_scan
         # The baseline is scanner metadata, not application input. Scanning it
         # would recursively flag every stored digest and keyword entry and
         # make finding-level verification impossible. The checked-in WASM
@@ -1143,6 +1144,7 @@ jobs:
           fi
 
       - name: Verify baseline has not regressed
+        id: baseline_verify
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -1181,3 +1183,11 @@ jobs:
             echo "ERROR: unsupported event for secret policy verification" >&2
             exit 1
           fi
+
+      - name: Report reviewed SSR scanner identities (diagnostic only)
+        if: ${{ failure() && steps.baseline_scan.outcome == 'success' && steps.baseline_verify.outcome == 'failure' && github.event_name == 'pull_request' && github.event.number == 1426 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/report_ssr_scanner_identities.py /tmp/current_scan.json \
+            --source-sha "$(git rev-parse HEAD)"
