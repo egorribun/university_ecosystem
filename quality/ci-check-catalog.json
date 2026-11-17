@@ -4579,7 +4579,7 @@
       "events": [
         {
           "event": "pull_request",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"backend.Dockerfile\",\"backend.Dockerfile.dockerignore\",\".dockerignore\",\"app/**\",\"native/**\",\"alembic/**\",\"alembic.ini\",\"pyproject.toml\",\"uv.lock\",\"go.mod\",\"go.sum\",\"gen/go/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"k8s/README.md\",\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
+          "guard": "{\"branches\":[\"main\",\"egorribun\"],\"paths\":[\"frontend.Dockerfile\",\"frontend/**\",\"backend.Dockerfile\",\"backend.Dockerfile.dockerignore\",\".dockerignore\",\"app/**\",\"native/**\",\"alembic/**\",\"alembic.ini\",\"pyproject.toml\",\"uv.lock\",\"go.mod\",\"go.sum\",\"gen/go/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"k8s/README.md\",\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
         },
         {
           "event": "schedule",
@@ -4594,8 +4594,8 @@
         "aud373-kind-proof": {
           "profile": "advisory",
           "check_name_template": "AUD-373 kind SPIFFE mTLS proof",
-          "expected_timeout_minutes": 40,
-          "expected_duration_seconds": 2400,
+          "expected_timeout_minutes": 90,
+          "expected_duration_seconds": 5400,
           "guard": "workflow trigger",
           "needs": [],
           "artifacts": [
