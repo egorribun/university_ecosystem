@@ -167,9 +167,14 @@ def heading_anchors(content: str) -> set[str]:
         else:
             continue
         slug = github_slug(heading)
-        count = seen.get(slug, 0)
-        seen[slug] = count + 1
-        anchors.add(slug if count == 0 else f"{slug}-{count}")
+        original_slug = slug
+        # A generated suffix can collide with another literal heading slug.
+        # Reserve every emitted slug, not only the unsuffixed heading text.
+        while slug in seen:
+            seen[original_slug] += 1
+            slug = f"{original_slug}-{seen[original_slug]}"
+        seen[slug] = 0
+        anchors.add(slug)
     anchors.update(HTML_ANCHOR_RE.findall(_mask_code(content)))
     return anchors
 
