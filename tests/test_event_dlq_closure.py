@@ -205,3 +205,21 @@ async def test_real_event_bus_replay_cancellation_retains_event(mode):
         if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_auto_replay_without_bus_preserves_queued_record_and_status():
+    queue = DeadLetterQueue()
+    event = UserCreated()
+    await queue.add(event, RuntimeError("initial"))
+    original = (await queue.get_all())[0]
+    before = await queue.get_replay_status()
+
+    assert await queue.auto_replay() == (0, 0)
+
+    remaining = await queue.get_all()
+    assert len(remaining) == 1
+    assert remaining[0] is original
+    assert original.retry_count == 0
+    assert await queue.get_replay_status() == before
+    assert queue.is_replaying is False
