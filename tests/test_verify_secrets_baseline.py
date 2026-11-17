@@ -33237,7 +33237,256 @@ def test_nov14_image_pull_projection_leaves_other_paths_unchanged(path: str) -> 
     assert _nov14_image_pull_historical_source_bytes(path, actual) is actual
 
 
+# Owner-approved 2026-11-17 Helm SSR source rebind, PR #1426 only.
+# Restore both exact pre-SSR chart files before all historical source checks.
+# No scanner identity, disposition, expiry, or baseline entry is changed.
+_NOV17_SSR_CHART_PINS = {
+    "charts/university-ecosystem/values.yaml": (
+        bytes(
+            (
+                211, 211, 11, 192, 140, 236, 19, 102,
+                36, 249, 199, 123, 50, 255, 249, 142,
+                71, 84, 80, 107, 10, 106, 78, 253,
+                126, 70, 181, 122, 129, 45, 59, 105,
+            )
+        ),
+        bytes(
+            (
+                155, 221, 250, 121, 91, 203, 80, 77,
+                103, 197, 126, 107, 200, 117, 31, 97,
+                227, 0, 248, 231, 134, 250, 243, 72,
+                8, 235, 169, 175, 85, 175, 99, 189,
+            )
+        ),
+    ),
+    "charts/university-ecosystem/values.schema.json": (
+        bytes(
+            (
+                91, 211, 14, 169, 45, 81, 152, 159,
+                155, 18, 30, 227, 223, 25, 178, 118,
+                252, 34, 139, 49, 100, 15, 247, 109,
+                52, 76, 25, 77, 207, 208, 34, 188,
+            )
+        ),
+        bytes(
+            (
+                15, 101, 110, 90, 180, 190, 146, 81,
+                62, 71, 131, 104, 192, 202, 193, 153,
+                222, 209, 137, 94, 61, 107, 64, 96,
+                73, 195, 119, 252, 115, 211, 182, 18,
+            )
+        ),
+    ),
+}
+_NOV17_SSR_CHART_REVERSALS = {
+    "charts/university-ecosystem/values.schema.json": (
+        (
+            (
+                b"        \"trustDomain\",\n"
+                b"        \"backendSpiffeID\",\n"
+                b"        \"gatewaySpiffeID\",\n"
+                b"        \"frontendSpiffeID\",\n"
+                b"        \"wsHubSpiffeID\",\n"
+                b"        \"fileProcessorSpiffeID\",\n"
+                b"        \"workloadAPI\"\n"
+            ),
+            (
+                b"        \"trustDomain\",\n"
+                b"        \"backendSpiffeID\",\n"
+                b"        \"gatewaySpiffeID\",\n"
+                b"        \"wsHubSpiffeID\",\n"
+                b"        \"fileProcessorSpiffeID\",\n"
+                b"        \"workloadAPI\"\n"
+            ),
+        ),
+        (
+            (
+                b"              \"pattern\": \"^/[A-Za-z0-9._/-]{1,200}$\"\n"
+                b"            }\n"
+                b"          }\n"
+                b"        },\n"
+                b"        \"frontendSpiffeID\": {\n"
+                b"          \"type\": \"string\",\n"
+                b"          \"maxLength\": 2048,\n"
+                b"          \"pattern\": \"^(|spiffe://[a-z0-9](?:[a-"
+                b"z0-9-]{0,61}[a-z0-9])?(?:\\\\.[a-z0-9](?:[a-z0-9-]"
+                b"{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$\"\n"
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+            (
+                b"              \"pattern\": \"^/[A-Za-z0-9._/-]{1,200}$\"\n"
+                b"            }\n"
+                b"          }\n"
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+        ),
+        (
+            (
+                b"        },\n"
+                b"        \"concurrencyPolicy\": {\n"
+                b"          \"type\": \"string\",\n"
+                b"          \"enum\": [\n"
+                b"            \"Forbid\"\n"
+                b"          ]\n"
+                b"        },\n"
+                b"        \"startingDeadlineSeconds\": {\n"
+                b"          \"type\": \"integer\",\n"
+            ),
+            (
+                b"        },\n"
+                b"        \"concurrencyPolicy\": {\n"
+                b"          \"type\": \"string\",\n"
+                b"          \"enum\": [\"Forbid\"]\n"
+                b"        },\n"
+                b"        \"startingDeadlineSeconds\": {\n"
+                b"          \"type\": \"integer\",\n"
+            ),
+        ),
+        (
+            (
+                b"        },\n"
+                b"        \"autoscaling\": {\n"
+                b"          \"$ref\": \"#/definitions/autoscaling\"\n"
+                b"        },\n"
+                b"        \"ssrProxyResources\": {\n"
+                b"          \"$ref\": \"#/definitions/resources\"\n"
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+            (
+                b"        },\n"
+                b"        \"autoscaling\": {\n"
+                b"          \"$ref\": \"#/definitions/autoscaling\"\n"
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+        ),
+        (
+            (
+                b"        \"prometheus\": {\n"
+                b"          \"type\": \"object\",\n"
+                b"          \"additionalProperties\": false,\n"
+                b"          \"required\": [\n"
+                b"            \"namespaceSelector\",\n"
+                b"            \"podSelector\"\n"
+                b"          ],\n"
+                b"          \"properties\": {\n"
+                b"            \"namespaceSelector\": {\n"
+                b"              \"type\": \"object\",\n"
+            ),
+            (
+                b"        \"prometheus\": {\n"
+                b"          \"type\": \"object\",\n"
+                b"          \"additionalProperties\": false,\n"
+                b"          \"required\": [\"namespaceSelector\", \"podSelector\"],\n"
+                b"          \"properties\": {\n"
+                b"            \"namespaceSelector\": {\n"
+                b"              \"type\": \"object\",\n"
+            ),
+        ),
+        (
+            (
+                b"        \"elasticsearch\": {\n"
+                b"          \"type\": \"object\",\n"
+                b"          \"additionalProperties\": false,\n"
+                b"          \"required\": [\n"
+                b"            \"namespaceSelector\",\n"
+                b"            \"podSelector\"\n"
+                b"          ],\n"
+                b"          \"properties\": {\n"
+                b"            \"namespaceSelector\": {\n"
+                b"              \"type\": \"object\",\n"
+            ),
+            (
+                b"        \"elasticsearch\": {\n"
+                b"          \"type\": \"object\",\n"
+                b"          \"additionalProperties\": false,\n"
+                b"          \"required\": [\"namespaceSelector\", \"podSelector\"],\n"
+                b"          \"properties\": {\n"
+                b"            \"namespaceSelector\": {\n"
+                b"              \"type\": \"object\",\n"
+            ),
+        ),
+    ),
+    "charts/university-ecosystem/values.yaml": (
+        (
+            (
+                b"  trustDomain: \"\"\n"
+                b"  backendSpiffeID: \"\"\n"
+                b"  gatewaySpiffeID: \"\"\n"
+                b"  frontendSpiffeID: \"\"\n"
+                b"  wsHubSpiffeID: \"\"\n"
+                b"  fileProcessorSpiffeID: \"\"\n"
+                b"  workloadAPI:\n"
+            ),
+            (
+                b"  trustDomain: \"\"\n"
+                b"  backendSpiffeID: \"\"\n"
+                b"  gatewaySpiffeID: \"\"\n"
+                b"  wsHubSpiffeID: \"\"\n"
+                b"  fileProcessorSpiffeID: \"\"\n"
+                b"  workloadAPI:\n"
+            ),
+        ),
+        (
+            (
+                b"\n"
+                b"# Frontend Service (Node SSR)\n"
+                b"frontend:\n"
+                b"  # The SPIFFE sidecar reuses the gateway image,"
+                b" never its gateway identity.\n"
+                b"  ssrProxyResources:\n"
+                b"    requests:\n"
+                b"      cpu: 25m\n"
+                b"      memory: 32Mi\n"
+                b"    limits:\n"
+                b"      cpu: 100m\n"
+                b"      memory: 128Mi\n"
+                b"  replicaCount: 2\n"
+                b"  image:\n"
+                b"    repository: university-frontend\n"
+            ),
+            (
+                b"\n"
+                b"# Frontend Service (Node SSR)\n"
+                b"frontend:\n"
+                b"  replicaCount: 2\n"
+                b"  image:\n"
+                b"    repository: university-frontend\n"
+            ),
+        ),
+    ),
+}
+
+
+def _nov17_ssr_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    pins = _NOV17_SSR_CHART_PINS.get(path)
+    if pins is None:
+        return actual
+    current_sha, previous_sha = pins
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"Helm SSR source postimage changed: {path}"
+    )
+    historical = actual
+    for current, previous in _NOV17_SSR_CHART_REVERSALS[path]:
+        assert historical.count(current) == 1, (
+            f"Helm SSR source inverse hunk changed: {path}"
+        )
+        historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == previous_sha, (
+        f"Helm SSR source predecessor changed: {path}"
+    )
+    return historical
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov17_ssr_chart_historical_source_bytes(path, actual)
     actual = _nov16_chart_comment_historical_source_bytes(path, actual)
     actual = _nov14_image_pull_historical_source_bytes(path, actual)
     actual = _nov12_chart_historical_source_bytes(path, actual)
@@ -35475,6 +35724,7 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
     )
     assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_PREVIOUS_SHA256
     values = (root / _NOV16_VALUES_PATH).read_bytes()
+    values = _nov17_ssr_chart_historical_source_bytes(_NOV16_VALUES_PATH, values)
     assert hashlib.sha256(values).digest() == _NOV16_VALUES_CURRENT_SHA256
     historical_values = _nov16_chart_comment_historical_source_bytes(
         _NOV16_VALUES_PATH, values
@@ -35537,6 +35787,7 @@ def test_nov16_push_observation_projection_rejects_drift(
     elif mutation.startswith("values_"):
         path = _NOV16_VALUES_PATH
         values = (root / path).read_bytes()
+        values = _nov17_ssr_chart_historical_source_bytes(path, values)
         if mutation == "values_extra":
             actual = values + b"\n"
         else:
@@ -35597,3 +35848,58 @@ def _nov16_chart_comment_historical_source_bytes(path: str, actual: bytes) -> by
         f"conditional disposition source file SHA-256 changed: {path}"
     )
     return historical
+
+
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+def test_nov17_ssr_chart_rebind_preserves_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    historical = _nov17_ssr_chart_historical_source_bytes(path, actual)
+    assert hashlib.sha256(actual).digest() == _NOV17_SSR_CHART_PINS[path][0]
+    assert hashlib.sha256(historical).digest() == _NOV17_SSR_CHART_PINS[path][1]
+    replayed = historical
+    for current, previous in reversed(_NOV17_SSR_CHART_REVERSALS[path]):
+        assert replayed.count(previous) == 1
+        replayed = replayed.replace(previous, current, 1)
+    assert replayed == actual
+
+
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+@pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate", "changed"])
+def test_nov17_ssr_chart_rebind_rejects_postimage_drift(path: str, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    for current, _previous in _NOV17_SSR_CHART_REVERSALS[path]:
+        mutated = {
+            "extra": actual + b"\n",
+            "missing": actual.replace(current, b"", 1),
+            "duplicate": actual + current,
+            "changed": actual.replace(current, current + b" ", 1),
+        }[mutation]
+        with pytest.raises(AssertionError, match="Helm SSR source postimage changed"):
+            _nov17_ssr_chart_historical_source_bytes(path, mutated)
+
+
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+def test_nov17_ssr_chart_rebind_rejects_inverse_drift(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    original = _NOV17_SSR_CHART_REVERSALS[path]
+    for index, (current, previous) in enumerate(original):
+        changed = list(original)
+        changed[index] = (current, previous + b" ")
+        monkeypatch.setitem(_NOV17_SSR_CHART_REVERSALS, path, tuple(changed))
+        with pytest.raises(AssertionError, match="Helm SSR source predecessor changed"):
+            _nov17_ssr_chart_historical_source_bytes(path, actual)
+    monkeypatch.setitem(_NOV17_SSR_CHART_REVERSALS, path, original)
+    current_sha, _previous_sha = _NOV17_SSR_CHART_PINS[path]
+    monkeypatch.setitem(_NOV17_SSR_CHART_PINS, path, (current_sha, bytes(32)))
+    with pytest.raises(AssertionError, match="Helm SSR source predecessor changed"):
+        _nov17_ssr_chart_historical_source_bytes(path, actual)
+
+
+def test_nov17_ssr_chart_rebind_does_not_project_other_paths() -> None:
+    actual = b"unrelated source\n"
+    assert _nov17_ssr_chart_historical_source_bytes("unrelated.yml", actual) is actual
