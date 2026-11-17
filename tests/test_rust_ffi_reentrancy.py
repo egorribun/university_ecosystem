@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import textwrap
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -114,3 +115,15 @@ def test_native_wrappers_extract_owned_values_before_detaching():
             assert body.index(f"{variable}.extract()?") < detach
         assert ".lock()" not in body
     assert "SCHEDULE_ITEM_EXTRACT_LOCK" not in source
+
+
+def test_mutation_baseline_copies_native_ownership_contract_input():
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    mutation = config["tool"]["mutmut"]
+    assert "native/rust_ext/src" in mutation["also_copy"]
+    assert "tests/" in mutation["pytest_add_cli_args_test_selection"]
+    arguments = (
+        mutation["pytest_add_cli_args"]
+        + mutation["pytest_add_cli_args_test_selection"]
+    )
+    assert not any("test_rust_ffi_reentrancy" in argument for argument in arguments)
