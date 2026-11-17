@@ -329,7 +329,9 @@ export function MapSidebar({
     return floor.rooms.map((room) => {
       const isActive = selectedRoom === room.id
       const status =
-        todayLessons && campusTimeZone ? getRoomStatus(room.id, todayLessons, campusTimeZone) : null
+        todayLessons && campusTimeZone
+          ? getRoomStatus(room.id, todayLessons, campusTimeZone, new Date(minuteClock))
+          : null
       return (
         <button
           key={room.id}
@@ -369,7 +371,7 @@ export function MapSidebar({
         </button>
       )
     })
-  }, [floor, building, selectedRoom, todayLessons, campusTimeZone, t, onRoomClick])
+  }, [floor, building, selectedRoom, todayLessons, campusTimeZone, minuteClock, t, onRoomClick])
 
   if (!isOpen) return null
 
