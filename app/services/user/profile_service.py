@@ -135,6 +135,13 @@ class UserProfileService:
         payload = data.model_dump(exclude_unset=True)
         reset_requested = bool(payload.pop("reset_mfa", False))
 
+        # The published PATCH contract accepts null identity fields. Treat them
+        # as unchanged, never as a request to clear non-null identity columns.
+        # Nullable profile fields (including group_id) still retain clear semantics.
+        for field in ("email", "role"):
+            if field in payload and payload[field] is None:
+                payload.pop(field)
+
         if "email" in payload and payload["email"] is not None:
             payload["email"] = str(payload["email"]).strip().lower()
 
