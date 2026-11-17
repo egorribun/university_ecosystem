@@ -712,15 +712,18 @@ class S3Storage(StorageBackend):
 
     async def _delete_abandoned_key(self, key: str) -> None:
         """Run the compensating delete to completion even if the caller is cancelled again."""
-        task = asyncio.create_task(self.delete_file(f"{self.base_url}/{key}"))
+        async def delete_safely() -> None:
+            # Catch inside the task: a cancelled shield waiter cannot consume
+            # a later provider exception, which asyncio may otherwise log.
+            try:
+                await self.delete_file(f"{self.base_url}/{key}")
+            except Exception:  # RZ-22-01-JUSTIFIED: preserve the primary error and never expose provider details from detached cleanup
+                logger.warning("s3_abandoned_upload_delete_failed")
+
+        task = asyncio.create_task(delete_safely())
         self._abandoned_delete_tasks.add(task)
         task.add_done_callback(self._abandoned_delete_tasks.discard)
-        try:
-            await asyncio.shield(task)
-        except Exception as err:  # RZ-22-01-JUSTIFIED: compensation must not replace the original upload failure
-            logger.warning(
-                "s3_abandoned_upload_delete_failed", error_type=type(err).__name__
-            )
+        await asyncio.shield(task)
 
     @asynccontextmanager
     async def _build_aioboto3_client(self) -> AsyncIterator[Any]:
