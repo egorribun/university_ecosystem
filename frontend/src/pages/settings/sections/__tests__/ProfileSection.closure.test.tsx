@@ -1,5 +1,5 @@
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { LazyMotion, domAnimation } from "framer-motion"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -242,17 +242,20 @@ describe("ProfileSection closure", () => {
 
   it.each(["avatar", "cover"] as const)(
     "refuses to open %s with an outdated rendered session",
-    (media) => {
+    async (media) => {
       render(view())
       const title = screen.getByRole("button", {
         name: media === "avatar" ? /settings:media\.avatar\.title/ : /settings:media\.cover\.title/,
       })
       fireEvent.click(title)
-      invalidateSessionEpoch()
-      fireEvent.click(screen.getByRole("button", { name: `settings:media.${media}.change` }))
-      expect(
-        media === "avatar" ? profileState.triggerAvatarPick : profileState.triggerCoverPick
-      ).not.toHaveBeenCalled()
+      await act(async () => {
+        invalidateSessionEpoch()
+        fireEvent.click(screen.getByRole("button", { name: `settings:media.${media}.change` }))
+        expect(
+          media === "avatar" ? profileState.triggerAvatarPick : profileState.triggerCoverPick
+        ).not.toHaveBeenCalled()
+        await Promise.resolve()
+      })
     }
   )
 
