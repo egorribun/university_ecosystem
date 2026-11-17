@@ -68,10 +68,7 @@ def test_reordered_metrics_are_aggregated_by_unit_not_position() -> None:
     ["30 ns/op", "30 ns/op 300 allocs/op", "30 ns/op 300 B/op 2 allocs/op"],
 )
 def test_repeated_benchmark_rejects_changed_metric_set(metrics: str) -> None:
-    output = (
-        "BenchmarkLookup-4 10 10 ns/op 100 B/op\n"
-        f"BenchmarkLookup-4 20 {metrics}\n"
-    )
+    output = f"BenchmarkLookup-4 10 10 ns/op 100 B/op\nBenchmarkLookup-4 20 {metrics}\n"
 
     with pytest.raises(ValueError, match="Inconsistent Go benchmark metric units"):
         aggregate_go_benchmarks(output)
@@ -96,8 +93,7 @@ def test_invalid_metric_schema_does_not_overwrite_output(tmp_path: Path) -> None
     source = tmp_path / "input.txt"
     output = tmp_path / "output.txt"
     source.write_text(
-        "BenchmarkLookup-4 10 10 ns/op\n"
-        "BenchmarkLookup-4 20 30 ns/op 100 B/op\n",
+        "BenchmarkLookup-4 10 10 ns/op\nBenchmarkLookup-4 20 30 ns/op 100 B/op\n",
         encoding="utf-8",
     )
     output.write_text("previous verified report\n", encoding="utf-8")
