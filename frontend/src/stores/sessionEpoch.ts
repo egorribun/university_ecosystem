@@ -23,6 +23,30 @@ export type BrowserSessionTransition = {
 
 let epoch = 0
 let latestTransitionAttempt = 0
+const sessionIdentityListeners = new Set<() => void>()
+let sessionIdentityNotificationQueued = false
+
+const scheduleSessionIdentityNotification = () => {
+  if (sessionIdentityNotificationQueued || sessionIdentityListeners.size === 0) return
+  sessionIdentityNotificationQueued = true
+  queueMicrotask(() => {
+    sessionIdentityNotificationQueued = false
+    for (const listener of sessionIdentityListeners) listener()
+  })
+}
+
+/** Subscribe to same-tab transitions and browser storage changes. */
+export const subscribeSessionIdentity = (listener: () => void) => {
+  sessionIdentityListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === GENERATION_KEY) scheduleSessionIdentityNotification()
+  }
+  if (typeof window !== "undefined") window.addEventListener("storage", onStorage)
+  return () => {
+    sessionIdentityListeners.delete(listener)
+    if (typeof window !== "undefined") window.removeEventListener("storage", onStorage)
+  }
+}
 // A failed localStorage write must not erase an already observed cross-tab mismatch.
 let failedRotationGeneration: string | null | undefined
 let failedRotationWasStale = false
@@ -114,8 +138,7 @@ const isStaleBrowserSessionBindingAt = (snapshot: GenerationSnapshot) => {
   if (snapshot.status !== "present") return false
   return snapshot.value.nonce !== boundGeneration
 }
-export const isCurrentBrowserSession = () => {
-  const snapshot = readGenerationSnapshot()
+const isCurrentBrowserSessionAt = (snapshot: GenerationSnapshot) => {
   if (
     (failedRotationGeneration !== undefined && isStaleBrowserSessionBindingAt(snapshot)) ||
     snapshot.status === "invalid" ||
@@ -129,28 +152,43 @@ export const isCurrentBrowserSession = () => {
   const currentGeneration = snapshot.status === "present" ? snapshot.value.nonce : null
   return boundGeneration === currentGeneration
 }
+export const isCurrentBrowserSession = () => isCurrentBrowserSessionAt(readGenerationSnapshot())
+/** Stable primitive snapshot for React's external-store identity boundary. */
+export const getSessionIdentitySnapshot = () => {
+  const snapshot = readGenerationSnapshot()
+  const generation = snapshot.status === "present" ? snapshot.value.nonce : null
+  return JSON.stringify([epoch, generation, isCurrentBrowserSessionAt(snapshot)])
+}
+
+/** Server rendering has no external-store assertion about a browser binding. */
+export const getServerSessionIdentitySnapshot = () => "[0,null,null]"
+
 export const hasStaleBrowserSessionBinding = () =>
   isStaleBrowserSessionBindingAt(readGenerationSnapshot())
 export const hasFailedBrowserSessionRotation = () => failedRotationGeneration !== undefined
 export const acceptBrowserSessionGeneration = () => {
-  const snapshot = readGenerationSnapshot()
-  if (failedRotationGeneration !== undefined || failedRotationWasStale) {
-    isStaleBrowserSessionBindingAt(snapshot)
-    boundGeneration = null
-    return
-  }
-  if (snapshot.status === "invalid" || snapshot.status === "unavailable") {
-    const previousBoundGeneration = boundGeneration
-    boundGeneration = null
-    if (previousBoundGeneration !== null) {
-      failedRotationGeneration = previousBoundGeneration
-      failedRotationWasStale = true
-      failedRotationSnapshot = snapshot
+  try {
+    const snapshot = readGenerationSnapshot()
+    if (failedRotationGeneration !== undefined || failedRotationWasStale) {
+      isStaleBrowserSessionBindingAt(snapshot)
+      boundGeneration = null
+      return
     }
-    return
+    if (snapshot.status === "invalid" || snapshot.status === "unavailable") {
+      const previousBoundGeneration = boundGeneration
+      boundGeneration = null
+      if (previousBoundGeneration !== null) {
+        failedRotationGeneration = previousBoundGeneration
+        failedRotationWasStale = true
+        failedRotationSnapshot = snapshot
+      }
+      return
+    }
+    boundGeneration = snapshot.status === "present" ? snapshot.value.nonce : null
+    clearFailedRotation()
+  } finally {
+    scheduleSessionIdentityNotification()
   }
-  boundGeneration = snapshot.status === "present" ? snapshot.value.nonce : null
-  clearFailedRotation()
 }
 export const matchesBrowserSession = (hash: string, nonce: string) => {
   const current = readGeneration()
@@ -159,6 +197,7 @@ export const matchesBrowserSession = (hash: string, nonce: string) => {
 export const getSessionEpoch = () => epoch
 export const invalidateSessionEpoch = () => {
   epoch += 1
+  scheduleSessionIdentityNotification()
 }
 
 /**
@@ -332,6 +371,8 @@ export const establishBrowserSession = (
     return nonce
   } catch {
     return null
+  } finally {
+    scheduleSessionIdentityNotification()
   }
 }
 export const captureSessionEpoch = (expected = epoch) => {
