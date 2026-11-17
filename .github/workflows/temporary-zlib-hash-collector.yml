@@ -1,0 +1,189 @@
+name: Temporary signed Alpine zlib hash collector
+
+# Temporary evidence only. Close the dedicated PR after collection; do not merge.
+# No production workflow or dependency pins are changed.
+on:
+  pull_request:
+    types: [opened]
+    branches: [egorribun]
+    paths:
+      - .github/workflows/temporary-zlib-hash-collector.yml
+
+permissions: {}
+
+jobs:
+  collect:
+    if: >-
+      github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' &&
+      github.event.pull_request.head.ref == 'coff/evidence-zlib-step-admission' &&
+      github.event.pull_request.base.sha == '1f110064685fc847ded55d324a7a3caf9d5297e8'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Enforce workflow binding in the observed step context before any network.
+      # The earlier job-level skip cause is not established by this change.
+      - name: Require nonempty matching workflow and event merge identities
+        shell: bash
+        env:
+          WORKFLOW_PRESENT: ${{ github.workflow_sha != '' }}
+          SHA_PRESENT: ${{ github.sha != '' }}
+          MERGE_PRESENT: ${{ github.event.pull_request.merge_commit_sha != '' }}
+          WORKFLOW_EQUALS_MERGE: ${{ github.workflow_sha == github.event.pull_request.merge_commit_sha }}
+          WORKFLOW_EQUALS_SHA: ${{ github.workflow_sha == github.sha }}
+          SHA_EQUALS_MERGE: ${{ github.sha == github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+
+          names = (
+              "WORKFLOW_PRESENT",
+              "SHA_PRESENT",
+              "MERGE_PRESENT",
+              "WORKFLOW_EQUALS_MERGE",
+              "WORKFLOW_EQUALS_SHA",
+              "SHA_EQUALS_MERGE",
+          )
+          if any(os.environ.get(name) != "true" for name in names):
+              raise SystemExit("Workflow admission rejected")
+          print("Workflow admission accepted")
+          PY
+      - name: Verify fixed official APK inputs and collect whole-file hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import uuid
+
+          # The existing production Node image is the immutable verifier/key source.
+          # apk verify checks both package integrity and signature using bundled keys:
+          # alpinelinux/apk-tools@84f46aecf4100b943c55eeab327da9ba28aff1d1
+          # doc/apk-verify.8.scd. No keys are fetched from the package endpoint.
+          IMAGE = (
+              "node:24.21.0-alpine@sha256:"
+              "ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
+          )
+          VERSION = "1.4-r0"
+          INPUTS = tuple(
+              (branch, arch)
+              for branch in ("3.23", "3.24")
+              for arch in ("x86_64", "aarch64")
+          )
+          MAX_BYTES = 1024 * 1024
+
+          STAGES = {"pull"} | {
+              f"{branch}/{arch}/{operation}"
+              for branch, arch in INPUTS
+              for operation in ("download", "trusted", "empty-trust", "truncated")
+          }
+
+          def execute(args, timeout, stage, expected=0):
+              if stage not in STAGES:
+                  raise RuntimeError("Invalid collector stage")
+              try:
+                  result = subprocess.run(
+                      args,
+                      stdin=subprocess.DEVNULL,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                      timeout=timeout,
+                      check=False,
+                  )
+              except subprocess.TimeoutExpired:
+                  print(json.dumps({"stage": stage, "exit": "timeout"}), flush=True)
+                  raise RuntimeError("Collector stage timed out") from None
+              except OSError:
+                  print(json.dumps({"stage": stage, "exit": "launch-error"}), flush=True)
+                  raise RuntimeError("Collector stage could not launch") from None
+              code = result.returncode
+              safe_code = code if -255 <= code <= 255 else "out-of-range"
+              print(json.dumps({"stage": stage, "exit": safe_code}), flush=True)
+              if code != expected:
+                  raise RuntimeError("Collector command failed its fixed exit contract")
+
+          execute(["docker", "pull", IMAGE], 180, "pull")
+          results = []
+          with tempfile.TemporaryDirectory(prefix="verified-zlib-") as temporary:
+              directory = Path(temporary)
+              directory.chmod(0o755)
+              empty_keys = directory / "empty-keys"
+              empty_keys.mkdir(mode=0o755)
+              for branch, arch in INPUTS:
+                  filename = f"zlib-{branch}-{arch}.apk"
+                  package = directory / filename
+                  url = (
+                      "https://dl-cdn.alpinelinux.org/alpine/"
+                      f"v{branch}/main/{arch}/zlib-{VERSION}.apk"
+                  )
+                  # No -L: redirects fail rather than expanding trusted destinations.
+                  execute(
+                      ["curl", "--fail", "--silent", "--show-error",
+                       "--proto", "=https", "--connect-timeout", "10",
+                       "--max-time", "45", "--max-filesize", str(MAX_BYTES),
+                       "--output", str(package), url],
+                      50,
+                      f"{branch}/{arch}/download",
+                  )
+                  if not 0 < package.stat().st_size <= MAX_BYTES:
+                      raise RuntimeError("Package size outside collector bounds")
+                  package.chmod(0o644)
+                  command = [
+                      "docker", "run", "--rm", "--network", "none", "--read-only",
+                      "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                      "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
+                      "--user", "10001:10001",
+                      "--mount", f"type=bind,src={directory},dst=/packages,readonly",
+                      "--entrypoint", "/sbin/apk", IMAGE,
+                      "--keys-dir", "/etc/apk/keys", "verify",
+                  ]
+                  def verify(path, keys, operation, expected=0):
+                      isolated = command.copy()
+                      name = "zlib-collector-" + uuid.uuid4().hex
+                      isolated[2:2] = ["--name", name]
+                      isolated[isolated.index("--keys-dir") + 1] = keys
+                      try:
+                          execute(
+                              isolated + [path], 30,
+                              f"{branch}/{arch}/{operation}", expected=expected,
+                          )
+                      finally:
+                          # Client timeout must not leave a verifier container running.
+                          subprocess.run(
+                              ["docker", "rm", "-f", name],
+                              stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL,
+                              timeout=10,
+                              check=False,
+                          )
+
+                  verify(f"/packages/{filename}", "/etc/apk/keys", "trusted")
+                  # Same intact APK must fail without trusted signing keys.
+                  # This distinguishes signature enforcement from checksum-only parsing.
+                  verify(f"/packages/{filename}", "/packages/empty-keys", "empty-trust", expected=1)
+                  content = package.read_bytes()
+                  # A broken verifier/runtime must not count as a negative control:
+                  # apk verify returns exactly 1 for one invalid package.
+                  corrupt = directory / "truncated.apk"
+                  corrupt.write_bytes(content[: len(content) // 2])
+                  corrupt.chmod(0o644)
+                  verify("/packages/truncated.apk", "/etc/apk/keys", "truncated", expected=1)
+                  corrupt.unlink()
+                  results.append({
+                      "branch": branch,
+                      "requested_version": VERSION,
+                      "requested_arch": arch,
+                      "sha256": hashlib.sha256(content).hexdigest(),
+                  })
+              # Emit no partial hash results or raw package/command output.
+              # Requested tuple is NOT a claim that signed metadata was decoded.
+              if len(results) != 4:
+                  raise RuntimeError("Incomplete collector result")
+              for result in results:
+                  print(json.dumps(result, sort_keys=True))
+          PY
