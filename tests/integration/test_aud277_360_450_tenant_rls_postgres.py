@@ -1826,3 +1826,117 @@ async def test_room_membership_callback_obeys_parent_tenant_rls(
                 )
         finally:
             admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Real warmup, query handler, session listener and non-bypass PostgreSQL role."""
+    from app.core.db.listeners import register_tenant_listeners
+    from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
+    from app.deps.cache import MemoryCache
+    from app.services.cache_warmup import _warm_schedule_group
+
+    register_tenant_listeners()
+    group_id, lesson_id = uuid.uuid4(), uuid.uuid4()
+    start = dt.datetime(2026, 11, 9, 9, tzinfo=dt.UTC)
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    cache = MemoryCache(default_ttl=300)
+    tenant_token = tenant_id_ctx.set(str(_TENANT_B))
+    bypass_token = bypass_rls_ctx.set(False)
+    try:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO groups(id, name, tenant_id) VALUES (:id, :name, :tenant)"
+                ),
+                {"id": group_id, "name": str(group_id), "tenant": _TENANT_B},
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO schedule(id, group_id, tenant_id, subject, weekday, start_time, end_time, lesson_type) "
+                    "VALUES (:id, :group, :tenant, 'private B schedule', 'monday', :start, :end, 'lecture')"
+                ),
+                {
+                    "id": lesson_id,
+                    "group": group_id,
+                    "tenant": _TENANT_B,
+                    "start": start,
+                    "end": start + dt.timedelta(hours=1),
+                },
+            )
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            await _warm_schedule_group(cache, session, group_id, ttl_seconds=300)
+            entry = await cache.get(f"schedule:group:{group_id}")
+            assert entry is not None
+            assert entry.payload[0]["subject"] == "private B schedule"
+            visible = await GetScheduleHandler(session, cache).handle(
+                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
+            )
+            assert visible.payload[0]["subject"] == "private B schedule"
+            assert visible.etag is not None
+
+        for tenant in (_TENANT_A, None):
+            tenant_id_ctx.set(str(tenant) if tenant else "")
+            async with factory() as session:
+                evidence = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT rolsuper, rolbypassrls, pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                            "row_security_active('public.groups'), row_security_active('public.schedule') "
+                            "FROM pg_roles WHERE rolname=current_user"
+                        )
+                    )
+                ).one()
+                assert tuple(evidence) == (False, False, False, True, True)
+                assert (
+                    await session.scalar(
+                        sa.text("SELECT count(*) FROM schedule WHERE id=:id"),
+                        {"id": lesson_id},
+                    )
+                ) == 0
+                # Warmup really populated an unscoped legacy key. Neither its
+                # body nor either old validator can bypass the current RLS.
+                for validator in (None, visible.etag, f'"{entry.etag}"'):
+                    hidden = await GetScheduleHandler(session, cache).handle(
+                        GetScheduleQuery(
+                            group_id=group_id, locale="en", if_none_match=validator
+                        )
+                    )
+                    assert hidden.payload == []
+                    assert hidden.not_modified is False
+                unchanged = await GetScheduleHandler(session, cache).handle(
+                    GetScheduleQuery(
+                        group_id=group_id, locale="en", if_none_match=hidden.etag
+                    )
+                )
+                assert unchanged.not_modified is True
+                assert unchanged.payload is None
+        tenant_id_ctx.set(str(_TENANT_B))
+        async with factory() as session:
+            restored = await GetScheduleHandler(session, cache).handle(
+                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
+            )
+            assert restored.payload[0]["subject"] == "private B schedule"
+    finally:
+        try:
+            await engine.dispose()
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text("DELETE FROM schedule WHERE id=:id"), {"id": lesson_id}
+                )
+                connection.execute(
+                    sa.text("DELETE FROM groups WHERE id=:id"), {"id": group_id}
+                )
+        finally:
+            admin.dispose()
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)

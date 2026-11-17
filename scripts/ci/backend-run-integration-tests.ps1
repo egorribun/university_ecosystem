@@ -60,6 +60,7 @@ expected = {'tests.integration.test_mvp_baseline_schema_equivalence': ('test_pro
                                                             'test_baseline_refuses_populated_pgx_namespace'),
  'tests.integration.test_aud277_360_450_tenant_rls_postgres': ('test_no_permissive_true_policy_remains_on_core_tables',
                                                                'test_room_membership_callback_obeys_parent_tenant_rls',
+                                                               'test_schedule_query_ignores_shared_cache_across_tenant_rls',
                                                                'test_tenant_session_sees_only_its_rows_and_never_null_rows',
                                                                'test_guc_bypass_cannot_expose_other_tenants_or_null_rows',
                                                                'test_dedicated_bypass_role_member_sees_every_row',

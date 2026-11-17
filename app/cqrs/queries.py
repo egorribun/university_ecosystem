@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 from collections.abc import Sequence
@@ -40,9 +41,6 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         self.db = db
         self.cache = cache
 
-    def _schedule_cache_key(self, group_id: uuid.UUID | str) -> str:
-        return f"schedule:group:{group_id}"
-
     def _localize_schedule_payload(
         self, payload: Sequence[Any], locale: str | None
     ) -> list[dict[str, Any]]:
@@ -56,23 +54,8 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         return localized
 
     async def handle(self, query: GetScheduleQuery) -> QueryResult:
-        cache_key = self._schedule_cache_key(query.group_id)
-
-        if self.cache.enabled:
-            cached = await self.cache.get(cache_key)
-            if cached:
-                if query.if_none_match and cached.etag == query.if_none_match.strip(
-                    '"'
-                ):
-                    return QueryResult(
-                        payload=None, etag=format_etag(cached.etag), not_modified=True
-                    )
-
-                localized = self._localize_schedule_payload(
-                    cached.payload, locale=query.locale
-                )
-                return QueryResult(payload=localized, etag=format_etag(cached.etag))
-
+        # Shared group-only entries can outlive the tenant scope that filled them.
+        # Always query through this session's RLS before evaluating a validator.
         # Fetch from DB using Repository  # LOW-W19: ScheduleRepository import moved to top-level
         repo = ScheduleRepository(self.db)
 
@@ -88,13 +71,18 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
             payload, locale=query.locale
         )
 
-        etag = None
-        if self.cache.enabled:
-            entry = await self.cache.set(
-                cache_key, payload, ttl=300
-            )  # _SCHEDULE_CACHE_TTL_SECONDS
-            etag = format_etag(entry.etag)
-
+        # Hash the localized representation, never an unscoped cached payload.
+        digest = hashlib.sha256(
+            json.dumps(
+                localized_payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        etag = format_etag(digest)
+        if etag_matches(digest, query.if_none_match):
+            return QueryResult(payload=None, etag=etag, not_modified=True)
         return QueryResult(payload=localized_payload, etag=etag)
 
 
@@ -179,8 +167,6 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         return canonical
 
     def _compute_etag(self, payload: dict[str, Any]) -> str:
-        import hashlib
-
         serialized = json.dumps(
             payload,
             ensure_ascii=False,
