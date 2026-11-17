@@ -2779,7 +2779,7 @@ export type UserAdminUpdate = {
   /**
    * Email
    */
-  email?: string | null
+  email?: string
   /**
    * Full Name
    */
@@ -2792,7 +2792,10 @@ export type UserAdminUpdate = {
    * Reset Mfa
    */
   reset_mfa?: boolean | null
-  role?: UserRole | null
+  /**
+   * Role
+   */
+  role?: UserRole
 }
 
 /**
