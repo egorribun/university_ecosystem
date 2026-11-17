@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
   namespaces: [] as unknown[],
+  reduce: false,
 }))
+
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => state.reduce }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: (namespaces: unknown) => {
@@ -48,6 +51,7 @@ const setScrollY = (value: number) => {
 }
 
 beforeEach(() => {
+  state.reduce = false
   state.namespaces.length = 0
   setScrollY(0)
 })
@@ -57,6 +61,40 @@ afterEach(() => {
 })
 
 describe("BackToTop mutation contract", () => {
+  it("disables scrolling, FAB and magnetic motion when preference changes", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+    setScrollY(900)
+    const view = render(<BackToTop />)
+    const button = screen.getByRole("button")
+    const magnetic = button.parentElement!
+    magnetic.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect
+    fireEvent.mouseMove(magnetic, { clientX: 90, clientY: 80 })
+    expect(magnetic).toHaveStyle({ transform: "translate3d(12px, 9px, 0)" })
+    button.focus()
+
+    state.reduce = true
+    view.rerender(<BackToTop />)
+    expect(button).toHaveFocus()
+    expect(button).toHaveAttribute("data-motion-initial", "false")
+    expect(button).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+    expect(button).toHaveAttribute("data-motion-exit", JSON.stringify({ opacity: 0 }))
+    expect(button).toHaveAttribute("data-motion-while-hover", "undefined")
+    expect(button).toHaveAttribute("data-motion-while-tap", "undefined")
+    expect(magnetic).toHaveStyle({ transform: "none", transition: "none" })
+    fireEvent.mouseMove(magnetic, { clientX: 10, clientY: 10 })
+    expect(magnetic).toHaveStyle({ transform: "none" })
+    fireEvent.click(button)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" })
+
+    state.reduce = false
+    view.rerender(<BackToTop />)
+    fireEvent.click(button)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "smooth" })
+    fireEvent.mouseLeave(magnetic)
+    expect(magnetic).toHaveStyle({ transform: "translate3d(0px, 0px, 0)" })
+  })
+
   it("keeps mount effects stable and observer cleanup null-safe", () => {
     expect(() => disconnectBackToTopObserver(null)).not.toThrow()
     const disconnect = vi.fn()
