@@ -49,8 +49,10 @@ class AuthFingerprintService:
         # for API calls but by the browser for document/SSR requests. It is
         # useful telemetry, not a stable authentication signal. Keep the
         # fail-closed revocation boundary on a non-empty User-Agent change.
+        # Header text may contain non-ASCII values; compare_digest only accepts
+        # ASCII str inputs. UTF-8 preserves exact equality without normalization.
         if stored_fp.user_agent and hmac.compare_digest(
-            current_fp.user_agent, stored_fp.user_agent
+            current_fp.user_agent.encode("utf-8"), stored_fp.user_agent.encode("utf-8")
         ):
             return
         if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
