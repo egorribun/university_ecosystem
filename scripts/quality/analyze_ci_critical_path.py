@@ -30,6 +30,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ISO_RE = re.compile(r"Z$", re.ASCII)
@@ -550,13 +551,15 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 and "runner_name" in record
                 and record["runner_name"] is None
                 and record.get("labels") in ([], ["ubuntu-24.04"])
-                and started - completed <= timedelta(seconds=10)
             ):
                 # Observed in run 43981164331, job 133702960401, attempt 1.
                 # Also run 43982705590, job 133718444854: the Ubuntu selector
                 # is requested runner metadata, not proof of execution.
                 # Run 43983640643, job 133721977888, has a ten-second inversion.
-                # These exact no-runner/no-steps shapes record no execution.
+                # Run 43993477629, job 133752022363, has an eleven-second
+                # inversion. No documented elapsed-time bound applies to this
+                # nonexecution classification: contradictory timing is never
+                # certified, regardless of the magnitude of the inversion.
                 # Preserve both timestamps and mark queue timing unavailable;
                 # do not infer clock skew or broaden executed-job validation.
                 queued = None
@@ -1328,6 +1331,60 @@ def _strict_provenance(
     }
 
 
+def _mark_nonexecution_timing(
+    report: dict[str, object], jobs: Sequence[JobTiming]
+) -> dict[str, object]:
+    """Keep nonexecution work costs distinct from contradictory API timing."""
+    affected = sorted(
+        job.job_id
+        for job in jobs
+        if job.rerun_timing_kind
+        == "first_attempt_unexecuted_skip_timestamp_inversion"
+    )
+    if not affected:
+        return report
+    summary = cast(dict[str, object], report["summary"])
+    summary["timing_integrity"] = {
+        "state": "contradictory",
+        "affected_job_ids": affected,
+        "certification": "unavailable",
+        "utilization_scope": "valid_execution_intervals_only",
+    }
+    if report["analysis_mode"] == "strict":
+        summary["critical_path_kind"] = "dependency-work-cost"
+        summary["dependency_work_cost_path_seconds"] = summary.pop(
+            "critical_path_seconds"
+        )
+    valid_intervals = any(
+        job.started_at is not None
+        and job.completed_at is not None
+        and job.completed_at > job.started_at
+        for job in jobs
+    )
+    if not valid_intervals:
+        for field in (
+            "wall_clock_seconds",
+            "peak_slot_utilization",
+            "peak_concurrency",
+            "average_slot_utilization",
+        ):
+            summary[field] = None
+        if report["analysis_mode"] == "diagnostic-lower-bound":
+            summary["critical_path_lower_bound_seconds"] = None
+    rows = cast(list[dict[str, object]], report["jobs"])
+    for row in rows:
+        if report["analysis_mode"] == "strict":
+            row["critical_path_end_basis"] = "dependency-work-cost"
+        if row["id"] in affected:
+            row["duration_seconds"] = None
+            row["dependency_work_cost_seconds"] = 0.0
+            evidence = cast(dict[str, object], row["github_timing_evidence"])
+            evidence["execution_state"] = "not_executed"
+            evidence["timing_validity"] = "contradictory"
+            evidence["duration_basis"] = "nonexecution_work_cost"
+    return report
+
+
 def _diagnostic_lower_bound_report(
     jobs: Sequence[JobTiming], *, repository: str, run_id: int, concurrency_cap: int
 ) -> dict[str, object]:
@@ -1374,7 +1431,7 @@ def _diagnostic_lower_bound_report(
         for name, count in sorted(setup_signatures.items())
         if count > 1
     ]
-    return {
+    report = {
         "schema_version": 1,
         "repository": repository,
         "run_id": run_id,
@@ -1402,6 +1459,7 @@ def _diagnostic_lower_bound_report(
         },
         "jobs": job_rows,
     }
+    return _mark_nonexecution_timing(report, jobs)
 
 
 def analyze_jobs(
@@ -1513,7 +1571,7 @@ def analyze_jobs(
         if count > 1
     ]
     critical_path = max(end_times.values(), default=0.0)
-    return {
+    report = {
         "schema_version": 1,
         "repository": repository,
         "run_id": run_id,
@@ -1545,6 +1603,7 @@ def analyze_jobs(
         },
         "jobs": job_rows,
     }
+    return _mark_nonexecution_timing(report, jobs)
 
 
 def _load_json(path: Path) -> object:
