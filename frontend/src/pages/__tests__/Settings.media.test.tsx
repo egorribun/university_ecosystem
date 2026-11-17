@@ -137,6 +137,18 @@ const renderSettings = async () => {
   return { ...utils, mockSetUser }
 }
 
+const chooseMedia = async (
+  user: ReturnType<typeof userEvent.setup>,
+  input: HTMLInputElement,
+  media: "avatar" | "cover",
+  file: File
+) => {
+  const nativeClick = vi.spyOn(input, "click").mockImplementation(() => {})
+  await user.click(screen.getByRole("button", { name: tSettings(`media.${media}.change`) }))
+  expect(nativeClick).toHaveBeenCalledOnce()
+  await user.upload(input, file)
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
@@ -168,7 +180,7 @@ describe("Settings media actions", () => {
 
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
-    await user.upload(fileInputs[0]!, file)
+    await chooseMedia(user, fileInputs[0]!, "avatar", file)
 
     await waitFor(() => expect(postSpy).toHaveBeenCalled())
 
@@ -203,7 +215,7 @@ describe("Settings media actions", () => {
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']")
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
-    await user.upload(fileInputs[0]!, file)
+    await chooseMedia(user, fileInputs[0]!, "avatar", file)
 
     await waitFor(() => expect(api.post).toHaveBeenCalled())
 
@@ -240,7 +252,7 @@ describe("Settings media actions", () => {
     const initialBackground = window.getComputedStyle(preview!).backgroundImage
 
     const file = new File(["cover"], "cover.png", { type: "image/png" })
-    await user.upload(fileInputs[1]!, file)
+    await chooseMedia(user, fileInputs[1]!, "cover", file)
 
     await waitFor(() => expect(api.post).toHaveBeenCalled())
 
