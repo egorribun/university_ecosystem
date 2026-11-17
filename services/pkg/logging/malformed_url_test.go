@@ -73,6 +73,9 @@ func TestURLRedactionPreservesSafeTextAndValidHostlessPaths(t *testing.T) {
 		"ordinary diagnostic: invalid port; retry later",
 		"https://example.test/health?status=ready",
 		"file:///tmp/health.log",
+		"https://[::1]",
+		"https://[2001:db8::1]",
+		"before (https://[::1]). after",
 	} {
 		if got := redactString(input); got != input {
 			t.Fatalf("safe diagnostic changed: got %q, want %q", got, input)
@@ -84,4 +87,14 @@ func TestURLRedactionPreservesSafeTextAndValidHostlessPaths(t *testing.T) {
 	// Hostless URLs can still carry userinfo; successful parsing must not
 	// bypass the ordinary credential sanitizer merely because Host is empty.
 	assertNotContains(t, redactString("redis://reader:opaqueCredentialCanary@"), "reader", "opaqueCredentialCanary")
+}
+
+func TestURLSuffixPreservesBalancedIPv6Brackets(t *testing.T) {
+	for _, input := range []string{"https://[::1]", "https://[::1].", "https://[::1])"} {
+		trimmed, suffix := trimURLSuffix(input)
+		if trimmed != "https://[::1]" || trimmed+suffix != input {
+			t.Fatalf("IPv6 URL boundary changed: %q + %q", trimmed, suffix)
+		}
+	}
+	assertNotContains(t, redactString("redis://reader:opaqueCredentialCanary@[::1"), "opaqueCredentialCanary")
 }
