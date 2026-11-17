@@ -47,6 +47,39 @@ describe("useShare", () => {
     vi.useRealTimers()
   })
 
+  it.each(["copy-success", "copy-error", "share-success", "share-error"])(
+    "ignores late %s completion after unmount",
+    async (scenario) => {
+      let resolveOperation!: () => void
+      let rejectOperation!: (error: Error) => void
+      const pending = new Promise<void>((resolve, reject) => {
+        resolveOperation = resolve
+        rejectOperation = reject
+      })
+      const copying = scenario.startsWith("copy")
+      if (copying) vi.mocked(navigator.clipboard.writeText).mockReturnValue(pending)
+      else vi.mocked(navigator.share).mockReturnValue(pending)
+      const { result, unmount } = renderHook(() =>
+        useShare({ title: "Test", url: "https://example.com", onNotify, translations })
+      )
+      let operation!: Promise<void>
+      act(() => {
+        operation = copying ? result.current.handleCopyLink() : result.current.handleShare()
+      })
+      unmount()
+      const timersAfterUnmount = vi.getTimerCount()
+
+      await act(async () => {
+        if (scenario.endsWith("success")) resolveOperation()
+        else rejectOperation(new Error("late failure"))
+        await operation
+      })
+
+      expect(onNotify).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(timersAfterUnmount)
+    }
+  )
+
   it("returns share options based on provided URL", () => {
     const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com/foo" }))
 
