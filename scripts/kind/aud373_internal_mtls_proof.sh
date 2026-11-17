@@ -44,6 +44,7 @@ readonly NAMESPACE="university-ecosystem"
 readonly SPIRE_NAMESPACE="spire"
 readonly RELEASE="ue"
 readonly BACKEND_SVC="${RELEASE}-university-ecosystem-backend"
+readonly FRONTEND_SVC="${RELEASE}-university-ecosystem-frontend"
 readonly GATEWAY_SVC="${RELEASE}-university-ecosystem-gateway"
 readonly FILE_PROCESSOR_SVC="${RELEASE}-university-ecosystem-file-processor"
 readonly BACKEND_PORT="8000"
@@ -51,6 +52,7 @@ readonly GATEWAY_PORT="8080"
 readonly TRUST_DOMAIN="university.ecosystem"
 readonly BACKEND_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-backend"
 readonly GATEWAY_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-gateway"
+readonly FRONTEND_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-frontend"
 readonly WS_HUB_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-ws-hub"
 readonly FILE_PROCESSOR_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-file-processor"
 readonly IMAGE_TAG="ue-r9-aud373-${RUN_SUFFIX}"
@@ -60,6 +62,7 @@ REGISTRY_CONTAINER_ID=""
 DOCKER_DAEMON_ENDPOINT=""
 BACKEND_IMAGE=""
 GATEWAY_IMAGE=""
+FRONTEND_IMAGE=""
 FILE_PROCESSOR_IMAGE=""
 BACKEND_INIT_IMAGE_REPOSITORY=""
 BACKEND_INIT_IMAGE=""
@@ -234,6 +237,7 @@ internalHttpMTLS:
   trustDomain: "${TRUST_DOMAIN}"
   backendSpiffeID: "${BACKEND_SPIFFE_ID}"
   gatewaySpiffeID: "${GATEWAY_SPIFFE_ID}"
+  frontendSpiffeID: "${FRONTEND_SPIFFE_ID}"
   wsHubSpiffeID: "${WS_HUB_SPIFFE_ID}"
   fileProcessorSpiffeID: "${FILE_PROCESSOR_SPIFFE_ID}"
 internalGrpcMTLS:
@@ -246,6 +250,10 @@ internalGrpcMTLS:
     existingSecret: "internal-grpc-mtls-gateway"
   fileProcessorServer:
     existingSecret: "internal-grpc-mtls-server"
+frontend:
+  replicaCount: 1
+  image:
+    repository: "${LOCAL_REGISTRY_ADDRESS}/university-frontend"
 gateway:
   image:
     repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"
@@ -650,6 +658,7 @@ start_local_registry() {
   LOCAL_REGISTRY_ADDRESS="$endpoint"
   BACKEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"
   GATEWAY_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"
+  FRONTEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-frontend:${IMAGE_TAG}"
   FILE_PROCESSOR_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-file-processor:${IMAGE_TAG}"
   BACKEND_INIT_IMAGE_REPOSITORY="${LOCAL_REGISTRY_ADDRESS}/aud373/fixture/backend"
   BACKEND_INIT_IMAGE="${BACKEND_INIT_IMAGE_REPOSITORY}:${IMAGE_TAG}"
@@ -665,6 +674,11 @@ start_local_registry() {
 }
 
 build_images() {
+  timeout 1800 docker build --file "${ROOT_DIR}/frontend.Dockerfile" \
+    --tag "$FRONTEND_IMAGE" "$ROOT_DIR" || return 1
+  timeout 120 docker run --rm --init --network none --read-only \
+    --volume "${ROOT_DIR}/scripts/kind:/proof:ro" --entrypoint node \
+    "$FRONTEND_IMAGE" --test /proof/ssr_mtls_request_proof.test.mjs || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/backend.Dockerfile" \
     --tag "$BACKEND_IMAGE" "$ROOT_DIR" || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/services/gateway/Dockerfile" \
@@ -686,6 +700,7 @@ push_images() {
     return 1
   fi
   BACKEND_IMAGE_DIGEST="${digests[0]}"
+  timeout 900 docker push "$FRONTEND_IMAGE" || return 1
   timeout 900 docker push "$GATEWAY_IMAGE" || return 1
   timeout 900 docker push "$FILE_PROCESSOR_IMAGE" || return 1
 }
@@ -756,6 +771,7 @@ register_workloads() {
   agent_id="$(wait_for_agent_id)"
   create_spire_entry "$agent_id" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"
   create_spire_entry "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"
+  create_spire_entry "$agent_id" "$FRONTEND_SPIFFE_ID" "${RELEASE}-frontend"
   create_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${RELEASE}-file-processor"
 }
 
@@ -949,8 +965,7 @@ EOF
   kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migration.yaml" || return 1
   kubectl -n "$NAMESPACE" wait --for=condition=complete job/ue-aud373-migrate --timeout=300s || return 1
   register_workloads
-  # Not --wait: the frontend Deployment has no image in this cluster by design, and the
-  # proof only needs the backend and gateway Deployments to become Available.
+  # Wait for each actual workload below; frontend has its real image and own SVID.
   helm upgrade --install "$RELEASE" "${ROOT_DIR}/charts/university-ecosystem" \
     --namespace "$NAMESPACE" \
     --values "${WORK_DIR}/values.yaml" \
@@ -1384,6 +1399,35 @@ run_proofs() {
   fi
 }
 
+# The actual Node image and SSR entry point authenticate through the loopback
+# proxy. The isolated signing key travels only over stdin, never in receipts.
+run_ssr_proof() {
+  local output pod logs authorized=no
+  if ! timeout 660 kubectl -n "$NAMESPACE" rollout status \
+    "deployment/$FRONTEND_SVC" --timeout=600s; then
+    record "e-frontend-ssr-mtls-auth" no
+    return
+  fi
+  if output="$(timeout 90 kubectl -n "$NAMESPACE" exec -i \
+    "deployment/$FRONTEND_SVC" -c frontend -- node --input-type=module \
+    -e "$(cat "$ROOT_DIR/scripts/kind/ssr_mtls_request_proof.mjs")" -- --run \
+    < "$WORK_DIR/jwt-private.pem" 2>/dev/null)" && \
+    [[ "$output" == "SSR_MTLS_AUTH=PASS" ]]; then
+    record "e-frontend-ssr-mtls-auth" yes
+  else
+    record "e-frontend-ssr-mtls-auth" no
+  fi
+  while read -r pod; do
+    [[ -n "$pod" ]] || continue
+    logs="$(timeout 30 kubectl -n "$NAMESPACE" logs "$pod" -c backend --tail=-1)" || continue
+    if python3 -c 'import re, sys; pattern = re.escape(sys.argv[1]) + r"(?=[\"\s\x1b]|$)"; sys.exit(not any("internal_mtls_peer_authorized" in line and re.search(pattern, line) for line in sys.stdin))' "$FRONTEND_SPIFFE_ID" <<<"$logs"; then
+      authorized=yes
+    fi
+  done < <(timeout 30 kubectl -n "$NAMESPACE" get pods -o name \
+    | grep "^pod/$BACKEND_SVC-" || true)
+  record "f-backend-logs-frontend-spiffe-id" "$authorized"
+}
+
 # Runs the chart's readiness probe command inside each backend pod. Its stdout, stderr and
 # exit status name the failing SPIFFE step. Bounded by timeout; diagnostics only.
 collect_backend_probe_diagnostics() {
@@ -1510,6 +1554,7 @@ main() {
   deploy_stack
   install_probe_access
   run_proofs
+  run_ssr_proof
   if [[ "$FAILURES" -ne 0 ]]; then
     printf 'RESULT=FAIL failures=%s\n' "$FAILURES"
     exit 1

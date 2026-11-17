@@ -1,0 +1,65 @@
+// Executed inside the real frontend container. The isolated proof key arrives
+// only on stdin; receipts contain neither keys, tokens, cookies nor responses.
+import assert from "node:assert/strict"
+import { createPublicKey, sign } from "node:crypto"
+import { readFileSync } from "node:fs"
+
+export async function proveSsrAuthentication({ privateKey, issuer, port, backendOrigin, request = fetch }) {
+  assert.equal(backendOrigin, "http://127.0.0.1:18000")
+  assert.match(String(port), /^[1-9][0-9]{0,4}$/u)
+  assert.ok(Number(port) <= 65535)
+  assert.ok(issuer)
+  const localOrigin = `http://127.0.0.1:${port}`
+  const get = (url, cookie) => request(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(15000),
+    headers: cookie ? { cookie } : {},
+  })
+  const jwksResponse = await get(`${backendOrigin}/.well-known/jwks.json`)
+  assert.equal(jwksResponse.status, 200)
+  const jwks = await jwksResponse.json()
+  const publicKey = createPublicKey(privateKey).export({ format: "jwk" })
+  const key = jwks.keys.find((item) => item.n === publicKey.n && item.e === publicKey.e)
+  assert.ok(key?.kid)
+  // Workload authentication must not bypass user authentication.
+  const userResponse = await get(`${backendOrigin}/api/v1/users/me`)
+  assert.equal(userResponse.status, 401)
+  await userResponse.arrayBuffer()
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url")
+  const unsigned = `${encode({ alg: "RS256", typ: "JWT", kid: key.kid })}.${encode({
+    iss: issuer,
+    aud: "university-ecosystem-api",
+    sub: "00000000-0000-4000-8000-000000000001",
+    role: "student",
+    exp: Math.floor(Date.now() / 1000) + 120,
+  })}`
+  const signature = sign("RSA-SHA256", Buffer.from(unsigned), privateKey)
+  const token = `${unsigned}.${signature.toString("base64url")}`
+  const login = `${localOrigin}/login?redirect=%2Fdashboard`
+  const accepted = await get(login, `access_token_v2=${token}`)
+  assert.ok([301, 302, 303, 307, 308].includes(accepted.status))
+  assert.equal(new URL(accepted.headers.get("location"), localOrigin).pathname, "/dashboard")
+  assert.match(accepted.headers.get("cache-control") ?? "", /private/u)
+  await accepted.arrayBuffer()
+  signature[0] ^= 1
+  const forged = `${unsigned}.${signature.toString("base64url")}`
+  const rejected = await get(login, `access_token_v2=${forged}`)
+  assert.equal(rejected.status, 200)
+  assert.doesNotMatch(rejected.headers.get("cache-control") ?? "", /private/u)
+  assert.match(await rejected.text(), /<html[\s>]/iu)
+}
+
+if (process.argv.includes("--run")) {
+  try {
+    await proveSsrAuthentication({
+      privateKey: readFileSync(0, "utf8"),
+      issuer: process.env.JWT_ISSUER,
+      port: process.env.PORT,
+      backendOrigin: process.env.BACKEND_ORIGIN,
+    })
+    console.log("SSR_MTLS_AUTH=PASS")
+  } catch {
+    console.log("SSR_MTLS_AUTH=FAIL")
+    process.exitCode = 1
+  }
+}

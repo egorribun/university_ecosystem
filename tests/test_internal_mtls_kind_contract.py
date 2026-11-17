@@ -44,6 +44,8 @@ SCRIPT = Path(
 ).resolve()
 REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"
 REQUIRED_PATHS = {
+    "frontend.Dockerfile",
+    "frontend/**",
     "backend.Dockerfile",
     "backend.Dockerfile.dockerignore",
     ".dockerignore",
@@ -106,7 +108,7 @@ def _step(name: str) -> dict[str, Any]:
 def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:
     triggers = _triggers(_workflow())
     assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}
-    assert triggers["pull_request"]["branches"] == ["main"]
+    assert triggers["pull_request"]["branches"] == ["main", "egorribun"]
     paths = triggers["pull_request"]["paths"]
     assert set(paths) == REQUIRED_PATHS
     assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"
@@ -228,7 +230,7 @@ def test_concurrency_cancels_only_stale_runs_for_the_same_pull_request() -> None
 def test_job_runner_and_timeout_are_pinned() -> None:
     job = _job()
     assert job["runs-on"] == "ubuntu-24.04"
-    assert job["timeout-minutes"] == 40
+    assert job["timeout-minutes"] == 90
 
 
 def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:
@@ -250,6 +252,9 @@ def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:
 def test_checkout_does_not_persist_credentials() -> None:
     checkout = _step("Check out repository")
     assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"]["ref"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
 
 
 def test_no_continue_on_error_anywhere() -> None:
@@ -362,6 +367,7 @@ BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
 WS_HUB_SPIFFE_ID=ws-hub
 FILE_PROCESSOR_SPIFFE_ID=file-processor
+FRONTEND_SPIFFE_ID=frontend
 docker() {{
   case "$1" in
     inspect) if [[ "$*" == *--format* ]]; then printf '%064d\\n' 1; else return 1; fi ;;
@@ -1338,6 +1344,7 @@ BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ba
 GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
 WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub
 FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor
+FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend
 write_secret_file() {{ :; }}
 openssl() {{
   if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi
@@ -1437,6 +1444,7 @@ BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ba
 GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
 WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub
 FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor
+FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend
 write_values_file
 """
     bash = shutil.which("bash")
@@ -1648,6 +1656,7 @@ BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
 WS_HUB_SPIFFE_ID=ws-hub
 FILE_PROCESSOR_SPIFFE_ID=file-processor
+FRONTEND_SPIFFE_ID=frontend
 postgres_password=
 migration_seen=0
 write_secret_file() {{
@@ -3267,3 +3276,19 @@ run_proofs
     result = _bash_command(command)
     assert result.returncode == 0, result.stderr
     assert "FAIL a-gateway-to-backend-mtls-hop\n" in result.stdout.decode()
+
+
+def test_kind_builds_and_registers_the_real_frontend() -> None:
+    script = _script()
+    build = _shell_function("build_images")
+    assert "frontend.Dockerfile" in build
+    assert "ssr_mtls_request_proof.test.mjs" in build
+    assert 'docker push "$FRONTEND_IMAGE"' in _shell_function("push_images")
+    assert '"$FRONTEND_SPIFFE_ID"' in _shell_function("register_workloads")
+    assert "  run_ssr_proof\n" in script
+    proof = _shell_function("run_ssr_proof")
+    assert "rollout status" in proof
+    assert "-c frontend -- node --input-type=module" in proof
+    assert '< "$WORK_DIR/jwt-private.pem"' in proof
+    assert '[[ "$output" == "SSR_MTLS_AUTH=PASS" ]]' in proof
+    assert "internal_mtls_peer_authorized" in proof
