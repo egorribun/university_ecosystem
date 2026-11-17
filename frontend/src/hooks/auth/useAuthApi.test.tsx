@@ -1106,9 +1106,11 @@ describe("submitMfaChallenge", () => {
   it("no-ops when authOperation is in-flight (line ~240)", async () => {
     const w = makeWires({ authOperation: true })
     const { result } = renderApi(w)
+    let accepted: boolean | undefined
     await act(async () => {
-      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      accepted = await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
     })
+    expect(accepted).toBe(false)
     expect(mocks.apiPost).not.toHaveBeenCalled()
   })
 
@@ -1158,13 +1160,15 @@ describe("submitMfaChallenge", () => {
     })
     const dispatch = vi.spyOn(window, "dispatchEvent")
     const { result } = renderApi(w)
+    let accepted: boolean | undefined
     await act(async () => {
-      await result.current.submitMfaChallenge({
+      accepted = await result.current.submitMfaChallenge({
         method: "totp",
         code: "654321",
         challengeToken: "ct-1",
       })
     })
+    expect(accepted).toBe(true)
     expect(mocks.apiPost).toHaveBeenCalledWith(
       "/auth/mfa/verify",
       expect.objectContaining({
@@ -1378,11 +1382,13 @@ describe("submitMfaChallenge", () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: {} })
     const { result } = renderApi(w)
+    let accepted: boolean | undefined
 
     await act(async () => {
-      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      accepted = await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
     })
 
+    expect(accepted).toBe(false)
     expect(w.setUser).not.toHaveBeenCalled()
     expect(w.updatePendingMfa).not.toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
@@ -1884,7 +1890,7 @@ describe("login MFA browser-session boundary", () => {
           resolveVerification = resolve
         })
     )
-    let verification!: Promise<void>
+    let verification!: Promise<boolean>
     act(() => {
       verification = result.current.submitMfaChallenge({
         method: "totp",
@@ -2033,7 +2039,11 @@ describe("authentication cancellation boundaries", () => {
       unmount()
       reject(lockedError())
       await expect(pending).resolves.toBe(
-        operation === "login" || operation === "requireMfa" ? null : undefined
+        operation === "login" || operation === "requireMfa"
+          ? null
+          : operation === "mfa"
+            ? false
+            : undefined
       )
       expect(w.setUser).not.toHaveBeenCalled()
       expect(w.handleUnauthorized).not.toHaveBeenCalled()

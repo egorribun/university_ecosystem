@@ -195,7 +195,12 @@ RUN zlib_arch="$(apk --print-arch)" \
       aarch64) zlib_sha256="1f77a542ac6634761b9fe38d8bdca19b154071dcfa25432e73f2bc8a0740a33f" ;; \
       *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;; \
     esac \
-    && wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/${zlib_arch}/zlib-1.3.2-r1.apk" \
+    && attempt=1 \
+    && until timeout -s KILL 20 wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/${zlib_arch}/zlib-1.3.2-r1.apk"; do \
+      if [ "$attempt" -ge 3 ]; then exit 1; fi; \
+      attempt=$((attempt + 1)); \
+      sleep 2 || exit 1; \
+    done \
     && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
     && apk add --no-cache \
       musl=1.2.6-r3 \
