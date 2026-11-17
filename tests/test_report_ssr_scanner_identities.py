@@ -10,20 +10,18 @@ from scripts.quality import report_ssr_scanner_identities as report
 
 
 def scan():
-    return {
-        "results": {
-            path: [
-                {
-                    "filename": path,
-                    "type": detector,
-                    "line_number": line,
-                    "hashed_secret": "a" * 40,
-                    "secret_value": "MUST_NOT_BE_PRINTED",
-                }
-            ]
-            for path, detector, line in report.EXPECTED
-        }
-    }
+    results = {}
+    for path, detector, line in report.EXPECTED:
+        results.setdefault(path, []).append(
+            {
+                "filename": path,
+                "type": detector,
+                "line_number": line,
+                "hashed_secret": "a" * 40,
+                "secret_value": "MUST_NOT_BE_PRINTED",
+            }
+        )
+    return {"results": results}
 
 
 def test_exact_receipt_ignores_unreviewed_values():
@@ -32,7 +30,7 @@ def test_exact_receipt_ignores_unreviewed_values():
     before = copy.deepcopy(document)
     receipt = report.reviewed_identities(document, "b" * 40)
     assert document == before
-    assert len(receipt["identities"]) == 3
+    assert len(receipt["identities"]) == 6
     assert receipt["source_sha"] == "b" * 40
     assert "PRIVATE" not in json.dumps(receipt)
     assert "MUST_NOT" not in json.dumps(receipt)
@@ -135,7 +133,7 @@ def test_oversized_and_missing_scan_are_safe(tmp_path, capsys, monkeypatch):
 
 def test_late_invalid_identity_emits_no_partial_receipt(tmp_path, capsys):
     document = scan()
-    document["results"][report.EXPECTED[-1][0]][0]["hashed_secret"] = "private-canary"
+    document["results"][report.EXPECTED[-1][0]][-1]["hashed_secret"] = "private-canary"
     path = tmp_path / "scan.json"
     path.write_text(json.dumps(document), encoding="utf-8")
     assert report.main([str(path), "--source-sha", "b" * 40]) == 1
@@ -212,3 +210,10 @@ def test_git_blob_digest_matches_independent_empty_blob_identity():
         )
     )
     assert report.git_blob_digest(b"") == expected
+
+
+def test_missing_last_reviewed_canary_is_rejected():
+    document = scan()
+    document["results"][report.EXPECTED[-1][0]].pop()
+    with pytest.raises(ValueError, match="ambiguous reviewed finding"):
+        report.reviewed_identities(document, "b" * 40)

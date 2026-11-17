@@ -1,4 +1,4 @@
-"""Report only the three reviewed SSR scanner identities, never source values."""
+"""Report only the six reviewed SSR scanner identities, never source values."""
 
 from __future__ import annotations
 
@@ -19,8 +19,35 @@ EXPECTED = (
         112,
     ),
     ("services/gateway/cmd/ssr-proxy/main_test.go", "Basic Auth Credentials", 39),
+    ("tests/test_report_ssr_scanner_identities.py", "Secret Keyword", 21),
+    ("tests/test_report_ssr_scanner_identities.py", "Secret Keyword", 29),
+    ("tests/test_report_ssr_scanner_identities.py", "Secret Keyword", 136),
 )
 EXPECTED_BLOBS = {
+    "tests/test_report_ssr_scanner_identities.py": bytes(
+        (
+            236,
+            136,
+            40,
+            55,
+            59,
+            201,
+            4,
+            53,
+            166,
+            115,
+            100,
+            200,
+            244,
+            25,
+            9,
+            11,
+            69,
+            154,
+            122,
+            134,
+        )
+    ),
     "services/gateway/cmd/ssr-mtls-fixture/main.go": bytes(
         (
             212,
