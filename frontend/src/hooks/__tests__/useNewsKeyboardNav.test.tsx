@@ -235,7 +235,9 @@ describe("useNewsKeyboardNav", () => {
         cancelable: true,
       })
 
-      act(() => { child.dispatchEvent(event) })
+      act(() => {
+        child.dispatchEvent(event)
+      })
 
       expect(event.defaultPrevented).toBe(false)
       expect(mockNavigateFn).not.toHaveBeenCalled()
