@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
 import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
-import { getBrowserSessionGeneration, getSessionEpoch } from "@/stores/sessionEpoch"
+import { useSessionIdentity } from "@/hooks/useSessionIdentity"
 
 import { EmailSection, PasswordSection } from "./sections"
 
@@ -34,11 +34,8 @@ const ignoreOtpSubmit = () => undefined
 
 export function SettingsSecurity(props: SettingsSecurityProps) {
   const { user } = useAuth()
-  const sessionKey = JSON.stringify([
-    user?.id ?? null,
-    getSessionEpoch(),
-    getBrowserSessionGeneration(),
-  ])
+  const [sessionEpoch, sessionGeneration] = useSessionIdentity()
+  const sessionKey = JSON.stringify([user?.id ?? null, sessionEpoch, sessionGeneration])
   return <SettingsSecurityContent key={sessionKey} {...props} />
 }
 
