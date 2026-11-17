@@ -71,15 +71,17 @@ describe("useScheduleKeyboardNav", () => {
   it("does not reclaim events already handled by a child", () => {
     const opts = makeOpts()
     const { result } = renderHook(() => useScheduleKeyboardNav(opts))
+    press("ArrowRight")
+    opts.onSelect.mockClear()
     const child = document.createElement("div")
     child.addEventListener("keydown", (event) => event.preventDefault())
     document.body.appendChild(child)
-    for (const key of ["ArrowRight", "Enter", "e", "Delete", "t", "?"]) {
+    for (const key of ["ArrowRight", "Enter", "e", "Delete", "t", "?", "Escape"]) {
       const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
       act(() => child.dispatchEvent(event))
       expect(event.defaultPrevented).toBe(true)
     }
-    expect(result.current.activeCell).toBeNull()
+    expect(result.current.activeCell).toEqual({ row: 0, col: 1 })
     expect(opts.onSelect).not.toHaveBeenCalled()
     expect(opts.onOpen).not.toHaveBeenCalled()
     expect(opts.onEdit).not.toHaveBeenCalled()
