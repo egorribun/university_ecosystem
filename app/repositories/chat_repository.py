@@ -1224,12 +1224,19 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             "chat_repository.check_participant",
             attributes={"chat.id": str(chat_id), "user.id": str(user_id)},
         ):
-            stmt = select(
-                exists().where(
+            # The association table has no tenant policy of its own. Join both
+            # protected parents so membership cannot authorize an RLS-hidden
+            # chat or user (including the ws-hub's internal callback).
+            membership = (
+                select(chat_participants.c.chat_id)
+                .join(Chat, Chat.id == chat_participants.c.chat_id)
+                .join(User, User.id == chat_participants.c.user_id)
+                .where(
                     chat_participants.c.chat_id == chat_id,
                     chat_participants.c.user_id == user_id,
                 )
             )
+            stmt = select(membership.exists())
             result = await self.db.execute(stmt)
             return bool(result.scalar())
 
