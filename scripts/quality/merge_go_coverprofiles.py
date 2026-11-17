@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import NoReturn
 
 SUPPORTED_MODES = frozenset({"set", "count", "atomic"})
+# CI produces/consumes profiles on 64-bit Go runners. Atoi rejects larger
+# values on every Go architecture; do not impose a 32-bit/Python-host ceiling.
+_MAX_GO_INT = (1 << 63) - 1
 _LOCATION = re.compile(
     r"(.+):([+-]?[0-9]+)\.([+-]?[0-9]+),([+-]?[0-9]+)\.([+-]?[0-9]+)"
 )
@@ -33,6 +36,8 @@ def _location_key(location: str) -> tuple[str, tuple[int, ...]]:
         raise ProfileError("invalid coverage block location coordinates") from error
     if any(value < 0 for value in coordinates):
         _fail(f"negative coverage block location coordinate: {location}")
+    if any(value > _MAX_GO_INT for value in coordinates):
+        _fail("coverage block location exceeds Go int64 range")
     return match.group(1), coordinates
 
 
@@ -69,6 +74,8 @@ def _read_profile(path: Path) -> tuple[str, list[tuple[str, str]]]:
             _fail(f"negative statement count in {path}:{line_number}")
         if execution_count < 0:
             _fail(f"negative execution count in {path}:{line_number}")
+        if statement_count > _MAX_GO_INT or execution_count > _MAX_GO_INT:
+            _fail(f"coverage counter exceeds Go int64 range in {path}:{line_number}")
         records.append((f"{block} {statement_count}", str(execution_count)))
     return mode, records
 
