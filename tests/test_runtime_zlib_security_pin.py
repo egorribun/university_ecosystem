@@ -23,9 +23,31 @@ ARCHIVE_SHA256 = {
     },
 }
 
+_STUB_LOG_GUARD = (
+    "count=0\n"
+    'if [ -f "$COMMAND_COUNT" ]; then IFS= read -r count < "$COMMAND_COUNT"; fi\n'
+    '[ "$count" -lt 64 ] || exit 1\n'
+    'printf "%s\\n" "$((count + 1))" > "$COMMAND_COUNT"\n'
+)
+
 
 def _archive_prefix(branch: str) -> str:
     hashes = ARCHIVE_SHA256[branch]
+    url = (
+        f"https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/"
+        "${zlib_arch}/zlib-1.3.2-r1.apk"
+    )
+    if branch == "3.24":
+        fetch = (
+            " && attempt=1"
+            f' && until timeout -s KILL 20 wget -q -O /tmp/zlib.apk "{url}"; do'
+            ' if [ "$attempt" -ge 3 ]; then exit 1; fi;'
+            " attempt=$((attempt + 1));"
+            " sleep 2 || exit 1;"
+            " done"
+        )
+    else:
+        fetch = f' && wget -q -O /tmp/zlib.apk "{url}"'
     return (
         'RUN zlib_arch="$(apk --print-arch)"'
         ' && case "$zlib_arch" in'
@@ -33,9 +55,7 @@ def _archive_prefix(branch: str) -> str:
         f' aarch64) zlib_sha256="{hashes["aarch64"]}" ;;'
         ' *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;;'
         " esac"
-        " && wget -q -O /tmp/zlib.apk"
-        f' "https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/'
-        '${zlib_arch}/zlib-1.3.2-r1.apk"'
+        f"{fetch}"
         " && printf '%s  %s\\n' \"$zlib_sha256\" /tmp/zlib.apk | sha256sum -c -"
     )
 
@@ -44,6 +64,25 @@ def _runtime_runs(source: str) -> list[str]:
     runtime = re.split(r"(?im)^FROM[ \t]+", source)[-1]
     runtime = re.sub(r"[ \t]*\\\r?\n[ \t]*", " ", runtime)
     return [line for line in runtime.splitlines() if line.startswith("RUN ")]
+
+
+def _run_archive_shell(
+    run: str, env: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["/bin/sh"],
+            input=run,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(
+            "archive shell exceeded the 5-second harness timeout", pytrace=False
+        )
 
 
 def _assert_runtime_zlib_pin(source: str, archive_branch: str | None = None) -> None:
@@ -264,13 +303,23 @@ def test_runtime_archive_shell_fails_closed(
         if line.startswith(_archive_prefix(branch))
     )
     log = tmp_path / "commands.log"
-    for command in ("apk", "wget", "sha256sum", "rm", "addgroup", "adduser", "chown"):
+    for command in (
+        "apk",
+        "timeout",
+        "wget",
+        "sha256sum",
+        "sleep",
+        "rm",
+        "addgroup",
+        "adduser",
+        "chown",
+    ):
         script = tmp_path / command
         script.write_text(
-            "#!/bin/sh\n"
-            f"command={command}\n"
+            "#!/bin/sh\n" + _STUB_LOG_GUARD + f"command={command}\n"
             'printf "%s %s\\n" "$command" "$*" >> "$COMMAND_LOG"\n'
             'if [ "$command $*" = "apk --print-arch" ]; then printf "%s\\n" "$TEST_ARCH"; exit 0; fi\n'
+            'if [ "$command" = timeout ]; then shift 3; exec "$@"; fi\n'
             'if [ "$command" = sha256sum ]; then\n'
             "  IFS= read -r checksum\n"
             '  [ "$checksum" = "$EXPECTED_SHA256  /tmp/zlib.apk" ] || exit 1\n'
@@ -280,19 +329,16 @@ def test_runtime_archive_shell_fails_closed(
         )
         script.chmod(0o755)
     _assert_runtime_zlib_pin(source, branch)
-    result = subprocess.run(
-        ["/bin/sh"],
-        input=run,
-        env={
+    result = _run_archive_shell(
+        run,
+        {
             "PATH": str(tmp_path),
             "COMMAND_LOG": str(log),
+            "COMMAND_COUNT": str(tmp_path / "commands.count"),
             "TEST_ARCH": arch,
             "EXPECTED_SHA256": ARCHIVE_SHA256[branch].get(arch, ""),
             "FAILURE": failure,
         },
-        capture_output=True,
-        text=True,
-        check=False,
     )
     commands = log.read_text(encoding="utf-8").splitlines()
     if arch == "unsupported":
@@ -305,10 +351,17 @@ def test_runtime_archive_shell_fails_closed(
             assert not any(command.startswith("apk add ") for command in commands)
     else:
         assert result.returncode == 0, result.stderr
-        assert commands[1] == (
+        wget = (
             "wget -q -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
             f"v{branch}/main/{arch}/zlib-1.3.2-r1.apk"
         )
+        assert [command for command in commands if command.startswith("wget ")] == [
+            wget
+        ]
+        if branch == "3.24":
+            assert commands[1] == f"timeout -s KILL 20 {wget}"
+        else:
+            assert commands[1] == wget
         install = next(
             command for command in commands if command.startswith("apk add ")
         )
@@ -334,3 +387,163 @@ def test_runtime_archive_rejects_changed_integrity_or_branch(
     ):
         with pytest.raises(AssertionError):
             _assert_runtime_zlib_pin(altered, branch)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("&& attempt=1", "&& attempt=0"),
+        ("timeout -s KILL 20 wget", "wget"),
+        ("timeout -s KILL 20 wget", "timeout -s KILL 0 wget"),
+        ('[ "$attempt" -ge 3 ]', '[ "$attempt" -ge 4 ]'),
+        ("then exit 1; fi;", "then exit 0; fi;"),
+        ("attempt=$((attempt + 1))", "attempt=$((attempt - 1))"),
+        ("sleep 2 || exit 1", "sleep 2 || true"),
+        ("wget -q -O /tmp/zlib.apk", "wget -q -O /tmp/other.apk"),
+    ],
+)
+def test_frontend_retry_contract_rejects_unsafe_changes(old: str, new: str) -> None:
+    source = (ROOT / "frontend.Dockerfile").read_text(encoding="utf-8")
+    assert old in source
+    with pytest.raises(AssertionError):
+        _assert_runtime_zlib_pin(source.replace(old, new), "3.24")
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+@pytest.mark.parametrize(
+    (
+        "failed_downloads",
+        "fail_timeout",
+        "fail_digest",
+        "fail_sleep",
+        "attempts",
+        "succeeds",
+    ),
+    [
+        (1, False, False, False, 2, True),
+        (2, False, False, False, 3, True),
+        (3, False, False, False, 3, False),
+        (1, True, False, False, 2, True),
+        (3, True, False, False, 3, False),
+        (0, False, True, False, 1, False),
+        (1, False, False, True, 1, False),
+    ],
+    ids=[
+        "404-then-success",
+        "last-attempt",
+        "exhausted",
+        "timeout-then-success",
+        "timeouts-exhausted",
+        "bad-digest",
+        "sleep-fails",
+    ],
+)
+def test_frontend_archive_retry_is_bounded_and_fail_closed(
+    arch: str,
+    failed_downloads: int,
+    fail_timeout: bool,
+    fail_digest: bool,
+    fail_sleep: bool,
+    attempts: int,
+    succeeds: bool,
+    tmp_path: Path,
+) -> None:
+    source = (ROOT / "frontend.Dockerfile").read_text(encoding="utf-8")
+    run = next(
+        line[4:] for line in _runtime_runs(source) if line.startswith("RUN zlib_arch=")
+    )
+    log = tmp_path / "commands.log"
+    attempt_file = tmp_path / "attempts"
+    for command in ("apk", "timeout", "wget", "sha256sum", "sleep", "rm"):
+        script = tmp_path / command
+        script.write_text(
+            "#!/bin/sh\n" + _STUB_LOG_GUARD + f"command={command}\n"
+            'printf "%s %s\\n" "$command" "$*" >> "$COMMAND_LOG"\n'
+            'if [ "$command $*" = "apk --print-arch" ]; then printf "%s\\n" "$TEST_ARCH"; exit 0; fi\n'
+            'if [ "$command" = timeout ] && [ "$FAIL_TIMEOUT" != 1 ]; then shift 3; exec "$@"; fi\n'
+            'if [ "$command" = wget ] && [ "$FAIL_TIMEOUT" = 1 ]; then exit 0; fi\n'
+            'if [ "$command" = wget ] || [ "$command" = timeout ]; then\n'
+            "  attempt=0\n"
+            '  if [ -f "$ATTEMPT_FILE" ]; then read -r attempt < "$ATTEMPT_FILE"; fi\n'
+            "  attempt=$((attempt + 1))\n"
+            '  printf "%s\\n" "$attempt" > "$ATTEMPT_FILE"\n'
+            '  if [ "$attempt" -le "$FAILED_DOWNLOADS" ]; then\n'
+            '    if [ "$command" = timeout ]; then exit 137; fi\n'
+            '    printf "%s\\n" "synthetic HTTP 404" >&2; exit 1\n'
+            "  fi\n"
+            '  if [ "$command" = timeout ]; then shift 3; exec "$@"; fi\n'
+            "fi\n"
+            'if [ "$command" = sha256sum ]; then\n'
+            "  IFS= read -r checksum\n"
+            '  [ "$checksum" = "$EXPECTED_SHA256  /tmp/zlib.apk" ] || exit 1\n'
+            '  [ "$FAIL_DIGEST" != 1 ] || exit 1\n'
+            "fi\n"
+            'if [ "$command" = sleep ] && [ "$FAIL_SLEEP" = 1 ]; then exit 1; fi\n'
+        )
+        script.chmod(0o755)
+    result = _run_archive_shell(
+        run,
+        {
+            "PATH": str(tmp_path),
+            "COMMAND_LOG": str(log),
+            "COMMAND_COUNT": str(tmp_path / "commands.count"),
+            "ATTEMPT_FILE": str(attempt_file),
+            "TEST_ARCH": arch,
+            "EXPECTED_SHA256": ARCHIVE_SHA256["3.24"][arch],
+            "FAILED_DOWNLOADS": str(failed_downloads),
+            "FAIL_TIMEOUT": str(int(fail_timeout)),
+            "FAIL_DIGEST": str(int(fail_digest)),
+            "FAIL_SLEEP": str(int(fail_sleep)),
+        },
+    )
+    commands = log.read_text(encoding="utf-8").splitlines()
+    url = f"https://dl-cdn.alpinelinux.org/alpine/v3.24/main/{arch}/zlib-1.3.2-r1.apk"
+    wget = f"wget -q -O /tmp/zlib.apk {url}"
+    assert [command for command in commands if command.startswith("wget ")] == [
+        wget
+    ] * (attempts - min(failed_downloads, attempts) if fail_timeout else attempts)
+    assert [command for command in commands if command.startswith("timeout ")] == [
+        f"timeout -s KILL 20 {wget}"
+    ] * attempts
+    assert [command for command in commands if command.startswith("sleep ")] == [
+        "sleep 2"
+    ] * min(failed_downloads, 2)
+    assert (result.returncode == 0) is succeeds
+    if failed_downloads and not fail_timeout:
+        assert "synthetic HTTP 404" in result.stderr
+    if failed_downloads == 3 or fail_sleep:
+        assert not any(command.startswith("sha256sum ") for command in commands)
+    else:
+        assert commands.count("sha256sum -c -") == 1
+    installs = [command for command in commands if command.startswith("apk add ")]
+    if succeeds:
+        assert len(installs) == 1
+        assert commands.index("sha256sum -c -") < commands.index(installs[0])
+        assert commands.index(installs[0]) < commands.index("rm /tmp/zlib.apk")
+    else:
+        assert not installs
+        assert "rm /tmp/zlib.apk" not in commands
+
+
+def test_archive_shell_harness_times_out() -> None:
+    with pytest.raises(pytest.fail.Exception, match="5-second harness timeout"):
+        _run_archive_shell("while :; do :; done", {})
+
+
+def test_archive_stub_log_has_a_finite_limit(tmp_path: Path) -> None:
+    stub = tmp_path / "logger"
+    stub.write_text(
+        "#!/bin/sh\n" + _STUB_LOG_GUARD + 'printf "%s\\n" entry >> "$COMMAND_LOG"\n'
+    )
+    stub.chmod(0o755)
+    log = tmp_path / "commands.log"
+    result = _run_archive_shell(
+        'i=0; while [ "$i" -lt 100 ]; do logger || :; i=$((i + 1)); done',
+        {
+            "PATH": str(tmp_path),
+            "COMMAND_LOG": str(log),
+            "COMMAND_COUNT": str(tmp_path / "commands.count"),
+        },
+    )
+    assert result.returncode == 0
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 64

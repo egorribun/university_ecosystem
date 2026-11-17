@@ -34,7 +34,7 @@ const actionSet = () => ({
   logout: vi.fn(async () => undefined),
   setUser: vi.fn(),
   refresh: vi.fn(async () => undefined),
-  submitMfaChallenge: vi.fn(async () => undefined),
+  submitMfaChallenge: vi.fn(async () => true),
   requireMfa: vi.fn(async () => null),
   resetEtagCache: vi.fn(),
   authOperation: false,
