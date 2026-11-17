@@ -55,10 +55,13 @@ describe.each(cases)("related $root cache subscription", ({ root, useItems }) =>
     const { client, wrapper } = setup()
     client.setQueryData(key, page("First"))
     let renders = 0
-    const { result, unmount } = renderHook(() => {
-      renders += 1
-      return useItems()
-    }, { wrapper })
+    const { result, unmount } = renderHook(
+      () => {
+        renders += 1
+        return useItems()
+      },
+      { wrapper }
+    )
     const initial = result.current
     const initialRenders = renders
     await act(async () => {
@@ -77,13 +80,18 @@ describe.each(cases)("related $root cache subscription", ({ root, useItems }) =>
     const { result, unmount } = renderHook(useItems, { wrapper })
     expect(result.current).toHaveLength(1)
     await act(async () => {
-      localStorage.setItem("ecosystem.session.generation.v1", JSON.stringify({
-        nonce: "other-tab-generation",
-        hash: "other-account-hash",
-      }))
-      window.dispatchEvent(new StorageEvent("storage", {
-        key: "ecosystem.session.generation.v1",
-      }))
+      localStorage.setItem(
+        "ecosystem.session.generation.v1",
+        JSON.stringify({
+          nonce: "other-tab-generation",
+          hash: "other-account-hash",
+        })
+      )
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "ecosystem.session.generation.v1",
+        })
+      )
     })
     expect(result.current).toEqual([])
     act(() => client.setQueryData(key, page("Late private A")))
