@@ -540,7 +540,7 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 api_run_id is not None
                 and api_run_attempt == 1
                 and api_head_sha is not None
-                and status == "completed"
+                and record.get("status") == "completed"
                 and conclusion == "skipped"
                 and queued_field == "created_at"
                 and created == started
