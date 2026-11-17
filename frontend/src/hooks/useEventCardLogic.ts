@@ -115,8 +115,8 @@ export function useEventCardLogic({
   const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
   const setEditOpenFresh = useCallback((open: boolean) => {
     editSessionRef.current += 1
-    setLoading(false)
-    setImageLoading(false)
+    // Closing a draft does not cancel its already-dispatched server writes.
+    // Keep busy until the entire earlier upload/PATCH chain settles.
     if (open) setEditDraft(null)
     else setNewImage(null) // Discard cancelled uploads and release their preview through the effect.
     setEditOpen(open)
@@ -173,7 +173,7 @@ export function useEventCardLogic({
   // -- Handlers --
   const handleEdit = async () => {
     const session = editSessionRef.current
-    if (!mountedRef.current || activeSaveSessionRef.current === session) return
+    if (!mountedRef.current || activeSaveSessionRef.current !== null) return
     const isCurrentEdit = () => mountedRef.current && editSessionRef.current === session
     const dateRange = resolveCampusEventDateRange(
       editData.starts_at ?? "",
@@ -203,7 +203,7 @@ export function useEventCardLogic({
           api.post<{ url: string }>(`/events/upload_image`, data)
         )
         imgUrl = uploadRes.data.url
-        if (isCurrentEdit()) setImageLoading(false)
+        if (mountedRef.current) setImageLoading(false)
       }
       const payload = {
         ...editData,
@@ -232,7 +232,7 @@ export function useEventCardLogic({
       if (isCurrentEdit()) setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
       if (activeSaveSessionRef.current === session) activeSaveSessionRef.current = null
-      if (isCurrentEdit()) {
+      if (mountedRef.current) {
         setImageLoading(false)
         setLoading(false)
       }
