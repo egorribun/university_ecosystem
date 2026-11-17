@@ -2096,3 +2096,142 @@ async def test_notification_cleanup_preserves_claims_under_active_rls(
                 {"ids": parent_ids},
             )
         admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_event_image_cleanup_retains_rls_hidden_legacy_reference(
+    rls_schema: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tenant-filtered absence cannot authorize deletion of shared artwork."""
+    from unittest.mock import AsyncMock
+
+    from app.core.db.listeners import register_tenant_listeners
+    from app.services import content_media
+    from app.services.storage import S3Storage
+
+    owner_id, reference_id = uuid.uuid4(), uuid.uuid4()
+    key = f"tmp/event_images/event_{owner_id}_{'a' * 32}.png"
+    url = f"https://cdn.example.test/media/{key}"
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="media", base_url="https://cdn.example.test/media", client=client
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    admin = _engine(rls_schema.admin)
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    admin_engine = create_async_engine(
+        rls_schema.admin.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    try:
+        with admin.begin() as connection:
+            # Model the committed owner replacement and a supported legacy alias.
+            for event_id, tenant, image in (
+                (owner_id, _TENANT_A, None),
+                (reference_id, _TENANT_B, url),
+            ):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO events "
+                        "(id, title, starts_at, ends_at, tenant_id, image_url) "
+                        "VALUES (:id, 'legacy shared artwork', now(), "
+                        "now() + interval '1 hour', :tenant, :image)"
+                    ),
+                    {"id": event_id, "tenant": tenant, "image": image},
+                )
+        for tenant, visible in (
+            (_TENANT_A, {owner_id}),
+            (_TENANT_B, {reference_id}),
+            (None, set()),
+        ):
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    role = (
+                        await session.execute(
+                            sa.text(
+                                "SELECT rolsuper, rolbypassrls, "
+                                "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER') "
+                                "FROM pg_roles WHERE rolname = current_user"
+                            )
+                        )
+                    ).one()
+                    assert tuple(role) == (False, False, False)
+                    assert (
+                        await session.scalar(
+                            sa.text("SELECT row_security_active('events')")
+                        )
+                        is True
+                    )
+                    assert (
+                        set(
+                            (
+                                await session.execute(
+                                    sa.text(
+                                        "SELECT id FROM events WHERE id IN (:a, :b)"
+                                    ),
+                                    {"a": owner_id, "b": reference_id},
+                                )
+                            ).scalars()
+                        )
+                        == visible
+                    )
+                    removed = await content_media.delete_unreferenced_owned_event_image(
+                        url, event_id=owner_id, db_session=session
+                    )
+                    assert removed is False
+                    client.delete_object.assert_not_awaited()
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+
+        # Owned admin is a positive control, never a production role escalation.
+        async with async_sessionmaker(admin_engine)() as session:
+            assert (
+                await session.scalar(sa.text("SELECT row_security_active('events')"))
+                is False
+            )
+            assert not await content_media.delete_unreferenced_owned_event_image(
+                url, event_id=owner_id, db_session=session
+            )
+            client.delete_object.assert_not_awaited()
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM events WHERE id = :id"), {"id": reference_id}
+            )
+        tenant_token = tenant_id_ctx.set(str(_TENANT_A))
+        bypass_token = bypass_rls_ctx.set(False)
+        try:
+            async with async_sessionmaker(engine)() as session:
+                # Even a genuine orphan is deferred under active RLS.
+                assert not await content_media.delete_unreferenced_owned_event_image(
+                    url, event_id=owner_id, db_session=session
+                )
+                client.delete_object.assert_not_awaited()
+        finally:
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
+        async with async_sessionmaker(admin_engine)() as session:
+            assert await content_media.delete_unreferenced_owned_event_image(
+                url, event_id=owner_id, db_session=session
+            )
+        client.delete_object.assert_awaited_once_with(Bucket="media", Key=key)
+    finally:
+        await engine.dispose()
+        await admin_engine.dispose()
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM events WHERE id IN (:a, :b)"),
+                {"a": owner_id, "b": reference_id},
+            )
+        admin.dispose()
