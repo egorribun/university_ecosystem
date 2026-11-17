@@ -1016,9 +1016,13 @@ describe("SpotifyConnect", () => {
       previous: Record<string, unknown>
     ) => Record<string, unknown>
     const nextAccount = { id: "user-2", spotify_connected: true }
+    const originalAccount = mockState.user
     expect(update(nextAccount)).toBe(nextAccount)
-    rotateBrowserSession()
-    expect(update(mockState.user)).toBe(mockState.user)
+    await act(async () => {
+      rotateBrowserSession()
+      expect(update(originalAccount)).toBe(originalAccount)
+      await Promise.resolve()
+    })
   })
 
   it.each(["connect", "disconnect", "refresh"])(
