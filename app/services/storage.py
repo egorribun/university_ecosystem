@@ -712,6 +712,7 @@ class S3Storage(StorageBackend):
 
     async def _delete_abandoned_key(self, key: str) -> None:
         """Run the compensating delete to completion even if the caller is cancelled again."""
+
         async def delete_safely() -> None:
             # Catch inside the task: a cancelled shield waiter cannot consume
             # a later provider exception, which asyncio may otherwise log.
