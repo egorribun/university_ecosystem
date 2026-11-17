@@ -11,11 +11,13 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from redis.exceptions import RedisError
 
-from app.core.ratelimit import cleanup
+from app.core.ratelimit import cleanup, logic
+from app.core.ratelimit.exceptions import RateLimitExceeded
 from app.core.ratelimit.strategies import memory
 from app.core.ratelimit.utils import parse_rate_limit
 
@@ -176,3 +178,35 @@ async def test_shorter_requested_window_keeps_existing_admission_semantics(monke
     assert len(memory._memory_windows) == 1
     memory.clear_memory_state()
     assert not memory._memory_windows
+
+
+@pytest.mark.asyncio
+async def test_redis_failure_daily_fallback_survives_memory_cleanup(monkeypatch):
+    clock = [1_000_000.0]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(logic.settings, "rate_limit_enabled", True)
+    breaker = MagicMock()
+    breaker.admit_request.return_value.allowed = True
+    monkeypatch.setattr(logic, "get_circuit_breaker", lambda: breaker)
+    strategy = MagicMock()
+    strategy.check = AsyncMock(side_effect=RedisError("unavailable"))
+    limit, seconds = parse_rate_limit("2/day", fallback=(9, 60))
+
+    first = await logic.enforce_rate_limit(
+        identifier="daily-fallback",
+        limit=limit,
+        window_seconds=seconds,
+        strategy=strategy,
+    )
+    assert first.allowed
+    assert first.remaining == 0
+    clock[0] += 7200
+    monkeypatch.setattr(cleanup.asyncio, "sleep", _sleep_then_cancel())
+    await cleanup._memory_cleanup_loop(interval_seconds=300)
+    with pytest.raises(RateLimitExceeded):
+        await logic.enforce_rate_limit(
+            identifier="daily-fallback",
+            limit=limit,
+            window_seconds=seconds,
+            strategy=strategy,
+        )
