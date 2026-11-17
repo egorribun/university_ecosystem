@@ -18,9 +18,11 @@ def _request() -> MagicMock:
     return request
 
 
-def _session() -> SimpleNamespace:
+def _session(user_id, jti) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
+        user_id=user_id,
+        jti=jti,
         revoked_at=None,
         expires_at=datetime.now(UTC) + timedelta(hours=1),
         user_agent=None,
@@ -35,7 +37,7 @@ def _session() -> SimpleNamespace:
 
 def _auth_patches(user_id, jti, redis_session):
     user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
-    session = _session()
+    session = _session(user_id, jti)
     client = AsyncMock()
     client.exists.return_value = False
     security = MagicMock()
@@ -211,7 +213,7 @@ async def test_get_current_user_cached_session_id_branches(session_id: str | Non
     user_id = uuid4()
     jti = "session-id-branch"
     user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
-    session = _session()
+    session = _session(user_id, jti)
     redis_session = AsyncMock()
     cached = {"user_id": str(user_id)}
     if session_id is not None:
