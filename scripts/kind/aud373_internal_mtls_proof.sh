@@ -679,8 +679,9 @@ build_images() {
   timeout 1800 docker build --file "${ROOT_DIR}/frontend.Dockerfile" \
     --tag "$FRONTEND_IMAGE" "$ROOT_DIR" || return 1
   timeout 120 docker run --rm --init --network none --read-only \
-    --volume "${ROOT_DIR}/scripts/kind:/proof:ro" --entrypoint node \
-    "$FRONTEND_IMAGE" --test /proof/ssr_mtls_request_proof.test.mjs || return 1
+    --volume "${ROOT_DIR}/scripts/kind:/proof/scripts/kind:ro" \
+    --volume "${ROOT_DIR}/frontend/scripts/server-csp.mjs:/proof/frontend/scripts/server-csp.mjs:ro" \
+    --entrypoint node "$FRONTEND_IMAGE" --test /proof/scripts/kind/ssr_mtls_request_proof.test.mjs || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/backend.Dockerfile" \
     --tag "$BACKEND_IMAGE" "$ROOT_DIR" || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/services/gateway/Dockerfile" \

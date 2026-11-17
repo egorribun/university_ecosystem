@@ -99,3 +99,53 @@ printf 'FAILURES=%s\\n' "$FAILURES"
     result = _bash_command(command)
     assert result.returncode == 0, result.stderr
     assert f"FAILURES={int(status != 0)}\n" in result.stdout.decode()
+
+
+@pytest.mark.parametrize("status", [0, 1, 124])
+def test_ssr_proof_container_preserves_import_layout_and_failure_gate(
+    status: int,
+) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("build_images")}
+ROOT_DIR="/repo with spaces"
+FRONTEND_IMAGE=frontend
+BACKEND_IMAGE=backend
+GATEWAY_IMAGE=gateway
+SSR_FIXTURE_IMAGE=fixture
+FILE_PROCESSOR_IMAGE=processor
+timeout() {{ shift; "$@"; }}
+docker() {{
+  if [[ "$1" == run ]]; then
+    printf 'ARG=%s\\n' "$@"
+    return {status}
+  fi
+  printf 'BUILD=%s\\n' "$*"
+}}
+if build_images; then result=0; else result=$?; fi
+printf 'RESULT=%s\\n' "$result"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.decode().splitlines()
+    args = [line.removeprefix("ARG=") for line in lines if line.startswith("ARG=")]
+    assert args == [
+        "run",
+        "--rm",
+        "--init",
+        "--network",
+        "none",
+        "--read-only",
+        "--volume",
+        "/repo with spaces/scripts/kind:/proof/scripts/kind:ro",
+        "--volume",
+        "/repo with spaces/frontend/scripts/server-csp.mjs:"
+        "/proof/frontend/scripts/server-csp.mjs:ro",
+        "--entrypoint",
+        "node",
+        "frontend",
+        "--test",
+        "/proof/scripts/kind/ssr_mtls_request_proof.test.mjs",
+    ]
+    assert f"RESULT={int(status != 0)}" in lines
+    builds = [line for line in lines if line.startswith("BUILD=")]
+    assert len(builds) == (5 if status == 0 else 1)
