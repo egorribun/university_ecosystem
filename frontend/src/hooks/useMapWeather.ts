@@ -3,6 +3,7 @@
  * Wave 99 — initial; Wave 108 — expanded fields + hourly forecast.
  */
 
+import * as v from "valibot"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useMemo } from "react"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
@@ -47,6 +48,26 @@ interface CachedWeather {
   data: MapWeatherData
 }
 
+const WeatherConditionSchema = v.picklist(["clear", "cloudy", "rain", "snow", "fog", "storm"])
+const FiniteNumberSchema = v.pipe(v.number(), v.finite())
+const MapWeatherDataSchema = v.object({
+  temperature: FiniteNumberSchema,
+  weatherCode: FiniteNumberSchema,
+  isDay: v.boolean(),
+  condition: WeatherConditionSchema,
+  feelsLike: FiniteNumberSchema,
+  windSpeed: FiniteNumberSchema,
+  humidity: FiniteNumberSchema,
+  uvIndex: FiniteNumberSchema,
+  hourlyForecast: v.array(
+    v.object({
+      hour: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(23)),
+      temperature: FiniteNumberSchema,
+      condition: WeatherConditionSchema,
+    })
+  ),
+}) satisfies v.GenericSchema<MapWeatherData>
+
 function readCache(): CachedWeather | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
@@ -68,7 +89,14 @@ function readCache(): CachedWeather | null {
     if (now - timestamp >= CACHE_TTL) {
       return null
     }
-    return cached as CachedWeather
+    const parsed = v.safeParse(MapWeatherDataSchema, cached.data)
+    if (!parsed.success) return null
+    return {
+      version: CACHE_VERSION,
+      windSpeedUnit: CACHE_WIND_SPEED_UNIT,
+      timestamp,
+      data: parsed.output,
+    }
   } catch {
     return null
   }

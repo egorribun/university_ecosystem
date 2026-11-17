@@ -43,6 +43,7 @@ pytest_plugins = ("pytester",)
                 "pytest",
                 "tests/",
                 "--no-cov",
+                "--timeout-disable-debugger-detection",
                 "--ignore=tests/performance",
                 "--ignore=tests/chaos",
                 "--ignore=tests/test_schemathesis_api.py",

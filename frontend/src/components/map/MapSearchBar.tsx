@@ -263,6 +263,10 @@ export function MapSearchBar({
             setActiveIdx(null)
           }}
           onFocus={() => {
+            if (blurTimeoutRef.current !== null) {
+              clearTimeout(blurTimeoutRef.current)
+              blurTimeoutRef.current = null
+            }
             setIsOpen(shouldOpenSearchOnFocus(results.length))
           }}
           onBlur={() => {

@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useCachedRelatedLists } from "./useCachedRelatedLists"
 import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import { type NewsItem } from "@/api/news"
 import { inferNewsCategory, type NewsCategory } from "@/features/news/categories"
@@ -9,16 +9,11 @@ import { inferNewsCategory, type NewsCategory } from "@/features/news/categories
  * Filters by matching inferred category, excluding current article.
  */
 export function useRelatedNews(currentId: string, category: NewsCategory, limit = 3): NewsItem[] {
-  const queryClient = useQueryClient()
+  const queries = useCachedRelatedLists<NewsItem>("news")
   const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
     if (!sessionIsCurrent) return []
-    // Pull from all cached news list queries
-    const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
-      queryKey: ["news", "list"],
-    })
-
     const allItems: NewsItem[] = []
     for (const [, data] of queries) {
       if (data?.pages) {
@@ -49,5 +44,5 @@ export function useRelatedNews(currentId: string, category: NewsCategory, limit 
       .slice(0, limit - sameCategory.length)
 
     return [...sameCategory, ...remaining].slice(0, limit)
-  }, [queryClient, currentId, category, limit, sessionIsCurrent])
+  }, [queries, currentId, category, limit, sessionIsCurrent])
 }

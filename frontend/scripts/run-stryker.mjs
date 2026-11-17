@@ -251,6 +251,25 @@ export async function stageStrykerSandboxInputs(tempDir, policyPath = sourcePoli
   if (sha256(stagedPolicyBytes) !== sha256(policyBytes)) {
     throw new Error("Staged Stryker coverage policy differs from the canonical policy")
   }
+  // Repository contract tests resolve these manifests beside sandbox-*.
+  // Copy only their authored inputs, never the working tree or generated files.
+  const manifests = [
+    "k8s/backend/configmap.yaml",
+    "k8s/backend/deployment.yaml",
+    "k8s/frontend/deployment.yaml",
+  ]
+  const sourceRoot = path.dirname(path.dirname(policyPath))
+  await mkdir(path.join(tempDir, "k8s"), { recursive: false })
+  await mkdir(path.join(tempDir, "k8s", "backend"), { recursive: false })
+  await mkdir(path.join(tempDir, "k8s", "frontend"), { recursive: false })
+  for (const manifest of manifests) {
+    const sourceBytes = await readFile(path.join(sourceRoot, manifest))
+    const destination = path.join(tempDir, manifest)
+    await writeFile(destination, sourceBytes, { flag: "wx" })
+    if (sha256(await readFile(destination)) !== sha256(sourceBytes)) {
+      throw new Error("Staged Stryker Kubernetes input differs from its canonical source")
+    }
+  }
   return stagedPolicyPath
 }
 

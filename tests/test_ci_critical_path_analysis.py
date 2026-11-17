@@ -1903,3 +1903,204 @@ def test_aud093_cli_serializes_execution_bound_separately_from_wall_span(
     assert "critical_path_seconds" not in summary
     assert summary["wall_clock_seconds"] == expected_wall
     assert summary["critical_path_lower_bound_seconds"] == expected_bound
+
+
+def _first_attempt_skipped_record(labels: list[str]) -> dict[str, object]:
+    # GitHub run 43981164331, job 133702960401, attempt 1. Preserve the
+    # observed eight-second inversion without attributing it to clock skew.
+    # The source head is synthetic; run/job IDs retain the public audit trail.
+    # The selector variant was observed in run 43982705590, job 133718444854.
+    return {
+        "id": 133702960401,
+        "run_id": 43981164331,
+        "run_attempt": 1,
+        "head_sha": "a" * 40,
+        "name": "live-realtime-visual",
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-11-16T23:50:31Z",
+        "started_at": "2026-11-16T23:50:31Z",
+        "completed_at": "2026-11-16T23:50:23Z",
+        "steps": [],
+        "runner_id": None,
+        "runner_name": None,
+        "labels": labels,
+    }
+
+
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) -> None:
+    record = _first_attempt_skipped_record(labels)
+    original = json.dumps(record, sort_keys=True)
+    jobs = parse_jobs({"jobs": [record]})
+    report = analyze_jobs(
+        jobs,
+        repository="egorribun/university_ecosystem",
+        run_id=43981164331,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    assert json.dumps(record, sort_keys=True) == original
+    row = report["jobs"][0]
+    assert row["conclusion"] == "skipped"
+    assert row["duration_seconds"] == 0.0
+    assert row["github_queue_wait_seconds"] is None
+    assert row["continued_after_core_failure"] == "unknown"
+    assert row["github_timing_evidence"] == {
+        "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
+        "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
+        "created_at": "2026-11-16T23:50:31+00:00",
+        "started_at": "2026-11-16T23:50:31+00:00",
+        "completed_at": "2026-11-16T23:50:23+00:00",
+    }
+
+
+@pytest.mark.parametrize("inversion", [8, 10])
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_id": None},
+        {"run_attempt": None},
+        {"head_sha": None},
+        {"status": "in_progress"},
+        {"conclusion": "success"},
+        {"conclusion": "failure"},
+        {"conclusion": "cancelled"},
+        {"runner_id": 42},
+        {"runner_name": "runner"},
+        {"labels": None},
+        {"labels": "ubuntu-24.04"},
+        {"labels": {}},
+        {"labels": ["ubuntu-24.04", "extra"]},
+        {"labels": ["ubuntu-24.04", "ubuntu-24.04"]},
+        {"labels": ["self-hosted"]},
+        {"steps": [{"name": "Run tests"}]},
+        {"created_at": "2026-11-16T23:50:30Z"},
+        {"queued_at": "2026-11-16T23:50:31Z"},
+        {"completed_at": "2026-11-16T23:50:20Z"},
+    ],
+)
+def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
+    inversion: int, labels: list[str], change: dict[str, object]
+) -> None:
+    record = _first_attempt_skipped_record(labels)
+    record["completed_at"] = f"2026-11-16T23:50:{31 - inversion:02d}Z"
+    record.update(change)
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
+
+
+@pytest.mark.parametrize("inversion", [8, 10])
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+@pytest.mark.parametrize(
+    "field", ["runner_id", "runner_name", "labels", "steps", "status"]
+)
+def test_first_attempt_skip_requires_explicit_no_execution_evidence(
+    inversion: int, labels: list[str], field: str
+) -> None:
+    record = _first_attempt_skipped_record(labels)
+    record["completed_at"] = f"2026-11-16T23:50:{31 - inversion:02d}Z"
+    del record[field]
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
+
+
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+def test_first_attempt_skipped_record_is_not_work_after_core_failure(
+    labels: list[str],
+) -> None:
+    skipped = _first_attempt_skipped_record(labels)
+    failure = {
+        "id": 1,
+        "name": "core-failure",
+        "run_id": skipped["run_id"],
+        "run_attempt": 1,
+        "head_sha": skipped["head_sha"],
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-11-16T23:50:00Z",
+        "started_at": "2026-11-16T23:50:00Z",
+        "completed_at": "2026-11-16T23:50:10Z",
+        "steps": [],
+        "core_failure": True,
+    }
+    payload = {"jobs": [failure, skipped]}
+    dag = _dag_payload(
+        payload,
+        run_id=43981164331,
+        source_head_sha=str(skipped["head_sha"]),
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=43981164331,
+        concurrency_cap=20,
+        dag=dag,
+        trusted_provenance=_trusted_provenance(dag),
+    )
+    rows = {row["id"]: row for row in report["jobs"]}
+    assert rows[133702960401]["continued_after_core_failure"] is False
+    assert rows[133702960401]["conclusion"] == "skipped"
+    assert rows[133702960401]["github_timing_evidence"]["completed_at"] == (
+        "2026-11-16T23:50:23+00:00"
+    )
+    assert report["summary"]["jobs_continued_after_core_failure"] == []
+
+
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_observed_ten_second_skip_preserves_evidence(labels, diagnostic):
+    # Run 43983640643, job 133721977888; source SHA remains synthetic.
+    skipped = _first_attempt_skipped_record(labels) | {
+        "id": 133721977888,
+        "run_id": 43983640643,
+        "created_at": "2026-11-17T00:31:14Z",
+        "started_at": "2026-11-17T00:31:14Z",
+        "completed_at": "2026-11-17T00:31:04Z",
+    }
+    failure = {
+        "id": 1,
+        "name": "core-failure",
+        "run_id": skipped["run_id"],
+        "run_attempt": 1,
+        "head_sha": skipped["head_sha"],
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-11-17T00:30:00Z",
+        "started_at": "2026-11-17T00:30:00Z",
+        "completed_at": "2026-11-17T00:30:10Z",
+        "steps": [],
+        "core_failure": True,
+    }
+    payload = {"jobs": [failure, skipped]}
+    original = json.dumps(payload, sort_keys=True)
+    dag = _dag_payload(
+        payload,
+        run_id=43983640643,
+        source_head_sha=str(skipped["head_sha"]),
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=43983640643,
+        concurrency_cap=20,
+        diagnostic_lower_bound=diagnostic,
+        dag=None if diagnostic else dag,
+        trusted_provenance=None if diagnostic else _trusted_provenance(dag),
+    )
+    assert json.dumps(payload, sort_keys=True) == original
+    row = next(row for row in report["jobs"] if row["id"] == skipped["id"])
+    assert row["conclusion"] == "skipped"
+    assert row["duration_seconds"] == 0.0
+    assert row["github_queue_wait_seconds"] is None
+    assert row["continued_after_core_failure"] == ("unknown" if diagnostic else False)
+    assert row["github_timing_evidence"] == {
+        "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
+        "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
+        "created_at": "2026-11-17T00:31:14+00:00",
+        "started_at": "2026-11-17T00:31:14+00:00",
+        "completed_at": "2026-11-17T00:31:04+00:00",
+    }
+    if not diagnostic:
+        assert report["summary"]["jobs_continued_after_core_failure"] == []

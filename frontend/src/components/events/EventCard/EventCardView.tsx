@@ -148,125 +148,128 @@ export const EventCardView: FC<EventCardViewProps> = ({
     }
   }, [hoveringDisabled])
   const handleTransitionReset = () => setTransitioning(false)
+  const canShowQuickView = !hoveringDisabled && !editOpen && !confirmDeleteOpen
 
   return (
-    <m.article
-      ref={articleRef}
-      onMouseMove={spotlight.onMouseMove}
-      onMouseEnter={showQuickView}
-      onMouseLeave={() => {
-        hideQuickView()
-        handleTransitionReset()
-      }}
-      onPointerDown={handlePointerDown}
-      className={cn(
-        "events-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
-        hoveringDisabled
-          ? "cursor-default"
-          : "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:duration-instant"
-      )}
-      data-testid="event-card"
-    >
-      {/* Quick-view popover */}
-      <EventQuickView
-        visible={quickViewVisible}
-        title={title}
-        description={description || ""}
-        startsAt={startsAt}
-        endsAt={endsAt}
-        location={location}
-        participantCount={participantCount}
-        category={category}
-        position={quickViewPosition}
-      />
-
-      {/* Spotlight */}
-      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
-
-      {/* Admin menu */}
-      {isAdmin && (
-        <div className="absolute right-3 top-3 z-surface">
-          <Suspense fallback={null}>
-            <EventAdminActions
-              menuAnchor={menuAnchor}
-              setMenuAnchor={setMenuAnchor}
-              onEdit={onEditOpen}
-              onDelete={onDeleteOpen}
-              menuId={menuId}
-              disabled={loading}
-            />
-          </Suspense>
-        </div>
-      )}
-
-      {/* Category badge — top-left */}
-      <div className="absolute left-3 top-3 z-surface">
-        <EventCategoryBadge category={category} size="sm" />
-      </div>
-
-      {/* Hero image with parallax */}
-      <div className="relative shrink-0 overflow-hidden h-48 sm:h-52">
-        <EventCardHero
-          id={id}
-          imageUrl={imageUrl}
+    <div className="event-quick-view-host relative h-full">
+      {canShowQuickView && (
+        <EventQuickView
+          visible={quickViewVisible}
           title={title}
-          startsAt={startsAt}
-          endsAt={endsAt}
-          timeStatus={timeStatus}
-          transitioning={transitioning}
-          priority={priority}
-        />
-      </div>
-
-      {/* Content — title link's before:absolute reaches <article> for full-card click */}
-      <div className="flex flex-1 flex-col">
-        <EventCardContent
-          id={id}
-          title={title}
-          speaker={speaker}
+          description={description || ""}
           startsAt={startsAt}
           endsAt={endsAt}
           location={location}
-          description={description}
           participantCount={participantCount}
-          isRegistered={isRegistered}
-          isEnded={isEnded}
-          hoveringDisabled={hoveringDisabled}
+          category={category}
+          position={quickViewPosition}
         />
-      </div>
+      )}
+      <m.article
+        ref={articleRef}
+        onMouseMove={spotlight.onMouseMove}
+        onMouseEnter={showQuickView}
+        onMouseLeave={() => {
+          hideQuickView()
+          handleTransitionReset()
+        }}
+        onPointerDown={handlePointerDown}
+        className={cn(
+          "events-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
+          hoveringDisabled
+            ? "cursor-default"
+            : "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:duration-instant"
+        )}
+        data-testid="event-card"
+      >
+        {/* Spotlight */}
+        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
 
-      {/* Dialogs */}
-      <Suspense fallback={null}>
-        <EventEditDialog
-          open={editOpen}
-          onClose={onEditClose}
-          draft={editDraft}
-          setDraft={setEditDraft}
-          onSave={onEditSave}
-          loading={loading}
-          imageLoading={imageLoading}
-          dateError={false}
-          normalizedTitle={title}
-          normalizedLocation={location || ""}
-          newImage={newImage}
-          setNewImage={setNewImage}
-          previewUrl={previewUrl}
+        {/* Admin menu */}
+        {isAdmin && (
+          <div className="absolute right-3 top-3 z-surface">
+            <Suspense fallback={null}>
+              <EventAdminActions
+                menuAnchor={menuAnchor}
+                setMenuAnchor={setMenuAnchor}
+                onEdit={onEditOpen}
+                onDelete={onDeleteOpen}
+                menuId={menuId}
+                disabled={loading}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {/* Category badge — top-left */}
+        <div className="absolute left-3 top-3 z-surface">
+          <EventCategoryBadge category={category} size="sm" />
+        </div>
+
+        {/* Hero image with parallax */}
+        <div className="relative shrink-0 overflow-hidden h-48 sm:h-52">
+          <EventCardHero
+            id={id}
+            imageUrl={imageUrl}
+            title={title}
+            startsAt={startsAt}
+            endsAt={endsAt}
+            timeStatus={timeStatus}
+            transitioning={transitioning}
+            priority={priority}
+          />
+        </div>
+
+        {/* Content — title link's before:absolute reaches <article> for full-card click */}
+        <div className="flex flex-1 flex-col">
+          <EventCardContent
+            id={id}
+            title={title}
+            speaker={speaker}
+            startsAt={startsAt}
+            endsAt={endsAt}
+            location={location}
+            description={description}
+            participantCount={participantCount}
+            isRegistered={isRegistered}
+            isEnded={isEnded}
+            hoveringDisabled={hoveringDisabled}
+          />
+        </div>
+
+        {/* Dialogs */}
+        <Suspense fallback={null}>
+          <EventEditDialog
+            open={editOpen}
+            onClose={onEditClose}
+            draft={editDraft}
+            setDraft={setEditDraft}
+            onSave={onEditSave}
+            loading={loading}
+            imageLoading={imageLoading}
+            dateError={false}
+            normalizedTitle={title}
+            normalizedLocation={location || ""}
+            newImage={newImage}
+            setNewImage={setNewImage}
+            previewUrl={previewUrl}
+          />
+        </Suspense>
+
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          title={t.deleteTitle}
+          message={t.deleteDesc}
+          confirmText={t.confirm}
+          cancelText={t.cancel}
+          variant="danger"
+          onConfirm={onDeleteConfirm}
+          onCancel={onDeleteClose}
+          isLoading={loading}
         />
-      </Suspense>
 
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        title={t.deleteTitle}
-        message={t.deleteDesc}
-        confirmText={t.confirm}
-        cancelText={t.cancel}
-        variant="danger"
-        onConfirm={onDeleteConfirm}
-        onCancel={onDeleteClose}
-        isLoading={loading}
-      />
-
-      <Snackbar open={!!error} message={error} onClose={onErrorClose} />
-    </m.article>
+        <Snackbar open={!!error} message={error} onClose={onErrorClose} />
+      </m.article>
+    </div>
   )
 }

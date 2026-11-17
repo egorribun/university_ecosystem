@@ -25,19 +25,21 @@ export function useSwipe({
   timeout = 500,
   minVelocity = 0.3,
 }: UseSwipeOptions): SwipeHandlers {
-  const touchStart = useRef<{ x: number; y: number; time: number } | null>(null)
+  const touchStart = useRef<{ x: number; y: number; time: number; pointerId: number } | null>(null)
 
   const onPointerDown = useCallback((e: PointerEvent) => {
+    if (touchStart.current) return
     touchStart.current = {
       x: e.clientX,
       y: e.clientY,
       time: Date.now(),
+      pointerId: e.pointerId,
     }
   }, [])
 
   const onPointerUp = useCallback(
     (e: PointerEvent) => {
-      if (!touchStart.current) return
+      if (!touchStart.current || touchStart.current.pointerId !== e.pointerId) return
 
       const dx = e.clientX - touchStart.current.x
       const dy = e.clientY - touchStart.current.y
@@ -63,11 +65,13 @@ export function useSwipe({
     [onSwipeLeft, onSwipeRight, threshold, timeout, minVelocity]
   )
 
-  const onPointerCancel = useCallback(() => {
+  const onPointerCancel = useCallback((e: PointerEvent) => {
+    if (touchStart.current?.pointerId !== e.pointerId) return
     touchStart.current = null
   }, [])
 
-  const onPointerLeave = useCallback(() => {
+  const onPointerLeave = useCallback((e: PointerEvent) => {
+    if (touchStart.current?.pointerId !== e.pointerId) return
     touchStart.current = null
   }, [])
 

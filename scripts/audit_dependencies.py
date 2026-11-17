@@ -62,21 +62,41 @@ def collect_npm_advisory_ids(package_dir: pathlib.Path) -> set[str]:
         raise AuditFailure(f"npm audit failed: {result.stderr or result.stdout}")
 
     try:
-        payload = json.loads(result.stdout or "{}")
+        payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise AuditFailure(f"npm audit produced invalid JSON: {exc}") from exc
 
+    if not isinstance(payload, dict) or "error" in payload:
+        raise AuditFailure("npm audit returned an error or invalid report")
+    vulnerabilities = payload.get("vulnerabilities")
+    if not isinstance(vulnerabilities, dict):
+        raise AuditFailure("npm audit report is missing its vulnerabilities object")
+
     advisories: set[str] = set()
-    for vulnerability in (payload.get("vulnerabilities") or {}).values():
-        if vulnerability.get("severity") not in {"high", "critical"}:
+    for vulnerability in vulnerabilities.values():
+        if not isinstance(vulnerability, dict):
+            raise AuditFailure("npm audit returned an invalid vulnerability")
+        severity = vulnerability.get("severity")
+        if severity not in {"info", "low", "moderate", "high", "critical"}:
+            raise AuditFailure("npm audit returned an unknown vulnerability severity")
+        if severity not in {"high", "critical"}:
             continue
-        for via in vulnerability.get("via", []):
-            if isinstance(via, str):
-                advisories.add(via)
-            elif isinstance(via, dict):
+        via_entries = vulnerability.get("via")
+        if not isinstance(via_entries, list) or not via_entries:
+            raise AuditFailure("npm audit blocking vulnerability has no advisory")
+        for via in via_entries:
+            source = via
+            if isinstance(via, dict):
                 source = via.get("source") or via.get("url") or via.get("name")
-                if source:
-                    advisories.add(str(source))
+            if (
+                isinstance(source, bool)
+                or not isinstance(source, (str, int))
+                or not str(source).strip()
+            ):
+                raise AuditFailure("npm audit returned an invalid advisory identifier")
+            advisories.add(str(source))
+    if bool(advisories) != (result.returncode == 1):
+        raise AuditFailure("npm audit exit status disagrees with blocking advisories")
     return advisories
 
 

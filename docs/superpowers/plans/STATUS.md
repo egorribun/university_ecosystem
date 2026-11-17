@@ -2,7 +2,9 @@
 
 ## Текущий срез — 2026-11-17
 
-- Hosted Kind + Calico proof на main
+- Защищённый `main` на дату среза —
+  [`b571261a0805a426febd8b16b942810417f32ce8`](https://github.com/egorribun/university_ecosystem/commit/b571261a0805a426febd8b16b942810417f32ce8).
+- Hosted Kind + Calico proof на тогдашнем main
   [`057ccd2cb835f82d97144e97413b185cf8bd7a03`](https://github.com/egorribun/university_ecosystem/commit/057ccd2cb835f82d97144e97413b185cf8bd7a03):
   [run 43969553490](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490),
   [job 133657797517](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/job/133657797517),
@@ -11,9 +13,29 @@
   [зафиксированных доказательств](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
   Реальный ingress controller и публичный HTTP route не запускались; применён
   ingress-labelled stand-in по принятому владельцем объёму проверки.
+- Полные hosted Core [run 43997541022](https://github.com/egorribun/university_ecosystem/actions/runs/43997541022)
+  и [run 44011702649](https://github.com/egorribun/university_ecosystem/actions/runs/44011702649)
+  на `b571261a0805a426febd8b16b942810417f32ce8` завершились с ошибкой на шаге live acceptance.
+  [Metadata-only receipt 14302072870](https://github.com/egorribun/university_ecosystem/actions/runs/44011702649/artifacts/14302072870)
+  последнего подтверждает режим `full` и `e2e: failure`; серия green полных Core run на `main` — 0 из 2.
+  Более ранний [run 43969553294](https://github.com/egorribun/university_ecosystem/actions/runs/43969553294)
+  на `057ccd2cb835f82d97144e97413b185cf8bd7a03` также завершился с ошибкой.
 - Формальный итог — **510/512 (99.6%), 2 открытых: 1S / 1P / 0U / 0N**.
   Этот результат не подтверждает общий CI, выпуск или deployment. Новый SHA
   документации и каждый последующий SHA требуют собственных required checks.
+- Открыт [PR #1422](https://github.com/egorribun/university_ecosystem/pull/1422) из `egorribun`
+  в `main`. В нём: подтверждение личности в настройках, live-диагностика Push и MapLibre
+  и 67 черновых PR автоматического облачного агента (#1409–#1488), влитых в `egorribun`
+  после локальной проверки. Агент ничего не запускал сам, поэтому найденные дефекты
+  исправлены в ветке без ослабления гейтов. Required checks на итоговом SHA ещё не
+  подтверждены. Облачный агент приостановлен владельцем; его очереди Actions отменены.
+- Отложены до перепривязки реестра: #1431, #1443, #1446, #1447, #1453, #1456, #1464, #1481
+  (меняют закреплённые файлы). #1426 (SPIFFE для SSR) не готов к слиянию по оценке самого агента.
+- Cargo Deny: временное исключение RUSTSEC-2026-0543 (`chrono` unmaintained, без уязвимости)
+  до 2026-12-17 по решению владельца; затем переход `rust_ext` на `time`
+  ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#time-boxed-cargo-deny-exception-for-rustsec-2026-0543)).
+- Риск: в Alpine v3.24 появился `zlib-1.4-r0`; закреплённый `zlib-1.3.2-r1` в
+  `frontend.Dockerfile` и `services/caddy/Dockerfile` может исчезнуть с зеркала.
 
 ## Предыдущий срез — 2026-11-17 (`0823bdb`, superseded)
 
@@ -106,8 +128,8 @@ source SHA, а не этого среза.
 ## Следующие шаги
 
 1. AUD-154: green hosted Owned Live Acceptance на точном SHA; AUD-381: ZAP и Nuclei с проверенным ZAP-отчётом.
-2. Операционная цель: два последовательных green полных Core run на `main`. [Run 43969553294](https://github.com/egorribun/university_ecosystem/actions/runs/43969553294) стартовал для source `057ccd2cb835f82d97144e97413b185cf8bd7a03`; его итог здесь не заявлен.
-3. Для новых изменений открыть PR и дождаться required checks на его итоговом SHA. Обычный merge; без admin bypass.
+2. Операционная цель: два последовательных green полных Core run на `main`.
+3. Дождаться required checks PR #1422 на его итоговом SHA. Обычный merge; без admin bypass.
 4. Этап 3: traceability matrix ТЗ 2–13 (MVP_MASTER_PLAN, Блок 4), реальный Chromium,
    два последовательных прогона, stop/start и seed.
 5. Этап 5: один DB/S3 backup и restore в изолированную цель (ещё не запускался).

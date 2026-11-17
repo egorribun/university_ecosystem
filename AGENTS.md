@@ -16,7 +16,7 @@ Run these commands from the repository root.
 # Python backend
 uv run ruff check app/
 uv run mypy --config-file pyproject.toml app/
-pytest --cov=app --cov-report=term-missing
+uv run pytest tests --cov=app --cov=alembic/versions --cov-branch --cov-report=term-missing
 
 # Frontend
 npm --prefix frontend run typecheck

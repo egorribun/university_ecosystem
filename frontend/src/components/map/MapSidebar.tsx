@@ -151,7 +151,9 @@ export function MapSidebar({
   const campusTimeZone = useCampusTimezone()
   const minuteClock = useMinuteClock()
   const isOpen = !!building
-  const isBuildingOpenNow = building ? isOpenNow(building.hours, new Date(minuteClock)) : false
+  const isBuildingOpenNow = building
+    ? isOpenNow(building.hours, new Date(minuteClock), campusTimeZone)
+    : false
   const sidebarTitleId = useId()
   const sidebarDescriptionId = useId()
 
@@ -327,7 +329,9 @@ export function MapSidebar({
     return floor.rooms.map((room) => {
       const isActive = selectedRoom === room.id
       const status =
-        todayLessons && campusTimeZone ? getRoomStatus(room.id, todayLessons, campusTimeZone) : null
+        todayLessons && campusTimeZone
+          ? getRoomStatus(room.id, todayLessons, campusTimeZone, new Date(minuteClock))
+          : null
       return (
         <button
           key={room.id}
@@ -367,7 +371,7 @@ export function MapSidebar({
         </button>
       )
     })
-  }, [floor, building, selectedRoom, todayLessons, campusTimeZone, t, onRoomClick])
+  }, [floor, building, selectedRoom, todayLessons, campusTimeZone, minuteClock, t, onRoomClick])
 
   if (!isOpen) return null
 
@@ -443,17 +447,19 @@ export function MapSidebar({
       <div className="flex flex-col gap-1 text-xs">
         <div className="flex items-center gap-1.5 mb-1">
           <Clock className="h-3.5 w-3.5 text-[var(--color-teal-500)]" />
-          <span
-            className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
-            style={{
-              backgroundColor: isBuildingOpenNow
-                ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
-                : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-              color: isBuildingOpenNow ? "var(--color-emerald-500)" : "var(--color-rose-500)",
-            }}
-          >
-            {isBuildingOpenNow ? t("hours.openNow") : t("hours.closedNow")}
-          </span>
+          {isBuildingOpenNow !== null && (
+            <span
+              className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
+              style={{
+                backgroundColor: isBuildingOpenNow
+                  ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                  : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                color: isBuildingOpenNow ? "var(--color-emerald-500)" : "var(--color-rose-500)",
+              }}
+            >
+              {isBuildingOpenNow ? t("hours.openNow") : t("hours.closedNow")}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[var(--text-secondary)]">
           <span>

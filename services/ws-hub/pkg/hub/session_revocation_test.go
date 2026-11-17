@@ -776,7 +776,7 @@ func TestSessionRevocationBootstrapErrorReportsCancellation(t *testing.T) {
 	h := setupTestHub()
 	t.Cleanup(h.Stop)
 
-	err := h.sessionRevocationBootstrapError(1, nil, context.Background())
+	err := h.installSessionRevocationStop(1, nil, context.Background(), func() {})
 	assert.ErrorContains(t, err, "startup was cancelled")
 }
 

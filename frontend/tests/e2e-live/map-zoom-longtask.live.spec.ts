@@ -1,4 +1,11 @@
 import { expect, loginAs, test } from "./fixtures"
+import { reportMapZoomLongTasks } from "./map-zoom-longtask-diagnostic"
+import { stopLongTaskMeasurement } from "./map-zoom-longtask-measurement"
+import type {
+  LongTaskSample,
+  MeasuredLongTaskSample,
+  WindowWithMapZoomObserver,
+} from "./map-zoom-longtask-measurement"
 import type { Page, Request } from "@playwright/test"
 
 const MAP_URL = "/map?z=17&lat=55.7144&lng=37.81478&p=0&b=0"
@@ -29,26 +36,20 @@ interface MapCamera {
   longitude: number
 }
 
-interface LongTaskSample {
-  startTime: number
-  duration: number
-}
-
-interface WindowWithMapZoomObserver extends Window {
-  __mapZoomLongTaskObserver?: PerformanceObserver
-  __mapZoomLongTaskSamples?: LongTaskSample[]
-  __mapZoomMeasurementStartedAt?: number
-}
-
-async function readCamera(page: Page): Promise<MapCamera> {
-  return page.evaluate(() => {
+async function readCamera(page: Page, phase?: { step: number; phase: number }): Promise<MapCamera> {
+  return page.evaluate((mark) => {
+    const marks = (window as WindowWithMapZoomObserver).__mapZoomPhaseMarks
+    const previous = marks?.at(-1)
+    if (mark && marks && (previous?.step !== mark.step || previous.phase !== mark.phase)) {
+      marks.push({ ...mark, at: performance.now() })
+    }
     const query = new URLSearchParams(window.location.search)
     return {
       zoom: Number(query.get("z")),
       latitude: Number(query.get("lat")),
       longitude: Number(query.get("lng")),
     }
-  })
+  }, phase)
 }
 
 function isMapResource(request: Request): boolean {
@@ -58,7 +59,8 @@ function isMapResource(request: Request): boolean {
 async function waitForMapNetworkQuiescence(
   page: Page,
   pendingRequests: Set<Request>,
-  requestRevision: () => number
+  requestRevision: () => number,
+  step?: number
 ): Promise<void> {
   let lastRevision = -1
   let stablePolls = 0
@@ -67,10 +69,20 @@ async function waitForMapNetworkQuiescence(
     .poll(
       async () => {
         await page.evaluate(
-          () =>
+          (measurementStep) =>
             new Promise<void>((resolve) => {
+              const marks = (window as WindowWithMapZoomObserver).__mapZoomPhaseMarks
+              const previous = marks?.at(-1)
+              if (
+                measurementStep &&
+                marks &&
+                (previous?.step !== measurementStep || previous.phase !== 3)
+              ) {
+                marks.push({ step: measurementStep, phase: 3, at: performance.now() })
+              }
               requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-            })
+            }),
+          step
         )
 
         const revision = requestRevision()
@@ -85,32 +97,6 @@ async function waitForMapNetworkQuiescence(
       { message: "real map resources and rendered camera settle before measurement" }
     )
     .toBe(true)
-}
-
-async function stopLongTaskMeasurement(page: Page): Promise<LongTaskSample[]> {
-  return page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-    })
-
-    const measurementWindow = window as WindowWithMapZoomObserver
-    const observer = measurementWindow.__mapZoomLongTaskObserver
-    const samples = measurementWindow.__mapZoomLongTaskSamples ?? []
-    const startedAt = measurementWindow.__mapZoomMeasurementStartedAt ?? Number.POSITIVE_INFINITY
-
-    for (const entry of observer?.takeRecords() ?? []) {
-      if (entry.entryType === "longtask") {
-        samples.push({ startTime: entry.startTime, duration: entry.duration })
-      }
-    }
-    observer?.disconnect()
-
-    const zoomSamples = samples.filter((sample) => sample.startTime >= startedAt)
-    delete measurementWindow.__mapZoomLongTaskObserver
-    delete measurementWindow.__mapZoomLongTaskSamples
-    delete measurementWindow.__mapZoomMeasurementStartedAt
-    return zoomSamples
-  })
 }
 
 test("live MapLibre zoom has no main-thread long task at or above 50 ms", async ({
@@ -201,22 +187,29 @@ test("live MapLibre zoom has no main-thread long task at or above 50 ms", async 
     observer.observe({ type: "longtask", buffered: false })
     measurementWindow.__mapZoomLongTaskObserver = observer
     measurementWindow.__mapZoomLongTaskSamples = samples
+    measurementWindow.__mapZoomPhaseMarks = []
     measurementWindow.__mapZoomMeasurementStartedAt = performance.now()
     return true
   })
   expect(measurementAvailable, "Chromium exposes longtask PerformanceObserver entries").toBe(true)
 
-  const longTaskSamples: LongTaskSample[] = []
+  const longTaskSamples: MeasuredLongTaskSample[] = []
   try {
     for (let step = 0; step < ZOOM_STEPS; step += 1) {
-      const previousZoom = (await readCamera(page)).zoom
+      const measurementStep = step + 1
+      const previousZoom = (await readCamera(page, { step: measurementStep, phase: 1 })).zoom
       await zoomIn.click()
       await expect
-        .poll(async () => (await readCamera(page)).zoom, {
+        .poll(async () => (await readCamera(page, { step: measurementStep, phase: 2 })).zoom, {
           message: "the real zoom control updates the MapLibre camera",
         })
         .not.toBe(previousZoom)
-      await waitForMapNetworkQuiescence(page, pendingMapRequests, () => mapRequestRevision)
+      await waitForMapNetworkQuiescence(
+        page,
+        pendingMapRequests,
+        () => mapRequestRevision,
+        measurementStep
+      )
     }
   } finally {
     longTaskSamples.push(...(await stopLongTaskMeasurement(page)))
@@ -226,5 +219,12 @@ test("live MapLibre zoom has no main-thread long task at or above 50 ms", async 
   const blockingTasks = longTaskSamples.filter(
     (sample) => sample.duration >= LONG_TASK_THRESHOLD_MS
   )
+  if (blockingTasks.length > 0) {
+    reportMapZoomLongTasks(
+      test.info().project.name,
+      test.info().retry,
+      blockingTasks.map(({ step, phase, duration }) => ({ step, phase, duration }))
+    )
+  }
   expect(blockingTasks, "zoom must not create a main-thread long task of 50 ms or more").toEqual([])
 })

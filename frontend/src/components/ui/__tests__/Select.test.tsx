@@ -130,6 +130,33 @@ describe("Select — rendering & ARIA", () => {
     expect(screen.getByRole("listbox")).toHaveAttribute("aria-label", "Fruit picker")
   })
 
+  it("preserves the caller's accessible description across opening and updates", () => {
+    const view = render(
+      <>
+        <p id="role-help">Teacher and admin roles require an invitation.</p>
+        <p id="role-error">Choose a role.</p>
+        <Select options={OPTIONS} aria-label="Role" aria-describedby="role-help" />
+      </>
+    )
+    expect(trigger()).toHaveAccessibleDescription("Teacher and admin roles require an invitation.")
+    fireEvent.click(trigger())
+    expect(trigger()).toHaveAccessibleDescription("Teacher and admin roles require an invitation.")
+
+    view.rerender(
+      <>
+        <p id="role-help">Teacher and admin roles require an invitation.</p>
+        <p id="role-error">Choose a role.</p>
+        <Select options={OPTIONS} aria-label="Role" aria-describedby="role-help role-error" />
+      </>
+    )
+    expect(trigger()).toHaveAccessibleDescription(
+      "Teacher and admin roles require an invitation. Choose a role."
+    )
+
+    view.rerender(<Select options={OPTIONS} aria-label="Role" />)
+    expect(trigger()).not.toHaveAttribute("aria-describedby")
+  })
+
   it("marks the option matching the current value as aria-selected", () => {
     renderSelect({ value: "cherry" })
     fireEvent.click(trigger())

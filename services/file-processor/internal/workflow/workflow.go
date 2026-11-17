@@ -20,6 +20,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp" // Register the WebP decoder used by image.DecodeConfig and image.Decode.
 )
 
 // ProcessJob represents a file processing job.

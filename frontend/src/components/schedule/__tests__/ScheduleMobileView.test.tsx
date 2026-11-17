@@ -105,11 +105,52 @@ function renderView(props = baseProps, includeProbe = false) {
 }
 
 afterEach(() => {
-  act(() => useScheduleUIStore.setState({ weekOffset: 0 }))
+  act(() => useScheduleUIStore.setState({ weekOffset: 0, hiddenWeekdays: [] }))
   prefersReducedMock.mockReturnValue(true)
 })
 
 describe("ScheduleMobileView", () => {
+  it("omits hidden days and navigates using original visible weekday indices", () => {
+    useScheduleUIStore.setState({ hiddenWeekdays: [0, 2, 3, 4] })
+    renderView()
+
+    expect(screen.queryByRole("tab", { name: /Mon/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("tab")).toHaveLength(2)
+    const tuesday = screen.getByRole("tab", { name: /Tue/ })
+    const saturday = screen.getByRole("tab", { name: /Sat/ })
+    expect(tuesday).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByText("Discrete Mathematics")).toBeInTheDocument()
+    tuesday.focus()
+
+    fireEvent.keyDown(tuesday, { key: "ArrowRight" })
+    expect(saturday).toHaveFocus()
+    expect(saturday).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("heading", { name: "Saturday" })).toBeInTheDocument()
+
+    fireEvent.keyDown(saturday, { key: "ArrowRight" })
+    expect(tuesday).toHaveFocus()
+    expect(screen.getByText("Discrete Mathematics")).toBeInTheDocument()
+  })
+
+  it("falls back when the selected day is hidden and recovers after all days are hidden", async () => {
+    const user = userEvent.setup()
+    renderView()
+    await user.click(screen.getByRole("tab", { name: /Tue/ }))
+    act(() => useScheduleUIStore.getState().setHiddenWeekdays([1]))
+    expect(screen.getByRole("tab", { name: /Mon/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.queryByText("Discrete Mathematics")).not.toBeInTheDocument()
+
+    act(() => useScheduleUIStore.getState().setHiddenWeekdays([0, 1, 2, 3, 4, 5]))
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument()
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("schedule:empty.allFiltered")
+
+    act(() => useScheduleUIStore.getState().setHiddenWeekdays([0, 2, 3, 4, 5]))
+    expect(screen.getByRole("tab", { name: /Tue/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByText("Discrete Mathematics")).toBeInTheDocument()
+  })
+
   it("renders a day tab per weekday", () => {
     renderView()
     expect(screen.getAllByRole("tab")).toHaveLength(baseProps.weekdayBackend.length)
@@ -239,6 +280,6 @@ describe("ScheduleMobileView", () => {
       todayIdx: -1,
     })
 
-    expect(screen.getByRole("tabpanel")).toBeInTheDocument()
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument()
   })
 })

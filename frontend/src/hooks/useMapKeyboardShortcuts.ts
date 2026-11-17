@@ -30,12 +30,24 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Preserve browser/OS chords (especially Find), IME, and controls that
+      // already handled the event. Shift remains available for the ? shortcut.
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+
       const target = e.target as HTMLElement | null
       if (!target) return
 
       // Skip when focus is inside an editable element
       if (INTERACTIVE_TAGS.has(target.tagName)) return
-      if (target.getAttribute("contenteditable") === "true") return
+      // contenteditable is inherited; the nearest valid value owns this context.
+      // A false island re-enables shortcuts, while an empty value enables editing.
+      const editingHost = target.closest(
+        '[contenteditable=""], [contenteditable="true" i], ' +
+          '[contenteditable="plaintext-only" i], [contenteditable="false" i]'
+      )
+      if (editingHost && !editingHost.matches('[contenteditable="false" i]')) {
+        return
+      }
 
       // 1-9: select building by index
       const keyNum = parseInt(e.key, 10)

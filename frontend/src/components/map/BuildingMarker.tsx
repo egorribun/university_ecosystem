@@ -10,6 +10,7 @@ import type { MarkerInstance } from "react-map-gl/maplibre"
 import { Marker, Popup } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
@@ -47,6 +48,8 @@ export function BuildingMarker({
   offset,
 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
+  const campusTimeZone = useCampusTimezone()
+  const isBuildingOpenNow = isOpenNow(building.hours, new Date(), campusTimeZone)
   const markerRef = useRef<MarkerInstance | null>(null)
   // Wave 116 polish — maplibre-gl's Marker class unconditionally stamps
   // role="button" + generic aria-label="Map marker" onto its wrapper element.
@@ -195,19 +198,19 @@ export function BuildingMarker({
               <span className="map-popup-stats-dot" />
               <span>{t("sidebar.roomCount", { count: roomCount })}</span>
               <span className="map-popup-stats-dot" />
-              <span
-                className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
-                style={{
-                  backgroundColor: isOpenNow(building.hours)
-                    ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
-                    : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-                  color: isOpenNow(building.hours)
-                    ? "var(--color-emerald-500)"
-                    : "var(--color-rose-500)",
-                }}
-              >
-                {isOpenNow(building.hours) ? t("hours.openNow") : t("hours.closedNow")}
-              </span>
+              {isBuildingOpenNow !== null && (
+                <span
+                  className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: isBuildingOpenNow
+                      ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
+                      : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
+                    color: isBuildingOpenNow ? "var(--color-emerald-500)" : "var(--color-rose-500)",
+                  }}
+                >
+                  {isBuildingOpenNow ? t("hours.openNow") : t("hours.closedNow")}
+                </span>
+              )}
             </div>
 
             {/* Amenity chips */}

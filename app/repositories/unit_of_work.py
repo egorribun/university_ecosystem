@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.core.logging import get_logger
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.chat_repository import ChatRepository
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.core.protocols import AsyncDatabaseSession
+
+
+logger = get_logger(__name__)
 
 
 class UnitOfWork:
@@ -63,8 +67,22 @@ class UnitOfWork:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit async context, rollback if exception occurred."""
-        if exc_type is not None:
-            await self.rollback()
+        try:
+            if exc_type is not None:
+                await self.rollback()
+        except BaseException:
+            # Cleanup also runs when rollback itself is cancelled. Preserve that
+            # failure if close raises an ordinary error; a new cancellation wins.
+            if self._owns_session:
+                try:
+                    await self._close()
+                except Exception:  # RZ-22-01-JUSTIFIED: preserve rollback failure
+                    logger.warning(
+                        "Owned UnitOfWork close failed after rollback failure"
+                    )
+                else:
+                    self._owns_session = False
+            raise
         if self._owns_session:
             await self._close()
             self._owns_session = False

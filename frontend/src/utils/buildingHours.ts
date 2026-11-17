@@ -1,7 +1,18 @@
 import type { BuildingHours } from "@/data/campusBuildings"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
-export function isOpenNow(hours: BuildingHours, now: Date = new Date()): boolean {
-  const day = now.getDay()
+export function isOpenNow(hours: BuildingHours, now?: Date): boolean
+export function isOpenNow(hours: BuildingHours, now: Date, timeZone: string | null): boolean | null
+export function isOpenNow(
+  hours: BuildingHours,
+  now: Date = new Date(),
+  timeZone?: string | null
+): boolean | null {
+  // Legacy two-argument callers retain local-clock semantics. Map callers pass
+  // the authoritative campus zone explicitly; unavailable config is not "closed".
+  const clock = timeZone === undefined ? undefined : getCampusClockParts(now, timeZone)
+  if (clock === null) return null
+  const day = clock ? clock.weekday : now.getDay()
 
   let todayHours: string
   if (day === 0) todayHours = hours.sunday
@@ -19,7 +30,7 @@ export function isOpenNow(hours: BuildingHours, now: Date = new Date()): boolean
 
   const openMinutes = parseInt(match[1]!, 10) * 60 + parseInt(match[2]!, 10)
   const closeMinutes = parseInt(match[3]!, 10) * 60 + parseInt(match[4]!, 10)
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const nowMinutes = clock ? clock.hour * 60 + clock.minute : now.getHours() * 60 + now.getMinutes()
 
   // Handle midnight wraparound (e.g. "22:00–02:00")
   if (closeMinutes <= openMinutes) {

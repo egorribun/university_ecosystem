@@ -278,7 +278,7 @@ function ScheduleContent() {
 
   /* ── Scroll to current lesson on initial load (FIX-67-07, FIX-68-06) ── */
   useScrollToElement(!isLoading && currentLesson ? `lesson-card-${currentLesson.id}` : null, {
-    behavior: "smooth",
+    behavior: prefersReduced ? "instant" : "smooth",
     block: "center",
   })
 

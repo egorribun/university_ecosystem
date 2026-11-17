@@ -15,6 +15,10 @@ const markerMocks = vi.hoisted(() => {
   }))
 
   return {
+    timeZone: "Europe/Moscow" as string | null,
+    isOpenNow: vi.fn((hours: { weekday: string }, _now: Date, zone: string | null) =>
+      zone === null ? null : hours.weekday === "open"
+    ),
     popupProps: [] as Array<Record<string, unknown>>,
     translationCalls,
     useTranslation,
@@ -62,7 +66,11 @@ vi.mock("react-i18next", () => ({
   useTranslation: markerMocks.useTranslation,
 }))
 vi.mock("@/utils/buildingHours", () => ({
-  isOpenNow: (hours: { weekday: string }) => hours.weekday === "open",
+  isOpenNow: markerMocks.isOpenNow,
+}))
+
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => markerMocks.timeZone,
 }))
 
 import { BuildingMarker } from "@/components/map/BuildingMarker"
@@ -93,9 +101,27 @@ const baseProps = {
 
 describe("BuildingMarker", () => {
   beforeEach(() => {
+    markerMocks.timeZone = "Europe/Moscow"
+    markerMocks.isOpenNow.mockClear()
     markerMocks.popupProps.length = 0
     markerMocks.translationCalls.length = 0
     markerMocks.useTranslation.mockClear()
+  })
+
+  it("passes campus timezone and hides an unconfirmed open/closed status", () => {
+    const { rerender } = render(<BuildingMarker {...baseProps} isPopupOpen />)
+    expect(markerMocks.isOpenNow).toHaveBeenLastCalledWith(
+      BUILDING.hours,
+      expect.any(Date),
+      "Europe/Moscow"
+    )
+    expect(screen.getByText("hours.closedNow")).toBeInTheDocument()
+
+    markerMocks.timeZone = null
+    rerender(<BuildingMarker {...baseProps} isPopupOpen />)
+    expect(markerMocks.isOpenNow).toHaveBeenLastCalledWith(BUILDING.hours, expect.any(Date), null)
+    expect(screen.queryByText("hours.openNow")).not.toBeInTheDocument()
+    expect(screen.queryByText("hours.closedNow")).not.toBeInTheDocument()
   })
 
   it("renders the building pin with an accessible label", () => {

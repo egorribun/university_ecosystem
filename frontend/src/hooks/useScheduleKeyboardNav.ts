@@ -63,6 +63,7 @@ export function useScheduleKeyboardNav({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!enabled || rowCount === 0 || colCount === 0) return
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
 
       // Skip if user is typing in an input/textarea
       const target = e.target as HTMLElement
@@ -105,17 +106,13 @@ export function useScheduleKeyboardNav({
         }
         case "e":
         case "E":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault()
-            onEdit?.()
-          }
+          e.preventDefault()
+          onEdit?.()
           break
         case "Delete":
         case "Backspace":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault()
-            onDelete?.()
-          }
+          e.preventDefault()
+          onDelete?.()
           break
         case "t":
         case "T":
