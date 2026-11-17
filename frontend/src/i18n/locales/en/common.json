@@ -20,6 +20,9 @@
     "minuteShort": "min"
   },
   "search": {
+    "resultCount": "Results found: {{count}}",
+    "loading": "Searching…",
+    "activeResult": "Selected result: {{title}}",
     "title": "Search",
     "placeholder": "Search…",
     "inputLabel": "Search the application",
