@@ -144,8 +144,13 @@ export function initApiCaching() {
         !scope ||
         request.cache === "no-store" ||
         /\bno-store\b/i.test(request.headers.get("Cache-Control") ?? "")
-      )
-        return fetch(request)
+      ) {
+        // Bypassing storage must not bypass the session response fence.
+        const response = await fetch(request)
+        return currentSessionScope === scope && sessionEpoch === epoch
+          ? response
+          : Response.error()
+      }
       const cacheName = `${API_CACHE}:${scope}`
       const strategy = new NetworkFirst({
         cacheName,
