@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.quality.check_go_benchmark_budget import (
     BenchmarkEvidenceError,
     evaluate_exclusive_maximum_metric,
     evaluate_minimum_metric,
+    main,
 )
 
 
@@ -167,3 +170,32 @@ def test_distinct_metrics_remain_valid_in_any_order() -> None:
     )
 
     assert decision.median == 1000
+
+
+def test_cli_rejects_duplicate_units_without_success_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "benchmark.txt"
+    source.write_text(
+        "BenchmarkHashRingLookup-8 500000 1000 ns/op 9000 ns/op\n",
+        encoding="utf-8",
+    )
+
+    result = main(
+        [
+            str(source),
+            "--benchmark",
+            "BenchmarkHashRingLookup",
+            "--metric",
+            "ns/op",
+            "--exclusive-maximum",
+            "4000",
+            "--expected-samples",
+            "1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert captured.out == ""
+    assert "duplicate metric unit" in captured.err
