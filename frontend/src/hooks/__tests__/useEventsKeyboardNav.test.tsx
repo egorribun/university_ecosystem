@@ -22,8 +22,12 @@ const ITEMS: EventItem[] = [{ id: "a" }, { id: "b" }, { id: "c" }]
 // Default dispatch goes through a real <body>-attached element so the event
 // bubbles to the document listener with a proper HTMLElement target (the source
 // calls e.target.closest / e.target.tagName, which Document lacks in jsdom).
-function dispatchKey(key: string, target?: EventTarget): KeyboardEvent {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true })
+function dispatchKey(
+  key: string,
+  target?: EventTarget,
+  init: KeyboardEventInit = {}
+): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init })
   act(() => {
     const emitter = (target as Element | undefined) ?? document.body
     emitter.dispatchEvent(event)
@@ -298,5 +302,50 @@ describe("useEventsKeyboardNav", () => {
     rerender({ items: [{ id: "x" }] })
 
     expect(result.current.activeIndex).toBe(-1)
+  })
+  it.each(["ctrlKey", "metaKey", "altKey", "isComposing"] as const)(
+    "leaves %s keyboard events untouched",
+    (modifier) => {
+      const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
+      dispatchKey("j")
+      dispatchKey("j")
+      expect(result.current.activeIndex).toBe(1)
+
+      for (const key of ["j", "k", "Enter", "Escape"]) {
+        const event = dispatchKey(key, undefined, { [modifier]: true })
+        expect(event.defaultPrevented).toBe(false)
+        expect(result.current.activeIndex).toBe(1)
+      }
+      expect(mockNavigateFn).not.toHaveBeenCalled()
+    }
+  )
+
+  it("respects a key already consumed by a child control", () => {
+    const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
+    dispatchKey("j")
+    const child = document.createElement("div")
+    child.addEventListener("keydown", (event) => event.preventDefault())
+    document.body.appendChild(child)
+
+    for (const key of ["j", "k", "Enter", "Escape"]) {
+      const event = dispatchKey(key, child)
+      expect(event.defaultPrevented).toBe(true)
+      expect(result.current.activeIndex).toBe(0)
+    }
+    expect(mockNavigateFn).not.toHaveBeenCalled()
+  })
+
+  it("preserves Shift+J/K navigation and ordinary Enter activation", () => {
+    const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
+    expect(dispatchKey("J", undefined, { shiftKey: true }).defaultPrevented).toBe(true)
+    dispatchKey("J", undefined, { shiftKey: true })
+    expect(result.current.activeIndex).toBe(1)
+    expect(dispatchKey("K", undefined, { shiftKey: true }).defaultPrevented).toBe(true)
+    expect(result.current.activeIndex).toBe(0)
+    expect(dispatchKey("Enter").defaultPrevented).toBe(true)
+    expect(mockNavigateFn).toHaveBeenCalledWith({
+      to: "/events/$id",
+      params: { id: "a" },
+    })
   })
 })
