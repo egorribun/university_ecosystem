@@ -213,7 +213,15 @@ export const ActionMenu = ({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+      onBlur={(event) => {
+        // Focus may leave by Tab or programmatic navigation without mousedown.
+        // Do not use handleClose: the destination must retain its new focus.
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false)
+      }}
+    >
       <button
         ref={triggerRef}
         id={resolvedTriggerId}
