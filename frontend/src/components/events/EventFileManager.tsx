@@ -185,18 +185,24 @@ export function EventFileManager({
             data-upload-state={uploadState.status}
             className="flex flex-wrap items-center gap-2"
           >
-            <Button variant="solid" as="label" disabled={uploadPending}>
+            <Button
+              variant="solid"
+              type="button"
+              disabled={uploadPending}
+              onClick={() => fileInputRef.current?.click()}
+            >
               {t("events:detail.sections.files.pickFile")}
-              <input
-                type="file"
-                name="file"
-                hidden
-                required
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                disabled={uploadPending}
-              />
             </Button>
+            <input
+              type="file"
+              name="file"
+              aria-label={t("events:detail.sections.files.pickFile")}
+              hidden
+              required
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              disabled={uploadPending}
+            />
             <Button variant="outline" type="submit" disabled={!selectedFile || uploadPending}>
               {uploadPending
                 ? t("events:detail.upload.submit.pending")
