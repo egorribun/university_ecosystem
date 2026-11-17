@@ -28,9 +28,12 @@ def _documents() -> list[dict[str, Any]]:
     identities = {
         component: f"spiffe://university.ecosystem/ns/{NAMESPACE}/sa/{'app' if component == 'backend' else component}"
         for component in IDENTITY_FIELDS
+        if component != "frontend"
     }
     documents = []
     for component, (flag, field) in IDENTITY_FIELDS.items():
+        if component == "frontend":
+            continue
         environ = {flag: "true", field: identities[component]}
         if component == "backend":
             environ["INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"] = ",".join(
@@ -289,3 +292,128 @@ def test_registration_wrapper_contains_no_cluster_mutation() -> None:
     assert "kubectl exec" not in script
     assert "entry create" not in script
     assert "ns/default" not in script
+
+
+def _with_frontend() -> list[dict[str, Any]]:
+    documents = _documents()
+    identity = f"spiffe://university.ecosystem/ns/{NAMESPACE}/sa/frontend"
+    backend_id = _environment(documents[0])[1]["value"]
+    _environment(documents[0])[2]["value"] += f",{identity}"
+    frontend = copy.deepcopy(documents[0])
+    frontend["metadata"]["labels"][COMPONENT] = "frontend"
+    spec = frontend["spec"]["template"]["spec"]
+    spec["serviceAccountName"] = f"{RELEASE}-frontend"
+    environ = {
+        "SSR_MTLS_ENABLED": "true",
+        "SSR_SPIFFE_ID": identity,
+        "SSR_BACKEND_SPIFFE_ID": backend_id,
+        "SSR_SPIFFE_TRUST_DOMAIN": "university.ecosystem",
+        "SPIFFE_ENDPOINT_SOCKET": "unix:///run/spire/sockets/agent.sock",
+    }
+    spec["containers"] = [
+        {"name": "frontend", "env": []},
+        {
+            "name": "ssr-proxy",
+            "env": [{"name": key, "value": value} for key, value in environ.items()],
+        },
+    ]
+    documents.append(frontend)
+    return documents
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_frontend_plan_selects_ssr_proxy_by_name(reverse: bool) -> None:
+    documents = _with_frontend()
+    if reverse:
+        documents[-1]["spec"]["template"]["spec"]["containers"].reverse()
+    plan = _plan(documents)
+    frontend = next(
+        entry for entry in plan["entries"] if entry["component"] == "frontend"
+    )
+    assert len(plan["entries"]) == 5
+    assert frontend["service_account"] == f"{RELEASE}-frontend"
+    assert frontend["spiffe_id"].endswith("/sa/frontend")
+    assert frontend["argv"][-3:] == [
+        f"k8s:sa:{RELEASE}-frontend",
+        "-x509SVIDTTL",
+        "3600",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_proxy",
+        "duplicate_proxy",
+        "extra_container",
+        "wrong_name",
+        "wrong_container_env",
+        "disabled",
+        "reference_identity",
+        "wrong_identity_domain",
+        "wrong_trust_domain",
+        "wrong_backend",
+        "missing_allowlist",
+        "duplicate_env",
+        "duplicate_account",
+    ],
+)
+def test_frontend_plan_rejects_incomplete_identity_chain(mutation: str) -> None:
+    documents = _with_frontend()
+    spec = documents[-1]["spec"]["template"]["spec"]
+    containers = spec["containers"]
+    environ = containers[1]["env"]
+    fields = {entry["name"]: entry for entry in environ}
+    if mutation == "missing_proxy":
+        containers.pop()
+    elif mutation == "duplicate_proxy":
+        containers[0] = copy.deepcopy(containers[1])
+    elif mutation == "extra_container":
+        containers.append({"name": "other", "env": []})
+    elif mutation == "wrong_name":
+        containers[1]["name"] = "other"
+    elif mutation == "wrong_container_env":
+        containers[0]["env"], containers[1]["env"] = environ, []
+    elif mutation == "disabled":
+        fields["SSR_MTLS_ENABLED"]["value"] = "false"
+    elif mutation == "reference_identity":
+        fields["SSR_SPIFFE_ID"].pop("value")
+    elif mutation == "wrong_identity_domain":
+        fields["SSR_SPIFFE_ID"]["value"] = "spiffe://other.example/ssr"
+    elif mutation == "wrong_trust_domain":
+        fields["SSR_SPIFFE_TRUST_DOMAIN"]["value"] = "other.example"
+    elif mutation == "wrong_backend":
+        fields["SSR_BACKEND_SPIFFE_ID"]["value"] += "/other"
+    elif mutation == "missing_allowlist":
+        allowlist = _environment(documents[0])[2]
+        allowlist["value"] = allowlist["value"].rsplit(",", 1)[0]
+    elif mutation == "duplicate_env":
+        environ.append(copy.deepcopy(environ[0]))
+    elif mutation == "duplicate_account":
+        spec["serviceAccountName"] = f"{RELEASE}-backend"
+    with pytest.raises(ValueError):
+        _plan(documents)
+
+
+@pytest.mark.parametrize(
+    "socket",
+    [
+        "",
+        "tcp://spire:8081",
+        "unix://spire/agent.sock",
+        "unix:///",
+        "unix:///run/../agent.sock",
+        "unix:///run/./agent.sock",
+        "unix:///run/agent.sock?other",
+        "unix:///run/agent.sock#other",
+        "unix:///run/agent.sock\n",
+    ],
+)
+def test_frontend_plan_requires_literal_unix_socket(socket: str) -> None:
+    documents = _with_frontend()
+    environ = documents[-1]["spec"]["template"]["spec"]["containers"][1]["env"]
+    next(entry for entry in environ if entry["name"] == "SPIFFE_ENDPOINT_SOCKET")[
+        "value"
+    ] = socket
+    with pytest.raises(ValueError):
+        _plan(documents)
