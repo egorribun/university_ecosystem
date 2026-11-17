@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock, patch
 import orjson
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import DataError, ResponseError
+from redis.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    BusyLoadingError,
+    DataError,
+    NoPermissionError,
+    ResponseError,
+)
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.cache import LRUCache, MultiLayerCache, cached
@@ -177,7 +184,16 @@ async def _invoke_l2_operation(cache, operation):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error_type", [RedisConnectionError, RedisTimeoutError])
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        RedisConnectionError,
+        RedisTimeoutError,
+        AuthenticationError,
+        AuthorizationError,
+        BusyLoadingError,
+    ],
+)
 @pytest.mark.parametrize("operation", ["get", "set", "delete", "scan", "scan-delete"])
 async def test_multilayer_real_redis_transport_errors_fail_soft(
     error_type, operation, caplog
@@ -207,7 +223,8 @@ async def test_multilayer_real_redis_transport_errors_fail_soft(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "error_type", [ResponseError, DataError, ValueError, asyncio.CancelledError]
+    "error_type",
+    [ResponseError, NoPermissionError, DataError, ValueError, asyncio.CancelledError],
 )
 @pytest.mark.parametrize("operation", ["get", "set", "delete", "scan", "scan-delete"])
 async def test_multilayer_nontransport_errors_and_cancellation_propagate(
