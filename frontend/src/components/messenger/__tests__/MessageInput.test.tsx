@@ -503,6 +503,7 @@ describe("MessageInput", () => {
       // srcRaw would fire on EVERY re-render. W183 SW7 moved it to
       // handleFileSelect ONCE. Verify the count stays stable.
       expect(createObjectURLSpy.mock.calls.length).toBe(callsAfterAdd)
+      expect(revokeObjectURLSpy).not.toHaveBeenCalled()
     })
 
     it("revokeObjectURL fires when file is removed via X button", async () => {
