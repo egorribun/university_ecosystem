@@ -173,6 +173,35 @@ def test_dated_zoneinfo_keeps_its_real_summer_offset() -> None:
     assert native.start_time % 86400 == 9 * 3600
 
 
+@pytest.mark.parametrize("field,hour", [("start_time", 11), ("end_time", 12)])
+def test_dated_datetime_with_floating_timezone_is_utc(field: str, hour: int) -> None:
+    class FloatingZone(tzinfo):
+        def utcoffset(self, dt: datetime | None) -> None:
+            return None
+
+    class LocalDatetime(datetime):
+        def astimezone(self, tz: tzinfo | None = None) -> datetime:
+            # Model a non-UTC host independently of the machine running the test.
+            local = self.replace(tzinfo=timezone(timedelta(hours=3)))
+            return datetime.astimezone(local, tz)
+
+    value = LocalDatetime(2026, 7, 6, hour, tzinfo=FloatingZone())
+    assert value.utcoffset() is None
+    item = ScheduleItemInternal(
+        weekday="Monday",
+        start_time=datetime(2026, 7, 6, 11, tzinfo=UTC),
+        end_time=datetime(2026, 7, 6, 12, tzinfo=UTC),
+        parity="both",
+    ).model_copy(update={field: value})
+
+    optimizer = ScheduleOptimizerService()
+    native = optimizer._to_rust_item(item)
+    restored = optimizer._from_rust_item(native)
+
+    assert getattr(restored, field) == datetime(2026, 7, 6, hour, tzinfo=UTC)
+    assert getattr(restored, field).tzinfo is UTC
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["single", "batch", "slot"])
 async def test_midnight_time_rejection_propagates_through_optimizer_operations(
