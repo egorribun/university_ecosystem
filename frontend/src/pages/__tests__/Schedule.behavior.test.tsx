@@ -554,14 +554,14 @@ describe("Schedule page behavior", () => {
     expect(screen.getByTestId("desktop-view")).toBeInTheDocument()
   })
 
-  it("uses reduced-motion transitions and scrolls to the current lesson", async () => {
-    mediaState.reduced = true
+  it.each([false, true])("respects reduced motion %s when scrolling to the current lesson", async (reduced) => {
+    mediaState.reduced = reduced
     scheduleState.currentLesson = scheduleState.schedule[0]
 
     await renderSchedule()
 
     expect(scrollToElement).toHaveBeenCalledWith("lesson-card-lesson-42", {
-      behavior: "smooth",
+      behavior: reduced ? "instant" : "smooth",
       block: "center",
     })
   })
