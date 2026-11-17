@@ -245,6 +245,70 @@ describe("useEventCardLogic (branches)", () => {
     expect(revokeObjectURL).toHaveBeenCalledOnce()
   })
 
+  it.each(["success", "failure"])(
+    "does not let an older save %s change a reopened editor's pending save",
+    async (outcome) => {
+      let finishFirst!: () => void
+      let failFirst!: (error: Error) => void
+      let finishSecond!: () => void
+      mockPatch
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finishFirst = () => resolve({ data: {} })
+              failFirst = reject
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishSecond = () => resolve({ data: {} })
+            })
+        )
+      const onChange = vi.fn()
+      const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+      act(() => result.current.setEditOpen(true))
+      let first!: Promise<void>
+      act(() => {
+        first = result.current.handleEdit()
+      })
+      act(() => result.current.setEditOpen(false))
+      act(() => result.current.setEditOpen(true))
+      const secondImage = new File(["second"], "second.png", { type: "image/png" })
+      act(() => {
+        result.current.setNewImage(secondImage)
+        result.current.setEditData({ ...result.current.editData, title: "Second draft" })
+      })
+      let second!: Promise<void>
+      await act(async () => {
+        second = result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        if (outcome === "success") finishFirst()
+        else failFirst(new Error("late failure"))
+        await first
+      })
+
+      expect(result.current.editOpen).toBe(true)
+      expect(result.current.editData.title).toBe("Second draft")
+      expect(result.current.newImage).toBe(secondImage)
+      expect(result.current.loading).toBe(true)
+      expect(result.current.snackbar).toBe("")
+      expect(onChange).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0)
+
+      await act(async () => {
+        finishSecond()
+        await second
+      })
+      expect(result.current.editOpen).toBe(false)
+      expect(result.current.newImage).toBeNull()
+      expect(result.current.previewUrl).toBeNull()
+      expect(result.current.loading).toBe(false)
+    }
+  )
+
   // ---- handleEdit (lines 123-150) ----
 
   it("handleEdit: with new image → uploads then patches with returned url (126-144)", async () => {
