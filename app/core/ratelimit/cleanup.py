@@ -39,9 +39,7 @@ async def _memory_cleanup_loop(interval_seconds: int = 300) -> None:
 
                     # Never erase timestamps still inside a configured long
                     # window. Metadata shares the window's shard lock/lifetime.
-                    cutoff = now - max(
-                        max_age, getattr(window, "retention_seconds", 0)
-                    )
+                    cutoff = now - max(max_age, getattr(window, "retention_seconds", 0))
 
                     # Prune old entries from the front of the deque
                     while window and window[0] <= cutoff:

@@ -72,9 +72,7 @@ class MemorySlidingWindowStrategy:
                 )
                 _memory_windows[key] = window
             else:
-                window.retention_seconds = max(
-                    window.retention_seconds, window_seconds
-                )
+                window.retention_seconds = max(window.retention_seconds, window_seconds)
 
             # Evict timestamps that have fallen outside the sliding window.
             while window and window[0] <= cutoff:
