@@ -76,7 +76,9 @@ def docker_lint_fixture(tmp_path: Path):
         """
     )
     hadolint = bin_path / "hadolint"
-    hadolint.write_text(f"#!{Path(sys.executable).resolve()}\n{source}", encoding="utf-8")
+    hadolint.write_text(
+        f"#!{Path(sys.executable).resolve()}\n{source}", encoding="utf-8"
+    )
     hadolint.chmod(0o700)
     return root, str(Path(make).resolve()), {"PATH": str(bin_path), "LC_ALL": "C.UTF-8"}
 
