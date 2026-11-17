@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { StepUpDialog } from "@/components/mfa/StepUpDialog"
@@ -45,6 +45,34 @@ beforeEach(() => {
 })
 
 describe("StepUpDialog", () => {
+  it.each([false, undefined])(
+    "keeps an unaccepted auto-submitted code (%s) from completing or retrying itself",
+    async (result) => {
+      const requireMfa = vi.fn<RequireMfaFn>().mockResolvedValue(createChallenge(2))
+      const submitMfaChallenge = vi.fn().mockResolvedValue(result)
+      const onCompleted = vi.fn()
+      const onClose = vi.fn()
+      mockUseAuth.mockReturnValue({ requireMfa, submitMfaChallenge })
+
+      const user = userEvent.setup()
+      render(<StepUpDialog open onClose={onClose} onCompleted={onCompleted} />)
+      const inputs = await screen.findAllByRole("textbox")
+      await user.click(inputs[0]!)
+      await user.keyboard("123456")
+
+      expect(
+        await screen.findByText("Verification failed. Check the code and try again.")
+      ).toBeInTheDocument()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(submitMfaChallenge).toHaveBeenCalledOnce()
+      expect(onCompleted).not.toHaveBeenCalled()
+      expect(onClose).not.toHaveBeenCalled()
+      inputs.forEach((input) => expect(input).toHaveValue(""))
+    }
+  )
+
   it("refreshes challenges when a locked error is refreshable", async () => {
     const initialChallenge = createChallenge(2)
     const refreshedChallenge = createChallenge(5)
