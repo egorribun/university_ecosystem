@@ -100,14 +100,20 @@ describe("MessageInput", () => {
       let finishInspection!: (value: string) => void
       let finishSend!: (sent: boolean) => void
       const onSend = vi.fn(
-        () => new Promise<boolean>((resolve) => { finishSend = resolve })
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishSend = resolve
+          })
       )
       const { container, unmount } = render(<MessageInput onSend={onSend} />)
       const input = container.querySelector('input[type="file"]') as HTMLInputElement
       const first = new File(["first"], "first.txt", { type: "text/plain" })
       const later = new File(["png"], "later.png", { type: "image/png" })
       vi.spyOn(later, "slice").mockReturnValue({
-        text: () => new Promise<string>((resolve) => { finishInspection = resolve }),
+        text: () =>
+          new Promise<string>((resolve) => {
+            finishInspection = resolve
+          }),
       } as Blob)
 
       await act(async () => {
@@ -128,9 +134,9 @@ describe("MessageInput", () => {
 
       expect(createObjectURLSpy).toHaveBeenCalledTimes(2)
       expect(screen.getByRole("img", { name: "later.png" })).toBeTruthy()
-      expect(screen.getAllByRole("button", {
-        name: "messenger:aria.removeAttachment",
-      })).toHaveLength(1)
+      expect(
+        screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })
+      ).toHaveLength(1)
       expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"]])
       unmount()
       expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"], ["blob:mock-2"]])
@@ -140,7 +146,10 @@ describe("MessageInput", () => {
   it("releases a removed pending-send attachment only once after send and unmount", async () => {
     let finishSend!: (sent: boolean) => void
     const onSend = vi.fn(
-      () => new Promise<boolean>((resolve) => { finishSend = resolve })
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishSend = resolve
+        })
     )
     const { container, unmount } = render(<MessageInput onSend={onSend} />)
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
