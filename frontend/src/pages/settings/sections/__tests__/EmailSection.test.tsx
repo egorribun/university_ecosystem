@@ -9,6 +9,7 @@ const baseProps = {
   emailValue: "old@example.com",
   emailPassword: "old-password",
   emailBusy: false,
+  identityPending: false,
   emailError: null,
   emailPasswordError: null,
   pendingEmail: "pending@example.com",
@@ -51,6 +52,40 @@ describe("EmailSection", () => {
     expect(screen.getAllByRole("alert")).toHaveLength(3)
     expect(screen.getByDisplayValue("old@example.com")).toBeDisabled()
     expect(screen.getByDisplayValue("old-password")).toBeDisabled()
+    expect(screen.getAllByRole("button").at(-1)).toBeDisabled()
+  })
+
+  it("blocks fields and form submission while identity is pending without reporting a request", async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const { rerender } = render(
+      <EmailSection {...baseProps} pendingEmail={null} onSubmit={onSubmit} identityPending />
+    )
+    await user.click(screen.getAllByRole("button")[0]!)
+    const email = screen.getByDisplayValue("old@example.com")
+    const password = screen.getByDisplayValue("old-password")
+    const submit = screen.getAllByRole("button").at(-1)!
+    expect(email).toBeDisabled()
+    expect(password).toBeDisabled()
+    expect(submit).toBeDisabled()
+    fireEvent.submit(submit.closest("form")!)
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    rerender(<EmailSection {...baseProps} onSubmit={onSubmit} />)
+    expect(email).toBeEnabled()
+    expect(password).toBeEnabled()
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ["email", { emailValue: "" }],
+    ["password", { emailPassword: "" }],
+  ])("keeps the save action disabled for an empty %s", async (_, changes) => {
+    const user = userEvent.setup()
+    render(<EmailSection {...baseProps} {...changes} />)
+    await user.click(screen.getAllByRole("button")[0]!)
     expect(screen.getAllByRole("button").at(-1)).toBeDisabled()
   })
 })

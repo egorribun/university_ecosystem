@@ -27,6 +27,7 @@ describe("SpotifySection component", () => {
       <SpotifySection
         connected={false}
         displayName=""
+        identityPending={false}
         onConnect={onConnect}
         onDisconnect={onDisconnect}
         setSnackbar={vi.fn()}
@@ -53,6 +54,7 @@ describe("SpotifySection component", () => {
       <SpotifySection
         connected={true}
         displayName="SpotifyUser123"
+        identityPending={false}
         onConnect={onConnect}
         onDisconnect={onDisconnect}
         setSnackbar={vi.fn()}

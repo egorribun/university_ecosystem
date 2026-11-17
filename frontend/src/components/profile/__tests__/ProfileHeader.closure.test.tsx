@@ -170,4 +170,28 @@ describe("ProfileHeader closure paths", () => {
     fireEvent.click(screen.getByRole("button", { name: "profile:labels.viewQR" }))
     expect(baseProps.onQrClick).toHaveBeenCalledOnce()
   })
+
+  it("disables both copy actions while retaining the QR control", () => {
+    const onEmailClick = vi.fn()
+    const onTelegramClick = vi.fn()
+    const user = { email: "ada@example.com", profile_detail: { telegram: "@ada" } } as User
+    render(
+      <ProfileHeader
+        {...baseProps}
+        user={user}
+        copyDisabled
+        onEmailClick={onEmailClick}
+        onTelegramClick={onTelegramClick}
+      />
+    )
+    const email = screen.getByRole("button", { name: "ada@example.com" })
+    const telegram = screen.getByRole("button", { name: "@ada" })
+    expect(email).toBeDisabled()
+    expect(telegram).toBeDisabled()
+    expect(screen.getByRole("button", { name: "profile:labels.viewQR" })).toBeEnabled()
+    fireEvent.click(email)
+    fireEvent.click(telegram)
+    expect(onEmailClick).not.toHaveBeenCalled()
+    expect(onTelegramClick).not.toHaveBeenCalled()
+  })
 })

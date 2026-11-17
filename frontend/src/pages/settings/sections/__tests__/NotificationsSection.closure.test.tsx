@@ -105,6 +105,21 @@ afterEach(() => {
 })
 
 describe("NotificationsSection — push and quiet-hours branches", () => {
+  it("disables every quiet-hours control while persistence is blocked and restores them afterward", async () => {
+    const { props, rerender, openNotificationAccordion } = await renderSection({ dndSaving: true })
+    const toggle = screen.getByRole("switch", { name: "Turn on quiet hours" })
+    const start = screen.getByLabelText("From")
+    const end = screen.getByLabelText("To")
+    expect(toggle).toBeDisabled()
+    expect(start).toBeDisabled()
+    expect(end).toBeDisabled()
+    rerender(<NotificationsSection {...props} dndSaving={false} />)
+    openNotificationAccordion()
+    expect(screen.getByRole("switch", { name: "Turn on quiet hours" })).toBeEnabled()
+    expect(screen.getByLabelText("From")).toBeEnabled()
+    expect(screen.getByLabelText("To")).toBeEnabled()
+  })
+
   it("renders initialization, unsupported, and denied permission states", async () => {
     pushState.value.pushInitializing = true
     const { rerender } = await renderSection()
