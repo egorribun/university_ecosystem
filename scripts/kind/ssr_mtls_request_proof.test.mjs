@@ -88,12 +88,24 @@ test("accepts the real CSP policy on unauthenticated HTML without treating priva
   assert.equal(control.calls(), 5)
 })
 
+test("accepts absolute same-origin redirects", async () => {
+  const control = fixture({
+    location: "http://127.0.0.1:3000/dashboard",
+    protectedLocation: "http://127.0.0.1:3000/login?redirect=%2Fdashboard",
+  })
+  await proveSsrAuthentication({ ...config, request: control.request })
+  assert.equal(control.calls(), 5)
+})
+
 for (const [name, change] of Object.entries({
   jwks: { jwksStatus: 503 },
   key: { keys: [] },
   authBypass: { userStatus: 200 },
   noRedirect: { acceptedStatus: 200 },
   wrongRedirect: { location: "/login" },
+  externalRedirect: { location: "https://other.invalid/dashboard" },
+  networkPathRedirect: { location: "//other.invalid/dashboard" },
+  wrongPortRedirect: { location: "http://127.0.0.1:3001/dashboard" },
   missingPrivacy: { acceptedCache: "public" },
   forgedAccepted: { rejectedStatus: 307 },
   forgedPublic: { rejectedCache: "public, max-age=600" },
@@ -102,6 +114,9 @@ for (const [name, change] of Object.entries({
   forgedNonHtmlType: { contentType: "application/json" },
   missingHtml: { body: "not a document" },
   protectedContent: { protectedStatus: 200 },
+  protectedExternalRedirect: { protectedLocation: "https://other.invalid/login" },
+  protectedNetworkPathRedirect: { protectedLocation: "//other.invalid/login" },
+  protectedWrongPortRedirect: { protectedLocation: "http://127.0.0.1:3001/login" },
   protectedWrongRedirect: { protectedLocation: "/dashboard" },
 })) {
   test("rejects incomplete proof: " + name, async () => {
