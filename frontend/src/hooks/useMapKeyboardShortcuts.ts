@@ -30,6 +30,10 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Preserve browser/OS chords (especially Find), IME, and controls that
+      // already handled the event. Shift remains available for the ? shortcut.
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+
       const target = e.target as HTMLElement | null
       if (!target) return
 
