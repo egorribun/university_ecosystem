@@ -8156,14 +8156,16 @@ def _e2e_locked(
                 )
                 _require_owned_docker_daemon(owner, docker_context=docker_context)
             if selected_specs:
-                _run_live_playwright_diagnosed(owner,
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,
                     specs=selected_specs,
                 )
             else:
-                _run_live_playwright_diagnosed(owner,
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,

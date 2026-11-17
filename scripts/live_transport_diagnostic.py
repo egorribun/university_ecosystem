@@ -28,7 +28,7 @@ def summarize(service: str, data: bytes) -> dict[str, int]:
         if prefix is None:
             continue
         try:
-            record = json.loads(line[prefix.end():])
+            record = json.loads(line[prefix.end() :])
         except (ValueError, UnicodeError):
             continue
         if type(record) is not dict:
@@ -79,9 +79,7 @@ class Capture:
 
 
 def _pins(live: Any, owner: Any, context: Any, deadline: float) -> tuple:
-    live._assert_core_owner_unchanged(
-        owner, deadline=deadline, docker_context=context
-    )
+    live._assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
     evidence = live._verify_stand_owner_compose_resources(
         live.WORKTREE, owner, deadline=deadline, docker_context=context
     )
@@ -102,26 +100,31 @@ def _pins(live: Any, owner: Any, context: Any, deadline: float) -> tuple:
             raise ValueError("owned service not running")
         result = live._run_live_bounded_read(
             [
-                "docker", "inspect", "--format",
+                "docker",
+                "inspect",
+                "--format",
                 "[{{json .State.StartedAt}},{{json .RestartCount}}]",
                 identifier,
             ],
-            context=context, deadline=deadline, maximum_bytes=1024,
+            context=context,
+            deadline=deadline,
+            maximum_bytes=1024,
             command_timeout_seconds=3,
         )
         if result.returncode != 0 or result.stderr:
             raise ValueError("identity read failed")
         boot = json.loads(result.stdout)
         if (
-            type(boot) is not list or len(boot) != 2
-            or type(boot[0]) is not str or _STARTED.fullmatch(boot[0]) is None
-            or type(boot[1]) is not int or not 0 <= boot[1] <= 1_000_000
+            type(boot) is not list
+            or len(boot) != 2
+            or type(boot[0]) is not str
+            or _STARTED.fullmatch(boot[0]) is None
+            or type(boot[1]) is not int
+            or not 0 <= boot[1] <= 1_000_000
         ):
             raise ValueError("identity read invalid")
         pins.append((service, identifier, record.identity, boot[0], boot[1]))
-    live._assert_core_owner_unchanged(
-        owner, deadline=deadline, docker_context=context
-    )
+    live._assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
     return tuple(pins)
 
 
@@ -153,13 +156,21 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
         for service, identifier, _, _, _ in capture.pins:
             result = live._run_live_bounded_read(
                 [
-                    "docker", "logs", "--timestamps", "--tail", "512",
-                    "--since", live._caddy_probe_timestamp_argument(capture.since),
-                    "--until", live._caddy_probe_timestamp_argument(until),
+                    "docker",
+                    "logs",
+                    "--timestamps",
+                    "--tail",
+                    "512",
+                    "--since",
+                    live._caddy_probe_timestamp_argument(capture.since),
+                    "--until",
+                    live._caddy_probe_timestamp_argument(until),
                     identifier,
                 ],
-                context=capture.context, deadline=deadline,
-                maximum_bytes=_MAX_BYTES, command_timeout_seconds=5,
+                context=capture.context,
+                deadline=deadline,
+                maximum_bytes=_MAX_BYTES,
+                command_timeout_seconds=5,
             )
             if result.returncode != 0:
                 raise ValueError("log read failed")
@@ -167,16 +178,20 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
             # never join an unterminated record to the other stream.
             first = summarize(service, result.stdout)
             second = summarize(service, result.stderr)
-            summaries.append((service, {
-                key: min(512, first[key] + second[key]) for key in _CATEGORIES
-            }))
+            summaries.append(
+                (
+                    service,
+                    {key: min(512, first[key] + second[key]) for key in _CATEGORIES},
+                )
+            )
         if _pins(live, owner, capture.context, deadline) != capture.pins:
             raise ValueError("service identity changed")
         for service, counts in summaries:
             fields = " ".join(f"{key}={counts[key]}" for key in _CATEGORIES)
             print(
                 f"{_PREFIX} state=observed service={service} "
-                f"scope=bounded-unmatched {fields}", flush=True,
+                f"scope=bounded-unmatched {fields}",
+                flush=True,
             )
     except Exception:
         # No exception messages, raw bytes, paths, identifiers or headers escape.
