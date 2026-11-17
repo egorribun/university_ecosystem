@@ -134,3 +134,32 @@ await sampleSnackbarClipboardFailure(
   assert.match(result.stdout, /permission=unavailable/u)
   assert.match(result.stdout, /alerts=unknown\n$/u)
 })
+
+test("pointer dismissal freezes timers without a sampled-time pause race", async () => {
+  const source = await readFile(new URL("./settings-radio-focus.live.spec.ts", import.meta.url), "utf8")
+  const spec = source.slice(source.indexOf('test("Settings Snackbar content'))
+  const sequence = [
+    "await expect(alert).toBeVisible()",
+    "const pauseTime = await page.evaluate(() => Date.now())",
+    "await page.clock.setFixedTime(pauseTime)",
+    "await page.clock.pauseAt(pauseTime)",
+    "await page.clock.setSystemTime(pauseTime)",
+    "const pausedNow = await page.evaluate(() => Date.now())",
+    "const pausedTicks = await page.evaluate(() => performance.now())",
+    "await expect(alert).toHaveCount(1)",
+    "await expect(alert).toBeVisible()",
+    "const close = alert.getByRole",
+    "await close.click({ timeout: 3000 })",
+    "await expect(alert).toHaveCount(0)",
+    "expect(await page.evaluate(() => Date.now())).toBe(pausedNow)",
+    "expect(await page.evaluate(() => performance.now())).toBe(pausedTicks)",
+  ]
+  let offset = 0
+  for (const step of sequence) {
+    const index = spec.indexOf(step, offset)
+    assert.ok(index >= offset, `Missing or out-of-order dismissal guard: ${step}`)
+    offset = index + step.length
+  }
+  assert.match(spec, /await page\.clock\.resume\(\)/u)
+  assert.doesNotMatch(spec, /grantPermissions|clearPermissions|waitForTimeout|force:\s*true/u)
+})
