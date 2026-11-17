@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -191,3 +193,31 @@ async def test_replay_preserves_starlette_consumed_request_disconnect():
     downstream = _CachedRequest(replay.scope, replay.receive)
     assert (await downstream.wrapped_receive())["body"] == b"body"
     assert await downstream.wrapped_receive() == {"type": "http.disconnect"}
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("receive failed"), asyncio.CancelledError()]
+)
+async def test_replay_preserves_original_receive_failure(failure):
+    middleware = ContentSizeLimitMiddleware(AsyncMock(), max_bytes=100)
+    request = _request()
+    consumed = False
+
+    async def receive():
+        nonlocal consumed
+        if not consumed:
+            consumed = True
+            return {"type": "http.request", "body": b"body", "more_body": False}
+        raise failure
+
+    replay, rejected = await middleware._read_and_replay_body(
+        Request(request.scope, receive=receive), AsyncMock()
+    )
+    assert not rejected
+    assert replay is not None
+    assert (await replay.receive())["body"] == b"body"
+    with pytest.raises(type(failure)) as caught:
+        await replay.receive()
+    assert caught.value is failure
