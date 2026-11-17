@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,13 +132,46 @@ func newSessionRevocationSubscriber(source *goredis.Client) *sessionRevocationSu
 		if err != nil {
 			return nil, err
 		}
-		if !subscriber.trackConnection(connection) {
-			return nil, errors.Join(net.ErrClosed, connection.Close())
+		tracked := &sessionRevocationConn{Conn: connection, subscriber: subscriber}
+		if !subscriber.trackConnection(tracked) {
+			return nil, errors.Join(net.ErrClosed, tracked.Close())
 		}
-		return connection, nil
+		// Preserve direct socket inspection for TCP/Unix without exposing the
+		// encrypted socket underneath TLS as an unbuffered transport.
+		if socket, ok := connection.(syscall.Conn); ok {
+			return &sessionRevocationSocketConn{sessionRevocationConn: tracked, Conn: socket}, nil
+		}
+		return tracked, nil
 	}
 	subscriber.client = goredis.NewClient(&options)
 	return subscriber
+}
+
+// sessionRevocationConn releases the shutdown registry reference when go-redis
+// closes a failed/replaced connection. Keep it registered until Close returns so
+// concurrent Stop can still interrupt an in-progress close. A close error is
+// preserved; removing the reference does not claim that the provider succeeded.
+type sessionRevocationConn struct {
+	net.Conn
+	subscriber *sessionRevocationSubscriber
+}
+
+func (c *sessionRevocationConn) Close() error {
+	err := c.Conn.Close()
+	c.subscriber.mu.Lock()
+	delete(c.subscriber.connections, c)
+	c.subscriber.mu.Unlock()
+	return err
+}
+
+// NetConn preserves go-redis's bounded transport inspection path.
+func (c *sessionRevocationConn) NetConn() net.Conn {
+	return c.Conn
+}
+
+type sessionRevocationSocketConn struct {
+	*sessionRevocationConn
+	syscall.Conn
 }
 
 func (s *sessionRevocationSubscriber) trackConnection(connection net.Conn) bool {
