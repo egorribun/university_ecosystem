@@ -1,6 +1,7 @@
 import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { getRoomStatus } from "@/utils/roomStatus"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
 
 const state = vi.hoisted(() => ({
@@ -125,6 +126,30 @@ beforeEach(() => {
 })
 
 describe("MapSidebar mutation contracts", () => {
+  it("refreshes room occupancy at lesson boundaries without changing sidebar props", async () => {
+    const actual = await vi.importActual<typeof import("@/utils/roomStatus")>(
+      "@/utils/roomStatus"
+    )
+    vi.mocked(getRoomStatus).mockImplementation(actual.getRoomStatus)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-11-17T06:59:00Z"))
+    const todayLessons = [{ room: "ГУК-101", start_time: "10:00", end_time: "10:01" }]
+    const view = render(<MapSidebar {...baseProps} todayLessons={todayLessons} />)
+
+    try {
+      expect(within(getRoomButton("ГУК-101")).getByText("sidebar.roomFree")).toBeInTheDocument()
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(within(getRoomButton("ГУК-101")).getByText(/sidebar.roomBusy/)).toBeInTheDocument()
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(within(getRoomButton("ГУК-101")).getByText("sidebar.roomFree")).toBeInTheDocument()
+      expect(within(getRoomButton("ГУК-102")).getByText("sidebar.roomFree")).toBeInTheDocument()
+    } finally {
+      view.unmount()
+      vi.mocked(getRoomStatus).mockImplementation(() => state.roomStatus)
+      vi.useRealTimers()
+    }
+  })
+
   it("keeps the SSR, dependency, and sheet transition contracts explicit", () => {
     const setOverlayState = vi.fn()
 
