@@ -104,6 +104,7 @@ export function useEventCardLogic({
   const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
   const setEditOpenFresh = useCallback((open: boolean) => {
     if (open) setEditDraft(null)
+    else setNewImage(null) // Discard cancelled uploads and release their preview through the effect.
     setEditOpen(open)
   }, [])
 
