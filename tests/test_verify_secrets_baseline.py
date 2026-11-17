@@ -17362,20 +17362,20 @@ def _reviewed_nats_workflow_predecessor(actual: bytes) -> bytes:
         b"                  python3 - <<'PY'\n"
         b"                  from xml.etree import ElementTree\n"
         b"\n"
-        b"                  root = ElementTree.parse(\"nats-control-report.xml\").getroot()\n"
-        b"                  cases = list(root.iter(\"testcase\"))\n"
+        b'                  root = ElementTree.parse("nats-control-report.xml").getroot()\n'
+        b'                  cases = list(root.iter("testcase"))\n'
         b"                  expected = (\n"
-        b"                      \"tests.integration.test_infrastructure\",\n"
-        b"                      \"test_real_core_control_needs_no_jetstream_ack\",\n"
+        b'                      "tests.integration.test_infrastructure",\n'
+        b'                      "test_real_core_control_needs_no_jetstream_ack",\n'
         b"                  )\n"
         b"                  if len(cases) != 1 or (\n"
-        b"                      cases[0].get(\"classname\"), cases[0].get(\"name\")\n"
+        b'                      cases[0].get("classname"), cases[0].get("name")\n'
         b"                  ) != expected or any(\n"
         b"                      cases[0].find(status) is not None\n"
-        b"                      for status in (\"skipped\", \"failure\", \"error\")\n"
+        b'                      for status in ("skipped", "failure", "error")\n'
         b"                  ):\n"
-        b"                      raise SystemExit(\"Required real NATS control proof did not pass\")\n"
-        b"                  print(\"NATS_CONTROL_REAL_BROKER_VERIFIED_PASS\")\n"
+        b'                      raise SystemExit("Required real NATS control proof did not pass")\n'
+        b'                  print("NATS_CONTROL_REAL_BROKER_VERIFIED_PASS")\n'
         b"                  PY\n"
         b"\n"
     )
@@ -36007,7 +36007,9 @@ def test_nats_workflow_binding_rejects_unreviewed_changes(mutation: str) -> None
     elif mutation == "changed-test":
         changed = actual.replace(
             proof,
-            proof.replace(b"test_real_core_control_needs_no_jetstream_ack", b"test_other"),
+            proof.replace(
+                b"test_real_core_control_needs_no_jetstream_ack", b"test_other"
+            ),
             1,
         )
     elif mutation == "weakened-status":

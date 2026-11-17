@@ -1122,7 +1122,9 @@ def test_backend_integration_report_omission_fails_closed(filename: str) -> None
     artifact = backend["jobs"]["integration-tests"]["artifacts"][0]
     paths = artifact["path_pattern"].splitlines(keepends=True)
     assert f"{filename}\n" in paths
-    artifact["path_pattern"] = "".join(line for line in paths if line != f"{filename}\n")
+    artifact["path_pattern"] = "".join(
+        line for line in paths if line != f"{filename}\n"
+    )
 
     errors = _errors(value)
 
