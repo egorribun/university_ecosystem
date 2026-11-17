@@ -110,7 +110,6 @@ afterEach(() => {
 })
 
 describe("ScheduleMobileView", () => {
-
   it("omits hidden days and navigates using original visible weekday indices", () => {
     useScheduleUIStore.setState({ hiddenWeekdays: [0, 2, 3, 4] })
     renderView()
@@ -143,6 +142,7 @@ describe("ScheduleMobileView", () => {
 
     act(() => useScheduleUIStore.getState().setHiddenWeekdays([0, 1, 2, 3, 4, 5]))
     expect(screen.queryByRole("tab")).not.toBeInTheDocument()
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("schedule:empty.allFiltered")
 
