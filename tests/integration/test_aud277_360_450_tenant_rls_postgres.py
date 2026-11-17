@@ -1784,9 +1784,10 @@ async def test_event_image_cleanup_retains_rls_hidden_legacy_reference(
                             )
                         ).scalars()
                     ) == visible
-                    assert not await content_media.delete_unreferenced_owned_event_image(
+                    removed = await content_media.delete_unreferenced_owned_event_image(
                         url, event_id=owner_id, db_session=session
                     )
+                    assert removed is False
                     client.delete_object.assert_not_awaited()
             finally:
                 bypass_rls_ctx.reset(bypass_token)
