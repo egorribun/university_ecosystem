@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException, status
 from fakeredis.aioredis import FakeRedis
+from fastapi import HTTPException, status
 
 from app.api.deps import auth as auth_module
 from app.services.auth.redis_session import RedisSessionService
