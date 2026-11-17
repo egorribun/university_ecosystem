@@ -67,7 +67,13 @@ export async function proveSsrAuthentication({
   onStage("forged-status")
   assert.equal(rejected.status, 200)
   onStage("forged-cache")
-  assert.doesNotMatch(rejected.headers.get("cache-control") ?? "", /private/u)
+  // A per-request CSP nonce makes every HTML document private, including login.
+  // Authentication is proved by signed redirect versus forged 200, not cacheability.
+  assert.equal(rejected.headers.get("cache-control"), "no-store, private, max-age=0")
+  onStage("forged-location")
+  assert.equal(rejected.headers.get("location"), null)
+  onStage("forged-content-type")
+  assert.match(rejected.headers.get("content-type") ?? "", /^text\/html(?:;|$)/iu)
   onStage("forged-html")
   assert.match(await rejected.text(), /<html[\s>]/iu)
 }
