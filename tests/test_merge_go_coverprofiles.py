@@ -173,3 +173,43 @@ def test_merge_profiles_preserves_noncanonical_disjoint_locations(
     assert output.read_text(encoding="utf-8") == (
         "mode: atomic\n" + "\n".join(records) + "\n"
     )
+
+
+@pytest.mark.parametrize("field", range(6))
+@pytest.mark.parametrize("value", [2**63, 10**30])
+def test_merge_profiles_rejects_go_integer_overflow(
+    tmp_path: Path, field: int, value: int
+) -> None:
+    fields = [1, 1, 2, 1, 1, 1]
+    fields[field] = value
+    record = (
+        f"one.go:{fields[0]}.{fields[1]},{fields[2]}.{fields[3]} "
+        f"{fields[4]} {fields[5]}"
+    )
+    profile = _profile(tmp_path / "first.out", record)
+    output = tmp_path / "merged.out"
+    output.write_text("previous verified output\n", encoding="utf-8")
+
+    with pytest.raises(ProfileError, match="Go int64 range"):
+        merge_profiles((profile,), output)
+
+    assert output.read_text(encoding="utf-8") == "previous verified output\n"
+
+
+@pytest.mark.parametrize("field", range(6))
+@pytest.mark.parametrize("value", [2**31, 2**63 - 1])
+def test_merge_profiles_accepts_full_go_64_bit_integer_range(
+    tmp_path: Path, field: int, value: int
+) -> None:
+    fields = [1, 1, 2, 1, 1, 1]
+    fields[field] = value
+    record = (
+        f"one.go:{fields[0]}.{fields[1]},{fields[2]}.{fields[3]} "
+        f"{fields[4]} {fields[5]}"
+    )
+    profile = _profile(tmp_path / "first.out", record)
+    output = tmp_path / "merged.out"
+
+    merge_profiles((profile,), output)
+
+    assert output.read_text(encoding="utf-8") == f"mode: atomic\n{record}\n"
