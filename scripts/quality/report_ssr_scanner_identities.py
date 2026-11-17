@@ -21,23 +21,82 @@ EXPECTED = (
     ("services/gateway/cmd/ssr-proxy/main_test.go", "Basic Auth Credentials", 39),
 )
 EXPECTED_BLOBS = {
-    "services/gateway/cmd/ssr-mtls-fixture/main.go": bytes((
-        212, 113, 252, 9, 61, 29, 21, 14, 229, 180,
-        218, 208, 161, 136, 11, 98, 12, 225, 173, 81,
-    )),
-    "services/gateway/cmd/ssr-mtls-fixture/main_test.go": bytes((
-        68, 3, 255, 104, 113, 146, 134, 159, 24, 124,
-        44, 38, 65, 233, 52, 45, 52, 106, 93, 46,
-    )),
-    "services/gateway/cmd/ssr-proxy/main_test.go": bytes((
-        237, 199, 26, 229, 186, 179, 216, 201, 65, 163,
-        207, 219, 58, 246, 75, 124, 216, 184, 249, 150,
-    )),
+    "services/gateway/cmd/ssr-mtls-fixture/main.go": bytes(
+        (
+            212,
+            113,
+            252,
+            9,
+            61,
+            29,
+            21,
+            14,
+            229,
+            180,
+            218,
+            208,
+            161,
+            136,
+            11,
+            98,
+            12,
+            225,
+            173,
+            81,
+        )
+    ),
+    "services/gateway/cmd/ssr-mtls-fixture/main_test.go": bytes(
+        (
+            68,
+            3,
+            255,
+            104,
+            113,
+            146,
+            134,
+            159,
+            24,
+            124,
+            44,
+            38,
+            65,
+            233,
+            52,
+            45,
+            52,
+            106,
+            93,
+            46,
+        )
+    ),
+    "services/gateway/cmd/ssr-proxy/main_test.go": bytes(
+        (
+            237,
+            199,
+            26,
+            229,
+            186,
+            179,
+            216,
+            201,
+            65,
+            163,
+            207,
+            219,
+            58,
+            246,
+            75,
+            124,
+            216,
+            184,
+            249,
+            150,
+        )
+    ),
 }
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_SCAN_BYTES = 8 * 1024 * 1024
 _HEX = re.compile(r"[0-9a-f]{40}")
-
 
 
 def read_regular(path, limit):
@@ -54,10 +113,10 @@ def read_regular(path, limit):
     return data
 
 
-
 def git_blob_digest(data):
     header = b"blob " + str(len(data)).encode("ascii") + bytes([0])
     return hashlib.sha1(header + data, usedforsecurity=False).digest()
+
 
 def validate_sources(root):
     for relative_path, expected in EXPECTED_BLOBS.items():
@@ -68,6 +127,7 @@ def validate_sources(root):
         actual = git_blob_digest(data)
         if actual != expected:
             raise ValueError("reviewed source changed")
+
 
 def unique_object(pairs):
     result = {}

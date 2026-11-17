@@ -27,7 +27,11 @@ def receipt(text: str, expected: str) -> dict[str, Any]:
         raise ProofError("oversized identity receipt")
     value = json.loads(text)
     if not isinstance(value, dict) or set(value) != {
-        "selfID", "leafSHA256", "leafNotAfterUnix", "issuerKeyID", "roots"
+        "selfID",
+        "leafSHA256",
+        "leafNotAfterUnix",
+        "issuerKeyID",
+        "roots",
     }:
         raise ProofError("invalid identity receipt fields")
     if value["selfID"] != expected:
@@ -36,7 +40,10 @@ def receipt(text: str, expected: str) -> dict[str, Any]:
         r"[0-9a-f]{64}", value["leafSHA256"]
     ):
         raise ProofError("invalid leaf fingerprint")
-    if type(value["leafNotAfterUnix"]) is not int or value["leafNotAfterUnix"] <= time.time():
+    if (
+        type(value["leafNotAfterUnix"]) is not int
+        or value["leafNotAfterUnix"] <= time.time()
+    ):
         raise ProofError("expired identity")
     roots = value["roots"]
     if not isinstance(roots, list) or not 1 <= len(roots) <= 16:
@@ -73,15 +80,23 @@ class Lifecycle:
         self.ns = args.namespace
         self.front = f"{args.release}-university-ecosystem-frontend"
         self.backend = f"{args.release}-university-ecosystem-backend"
-        self.self_id = f"spiffe://{args.trust_domain}/ns/{self.ns}/sa/{args.release}-frontend"
-        self.peer_id = f"spiffe://{args.trust_domain}/ns/{self.ns}/sa/{args.release}-backend"
+        self.self_id = (
+            f"spiffe://{args.trust_domain}/ns/{self.ns}/sa/{args.release}-frontend"
+        )
+        self.peer_id = (
+            f"spiffe://{args.trust_domain}/ns/{self.ns}/sa/{args.release}-backend"
+        )
         self.wrong_id = f"spiffe://{args.trust_domain}/ns/{self.ns}/sa/ssr-wrong-peer"
         self.pods: list[str] = []
 
     def command(self, *args: str, data: str | None = None, timeout: int = 30) -> str:
         result = subprocess.run(
-            ["kubectl", *args], input=data, text=True, capture_output=True,
-            timeout=timeout, check=False,
+            ["kubectl", *args],
+            input=data,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
         )
         if result.returncode:
             raise ProofError("Kubernetes operation failed")
@@ -92,9 +107,17 @@ class Lifecycle:
 
     def ca(self, *args: str) -> dict[str, Any]:
         output = self.command(
-            "-n", self.args.spire_namespace, "exec", "spire-server-0", "--",
-            "/opt/spire/bin/spire-server", "localauthority", "x509", *args,
-            "-output", "json",
+            "-n",
+            self.args.spire_namespace,
+            "exec",
+            "spire-server-0",
+            "--",
+            "/opt/spire/bin/spire-server",
+            "localauthority",
+            "x509",
+            *args,
+            "-output",
+            "json",
         )
         return json.loads(output)
 
@@ -104,7 +127,9 @@ class Lifecycle:
     def peer(self, pod: str) -> dict[str, Any]:
         return receipt(self.kubectl("exec", pod, "--", BINARY, "peer"), self.peer_id)
 
-    def fixture(self, name: str, account: str, identity: str, mode: str, peer: str) -> str:
+    def fixture(
+        self, name: str, account: str, identity: str, mode: str, peer: str
+    ) -> str:
         pod = f"ssr-lifecycle-{name}"
         labels = {
             "app.kubernetes.io/name": "university-ecosystem",
@@ -119,37 +144,73 @@ class Lifecycle:
             "FIXTURE_URL": f"https://{self.backend}:8000/health/ready",
         }
         manifest = {
-            "apiVersion": "v1", "kind": "Pod",
+            "apiVersion": "v1",
+            "kind": "Pod",
             "metadata": {"name": pod, "namespace": self.ns, "labels": labels},
             "spec": {
-                "serviceAccountName": account, "automountServiceAccountToken": False,
+                "serviceAccountName": account,
+                "automountServiceAccountToken": False,
                 "restartPolicy": "Never",
-                "securityContext": {"runAsNonRoot": True, "runAsUser": 65532,
-                                    "seccompProfile": {"type": "RuntimeDefault"}},
-                "containers": [{
-                    "name": "fixture", "image": self.args.image,
-                    "command": [BINARY, mode],
-                    "ports": [{"name": "http", "containerPort": 8000, "protocol": "TCP"}],
-                    "env": [{"name": key, "value": value} for key, value in env.items()],
-                    "securityContext": {"allowPrivilegeEscalation": False,
-                                        "readOnlyRootFilesystem": True,
-                                        "capabilities": {"drop": ["ALL"]}},
-                    "resources": {"requests": {"cpu": "20m", "memory": "32Mi"},
-                                  "limits": {"cpu": "250m", "memory": "128Mi"}},
-                    "volumeMounts": [{"name": "workload", "mountPath": "/spiffe-workload-api",
-                                      "readOnly": True}],
-                }],
-                "volumes": [{"name": "workload", "csi": {"driver": "csi.spiffe.io", "readOnly": True}}],
+                "securityContext": {
+                    "runAsNonRoot": True,
+                    "runAsUser": 65532,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "containers": [
+                    {
+                        "name": "fixture",
+                        "image": self.args.image,
+                        "command": [BINARY, mode],
+                        "ports": [
+                            {"name": "http", "containerPort": 8000, "protocol": "TCP"}
+                        ],
+                        "env": [
+                            {"name": key, "value": value} for key, value in env.items()
+                        ],
+                        "securityContext": {
+                            "allowPrivilegeEscalation": False,
+                            "readOnlyRootFilesystem": True,
+                            "capabilities": {"drop": ["ALL"]},
+                        },
+                        "resources": {
+                            "requests": {"cpu": "20m", "memory": "32Mi"},
+                            "limits": {"cpu": "250m", "memory": "128Mi"},
+                        },
+                        "volumeMounts": [
+                            {
+                                "name": "workload",
+                                "mountPath": "/spiffe-workload-api",
+                                "readOnly": True,
+                            }
+                        ],
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "workload",
+                        "csi": {"driver": "csi.spiffe.io", "readOnly": True},
+                    }
+                ],
             },
         }
         self.kubectl("create", "-f", "-", data=json.dumps(manifest))
         self.pods.append(pod)
-        self.kubectl("wait", f"pod/{pod}", "--for=condition=Ready", "--timeout=120s", timeout=130)
+        self.kubectl(
+            "wait", f"pod/{pod}", "--for=condition=Ready", "--timeout=120s", timeout=130
+        )
         return pod
 
     def route(self, selector: dict[str, str]) -> None:
-        self.kubectl("patch", "service", self.backend, "--type=json", "-p",
-                     json.dumps([{"op": "replace", "path": "/spec/selector", "value": selector}]))
+        self.kubectl(
+            "patch",
+            "service",
+            self.backend,
+            "--type=json",
+            "-p",
+            json.dumps(
+                [{"op": "replace", "path": "/spec/selector", "value": selector}]
+            ),
+        )
 
     def delete_fixture(self, pod: str) -> None:
         # Retain failed deletions for the unconditional cleanup retry.
@@ -162,8 +223,17 @@ class Lifecycle:
             "{redirect:'manual',signal:AbortSignal.timeout(8000)});"
             "console.log('STATUS='+r.status)"
         )
-        output = self.kubectl("exec", f"deployment/{self.front}", "-c", "frontend",
-                              "--", "node", "--input-type=module", "-e", script)
+        output = self.kubectl(
+            "exec",
+            f"deployment/{self.front}",
+            "-c",
+            "frontend",
+            "--",
+            "node",
+            "--input-type=module",
+            "-e",
+            script,
+        )
         if not re.fullmatch(r"STATUS=[1-5][0-9]{2}\n", output):
             raise ProofError("invalid proxy status receipt")
         return int(output[7:10])
@@ -171,18 +241,30 @@ class Lifecycle:
     def identities(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for deployment in (self.front, self.backend):
-            doc = json.loads(self.kubectl("get", "deployment", deployment, "-o", "json"))
+            doc = json.loads(
+                self.kubectl("get", "deployment", deployment, "-o", "json")
+            )
             labels = doc["spec"]["selector"]["matchLabels"]
-            selector = ",".join(f"{key}={value}" for key, value in sorted(labels.items()))
-            pods = json.loads(self.kubectl("get", "pods", "-l", selector, "-o", "json"))["items"]
+            selector = ",".join(
+                f"{key}={value}" for key, value in sorted(labels.items())
+            )
+            pods = json.loads(
+                self.kubectl("get", "pods", "-l", selector, "-o", "json")
+            )["items"]
             # Fixture pods use baseline backend labels but are not Deployment-owned.
             pods = [pod for pod in pods if pod["metadata"].get("ownerReferences")]
             if not pods:
                 raise ProofError("application deployment has no pods")
             result[deployment] = sorted(
-                (pod["metadata"]["uid"],
-                 tuple(sorted((c["name"], c["restartCount"])
-                              for c in pod["status"]["containerStatuses"])))
+                (
+                    pod["metadata"]["uid"],
+                    tuple(
+                        sorted(
+                            (c["name"], c["restartCount"])
+                            for c in pod["status"]["containerStatuses"]
+                        )
+                    ),
+                )
                 for pod in pods
             )
         return result
@@ -208,12 +290,29 @@ try {
 } catch { process.exitCode=1; }
 """
         process = subprocess.Popen(
-            ["kubectl", "-n", self.ns, "exec", f"deployment/{self.front}", "-c", "frontend",
-             "--", "node", "--input-type=module", "-e", script],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            [
+                "kubectl",
+                "-n",
+                self.ns,
+                "exec",
+                f"deployment/{self.front}",
+                "-c",
+                "frontend",
+                "--",
+                "node",
+                "--input-type=module",
+                "-e",
+                script,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
         try:
-            if process.stdout is None or not select.select([process.stdout], [], [], 10)[0]:
+            if (
+                process.stdout is None
+                or not select.select([process.stdout], [], [], 10)[0]
+            ):
                 raise ProofError("stream did not open")
             if process.stdout.readline() != "OPEN\n":
                 raise ProofError("stream not authenticated")
@@ -231,7 +330,9 @@ try {
 
     def source_failure(self, client: str) -> None:
         ns = self.args.spire_namespace
-        document = json.loads(self.command("-n", ns, "get", "daemonset", "spire-agent", "-o", "json"))
+        document = json.loads(
+            self.command("-n", ns, "get", "daemonset", "spire-agent", "-o", "json")
+        )
         original = document["spec"]["template"]["spec"].get("nodeSelector")
         if original and LABEL in original:
             raise ProofError("refusing to replace an existing selector")
@@ -239,8 +340,18 @@ try {
         disabled[LABEL] = "no-node-matches"
         try:
             with self.stream():
-                self.command("-n", ns, "patch", "daemonset", "spire-agent", "--type=merge",
-                             "-p", json.dumps({"spec": {"template": {"spec": {"nodeSelector": disabled}}}}))
+                self.command(
+                    "-n",
+                    ns,
+                    "patch",
+                    "daemonset",
+                    "spire-agent",
+                    "--type=merge",
+                    "-p",
+                    json.dumps(
+                        {"spec": {"template": {"spec": {"nodeSelector": disabled}}}}
+                    ),
+                )
             wait_for(lambda: self.proxy_status() == 502, seconds=20)
             try:
                 self.inspect(client, self.self_id)
@@ -249,9 +360,35 @@ try {
             else:
                 raise ProofError("workload source unexpectedly remained available")
         finally:
-            self.command("-n", ns, "patch", "daemonset", "spire-agent", "--type=merge",
-                         "-p", json.dumps({"spec": {"template": {"spec": {"nodeSelector": {**(original or {}), LABEL: None}}}}}))
-            self.command("-n", ns, "rollout", "status", "daemonset/spire-agent", "--timeout=180s", timeout=190)
+            self.command(
+                "-n",
+                ns,
+                "patch",
+                "daemonset",
+                "spire-agent",
+                "--type=merge",
+                "-p",
+                json.dumps(
+                    {
+                        "spec": {
+                            "template": {
+                                "spec": {
+                                    "nodeSelector": {**(original or {}), LABEL: None}
+                                }
+                            }
+                        }
+                    }
+                ),
+            )
+            self.command(
+                "-n",
+                ns,
+                "rollout",
+                "status",
+                "daemonset/spire-agent",
+                "--timeout=180s",
+                timeout=190,
+            )
         wait_for(lambda: self.proxy_status() == 200)
 
     def run(self) -> None:
@@ -259,35 +396,73 @@ try {
         original = service["spec"]["selector"]
         baseline = self.identities()
         try:
-            client = self.fixture("client", f"{self.args.release}-frontend", self.self_id, "idle", self.peer_id)
-            backend_client = self.fixture("backend-client", f"{self.args.release}-backend", self.peer_id, "idle", self.self_id)
+            client = self.fixture(
+                "client",
+                f"{self.args.release}-frontend",
+                self.self_id,
+                "idle",
+                self.peer_id,
+            )
+            backend_client = self.fixture(
+                "backend-client",
+                f"{self.args.release}-backend",
+                self.peer_id,
+                "idle",
+                self.self_id,
+            )
             before = self.inspect(client, self.self_id)
             original_peer = self.peer(client)
-            frozen = self.fixture("frozen", f"{self.args.release}-backend", self.peer_id, "serve", self.self_id)
+            frozen = self.fixture(
+                "frozen",
+                f"{self.args.release}-backend",
+                self.peer_id,
+                "serve",
+                self.self_id,
+            )
             self.route({LABEL: frozen})
             wait_for(lambda: self.proxy_status() == 200)
             self.source_failure(client)
             print("PASS ssr-live-source-failure-and-recovery", flush=True)
 
-            wrong = self.fixture("wrong", "ssr-wrong-peer", self.wrong_id, "serve", self.self_id)
-            control = self.fixture("control", f"{self.args.release}-frontend", self.self_id, "idle", self.wrong_id)
+            wrong = self.fixture(
+                "wrong", "ssr-wrong-peer", self.wrong_id, "serve", self.self_id
+            )
+            control = self.fixture(
+                "control",
+                f"{self.args.release}-frontend",
+                self.self_id,
+                "idle",
+                self.wrong_id,
+            )
             self.route({LABEL: wrong})
-            wait_for(lambda: self.kubectl("exec", control, "--", BINARY, "check").strip() == "CHECK=200")
+            wait_for(
+                lambda: self.kubectl("exec", control, "--", BINARY, "check").strip()
+                == "CHECK=200"
+            )
             if self.proxy_status() != 502:
                 raise ProofError("same-CA wrong backend identity was accepted")
             print("PASS ssr-live-wrong-peer-same-ca", flush=True)
 
             self.route({LABEL: frozen})
             wait_for(lambda: self.proxy_status() == 200)
-            frozen_receipt = receipt(self.kubectl("logs", frozen).splitlines()[0], self.peer_id)
+            frozen_receipt = receipt(
+                self.kubectl("logs", frozen).splitlines()[0], self.peer_id
+            )
             old = authority_id(self.ca("show")["active"]["authority_id"])
-            if frozen_receipt["issuerKeyID"] != old or frozen_receipt["leafNotAfterUnix"] <= time.time() + 300:
+            if (
+                frozen_receipt["issuerKeyID"] != old
+                or frozen_receipt["leafNotAfterUnix"] <= time.time() + 300
+            ):
                 raise ProofError("old issuer evidence is stale or too close to expiry")
             with self.stream():
-                new = authority_id(self.ca("prepare")["prepared_authority"]["authority_id"])
+                new = authority_id(
+                    self.ca("prepare")["prepared_authority"]["authority_id"]
+                )
                 if new == old:
                     raise ProofError("prepare reused the active authority")
-            wait_for(lambda: set(self.inspect(client, self.self_id)["roots"]) == {old, new})
+            wait_for(
+                lambda: set(self.inspect(client, self.self_id)["roots"]) == {old, new}
+            )
             print("PASS ssr-live-ca-overlap-retires-stale-stream", flush=True)
             self.ca("activate", "-authorityID", new)
             if authority_id(self.ca("show")["active"]["authority_id"]) != new:
@@ -298,23 +473,38 @@ try {
             after = self.inspect(client, self.self_id)
             if after["leafSHA256"] == before["leafSHA256"]:
                 raise ProofError("frontend SVID was not renewed")
-            wait_for(lambda: self.inspect(backend_client, self.peer_id)["issuerKeyID"] == new)
+            wait_for(
+                lambda: self.inspect(backend_client, self.peer_id)["issuerKeyID"] == new
+            )
             if self.identities() != baseline:
                 raise ProofError("application restarted during live renewal")
             print("PASS ssr-live-forced-svid-renewal-without-restart", flush=True)
 
             # Freeze a new-generation backend before removing the old authority.
-            fresh = self.fixture("fresh", f"{self.args.release}-backend", self.peer_id, "serve", self.self_id)
+            fresh = self.fixture(
+                "fresh",
+                f"{self.args.release}-backend",
+                self.peer_id,
+                "serve",
+                self.self_id,
+            )
             # The exact frozen old peer must still work with the renewed client.
             # Otherwise a client-trust failure could masquerade as root removal.
             wait_for(lambda: self.proxy_status() == 200)
             self.ca("revoke", "-authorityID", old)
             wait_for(lambda: set(self.inspect(client, self.self_id)["roots"]) == {new})
-            wait_for(lambda: set(self.inspect(backend_client, self.peer_id)["roots"]) == {new})
+            wait_for(
+                lambda: set(self.inspect(backend_client, self.peer_id)["roots"])
+                == {new}
+            )
             if frozen_receipt["leafNotAfterUnix"] <= time.time():
-                raise ProofError("old credential expired before removal negative control")
+                raise ProofError(
+                    "old credential expired before removal negative control"
+                )
             if self.proxy_status() != 502:
-                raise ProofError("frozen old-authority backend was accepted after removal")
+                raise ProofError(
+                    "frozen old-authority backend was accepted after removal"
+                )
             self.route({LABEL: fresh})
             wait_for(lambda: self.proxy_status() == 200)
             print("PASS ssr-live-old-root-rejected-new-root-accepted", flush=True)
@@ -364,7 +554,14 @@ def main() -> int:
     args = parser.parse_args()
     try:
         Lifecycle(args).run()
-    except (ProofError, subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError):
+    except (
+        ProofError,
+        subprocess.SubprocessError,
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ):
         print("FAIL ssr-live-spiffe-lifecycle", flush=True)
         return 1
     return 0

@@ -8,7 +8,9 @@ from unittest.mock import Mock
 
 import pytest
 
-PATH = Path(__file__).resolve().parents[1] / "scripts/kind/ssr_spiffe_lifecycle_proof.py"
+PATH = (
+    Path(__file__).resolve().parents[1] / "scripts/kind/ssr_spiffe_lifecycle_proof.py"
+)
 SPEC = importlib.util.spec_from_file_location("ssr_lifecycle", PATH)
 assert SPEC is not None and SPEC.loader is not None
 proof = importlib.util.module_from_spec(SPEC)
@@ -59,10 +61,15 @@ def test_authority_id_rejects_invalid_cli_response(value) -> None:
 
 
 def lifecycle():
-    return proof.Lifecycle(argparse.Namespace(
-        namespace="proof", spire_namespace="spire", release="ue",
-        trust_domain="example.org", image="fixture",
-    ))
+    return proof.Lifecycle(
+        argparse.Namespace(
+            namespace="proof",
+            spire_namespace="spire",
+            release="ue",
+            trust_domain="example.org",
+            image="fixture",
+        )
+    )
 
 
 def test_routing_replaces_whole_selector_instead_of_merging() -> None:
@@ -72,10 +79,13 @@ def test_routing_replaces_whole_selector_instead_of_merging() -> None:
     args = item.kubectl.call_args.args
     patch = json.loads(args[-1])
     assert "--type=json" in args
-    assert patch == [{
-        "op": "replace", "path": "/spec/selector",
-        "value": {proof.LABEL: "frozen"},
-    }]
+    assert patch == [
+        {
+            "op": "replace",
+            "path": "/spec/selector",
+            "value": {proof.LABEL: "frozen"},
+        }
+    ]
 
 
 def test_fixture_has_no_privileged_security_or_production_image() -> None:
@@ -86,11 +96,15 @@ def test_fixture_has_no_privileged_security_or_production_image() -> None:
     spec = manifest["spec"]
     container = spec["containers"][0]
     assert container["image"] == "fixture"
-    assert container["ports"] == [{"name": "http", "containerPort": 8000, "protocol": "TCP"}]
+    assert container["ports"] == [
+        {"name": "http", "containerPort": 8000, "protocol": "TCP"}
+    ]
     assert spec["automountServiceAccountToken"] is False
     assert container["securityContext"]["capabilities"]["drop"] == ["ALL"]
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
-    assert dict((v["name"], v["value"]) for v in container["env"])["FIXTURE_URL"].endswith("/health/ready")
+    assert dict((v["name"], v["value"]) for v in container["env"])[
+        "FIXTURE_URL"
+    ].endswith("/health/ready")
 
 
 def test_proxy_observation_does_not_treat_any_output_as_success() -> None:
@@ -118,20 +132,22 @@ def test_failure_restores_backend_service_selector() -> None:
 def test_source_outage_restores_selector_even_when_stream_fails() -> None:
     item = lifecycle()
     original = {"kubernetes.io/os": "linux"}
-    item.command = Mock(return_value=json.dumps({
-        "spec": {"template": {"spec": {"nodeSelector": original}}},
-    }))
+    item.command = Mock(
+        return_value=json.dumps(
+            {
+                "spec": {"template": {"spec": {"nodeSelector": original}}},
+            }
+        )
+    )
     item.stream = Mock(side_effect=proof.ProofError("stream unavailable"))
     with pytest.raises(proof.ProofError):
         item.source_failure("client")
-    patch_calls = [
-        call for call in item.command.call_args_list
-        if "patch" in call.args
-    ]
+    patch_calls = [call for call in item.command.call_args_list if "patch" in call.args]
     assert len(patch_calls) == 1
     restored = json.loads(patch_calls[0].args[-1])
     assert restored["spec"]["template"]["spec"]["nodeSelector"] == {
-        **original, proof.LABEL: None,
+        **original,
+        proof.LABEL: None,
     }
 
 
@@ -175,7 +191,11 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
         if args[0] == "logs":
             return json.dumps(frozen)
         if args[0] == "delete":
-            if failure == "retirement" and args[2] == "frozen" and not retirement_failed:
+            if (
+                failure == "retirement"
+                and args[2] == "frozen"
+                and not retirement_failed
+            ):
                 retirement_failed = True
                 raise proof.ProofError("fixture retirement failed")
             if failure == "cleanup" and args[2] == "client":
@@ -223,10 +243,13 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
     item.peer = Mock(side_effect=peer)
     item.ca = Mock(side_effect=ca)
     item.proxy_status = Mock(side_effect=[200, 502, 200, 200, 502, 200, 200, 200])
-    item.identities = Mock(side_effect=[
-        {"pods": []}, {"pods": []},
-        {"pods": ["restarted"]} if failure == "restart" else {"pods": []},
-    ])
+    item.identities = Mock(
+        side_effect=[
+            {"pods": []},
+            {"pods": []},
+            {"pods": ["restarted"]} if failure == "restart" else {"pods": []},
+        ]
+    )
     monkeypatch.setattr(proof, "wait_for", wait)
 
     if failure:
@@ -261,6 +284,10 @@ def test_fixture_retirement_tracks_success_and_retries_failures() -> None:
     item.delete_fixture("frozen")
     assert item.pods == ["client", "fresh"]
     assert item.kubectl.call_args.args == (
-        "delete", "pod", "frozen", "--wait=true", "--timeout=60s"
+        "delete",
+        "pod",
+        "frozen",
+        "--wait=true",
+        "--timeout=60s",
     )
     assert item.kubectl.call_args.kwargs == {"timeout": 70}
