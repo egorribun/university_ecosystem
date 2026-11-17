@@ -380,42 +380,38 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.editOpen).toBe(false)
   })
 
-  it.each(["success", "failure"])(
-    "ignores save %s completion after unmount",
-    async (outcome) => {
-      let finish!: () => void
-      let fail!: (error: Error) => void
-      mockPatch.mockImplementationOnce(
-        () =>
-          new Promise((resolve, reject) => {
-            finish = () => resolve({ data: {} })
-            fail = reject
-          })
-      )
-      const onChange = vi.fn()
-      const { result, unmount } = renderHook(
-        () => useEventCardLogic({ ...eventProps, onChange }),
-        { wrapper: StrictMode }
-      )
-      act(() => result.current.setEditOpen(true))
-      const save = result.current.handleEdit
-      let pending!: Promise<void>
-      act(() => {
-        pending = save()
-      })
-      unmount()
+  it.each(["success", "failure"])("ignores save %s completion after unmount", async (outcome) => {
+    let finish!: () => void
+    let fail!: (error: Error) => void
+    mockPatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          finish = () => resolve({ data: {} })
+          fail = reject
+        })
+    )
+    const onChange = vi.fn()
+    const { result, unmount } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }), {
+      wrapper: StrictMode,
+    })
+    act(() => result.current.setEditOpen(true))
+    const save = result.current.handleEdit
+    let pending!: Promise<void>
+    act(() => {
+      pending = save()
+    })
+    unmount()
 
-      await act(async () => {
-        await save() // A retained handler cannot start new work after unmount.
-        if (outcome === "success") finish()
-        else fail(new Error("late failure"))
-        await pending
-      })
+    await act(async () => {
+      await save() // A retained handler cannot start new work after unmount.
+      if (outcome === "success") finish()
+      else fail(new Error("late failure"))
+      await pending
+    })
 
-      expect(mockPatch).toHaveBeenCalledOnce()
-      expect(onChange).not.toHaveBeenCalled()
-    }
-  )
+    expect(mockPatch).toHaveBeenCalledOnce()
+    expect(onChange).not.toHaveBeenCalled()
+  })
 
   it.each(["success", "failure"])(
     "deduplicates same-session saves through %s and permits another attempt",
@@ -430,10 +426,9 @@ describe("useEventCardLogic (branches)", () => {
           })
       )
       const onChange = vi.fn()
-      const { result } = renderHook(
-        () => useEventCardLogic({ ...eventProps, onChange }),
-        { wrapper: StrictMode }
-      )
+      const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }), {
+        wrapper: StrictMode,
+      })
       act(() => result.current.setEditOpen(true))
       const save = result.current.handleEdit
       let pending!: Promise<void>
