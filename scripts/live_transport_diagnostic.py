@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -195,10 +196,8 @@ def emit_failure(live: Any, owner: Any, capture: Capture | None) -> None:
             )
     except Exception:
         # No exception messages, raw bytes, paths, identifiers or headers escape.
-        try:
+        with contextlib.suppress(Exception):
             print(f"{_PREFIX} state=unavailable", flush=True)
-        except Exception:
-            pass
 
 
 def run(live: Any, owner: Any, arguments: dict[str, Any]) -> None:
