@@ -106,9 +106,7 @@ def capture():
     )
 
 
-def test_failure_capture_rechecks_pins_and_emits_only_closed_counts(
-    monkeypatch, capsys
-):
+def test_capture_rechecks_pins_and_emits_only_closed_counts(monkeypatch, capsys):
     live, owner, pinned = fake_live(), object(), capture()
     pins = Mock(return_value=pinned.pins)
     monkeypatch.setattr(diagnostic, "_pins", pins)
@@ -212,6 +210,28 @@ def test_e2e_both_original_paths_use_diagnostic_wrapper():
         assert len(call.args) == 1
         assert isinstance(call.args[0], ast.Name)
         assert call.args[0].id == "owner"
+        expected = {
+            "cwd": "frontend",
+            "environment": "playwright_environment",
+            "mode": "mode",
+            "specs": "selected_specs",
+        }
+        for keyword in call.keywords:
+            assert isinstance(keyword.value, ast.Name)
+            assert keyword.value.id == expected[keyword.arg]
+    branches = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Name)
+        and node.test.id == "selected_specs"
+    ]
+    assert len(branches) == 1
+    selected_call = branches[0].body[0].value
+    default_call = branches[0].orelse[0].value
+    assert selected_call in wrapped and default_call in wrapped
+    assert any(keyword.arg == "specs" for keyword in selected_call.keywords)
+    assert not any(keyword.arg == "specs" for keyword in default_call.keywords)
     assert sorted(
         sorted(keyword.arg for keyword in call.keywords) for call in wrapped
     ) == [
@@ -269,12 +289,13 @@ def test_pin_rejects_malformed_restart_evidence(boot):
     live._verify_stand_owner_compose_resources = Mock()
     live._live_core_caddy_container_inventory = Mock(
         return_value={
-            "caddy": SimpleNamespace(
-                service="caddy",
+            service: SimpleNamespace(
+                service=service,
                 identity="digest",
                 running=True,
                 status="running",
-            ),
+            )
+            for service in ("caddy", "gateway")
         }
     )
     live._run_live_bounded_read.return_value = SimpleNamespace(
@@ -284,6 +305,12 @@ def test_pin_rejects_malformed_restart_evidence(boot):
     )
     with pytest.raises(ValueError):
         diagnostic._pins(live, object(), object(), 100)
+    live._run_live_bounded_read.return_value = SimpleNamespace(
+        returncode=0,
+        stdout=b'["2026-11-17T00:00:00Z",0]',
+        stderr=b"",
+    )
+    assert len(diagnostic._pins(live, object(), object(), 100)) == 2
 
 
 def test_admission_errors_are_secondary_and_private(monkeypatch, capsys):
