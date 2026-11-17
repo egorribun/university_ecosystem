@@ -78,3 +78,49 @@ def test_merge_profiles_requires_input_and_distinct_output(tmp_path: Path) -> No
     profile = _profile(tmp_path / "source.out", "one.go:1.1,2.1 1 1")
     with pytest.raises(ProfileError, match="must differ"):
         merge_profiles((profile,), profile)
+
+
+@pytest.mark.parametrize("mode", ["set", "count", "atomic"])
+@pytest.mark.parametrize("same_profile", [False, True])
+def test_merge_profiles_rejects_conflicting_statement_counts(
+    tmp_path: Path, mode: str, same_profile: bool
+) -> None:
+    first_record = "source directory/one.go:1.1,2.1 1 1"
+    conflicting_record = "source directory/one.go:1.1,2.1 2 0"
+    if same_profile:
+        inputs = (
+            _profile(
+                tmp_path / "first.out",
+                first_record,
+                conflicting_record,
+                mode=mode,
+            ),
+        )
+    else:
+        inputs = (
+            _profile(tmp_path / "first.out", first_record, mode=mode),
+            _profile(tmp_path / "second.out", conflicting_record, mode=mode),
+        )
+    output = tmp_path / "merged.out"
+    output.write_text("previous verified output\n", encoding="utf-8")
+
+    with pytest.raises(ProfileError, match="duplicate coverage block"):
+        merge_profiles(inputs, output)
+
+    assert output.read_text(encoding="utf-8") == "previous verified output\n"
+
+
+def test_merge_profiles_keeps_distinct_ranges_in_same_file(tmp_path: Path) -> None:
+    records = (
+        "source directory/one.go:1.1,2.1 1 1",
+        "source directory/one.go:3.1,4.1 2 0",
+    )
+    first = _profile(tmp_path / "first.out", records[0])
+    second = _profile(tmp_path / "second.out", records[1])
+    output = tmp_path / "merged.out"
+
+    merge_profiles((first, second), output)
+
+    assert output.read_text(encoding="utf-8") == (
+        "mode: atomic\n" + "\n".join(records) + "\n"
+    )
