@@ -1942,7 +1942,7 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence() -> None:
     assert row["conclusion"] == "skipped"
     assert row["duration_seconds"] == 0.0
     assert row["github_queue_wait_seconds"] is None
-    assert row["continued_after_core_failure"] is False
+    assert row["continued_after_core_failure"] == "unknown"
     assert row["github_timing_evidence"] == {
         "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
         "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
@@ -1988,3 +1988,42 @@ def test_first_attempt_skip_requires_explicit_no_execution_evidence(field: str) 
     del record[field]
     with pytest.raises(AnalysisError):
         parse_jobs({"jobs": [record]})
+
+
+def test_first_attempt_skipped_record_is_not_work_after_core_failure() -> None:
+    skipped = _first_attempt_skipped_record()
+    failure = {
+        "id": 1,
+        "name": "core-failure",
+        "run_id": skipped["run_id"],
+        "run_attempt": 1,
+        "head_sha": skipped["head_sha"],
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-11-16T23:50:00Z",
+        "started_at": "2026-11-16T23:50:00Z",
+        "completed_at": "2026-11-16T23:50:10Z",
+        "steps": [],
+        "core_failure": True,
+    }
+    payload = {"jobs": [failure, skipped]}
+    dag = _dag_payload(
+        payload,
+        run_id=43981164331,
+        source_head_sha=str(skipped["head_sha"]),
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=43981164331,
+        concurrency_cap=20,
+        dag=dag,
+        trusted_provenance=_trusted_provenance(dag),
+    )
+    rows = {row["id"]: row for row in report["jobs"]}
+    assert rows[133702960401]["continued_after_core_failure"] is False
+    assert rows[133702960401]["conclusion"] == "skipped"
+    assert rows[133702960401]["github_timing_evidence"]["completed_at"] == (
+        "2026-11-16T23:50:23+00:00"
+    )
+    assert report["summary"]["jobs_continued_after_core_failure"] == []
