@@ -18,6 +18,8 @@ from typing import Any
 
 import orjson
 from prometheus_client import Counter
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.logging import get_logger
 
@@ -219,8 +221,10 @@ class MultiLayerCache:
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache get failed: %s", e)
+                logger.warning("L2 cache get failed (%s)", type(e).__name__)
                 # PERF-14-04 (audit 2026-03-23): Increment redis_command_errors_total
                 # so Alertmanager can fire on sustained L2 degradation.
                 # Deferred import avoids circular-import risk (core.metrics imports
@@ -251,8 +255,10 @@ class MultiLayerCache:
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache set failed: %s", e)
+                logger.warning("L2 cache set failed (%s)", type(e).__name__)
                 # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
                 try:
                     from app.core.metrics import record_redis_command
@@ -271,8 +277,10 @@ class MultiLayerCache:
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache delete failed: %s", e)
+                logger.warning("L2 cache delete failed (%s)", type(e).__name__)
 
     async def invalidate_prefix(self, prefix: str) -> int:
         """
@@ -300,8 +308,10 @@ class MultiLayerCache:
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache prefix invalidation failed: %s", e)
+                logger.warning("L2 cache prefix invalidation failed (%s)", type(e).__name__)
 
         return count
 
