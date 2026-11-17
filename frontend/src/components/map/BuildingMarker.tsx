@@ -205,9 +205,7 @@ export function BuildingMarker({
                     backgroundColor: isBuildingOpenNow
                       ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
                       : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-                    color: isBuildingOpenNow
-                      ? "var(--color-emerald-500)"
-                      : "var(--color-rose-500)",
+                    color: isBuildingOpenNow ? "var(--color-emerald-500)" : "var(--color-rose-500)",
                   }}
                 >
                   {isBuildingOpenNow ? t("hours.openNow") : t("hours.closedNow")}
