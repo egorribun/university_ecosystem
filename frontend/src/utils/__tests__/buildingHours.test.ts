@@ -193,4 +193,27 @@ describe("buildingHours utils", () => {
       expect(isOpenNow(wrapHours)).toBe(true)
     })
   })
+  describe("explicit campus timezone", () => {
+    it("uses campus time rather than the browser clock", () => {
+      const now = new Date("2026-07-06T06:00:00Z")
+      expect(isOpenNow(sampleHours, now, "UTC")).toBe(false)
+      expect(isOpenNow(sampleHours, now, "Europe/Moscow")).toBe(true)
+    })
+
+    it("selects the campus weekday across a UTC date boundary", () => {
+      const hours = { weekday: "00:00-23:00", saturday: "closed", sunday: "closed" }
+      const now = new Date("2026-07-05T22:30:00Z")
+      expect(isOpenNow(hours, now, "UTC")).toBe(false)
+      expect(isOpenNow(hours, now, "Europe/Moscow")).toBe(true)
+    })
+
+    it.each([null, "", "not/a-timezone"])("does not guess an unavailable zone: %s", (zone) => {
+      expect(isOpenNow(sampleHours, new Date("2026-07-06T12:00:00Z"), zone)).toBeNull()
+    })
+
+    it("does not report a status for an invalid instant", () => {
+      expect(isOpenNow(sampleHours, new Date(Number.NaN), "UTC")).toBeNull()
+    })
+  })
+
 })

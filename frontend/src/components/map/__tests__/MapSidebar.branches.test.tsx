@@ -9,7 +9,8 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 const hooks = vi.hoisted(() => ({
-  open: true,
+  open: true as boolean | null,
+  isOpenNow: vi.fn(),
   roomStatus: null as { status: "free" | "busy"; busyUntil?: string } | null,
   setOverlayState: vi.fn(),
 }))
@@ -22,7 +23,7 @@ vi.mock("@/contexts/CampusTimezoneContext", () => ({
 }))
 
 vi.mock("@/utils/buildingHours", () => ({
-  isOpenNow: () => hooks.open,
+  isOpenNow: hooks.isOpenNow,
 }))
 vi.mock("@/utils/roomStatus", () => ({
   getRoomStatus: () => hooks.roomStatus,
@@ -72,6 +73,7 @@ const baseProps = {
 describe("MapSidebar branches", () => {
   beforeEach(() => {
     hooks.open = true
+    hooks.isOpenNow.mockImplementation(() => hooks.open)
     hooks.roomStatus = null
     vi.useFakeTimers()
   })
@@ -86,6 +88,15 @@ describe("MapSidebar branches", () => {
     })
     vi.useRealTimers()
     vi.clearAllMocks()
+  })
+
+  it("passes campus timezone and hides unknown status while preserving published hours", () => {
+    hooks.open = null
+    render(<MapSidebar {...baseProps} />)
+    expect(hooks.isOpenNow).toHaveBeenCalledWith(BUILDING.hours, expect.any(Date), "Europe/Istanbul")
+    expect(screen.queryByText("hours.openNow")).not.toBeInTheDocument()
+    expect(screen.queryByText("hours.closedNow")).not.toBeInTheDocument()
+    expect(screen.getByText(/08:00–22:00/)).toBeInTheDocument()
   })
 
   it("uses the server viewport fallback without a window", () => {
