@@ -236,6 +236,21 @@ describe("Register page", () => {
     expect(inviteInput).toBeInTheDocument()
   })
 
+  it("describes the role selector with the current invitation requirement", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    const selector = screen.getByRole("combobox", { name: tAuth("fields.role") })
+    expect(selector).toHaveAccessibleDescription(tAuth("register.inviteOptional"))
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.teacher") }))
+    expect(selector).toHaveAccessibleDescription(tAuth("register.inviteRequired"))
+
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.student") }))
+    expect(selector).toHaveAccessibleDescription(tAuth("register.inviteOptional"))
+  })
+
   it("opens the role selector when its visible label is clicked", async () => {
     const user = userEvent.setup()
     await renderRegister()
