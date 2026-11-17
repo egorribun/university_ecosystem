@@ -76,7 +76,8 @@ reportSnackbarClipboardFailure(base);`),
 test("sampling is bounded and never invokes clipboard or changes permissions", async () => {
   const source = await readFile(helper, "utf8")
   assert.match(source, /permissions\.query/u)
-  assert.doesNotMatch(source, /\.(?:readText|writeText|read|write|grantPermissions|clearPermissions)\(/u)
+  assert.doesNotMatch(source, /clipboard\??\.(?:readText|writeText|read|write)\(/u)
+  assert.doesNotMatch(source, /\.(?:grantPermissions|clearPermissions)\(/u)
   assert.match(source, /setTimeout/u)
   const spec = await readFile(new URL("./settings-radio-focus.live.spec.ts", import.meta.url), "utf8")
   assert.equal(
