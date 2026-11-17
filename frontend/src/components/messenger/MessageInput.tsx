@@ -244,11 +244,10 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     resetFileInput(input)
   }
 
-  const removeFile = (id: string) => {
-    const removed = selectedFiles.find((entry) => entry.id === id)
-    if (!removed) return
+  // The chip passes its own entry, so removal never depends on a lookup.
+  const removeFile = (removed: SelectedFile) => {
     releasePreview(removed.previewUrl)
-    setSelectedFiles((previousFiles) => previousFiles.filter((entry) => entry.id !== id))
+    setSelectedFiles((previousFiles) => previousFiles.filter((entry) => entry.id !== removed.id))
   }
 
   return (
@@ -268,36 +267,39 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
       </AnimatePresence>
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
-          {selectedFiles.map(({ id, file, previewUrl }) => (
-            <div key={id} className="relative shrink-0 group">
-              {file.type.startsWith("image/") ? (
-                // Wave 183 SW7 — use pre-computed previewUrl from state
-                // (created ONCE per file in handleFileSelect) instead of
-                // calling URL.createObjectURL inline per render. Prevents
-                // memory leak from re-renders triggered by user typing in
-                // the textarea.
-                <SmartImage
-                  srcRaw={previewUrl}
-                  alt={file.name}
-                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm"
-                />
-              ) : (
-                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm text-(--text-secondary)">
-                  <FileText size={32} />
-                </div>
-              )}
-              {/* MSG-A11Y-01 — keep the compact visual glyph while exposing a
+          {selectedFiles.map((entry) => {
+            const { id, file, previewUrl } = entry
+            return (
+              <div key={id} className="relative shrink-0 group">
+                {file.type.startsWith("image/") ? (
+                  // Wave 183 SW7 — use pre-computed previewUrl from state
+                  // (created ONCE per file in handleFileSelect) instead of
+                  // calling URL.createObjectURL inline per render. Prevents
+                  // memory leak from re-renders triggered by user typing in
+                  // the textarea.
+                  <SmartImage
+                    srcRaw={previewUrl}
+                    alt={file.name}
+                    className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm"
+                  />
+                ) : (
+                  <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm text-(--text-secondary)">
+                    <FileText size={32} />
+                  </div>
+                )}
+                {/* MSG-A11Y-01 — keep the compact visual glyph while exposing a
                   concrete 44×44px DOM hit area via min-width/min-height. */}
-              <button
-                type="button"
-                onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/[calc(var(--opacity-hover)*100%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-                aria-label={t("messenger:aria.removeAttachment")}
-              >
-                <X size={14} strokeWidth={3} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => removeFile(entry)}
+                  className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/[calc(var(--opacity-hover)*100%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                  aria-label={t("messenger:aria.removeAttachment")}
+                >
+                  <X size={14} strokeWidth={3} aria-hidden="true" />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
       {/* Wave 207 — reply/quote compose chip. Renders above the input row when
