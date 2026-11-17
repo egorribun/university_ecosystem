@@ -257,9 +257,10 @@ async def test_control_uses_real_core_broker_without_request_reply(ws_client):
         signed = json.dumps(
             payload["data"], sort_keys=True, separators=(",", ":")
         ).encode()
-        assert payload["signature"] == hmac.new(
-            b"testsecret", signed, hashlib.sha256
-        ).hexdigest()
+        assert (
+            payload["signature"]
+            == hmac.new(b"testsecret", signed, hashlib.sha256).hexdigest()
+        )
         assert payload["data"]["action"] == "disconnect"
         assert payload["data"]["reason"] == "access_revoked"
         assert "reply" not in call.kwargs

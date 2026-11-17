@@ -283,7 +283,9 @@ def test_backend_integration_artifact_catalog_includes_mailpit_report() -> None:
         if item["path"] == ".github/workflows/reusable-backend-tests.yml"
     )
     artifact = backend["jobs"]["integration-tests"]["artifacts"][0]
-    assert artifact["path_pattern"] == "pytest-report.xml\nmfa-mailpit-report.xml\n"
+    assert artifact["path_pattern"] == (
+        "pytest-report.xml\nmfa-mailpit-report.xml\nnats-control-report.xml\n"
+    )
 
 
 def test_catalog_declares_matrix_governance_for_every_source_matrix() -> None:
@@ -1104,3 +1106,27 @@ def test_caddy_proof_catalog_omissions_fail_closed(remove_job: bool) -> None:
         expected_error = "needs differs from workflow"
     errors = _errors(value)
     assert any(expected_error in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["pytest-report.xml", "mfa-mailpit-report.xml", "nats-control-report.xml"],
+)
+def test_backend_integration_report_omission_fails_closed(filename: str) -> None:
+    value = _catalog()
+    backend = next(
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/reusable-backend-tests.yml"
+    )
+    artifact = backend["jobs"]["integration-tests"]["artifacts"][0]
+    paths = artifact["path_pattern"].splitlines(keepends=True)
+    assert f"{filename}\n" in paths
+    artifact["path_pattern"] = "".join(line for line in paths if line != f"{filename}\n")
+
+    errors = _errors(value)
+
+    assert any(
+        "integration-tests" in error and "artifact metadata does not match" in error
+        for error in errors
+    ), errors

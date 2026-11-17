@@ -373,9 +373,10 @@ async def test_real_core_control_needs_no_jetstream_ack(nats_server, monkeypatch
             signed = json.dumps(
                 payload["data"], sort_keys=True, separators=(",", ":")
             ).encode()
-            assert payload["signature"] == hmac.new(
-                b"control-test-secret", signed, hashlib.sha256
-            ).hexdigest()
+            assert (
+                payload["signature"]
+                == hmac.new(b"control-test-secret", signed, hashlib.sha256).hexdigest()
+            )
         with pytest.raises(nats.errors.TimeoutError):
             await subscription.next_msg(timeout=0.1)
         failures.inc.assert_not_called()
