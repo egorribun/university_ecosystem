@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -53,6 +54,45 @@ afterEach(() => {
 })
 
 describe("MessageInput", () => {
+  it("allocates one preview per attachment under StrictMode and releases every URL", async () => {
+    const { container, unmount } = render(
+      <StrictMode>
+        <MessageInput onSend={() => {}} />
+      </StrictMode>
+    )
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["document"], "notes.txt", { type: "text/plain" })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+    })
+
+    expect(
+      screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })
+    ).toHaveLength(1)
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(revokeObjectURLSpy).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:mock-1")
+  })
+
+  it("does not allocate a preview when image inspection finishes after unmount", async () => {
+    let finishInspection!: (value: string) => void
+    const file = new File(["png"], "photo.png", { type: "image/png" })
+    vi.spyOn(file, "slice").mockReturnValue({
+      text: () =>
+        new Promise<string>((resolve) => {
+          finishInspection = resolve
+        }),
+    } as Blob)
+    const { container, unmount } = render(<MessageInput onSend={() => {}} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+    unmount()
+    await act(async () => finishInspection("png"))
+
+    expect(createObjectURLSpy).not.toHaveBeenCalled()
+  })
+
   describe("a11y (W183 SW4)", () => {
     it("textarea has aria-label", () => {
       render(<MessageInput onSend={() => {}} />)
