@@ -554,17 +554,20 @@ describe("Schedule page behavior", () => {
     expect(screen.getByTestId("desktop-view")).toBeInTheDocument()
   })
 
-  it.each([false, true])("respects reduced motion %s when scrolling to the current lesson", async (reduced) => {
-    mediaState.reduced = reduced
-    scheduleState.currentLesson = scheduleState.schedule[0]
+  it.each([false, true])(
+    "respects reduced motion %s when scrolling to the current lesson",
+    async (reduced) => {
+      mediaState.reduced = reduced
+      scheduleState.currentLesson = scheduleState.schedule[0]
 
-    await renderSchedule()
+      await renderSchedule()
 
-    expect(scrollToElement).toHaveBeenCalledWith("lesson-card-lesson-42", {
-      behavior: reduced ? "instant" : "smooth",
-      block: "center",
-    })
-  })
+      expect(scrollToElement).toHaveBeenCalledWith("lesson-card-lesson-42", {
+        behavior: reduced ? "instant" : "smooth",
+        block: "center",
+      })
+    }
+  )
 
   it("optimistically deletes a lesson online and refreshes after success", async () => {
     await renderSchedule()
