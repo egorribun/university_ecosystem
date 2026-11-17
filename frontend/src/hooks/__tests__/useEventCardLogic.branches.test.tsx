@@ -247,7 +247,7 @@ describe("useEventCardLogic (branches)", () => {
   })
 
   it.each(["success", "failure"])(
-    "does not let an older save %s change a reopened editor's pending save",
+    "blocks a reopened editor save until the older save settles with %s",
     async (outcome) => {
       let finishFirst!: () => void
       let failFirst!: (error: Error) => void
@@ -284,7 +284,9 @@ describe("useEventCardLogic (branches)", () => {
       await act(async () => {
         second = result.current.handleEdit()
       })
-      expect(mockPatch).toHaveBeenCalledTimes(2)
+      expect(mockPatch).toHaveBeenCalledOnce()
+      expect(mockPost).not.toHaveBeenCalled()
+      expect(result.current.loading).toBe(true)
 
       await act(async () => {
         if (outcome === "success") finishFirst()
@@ -295,10 +297,14 @@ describe("useEventCardLogic (branches)", () => {
       expect(result.current.editOpen).toBe(true)
       expect(result.current.editData.title).toBe("Second draft")
       expect(result.current.newImage).toBe(secondImage)
-      expect(result.current.loading).toBe(true)
+      expect(result.current.loading).toBe(false)
       expect(result.current.snackbar).toBe("")
       expect(onChange).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0)
 
+      await act(async () => {
+        second = result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(2)
       await act(async () => {
         finishSecond()
         await second
@@ -338,6 +344,14 @@ describe("useEventCardLogic (branches)", () => {
     })
 
     await act(async () => {
+      await result.current.handleEdit()
+    })
+    expect(mockPost).toHaveBeenCalledOnce()
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(true)
+    expect(result.current.imageLoading).toBe(true)
+
+    await act(async () => {
       finishUpload()
       await first
     })
@@ -353,6 +367,17 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.imageLoading).toBe(false)
     expect(result.current.snackbar).toBe("")
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+    expect(mockPatch).toHaveBeenNthCalledWith(
+      2,
+      "/events/event-1",
+      expect.objectContaining({ title: "Second draft", image_url: "uploaded.png" })
+    )
+    expect(mockPost).toHaveBeenCalledTimes(2)
+    expect(result.current.editOpen).toBe(false)
   })
 
   it.each(["success", "failure"])(
