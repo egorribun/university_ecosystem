@@ -223,7 +223,7 @@ describe("StepUpDialog closure", () => {
     const user = userEvent.setup()
     const pending = makePending()
     auth.value.requireMfa.mockResolvedValue(pending)
-    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    auth.value.submitMfaChallenge.mockResolvedValue(true)
     const onCompleted = vi.fn()
     const onClose = vi.fn()
 
@@ -250,7 +250,7 @@ describe("StepUpDialog closure", () => {
     auth.value.requireMfa.mockResolvedValue(
       makePending({ method: "email_otp", delivery_hint: "u***@example.com" })
     )
-    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    auth.value.submitMfaChallenge.mockResolvedValue(true)
 
     renderDialog()
     await user.click(await screen.findByRole("button", { name: "otp-submit" }))
@@ -287,7 +287,7 @@ describe("StepUpDialog closure", () => {
       default_method: "email_otp",
       methods: [totp, email],
     })
-    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    auth.value.submitMfaChallenge.mockResolvedValue(true)
 
     renderDialog()
     await user.click(await screen.findByRole("button", { name: "otp-submit" }))
@@ -489,10 +489,10 @@ describe("StepUpDialog closure", () => {
 
   it("marks the OTP control busy until verification settles", async () => {
     const user = userEvent.setup()
-    let resolveSubmit!: () => void
+    let resolveSubmit!: (accepted: boolean) => void
     auth.value.requireMfa.mockResolvedValue(makePending())
     auth.value.submitMfaChallenge.mockReturnValue(
-      new Promise<void>((resolve) => {
+      new Promise<boolean>((resolve) => {
         resolveSubmit = resolve
       })
     )
@@ -503,7 +503,7 @@ describe("StepUpDialog closure", () => {
     await user.click(submit)
     expect(submit).toBeDisabled()
 
-    resolveSubmit()
+    resolveSubmit(true)
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(submit).not.toBeDisabled()
   })
@@ -582,7 +582,7 @@ describe("StepUpDialog closure", () => {
 
   it("never shows the previous challenge, error or busy state after reopening", async () => {
     const user = userEvent.setup()
-    const verification = deferred<void>()
+    const verification = deferred<boolean>()
     auth.value.requireMfa.mockResolvedValueOnce(makePending())
     auth.value.submitMfaChallenge.mockReturnValueOnce(verification.promise)
     const onClose = vi.fn()
@@ -669,7 +669,7 @@ describe("StepUpDialog closure", () => {
 
   it("clears the previous verification error while a retry is verifying", async () => {
     const user = userEvent.setup()
-    const retry = deferred<void>()
+    const retry = deferred<boolean>()
     auth.value.requireMfa.mockResolvedValue(makePending())
     auth.value.submitMfaChallenge
       .mockRejectedValueOnce(new Error("verification failed"))
@@ -683,7 +683,7 @@ describe("StepUpDialog closure", () => {
     expect(screen.queryByText("verification failed")).not.toBeInTheDocument()
 
     await act(async () => {
-      retry.resolve()
+      retry.resolve(true)
       await retry.promise
     })
   })
@@ -691,7 +691,7 @@ describe("StepUpDialog closure", () => {
   it("invokes the latest completion callbacks passed by the parent", async () => {
     const user = userEvent.setup()
     auth.value.requireMfa.mockResolvedValue(makePending())
-    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    auth.value.submitMfaChallenge.mockResolvedValue(true)
     const staleClose = vi.fn()
     const staleCompleted = vi.fn()
     const { rerender } = render(
@@ -751,7 +751,7 @@ describe("StepUpDialog closure", () => {
 
   it("restores focus to the trigger after successful verification closes the dialog", async () => {
     auth.value.requireMfa.mockResolvedValue(makePending())
-    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+    auth.value.submitMfaChallenge.mockResolvedValue(true)
     const user = userEvent.setup()
     render(<StepUpDialogSuccessHarness />)
 
