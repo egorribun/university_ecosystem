@@ -34,6 +34,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
   -ldflags="-w -s -buildid=" \
   -o gateway ./cmd/gateway
 
+# Pod-local SSR to backend SPIFFE transport, shipped in the same pinned image.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -trimpath \
+  -ldflags="-w -s -buildid=" \
+  -o ssr-proxy ./cmd/ssr-proxy
+
 # Runtime stage
 # SEC-04 (audit 2026-03-14): Using Distroless to minimize attack surface (no shell, no pkg manager)
 FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
@@ -42,6 +48,7 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/services/gateway/gateway .
+COPY --from=builder /app/services/gateway/ssr-proxy /ssr-proxy
 
 # Gateway runs on 8080
 EXPOSE 8080
