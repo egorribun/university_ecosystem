@@ -2076,7 +2076,10 @@ mod tests {
                 .unwrap_err()
                 .is_instance_of::<pyo3::exceptions::PyRuntimeError>(py));
             drop(item_guard);
-            assert_eq!(item.as_any().extract::<ScheduleItem>().unwrap().start_time, 0);
+            assert_eq!(
+                item.as_any().extract::<ScheduleItem>().unwrap().start_time,
+                0
+            );
 
             let partition = Bound::new(
                 py,

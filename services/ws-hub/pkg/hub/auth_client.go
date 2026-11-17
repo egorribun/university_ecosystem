@@ -229,7 +229,7 @@ func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
 	defer cancel()
 	// This compatibility interface has no error result. Durable revocation
 	// uses RefreshRoomAuthorization, which propagates invalidation failures.
-	_ = c.invalidateRoomAuthorizationCache(ctx, userID, roomID)
+	_ = c.invalidateRoomAuthorizationCache(ctx, userID, roomID) //nolint:errcheck // best-effort compatibility path; RefreshRoomAuthorization reports failures
 }
 
 // retireLocalRoomAuthorization orders targeted invalidation against cache
@@ -548,15 +548,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation && !activeCall.retired {
 		c.callMu.Unlock()
 		c.genMu.RUnlock()
-		select {
-		case <-activeCall.done:
-		case <-ctx.Done():
-			return false
-		}
-		c.genMu.RLock()
-		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && !c.invalidationActive(userID, key) && activeCall.res
-		c.genMu.RUnlock()
-		return allowed
+		return c.awaitRoomAuthorization(ctx, userID, key, activeCall)
 	}
 	newCall := &call{done: make(chan struct{}), generation: generation}
 	c.calls[key] = newCall
@@ -575,15 +567,51 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	return c.publishRoomAuthorization(ctx, userID, key, newCall, allowed, authErr)
+}
+
+// awaitRoomAuthorization joins an in-flight lookup. Its answer is accepted only
+// while the waiter's context, the generation and the flight are all still current.
+func (c *InternalAPIAuthClient) awaitRoomAuthorization(
+	ctx context.Context,
+	userID, key string,
+	activeCall *call,
+) bool {
+	select {
+	case <-activeCall.done:
+	case <-ctx.Done():
+		return false
+	}
 	c.genMu.RLock()
-	if c.generation != generation || newCall.retired || c.invalidationActive(userID, key) {
+	defer c.genMu.RUnlock()
+	return ctx.Err() == nil && c.roomFlightCurrent(userID, key, activeCall) && activeCall.res
+}
+
+// roomFlightCurrent requires genMu: neither a reset nor a targeted
+// invalidation may have retired the flight's answer.
+func (c *InternalAPIAuthClient) roomFlightCurrent(userID, key string, flight *call) bool {
+	return flight.generation == c.generation && !flight.retired && !c.invalidationActive(userID, key)
+}
+
+// publishRoomAuthorization records the flight's answer for its waiters and
+// caches only a successful, still-current decision in L1 and L2.
+func (c *InternalAPIAuthClient) publishRoomAuthorization(
+	ctx context.Context,
+	userID, key string,
+	newCall *call,
+	allowed bool,
+	authErr error,
+) bool {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	if !c.roomFlightCurrent(userID, key, newCall) {
 		// A reset or targeted invalidation retires the answer for this caller as well as its waiters.
 		allowed = false
 	} else if authErr == nil {
 		c.cache.Add(key, cacheEntry{
 			allowed:    allowed,
 			expiresAt:  time.Now().Add(authCacheTTL),
-			generation: generation,
+			generation: newCall.generation,
 		})
 
 		if c.redis != nil {
@@ -596,7 +624,5 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 		}
 	}
 	newCall.res = allowed
-	c.genMu.RUnlock()
-
 	return allowed
 }

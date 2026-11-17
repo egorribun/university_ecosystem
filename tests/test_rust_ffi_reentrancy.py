@@ -57,7 +57,7 @@ def test_schedule_extraction_can_reenter_from_sequence(operation, callback):
     )
     # A deadlock in native code cannot be interrupted reliably by a pytest
     # thread timeout; an isolated child is forcibly reaped by subprocess.run.
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and literal test script
         [sys.executable, "-c", script, operation, callback],
         capture_output=True,
         text=True,
@@ -89,7 +89,7 @@ def test_concurrent_native_calls_use_owned_schedule_snapshots():
         print("CONCURRENT_EXTRACTION_OK")
         """
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and literal test script
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
@@ -123,7 +123,6 @@ def test_mutation_baseline_copies_native_ownership_contract_input():
     assert "native/rust_ext/src" in mutation["also_copy"]
     assert "tests/" in mutation["pytest_add_cli_args_test_selection"]
     arguments = (
-        mutation["pytest_add_cli_args"]
-        + mutation["pytest_add_cli_args_test_selection"]
+        mutation["pytest_add_cli_args"] + mutation["pytest_add_cli_args_test_selection"]
     )
     assert not any("test_rust_ffi_reentrancy" in argument for argument in arguments)

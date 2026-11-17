@@ -132,7 +132,7 @@ func TestRoomAuthorizationCancelledRedisReadCannotPopulateL1(t *testing.T) {
 	rc.AddHook(roomLeaseAfterPipelineHook{after: cancel})
 	c := mustNewTestAuthClient(t, "http://127.0.0.1:1", "", rc)
 
-	_, allowed, cached := c.cachedRoomAuthorization(ctx, rdUser+":"+rdRoom)
+	_, allowed, cached := c.cachedRoomAuthorization(ctx, rdUser, rdUser+":"+rdRoom)
 
 	require.False(t, allowed)
 	require.False(t, cached)

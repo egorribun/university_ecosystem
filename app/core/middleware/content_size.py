@@ -13,7 +13,7 @@ from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_413_CONTENT_TOO_LARGE,
 )
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
@@ -188,7 +188,7 @@ class ContentSizeLimitMiddleware:
     def _build_replay(self, request: Request, body_bytes: bytes) -> Request:
         replayed = False
 
-        async def _replay_receive() -> dict[str, Any]:
+        async def _replay_receive() -> Message:
             nonlocal replayed
             if replayed:
                 return await request.receive()
