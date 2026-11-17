@@ -1955,6 +1955,7 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) 
     }
 
 
+@pytest.mark.parametrize("inversion", [8, 10])
 @pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "change",
@@ -1977,26 +1978,29 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) 
         {"steps": [{"name": "Run tests"}]},
         {"created_at": "2026-11-16T23:50:30Z"},
         {"queued_at": "2026-11-16T23:50:31Z"},
-        {"completed_at": "2026-11-16T23:50:22Z"},
+        {"completed_at": "2026-11-16T23:50:20Z"},
     ],
 )
 def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
-    labels: list[str], change: dict[str, object]
+    inversion: int, labels: list[str], change: dict[str, object]
 ) -> None:
     record = _first_attempt_skipped_record(labels)
+    record["completed_at"] = f"2026-11-16T23:50:{31 - inversion:02d}Z"
     record.update(change)
     with pytest.raises(AnalysisError):
         parse_jobs({"jobs": [record]})
 
 
+@pytest.mark.parametrize("inversion", [8, 10])
 @pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "field", ["runner_id", "runner_name", "labels", "steps", "status"]
 )
 def test_first_attempt_skip_requires_explicit_no_execution_evidence(
-    labels: list[str], field: str
+    inversion: int, labels: list[str], field: str
 ) -> None:
     record = _first_attempt_skipped_record(labels)
+    record["completed_at"] = f"2026-11-16T23:50:{31 - inversion:02d}Z"
     del record[field]
     with pytest.raises(AnalysisError):
         parse_jobs({"jobs": [record]})
@@ -2042,3 +2046,61 @@ def test_first_attempt_skipped_record_is_not_work_after_core_failure(
         "2026-11-16T23:50:23+00:00"
     )
     assert report["summary"]["jobs_continued_after_core_failure"] == []
+
+
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_observed_ten_second_skip_preserves_evidence(labels, diagnostic):
+    # Run 43983640643, job 133721977888; source SHA remains synthetic.
+    skipped = _first_attempt_skipped_record(labels) | {
+        "id": 133721977888,
+        "run_id": 43983640643,
+        "created_at": "2026-11-17T00:31:14Z",
+        "started_at": "2026-11-17T00:31:14Z",
+        "completed_at": "2026-11-17T00:31:04Z",
+    }
+    failure = {
+        "id": 1,
+        "name": "core-failure",
+        "run_id": skipped["run_id"],
+        "run_attempt": 1,
+        "head_sha": skipped["head_sha"],
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-11-17T00:30:00Z",
+        "started_at": "2026-11-17T00:30:00Z",
+        "completed_at": "2026-11-17T00:30:10Z",
+        "steps": [],
+        "core_failure": True,
+    }
+    payload = {"jobs": [failure, skipped]}
+    original = json.dumps(payload, sort_keys=True)
+    dag = _dag_payload(
+        payload,
+        run_id=43983640643,
+        source_head_sha=str(skipped["head_sha"]),
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=43983640643,
+        concurrency_cap=20,
+        diagnostic_lower_bound=diagnostic,
+        dag=None if diagnostic else dag,
+        trusted_provenance=None if diagnostic else _trusted_provenance(dag),
+    )
+    assert json.dumps(payload, sort_keys=True) == original
+    row = next(row for row in report["jobs"] if row["id"] == skipped["id"])
+    assert row["conclusion"] == "skipped"
+    assert row["duration_seconds"] == 0.0
+    assert row["github_queue_wait_seconds"] is None
+    assert row["continued_after_core_failure"] == ("unknown" if diagnostic else False)
+    assert row["github_timing_evidence"] == {
+        "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
+        "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
+        "created_at": "2026-11-17T00:31:14+00:00",
+        "started_at": "2026-11-17T00:31:14+00:00",
+        "completed_at": "2026-11-17T00:31:04+00:00",
+    }
+    if not diagnostic:
+        assert report["summary"]["jobs_continued_after_core_failure"] == []
