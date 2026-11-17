@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { generateKeyPairSync, verify } from "node:crypto"
 import test from "node:test"
 import { proveSsrAuthentication } from "./ssr_mtls_request_proof.mjs"
+import { applyNodeCspToHtmlResponse } from "../../frontend/scripts/server-csp.mjs"
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 })
 const key = { ...publicKey.export({ format: "jwk" }), kid: "proof" }
@@ -49,16 +50,29 @@ function fixture(change = {}) {
       })
     }
     assert.equal(calls, 4)
-    return new Response(change.body ?? "<html><body>login</body></html>", {
+    const response = new Response(change.body ?? "<html><body>login</body></html>", {
       status: change.rejectedStatus ?? 200,
-      headers: { "cache-control": change.rejectedCache ?? "no-store" },
+      headers: {
+        "cache-control": change.rejectedCache ?? "no-store, private, max-age=0",
+        "content-type": change.contentType ?? "text/html; charset=utf-8",
+        ...(change.forgedLocation ? { location: change.forgedLocation } : {}),
+      },
     })
+    return change.productionCsp
+      ? applyNodeCspToHtmlResponse(response, "proof-nonce")
+      : response
   }
   return { request, calls: () => calls }
 }
 
 test("real signed and forged tokens require independent SSR outcomes", async () => {
   const control = fixture()
+  await proveSsrAuthentication({ ...config, request: control.request })
+  assert.equal(control.calls(), 4)
+})
+
+test("accepts the real CSP policy on unauthenticated HTML without treating privacy as auth", async () => {
+  const control = fixture({ productionCsp: true, rejectedCache: "public, max-age=600" })
   await proveSsrAuthentication({ ...config, request: control.request })
   assert.equal(control.calls(), 4)
 })
@@ -71,7 +85,10 @@ for (const [name, change] of Object.entries({
   wrongRedirect: { location: "/login" },
   missingPrivacy: { acceptedCache: "public" },
   forgedAccepted: { rejectedStatus: 307 },
-  forgedPrivate: { rejectedCache: "private" },
+  forgedPublic: { rejectedCache: "public, max-age=600" },
+  forgedMissingNoStore: { rejectedCache: "private" },
+  forgedRedirectHeader: { forgedLocation: "/dashboard" },
+  forgedNonHtmlType: { contentType: "application/json" },
   missingHtml: { body: "not a document" },
 })) {
   test("rejects incomplete proof: " + name, async () => {
