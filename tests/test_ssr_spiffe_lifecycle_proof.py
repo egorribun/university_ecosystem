@@ -334,7 +334,9 @@ def test_stream_uses_same_resolved_cli_and_preserves_cleanup(monkeypatch):
     process.poll.return_value = 0
     popen = Mock(return_value=process)
     monkeypatch.setattr(proof.subprocess, "Popen", popen)
-    monkeypatch.setattr(proof.select, "select", lambda *args: ([process.stdout], [], []))
+    monkeypatch.setattr(
+        proof.select, "select", lambda *args: ([process.stdout], [], [])
+    )
     with lifecycle().stream() as active:
         assert active is process
     argv = popen.call_args.args[0]
