@@ -76,6 +76,13 @@ export async function proveSsrAuthentication({
   assert.match(rejected.headers.get("content-type") ?? "", /^text\/html(?:;|$)/iu)
   onStage("forged-html")
   assert.match(await rejected.text(), /<html[\s>]/iu)
+  onStage("protected-request")
+  const protectedResponse = await get(`${localOrigin}/dashboard`, `access_token_v2=${forged}`)
+  onStage("protected-status")
+  assert.ok([301, 302, 303, 307, 308].includes(protectedResponse.status))
+  onStage("protected-location")
+  assert.equal(new URL(protectedResponse.headers.get("location"), localOrigin).pathname, "/login")
+  await protectedResponse.arrayBuffer()
 }
 
 if (process.argv.includes("--run")) {
