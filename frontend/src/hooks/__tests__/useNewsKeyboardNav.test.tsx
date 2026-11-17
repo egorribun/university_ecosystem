@@ -200,7 +200,6 @@ describe("useNewsKeyboardNav", () => {
     })
   })
 
-
   it("preserves native button activation after selecting an article", async () => {
     const user = userEvent.setup()
     renderHook(() => useNewsKeyboardNav(ITEMS))
