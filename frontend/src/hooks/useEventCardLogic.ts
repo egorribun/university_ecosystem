@@ -59,6 +59,16 @@ export function useEventCardLogic({
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [editOpen, setEditOpen] = useState(false)
   const editSessionRef = useRef(0)
+  const mountedRef = useRef(false)
+  const activeSaveSessionRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      editSessionRef.current += 1
+    }
+  }, [])
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   // -- Image Upload State --
@@ -163,7 +173,8 @@ export function useEventCardLogic({
   // -- Handlers --
   const handleEdit = async () => {
     const session = editSessionRef.current
-    const isCurrentEdit = () => editSessionRef.current === session
+    if (!mountedRef.current || activeSaveSessionRef.current === session) return
+    const isCurrentEdit = () => mountedRef.current && editSessionRef.current === session
     const dateRange = resolveCampusEventDateRange(
       editData.starts_at ?? "",
       editData.ends_at ?? "",
@@ -178,6 +189,7 @@ export function useEventCardLogic({
     }
 
     const telemetryContext = captureActiveTelemetryContext()
+    activeSaveSessionRef.current = session
     setLoading(true)
     try {
       let imgUrl = editData.image_url
@@ -209,8 +221,8 @@ export function useEventCardLogic({
         delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
-      // The request still completed: refresh server data even if its editor closed.
-      telemetryContext.run(() => onChange?.())
+      // Refresh mounted consumers even when this particular editor was closed.
+      if (mountedRef.current) telemetryContext.run(() => onChange?.())
       if (isCurrentEdit()) {
         setEditOpen(false)
         setNewImage(null)
@@ -219,6 +231,7 @@ export function useEventCardLogic({
     } catch {
       if (isCurrentEdit()) setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
+      if (activeSaveSessionRef.current === session) activeSaveSessionRef.current = null
       if (isCurrentEdit()) {
         setImageLoading(false)
         setLoading(false)
