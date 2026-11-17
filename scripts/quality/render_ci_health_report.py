@@ -387,8 +387,7 @@ def _validate_timing_integrity(
                 raise HealthReportError("nonexecution elapsed bound is unavailable")
     if mode == "strict":
         if any(
-            job.get("critical_path_end_basis") != "dependency-work-cost"
-            for job in jobs
+            job.get("critical_path_end_basis") != "dependency-work-cost" for job in jobs
         ):
             raise HealthReportError("strict work cost path needs explicit row bases")
         if "critical_path_seconds" in summary:

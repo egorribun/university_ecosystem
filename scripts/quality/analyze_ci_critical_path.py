@@ -1338,8 +1338,7 @@ def _mark_nonexecution_timing(
     affected = sorted(
         job.job_id
         for job in jobs
-        if job.rerun_timing_kind
-        == "first_attempt_unexecuted_skip_timestamp_inversion"
+        if job.rerun_timing_kind == "first_attempt_unexecuted_skip_timestamp_inversion"
     )
     if not affected:
         return report
