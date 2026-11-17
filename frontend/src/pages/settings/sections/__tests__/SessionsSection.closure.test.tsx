@@ -28,7 +28,7 @@ vi.mock("@/components/settings", () => ({
       children,
       onClick,
       disabled,
-      leadingIcon: _leadingIcon,
+      leadingIcon,
       startIcon: _startIcon,
       color: _color,
       variant: _variant,
@@ -38,6 +38,7 @@ vi.mock("@/components/settings", () => ({
   ) {
     return (
       <button ref={ref} type="button" onClick={onClick} disabled={disabled} {...props}>
+        {leadingIcon}
         {children}
       </button>
     )
@@ -68,6 +69,7 @@ const baseProps = {
   sessionsErrorMessage: null,
   revokeAllPending: false,
   revokeSessionPending: false,
+  identityPending: false,
   onRevokeSession: vi.fn(async () => undefined),
   onRevokeAllSessions: vi.fn(async () => undefined),
   formatSessionTimestamp: (value: string) => `formatted:${value}`,
@@ -146,6 +148,41 @@ describe("SessionsSection closure paths", () => {
     fireEvent.click(screen.getByTestId("session-revoke-active"))
     fireEvent.click(screen.getByRole("button", { name: "settings:sessions.revokeAll" }))
     expect(onRevokeSession).toHaveBeenCalledWith("active")
+    expect(onRevokeAllSessions).toHaveBeenCalledOnce()
+  })
+
+  it("disables both revoke actions during identity hydration", () => {
+    const active = session({ id: "active" })
+    const onRevokeSession = vi.fn(async () => undefined)
+    const onRevokeAllSessions = vi.fn(async () => undefined)
+    const props = {
+      ...baseProps,
+      sessions: [active],
+      sortedSessions: [active],
+      onRevokeSession,
+      onRevokeAllSessions,
+    }
+    const { rerender } = render(<SessionsSection {...props} identityPending />)
+    const revoke = screen.getByTestId("session-revoke-active")
+    const revokeAll = screen.getByRole("button", { name: "settings:sessions.revokeAll" })
+    expect(revoke).toBeDisabled()
+    expect(revokeAll).toBeDisabled()
+    fireEvent.click(revoke)
+    fireEvent.click(revokeAll)
+    expect(onRevokeSession).not.toHaveBeenCalled()
+    expect(onRevokeAllSessions).not.toHaveBeenCalled()
+
+    rerender(<SessionsSection {...props} revokeAllPending revokeSessionPending />)
+    expect(revoke).toBeDisabled()
+    expect(revokeAll).toBeDisabled()
+    expect(screen.getByTestId("progress-18")).toBeInTheDocument()
+
+    rerender(<SessionsSection {...props} />)
+    expect(revoke).toBeEnabled()
+    expect(revokeAll).toBeEnabled()
+    fireEvent.click(revoke)
+    fireEvent.click(revokeAll)
+    expect(onRevokeSession).toHaveBeenCalledOnce()
     expect(onRevokeAllSessions).toHaveBeenCalledOnce()
   })
 })

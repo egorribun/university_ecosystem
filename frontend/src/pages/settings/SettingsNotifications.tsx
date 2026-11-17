@@ -1,3 +1,4 @@
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { useDndSettings } from "./hooks"
 import { NotificationsSection } from "./sections"
 import type { SetSnackbar } from "./types"
@@ -7,6 +8,7 @@ interface SettingsNotificationsProps {
 }
 
 export function SettingsNotifications({ setSnackbar }: SettingsNotificationsProps) {
+  const identityPending = useConfirmedIdentityPending()
   const {
     dndEnabled,
     dndStart,
@@ -26,7 +28,7 @@ export function SettingsNotifications({ setSnackbar }: SettingsNotificationsProp
         dndEnabled={dndEnabled}
         dndStart={dndStart}
         dndEnd={dndEnd}
-        dndSaving={dndSaving}
+        dndSaving={dndSaving || identityPending}
         onDndToggle={handleDndToggle}
         onDndStartChange={handleDndStartChange}
         onDndStartBlur={handleDndStartBlur}

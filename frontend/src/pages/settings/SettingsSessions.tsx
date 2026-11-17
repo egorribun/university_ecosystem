@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 
 import { useSessionManagement } from "./hooks"
 import { SessionsSection } from "./sections"
@@ -13,6 +14,7 @@ interface SettingsSessionsProps {
 
 export function SettingsSessions({ setSnackbar, openStepUpFor, isActive }: SettingsSessionsProps) {
   const { t } = useTranslation(["settings"])
+  const identityPending = useConfirmedIdentityPending()
   const {
     sessions,
     sortedSessions,
@@ -45,6 +47,7 @@ export function SettingsSessions({ setSnackbar, openStepUpFor, isActive }: Setti
         sessionsErrorMessage={sessionsErrorMessage}
         revokeAllPending={revokeAllSessionsBusy}
         revokeSessionPending={revokeSessionBusy}
+        identityPending={identityPending}
         onRevokeSession={handleRevokeSession}
         onRevokeAllSessions={handleRevokeAllSessions}
         formatSessionTimestamp={formatSessionTimestamp}

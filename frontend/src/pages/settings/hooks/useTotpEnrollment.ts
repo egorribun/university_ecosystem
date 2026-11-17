@@ -6,6 +6,7 @@ import { extractApiError } from "@/utils/error"
 import { formatDate } from "@/utils/date"
 
 import { useAuth } from "@/contexts/AuthContext"
+import { getConfirmedUserId } from "@/stores/authIdentity"
 import {
   startTotpEnrollment,
   confirmTotpEnrollment,
@@ -58,7 +59,8 @@ export function useTotpEnrollment({
   openStepUpFor,
 }: UseTotpEnrollmentOptions): UseTotpEnrollmentReturn {
   const { t } = useTranslation(["settings", "common"])
-  const { user, setUser } = useAuth()
+  const { user, loading, setUser } = useAuth()
+  const identityReady = getConfirmedUserId({ user, loading }) !== null
   const captureOperation = useProfileSessionGuard()
   const refreshUser = useSessionProfileRefresh()
 
@@ -186,7 +188,7 @@ export function useTotpEnrollment({
       autoResumeAttempt.current = null
       return
     }
-    if (totpDraft || totpBusy || totpLimitReached) return
+    if (!identityReady || totpDraft || totpBusy || totpLimitReached) return
     const pendingId = pendingTotpEnrollment.id
     const attempted = autoResumeAttempt.current
     if (attempted?.owner === captureOperation && attempted.pendingId === pendingId) return
@@ -206,6 +208,7 @@ export function useTotpEnrollment({
   }, [
     captureOperation,
     handleStartTotp,
+    identityReady,
     pendingTotpEnrollment,
     totpBusy,
     totpDraft,

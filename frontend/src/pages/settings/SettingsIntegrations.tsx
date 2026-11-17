@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
 import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
@@ -19,6 +20,7 @@ export function SettingsIntegrations({ setSnackbar }: SettingsIntegrationsProps)
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
   const captureOperation = useProfileSessionGuard()
+  const identityPending = useConfirmedIdentityPending()
   const userId = user?.id
 
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
@@ -90,6 +92,7 @@ export function SettingsIntegrations({ setSnackbar }: SettingsIntegrationsProps)
         setSnackbar={setSnackbar}
         connected={spotifyConnected}
         displayName={spotifyName}
+        identityPending={identityPending}
         onConnect={connectSpotify}
         onDisconnect={disconnectSpotify}
       />
