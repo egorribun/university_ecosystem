@@ -4,7 +4,7 @@ import { useEffect, useRef, type ChangeEvent, type RefObject } from "react"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
-import { getConfirmedUserId } from "@/stores/authIdentity"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
 import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
 
@@ -22,7 +22,7 @@ import type { SettingsSectionProps } from "@/pages/settings/types"
 export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])
   const navigate = useNavigate()
-  const { user, loading: identityLoading } = useAuth()
+  const { user } = useAuth()
   const captureOperation = useProfileSessionGuard()
   const avatarPickRef = useRef<(() => boolean) | null>(null)
   const coverPickRef = useRef<(() => boolean) | null>(null)
@@ -30,7 +30,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   // them otherwise). The SSR role stub and the encrypted-cache placeholder are not
   // one, so keep the controls disabled until the real identity arrives instead of
   // offering a click that silently does nothing.
-  const identityPending = getConfirmedUserId({ user, loading: identityLoading }) === null
+  const identityPending = useConfirmedIdentityPending()
 
   const {
     avatarSrc,
