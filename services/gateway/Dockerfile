@@ -40,6 +40,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
   -ldflags="-w -s -buildid=" \
   -o ssr-proxy ./cmd/ssr-proxy
 
+# Kind-only proof target. Never copied into the default production image.
+FROM builder AS fixture-builder
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s -buildid=" \
+  -o ssr-mtls-fixture ./cmd/ssr-mtls-fixture
+
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838 AS ssr-mtls-fixture
+COPY --from=fixture-builder /app/services/gateway/ssr-mtls-fixture /ssr-mtls-fixture
+USER 65532:65532
+ENTRYPOINT ["/ssr-mtls-fixture"]
+
 # Runtime stage
 # SEC-04 (audit 2026-03-14): Using Distroless to minimize attack surface (no shell, no pkg manager)
 FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838

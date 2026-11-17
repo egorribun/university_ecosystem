@@ -63,6 +63,7 @@ DOCKER_DAEMON_ENDPOINT=""
 BACKEND_IMAGE=""
 GATEWAY_IMAGE=""
 FRONTEND_IMAGE=""
+SSR_FIXTURE_IMAGE=""
 FILE_PROCESSOR_IMAGE=""
 BACKEND_INIT_IMAGE_REPOSITORY=""
 BACKEND_INIT_IMAGE=""
@@ -659,6 +660,7 @@ start_local_registry() {
   BACKEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"
   GATEWAY_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"
   FRONTEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-frontend:${IMAGE_TAG}"
+  SSR_FIXTURE_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-ssr-fixture:${IMAGE_TAG}"
   FILE_PROCESSOR_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-file-processor:${IMAGE_TAG}"
   BACKEND_INIT_IMAGE_REPOSITORY="${LOCAL_REGISTRY_ADDRESS}/aud373/fixture/backend"
   BACKEND_INIT_IMAGE="${BACKEND_INIT_IMAGE_REPOSITORY}:${IMAGE_TAG}"
@@ -683,6 +685,8 @@ build_images() {
     --tag "$BACKEND_IMAGE" "$ROOT_DIR" || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/services/gateway/Dockerfile" \
     --tag "$GATEWAY_IMAGE" "$ROOT_DIR" || return 1
+  timeout 1800 docker build --file "${ROOT_DIR}/services/gateway/Dockerfile" \
+    --target ssr-mtls-fixture --tag "$SSR_FIXTURE_IMAGE" "$ROOT_DIR" || return 1
   timeout 1800 docker build --file "${ROOT_DIR}/services/file-processor/Dockerfile" \
     --tag "$FILE_PROCESSOR_IMAGE" "$ROOT_DIR" || return 1
 }
@@ -700,6 +704,7 @@ push_images() {
     return 1
   fi
   BACKEND_IMAGE_DIGEST="${digests[0]}"
+  timeout 900 docker push "$SSR_FIXTURE_IMAGE" || return 1
   timeout 900 docker push "$FRONTEND_IMAGE" || return 1
   timeout 900 docker push "$GATEWAY_IMAGE" || return 1
   timeout 900 docker push "$FILE_PROCESSOR_IMAGE" || return 1
@@ -772,6 +777,8 @@ register_workloads() {
   create_spire_entry "$agent_id" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"
   create_spire_entry "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"
   create_spire_entry "$agent_id" "$FRONTEND_SPIFFE_ID" "${RELEASE}-frontend"
+  kubectl -n "$NAMESPACE" create serviceaccount ssr-wrong-peer || return 1
+  create_spire_entry "$agent_id" "spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/ssr-wrong-peer" ssr-wrong-peer
   create_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${RELEASE}-file-processor"
 }
 
@@ -1539,6 +1546,18 @@ cleanup() {
   exit "$status"
 }
 
+run_ssr_lifecycle_proof() {
+  if timeout 1200 python3 "$ROOT_DIR/scripts/kind/ssr_spiffe_lifecycle_proof.py" \
+    --namespace "$NAMESPACE" --spire-namespace "$SPIRE_NAMESPACE" \
+    --release "$RELEASE" --trust-domain "$TRUST_DOMAIN" --image "$SSR_FIXTURE_IMAGE"; then
+    record "g-ssr-live-spiffe-lifecycle" yes
+    # Re-run the actual SSR signed/forged JWT path after authority removal.
+    run_ssr_proof
+  else
+    record "g-ssr-live-spiffe-lifecycle" no
+  fi
+}
+
 main() {
   # Signals exit normally so the EXIT trap still deletes the owned cluster and registry.
   trap 'exit 130' INT
@@ -1555,6 +1574,7 @@ main() {
   install_probe_access
   run_proofs
   run_ssr_proof
+  run_ssr_lifecycle_proof
   if [[ "$FAILURES" -ne 0 ]]; then
     printf 'RESULT=FAIL failures=%s\n' "$FAILURES"
     exit 1

@@ -77,3 +77,25 @@ printf 'FAILURES=%s\\n' "$FAILURES"
     result = _bash_command(command)
     assert result.returncode == 0, result.stderr
     assert f"FAILURES={expected_failures}\n" in result.stdout.decode()
+
+
+@pytest.mark.parametrize("status", [0, 1, 124])
+def test_live_lifecycle_gate_cannot_ignore_failure(status: int) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("run_ssr_lifecycle_proof")}
+{_shell_function("record")}
+ROOT_DIR=/proof
+NAMESPACE=proof
+SPIRE_NAMESPACE=spire
+RELEASE=ue
+TRUST_DOMAIN=example.org
+SSR_FIXTURE_IMAGE=fixture
+FAILURES=0
+timeout() {{ return {status}; }}
+run_ssr_proof() {{ printf 'POST_ROTATION_SSR=RUN\\n'; }}
+run_ssr_lifecycle_proof
+printf 'FAILURES=%s\\n' "$FAILURES"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    assert f"FAILURES={int(status != 0)}\n" in result.stdout.decode()
