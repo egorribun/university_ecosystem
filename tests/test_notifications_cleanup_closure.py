@@ -5,11 +5,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 from app.services.notifications.cleanup import cleanup_stale_notifications
 
 
 async def test_cleanup_stale_notifications_uses_default_batch_size(monkeypatch):
     db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
     scalar_result = MagicMock()
     scalar_result.all.return_value = []
     db.scalars = AsyncMock(return_value=scalar_result)
@@ -31,6 +35,8 @@ async def test_cleanup_stale_notifications_uses_default_batch_size(monkeypatch):
 
 async def test_cleanup_stale_notifications_uses_settings_and_owned_session(monkeypatch):
     db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
     scalar_result = MagicMock()
     scalar_result.all.return_value = []
     db.scalars = AsyncMock(return_value=scalar_result)
@@ -56,6 +62,8 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
     monkeypatch,
 ):
     db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
     delivery_ids = MagicMock()
     delivery_id = uuid4()
     delivery_ids.all.return_value = [delivery_id]
@@ -98,8 +106,55 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
 
 async def test_cleanup_stale_notifications_skips_non_positive_retention():
     db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
 
     result = await cleanup_stale_notifications(db=db, retention_days=0)
 
     assert result == (0, 0)
     db.scalars.assert_not_awaited()
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
+async def test_orphan_visibility_guard_is_rechecked_in_select_and_delete(dialect):
+    db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = dialect
+    empty = MagicMock()
+    empty.all.return_value = []
+    candidate = MagicMock()
+    candidate.all.return_value = [uuid4()]
+    db.scalars.side_effect = [empty, empty, candidate, empty]
+    db.execute.return_value = MagicMock(rowcount=1)
+
+    await cleanup_stale_notifications(
+        db=db, retention_days=30, now=datetime.now(UTC)
+    )
+
+    statements = [
+        db.scalars.await_args_list[2].args[0],
+        db.execute.await_args.args[0],
+    ]
+    for statement in statements:
+        compiled = statement.compile()
+        sql = str(compiled)
+        assert "NOT (EXISTS" in sql
+        if dialect == "postgresql":
+            assert "pg_catalog.row_security_active(" in sql
+            assert "IS false" in sql
+            assert "notifications" in compiled.params.values()
+        else:
+            assert "row_security_active" not in sql
+
+
+async def test_unsupported_retention_dialect_fails_before_database_work():
+    db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "unknown"
+
+    with pytest.raises(RuntimeError, match="PostgreSQL or SQLite"):
+        await cleanup_stale_notifications(db=db, retention_days=30)
+
+    db.scalars.assert_not_awaited()
+    db.execute.assert_not_awaited()
+    db.commit.assert_not_awaited()

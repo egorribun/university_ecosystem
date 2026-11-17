@@ -1789,11 +1789,12 @@ async def test_notification_cleanup_preserves_claims_under_active_rls(
                             )
                         ).all()
                     )
-                    expected = (
-                        {parent_ids[0]} if tenant == _TENANT_A
-                        else {parent_ids[1]} if tenant == _TENANT_B
-                        else set()
-                    )
+                    if tenant == _TENANT_A:
+                        expected = {parent_ids[0]}
+                    elif tenant == _TENANT_B:
+                        expected = {parent_ids[1]}
+                    else:
+                        expected = set()
                     assert visible == expected
                     assert await cleanup_stale_notifications(
                         db=session, retention_days=1, now=now
