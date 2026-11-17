@@ -1,5 +1,5 @@
 import {
-  useCallback,
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -112,16 +112,16 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     if (previewUrlsRef.current.delete(url)) URL.revokeObjectURL(url)
   }
 
-  const setFileInputRef = useCallback((node: HTMLInputElement | null) => {
-    if (node === null) {
+  useEffect(() => {
+    const previewUrls = previewUrlsRef.current
+    return () => {
       if (svgRejectionTimerRef.current !== null) {
         clearTimeout(svgRejectionTimerRef.current)
         svgRejectionTimerRef.current = null
       }
-      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-      previewUrlsRef.current.clear()
+      previewUrls.forEach((url) => URL.revokeObjectURL(url))
+      previewUrls.clear()
     }
-    fileInputRef.current = node
   }, [])
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -385,7 +385,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             )}
           </AnimatePresence>
 
-          <input ref={setFileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
         {/* Wave 183 SW4 — added explicit aria-label. Placeholder alone is
             insufficient for screen-reader announcement (A11Y-114-04 pattern;
