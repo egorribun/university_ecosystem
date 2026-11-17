@@ -267,11 +267,15 @@ func redactURLToken(token string) string {
 
 func trimURLSuffix(value string) (string, string) {
 	end := len(value)
+	bracketBalance := strings.Count(value, "[") - strings.Count(value, "]")
 	for end > 0 && strings.ContainsRune(".,;:!?)]}", rune(value[end-1])) {
 		// A balanced closing bracket belongs to an IPv6 authority (or a
 		// literal path), not surrounding prose punctuation.
-		if value[end-1] == ']' && strings.Count(value[:end], "[") >= strings.Count(value[:end], "]") {
-			break
+		if value[end-1] == ']' {
+			if bracketBalance >= 0 {
+				break
+			}
+			bracketBalance++
 		}
 		end--
 	}

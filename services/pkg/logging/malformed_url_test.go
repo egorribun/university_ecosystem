@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -97,4 +98,13 @@ func TestURLSuffixPreservesBalancedIPv6Brackets(t *testing.T) {
 		}
 	}
 	assertNotContains(t, redactString("redis://reader:opaqueCredentialCanary@[::1"), "opaqueCredentialCanary")
+}
+
+func TestURLSuffixHandlesLongUnmatchedBrackets(t *testing.T) {
+	const endpoint = "https://[::1]"
+	surrounding := strings.Repeat("]", 4096) + ".)"
+	trimmed, suffix := trimURLSuffix(endpoint + surrounding)
+	if trimmed != endpoint || suffix != surrounding {
+		t.Fatal("unmatched bracket suffix changed the balanced IPv6 authority")
+	}
 }
