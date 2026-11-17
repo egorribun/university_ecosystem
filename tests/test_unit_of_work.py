@@ -178,9 +178,7 @@ async def test_borrowed_session_rolls_back_but_is_not_closed_on_error():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cancelled", [False, True])
 @pytest.mark.parametrize("close_fails", [False, True])
-async def test_owned_exit_closes_after_rollback_failure(
-    cancelled, close_fails, caplog
-):
+async def test_owned_exit_closes_after_rollback_failure(cancelled, close_fails, caplog):
     session = AsyncMock(spec=AsyncSession)
     rollback_error = asyncio.CancelledError() if cancelled else RuntimeError("rollback")
     close_error = RuntimeError("private-close-detail")

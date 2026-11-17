@@ -76,8 +76,10 @@ class UnitOfWork:
             if self._owns_session:
                 try:
                     await self._close()
-                except Exception:  # RZ-22-01-JUSTIFIED: preserve primary rollback failure
-                    logger.warning("Owned UnitOfWork close failed after rollback failure")
+                except Exception:  # RZ-22-01-JUSTIFIED: preserve rollback failure
+                    logger.warning(
+                        "Owned UnitOfWork close failed after rollback failure"
+                    )
                 else:
                     self._owns_session = False
             raise
