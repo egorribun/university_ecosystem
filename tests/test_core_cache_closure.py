@@ -189,8 +189,6 @@ async def _invoke_l2_operation(cache, operation):
     [
         RedisConnectionError,
         RedisTimeoutError,
-        AuthenticationError,
-        AuthorizationError,
         BusyLoadingError,
     ],
 )
@@ -224,7 +222,15 @@ async def test_multilayer_real_redis_transport_errors_fail_soft(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error_type",
-    [ResponseError, NoPermissionError, DataError, ValueError, asyncio.CancelledError],
+    [
+        AuthenticationError,
+        AuthorizationError,
+        ResponseError,
+        NoPermissionError,
+        DataError,
+        ValueError,
+        asyncio.CancelledError,
+    ],
 )
 @pytest.mark.parametrize("operation", ["get", "set", "delete", "scan", "scan-delete"])
 async def test_multilayer_nontransport_errors_and_cancellation_propagate(

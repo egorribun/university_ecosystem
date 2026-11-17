@@ -18,6 +18,7 @@ from typing import Any
 
 import orjson
 from prometheus_client import Counter
+from redis.exceptions import AuthenticationError, AuthorizationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
@@ -217,6 +218,9 @@ class MultiLayerCache:
                     # Populate L1 from L2
                     self.l1.set(key, value)
                     return value
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
@@ -251,6 +255,9 @@ class MultiLayerCache:
                 # PERF-W19-01: serialize with orjson so Redis stores valid bytes,
                 # not the str() representation of a Python object.
                 await self._redis.set(key, orjson.dumps(value), ex=int(self.l2_ttl))
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
@@ -273,6 +280,9 @@ class MultiLayerCache:
         if self._redis is not None:
             try:
                 await self._redis.delete(key)
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
@@ -304,6 +314,9 @@ class MultiLayerCache:
                         count += len(keys)
                     if cursor == 0:
                         break
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
