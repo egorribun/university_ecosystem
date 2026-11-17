@@ -19,6 +19,7 @@ COMPONENT = "app.kubernetes.io/component"
 INSTANCE = "app.kubernetes.io/instance"
 IDENTITY_FIELDS = {
     "backend": ("INTERNAL_HTTP_MTLS_ENABLED", "INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID"),
+    "frontend": ("SSR_MTLS_ENABLED", "SSR_SPIFFE_ID"),
     "gateway": ("INTERNAL_HTTP_MTLS_ENABLED", "SPIFFE_MY_ID"),
     "ws-hub": ("SPIFFE_ENABLED", "SPIFFE_MY_ID"),
     "file-processor": ("FP_INTERNAL_HTTP_MTLS_ENABLED", "FP_SPIFFE_MY_ID"),
@@ -150,9 +151,36 @@ def build_plan(
         )
         service_account = _service_account(spec.get("serviceAccountName"))
         containers = spec.get("containers")
-        if not isinstance(containers, list) or len(containers) != 1:
-            raise ValueError("identity planning requires exactly one main container")
-        environ = _environment(_mapping(containers[0]))
+        if component == "frontend":
+            if not isinstance(containers, list) or len(containers) != 2:
+                raise ValueError("frontend requires frontend and ssr-proxy containers")
+            by_name = {
+                _name(_mapping(container).get("name"), "container name"): _mapping(
+                    container
+                )
+                for container in containers
+            }
+            if set(by_name) != {"frontend", "ssr-proxy"}:
+                raise ValueError("frontend requires unique frontend and ssr-proxy names")
+            environ = _environment(by_name["ssr-proxy"])
+            if environ.get("SSR_SPIFFE_TRUST_DOMAIN") != parent.netloc:
+                raise ValueError("SSR trust domain must match the attested parent")
+            socket = environ.get("SPIFFE_ENDPOINT_SOCKET", "")
+            endpoint = urlsplit(socket)
+            if (
+                not socket.startswith("unix:///")
+                or endpoint.netloc
+                or endpoint.query
+                or endpoint.fragment
+                or endpoint.path in {"", "/"}
+                or any(part in {".", ".."} for part in endpoint.path.split("/"))
+                or any(character.isspace() for character in socket)
+            ):
+                raise ValueError("SSR requires an explicit Unix Workload API socket")
+        else:
+            if not isinstance(containers, list) or len(containers) != 1:
+                raise ValueError("identity planning requires exactly one main container")
+            environ = _environment(_mapping(containers[0]))
         flag, identity_field = IDENTITY_FIELDS[component]
         if environ.get(flag) != "true":
             if component == "file-processor" and flag not in environ:
@@ -181,11 +209,10 @@ def build_plan(
     for component, (_, _, environ) in workloads.items():
         if component == "backend":
             continue
-        field = (
-            "FP_BACKEND_SPIFFE_ID"
-            if component == "file-processor"
-            else "BACKEND_SPIFFE_ID"
-        )
+        field = {
+            "file-processor": "FP_BACKEND_SPIFFE_ID",
+            "frontend": "SSR_BACKEND_SPIFFE_ID",
+        }.get(component, "BACKEND_SPIFFE_ID")
         if environ.get(field) != backend_id:
             raise ValueError(
                 "client peer identity differs from issued backend identity"

@@ -106,3 +106,34 @@ decision and is not an alternative accepted by this ADR.
 - [Pinned SDK source](https://github.com/HewlettPackard/py-spiffe/blob/spiffe-v0.3.2/spiffe/src/spiffe/workloadapi/x509_source.py)
 - [Pinned SDK metadata](https://github.com/HewlettPackard/py-spiffe/blob/spiffe-v0.3.2/spiffe/pyproject.toml)
 - [Python SSL context rules](https://docs.python.org/3.14/library/ssl.html#ssl-contexts)
+
+
+## SSR transport integration addendum (2026-11-17)
+
+The Helm frontend must participate in the same authenticated internal HTTP chain
+when backend mTLS is enabled. Node SSR uses a loopback-only Go `ssr-proxy`
+sidecar rather than connecting directly to the backend with plaintext. The
+sidecar obtains rotating credentials from the SPIRE Workload API and verifies
+the exact issued backend SPIFFE ID. The browser-facing frontend listener remains
+separate; the loopback listener is not published as a Service port. Existing
+user authorization and backend authorization remain required.
+
+The rendered frontend Deployment has exactly the `frontend` and `ssr-proxy`
+containers. Only the sidecar receives `SSR_MTLS_ENABLED=true`,
+`SSR_SPIFFE_ID`, `SSR_BACKEND_SPIFFE_ID`, `SSR_SPIFFE_TRUST_DOMAIN` and the
+literal Unix `SPIFFE_ENDPOINT_SOCKET`. The registration planner selects this
+container by name, independent of container ordering. It binds the frontend's
+logical identity to its rendered namespace and ServiceAccount, never inferring
+either selector from the identity path. The backend allowlist must include this
+identity exactly once, alongside every other active workload and its own probe.
+
+Missing or ambiguous sidecars, disabled mTLS, unresolved identity references,
+a different trust domain or backend peer, and a missing frontend allowlist entry
+reject the registration plan. The planner remains offline and plan-only; its
+output is not evidence of cluster attestation or authorization to create entries.
+
+This integration does not record a new acceptance or waive ADR-052 validation.
+Final-source hosted checks and real SPIRE issuance/rotation evidence remain
+required, including SSR-to-backend success, wrong-peer and unavailable-agent
+rejection, and no plaintext fallback. No coverage floor, required check, scanner
+disposition or production rollback policy changes.
