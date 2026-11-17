@@ -261,8 +261,7 @@ func (c *InternalAPIAuthClient) retireLocalRoomAuthorization(userID, roomID stri
 }
 
 // invalidationActive requires genMu and covers both a room and its user wildcard.
-func (c *InternalAPIAuthClient) invalidationActive(key string) bool {
-	userID, _, _ := strings.Cut(key, ":")
+func (c *InternalAPIAuthClient) invalidationActive(userID, key string) bool {
 	return c.invalidations[key] > 0 || c.invalidations[userID+":"] > 0
 }
 
@@ -301,7 +300,7 @@ func (c *InternalAPIAuthClient) invalidateRoomAuthorizationCache(ctx context.Con
 	return iter.Err()
 }
 
-// isValidUUID returns true when s is a canonical RFC-4122 UUID string.
+// isValidUUID accepts the UUID encodings supported by uuid.Parse.
 // Rejects empty strings, non-UUID garbage, and injection payloads before
 // they can reach the query string or the cache key.
 func isValidUUID(s string) bool {
@@ -473,20 +472,20 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	}
 
 	key := userID + ":" + roomID
-	generation, allowed, cached := c.cachedRoomAuthorization(ctx, key)
+	generation, allowed, cached := c.cachedRoomAuthorization(ctx, userID, key)
 	if cached {
 		return allowed
 	}
 	return c.requestRoomAuthorization(ctx, userID, roomID, key, generation)
 }
 
-func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key string) (uint64, bool, bool) {
+func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, userID, key string) (uint64, bool, bool) {
 	// 1 and 2. Fast path (L1) and shared path (L2, PERF-006) under the shared
 	// generation lock. A reset cannot interleave with these reads.
 	c.genMu.RLock()
 	defer c.genMu.RUnlock()
 	generation := c.generation
-	if c.invalidationActive(key) {
+	if c.invalidationActive(userID, key) {
 		return generation, false, true
 	}
 	entry, ok := c.cache.Get(key)
@@ -519,7 +518,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Keep the generation stable through map insertion: an older lookup cannot
 	// replace a flight that was created after a reset.
 	c.genMu.RLock()
-	if c.generation != generation || c.invalidationActive(key) {
+	if c.generation != generation || c.invalidationActive(userID, key) {
 		c.genMu.RUnlock()
 		return false
 	}
@@ -533,7 +532,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 			return false
 		}
 		c.genMu.RLock()
-		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && !c.invalidationActive(key) && activeCall.res
+		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && !c.invalidationActive(userID, key) && activeCall.res
 		c.genMu.RUnlock()
 		return allowed
 	}
@@ -555,7 +554,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
 	c.genMu.RLock()
-	if c.generation != generation || newCall.retired || c.invalidationActive(key) {
+	if c.generation != generation || newCall.retired || c.invalidationActive(userID, key) {
 		// A reset or targeted invalidation retires the answer for this caller as well as its waiters.
 		allowed = false
 	} else if authErr == nil {

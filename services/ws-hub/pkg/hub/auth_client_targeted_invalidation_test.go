@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -238,10 +239,14 @@ func TestTargetedWildcardInvalidationPropagatesDeleteFailure(t *testing.T) {
 }
 
 func TestTargetedInvalidationBlocksPublicationAfterRedisDelete(t *testing.T) {
-	for _, mode := range []string{"room", "user"} {
+	for _, mode := range []string{"room", "user", "urn-user"} {
 		t.Run(mode, func(t *testing.T) {
 			mr, rc := newMiniredisClient(t)
-			key := rdUser + ":" + rdRoom
+			userID, roomID := rdUser, rdRoom
+			if mode == "urn-user" {
+				userID, roomID = "urn:uuid:"+rdUser, "urn:uuid:"+rdRoom
+			}
+			key := userID + ":" + roomID
 			require.NoError(t, mr.Set("auth:perms:"+key, "1"))
 			deleted, release := make(chan struct{}), make(chan struct{})
 			var releaseOnce sync.Once
@@ -258,25 +263,25 @@ func TestTargetedInvalidationBlocksPublicationAfterRedisDelete(t *testing.T) {
 			}})
 			client := mustNewTestAuthClient(t, server.URL, "", rc)
 			done := make(chan error, 1)
-			room := rdRoom
-			if mode == "user" {
+			room := roomID
+			if mode != "room" {
 				room = ""
 			}
 			go func() {
-				done <- client.invalidateRoomAuthorizationCache(context.Background(), rdUser, room)
+				done <- client.invalidateRoomAuthorizationCache(context.Background(), userID, room)
 			}()
 			waitRoomMembershipSignal(t, deleted, "DEL did not finish before lookup")
 			// Real cache-miss/HTTP/publication path: without the barrier this
 			// obtains 200 and SETs L2 after DEL, beyond the final local sweep.
-			require.False(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom))
-			require.False(t, client.requestRoomAuthorization(context.Background(), rdUser, rdRoom, key, 0))
+			require.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
+			require.False(t, client.requestRoomAuthorization(context.Background(), userID, roomID, key, 0))
 			require.Zero(t, requests.Load())
-			assertRoomAuthorizationNotCached(t, mr, client, rdUser, rdRoom)
+			assertRoomAuthorizationNotCached(t, mr, client, userID, roomID)
 			releaseOnce.Do(func() { close(release) })
 			require.NoError(t, <-done)
 			require.Empty(t, client.invalidations)
-			assertRoomAuthorizationNotCached(t, mr, client, rdUser, rdRoom)
-			require.True(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom),
+			assertRoomAuthorizationNotCached(t, mr, client, userID, roomID)
+			require.True(t, client.CanJoinRoom(context.Background(), userID, roomID),
 				"the barrier must not permanently revoke backend-authorized access")
 			require.EqualValues(t, 1, requests.Load())
 		})
@@ -317,7 +322,7 @@ func TestTargetedInvalidationOverlappingBarriers(t *testing.T) {
 			onceFirst.Do(func() { close(releaseFirst) })
 			require.NoError(t, <-doneFirst)
 			client.genMu.RLock()
-			active := client.invalidationActive(key)
+			active := client.invalidationActive(rdUser, key)
 			client.genMu.RUnlock()
 			require.True(t, active, "first completion must not release overlapping barrier")
 			require.False(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom))
@@ -328,5 +333,35 @@ func TestTargetedInvalidationOverlappingBarriers(t *testing.T) {
 			require.NoError(t, <-doneSecond)
 			require.Empty(t, client.invalidations)
 		})
+	}
+}
+
+func TestInvalidationBarrierAcceptsUUIDEncodings(t *testing.T) {
+	for _, encode := range []func(string) string{
+		func(id string) string { return id },
+		func(id string) string { return strings.ReplaceAll(id, "-", "") },
+		func(id string) string { return "{" + id + "}" },
+		func(id string) string { return "urn:uuid:" + id },
+	} {
+		userID, roomID := encode(rdUser), encode(rdRoom)
+		t.Run(userID, func(t *testing.T) {
+			require.True(t, isValidUUID(userID))
+			require.True(t, isValidUUID(roomID))
+			client := mustNewTestAuthClient(t, "http://unused.invalid", "", nil)
+			client.invalidations = map[string]int{userID + ":": 1}
+			require.True(t, client.invalidationActive(userID, userID+":"+roomID))
+			require.False(t, client.invalidationActive(rdRoom2, rdRoom2+":"+roomID))
+			client.invalidations = map[string]int{userID + ":" + roomID: 1}
+			require.True(t, client.invalidationActive(userID, userID+":"+roomID))
+			require.False(t, client.invalidationActive(userID, userID+":"+rdRoom2))
+		})
+	}
+	for _, invalid := range []string{"", "urn:uuid:invalid", rdUser + ":extra", "*", rdUser + "?admin=true"} {
+		client := mustNewTestAuthClient(t, "http://unused.invalid", "", nil)
+		require.False(t, isValidUUID(invalid))
+		require.False(t, client.CanJoinRoom(context.Background(), invalid, rdRoom))
+		require.False(t, client.CanJoinRoom(context.Background(), rdUser, invalid))
+		client.Invalidate(invalid, rdRoom)
+		require.Empty(t, client.invalidations)
 	}
 }
