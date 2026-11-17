@@ -77,9 +77,12 @@ def merge_profiles(inputs: Sequence[Path], output: Path) -> None:
                 f"found {mode} in {path}"
             )
         for block, execution_count in records:
-            if block in seen_blocks:
-                _fail(f"duplicate coverage block across input profiles: {block}")
-            seen_blocks.add(block)
+            # Statement count is evidence about a source range, not its identity.
+            # Conflicting counts must not let the same range appear disjoint.
+            location = block.rsplit(" ", maxsplit=1)[0]
+            if location in seen_blocks:
+                _fail(f"duplicate coverage block across input profiles: {location}")
+            seen_blocks.add(location)
             merged.append(f"{block} {execution_count}")
 
     if expected_mode is None:
