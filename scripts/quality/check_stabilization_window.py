@@ -60,7 +60,7 @@ def evaluate_window(
         raise ValueError("days must be positive")
     successful_dates = _successful_run_dates(runs, branch=branch)
     latest = max(successful_dates) if successful_dates else None
-    effective_as_of = as_of or date.today()
+    effective_as_of = as_of or datetime.now(UTC).date()
     expected_latest = effective_as_of
     expected_dates = {
         expected_latest - timedelta(days=offset) for offset in range(days)
