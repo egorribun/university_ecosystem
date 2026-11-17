@@ -3,7 +3,6 @@ import { renderHook } from "@testing-library/react"
 import { useMapKeyboardShortcuts } from "../useMapKeyboardShortcuts"
 
 describe("useMapKeyboardShortcuts hook", () => {
-
   it.each(["ctrlKey", "metaKey", "altKey"] as const)(
     "leaves %s keyboard chords to the browser",
     (modifier) => {
@@ -54,6 +53,73 @@ describe("useMapKeyboardShortcuts hook", () => {
     expect(composing.defaultPrevented).toBe(false)
     for (const callback of Object.values(deps)) expect(callback).not.toHaveBeenCalled()
     unmount()
+  })
+
+
+  it.each(["true", "", "plaintext-only", "TRUE"])(
+    "preserves typing inside contenteditable=%j and its descendants",
+    (value) => {
+      const deps = {
+        onSelectBuilding: vi.fn(),
+        onToggleFullscreen: vi.fn(),
+        onFocusSearch: vi.fn(),
+        onToggleShortcuts: vi.fn(),
+      }
+      const { unmount } = renderHook(() => useMapKeyboardShortcuts(deps))
+      const editor = document.createElement("div")
+      editor.setAttribute("contenteditable", value)
+      const span = document.createElement("span")
+      editor.appendChild(span)
+      document.body.appendChild(editor)
+      try {
+        for (const target of [editor, span]) {
+          for (const key of ["1", "f", "/", "?"]) {
+            const event = new KeyboardEvent("keydown", {
+              key,
+              bubbles: true,
+              cancelable: true,
+            })
+            target.dispatchEvent(event)
+            expect(event.defaultPrevented).toBe(false)
+          }
+        }
+        for (const callback of Object.values(deps)) expect(callback).not.toHaveBeenCalled()
+      } finally {
+        editor.remove()
+        unmount()
+      }
+    }
+  )
+
+  it("keeps shortcuts in a noneditable island inside an editor", () => {
+    const deps = {
+      onSelectBuilding: vi.fn(),
+      onToggleFullscreen: vi.fn(),
+      onFocusSearch: vi.fn(),
+      onToggleShortcuts: vi.fn(),
+    }
+    const { unmount } = renderHook(() => useMapKeyboardShortcuts(deps))
+    const editor = document.createElement("div")
+    editor.setAttribute("contenteditable", "true")
+    const island = document.createElement("div")
+    island.setAttribute("contenteditable", "false")
+    const span = document.createElement("span")
+    island.appendChild(span)
+    editor.appendChild(island)
+    document.body.appendChild(editor)
+    try {
+      const event = new KeyboardEvent("keydown", {
+        key: "f",
+        bubbles: true,
+        cancelable: true,
+      })
+      span.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(deps.onToggleFullscreen).toHaveBeenCalledOnce()
+    } finally {
+      editor.remove()
+      unmount()
+    }
   })
 
   it("registers window listeners and handles shortcuts", () => {
