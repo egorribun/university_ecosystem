@@ -1980,7 +1980,9 @@ def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
         parse_jobs({"jobs": [record]})
 
 
-@pytest.mark.parametrize("field", ["runner_id", "runner_name", "labels", "steps", "status"])
+@pytest.mark.parametrize(
+    "field", ["runner_id", "runner_name", "labels", "steps", "status"]
+)
 def test_first_attempt_skip_requires_explicit_no_execution_evidence(field: str) -> None:
     record = _first_attempt_skipped_record()
     del record[field]
