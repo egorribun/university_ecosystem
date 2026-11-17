@@ -387,6 +387,39 @@ describe("private API session isolation", () => {
     }
   )
 
+  it.each([
+    { options: { cache: "no-store" as const }, clientId: "client-a" },
+    { options: { headers: { "Cache-Control": "no-store" } }, clientId: "client-a" },
+    { options: undefined, clientId: "" },
+  ])("fences direct network responses across session transitions: %j", async ({ options, clientId }) => {
+    api.setSessionHash("account-a", "account-a:live")
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const result = request(undefined, options, clientId)
+    await entered.promise
+
+    api.setSessionHash("account-b", "account-b:new")
+    delayed.resolve(new Response("old private payload"))
+
+    expect((await result).type).toBe("error")
+    expect(entries.size).toBe(0)
+    expect(api.getSessionCacheScope()).toBe("account-b:new")
+  })
+
+  it.each([
+    { options: { cache: "no-store" as const }, clientId: "client-a" },
+    { options: { headers: { "Cache-Control": "no-store" } }, clientId: "client-a" },
+    { options: undefined, clientId: "" },
+  ])("preserves direct network responses in the same session: %j", async ({ options, clientId }) => {
+    api.setSessionHash("account-a", "account-a:live")
+    expect(await (await request(undefined, options, clientId)).text()).toBe("private A")
+    expect(entries.size).toBe(0)
+  })
+
   it("rejects a network response delayed across account changes", async () => {
     api.setSessionHash("account-a")
     const delayed = deferred<Response>()
