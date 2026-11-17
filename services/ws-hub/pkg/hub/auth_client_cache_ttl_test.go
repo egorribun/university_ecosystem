@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +29,7 @@ func TestRoomAuthorizationL1CannotExtendRemainingRedisTTL(t *testing.T) {
 			entry, ok := c.cache.Get(rdUser + ":" + rdRoom)
 			require.True(t, ok)
 			require.True(t, entry.expiresAt.After(started))
-			require.False(t, entry.expiresAt.After(started.Add(10*time.Second)),
+			require.False(t, entry.expiresAt.After(time.Now().Add(10*time.Second)),
 				"an L2 hit must retain its remaining lease, not restart sixty seconds")
 			require.Equal(t, 10*time.Second, mr.TTL(key), "reads must not refresh L2")
 		})
@@ -76,11 +77,64 @@ func TestRoomAuthorizationL1CapsUnexpectedlyLongRedisLease(t *testing.T) {
 	require.NoError(t, mr.Set(key, "1"))
 	mr.SetTTL(key, 10*authCacheTTL)
 	c := mustNewTestAuthClient(t, "http://127.0.0.1:1", "", rc)
-	started := time.Now()
 
 	require.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 
 	entry, ok := c.cache.Get(rdUser + ":" + rdRoom)
 	require.True(t, ok)
-	require.False(t, entry.expiresAt.After(started.Add(authCacheTTL)))
+	require.False(t, entry.expiresAt.After(time.Now().Add(authCacheTTL)))
+}
+
+type roomLeaseAfterPipelineHook struct {
+	after func()
+}
+
+func (h roomLeaseAfterPipelineHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h roomLeaseAfterPipelineHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return next
+}
+
+func (h roomLeaseAfterPipelineHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		err := next(ctx, cmds)
+		h.after()
+		return err
+	}
+}
+
+func TestRoomAuthorizationDoesNotUseLeaseConsumedByRoundTrip(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	key := "auth:perms:" + rdUser + ":" + rdRoom
+	require.NoError(t, mr.Set(key, "1"))
+	mr.SetTTL(key, 5*time.Millisecond)
+	rc.AddHook(roomLeaseAfterPipelineHook{after: func() {
+		time.Sleep(20 * time.Millisecond)
+	}})
+	c := mustNewTestAuthClient(t, "http://127.0.0.1:1", "", rc)
+
+	allowed, expiresAt, cached := c.cachedRedisRoomAuthorization(context.Background(), key)
+
+	require.False(t, allowed)
+	require.False(t, cached)
+	require.True(t, expiresAt.IsZero())
+}
+
+func TestRoomAuthorizationCancelledRedisReadCannotPopulateL1(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	key := "auth:perms:" + rdUser + ":" + rdRoom
+	require.NoError(t, mr.Set(key, "1"))
+	mr.SetTTL(key, authCacheTTL)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	rc.AddHook(roomLeaseAfterPipelineHook{after: cancel})
+	c := mustNewTestAuthClient(t, "http://127.0.0.1:1", "", rc)
+
+	_, allowed, cached := c.cachedRoomAuthorization(ctx, rdUser+":"+rdRoom)
+
+	require.False(t, allowed)
+	require.False(t, cached)
+	require.Zero(t, c.cache.Len())
 }

@@ -45,6 +45,7 @@ func TestStartEviction_NoOpIsSafe(t *testing.T) {
 func TestCanJoinRoom_RedisL2Hit(t *testing.T) {
 	mr, rc := newMiniredisClient(t)
 	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))
+	mr.SetTTL("auth:perms:"+rdUser+":"+rdRoom, authCacheTTL)
 
 	c := mustNewTestAuthClient(t, "http://unused.invalid", "", rc)
 	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom),
