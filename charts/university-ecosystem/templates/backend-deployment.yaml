@@ -260,7 +260,7 @@ spec:
             - name: INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID
               value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
             - name: INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS
-              {{- $clients := list .Values.internalHttpMTLS.backendSpiffeID .Values.internalHttpMTLS.gatewaySpiffeID }}
+              {{- $clients := list .Values.internalHttpMTLS.backendSpiffeID .Values.internalHttpMTLS.gatewaySpiffeID .Values.internalHttpMTLS.frontendSpiffeID }}
               {{- if .Values.wsHub.enabled }}
               {{- $clients = append $clients .Values.internalHttpMTLS.wsHubSpiffeID }}
               {{- end }}

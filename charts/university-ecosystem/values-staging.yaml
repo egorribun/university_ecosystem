@@ -51,6 +51,7 @@ internalHttpMTLS:
   trustDomain: university.ecosystem
   backendSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/app
   gatewaySpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
+  frontendSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/frontend
   wsHubSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub
   fileProcessorSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor
 

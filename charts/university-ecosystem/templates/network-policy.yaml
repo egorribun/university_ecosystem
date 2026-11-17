@@ -526,6 +526,15 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
+    # Same-release SSR calls use the frontend's own SPIFFE identity when enabled.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
     {{- if $fileProcessorUsesBackendJWKS }}
     # The default file-processor JWKS URL targets this release's backend service.
     - from:

@@ -235,6 +235,7 @@ def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
     ) == {
         staging["backendSpiffeID"],
         staging["gatewaySpiffeID"],
+        staging["frontendSpiffeID"],
         staging["wsHubSpiffeID"],
         staging["fileProcessorSpiffeID"],
     }
@@ -354,6 +355,7 @@ def test_public_jwks_override_does_not_receive_internal_workload_identity() -> N
     assert set(allowed) == {
         staging["backendSpiffeID"],
         staging["gatewaySpiffeID"],
+        staging["frontendSpiffeID"],
         staging["wsHubSpiffeID"],
     }
 
@@ -429,16 +431,17 @@ def test_disabled_optional_workloads_receive_no_backend_identity_authority() -> 
     assert set(allowed) == {
         staging["backendSpiffeID"],
         staging["gatewaySpiffeID"],
+        staging["frontendSpiffeID"],
     }
 
 
 @pytest.mark.parametrize(
     ("overrides", "components"),
     [
-        ((), {"backend", "gateway", "ws-hub", "file-processor"}),
+        ((), {"backend", "gateway", "frontend", "ws-hub", "file-processor"}),
         (
             _external_jwks_args("https://issuer.example/jwks"),
-            {"backend", "gateway", "ws-hub"},
+            {"backend", "gateway", "frontend", "ws-hub"},
         ),
         (
             (
@@ -449,7 +452,7 @@ def test_disabled_optional_workloads_receive_no_backend_identity_authority() -> 
                 "--set",
                 "fileProcessor.enabled=false",
             ),
-            {"backend", "gateway"},
+            {"backend", "gateway", "frontend"},
         ),
     ],
 )
