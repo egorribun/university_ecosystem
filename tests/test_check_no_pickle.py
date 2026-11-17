@@ -917,3 +917,56 @@ type DynamicType[T] = module_loader.import_module("json")
 """
 
     assert gate.scan_source(source, filename="shapes.py") == ()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        'values[__import__("pickle")] = 1',
+        '__import__("pickle").field = 1',
+        'values[__import__("pickle")]: object = 1',
+        'values[__import__("pickle")]: object',
+        'values[__import__("pickle")] += 1',
+        'del values[__import__("pickle")]',
+        'first, values[__import__("pickle")] = (1, 2)',
+    ],
+)
+def test_evaluated_assignment_and_delete_targets_are_scanned(statement: str) -> None:
+    findings = gate.scan_source(statement, filename="targets.py")
+
+    assert len(findings) == 1
+    assert findings[0].message == "dynamic pickle import: pickle"
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        'values[__import__("json")] = 1',
+        'values[__import__("json")]: object = 1',
+        'values[__import__("json")] += 1',
+        'del values[__import__("json")]',
+    ],
+)
+def test_safe_modules_in_assignment_targets_are_ignored(statement: str) -> None:
+    assert gate.scan_source(statement) == ()
+
+
+def test_assignment_target_bindings_are_processed_left_to_right() -> None:
+    source = (
+        "import importlib\n"
+        'importlib, values[importlib.import_module("pickle")] = pair\n'
+    )
+
+    assert gate.scan_source(source) == ()
+
+
+def test_assignment_rhs_is_scanned_before_target_rebinding() -> None:
+    source = (
+        "import importlib\n"
+        'importlib, values[0] = importlib.import_module("pickle")\n'
+    )
+
+    findings = gate.scan_source(source)
+
+    assert len(findings) == 1
+    assert findings[0].message == "dynamic pickle import: pickle"
