@@ -3,6 +3,7 @@ import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import "@/styles/tokens/profile.css"
 import api from "@/api/client"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"
@@ -48,6 +49,7 @@ const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "t
 
 export default function Profile() {
   const { user, loading, setUser } = useAuth()
+  const identityPending = useConfirmedIdentityPending()
   const captureOperation = useProfileSessionGuard()
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
@@ -320,6 +322,7 @@ export default function Profile() {
                       statusSize={statusSize}
                       onEmailClick={() => void handleCopyContact(user?.email)}
                       onTelegramClick={() => void handleCopyContact(user?.profile_detail?.telegram)}
+                      copyDisabled={identityPending}
                       onQrClick={() => setQrOpen(true)}
                       vCardData={vCardData}
                       reduceMotion={reduceMotion}
@@ -364,6 +367,7 @@ export default function Profile() {
                         position={position}
                         setPosition={setPosition}
                         saving={saving}
+                        saveDisabled={identityPending}
                         onSave={handleSave}
                         onCancel={handleCancel}
                       />

@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import { getConfirmedUserId } from "@/stores/authIdentity"
-import { captureSessionEpoch } from "@/stores/sessionEpoch"
+import {
+  captureSessionEpoch,
+  getBrowserSessionGeneration,
+  getSessionEpoch,
+} from "@/stores/sessionEpoch"
 
 /** A profile action belongs to both its initiating session and mounted account. */
 export function useProfileSessionGuard() {
   const { user, loading } = useAuth()
   const userId = user?.id ?? null
+  const sessionEpoch = getSessionEpoch()
+  const sessionGeneration = getBrowserSessionGeneration()
   const lifetimeRef = useRef({ userId, active: false })
   const authRef = useRef({ user, loading })
 
@@ -18,7 +25,9 @@ export function useProfileSessionGuard() {
     }
   }, [userId])
 
-  useEffect(() => {
+  // Child passive effects may dispatch immediately after identity settles.
+  // Publish the committed snapshot before those effects run.
+  useIsomorphicLayoutEffect(() => {
     authRef.current = { user, loading }
   }, [user, loading])
 
@@ -27,11 +36,12 @@ export function useProfileSessionGuard() {
     // Same-account step-up loading preserves ownership; new actions still
     // require a confirmed identity at the moment they are dispatched.
     const confirmedUserId = getConfirmedUserId(authRef.current)
-    const isSessionCurrent = captureSessionEpoch()
+    const isSessionCurrent = captureSessionEpoch(sessionEpoch)
     return () =>
       confirmedUserId !== null &&
       lifetime.userId === userId &&
       lifetime.active &&
+      getBrowserSessionGeneration() === sessionGeneration &&
       isSessionCurrent()
-  }, [userId])
+  }, [userId, sessionEpoch, sessionGeneration])
 }

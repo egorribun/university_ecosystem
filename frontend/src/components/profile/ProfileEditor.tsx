@@ -32,6 +32,7 @@ type ProfileEditorProps = {
   position: string
   setPosition: (val: string) => void
   saving: boolean
+  saveDisabled?: boolean
   onSave: () => void
   onCancel: () => void
 }
@@ -66,6 +67,7 @@ export const ProfileEditor = ({
   position,
   setPosition,
   saving,
+  saveDisabled,
   onSave,
   onCancel,
 }: ProfileEditorProps) => {
@@ -313,7 +315,7 @@ export const ProfileEditor = ({
           <button
             type="button"
             onClick={onSave}
-            disabled={saving}
+            disabled={saving || saveDisabled}
             className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-[var(--text-inverse)] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-(--scale-hover-subtle) active:scale-95 disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/[calc(var(--opacity-dim)*100%)]"
           >
             {saving ? t("profile:form.saving") : t("profile:form.save")}

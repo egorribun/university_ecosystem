@@ -25,6 +25,7 @@ type ProfileHeaderProps = {
   statusSize: number
   onEmailClick: (e: React.MouseEvent<HTMLButtonElement>) => void
   onTelegramClick: (e: React.MouseEvent<HTMLButtonElement>) => void
+  copyDisabled?: boolean
   onQrClick: () => void
   vCardData: string
   reduceMotion: boolean
@@ -45,6 +46,7 @@ export const ProfileHeader = ({
   statusSize,
   onEmailClick,
   onTelegramClick,
+  copyDisabled,
   onQrClick,
   vCardData,
   reduceMotion,
@@ -159,6 +161,7 @@ export const ProfileHeader = ({
           variant="ghost"
           leadingIcon={<EmailIcon className="shrink-0" />}
           onClick={onEmailClick}
+          disabled={copyDisabled}
           ref={emailButtonRef}
           className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/[calc(var(--opacity-soft)*100%)]"
         >
@@ -171,6 +174,7 @@ export const ProfileHeader = ({
             variant="ghost"
             leadingIcon={<TelegramIcon className="shrink-0" />}
             onClick={onTelegramClick}
+            disabled={copyDisabled}
             ref={telegramButtonRef}
             className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/[calc(var(--opacity-soft)*100%)]"
           >

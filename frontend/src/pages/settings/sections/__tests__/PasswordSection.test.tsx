@@ -14,6 +14,7 @@ const baseProps = {
   isNewPasswordError: false,
   confirmPasswordMessage: null,
   passwordBusy: false,
+  identityPending: false,
   onCurrentPasswordChange: vi.fn(),
   onNewPasswordChange: vi.fn(),
   onConfirmPasswordChange: vi.fn(),
@@ -60,5 +61,27 @@ describe("PasswordSection", () => {
     render(<PasswordSection {...baseProps} isNewPasswordError passwordError={null} />)
 
     expect(screen.getAllByDisplayValue("")).toHaveLength(3)
+  })
+
+  it("blocks fields and form submission while identity is pending without reporting a request", async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const { rerender } = render(
+      <PasswordSection {...baseProps} onSubmit={onSubmit} identityPending />
+    )
+    await user.click(screen.getAllByRole("button")[0]!)
+    const fields = screen.getAllByDisplayValue("")
+    const submit = screen.getAllByRole("button").at(-1)!
+    fields.forEach((field) => expect(field).toBeDisabled())
+    expect(submit).toBeDisabled()
+    expect(submit).not.toHaveTextContent("settings:security.password.updating")
+    fireEvent.submit(submit.closest("form")!)
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    rerender(<PasswordSection {...baseProps} onSubmit={onSubmit} />)
+    fields.forEach((field) => expect(field).toBeEnabled())
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    expect(onSubmit).toHaveBeenCalledOnce()
   })
 })
