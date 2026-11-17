@@ -161,7 +161,9 @@ def build_plan(
                 for container in containers
             }
             if set(by_name) != {"frontend", "ssr-proxy"}:
-                raise ValueError("frontend requires unique frontend and ssr-proxy names")
+                raise ValueError(
+                    "frontend requires unique frontend and ssr-proxy names"
+                )
             environ = _environment(by_name["ssr-proxy"])
             if environ.get("SSR_SPIFFE_TRUST_DOMAIN") != parent.netloc:
                 raise ValueError("SSR trust domain must match the attested parent")
@@ -179,7 +181,9 @@ def build_plan(
                 raise ValueError("SSR requires an explicit Unix Workload API socket")
         else:
             if not isinstance(containers, list) or len(containers) != 1:
-                raise ValueError("identity planning requires exactly one main container")
+                raise ValueError(
+                    "identity planning requires exactly one main container"
+                )
             environ = _environment(_mapping(containers[0]))
         flag, identity_field = IDENTITY_FIELDS[component]
         if environ.get(flag) != "true":

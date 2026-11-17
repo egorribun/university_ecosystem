@@ -4,17 +4,24 @@ import assert from "node:assert/strict"
 import { createPublicKey, sign } from "node:crypto"
 import { readFileSync } from "node:fs"
 
-export async function proveSsrAuthentication({ privateKey, issuer, port, backendOrigin, request = fetch }) {
+export async function proveSsrAuthentication({
+  privateKey,
+  issuer,
+  port,
+  backendOrigin,
+  request = fetch,
+}) {
   assert.equal(backendOrigin, "http://127.0.0.1:18000")
   assert.match(String(port), /^[1-9][0-9]{0,4}$/u)
   assert.ok(Number(port) <= 65535)
   assert.ok(issuer)
   const localOrigin = `http://127.0.0.1:${port}`
-  const get = (url, cookie) => request(url, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(15000),
-    headers: cookie ? { cookie } : {},
-  })
+  const get = (url, cookie) =>
+    request(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(15000),
+      headers: cookie ? { cookie } : {},
+    })
   const jwksResponse = await get(`${backendOrigin}/.well-known/jwks.json`)
   assert.equal(jwksResponse.status, 200)
   const jwks = await jwksResponse.json()

@@ -35,7 +35,7 @@ def test_frontend_mtls_uses_an_isolated_loopback_proxy() -> None:
     identities = _values(STAGING_VALUES)["internalHttpMTLS"]
     assert _env(proxy) == {
         "SSR_MTLS_ENABLED": "true",
-        "SSR_BACKEND_ORIGIN": "https://staging-contract-backend:8000",
+        "SSR_BACKEND_ORIGIN": "https://staging-contract-university-ecosystem-backend:8000",
         "SSR_SPIFFE_ID": identities["frontendSpiffeID"],
         "SSR_BACKEND_SPIFFE_ID": identities["backendSpiffeID"],
         "SSR_SPIFFE_TRUST_DOMAIN": identities["trustDomain"],
@@ -73,33 +73,42 @@ def test_backend_admits_only_same_release_frontend_on_its_port(enabled: bool) ->
         "--set", f"internalHttpMTLS.enabled={str(enabled).lower()}"
     )
     backend = next(
-        item for item in resources
+        item
+        for item in resources
         if item["kind"] == "NetworkPolicy"
         and item["metadata"]["name"].endswith("-backend-policy")
     )
     rules = [
-        rule for rule in backend["spec"]["ingress"]
+        rule
+        for rule in backend["spec"]["ingress"]
         if any(
-            peer.get("podSelector", {}).get("matchLabels", {}).get(
-                "app.kubernetes.io/component"
-            ) == "frontend"
+            peer.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "frontend"
             for peer in rule.get("from", [])
         )
     ]
     assert len(rules) == 1
     assert rules[0]["ports"] == [{"protocol": "TCP", "port": 8000}]
-    assert rules[0]["from"] == [{
-        "podSelector": {"matchLabels": {
-            "app.kubernetes.io/name": "university-ecosystem",
-            "app.kubernetes.io/instance": "staging-contract",
-            "app.kubernetes.io/component": "frontend",
-        }}
-    }]
+    assert rules[0]["from"] == [
+        {
+            "podSelector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "university-ecosystem",
+                    "app.kubernetes.io/instance": "staging-contract",
+                    "app.kubernetes.io/component": "frontend",
+                }
+            }
+        }
+    ]
 
 
 @pytest.mark.parametrize("identity", ["", "not-an-identity"])
 def test_mtls_requires_a_valid_frontend_identity(identity: str) -> None:
     with pytest.raises(subprocess.CalledProcessError):
-        _render_staging(*_enabled_args(
-            "--set-string", f"internalHttpMTLS.frontendSpiffeID={identity}"
-        ))
+        _render_staging(
+            *_enabled_args(
+                "--set-string", f"internalHttpMTLS.frontendSpiffeID={identity}"
+            )
+        )

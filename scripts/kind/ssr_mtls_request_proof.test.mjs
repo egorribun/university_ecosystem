@@ -5,7 +5,12 @@ import { proveSsrAuthentication } from "./ssr_mtls_request_proof.mjs"
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 })
 const key = { ...publicKey.export({ format: "jwk" }), kid: "proof" }
-const config = { privateKey, issuer: "proof-issuer", port: "3000", backendOrigin: "http://127.0.0.1:18000" }
+const config = {
+  privateKey,
+  issuer: "proof-issuer",
+  port: "3000",
+  backendOrigin: "http://127.0.0.1:18000",
+}
 
 function fixture(change = {}) {
   let calls = 0
@@ -24,15 +29,25 @@ function fixture(change = {}) {
     }
     assert.equal(url, "http://127.0.0.1:3000/login?redirect=%2Fdashboard")
     const parts = options.headers.cookie.slice("access_token_v2=".length).split(".")
-    const valid = verify("RSA-SHA256", Buffer.from(parts.slice(0, 2).join(".")), publicKey, Buffer.from(parts[2], "base64url"))
+    const valid = verify(
+      "RSA-SHA256",
+      Buffer.from(parts.slice(0, 2).join(".")),
+      publicKey,
+      Buffer.from(parts[2], "base64url")
+    )
     assert.equal(valid, calls === 3)
     const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString())
     assert.equal(claims.iss, config.issuer)
     assert.equal(claims.aud, "university-ecosystem-api")
-    if (calls === 3) return new Response("", {
-      status: change.acceptedStatus ?? 307,
-      headers: { location: change.location ?? "/dashboard", "cache-control": change.acceptedCache ?? "no-store, private, max-age=0" },
-    })
+    if (calls === 3) {
+      return new Response("", {
+        status: change.acceptedStatus ?? 307,
+        headers: {
+          location: change.location ?? "/dashboard",
+          "cache-control": change.acceptedCache ?? "no-store, private, max-age=0",
+        },
+      })
+    }
     assert.equal(calls, 4)
     return new Response(change.body ?? "<html><body>login</body></html>", {
       status: change.rejectedStatus ?? 200,
@@ -71,10 +86,19 @@ for (const change of [
   { issuer: "" },
 ]) {
   test("rejects invalid runtime configuration " + JSON.stringify(change), async () => {
-    await assert.rejects(proveSsrAuthentication({ ...config, ...change, request: fixture().request }))
+    await assert.rejects(
+      proveSsrAuthentication({ ...config, ...change, request: fixture().request })
+    )
   })
 }
 
 test("network failure cannot become a successful receipt", async () => {
-  await assert.rejects(proveSsrAuthentication({ ...config, request: async () => { throw new Error("offline") } }))
+  await assert.rejects(
+    proveSsrAuthentication({
+      ...config,
+      request: async () => {
+        throw new Error("offline")
+      },
+    })
+  )
 })

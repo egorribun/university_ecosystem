@@ -1,5 +1,6 @@
 """Fail-closed orchestration contracts for the real SSR kind proof."""
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -44,8 +45,6 @@ def test_ssr_kind_receipt_requires_ready_runtime_auth_and_exact_peer(
     expected_failures: int,
     tmp_path: Path,
 ) -> None:
-    import shlex
-
     script_dir = tmp_path / "scripts" / "kind"
     script_dir.mkdir(parents=True)
     (script_dir / "ssr_mtls_request_proof.mjs").write_text(
