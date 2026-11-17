@@ -1,0 +1,377 @@
+name: Temporary signed Alpine zlib hash collector
+
+# Temporary evidence only. Close the dedicated PR after collection; do not merge.
+# No production workflow or dependency pins are changed.
+on:
+  pull_request:
+    types: [opened]
+    branches: [egorribun]
+    paths:
+      - .github/workflows/temporary-zlib-hash-collector.yml
+
+permissions: {}
+
+jobs:
+  collect:
+    if: >-
+      github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' &&
+      github.event.pull_request.head.ref == 'coff/evidence-zlib-parent-admission' &&
+      github.event.pull_request.base.sha == '3989c8574d25128d6260e9fe54d79930680629e5'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # The optional event merge SHA is not an admission authority.
+      # Verify the actual immutable merge commit before any package/image access.
+      - name: Verify workflow identity and exact merge parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import signal
+          import urllib.request
+
+          BASE = "3989c8574d25128d6260e9fe54d79930680629e5"
+          BRANCH = "coff/evidence-zlib-parent-admission"
+          REPO = "egorribun/university_ecosystem"
+          PREFIX = "https://api.github.com/repos/" + REPO + "/git/commits/"
+          LIMIT = 65536
+
+          def sha(value):
+              return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+
+          def unique(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("Duplicate JSON key")
+                  result[key] = value
+              return result
+
+          def validate(status, url, raw, merge, head):
+              if status != 200 or url != PREFIX + merge or len(raw) > LIMIT:
+                  raise ValueError("Invalid response envelope")
+              value = json.loads(raw, object_pairs_hook=unique)
+              if not isinstance(value, dict) or value.get("sha") != merge:
+                  raise ValueError("Invalid commit identity")
+              parents = value.get("parents")
+              if not isinstance(parents, list) or len(parents) != 2:
+                  raise ValueError("Invalid merge parents")
+              if any(not isinstance(p, dict) or not sha(p.get("sha")) for p in parents):
+                  raise ValueError("Invalid parent identity")
+              if [p["sha"] for p in parents] != [BASE, head]:
+                  raise ValueError("Unexpected merge ancestry")
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise ValueError("Redirect rejected")
+
+          def deadline(signum, frame):
+              raise TimeoutError("Admission deadline exceeded")
+
+          try:
+              # Offline controls exercise the exact validator before HTTP.
+              merge, head = "a" * 40, "b" * 40
+              valid = {"sha": merge, "parents": [{"sha": BASE}, {"sha": head}]}
+              raw = json.dumps(valid).encode()
+              validate(200, PREFIX + merge, raw, merge, head)
+              invalid = [
+                  (404, PREFIX + merge, raw),
+                  (302, PREFIX + merge, raw),
+                  (200, "https://example.invalid/", raw),
+                  (200, PREFIX + merge, b"x" * (LIMIT + 1)),
+                  (200, PREFIX + merge, b"{"),
+                  (200, PREFIX + merge, b'{"sha":1,"sha":2}'),
+              ]
+              for value in (
+                  {}, [], {"sha": head, "parents": valid["parents"]},
+                  {"sha": merge, "parents": []},
+                  {"sha": merge, "parents": list(reversed(valid["parents"]))},
+                  {"sha": merge, "parents": valid["parents"] + [{"sha": head}]},
+                  {"sha": merge, "parents": [{"sha": head}, {"sha": head}]},
+                  {"sha": merge, "parents": [{"sha": BASE}, {"sha": "c" * 40}]},
+                  {"sha": merge, "parents": [{"sha": BASE}, {"sha": "invalid"}]},
+                  {"sha": merge, "parents": [{"sha": BASE}, {}]},
+              ):
+                  invalid.append((200, PREFIX + merge, json.dumps(value).encode()))
+              for status, url, body in invalid:
+                  try:
+                      validate(status, url, body, merge, head)
+                  except (ValueError, TypeError):
+                      pass
+                  else:
+                      raise RuntimeError("Admission negative control failed")
+              try:
+                  NoRedirect().redirect_request()
+              except ValueError:
+                  pass
+              else:
+                  raise RuntimeError("Redirect control failed")
+
+              with open(os.environ["GITHUB_EVENT_PATH"], "rb") as event_file:
+                  event_raw = event_file.read(1048577)
+              if len(event_raw) > 1048576:
+                  raise ValueError("Event exceeds bound")
+              event = json.loads(event_raw, object_pairs_hook=unique)
+              pr = event["pull_request"]
+              number = event["number"]
+              if type(number) is not int or not 0 < number < 10000000000:
+                  raise ValueError("Invalid PR number")
+              if (
+                  event["repository"]["full_name"] != REPO
+                  or pr["head"]["repo"]["full_name"] != REPO
+                  or pr["head"]["ref"] != BRANCH
+                  or pr["base"]["sha"] != BASE
+                  or pr["base"]["ref"] != "egorribun"
+                  or os.environ["GITHUB_EVENT_NAME"] != "pull_request"
+                  or event["action"] != "opened"
+                  or os.environ["GITHUB_REF"] != f"refs/pull/{number}/merge"
+              ):
+                  raise ValueError("Unexpected event scope")
+              merge = os.environ["GITHUB_SHA"]
+              workflow = os.environ["GITHUB_WORKFLOW_SHA"]
+              head = pr["head"]["sha"]
+              if not sha(merge) or not sha(workflow) or not sha(head) or workflow != merge:
+                  raise ValueError("Invalid immutable workflow identity")
+              url = PREFIX + merge
+              # No credentials, redirects, proxy configuration, or response-derived URL.
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({}), NoRedirect(),
+              )
+              request = urllib.request.Request(url, headers={
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "finite-ci-admission",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              })
+              signal.signal(signal.SIGALRM, deadline)
+              signal.alarm(20)
+              try:
+                  with opener.open(request, timeout=10) as response:
+                      body = response.read(LIMIT + 1)
+                      validate(response.status, response.url, body, merge, head)
+              finally:
+                  signal.alarm(0)
+          except Exception:
+              raise SystemExit("Immutable merge admission rejected") from None
+          print("Immutable merge admission accepted")
+          PY
+      - name: Verify fixed official APK inputs and collect whole-file hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import selectors
+          import time
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import uuid
+
+          # The existing production Node image is the immutable verifier/key source.
+          # apk verify checks both package integrity and signature using bundled keys:
+          # alpinelinux/apk-tools@84f46aecf4100b943c55eeab327da9ba28aff1d1
+          # doc/apk-verify.8.scd. No keys are fetched from the package endpoint.
+          IMAGE = (
+              "node:24.21.0-alpine@sha256:"
+              "ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
+          )
+          VERSION = "1.4-r0"
+          INPUTS = tuple(
+              (branch, arch)
+              for branch in ("3.23", "3.24")
+              for arch in ("x86_64", "aarch64")
+          )
+          MAX_BYTES = 1024 * 1024
+
+          STAGES = {"pull"} | {
+              f"{branch}/{arch}/{operation}"
+              for branch, arch in INPUTS
+              for operation in ("download", "trusted", "empty-trust", "truncated")
+          }
+
+          # Exact apk-tools error strings, never raw output. Unknown text stays unknown.
+          VERIFY_MESSAGES = {
+              b"OK": "ok",
+              b"UNTRUSTED signature": "untrusted-signature",
+              b"BAD signature": "bad-signature",
+              b"v2 package integrity error": "integrity",
+              b"file format is invalid or inconsistent": "format",
+              b"v2 package format error": "format",
+              b"unexpected end of file": "truncated",
+              b"crypto error": "crypto",
+              b"cryptographic key format not recognized": "key-format",
+          }
+          CAPTURE_LIMIT = 16384
+
+          def category(output, path):
+              for message, label in VERIFY_MESSAGES.items():
+                  if output == path.encode("ascii") + b": " + message + b"\n":
+                      return label
+              return "unknown"
+
+          # Finite parser regressions execute before downloads; no assertion elision.
+          for message, label in VERIFY_MESSAGES.items():
+              sample = b"/packages/fixed.apk: " + message + b"\n"
+              if category(sample, "/packages/fixed.apk") != label:
+                  raise RuntimeError("Diagnostic parser positive control failed")
+              for invalid in (sample + b"extra", b"prefix" + sample,
+                              sample + sample, sample.replace(b"fixed", b"other"),
+                              b"", b"\xff"):
+                  if category(invalid, "/packages/fixed.apk") != "unknown":
+                      raise RuntimeError("Diagnostic parser negative control failed")
+
+          def bounded_verify(args, timeout, stage, path):
+              deadline = time.monotonic() + timeout
+              output = bytearray()
+              process = subprocess.Popen(
+                  args, stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+              )
+              try:
+                  with selectors.DefaultSelector() as selector:
+                      selector.register(process.stdout, selectors.EVENT_READ)
+                      while selector.get_map():
+                          remaining = deadline - time.monotonic()
+                          if remaining <= 0:
+                              raise subprocess.TimeoutExpired("verifier", timeout)
+                          for key, _ in selector.select(remaining):
+                              chunk = os.read(key.fileobj.fileno(), 4096)
+                              if not chunk:
+                                  selector.unregister(key.fileobj)
+                                  continue
+                              if len(output) + len(chunk) > CAPTURE_LIMIT:
+                                  print(json.dumps({
+                                      "stage": stage, "category": "output-limit",
+                                  }), flush=True)
+                                  raise RuntimeError("Verifier output exceeded bound")
+                              output.extend(chunk)
+                  remaining = deadline - time.monotonic()
+                  if remaining <= 0:
+                      raise subprocess.TimeoutExpired("verifier", timeout)
+                  code = process.wait(timeout=remaining)
+                  print(json.dumps({
+                      "stage": stage, "category": category(bytes(output), path),
+                  }), flush=True)
+                  return subprocess.CompletedProcess(args, code)
+              finally:
+                  try:
+                      if process.poll() is None:
+                          process.kill()
+                      process.wait(timeout=5)
+                  finally:
+                      process.stdout.close()
+
+          def execute(args, timeout, stage, expected=0, verify_path=None):
+              if stage not in STAGES:
+                  raise RuntimeError("Invalid collector stage")
+              try:
+                  if verify_path is not None:
+                      result = bounded_verify(args, timeout, stage, verify_path)
+                  else:
+                      result = subprocess.run(
+                          args,
+                          stdin=subprocess.DEVNULL,
+                          stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL,
+                          timeout=timeout,
+                          check=False,
+                      )
+              except subprocess.TimeoutExpired:
+                  print(json.dumps({"stage": stage, "exit": "timeout"}), flush=True)
+                  raise RuntimeError("Collector stage timed out") from None
+              except OSError:
+                  print(json.dumps({"stage": stage, "exit": "launch-error"}), flush=True)
+                  raise RuntimeError("Collector stage could not launch") from None
+              code = result.returncode
+              safe_code = code if -255 <= code <= 255 else "out-of-range"
+              print(json.dumps({"stage": stage, "exit": safe_code}), flush=True)
+              if code != expected:
+                  raise RuntimeError("Collector command failed its fixed exit contract")
+
+          execute(["docker", "pull", IMAGE], 180, "pull")
+          results = []
+          with tempfile.TemporaryDirectory(prefix="verified-zlib-") as temporary:
+              directory = Path(temporary)
+              directory.chmod(0o755)
+              empty_keys = directory / "empty-keys"
+              empty_keys.mkdir(mode=0o755)
+              for branch, arch in INPUTS:
+                  filename = f"zlib-{branch}-{arch}.apk"
+                  package = directory / filename
+                  url = (
+                      "https://dl-cdn.alpinelinux.org/alpine/"
+                      f"v{branch}/main/{arch}/zlib-{VERSION}.apk"
+                  )
+                  # No -L: redirects fail rather than expanding trusted destinations.
+                  execute(
+                      ["curl", "--fail", "--silent", "--show-error",
+                       "--proto", "=https", "--connect-timeout", "10",
+                       "--max-time", "45", "--max-filesize", str(MAX_BYTES),
+                       "--output", str(package), url],
+                      50,
+                      f"{branch}/{arch}/download",
+                  )
+                  if not 0 < package.stat().st_size <= MAX_BYTES:
+                      raise RuntimeError("Package size outside collector bounds")
+                  package.chmod(0o644)
+                  command = [
+                      "docker", "run", "--rm", "--network", "none", "--read-only",
+                      "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                      "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
+                      "--user", "10001:10001",
+                      "--mount", f"type=bind,src={directory},dst=/packages,readonly",
+                      "--entrypoint", "/sbin/apk", IMAGE,
+                      "--keys-dir", "/etc/apk/keys", "verify",
+                  ]
+                  def verify(path, keys, operation, expected=0):
+                      isolated = command.copy()
+                      name = "zlib-collector-" + uuid.uuid4().hex
+                      isolated[2:2] = ["--name", name]
+                      isolated[isolated.index("--keys-dir") + 1] = keys
+                      try:
+                          execute(
+                              isolated + [path], 30,
+                              f"{branch}/{arch}/{operation}", expected=expected,
+                              verify_path=path,
+                          )
+                      finally:
+                          # Client timeout must not leave a verifier container running.
+                          subprocess.run(
+                              ["docker", "rm", "-f", name],
+                              stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL,
+                              timeout=10,
+                              check=False,
+                          )
+
+                  verify(f"/packages/{filename}", "/etc/apk/keys", "trusted")
+                  # Same intact APK must fail without trusted signing keys.
+                  # This distinguishes signature enforcement from checksum-only parsing.
+                  verify(f"/packages/{filename}", "/packages/empty-keys", "empty-trust", expected=1)
+                  content = package.read_bytes()
+                  # A broken verifier/runtime must not count as a negative control:
+                  # apk verify returns exactly 1 for one invalid package.
+                  corrupt = directory / "truncated.apk"
+                  corrupt.write_bytes(content[: len(content) // 2])
+                  corrupt.chmod(0o644)
+                  verify("/packages/truncated.apk", "/etc/apk/keys", "truncated", expected=1)
+                  corrupt.unlink()
+                  results.append({
+                      "branch": branch,
+                      "requested_version": VERSION,
+                      "requested_arch": arch,
+                      "sha256": hashlib.sha256(content).hexdigest(),
+                  })
+              # Emit no partial hash results or raw package/command output.
+              # Requested tuple is NOT a claim that signed metadata was decoded.
+              if len(results) != 4:
+                  raise RuntimeError("Incomplete collector result")
+              for result in results:
+                  print(json.dumps(result, sort_keys=True))
+          PY
