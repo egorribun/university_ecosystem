@@ -550,11 +550,12 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 and "runner_name" in record
                 and record["runner_name"] is None
                 and record.get("labels") in ([], ["ubuntu-24.04"])
-                and started - completed <= timedelta(seconds=8)
+                and started - completed <= timedelta(seconds=10)
             ):
                 # Observed in run 43981164331, job 133702960401, attempt 1.
                 # Also run 43982705590, job 133718444854: the Ubuntu selector
                 # is requested runner metadata, not proof of execution.
+                # Run 43983640643, job 133721977888, has a ten-second inversion.
                 # These exact no-runner/no-steps shapes record no execution.
                 # Preserve both timestamps and mark queue timing unavailable;
                 # do not infer clock skew or broaden executed-job validation.
