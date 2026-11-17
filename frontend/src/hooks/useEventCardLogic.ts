@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 import { formatRelativeTime } from "@/utils/date"
@@ -58,6 +58,7 @@ export function useEventCardLogic({
   const [loading, setLoading] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const editSessionRef = useRef(0)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   // -- Image Upload State --
@@ -103,6 +104,9 @@ export function useEventCardLogic({
   const editData = editDraft ?? propsDraft
   const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
   const setEditOpenFresh = useCallback((open: boolean) => {
+    editSessionRef.current += 1
+    setLoading(false)
+    setImageLoading(false)
     if (open) setEditDraft(null)
     else setNewImage(null) // Discard cancelled uploads and release their preview through the effect.
     setEditOpen(open)
@@ -158,6 +162,8 @@ export function useEventCardLogic({
 
   // -- Handlers --
   const handleEdit = async () => {
+    const session = editSessionRef.current
+    const isCurrentEdit = () => editSessionRef.current === session
     const dateRange = resolveCampusEventDateRange(
       editData.starts_at ?? "",
       editData.ends_at ?? "",
@@ -185,7 +191,7 @@ export function useEventCardLogic({
           api.post<{ url: string }>(`/events/upload_image`, data)
         )
         imgUrl = uploadRes.data.url
-        setImageLoading(false)
+        if (isCurrentEdit()) setImageLoading(false)
       }
       const payload = {
         ...editData,
@@ -203,14 +209,20 @@ export function useEventCardLogic({
         delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
-      setEditOpen(false)
+      // The request still completed: refresh server data even if its editor closed.
       telemetryContext.run(() => onChange?.())
-      setSnackbar(t("events:card.messages.saveSuccess"))
+      if (isCurrentEdit()) {
+        setEditOpen(false)
+        setNewImage(null)
+        setSnackbar(t("events:card.messages.saveSuccess"))
+      }
     } catch {
-      setSnackbar(t("events:card.messages.saveFailure"))
+      if (isCurrentEdit()) setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
-      setImageLoading(false)
-      setLoading(false)
+      if (isCurrentEdit()) {
+        setImageLoading(false)
+        setLoading(false)
+      }
     }
   }
 
