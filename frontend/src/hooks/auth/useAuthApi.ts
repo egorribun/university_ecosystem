@@ -297,7 +297,7 @@ export const useAuthApi = (
 
   const submitMfaChallenge = useCallback(
     async ({ method = "totp", code, challengeToken }: SubmitMfaChallengePayload) => {
-      if (authOperation) return
+      if (authOperation) return false
       // Step-up elevates the existing session. Rotating its lifetime would
       // invalidate the settings action waiting to retry after verification.
       const authenticatedStepUp = user !== null && pendingMfa?.reason !== "login"
@@ -306,7 +306,7 @@ export const useAuthApi = (
       const currentSession = authenticatedStepUp ? captureSessionEpoch() : null
       const ownsSession = () =>
         mounted.current && (transition ? transition.isCurrent() : currentSession?.() === true)
-      if (!ownsSession()) return
+      if (!ownsSession()) return false
       let accepted = false
       setAuthOperation(true)
       try {
@@ -319,7 +319,7 @@ export const useAuthApi = (
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {
           skipRateLimitQueue: true,
         } as ApiRequestConfig)
-        if (!ownsSession()) return
+        if (!ownsSession()) return false
         const data = response.data
 
         if (isTokenWithProfileResponse(data)) {
@@ -341,9 +341,11 @@ export const useAuthApi = (
             syncPushAfterAuthentication(data.user.id)
             void prefetchDashboardData(data.user)
           }
+          return true
         }
+        return false
       } catch (error) {
-        if (!ownsSession()) return
+        if (!ownsSession()) return false
         if (isAxiosError(error) && error.response?.status === 423) {
           const retryAfter = error.response.headers["retry-after"]
           const seconds = retryAfter ? parseInt(retryAfter, 10) : null

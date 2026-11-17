@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useId } from "react"
+import { useState, useCallback, useEffect, useId } from "react"
 import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
@@ -16,6 +16,7 @@ import { SettingsSecurity } from "./settings/SettingsSecurity"
 import { SettingsNotifications } from "./settings/SettingsNotifications"
 import { SettingsSessions } from "./settings/SettingsSessions"
 import { SettingsIntegrations } from "./settings/SettingsIntegrations"
+import { useStepUpAction } from "./settings/hooks/useStepUpAction"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
@@ -66,27 +67,7 @@ export default function Settings() {
   } | null>(null)
 
   // StepUp State (Shared across tabs, mostly for Security)
-  const [stepUpOpen, setStepUpOpen] = useState(false)
-  const stepUpActionRef = useRef<(() => Promise<void>) | null>(null)
-
-  const openStepUpFor = useCallback((action: () => Promise<void>) => {
-    stepUpActionRef.current = action
-    setStepUpOpen(true)
-  }, [])
-
-  const handleStepUpClose = useCallback(() => {
-    setStepUpOpen(false)
-    stepUpActionRef.current = null
-  }, [])
-
-  const handleStepUpCompleted = useCallback(async () => {
-    const action = stepUpActionRef.current
-    stepUpActionRef.current = null
-    setStepUpOpen(false)
-    if (action) {
-      await action()
-    }
-  }, [])
+  const { dialogId, openStepUpFor, closeStepUp, completeStepUp } = useStepUpAction()
 
   useEffect(() => {
     const spotifyStatus = search.spotify
@@ -220,11 +201,14 @@ export default function Settings() {
           </section>
 
           {/* StepUp Dialog */}
-          <StepUpDialog
-            open={stepUpOpen}
-            onClose={handleStepUpClose}
-            onCompleted={handleStepUpCompleted}
-          />
+          {dialogId !== null && (
+            <StepUpDialog
+              key={dialogId}
+              open
+              onClose={() => closeStepUp(dialogId)}
+              onCompleted={() => completeStepUp(dialogId)}
+            />
+          )}
 
           {/* Global Snackbar for Settings Page */}
           <Snackbar

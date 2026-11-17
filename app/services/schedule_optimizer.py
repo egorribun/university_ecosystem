@@ -115,16 +115,20 @@ class ScheduleOptimizerService:
 
         return rust_ext.ScheduleItem(
             weekday=str(item.weekday),
-            # Match repository persistence: naive schedule values are UTC;
+            # Match repository persistence: semantically naive values are UTC;
             # offset-bearing values must retain their instant when normalized.
             start_time=int(
                 (
-                    st.replace(tzinfo=UTC) if st.tzinfo is None else st.astimezone(UTC)
+                    st.replace(tzinfo=UTC)
+                    if st.utcoffset() is None
+                    else st.astimezone(UTC)
                 ).timestamp()
             ),
             end_time=int(
                 (
-                    et.replace(tzinfo=UTC) if et.tzinfo is None else et.astimezone(UTC)
+                    et.replace(tzinfo=UTC)
+                    if et.utcoffset() is None
+                    else et.astimezone(UTC)
                 ).timestamp()
             ),
             parity=item.parity,
