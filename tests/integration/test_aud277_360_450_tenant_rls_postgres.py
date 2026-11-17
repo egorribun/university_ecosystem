@@ -1702,3 +1702,127 @@ async def test_schedule_service_parent_ownership(
             admin.dispose()
             bypass_rls_ctx.reset(bypass)
             tenant_id_ctx.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_room_membership_callback_obeys_parent_tenant_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Real ordinary-role SQL must not authorize a hidden tenant's membership."""
+    from fastapi import HTTPException
+
+    from app.api.internal.chat import check_participant
+    from app.core.db.listeners import register_tenant_listeners
+    from app.models.chat import chat_participants
+    from app.repositories.chat_repository import ChatRepository
+    from tests.conftest import call_injected
+
+    # A normal tenant-B DM and its two members, not a forged cross-tenant edge.
+    user_b, peer_b, chat_b = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    register_tenant_listeners()
+    try:
+        with admin.begin() as connection:
+            for user_id in (user_b, peer_b):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO users (id, email, hashed_password, tenant_id) "
+                        "VALUES (:id, :email, :credential, :tenant)"
+                    ),
+                    {
+                        "id": user_id,
+                        "email": f"{user_id}@example.invalid",
+                        "credential": "!" + uuid.uuid4().hex,
+                        "tenant": _TENANT_B,
+                    },
+                )
+            connection.execute(
+                sa.text("INSERT INTO chats (id, tenant_id) VALUES (:id, :tenant)"),
+                {"id": chat_b, "tenant": _TENANT_B},
+            )
+            for user_id in (user_b, peer_b):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO chat_participants (chat_id, user_id) "
+                        "VALUES (:chat, :user)"
+                    ),
+                    {"chat": chat_b, "user": user_id},
+                )
+
+        for tenant, expected in (
+            (_TENANT_A, False),
+            (_TENANT_B, True),
+            (None, False),
+        ):
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    flags = (
+                        await session.execute(
+                            sa.text(
+                                "SELECT rolsuper, rolbypassrls, "
+                                "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                                "row_security_active('public.chats'), "
+                                "row_security_active('public.users') "
+                                "FROM pg_roles WHERE rolname = current_user"
+                            )
+                        )
+                    ).one()
+                    assert tuple(flags) == (False, False, False, True, True)
+                    # Negative control: this unprotected edge really exists
+                    # even when its user and chat are hidden by the policies.
+                    raw_membership = await session.scalar(
+                        sa.select(
+                            sa.exists().where(
+                                chat_participants.c.chat_id == chat_b,
+                                chat_participants.c.user_id == user_b,
+                            )
+                        )
+                    )
+                    assert raw_membership is True
+                    repo = ChatRepository(session)
+                    assert await repo.check_participant(chat_b, user_b) is expected
+                    assert await repo.check_participant(chat_b, _USER_A) is False
+                    assert await repo.check_participant(_CHAT_A, _USER_A) is (
+                        tenant == _TENANT_A
+                    )
+                    if expected:
+                        response = await call_injected(
+                            check_participant,
+                            user_id=user_b,
+                            room_id=chat_b,
+                            provides={"AsyncDatabaseSession": session},
+                        )
+                        assert response == {"participant": True}
+                    else:
+                        with pytest.raises(HTTPException) as denied:
+                            await call_injected(
+                                check_participant,
+                                user_id=user_b,
+                                room_id=chat_b,
+                                provides={"AsyncDatabaseSession": session},
+                            )
+                        assert denied.value.status_code == 403
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+    finally:
+        await engine.dispose()
+        try:
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text("DELETE FROM chats WHERE id = :id"), {"id": chat_b}
+                )
+                connection.execute(
+                    sa.text("DELETE FROM users WHERE id IN (:user, :peer)"),
+                    {"user": user_b, "peer": peer_b},
+                )
+        finally:
+            admin.dispose()
