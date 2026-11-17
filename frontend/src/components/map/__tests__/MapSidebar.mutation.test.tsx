@@ -127,9 +127,7 @@ beforeEach(() => {
 
 describe("MapSidebar mutation contracts", () => {
   it("refreshes room occupancy at lesson boundaries without changing sidebar props", async () => {
-    const actual = await vi.importActual<typeof import("@/utils/roomStatus")>(
-      "@/utils/roomStatus"
-    )
+    const actual = await vi.importActual<typeof import("@/utils/roomStatus")>("@/utils/roomStatus")
     vi.mocked(getRoomStatus).mockImplementation(actual.getRoomStatus)
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-11-17T06:59:00Z"))
