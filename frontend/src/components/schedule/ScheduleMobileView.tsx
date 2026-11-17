@@ -8,6 +8,7 @@ import { useScheduleData } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
 import { buildLessonsByDay } from "@/components/schedule/scheduleUtils"
 import {
+  useHiddenWeekdays,
   useScheduleDisplayPreferences,
   useScheduleUIActions,
   useWeekOffset,
@@ -78,7 +79,15 @@ export function ScheduleMobileView({
   const { nextWeek, previousWeek } = useScheduleUIActions()
   const weekOffset = useWeekOffset()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
-  const [activeDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
+  const hiddenWeekdays = useHiddenWeekdays()
+  const visibleDayIndices = useMemo(
+    () => weekdayBackend.map((_, index) => index).filter((index) => !hiddenWeekdays.includes(index)),
+    [weekdayBackend, hiddenWeekdays]
+  )
+  const [selectedDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
+  const activeDayIdx = visibleDayIndices.includes(selectedDayIdx)
+    ? selectedDayIdx
+    : (visibleDayIndices[0] ?? -1)
 
   /* ── Week swipe direction tracking (FIX-70-SWIPE) ────
      React-safe derived state pattern: setState during render is allowed
@@ -132,10 +141,11 @@ export function ScheduleMobileView({
         const next =
           e.key === "ArrowRight" ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length
         tabs[next]?.focus()
-        scrollToDay(next)
+        const dayIndex = visibleDayIndices[next]
+        if (dayIndex !== undefined) scrollToDay(dayIndex)
       }
     },
-    [scrollToDay]
+    [scrollToDay, visibleDayIndices]
   )
 
   /* ── Animation variants for week/day transitions ── */
@@ -160,7 +170,8 @@ export function ScheduleMobileView({
           className="scrollbar-hide flex gap-2 overflow-x-auto px-3 pb-2"
           onKeyDown={handleTabKeyDown}
         >
-          {weekdayBackend.map((day, i) => {
+          {visibleDayIndices.map((i) => {
+            const day = weekdayBackend[i]!
             // buildLessonsByDay initializes an entry for every weekdayBackend item.
             const count = lessonsByDay.get(day)!.length
             const isToday = hasToday && i === todayIdx
@@ -208,53 +219,60 @@ export function ScheduleMobileView({
            PERF-71-01: AnimatePresence with key-swap is acceptable here (unlike desktop PERF-70-01)
            because mobile shows only 1 DayColumn at a time — single remount is cheap. ──── */}
       <AnimatePresence mode="wait" initial={false} custom={swipeDir}>
-        <m.div
-          key={`${weekOffset}-${weekdayBackend[activeDayIdx] ?? activeDayIdx}`}
-          custom={swipeDir}
-          variants={panelVariants}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={
-            prefersReduced
-              ? { duration: 0 }
-              : { type: "spring", stiffness: 260, damping: 26, mass: 0.9 }
-          }
-        >
-          {(() => {
-            const activeDay = weekdayBackend[activeDayIdx]!
-            const activeLabel = weekdayLabels[activeDayIdx] ?? activeDay
-            return (
-              <DayColumn
-                ref={(el) => {
-                  dayCardRefs.current[activeDayIdx] = el
-                }}
-                day={activeDay}
-                label={activeLabel}
-                lessons={lessonsByDay.get(activeDay) ?? []}
-                isToday={hasToday && activeDayIdx === todayIdx}
-                isOnline={isOnline}
-                hasSchedule={rawSchedule.length > 0}
-                userRole={user?.role}
-                conflictedIds={conflictedIds}
-                compact={compactMode}
-                currentLessonId={currentLesson?.id}
-                currentProgress={currentProgress}
-                dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
-                notesMap={notesMap}
-                onAdd={() => {
-                  setAddDay(activeDay)
-                  openDialog("add")
-                }}
-                onLessonDelete={onDeleteLesson}
-                onRetry={refresh}
-                getLessonTypeColor={getLessonTypeColor}
-                getLessonTypeLabel={getLessonTypeLabel}
-              />
-            )
-          })()}
-        </m.div>
+        {activeDayIdx >= 0 && (
+          <m.div
+            key={`${weekOffset}-${weekdayBackend[activeDayIdx] ?? activeDayIdx}`}
+            custom={swipeDir}
+            variants={panelVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={
+              prefersReduced
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 260, damping: 26, mass: 0.9 }
+            }
+          >
+            {(() => {
+              const activeDay = weekdayBackend[activeDayIdx]!
+              const activeLabel = weekdayLabels[activeDayIdx] ?? activeDay
+              return (
+                <DayColumn
+                  ref={(el) => {
+                    dayCardRefs.current[activeDayIdx] = el
+                  }}
+                  day={activeDay}
+                  label={activeLabel}
+                  lessons={lessonsByDay.get(activeDay) ?? []}
+                  isToday={hasToday && activeDayIdx === todayIdx}
+                  isOnline={isOnline}
+                  hasSchedule={rawSchedule.length > 0}
+                  userRole={user?.role}
+                  conflictedIds={conflictedIds}
+                  compact={compactMode}
+                  currentLessonId={currentLesson?.id}
+                  currentProgress={currentProgress}
+                  dayComplete={hasToday && activeDayIdx === todayIdx && todayComplete}
+                  notesMap={notesMap}
+                  onAdd={() => {
+                    setAddDay(activeDay)
+                    openDialog("add")
+                  }}
+                  onLessonDelete={onDeleteLesson}
+                  onRetry={refresh}
+                  getLessonTypeColor={getLessonTypeColor}
+                  getLessonTypeLabel={getLessonTypeLabel}
+                />
+              )
+            })()}
+          </m.div>
+        )}
       </AnimatePresence>
+      {visibleDayIndices.length === 0 && weekdayBackend.length > 0 && (
+        <p role="status" className="text-center text-text-secondary">
+          {t("schedule:empty.allFiltered")}
+        </p>
+      )}
     </div>
   )
 }
