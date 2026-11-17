@@ -151,6 +151,11 @@ class Lifecycle:
         self.kubectl("patch", "service", self.backend, "--type=json", "-p",
                      json.dumps([{"op": "replace", "path": "/spec/selector", "value": selector}]))
 
+    def delete_fixture(self, pod: str) -> None:
+        # Retain failed deletions for the unconditional cleanup retry.
+        self.kubectl("delete", "pod", pod, "--wait=true", "--timeout=60s", timeout=70)
+        self.pods.remove(pod)
+
     def proxy_status(self) -> int:
         script = (
             "const r=await fetch('http://127.0.0.1:18000/health/ready',"
@@ -313,6 +318,13 @@ try {
             self.route({LABEL: fresh})
             wait_for(lambda: self.proxy_status() == 200)
             print("PASS ssr-live-old-root-rejected-new-root-accepted", flush=True)
+            # Serving fixtures intentionally share backend NetworkPolicy labels,
+            # so the original Service selector also matches them. Remove them
+            # before claiming any observation is from the production backend.
+            print("CHECK ssr-live-serving-fixture-retirement", flush=True)
+            for pod in (frozen, wrong, fresh):
+                self.delete_fixture(pod)
+            print("PASS ssr-live-serving-fixture-retirement", flush=True)
             print("CHECK ssr-live-production-route-restoration", flush=True)
             self.route(original)
             wait_for(lambda: self.proxy_status() == 200)
@@ -330,8 +342,8 @@ try {
         finally:
             print("CHECK ssr-live-fixture-cleanup", flush=True)
             self.route(original)
-            for pod in reversed(self.pods):
-                self.kubectl("delete", "pod", pod, "--wait=true", "--timeout=60s", timeout=70)
+            for pod in reversed(self.pods.copy()):
+                self.delete_fixture(pod)
             print("PASS ssr-live-fixture-cleanup", flush=True)
         print("CHECK ssr-live-production-readiness-after-cleanup", flush=True)
         wait_for(lambda: self.proxy_status() == 200)

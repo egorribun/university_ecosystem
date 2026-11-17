@@ -140,6 +140,7 @@ def test_source_outage_restores_selector_even_when_stream_fails() -> None:
     [
         ("peer", "ssr-live-production-peer-renewal"),
         ("cleanup", "ssr-live-fixture-cleanup"),
+        ("retirement", "ssr-live-serving-fixture-retirement"),
         ("restart", "ssr-live-application-restart-invariant"),
         (None, None),
     ],
@@ -152,6 +153,9 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
     item = lifecycle()
     state = {"issuer": "ab", "roots": ["ab"]}
     original = {"backend": "production"}
+    active = set()
+    production_observations = []
+    retirement_failed = False
 
     def material(identity):
         return {
@@ -165,12 +169,18 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
     frozen = material(item.peer_id)
 
     def command(*args, **kwargs):
+        nonlocal retirement_failed
         if args[0] == "get":
             return json.dumps({"spec": {"selector": original}})
         if args[0] == "logs":
             return json.dumps(frozen)
-        if args[0] == "delete" and failure == "cleanup":
-            raise proof.ProofError("secret-bearing command output")
+        if args[0] == "delete":
+            if failure == "retirement" and args[2] == "frozen" and not retirement_failed:
+                retirement_failed = True
+                raise proof.ProofError("fixture retirement failed")
+            if failure == "cleanup" and args[2] == "client":
+                raise proof.ProofError("secret-bearing command output")
+            active.remove(args[2])
         return "CHECK=200"
 
     def ca(action, *args):
@@ -185,9 +195,15 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
 
     def fixture(name, *args):
         item.pods.append(name)
+        active.add(name)
         return name
 
     def peer(client):
+        if state["issuer"] == "cd":
+            # Both post-rotation samples must exclude all serving fixtures,
+            # while retaining the observer used for the authenticated request.
+            assert active == {"client", "backend-client", "control"}
+            production_observations.append(client)
         value = material(item.peer_id)
         if failure == "peer" and state["issuer"] == "cd":
             value["leafSHA256"] = "a" * 64
@@ -228,3 +244,23 @@ def test_final_lifecycle_diagnostics_keep_failures_fatal(
     if failure != "cleanup":
         assert "PASS ssr-live-fixture-cleanup" in output
     item.route.assert_called_with(original)
+    if failure != "cleanup":
+        assert not active
+    assert production_observations == (
+        [] if failure == "retirement" else ["client", "client"]
+    )
+
+
+def test_fixture_retirement_tracks_success_and_retries_failures() -> None:
+    item = lifecycle()
+    item.pods = ["client", "frozen", "fresh"]
+    item.kubectl = Mock(side_effect=[proof.ProofError("delete failed"), ""])
+    with pytest.raises(proof.ProofError):
+        item.delete_fixture("frozen")
+    assert item.pods == ["client", "frozen", "fresh"]
+    item.delete_fixture("frozen")
+    assert item.pods == ["client", "fresh"]
+    assert item.kubectl.call_args.args == (
+        "delete", "pod", "frozen", "--wait=true", "--timeout=60s"
+    )
+    assert item.kubectl.call_args.kwargs == {"timeout": 70}
