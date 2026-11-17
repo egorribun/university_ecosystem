@@ -293,6 +293,25 @@ class _NoPickleScanner:
         if isinstance(target, ast.Starred):
             self._assign_target(target.value, None, scope)
 
+    def _scan_assignment_target(
+        self,
+        target: ast.expr,
+        value: _StaticBinding | None,
+        scope: _Scope,
+    ) -> None:
+        # Target containers evaluate left to right, interleaved with rebinding.
+        # Scan subscript/attribute expressions without treating their names as
+        # local assignments. RHS evaluation remains the caller's responsibility.
+        if isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                self._scan_assignment_target(item, None, scope)
+            return
+        if isinstance(target, ast.Starred):
+            self._scan_assignment_target(target.value, None, scope)
+            return
+        self._scan_expression(target, scope)
+        self._assign_target(target, value, scope)
+
     def _scan_expression(self, expression: ast.expr, scope: _Scope) -> None:
         if isinstance(expression, ast.Call):
             self._check_dynamic_call(expression, scope)
@@ -455,7 +474,7 @@ class _NoPickleScanner:
             self._scan_expression(statement.value, scope)
             value = self._binding_for_expression(statement.value, scope)
             for target in statement.targets:
-                self._assign_target(target, value, scope)
+                self._scan_assignment_target(target, value, scope)
             return
         if isinstance(statement, ast.AnnAssign):
             self._scan_expression(statement.annotation, scope)
@@ -466,7 +485,7 @@ class _NoPickleScanner:
                 if statement.value is not None
                 else None
             )
-            self._assign_target(statement.target, value, scope)
+            self._scan_assignment_target(statement.target, value, scope)
             return
         if isinstance(statement, ast.AugAssign):
             self._scan_expression(statement.target, scope)
@@ -475,7 +494,7 @@ class _NoPickleScanner:
             return
         if isinstance(statement, ast.Delete):
             for target in statement.targets:
-                self._assign_target(target, None, scope)
+                self._scan_assignment_target(target, None, scope)
             return
         if isinstance(statement, ast.Expr):
             self._scan_expression(statement.value, scope)

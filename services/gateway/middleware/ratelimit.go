@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -288,11 +289,13 @@ func (rl *RateLimiter) allow(c *gin.Context, ctx context.Context, key string) {
 	c.Header("RateLimit-Policy", fmt.Sprintf("%d;w=1", rl.rps)) // One-second steady rate; burst capacity is configured separately.
 
 	if res.Allowed == 0 {
-		// RFC 7231 requires Retry-After to be an HTTP-date or an integer number of seconds
-		c.Header("Retry-After", strconv.FormatInt(int64(res.RetryAfter.Seconds()), 10))
+		// Round up to whole seconds so a positive sub-second wait never asks
+		// the caller to retry immediately. Keep the header and JSON delay equal.
+		retryAfterSeconds := int64(math.Ceil(res.RetryAfter.Seconds()))
+		c.Header("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 			"error":       "rate limit exceeded",
-			"retry_after": int(res.RetryAfter.Seconds()),
+			"retry_after": retryAfterSeconds,
 		})
 		return
 	}

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
-import { act, renderHook } from "@testing-library/react"
+import { createElement } from "react"
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react"
 
 import { useSwipeGesture } from "./useSwipeGesture"
 
@@ -297,4 +298,47 @@ describe("useSwipeGesture: reversing past the starting point", () => {
       expect(result.current.isDragging).toBe(false)
     }
   )
+})
+
+describe("useSwipeGesture — browser cancellation", () => {
+  it.each(["left", "right"] as const)("resets a cancelled %s drag without closing", (direction) => {
+    const onSwipeClose = vi.fn()
+    function Drawer() {
+      const { handlers, dragOffset, isDragging } = useSwipeGesture({
+        direction,
+        onSwipeClose,
+        enabled: true,
+      })
+      return createElement("div", {
+        ...handlers,
+        "data-testid": "drawer",
+        "data-offset": dragOffset,
+        "data-dragging": String(isDragging),
+      })
+    }
+    render(createElement(Drawer))
+    const drawer = screen.getByTestId("drawer")
+    const start = { touches: [{ clientX: 200 }] }
+    const moved = { touches: [{ clientX: direction === "right" ? 320 : 80 }] }
+
+    fireEvent.touchStart(drawer, start)
+    fireEvent.touchMove(drawer, moved)
+    expect(Math.abs(Number(drawer.dataset.offset))).toBe(120)
+    fireEvent.touchCancel(drawer)
+    expect(drawer.dataset.offset).toBe("0")
+    expect(drawer.dataset.dragging).toBe("false")
+    expect(onSwipeClose).not.toHaveBeenCalled()
+
+    fireEvent.touchMove(drawer, moved)
+    fireEvent.touchEnd(drawer)
+    expect(onSwipeClose).not.toHaveBeenCalled()
+    expect(drawer.dataset.offset).toBe("0")
+
+    fireEvent.touchStart(drawer, start)
+    fireEvent.touchMove(drawer, moved)
+    fireEvent.touchEnd(drawer)
+    expect(onSwipeClose).toHaveBeenCalledOnce()
+    expect(drawer.dataset.offset).toBe("0")
+    expect(drawer.dataset.dragging).toBe("false")
+  })
 })

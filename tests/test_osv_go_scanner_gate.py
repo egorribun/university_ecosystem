@@ -125,6 +125,39 @@ def test_exit_status_must_agree_with_the_findings() -> None:
         validate(_report(), 1, TODAY)
 
 
+@pytest.mark.parametrize("results", [None, False, 0, "", {}])
+def test_explicit_non_array_results_are_rejected(results: object) -> None:
+    report = _report()
+    report["runs"][0]["results"] = results
+
+    with pytest.raises(OsvResultError, match="results must be an array"):
+        validate(report, 0, TODAY)
+
+
+def test_missing_results_preserves_existing_metadata_only_semantics() -> None:
+    report = _report()
+    del report["runs"][0]["results"]
+
+    assert validate(report, 0, TODAY) == []
+
+
+def test_main_rejects_falsey_non_array_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    report = _report()
+    report["runs"][0]["results"] = {}
+    path = tmp_path / "malformed.sarif"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["gate", "--sarif", str(path), "--scanner-status", "0"]
+    )
+
+    assert gate_module.main() == 1
+    captured = capsys.readouterr()
+    assert "results must be an array" in captured.err
+    assert "accepted" not in captured.out
+
+
 def test_clean_scan_is_accepted() -> None:
     assert validate(_report(), 0, TODAY) == []
 

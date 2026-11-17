@@ -1,5 +1,6 @@
 import { useId } from "react"
 import { cn } from "@/utils/cn"
+import useFocusTrap from "@/hooks/useFocusTrap"
 import { AnimatePresence, m } from "framer-motion"
 
 export interface ConfirmDialogProps {
@@ -27,6 +28,12 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const titleId = useId()
   const messageId = useId()
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    allowOutsideClick: false,
+    // Handle Escape without releasing containment until the owner closes the dialog.
+    escapeDeactivates: false,
+  })
 
   return (
     <AnimatePresence>
@@ -39,6 +46,14 @@ export function ConfirmDialog({
           role="presentation"
         >
           <m.div
+            ref={dialogRef}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return
+              event.preventDefault()
+              event.stopPropagation()
+              if (!isLoading) onCancel()
+            }}
             role="alertdialog"
             aria-modal="true"
             aria-labelledby={titleId}

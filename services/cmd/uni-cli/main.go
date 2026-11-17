@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -248,7 +249,9 @@ func metricsCmd() *cobra.Command {
 func newRedisClient() (*redis.Client, error) {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, err
+		// Parser errors can contain the full URL, userinfo, or query values.
+		// Commands print this error, so never wrap or retain the raw cause.
+		return nil, errors.New("invalid Redis connection URL; check REDIS_URL or --redis")
 	}
 	return redis.NewClient(opt), nil
 }

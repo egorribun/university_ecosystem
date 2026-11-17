@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/gateway/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
@@ -203,7 +204,15 @@ func fileProcessRPCContext(c *gin.Context, verifiedCapability string) (context.C
 	// Use the per-request context so cancellation propagates when the client
 	// disconnects (RZ-33-04).
 	rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-	if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+	// Match JWTMiddleware.Validate's cookie-first selection exactly. Browser
+	// requests have an HttpOnly access cookie and normally no bearer header.
+	// This handler is reached only after that middleware validates the selected
+	// credential; do not forward a conflicting, unselected Authorization value.
+	authHeader := c.GetHeader("Authorization")
+	if token, err := c.Cookie(middleware.AccessTokenCookieName); err == nil && token != "" {
+		authHeader = "Bearer " + token
+	}
+	if authHeader != "" {
 		rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "authorization", authHeader)
 	}
 	tenantIDVal, _ := c.Get("tenant_id")

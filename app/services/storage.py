@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlparse, urlsplit
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
 
 from app.core.logging import get_logger
 from app.core.storage_urls import (
@@ -667,7 +668,8 @@ class S3Storage(StorageBackend):
                     await s3.put_object(**args)
         except (ConnectionError, TimeoutError, OSError):  # RZ-28-01
             # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
-            logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
+            # Do not log object keys, bucket identifiers or provider error text.
+            logger.warning("s3_upload_failed")
             raise
         return f"{self.base_url}/{key}"
 
@@ -696,24 +698,33 @@ class S3Storage(StorageBackend):
             )
         except (
             asyncio.CancelledError,
+            BotoConnectionError,
+            HTTPClientError,
             ConnectionError,
             TimeoutError,
             OSError,
         ):
+            # SDK transport errors are not builtin ConnectionError/OSError.
+            # A lost PUT response can leave bytes at this exclusively owned key.
+            # Definitive ClientError rejections (including 412) do not enter here.
             await self._delete_abandoned_key(key)
             raise
 
     async def _delete_abandoned_key(self, key: str) -> None:
         """Run the compensating delete to completion even if the caller is cancelled again."""
-        task = asyncio.create_task(self.delete_file(f"{self.base_url}/{key}"))
+
+        async def delete_safely() -> None:
+            # Catch inside the task: a cancelled shield waiter cannot consume
+            # a later provider exception, which asyncio may otherwise log.
+            try:
+                await self.delete_file(f"{self.base_url}/{key}")
+            except Exception:  # RZ-22-01-JUSTIFIED: preserve the primary error and never expose provider details from detached cleanup
+                logger.warning("s3_abandoned_upload_delete_failed")
+
+        task = asyncio.create_task(delete_safely())
         self._abandoned_delete_tasks.add(task)
         task.add_done_callback(self._abandoned_delete_tasks.discard)
-        try:
-            await asyncio.shield(task)
-        except Exception as err:  # RZ-22-01-JUSTIFIED: compensation must not replace the original upload failure
-            logger.warning(
-                "s3_abandoned_upload_delete_failed", error_type=type(err).__name__
-            )
+        await asyncio.shield(task)
 
     @asynccontextmanager
     async def _build_aioboto3_client(self) -> AsyncIterator[Any]:

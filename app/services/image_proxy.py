@@ -286,10 +286,11 @@ def _process_image(
             validate_image_dimensions(*img.size, max_pixels=resolved_max_pixels)
             # Preserve aspect ratio
             w, h = img.size
+            original_format = img.format or "JPEG"
             output_img: Image.Image = img
 
             if width and width < w:
-                new_h = int(h * (width / w))
+                new_h = max(1, int(h * (width / w)))
                 # LOW-W19: img.resize() returns a new Image object.  Keep the
                 # source image bound to the context manager and close it before
                 # switching the output reference so the resized object is not
@@ -315,7 +316,6 @@ def _process_image(
                 return buffer.getvalue(), "image/webp"
 
             # If original or fallback
-            original_format = output_img.format or "JPEG"
             output_img.save(buffer, format=original_format)
             return buffer.getvalue(), f"image/{str(original_format).lower()}"
     except Image.DecompressionBombError as exc:

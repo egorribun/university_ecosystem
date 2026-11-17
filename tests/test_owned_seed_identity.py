@@ -4,12 +4,47 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 import pytest
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode
 
 from scripts import live_stand
 from scripts.seed_identity import owned_seed_tenant_id
 
 PROJECT = "ue-live-0123456789abcdef"
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _yaml_mapping(node: Node) -> dict[str, Node]:
+    assert isinstance(node, MappingNode)
+    result: dict[str, Node] = {}
+    for key, value in node.value:
+        assert isinstance(key, ScalarNode)
+        assert key.value not in result
+        result[key.value] = value
+    return result
+
+
+def test_live_overlay_binds_owned_tenant_to_backend_and_workers() -> None:
+    document = yaml.compose(
+        (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
+    )
+    assert document is not None
+    services = _yaml_mapping(_yaml_mapping(document)["services"])
+    backend_environment = _yaml_mapping(services["backend"])["environment"]
+    tenant = _yaml_mapping(backend_environment)["MVP_TENANT_ID"]
+    assert isinstance(tenant, ScalarNode)
+    assert tenant.value == "${MVP_TENANT_ID:?set by scripts/live_stand.py}"
+    for worker in ("outbox-worker", "notifications-worker"):
+        assert _yaml_mapping(services[worker])["environment"] is backend_environment
+    injected = {
+        name
+        for name, service in services.items()
+        if isinstance(
+            environment := _yaml_mapping(service).get("environment"), MappingNode
+        )
+        and "MVP_TENANT_ID" in _yaml_mapping(environment)
+    }
+    assert injected == {"backend", "outbox-worker", "notifications-worker"}
 
 
 def test_owned_environment_pins_explicit_tenant(monkeypatch) -> None:

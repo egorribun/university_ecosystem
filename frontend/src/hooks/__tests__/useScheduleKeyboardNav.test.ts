@@ -29,6 +29,80 @@ describe("useScheduleKeyboardNav", () => {
     document.body.innerHTML = ""
   })
 
+  it.each(["ctrlKey", "metaKey", "altKey", "isComposing"] as const)(
+    "leaves %s keyboard events untouched",
+    (flag) => {
+      const opts = makeOpts()
+      const { result } = renderHook(() => useScheduleKeyboardNav(opts))
+      press("ArrowRight")
+      opts.onSelect.mockClear()
+
+      for (const key of [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Enter",
+        "e",
+        "Delete",
+        "Backspace",
+        "t",
+        "?",
+        "Escape",
+      ]) {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          [flag]: true,
+        })
+        act(() => document.dispatchEvent(event))
+        expect(event.defaultPrevented).toBe(false)
+      }
+      expect(result.current.activeCell).toEqual({ row: 0, col: 1 })
+      expect(opts.onSelect).not.toHaveBeenCalled()
+      expect(opts.onOpen).not.toHaveBeenCalled()
+      expect(opts.onEdit).not.toHaveBeenCalled()
+      expect(opts.onDelete).not.toHaveBeenCalled()
+      expect(opts.onToggleShortcuts).not.toHaveBeenCalled()
+    }
+  )
+
+  it("does not reclaim events already handled by a child", () => {
+    const opts = makeOpts()
+    const { result } = renderHook(() => useScheduleKeyboardNav(opts))
+    press("ArrowRight")
+    opts.onSelect.mockClear()
+    const child = document.createElement("div")
+    child.addEventListener("keydown", (event) => event.preventDefault())
+    document.body.appendChild(child)
+    for (const key of ["ArrowRight", "Enter", "e", "Delete", "t", "?", "Escape"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+      act(() => child.dispatchEvent(event))
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect(result.current.activeCell).toEqual({ row: 0, col: 1 })
+    expect(opts.onSelect).not.toHaveBeenCalled()
+    expect(opts.onOpen).not.toHaveBeenCalled()
+    expect(opts.onEdit).not.toHaveBeenCalled()
+    expect(opts.onDelete).not.toHaveBeenCalled()
+    expect(opts.onToggleShortcuts).not.toHaveBeenCalled()
+  })
+
+  it("retains Shift navigation, uppercase actions and the question-mark shortcut", () => {
+    const opts = makeOpts()
+    const { result } = renderHook(() => useScheduleKeyboardNav(opts))
+    press("ArrowRight", { shiftKey: true })
+    press("E", { shiftKey: true })
+    press("T", { shiftKey: true })
+    press("?", { shiftKey: true })
+    expect(result.current.activeCell).toEqual({ row: 0, col: 2 })
+    expect(opts.onEdit).toHaveBeenCalledOnce()
+    expect(opts.onToggleShortcuts).toHaveBeenCalledOnce()
+    press("Enter")
+    expect(opts.onOpen).toHaveBeenCalledWith(0, 2)
+  })
+
   it("moves the active cell with arrow keys and fires onSelect (clamped to bounds)", () => {
     const opts = makeOpts()
     const { result } = renderHook(() => useScheduleKeyboardNav(opts))

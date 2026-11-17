@@ -125,113 +125,116 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
   }, [hoveringDisabled])
   // Reset if user cancels (e.g., right-click, drag, pointerleave without click)
   const handleTransitionReset = useCallback(() => setTransitioning(false), [])
+  const canShowQuickView = !hoveringDisabled && !editOpen && !confirmDeleteOpen
 
   return (
-    <m.article
-      ref={articleRef}
-      onMouseMove={spotlight.onMouseMove}
-      onMouseEnter={showQuickView}
-      onMouseLeave={() => {
-        hideQuickView()
-        handleTransitionReset()
-      }}
-      onPointerDown={handlePointerDown}
-      className={cn(
-        "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
-        hoveringDisabled
-          ? "cursor-default"
-          : "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:duration-instant"
-      )}
-      data-testid="news-card"
-    >
-      {/* Quick-view popover */}
-      <NewsQuickView
-        visible={quickViewVisible}
-        title={title}
-        preview={previewText}
-        created_at={created_at}
-        likesCount={likesCount}
-        commentsCount={commentsCount}
-        category={category}
-        position={quickViewPosition}
-      />
-
-      {/* Spotlight */}
-      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
-
-      {/* Admin menu */}
-      {isAdmin && (
-        <div className="absolute right-3 top-3 z-surface">
-          <Suspense fallback={null}>
-            <NewsCardActions
-              id={id}
-              onEdit={onEditOpen}
-              onDelete={onDeleteOpen}
-              isDisabled={loading}
-            />
-          </Suspense>
-        </div>
-      )}
-
-      {/* Category badge — top-left */}
-      <div className="absolute left-3 top-3 z-surface">
-        <NewsCategoryBadge category={category} size="sm" />
-      </div>
-
-      {/* Image */}
-      <div className="relative shrink-0 overflow-hidden h-48 sm:h-52">
-        <NewsCardHero
-          id={id}
-          image_url={image_url}
-          title={title}
-          created_at={created_at}
-          transitioning={transitioning}
-          priority={priority}
-        />
-      </div>
-
-      {/* Content — no `relative` here: Link's before:absolute before:inset-0
-           must reach <article> to make the entire card clickable (FIX-57-02) */}
-      <div className="flex flex-1 flex-col">
-        <NewsCardContent
-          id={id}
+    <div className="news-quick-view-host relative h-full">
+      {canShowQuickView && (
+        <NewsQuickView
+          visible={quickViewVisible}
           title={title}
           preview={previewText}
-          isLiked={isLiked}
+          created_at={created_at}
           likesCount={likesCount}
           commentsCount={commentsCount}
-          isBookmarked={isBookmarked}
-          readingTime={readingTime}
-          onToggleLike={onToggleLike}
-          onToggleBookmark={onToggleBookmark}
-          hoveringDisabled={hoveringDisabled}
+          category={category}
+          position={quickViewPosition}
         />
-      </div>
+      )}
+      <m.article
+        ref={articleRef}
+        onMouseMove={spotlight.onMouseMove}
+        onMouseEnter={showQuickView}
+        onMouseLeave={() => {
+          hideQuickView()
+          handleTransitionReset()
+        }}
+        onPointerDown={handlePointerDown}
+        className={cn(
+          "news-card-container relative h-full rounded-2xl overflow-hidden card-matte glass-noise dash-border-shimmer group outline-none transition-[transform,box-shadow] duration-slower ease-premium",
+          hoveringDisabled
+            ? "cursor-default"
+            : "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:duration-instant"
+        )}
+        data-testid="news-card"
+      >
+        {/* Spotlight */}
+        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
 
-      {/* Dialogs */}
-      <Suspense fallback={null}>
-        <NewsCardEditDialog
-          id={editTargetId ?? id}
-          open={editOpen}
-          onClose={onEditClose}
-          initialData={editData}
-          onSuccess={onEditSuccess}
+        {/* Admin menu */}
+        {isAdmin && (
+          <div className="absolute right-3 top-3 z-surface">
+            <Suspense fallback={null}>
+              <NewsCardActions
+                id={id}
+                onEdit={onEditOpen}
+                onDelete={onDeleteOpen}
+                isDisabled={loading}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {/* Category badge — top-left */}
+        <div className="absolute left-3 top-3 z-surface">
+          <NewsCategoryBadge category={category} size="sm" />
+        </div>
+
+        {/* Image */}
+        <div className="relative shrink-0 overflow-hidden h-48 sm:h-52">
+          <NewsCardHero
+            id={id}
+            image_url={image_url}
+            title={title}
+            created_at={created_at}
+            transitioning={transitioning}
+            priority={priority}
+          />
+        </div>
+
+        {/* Content — no `relative` here: Link's before:absolute before:inset-0
+           must reach <article> to make the entire card clickable (FIX-57-02) */}
+        <div className="flex flex-1 flex-col">
+          <NewsCardContent
+            id={id}
+            title={title}
+            preview={previewText}
+            isLiked={isLiked}
+            likesCount={likesCount}
+            commentsCount={commentsCount}
+            isBookmarked={isBookmarked}
+            readingTime={readingTime}
+            onToggleLike={onToggleLike}
+            onToggleBookmark={onToggleBookmark}
+            hoveringDisabled={hoveringDisabled}
+          />
+        </div>
+
+        {/* Dialogs */}
+        <Suspense fallback={null}>
+          <NewsCardEditDialog
+            id={editTargetId ?? id}
+            open={editOpen}
+            onClose={onEditClose}
+            initialData={editData}
+            onSuccess={onEditSuccess}
+          />
+        </Suspense>
+
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          title={t.deleteTitle}
+          message={t.deleteDesc}
+          confirmText={t.confirm}
+          cancelText={t.cancel}
+          variant="danger"
+          onConfirm={onDeleteConfirm}
+          onCancel={onDeleteClose}
+          isLoading={loading}
         />
-      </Suspense>
 
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        title={t.deleteTitle}
-        message={t.deleteDesc}
-        confirmText={t.confirm}
-        cancelText={t.cancel}
-        variant="danger"
-        onConfirm={onDeleteConfirm}
-        onCancel={onDeleteClose}
-        isLoading={loading}
-      />
-
-      <Snackbar open={!!error} message={error} onClose={onErrorClose} />
-    </m.article>
+        <Snackbar open={!!error} message={error} onClose={onErrorClose} />
+      </m.article>
+    </div>
   )
 }

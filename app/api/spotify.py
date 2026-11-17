@@ -327,12 +327,15 @@ async def _ensure_access_token(
                 await db.commit()
                 raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
         raise_http_error(503, "errors.spotify.service_unavailable", locale or "en")
-    data = r.json()
-    access_token = data.get("access_token")
-    if not access_token:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
-        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
+    try:
+        data = r.json()
+    except ValueError:
+        data = None
+    access_token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(access_token, str) or not access_token.strip():
+        # A malformed success response does not establish revoked consent.
+        # Retain credentials for recovery; never expose the provider payload.
+        raise_http_error(503, "errors.spotify.service_unavailable", locale or "en")
 
     # TD-W5-06: Detect scope downgrade — Spotify may return a reduced scope when
     # the user revoked individual permissions in their Spotify account settings.

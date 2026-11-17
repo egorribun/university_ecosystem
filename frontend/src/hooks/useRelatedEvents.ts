@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useCachedRelatedLists } from "./useCachedRelatedLists"
 import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import type { Event } from "@/types/Event"
 import { inferEventCategory, type EventCategory } from "@/features/events/categories"
@@ -13,16 +13,11 @@ import { inferEventCategory, type EventCategory } from "@/features/events/catego
  * Pattern source: hooks/useRelatedNews.ts
  */
 export function useRelatedEvents(currentId: string, category: EventCategory, limit = 3): Event[] {
-  const queryClient = useQueryClient()
+  const queries = useCachedRelatedLists<Event>("events")
   const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
     if (!sessionIsCurrent) return []
-    // Pull from all cached events list queries
-    const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: Event[] }> }>({
-      queryKey: ["events", "list"],
-    })
-
     const allItems: Event[] = []
     for (const [, data] of queries) {
       if (data?.pages) {
@@ -55,5 +50,5 @@ export function useRelatedEvents(currentId: string, category: EventCategory, lim
       .slice(0, limit - sameCategory.length)
 
     return [...sameCategory, ...remaining].slice(0, limit)
-  }, [queryClient, currentId, category, limit, sessionIsCurrent])
+  }, [queries, currentId, category, limit, sessionIsCurrent])
 }

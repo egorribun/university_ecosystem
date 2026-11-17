@@ -60,6 +60,10 @@ export function useNewsKeyboardNav(items: NewsItem[]) {
           break
         }
         case "Enter": {
+          // Focused controls own Enter, even when the event starts at a child.
+          if ((e.target as HTMLElement).closest("button, a, [role='button'], [role='link']")) {
+            return
+          }
           if (activeIndex >= 0 && activeIndex < items.length) {
             const item = items[activeIndex]
             if (item) {

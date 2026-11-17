@@ -1347,6 +1347,10 @@
   }
 }
 
+@utility z-negative {
+  z-index: var(--z-negative);
+}
+
 @utility z-hide {
   z-index: var(--z-hide);
 }
@@ -1420,6 +1424,10 @@
 
 @utility z-modal {
   z-index: var(--z-modal);
+}
+
+@utility z-floating {
+  z-index: var(--z-floating);
 }
 
 @utility z-toast {

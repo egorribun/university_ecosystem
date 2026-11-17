@@ -6,6 +6,79 @@ from scripts import live_stand_playwright_evidence as evidence
 from tests import test_live_stand as contracts
 
 
+def test_map_zoom_diagnostics_accept_only_bounded_phase_and_duration_records() -> None:
+    rows = (
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=1 total=2 "
+        "step=0 phase=0 duration_ms=50\n"
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=2 total=2 "
+        "step=2 phase=3 duration_ms=63\r\n"
+        "UE_LIVE_MAP_ZOOM_V1 project=mobile attempt=1 sample=1 total=1 "
+        "step=3 phase=4 duration_ms=60000\n"
+    )
+    assert evidence._live_playwright_map_zoom_tasks(rows) == [
+        ("desktop", 0, 1, 2, 0, 0, 50),
+        ("desktop", 0, 2, 2, 2, 3, 63),
+        ("mobile", 1, 1, 1, 3, 4, 60000),
+    ]
+
+
+def test_map_zoom_diagnostics_reject_malformed_or_private_fields() -> None:
+    row = (
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=1 total=2 "
+        "step=2 phase=3 duration_ms=63\n"
+    )
+    replacements = (
+        ("project=desktop", "project=other"),
+        ("attempt=0", "attempt=2"),
+        ("sample=1", "sample=9"),
+        ("total=2", "total=0"),
+        ("total=2", "total=1000"),
+        ("sample=1 total=2", "sample=2 total=1"),
+        ("step=2", "step=4"),
+        ("step=2 phase=3", "step=0 phase=3"),
+        ("step=2 phase=3", "step=2 phase=0"),
+        ("step=2 phase=3", "step=2 phase=4"),
+        ("phase=3", "phase=5"),
+        ("duration_ms=63", "duration_ms=49"),
+        ("duration_ms=63", "duration_ms=60001"),
+        ("duration_ms=63", "duration_ms=063"),
+        ("\n", " private-value\n"),
+        ("\n", " " + "x" * 200 + "\n"),
+        ("\n", ""),
+        ("UE_LIVE", "private\rUE_LIVE"),
+    )
+    for old, new in replacements:
+        assert evidence._live_playwright_map_zoom_tasks(row.replace(old, new)) == []
+
+
+def test_map_zoom_diagnostics_deduplicate_by_attempt_and_sample() -> None:
+    rows = []
+    for project in ("desktop", "mobile"):
+        for attempt in range(2):
+            for sample in range(1, 9):
+                row = (
+                    f"UE_LIVE_MAP_ZOOM_V1 project={project} attempt={attempt} "
+                    f"sample={sample} total=8 step=1 phase=1 duration_ms={50 + sample}\n"
+                )
+                rows.extend((row, row))
+    parsed = evidence._live_playwright_map_zoom_tasks("".join(rows))
+    assert len(parsed) == 32
+    assert parsed[0] == ("desktop", 0, 1, 8, 1, 1, 51)
+    assert parsed[-1] == ("mobile", 1, 8, 8, 1, 1, 58)
+
+
+def test_map_zoom_diagnostics_reject_conflicting_totals_within_attempt() -> None:
+    rows = (
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=1 total=2 "
+        "step=1 phase=1 duration_ms=51\n"
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=2 total=3 "
+        "step=1 phase=2 duration_ms=52\n"
+    )
+    assert evidence._live_playwright_map_zoom_tasks(rows) == [
+        ("desktop", 0, 1, 2, 1, 1, 51)
+    ]
+
+
 def test_story_memory_cycle_rejects_a_malformed_nested_sample() -> None:
     valid = contracts._story_memory_cycle_trace_record()
     samples = dict(valid["samples"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -131,3 +132,89 @@ async def test_dispatch_keeps_original_request_when_replay_builder_returns_none(
         await middleware._dispatch(request, AsyncMock())
 
     app.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["ram", "spill", "declared"])
+async def test_replay_delivers_body_once_then_original_disconnect(path, monkeypatch):
+    payload = b"replayed-body"
+    headers = (
+        [(b"content-length", str(len(payload)).encode())] if path == "declared" else []
+    )
+    request = _request(headers=headers)
+    middleware = ContentSizeLimitMiddleware(AsyncMock(), max_bytes=100)
+    if path == "spill":
+        monkeypatch.setattr(middleware, "_MEM_BUFFER_THRESHOLD", 1)
+    messages = iter(
+        [
+            {"type": "http.request", "body": payload, "more_body": False},
+            {"type": "http.disconnect"},
+        ]
+    )
+
+    async def receive():
+        return next(messages)
+
+    request = Request(request.scope, receive=receive)
+    replay, rejected = await middleware._read_and_replay_body(request, AsyncMock())
+    assert not rejected
+    assert replay is not None
+    assert await replay.receive() == {
+        "type": "http.request",
+        "body": payload,
+        "more_body": False,
+    }
+    assert await replay.receive() == {"type": "http.disconnect"}
+
+
+@pytest.mark.asyncio
+async def test_replay_preserves_starlette_consumed_request_disconnect():
+    from starlette.middleware.base import _CachedRequest
+
+    middleware = ContentSizeLimitMiddleware(AsyncMock(), max_bytes=100)
+    request = _request()
+    messages = iter(
+        [
+            {"type": "http.request", "body": b"body", "more_body": False},
+            {"type": "http.disconnect"},
+        ]
+    )
+
+    async def receive():
+        return next(messages)
+
+    replay, rejected = await middleware._read_and_replay_body(
+        Request(request.scope, receive=receive), AsyncMock()
+    )
+    assert not rejected
+    assert replay is not None
+    downstream = _CachedRequest(replay.scope, replay.receive)
+    assert (await downstream.wrapped_receive())["body"] == b"body"
+    assert await downstream.wrapped_receive() == {"type": "http.disconnect"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("receive failed"), asyncio.CancelledError()]
+)
+async def test_replay_preserves_original_receive_failure(failure):
+    middleware = ContentSizeLimitMiddleware(AsyncMock(), max_bytes=100)
+    request = _request()
+    consumed = False
+
+    async def receive():
+        nonlocal consumed
+        if not consumed:
+            consumed = True
+            return {"type": "http.request", "body": b"body", "more_body": False}
+        raise failure
+
+    replay, rejected = await middleware._read_and_replay_body(
+        Request(request.scope, receive=receive), AsyncMock()
+    )
+    assert not rejected
+    assert replay is not None
+    assert (await replay.receive())["body"] == b"body"
+    with pytest.raises(type(failure)) as caught:
+        await replay.receive()
+    assert caught.value is failure

@@ -39,6 +39,10 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
   const [copyingLink, setCopyingLink] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const copyTimeoutRef = useRef<number | null>(null)
+  const mountedRef = useRef(false)
+  // State drives the UI; refs acquire the lock before React commits a render.
+  const sharingRef = useRef(false)
+  const copyingLinkRef = useRef(false)
 
   const shareUrl = useMemo(() => resolveShareUrl(url), [url])
 
@@ -74,7 +78,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
   }, [shareUrl, title, translations])
 
   const handleShare = useCallback(async () => {
-    if (sharing) return
+    if (sharingRef.current) return
 
     const fullUrl = shareUrl
     if (!fullUrl) return
@@ -86,31 +90,35 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
       url: fullUrl,
     }
 
-    const canUseNativeShare =
-      typeof navigator !== "undefined" &&
-      typeof navigator.share === "function" &&
-      (!navigator.canShare || navigator.canShare(shareData))
-
+    sharingRef.current = true
     try {
       setSharing(true)
+      const canUseNativeShare =
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (!navigator.canShare || navigator.canShare(shareData))
       if (canUseNativeShare) {
         await navigator.share(shareData)
+        if (!mountedRef.current) return
         onNotify?.(translations.shareSuccess || "Shared successfully")
       } else {
         setShareDialogOpen(true)
       }
     } catch (error) {
+      if (!mountedRef.current) return
       const message = (error as DOMException | Error)?.name ?? ""
       if (message === "AbortError") return
       logError(error)
       onNotify?.(translations.shareError || "Share failed")
     } finally {
-      setSharing(false)
+      sharingRef.current = false
+      if (mountedRef.current) setSharing(false)
     }
-  }, [sharing, shareUrl, title, translations, onNotify])
+  }, [shareUrl, title, translations, onNotify])
 
   const handleCopyLink = useCallback(async () => {
-    if (!shareUrl || copyingLink) return
+    if (!shareUrl || copyingLinkRef.current) return
+    copyingLinkRef.current = true
     setCopyingLink(true)
 
     try {
@@ -125,6 +133,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
         throw new Error("Clipboard API not available")
       }
 
+      if (!mountedRef.current) return
       setCopiedLink(true)
       onNotify?.(translations.linkCopied || "Link copied!")
 
@@ -136,15 +145,19 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
         copyTimeoutRef.current = null
       }, 2200)
     } catch (error) {
+      if (!mountedRef.current) return
       logError(error)
       onNotify?.(translations.shareError || "Copy failed")
     } finally {
-      setCopyingLink(false)
+      copyingLinkRef.current = false
+      if (mountedRef.current) setCopyingLink(false)
     }
-  }, [copyingLink, shareUrl, translations, onNotify])
+  }, [shareUrl, translations, onNotify])
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (copyTimeoutRef.current) {
         window.clearTimeout(copyTimeoutRef.current)
         copyTimeoutRef.current = null

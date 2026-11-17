@@ -983,3 +983,39 @@ def test_virtualenv_security_floor_is_dev_only_and_locked() -> None:
     assert len(locked) == 1
     assert Version(locked[0]["version"]) >= patched
     assert locked[0]["version"] in virtualenv[0].specifier
+
+
+def test_developer_migration_target_uses_supported_postgres_validation() -> None:
+    makefile = _read_text("Makefile")
+    target = re.search(r"^alembic-check:([^\n]*)\n((?:\t[^\n]*\n)*)", makefile, re.M)
+    assert target is not None
+    assert target.group(1).strip() == "db-validate"
+    assert "sqlite" not in target.group(2)
+    assert "downgrade" not in target.group(2)
+
+
+@pytest.mark.parametrize("relative_path", ("Makefile", "AGENTS.md"))
+def test_developer_python_coverage_commands_include_all_source_roots(
+    relative_path: str,
+) -> None:
+    source_roots = set(_read_contract()["source_roots"]["python"])
+    commands = [
+        line for line in _read_text(relative_path).splitlines() if "--cov=" in line
+    ]
+    assert commands
+    for command in commands:
+        measured_roots = set(re.findall(r"--cov=([^\s]+)", command))
+        assert measured_roots == source_roots, command
+
+
+def test_go_testing_guide_lists_every_owned_module() -> None:
+    contract = _read_contract()
+    roots = {
+        root
+        for component, paths in contract["source_roots"].items()
+        if component.startswith("go-")
+        for root in paths
+    }
+    guide = _read_text("TESTING.md")
+    for root in roots:
+        assert f"Push-Location {root}\n" in guide

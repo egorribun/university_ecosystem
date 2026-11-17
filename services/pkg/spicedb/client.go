@@ -65,8 +65,8 @@ func (c *MemoryClient) CheckPermission(ctx context.Context, resourceType, resour
 		return allowed, nil
 	}
 
-	// Check global tenant admin permission override if tenant is set
-	if tenantID, ok := c.tenantMap[resourceID]; ok {
+	// Only campus resources inherit permissions through the campus-to-tenant mapping.
+	if tenantID, ok := c.tenantMap[resourceID]; resourceType == "campus" && ok {
 		tenantAdminKey := permKey("tenant", tenantID, "admin", userID)
 		if allowed, ok := c.permissions[tenantAdminKey]; ok && allowed {
 			return true, nil
@@ -93,6 +93,9 @@ func (c *MemoryClient) CheckCampusPermission(ctx context.Context, campusID, perm
 func EvaluateWithTimeout(ctx context.Context, fn func(context.Context) (bool, error), timeout time.Duration) (bool, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if err := evalCtx.Err(); err != nil {
+		return false, err
+	}
 
 	type res struct {
 		allowed bool
@@ -120,6 +123,15 @@ func EvaluateWithTimeout(ctx context.Context, fn func(context.Context) (bool, er
 	case <-evalCtx.Done():
 		return false, evalCtx.Err()
 	case r := <-ch:
-		return r.allowed, r.err
+		return acceptPermissionEvaluation(evalCtx, r.allowed, r.err)
 	}
+}
+
+// Cancellation wins when a result and Done are both ready. This is an
+// acceptance-point check, not a guarantee against cancellation after return.
+func acceptPermissionEvaluation(ctx context.Context, allowed bool, err error) (bool, error) {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return false, contextErr
+	}
+	return allowed, err
 }

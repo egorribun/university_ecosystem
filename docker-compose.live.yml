@@ -98,6 +98,8 @@ services:
     ports: !override
       - "127.0.0.1:${LIVE_HOST_PORT_BACKEND:?set by scripts/live_stand.py}:8000"
     environment: &live-delivery
+      # The launcher verifies this project-derived tenant against signed ownership.
+      MVP_TENANT_ID: "${MVP_TENANT_ID:?set by scripts/live_stand.py}"
       # Browser projects share one client IP; reserve enough room for the full
       # live suite. The 5/minute application default remains in effect outside
       # this owned acceptance-only overlay.

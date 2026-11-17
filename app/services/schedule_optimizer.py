@@ -10,7 +10,35 @@ logger = get_logger(__name__)
 _UNSET = object()
 
 
+def _normalize_time_input(value: time) -> datetime:
+    """Interpret date-less times without inventing a timezone transition date.
+
+    A time whose utcoffset() is None is naive, even with a tzinfo object, and
+    retains the existing UTC convention. Otherwise its explicit offset is
+    applied as a fixed offset. The separate weekday remains authoritative;
+    inputs requiring a day change need a dated datetime instead.
+    """
+    offset = value.utcoffset()
+    wall_time = datetime.combine(
+        datetime(1970, 1, 1).date(), value.replace(tzinfo=None), tzinfo=UTC
+    )
+    normalized = wall_time if offset is None else wall_time - offset
+    if normalized.date() != wall_time.date():
+        raise ValueError(
+            "Offset-aware time crosses a UTC day; provide a dated datetime "
+            "and an explicit schedule weekday"
+        )
+    return normalized
+
+
 class ScheduleItemInternal(BaseModel):
+    """A recurrence with an explicit weekday, not inferred from its timestamp.
+
+    Dated datetime values retain the persistence normalization contract.
+    Date-less times use UTC when semantically naive, or their explicit offset
+    when aware; a UTC day rollover is rejected rather than relabeling weekday.
+    """
+
     id: uuid.UUID | int | None = None
     weekday: int | str
     start_time: datetime | time
@@ -74,28 +102,33 @@ class ScheduleOptimizerService:
                     rust_id_override if isinstance(rust_id_override, int) else None
                 )
 
-        # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
-        # overflow errors when calling .timestamp() on year 1)
+        # Date-less times have no DST date or day-rollover policy. Normalize
+        # their explicit offset without changing the independent weekday.
+        # Leave the existing dated datetime persistence contract unchanged.
         st = item.start_time
         if isinstance(st, time):
-            st = datetime.combine(datetime(1970, 1, 1).date(), st, tzinfo=UTC)
+            st = _normalize_time_input(st)
 
         et = item.end_time
         if isinstance(et, time):
-            et = datetime.combine(datetime(1970, 1, 1).date(), et, tzinfo=UTC)
+            et = _normalize_time_input(et)
 
         return rust_ext.ScheduleItem(
             weekday=str(item.weekday),
-            # Match repository persistence: naive schedule values are UTC;
+            # Match repository persistence: semantically naive values are UTC;
             # offset-bearing values must retain their instant when normalized.
             start_time=int(
                 (
-                    st.replace(tzinfo=UTC) if st.tzinfo is None else st.astimezone(UTC)
+                    st.replace(tzinfo=UTC)
+                    if st.utcoffset() is None
+                    else st.astimezone(UTC)
                 ).timestamp()
             ),
             end_time=int(
                 (
-                    et.replace(tzinfo=UTC) if et.tzinfo is None else et.astimezone(UTC)
+                    et.replace(tzinfo=UTC)
+                    if et.utcoffset() is None
+                    else et.astimezone(UTC)
                 ).timestamp()
             ),
             parity=item.parity,

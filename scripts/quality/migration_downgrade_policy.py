@@ -380,6 +380,26 @@ def _parse_migration(path: Path) -> MigrationMetadata:
     return MigrationMetadata(revision, parents, path, reason)
 
 
+def _reject_parent_cycles(head: str, migrations: dict[str, MigrationMetadata]) -> None:
+    """Reject a cycle reachable from the head; a shared ancestor is not a cycle."""
+    visiting = {head}
+    finished: set[str] = set()
+    stack = [(head, iter(migrations[head].parents))]
+    while stack:
+        revision, parents = stack[-1]
+        parent = next(parents, None)
+        if parent is None:
+            visiting.discard(revision)
+            finished.add(revision)
+            stack.pop()
+            continue
+        if parent in visiting:
+            raise PolicyError(f"migration graph has a cycle through {parent!r}")
+        if parent not in finished:
+            visiting.add(parent)
+            stack.append((parent, iter(migrations[parent].parents)))
+
+
 def build_downgrade_plan(migrations_dir: Path) -> DowngradePlan:
     """Return the newest declared data-loss boundary reachable from the head."""
     paths = sorted(migrations_dir.glob("*.py"))
@@ -417,6 +437,7 @@ def build_downgrade_plan(migrations_dir: Path) -> DowngradePlan:
         raise PolicyError(
             f"migration graph has revisions unreachable from head: {unreachable!r}"
         )
+    _reject_parent_cycles(head, migrations)
 
     boundaries = [
         migration

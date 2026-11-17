@@ -8,7 +8,10 @@ import {
   withVerifiedNativePushBrowserExit,
 } from "./native-push-profile-cleanup"
 import { test as liveTest, ownedSessionOrigin } from "./fixtures"
-import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
+import {
+  createLivePushFailureObservation,
+  reportLivePushDeliveryObservation,
+} from "./push-delivery-observation"
 import type {
   Browser,
   BrowserContext,
@@ -39,7 +42,9 @@ export type NativePushProfile = {
 export type NativePushProfileRegistry = {
   primary: NativePushProfile
   create: () => Promise<NativePushProfile>
-  armFailureObservation: (expectedTag: string) => { disarm: () => void }
+  armFailureObservation: (
+    expectedTag: string
+  ) => ReturnType<typeof createLivePushFailureObservation>
 }
 
 type NativePushProfileFixtures = {
@@ -316,42 +321,24 @@ export const test = liveTest.extend<NativePushProfileFixtures & NativePushProfil
     let testFailed = false
     try {
       const primary = await createOwnedProfile(browser, testInfo, nativePushChannel, records)
-      let pendingFailureObservation: (() => Promise<void>) | undefined
+      let pendingFailureObservation: ReturnType<typeof createLivePushFailureObservation> | undefined
       const registry: NativePushProfileRegistry = {
         primary,
         create: () => createOwnedProfile(browser, testInfo, nativePushChannel, records),
         armFailureObservation: (expectedTag) => {
-          if (pendingFailureObservation) {
+          if (pendingFailureObservation?.isArmed()) {
             throw new Error("Native Push failure observation is already armed")
           }
-          const observation = () =>
+          const observation = createLivePushFailureObservation(() =>
             reportLivePushDeliveryObservation(primary.page, testInfo.project.name, expectedTag)
+          )
           pendingFailureObservation = observation
-          let armed = true
-          return {
-            disarm: () => {
-              if (!armed) return
-              armed = false
-              if (pendingFailureObservation === observation) {
-                pendingFailureObservation = undefined
-              }
-            },
-          }
+          return observation
         },
       }
       await provideFixture(registry)
 
-      if (testInfo.status !== testInfo.expectedStatus) {
-        const failureObservation = pendingFailureObservation
-        pendingFailureObservation = undefined
-        if (failureObservation) {
-          try {
-            await failureObservation()
-          } catch {
-            // Observation must not replace the original assertion or timeout.
-          }
-        }
-      }
+      await pendingFailureObservation?.captureIfAborted(testInfo.status)
     } catch (error) {
       testFailure = error
       testFailed = true

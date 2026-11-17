@@ -27,8 +27,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function pointerEvent(x: number, y: number): PointerEvent {
-  return { clientX: x, clientY: y } as unknown as PointerEvent
+function pointerEvent(x: number, y: number, pointerId = 1): PointerEvent {
+  return { clientX: x, clientY: y, pointerId } as unknown as PointerEvent
 }
 
 describe("useSwipe — basic detection", () => {
@@ -165,4 +165,52 @@ describe("useSwipe — cancel paths", () => {
 
     expect(onSwipeRight).not.toHaveBeenCalled()
   })
+})
+
+describe("useSwipe — pointer ownership", () => {
+  it("does not combine one pointer's start with another pointer's release", () => {
+    const onSwipeRight = vi.fn()
+    const { result } = renderHook(() => useSwipe({ onSwipeRight }))
+
+    result.current.onPointerDown(pointerEvent(0, 0, 1))
+    vi.advanceTimersByTime(50)
+    result.current.onPointerUp(pointerEvent(120, 0, 2))
+    expect(onSwipeRight).not.toHaveBeenCalled()
+
+    result.current.onPointerUp(pointerEvent(120, 0, 1))
+    expect(onSwipeRight).toHaveBeenCalledOnce()
+  })
+
+  it("does not replace an active pointer's origin with a second pointer", () => {
+    const onSwipeRight = vi.fn()
+    const onSwipeLeft = vi.fn()
+    const { result } = renderHook(() => useSwipe({ onSwipeRight, onSwipeLeft }))
+
+    result.current.onPointerDown(pointerEvent(0, 0, 1))
+    result.current.onPointerDown(pointerEvent(300, 0, 2))
+    vi.advanceTimersByTime(50)
+    result.current.onPointerUp(pointerEvent(120, 0, 1))
+
+    expect(onSwipeRight).toHaveBeenCalledOnce()
+    expect(onSwipeLeft).not.toHaveBeenCalled()
+  })
+
+  it.each(["onPointerCancel", "onPointerLeave"] as const)(
+    "ignores another pointer's %s without losing the active gesture",
+    (handler) => {
+      const onSwipeRight = vi.fn()
+      const { result } = renderHook(() => useSwipe({ onSwipeRight }))
+
+      result.current.onPointerDown(pointerEvent(0, 0, 1))
+      result.current[handler](pointerEvent(0, 0, 2))
+      vi.advanceTimersByTime(50)
+      result.current.onPointerUp(pointerEvent(120, 0, 1))
+      expect(onSwipeRight).toHaveBeenCalledOnce()
+
+      result.current.onPointerDown(pointerEvent(0, 0, 2))
+      result.current[handler](pointerEvent(0, 0, 2))
+      result.current.onPointerUp(pointerEvent(120, 0, 2))
+      expect(onSwipeRight).toHaveBeenCalledOnce()
+    }
+  )
 })
