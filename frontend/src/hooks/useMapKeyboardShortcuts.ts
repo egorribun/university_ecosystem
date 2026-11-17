@@ -45,7 +45,7 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
         '[contenteditable=""], [contenteditable="true" i], ' +
           '[contenteditable="plaintext-only" i], [contenteditable="false" i]'
       )
-      if (editingHost && editingHost.getAttribute("contenteditable")?.toLowerCase() !== "false") {
+      if (editingHost && !editingHost.matches('[contenteditable="false" i]')) {
         return
       }
 
