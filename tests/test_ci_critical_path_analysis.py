@@ -1905,10 +1905,11 @@ def test_aud093_cli_serializes_execution_bound_separately_from_wall_span(
     assert summary["critical_path_lower_bound_seconds"] == expected_bound
 
 
-def _first_attempt_skipped_record() -> dict[str, object]:
+def _first_attempt_skipped_record(labels: list[str]) -> dict[str, object]:
     # GitHub run 43981164331, job 133702960401, attempt 1. Preserve the
     # observed eight-second inversion without attributing it to clock skew.
     # The source head is synthetic; run/job IDs retain the public audit trail.
+    # The selector variant was observed in run 43982705590, job 133718444854.
     return {
         "id": 133702960401,
         "run_id": 43981164331,
@@ -1923,12 +1924,13 @@ def _first_attempt_skipped_record() -> dict[str, object]:
         "steps": [],
         "runner_id": None,
         "runner_name": None,
-        "labels": [],
+        "labels": labels,
     }
 
 
-def test_first_attempt_skipped_timing_preserves_raw_evidence() -> None:
-    record = _first_attempt_skipped_record()
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) -> None:
+    record = _first_attempt_skipped_record(labels)
     original = json.dumps(record, sort_keys=True)
     jobs = parse_jobs({"jobs": [record]})
     report = analyze_jobs(
@@ -1953,6 +1955,7 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence() -> None:
     }
 
 
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "change",
     [
@@ -1965,7 +1968,12 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence() -> None:
         {"conclusion": "cancelled"},
         {"runner_id": 42},
         {"runner_name": "runner"},
-        {"labels": ["ubuntu-24.04"]},
+        {"labels": None},
+        {"labels": "ubuntu-24.04"},
+        {"labels": {}},
+        {"labels": ["ubuntu-24.04", "extra"]},
+        {"labels": ["ubuntu-24.04", "ubuntu-24.04"]},
+        {"labels": ["self-hosted"]},
         {"steps": [{"name": "Run tests"}]},
         {"created_at": "2026-11-16T23:50:30Z"},
         {"queued_at": "2026-11-16T23:50:31Z"},
@@ -1973,26 +1981,32 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence() -> None:
     ],
 )
 def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
-    change: dict[str, object],
+    labels: list[str], change: dict[str, object]
 ) -> None:
-    record = _first_attempt_skipped_record()
+    record = _first_attempt_skipped_record(labels)
     record.update(change)
     with pytest.raises(AnalysisError):
         parse_jobs({"jobs": [record]})
 
 
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "field", ["runner_id", "runner_name", "labels", "steps", "status"]
 )
-def test_first_attempt_skip_requires_explicit_no_execution_evidence(field: str) -> None:
-    record = _first_attempt_skipped_record()
+def test_first_attempt_skip_requires_explicit_no_execution_evidence(
+    labels: list[str], field: str
+) -> None:
+    record = _first_attempt_skipped_record(labels)
     del record[field]
     with pytest.raises(AnalysisError):
         parse_jobs({"jobs": [record]})
 
 
-def test_first_attempt_skipped_record_is_not_work_after_core_failure() -> None:
-    skipped = _first_attempt_skipped_record()
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+def test_first_attempt_skipped_record_is_not_work_after_core_failure(
+    labels: list[str],
+) -> None:
+    skipped = _first_attempt_skipped_record(labels)
     failure = {
         "id": 1,
         "name": "core-failure",
