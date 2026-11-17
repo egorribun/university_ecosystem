@@ -322,8 +322,11 @@ describe("SettingsIntegrations", () => {
       const nextAccount = { ...mocks.user!, id: "user-2", spotify_connected: true }
       expect(update(nextAccount)).toBe(nextAccount)
       expect(update(null)).toBeNull()
-      rotateBrowserSession()
-      expect(update(mocks.user)).toBe(mocks.user)
+      await act(async () => {
+        rotateBrowserSession()
+        expect(update(mocks.user)).toBe(mocks.user)
+        await Promise.resolve()
+      })
     }
   )
 
