@@ -244,6 +244,24 @@ func (h *Hub) sessionRevocationBootstrapError(
 	return fmt.Errorf("session revocation listener startup was cancelled")
 }
 
+// installSessionRevocationStop rechecks ownership atomically with publishing
+// the concrete subscription closer. A newer Start or Stop can win after the
+// earlier bootstrap validation; the superseded startup must not replace its
+// successor's shutdown callback.
+func (h *Hub) installSessionRevocationStop(
+	generation uint64,
+	listenerCtx context.Context,
+	stop context.CancelFunc,
+) bool {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if h.stopped.Load() || h.sessionRevocationGeneration != generation || listenerCtx.Err() != nil {
+		return false
+	}
+	h.sessionRevocationCancel = stop
+	return true
+}
+
 // StartSessionRevocationListener consumes canonical session revocation events
 // from the dedicated noeviction Redis. It waits for the subscription
 // acknowledgement before returning so bootstrap cannot silently start without
@@ -306,17 +324,19 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 		finish()
 		return startupFailure
 	}
-	h.lifecycleMu.Lock()
 	// Replace the provisional bootstrap stop function with a concrete Pub/Sub
 	// close. PubSub.Receive only observes a context deadline captured when it
 	// starts; closing the socket is therefore required to wake an already-blocked
 	// read.
-	h.sessionRevocationCancel = func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
+	stopSubscription := func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
 		cancel()
 		closeSubscriber(listenerCtx)
 		closePubSub(listenerCtx)
 	}
-	h.lifecycleMu.Unlock()
+	if !h.installSessionRevocationStop(generation, listenerCtx, stopSubscription) {
+		finish()
+		return fmt.Errorf("session revocation listener startup was cancelled")
+	}
 
 	if _, err := pubsub.Receive(listenerCtx); err != nil {
 		finish()
