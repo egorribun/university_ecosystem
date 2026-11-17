@@ -100,6 +100,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   // Wave 183 SW7 — extended with `previewUrl` for Blob URL lifetime mgmt.
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([])
   const [svgRejected, setSvgRejected] = useState(false)
+  const svgRejectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // True while an async send is pending, so a repeated Enter cannot send the same draft twice.
   const sendInFlightRef = useRef(false)
@@ -113,6 +114,10 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
 
   const setFileInputRef = useCallback((node: HTMLInputElement | null) => {
     if (node === null) {
+      if (svgRejectionTimerRef.current !== null) {
+        clearTimeout(svgRejectionTimerRef.current)
+        svgRejectionTimerRef.current = null
+      }
       previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
       previewUrlsRef.current.clear()
     }
@@ -229,7 +234,11 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     const rejectedCount = filteredFiles.length - validFiles.length
     if (rejectedCount > 0) {
       setSvgRejected(true)
-      setTimeout(() => setSvgRejected(false), 3000)
+      if (svgRejectionTimerRef.current !== null) clearTimeout(svgRejectionTimerRef.current)
+      svgRejectionTimerRef.current = setTimeout(() => {
+        svgRejectionTimerRef.current = null
+        setSvgRejected(false)
+      }, 3000)
     }
     const additions = validFiles.map((file) => {
       const id = crypto.randomUUID()
