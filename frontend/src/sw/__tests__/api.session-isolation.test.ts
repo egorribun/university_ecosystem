@@ -426,6 +426,45 @@ describe("private API session isolation", () => {
     }
   )
 
+  it("rejects a bypass response after logout even when the exact scope is restored", async () => {
+    api.setSessionHash("account-a", "account-a:live")
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const result = request(undefined, { cache: "no-store" })
+    await entered.promise
+
+    await api.clearSessionCaches()
+    api.setSessionHash("account-a", "account-a:live")
+    delayed.resolve(new Response("old private payload"))
+
+    expect((await result).type).toBe("error")
+    expect(api.getSessionCacheScope()).toBe("account-a:live")
+    expect(entries.size).toBe(0)
+  })
+
+  it("rejects an unconfirmed response when an initial anonymous session becomes authenticated", async () => {
+    expect(api.getSessionCacheScope()).toBeNull()
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const result = request(undefined, undefined, "")
+    await entered.promise
+
+    api.setSessionHash("account-a", "account-a:live")
+    delayed.resolve(new Response("pre-login payload"))
+
+    expect((await result).type).toBe("error")
+    expect(api.getSessionCacheScope()).toBe("account-a:live")
+    expect(entries.size).toBe(0)
+  })
+
   it("rejects a network response delayed across account changes", async () => {
     api.setSessionHash("account-a")
     const delayed = deferred<Response>()
