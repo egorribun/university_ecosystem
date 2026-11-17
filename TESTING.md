@@ -108,6 +108,10 @@ Push-Location services/cmd/uni-cli
 go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
 Pop-Location
 
+Push-Location services/pkg/logging
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
+
 Push-Location services/pkg/spiffe
 go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
 Pop-Location
@@ -118,7 +122,7 @@ Pop-Location
 ```
 
 The quality manifest reports the three deployable services independently and
-merges `uni-cli`, SPIFFE, and SpiceDB evidence into the `go-shared` component
+merges `uni-cli`, logging, SPIFFE, and SpiceDB evidence into the `go-shared` component
 with `scripts/quality/merge_go_coverprofiles.py`. Generated protobuf bindings
 are build-checked but excluded from authored-source coverage.
 

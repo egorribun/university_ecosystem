@@ -26,7 +26,7 @@ lint-frontend:
 
 backend-test:
 	mkdir -p artifacts/coverage/python
-	pytest --cov=app --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json --cov-report=term-missing --junitxml=pytest-report.xml
+	pytest --cov=app --cov=alembic/versions --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json --cov-report=term-missing --junitxml=pytest-report.xml
 
 backend-typecheck:
 	mypy
@@ -87,12 +87,11 @@ test-quick:
 # Coverage report with HTML output
 coverage:
 	mkdir -p artifacts/coverage/python
-	pytest --cov=app --cov-report=html --cov-report=term --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json
+	pytest --cov=app --cov=alembic/versions --cov-report=html --cov-report=term --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json
 	@echo "Coverage report: ./htmlcov/index.html"
 
-alembic-check:
-	DATABASE_URL=sqlite+aiosqlite:///./ci-migrations.db alembic -c alembic.ini upgrade head && \
-		DATABASE_URL=sqlite+aiosqlite:///./ci-migrations.db alembic -c alembic.ini downgrade base
+# Compatibility alias: the MVP baseline requires PostgreSQL and is irreversible.
+alembic-check: db-validate
 
 generate-api:
 	# Keep the tracked schema and propagate exporter failures before generation.
@@ -145,7 +144,7 @@ k8s-lint:
 # Show test coverage summary
 audit-metrics:
 	@echo "=== Test Coverage ==="
-	pytest --cov=app --cov-report=term-missing -q --tb=no 2>&1 | tail -20
+	pytest --cov=app --cov=alembic/versions --cov-report=term-missing -q --tb=no 2>&1 | tail -20
 	@echo ""
 	@echo "=== Code Stats ==="
 	@find ./app -name "*.py" | wc -l | xargs echo "Python files:"
@@ -172,8 +171,9 @@ helm-lint:  ## Lint Helm charts (requires helm)
 
 docker-lint:  ## Lint Dockerfiles with hadolint (requires hadolint)
 	@which hadolint > /dev/null 2>&1 || (echo "Install hadolint: https://github.com/hadolint/hadolint/releases" && exit 1)
-	@find . -name "Dockerfile*" -not -path "*/node_modules/*" -not -path "*/.git/*" \
-		| xargs hadolint --ignore DL3008 --ignore DL3009
+	@find . -type f \( -name "Dockerfile" -o -name "Dockerfile.*" -o -name "*.Dockerfile" \) \
+		-not -name "*.dockerignore" -not -path "*/node_modules/*" -not -path "*/.git/*" \
+		-exec hadolint --ignore DL3008 --ignore DL3009 {} +
 	@echo "Dockerfile lint passed."
 
 sbom-local:  ## Generate SBOM locally and check for HIGH/CRITICAL CVEs (requires syft + grype)
