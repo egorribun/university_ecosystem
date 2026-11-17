@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,6 +69,7 @@ type call struct {
 	done       chan struct{}
 	res        bool
 	generation uint64
+	retired    bool // guarded by genMu; targeted invalidation retires publication
 }
 
 // InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
@@ -219,38 +221,65 @@ func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
 // The LRU cache Keys() method returns up to 100 000 keys (cache capacity),
 // but the linear scan is bounded and fast (string prefix match, no alloc).
 func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
-	if !isValidUUID(userID) {
+	if !isValidUUID(userID) || (roomID != "" && !isValidUUID(roomID)) {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	// This compatibility interface has no error result. Durable revocation
+	// uses RefreshRoomAuthorization, which propagates invalidation failures.
+	_ = c.invalidateRoomAuthorizationCache(ctx, userID, roomID)
+}
 
-	// Wildcard mode: empty roomID means "evict all rooms for this user".
-	if roomID == "" {
-		prefix := userID + ":"
-		for _, k := range c.cache.Keys() {
-			if len(k) > len(prefix) && k[:len(prefix)] == prefix {
-				c.cache.Remove(k)
-			}
-		}
-		// Also purge L2 (Redis) entries matching this user.
-		if c.redis != nil {
-			ctx := context.Background()
-			iter := c.redis.Scan(ctx, 0, "auth:perms:"+userID+":*", 100).Iterator()
-			for iter.Next(ctx) {
-				c.redis.Del(ctx, iter.Val()) //nolint:errcheck
-			}
-		}
-		return
-	}
-
-	if !isValidUUID(roomID) {
-		return
-	}
+// retireLocalRoomAuthorization orders targeted invalidation against cache
+// reads/publication without retaining an unbounded per-key generation map.
+func (c *InternalAPIAuthClient) retireLocalRoomAuthorization(userID, roomID string) {
+	c.genMu.Lock()
+	defer c.genMu.Unlock()
 	key := userID + ":" + roomID
-	c.cache.Remove(key)
-	// RZ-21-03: Also remove from Redis L2 for single-room invalidation.
-	if c.redis != nil {
-		c.redis.Del(context.Background(), "auth:perms:"+key) //nolint:errcheck
+	if roomID != "" {
+		c.callMu.Lock()
+		if active := c.calls[key]; active != nil {
+			active.retired = true
+		}
+		c.callMu.Unlock()
+		c.cache.Remove(key)
+		return
 	}
+	prefix := userID + ":"
+	c.callMu.Lock()
+	for candidate, active := range c.calls {
+		if strings.HasPrefix(candidate, prefix) {
+			active.retired = true
+		}
+	}
+	c.callMu.Unlock()
+	for _, candidate := range c.cache.Keys() {
+		if strings.HasPrefix(candidate, prefix) {
+			c.cache.Remove(candidate)
+		}
+	}
+}
+
+// Clear on both sides of Redis I/O. A concurrent lookup may observe old L2
+// state during deletion, but its L1 entry or pending publication is retired
+// before invalidation returns. Never hold genMu across network I/O.
+func (c *InternalAPIAuthClient) invalidateRoomAuthorizationCache(ctx context.Context, userID, roomID string) error {
+	c.retireLocalRoomAuthorization(userID, roomID)
+	defer c.retireLocalRoomAuthorization(userID, roomID)
+	if c.redis == nil {
+		return nil
+	}
+	if roomID != "" {
+		return c.redis.Del(ctx, "auth:perms:"+userID+":"+roomID).Err()
+	}
+	iter := c.redis.Scan(ctx, 0, "auth:perms:"+userID+":*", 100).Iterator()
+	for iter.Next(ctx) {
+		if err := c.redis.Del(ctx, iter.Val()).Err(); err != nil {
+			return err
+		}
+	}
+	return iter.Err()
 }
 
 // isValidUUID returns true when s is a canonical RFC-4122 UUID string.
@@ -363,14 +392,9 @@ func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
 		return false, fmt.Errorf("invalid user or room id for authorization refresh")
 	}
 
-	key := userID + ":" + roomID
-	c.cache.Remove(key)
-	if c.redis != nil {
-		if err := c.redis.Del(ctx, "auth:perms:"+key).Err(); err != nil {
-			return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
-		}
+	if err := c.invalidateRoomAuthorizationCache(ctx, userID, roomID); err != nil {
+		return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
 	}
-
 	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
@@ -478,7 +502,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 		return false
 	}
 	c.callMu.Lock()
-	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation {
+	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation && !activeCall.retired {
 		c.callMu.Unlock()
 		c.genMu.RUnlock()
 		select {
@@ -487,7 +511,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 			return false
 		}
 		c.genMu.RLock()
-		allowed := ctx.Err() == nil && activeCall.generation == c.generation && activeCall.res
+		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && activeCall.res
 		c.genMu.RUnlock()
 		return allowed
 	}
@@ -509,8 +533,8 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
 	c.genMu.RLock()
-	if c.generation != generation {
-		// A reset retires the answer for this caller as well as its waiters.
+	if c.generation != generation || newCall.retired {
+		// A reset or targeted invalidation retires the answer for this caller as well as its waiters.
 		allowed = false
 	} else if authErr == nil {
 		c.cache.Add(key, cacheEntry{
