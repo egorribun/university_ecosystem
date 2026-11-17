@@ -34,6 +34,8 @@ export function useEventsKeyboardNav(items: EventItem[]) {
     if (items.length === 0) return
 
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+
       // Skip if focused in input, textarea, dialog, or contenteditable
       const target = e.target as HTMLElement
       const tag = target.tagName
