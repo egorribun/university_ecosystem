@@ -245,20 +245,17 @@ describe("SearchDialog user behavior", () => {
     }
   })
 
-  it.each([
-    '"physics"',
-    '[{"query":"physics"}]',
-    '[42]',
-    '[null]',
-    '["physics", {"query":"lab"}]',
-  ])("ignores structurally invalid recent-search storage: %s", async (stored) => {
-    localStorage.setItem(RECENT_SEARCHES_KEY, stored)
-    await renderSearch()
-    expect(openSearch()).toHaveValue("")
-    expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument()
-    expect(screen.getByText("Use the arrow keys to navigate")).toBeInTheDocument()
-    expect(screen.queryByText("Recent searches")).not.toBeInTheDocument()
-  })
+  it.each(['"physics"', '[{"query":"physics"}]', "[42]", "[null]", '["physics", {"query":"lab"}]'])(
+    "ignores structurally invalid recent-search storage: %s",
+    async (stored) => {
+      localStorage.setItem(RECENT_SEARCHES_KEY, stored)
+      await renderSearch()
+      expect(openSearch()).toHaveValue("")
+      expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument()
+      expect(screen.getByText("Use the arrow keys to navigate")).toBeInTheDocument()
+      expect(screen.queryByText("Recent searches")).not.toBeInTheDocument()
+    }
+  )
 
   it("announces a failed search instead of an empty result and retries on request", async () => {
     apiGet.mockRejectedValueOnce(new Error("Search unavailable"))
