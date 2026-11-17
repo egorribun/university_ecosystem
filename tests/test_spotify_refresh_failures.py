@@ -37,6 +37,7 @@ async def connected_spotify_user(db_session, user_factory):
         (200, "{}", None, 503, None),
         (200, '{"access_token":null}', None, 503, None),
         (200, '{"access_token":""}', None, 503, None),
+        (200, '{"access_token":"   "}', None, 503, None),
         (200, '{"access_token":123}', None, 503, None),
         (200, '{"access_token":true}', None, 503, None),
         (200, '{"access_token":["synthetic-secret"]}', None, 503, None),
@@ -80,6 +81,9 @@ async def test_refresh_failure_preserves_persisted_tokens_and_allows_recovery(
         nonlocal calls
         assert request.method == "POST"
         assert request.url == "https://accounts.spotify.com/api/token"
+        from urllib.parse import parse_qs
+
+        assert parse_qs(request.content.decode())["refresh_token"] == [old_refresh]
         calls += 1
         if calls == 1:
             headers = {"Retry-After": retry_after} if retry_after is not None else {}
