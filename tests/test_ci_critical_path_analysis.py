@@ -2237,8 +2237,9 @@ def test_nonexecution_preserves_executed_measurements_and_failure_edges(diagnost
     )
     if not diagnostic:
         assert affected["upstream_failure_blocked"] is True
-        assert mixed["summary"]["dependency_work_cost_path_seconds"] == (
-            baseline["summary"]["critical_path_seconds"]
+        assert (
+            mixed["summary"]["dependency_work_cost_path_seconds"]
+            == (baseline["summary"]["critical_path_seconds"])
         )
 
 
