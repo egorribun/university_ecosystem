@@ -99,6 +99,54 @@ describe("useShare", () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it.each(["copy-success", "copy-error", "share-success", "share-error"])(
+    "deduplicates same-tick %s calls and permits retry after completion",
+    async (scenario) => {
+      let resolveOperation!: () => void
+      let rejectOperation!: (error: Error) => void
+      const pending = new Promise<void>((resolve, reject) => {
+        resolveOperation = resolve
+        rejectOperation = reject
+      })
+      const copying = scenario.startsWith("copy")
+      const api = copying ? vi.mocked(navigator.clipboard.writeText) : vi.mocked(navigator.share)
+      api.mockReturnValueOnce(pending)
+      const { result } = renderHook(
+        () => useShare({ title: "Test", url: "https://example.com", onNotify, translations }),
+        { wrapper: StrictMode }
+      )
+      const handler = copying ? result.current.handleCopyLink : result.current.handleShare
+      let first!: Promise<void>
+      let duplicate!: Promise<void>
+      act(() => {
+        first = handler()
+        duplicate = handler()
+      })
+      await act(async () => {
+        await duplicate
+      })
+      expect(api).toHaveBeenCalledOnce()
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(true)
+      expect(onNotify).not.toHaveBeenCalled()
+
+      await act(async () => {
+        if (scenario.endsWith("success")) resolveOperation()
+        else rejectOperation(new Error("retryable failure"))
+        await first
+      })
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(false)
+      expect(onNotify).toHaveBeenCalledOnce()
+
+      // Even the original render's callback can start a new operation after release.
+      await act(async () => {
+        await handler()
+      })
+      expect(api).toHaveBeenCalledTimes(2)
+      expect(onNotify).toHaveBeenCalledTimes(2)
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(false)
+    }
+  )
+
   it("returns share options based on provided URL", () => {
     const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com/foo" }))
 
