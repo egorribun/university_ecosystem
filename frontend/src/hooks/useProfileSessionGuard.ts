@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
+import { useSessionIdentity } from "@/hooks/useSessionIdentity"
 import { getConfirmedUserId } from "@/stores/authIdentity"
-import {
-  captureSessionEpoch,
-  getBrowserSessionGeneration,
-  getSessionEpoch,
-} from "@/stores/sessionEpoch"
+import { captureSessionEpoch, getBrowserSessionGeneration } from "@/stores/sessionEpoch"
 
 /** A profile action belongs to both its initiating session and mounted account. */
 export function useProfileSessionGuard() {
   const { user, loading } = useAuth()
   const userId = user?.id ?? null
-  const sessionEpoch = getSessionEpoch()
-  const sessionGeneration = getBrowserSessionGeneration()
+  const [sessionEpoch, sessionGeneration] = useSessionIdentity()
   const lifetimeRef = useRef({ userId, active: false })
   const authRef = useRef({ user, loading })
 
