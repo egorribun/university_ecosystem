@@ -22,6 +22,7 @@ interface SelectProps {
   /** Accessible label for screen readers */
   "aria-label"?: string
   "aria-labelledby"?: string
+  "aria-describedby"?: string
 }
 
 const noopValueChange = (_value: string): void => undefined
@@ -47,6 +48,7 @@ const Select = ({
   id: externalId,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: SelectProps) => {
   const { t } = useTranslation("common")
   const defaultPlaceholder = placeholder ?? t("select.placeholder")
@@ -229,6 +231,7 @@ const Select = ({
         }
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        aria-describedby={ariaDescribedBy}
         disabled={disabled}
         onClick={() => (isOpen ? closeListbox() : openListbox())}
         onKeyDown={handleKeyDown}
