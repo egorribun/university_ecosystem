@@ -93,6 +93,87 @@ describe("MessageInput", () => {
     expect(createObjectURLSpy).not.toHaveBeenCalled()
   })
 
+
+  it.each(["before", "after"] as const)(
+    "keeps an inspected attachment that arrives %s an earlier send completes",
+    async (inspectionOrder) => {
+      let finishInspection!: (value: string) => void
+      let finishSend!: (sent: boolean) => void
+      const onSend = vi.fn(
+        () => new Promise<boolean>((resolve) => { finishSend = resolve })
+      )
+      const { container, unmount } = render(<MessageInput onSend={onSend} />)
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      const first = new File(["first"], "first.txt", { type: "text/plain" })
+      const later = new File(["png"], "later.png", { type: "image/png" })
+      vi.spyOn(later, "slice").mockReturnValue({
+        text: () => new Promise<string>((resolve) => { finishInspection = resolve }),
+      } as Blob)
+
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [first] } })
+      })
+      fireEvent.change(input, { target: { files: [later] } })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:aria.sendMessage" }))
+      expect(onSend).toHaveBeenCalledWith("", [first])
+
+      if (inspectionOrder === "before") {
+        await act(async () => finishInspection("png"))
+        expect(revokeObjectURLSpy).not.toHaveBeenCalled()
+      }
+      await act(async () => finishSend(true))
+      if (inspectionOrder === "after") {
+        await act(async () => finishInspection("png"))
+      }
+
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole("img", { name: "later.png" })).toBeTruthy()
+      expect(screen.getAllByRole("button", {
+        name: "messenger:aria.removeAttachment",
+      })).toHaveLength(1)
+      expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"]])
+      unmount()
+      expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"], ["blob:mock-2"]])
+    }
+  )
+
+  it("releases a removed pending-send attachment only once after send and unmount", async () => {
+    let finishSend!: (sent: boolean) => void
+    const onSend = vi.fn(
+      () => new Promise<boolean>((resolve) => { finishSend = resolve })
+    )
+    const { container, unmount } = render(<MessageInput onSend={onSend} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["text"], "notes.txt", { type: "text/plain" })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:aria.sendMessage" }))
+    fireEvent.click(screen.getByRole("button", { name: "messenger:aria.removeAttachment" }))
+    expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"]])
+    await act(async () => finishSend(true))
+    unmount()
+    expect(revokeObjectURLSpy.mock.calls).toEqual([["blob:mock-1"]])
+  })
+
+  it("cancels the SVG rejection timer on unmount", async () => {
+    const schedule = vi.spyOn(globalThis, "setTimeout")
+    const cancel = vi.spyOn(globalThis, "clearTimeout")
+    const { container, unmount } = render(<MessageInput onSend={() => {}} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [new File(["<svg/>"], "bad.svg", { type: "image/svg+xml" })] },
+      })
+    })
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+    const timerIndex = schedule.mock.calls.findIndex(([, delay]) => delay === 3000)
+    expect(timerIndex).toBeGreaterThanOrEqual(0)
+    const timer = schedule.mock.results[timerIndex]?.value
+    unmount()
+    expect(cancel).toHaveBeenCalledWith(timer)
+  })
+
   describe("a11y (W183 SW4)", () => {
     it("textarea has aria-label", () => {
       render(<MessageInput onSend={() => {}} />)
