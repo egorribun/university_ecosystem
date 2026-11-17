@@ -16,9 +16,7 @@ def test_time_and_datetime_inputs_have_identical_native_instants(
     offset_minutes: int | None,
 ) -> None:
     zone = (
-        None
-        if offset_minutes is None
-        else timezone(timedelta(minutes=offset_minutes))
+        None if offset_minutes is None else timezone(timedelta(minutes=offset_minutes))
     )
     start = time(11, 15, tzinfo=zone)
     end = time(12, 45, tzinfo=zone)
@@ -143,9 +141,7 @@ def test_offset_time_cannot_silently_move_to_another_weekday(
 def test_dated_datetime_conversion_and_explicit_weekday_are_unchanged(
     offset_hours: int, hour: int
 ) -> None:
-    start = datetime(
-        2026, 7, 6, hour, tzinfo=timezone(timedelta(hours=offset_hours))
-    )
+    start = datetime(2026, 7, 6, hour, tzinfo=timezone(timedelta(hours=offset_hours)))
     end = start + timedelta(minutes=30)
     item = ScheduleItemInternal(
         weekday="Monday",
