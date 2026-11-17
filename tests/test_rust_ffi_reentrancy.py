@@ -1,23 +1,18 @@
 """Native extraction must not deadlock on Python sequence callbacks."""
 
-import os
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("operation", ["detect", "batch", "slot"])
 @pytest.mark.parametrize("callback", ["len", "iter", "getitem"])
 def test_schedule_extraction_can_reenter_from_sequence(operation, callback):
-    try:
-        import rust_ext  # noqa: F401
-    except ImportError:
-        if os.environ.get("CI", "").lower() == "true":
-            pytest.fail("rust_ext must be built for the FFI reentrancy regression")
-        pytest.skip("rust_ext is not built")
-
     script = textwrap.dedent(
         """
         import sys
@@ -73,13 +68,6 @@ def test_schedule_extraction_can_reenter_from_sequence(operation, callback):
 
 
 def test_concurrent_native_calls_use_owned_schedule_snapshots():
-    try:
-        import rust_ext  # noqa: F401
-    except ImportError:
-        if os.environ.get("CI", "").lower() == "true":
-            pytest.fail("rust_ext must be built for the FFI concurrency regression")
-        pytest.skip("rust_ext is not built")
-
     script = textwrap.dedent(
         """
         from concurrent.futures import ThreadPoolExecutor
@@ -109,3 +97,20 @@ def test_concurrent_native_calls_use_owned_schedule_snapshots():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "CONCURRENT_EXTRACTION_OK"
+
+
+def test_native_wrappers_extract_owned_values_before_detaching():
+    """Bind the Python runtime regressions to the native FFI ownership boundary."""
+    source = (ROOT / "native/rust_ext/src/lib.rs").read_text(encoding="utf-8")
+    for name, variables in (
+        ("detect_conflicts_py", ("target", "existing")),
+        ("batch_detect_conflicts_py", ("items",)),
+        ("find_optimal_slot_py", ("existing_schedule", "available_blocks")),
+    ):
+        start = source.index(f"fn {name}(")
+        body = source[start : source.index("\n}\n", start)]
+        detach = body.index("py.detach(")
+        for variable in variables:
+            assert body.index(f"{variable}.extract()?") < detach
+        assert ".lock()" not in body
+    assert "SCHEDULE_ITEM_EXTRACT_LOCK" not in source
