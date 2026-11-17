@@ -56,7 +56,9 @@ export async function proveSsrAuthentication({
   onStage("signed-status")
   assert.ok([301, 302, 303, 307, 308].includes(accepted.status))
   onStage("signed-location")
-  assert.equal(new URL(accepted.headers.get("location"), localOrigin).pathname, "/dashboard")
+  const acceptedLocation = new URL(accepted.headers.get("location"), localOrigin)
+  assert.equal(acceptedLocation.origin, localOrigin)
+  assert.equal(acceptedLocation.pathname, "/dashboard")
   onStage("signed-cache")
   assert.match(accepted.headers.get("cache-control") ?? "", /private/u)
   await accepted.arrayBuffer()
@@ -81,7 +83,9 @@ export async function proveSsrAuthentication({
   onStage("protected-status")
   assert.ok([301, 302, 303, 307, 308].includes(protectedResponse.status))
   onStage("protected-location")
-  assert.equal(new URL(protectedResponse.headers.get("location"), localOrigin).pathname, "/login")
+  const protectedLocation = new URL(protectedResponse.headers.get("location"), localOrigin)
+  assert.equal(protectedLocation.origin, localOrigin)
+  assert.equal(protectedLocation.pathname, "/login")
   await protectedResponse.arrayBuffer()
 }
 
