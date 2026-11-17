@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SEMVER_PATTERN =
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?![\s\S])/u;
 
 // Packaging 26.0's _VERSION_PATTERN, without captures or Python-only
 // possessive quantifiers. The existing SemVer gate remains independently
@@ -60,6 +60,13 @@ function updatePackageDocument(
 
 export function prepareReleaseVersion(repositoryRoot, version) {
   if (!SEMVER_PATTERN.test(version)) {
+    throw new Error(`Invalid semantic version: ${version}`);
+  }
+
+  // SemVer forbids leading zeroes only in numeric prerelease identifiers.
+  // Build metadata and alphanumeric identifiers keep their existing spelling.
+  const prerelease = version.split("+", 1)[0].split("-").slice(1).join("-");
+  if (prerelease.split(".").some((identifier) => /^0[0-9]+$/u.test(identifier))) {
     throw new Error(`Invalid semantic version: ${version}`);
   }
 
