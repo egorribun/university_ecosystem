@@ -274,9 +274,7 @@ const Select = ({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
             transition={
-              prefersReducedMotion
-                ? { duration: 0 }
-                : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
+              prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
             }
             className={cn(
               "absolute z-dropdown mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
