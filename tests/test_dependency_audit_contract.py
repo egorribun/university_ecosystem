@@ -330,7 +330,9 @@ def test_npm_endpoint_error_cannot_print_cli_success(
             )
         ),
     )
-    result = audit_dependencies.main(["--allowlist", str(policy), "--npm", str(tmp_path)])
+    result = audit_dependencies.main(
+        ["--allowlist", str(policy), "--npm", str(tmp_path)]
+    )
     output = capsys.readouterr()
     assert result == 1
     assert "Dependency audits passed" not in output.out
