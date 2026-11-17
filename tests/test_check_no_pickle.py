@@ -962,8 +962,7 @@ def test_assignment_target_bindings_are_processed_left_to_right() -> None:
 
 def test_assignment_rhs_is_scanned_before_target_rebinding() -> None:
     source = (
-        "import importlib\n"
-        'importlib, values[0] = importlib.import_module("pickle")\n'
+        'import importlib\nimportlib, values[0] = importlib.import_module("pickle")\n'
     )
 
     findings = gate.scan_source(source)
