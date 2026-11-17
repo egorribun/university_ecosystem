@@ -135,9 +135,7 @@ def test_merge_profiles_compares_numeric_coordinates(
     tmp_path: Path, location: str, statement_count: int
 ) -> None:
     first = _profile(tmp_path / "first.out", "one.go:1.1,2.1 1 1")
-    second = _profile(
-        tmp_path / "second.out", f"one.go:{location} {statement_count} 0"
-    )
+    second = _profile(tmp_path / "second.out", f"one.go:{location} {statement_count} 0")
     output = tmp_path / "merged.out"
 
     with pytest.raises(ProfileError, match="duplicate coverage block"):
