@@ -100,6 +100,26 @@ describe.each(cases)("related $root cache subscription", ({ root, useItems }) =>
     client.clear()
   })
 
+  it("keeps snapshots isolated between QueryClient providers", () => {
+    const first = setup()
+    const second = setup()
+    first.client.setQueryData(key, page("First provider"))
+    second.client.setQueryData(key, page("Second provider"))
+    const firstView = renderHook(useItems, { wrapper: first.wrapper })
+    const secondView = renderHook(useItems, { wrapper: second.wrapper })
+
+    expect(firstView.result.current.map((item) => item.title)).toEqual(["First provider"])
+    expect(secondView.result.current.map((item) => item.title)).toEqual(["Second provider"])
+    act(() => first.client.setQueryData(key, page("Updated first")))
+    expect(firstView.result.current.map((item) => item.title)).toEqual(["Updated first"])
+    expect(secondView.result.current.map((item) => item.title)).toEqual(["Second provider"])
+
+    firstView.unmount()
+    secondView.unmount()
+    first.client.clear()
+    second.client.clear()
+  })
+
   it("unsubscribes from the query cache on unmount", () => {
     const { client, wrapper } = setup()
     const cache = client.getQueryCache()
