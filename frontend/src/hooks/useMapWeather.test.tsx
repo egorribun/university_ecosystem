@@ -392,6 +392,38 @@ describe("useMapWeather — expired cache", () => {
 })
 
 describe("useMapWeather — corrupt cache", () => {
+  it.each([
+    ["empty object", {}],
+    ["string", "sunny"],
+    ["missing forecast", { ...FIXTURE_CACHED_DATA, hourlyForecast: undefined }],
+    ["non-array forecast", { ...FIXTURE_CACHED_DATA, hourlyForecast: {} }],
+    ["invalid point", { ...FIXTURE_CACHED_DATA, hourlyForecast: [null] }],
+    ["invalid temperature", { ...FIXTURE_CACHED_DATA, temperature: {} }],
+    ["unknown condition", { ...FIXTURE_CACHED_DATA, condition: "unknown" }],
+    ["invalid day flag", { ...FIXTURE_CACHED_DATA, isDay: "true" }],
+    [
+      "invalid hour",
+      {
+        ...FIXTURE_CACHED_DATA,
+        hourlyForecast: [{ hour: 24, temperature: 12, condition: "clear" }],
+      },
+    ],
+  ])("rejects a fresh cache with %s before exposing initial data", async (_name, data) => {
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ version: CACHE_VERSION, windSpeedUnit: "ms", timestamp: Date.now(), data })
+    )
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    expect(result.current.data).toBeUndefined()
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.temperature).toBe(12)
+    expect(result.current.data?.hourlyForecast).toHaveLength(3)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null").data).toEqual(result.current.data)
+  })
+
   it("treats invalid JSON as a cache miss and fetches fresh", async () => {
     localStorage.setItem(CACHE_KEY, "{not-valid-json")
 
