@@ -125,7 +125,9 @@ async def _strict_replay(queue, bus, mode):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["manual", "auto"])
-@pytest.mark.parametrize("outcome", ["success", "failure", "no-handler"])
+@pytest.mark.parametrize(
+    "outcome", ["success", "failure", "no-handler", "wildcard-only"]
+)
 async def test_real_event_bus_replay_requires_handler_success(mode, outcome):
     bus = EventBus()
     queue = DeadLetterQueue()
@@ -139,8 +141,10 @@ async def test_real_event_bus_replay_requires_handler_success(mode, outcome):
     async def failed(_evt):
         raise RuntimeError("synthetic-handler-failure")
 
-    if outcome != "no-handler":
+    if outcome in {"success", "failure"}:
         bus.subscribe(event.event_type, completed)
+    if outcome == "wildcard-only":
+        bus.subscribe_all(completed)
     if outcome == "failure":
         bus.subscribe(event.event_type, failed)
     await queue.add(event, RuntimeError("initial"))
@@ -156,6 +160,8 @@ async def test_real_event_bus_replay_requires_handler_success(mode, outcome):
         assert result == (0, 1)
         assert await queue.get_all() == [original]
         assert original.retry_count == (1 if mode == "auto" else 0)
+        if outcome in {"no-handler", "wildcard-only"}:
+            assert effects == []
         if outcome == "failure":
             assert effects == [event.event_id]
             bus.unsubscribe(event.event_type, failed)
