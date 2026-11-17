@@ -20,9 +20,10 @@ export function useScrollToElement(
 
   useEffect(() => {
     if (!elementId || scrolledRef.current) return
-    scrolledRef.current = true
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
+      scrolledRef.current = true
       document.getElementById(elementId)?.scrollIntoView({ behavior, block })
     })
+    return () => cancelAnimationFrame(frame)
   }, [elementId, behavior, block])
 }
