@@ -665,3 +665,45 @@ describe("ActionMenu — accessibility", () => {
     expect((reloadedActionMenu as { displayName?: string }).displayName).toBe("ActionMenu")
   })
 })
+
+describe("ActionMenu — focus leaving the widget", () => {
+  it("dismisses on forward Tab without stealing focus from the next control", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <ActionMenu items={items} autoFocusFirstItem />
+        <button type="button">Next control</button>
+      </>
+    )
+    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toHaveFocus()
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    await user.tab()
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Next control" })).toHaveFocus()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /open menu/i })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    )
+  })
+
+  it("dismisses when Shift+Tab leaves the trigger for the previous control", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <button type="button">Previous control</button>
+        <ActionMenu items={items} />
+      </>
+    )
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    await user.click(trigger)
+    expect(trigger).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(screen.getByRole("button", { name: "Previous control" })).toHaveFocus()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+})
