@@ -1943,19 +1943,23 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) 
     assert json.dumps(record, sort_keys=True) == original
     row = report["jobs"][0]
     assert row["conclusion"] == "skipped"
-    assert row["duration_seconds"] == 0.0
+    assert row["duration_seconds"] is None
+    assert row["dependency_work_cost_seconds"] == 0.0
     assert row["github_queue_wait_seconds"] is None
     assert row["continued_after_core_failure"] == "unknown"
     assert row["github_timing_evidence"] == {
         "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
         "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
+        "execution_state": "not_executed",
+        "timing_validity": "contradictory",
+        "duration_basis": "nonexecution_work_cost",
         "created_at": "2026-11-16T23:50:31+00:00",
         "started_at": "2026-11-16T23:50:31+00:00",
         "completed_at": "2026-11-16T23:50:23+00:00",
     }
 
 
-@pytest.mark.parametrize("inversion", [8, 10])
+@pytest.mark.parametrize("inversion", [8, 10, 11])
 @pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "change",
@@ -1978,7 +1982,6 @@ def test_first_attempt_skipped_timing_preserves_raw_evidence(labels: list[str]) 
         {"steps": [{"name": "Run tests"}]},
         {"created_at": "2026-11-16T23:50:30Z"},
         {"queued_at": "2026-11-16T23:50:31Z"},
-        {"completed_at": "2026-11-16T23:50:20Z"},
     ],
 )
 def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
@@ -1991,7 +1994,7 @@ def test_first_attempt_skip_rejects_nonmatching_timing_evidence(
         parse_jobs({"jobs": [record]})
 
 
-@pytest.mark.parametrize("inversion", [8, 10])
+@pytest.mark.parametrize("inversion", [8, 10, 11])
 @pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
 @pytest.mark.parametrize(
     "field", ["runner_id", "runner_name", "labels", "steps", "status"]
@@ -2092,15 +2095,170 @@ def test_observed_ten_second_skip_preserves_evidence(labels, diagnostic):
     assert json.dumps(payload, sort_keys=True) == original
     row = next(row for row in report["jobs"] if row["id"] == skipped["id"])
     assert row["conclusion"] == "skipped"
-    assert row["duration_seconds"] == 0.0
+    assert row["duration_seconds"] is None
+    assert row["dependency_work_cost_seconds"] == 0.0
     assert row["github_queue_wait_seconds"] is None
     assert row["continued_after_core_failure"] == ("unknown" if diagnostic else False)
     assert row["github_timing_evidence"] == {
         "kind": "first_attempt_unexecuted_skip_timestamp_inversion",
         "queue_wait_reason": "unexecuted_job_has_no_measured_queue",
+        "execution_state": "not_executed",
+        "timing_validity": "contradictory",
+        "duration_basis": "nonexecution_work_cost",
         "created_at": "2026-11-17T00:31:14+00:00",
         "started_at": "2026-11-17T00:31:14+00:00",
         "completed_at": "2026-11-17T00:31:04+00:00",
     }
     if not diagnostic:
         assert report["summary"]["jobs_continued_after_core_failure"] == []
+
+
+@pytest.mark.parametrize(
+    "completed",
+    [
+        "2026-11-16T23:50:20Z",
+        "2026-11-16T23:49:31Z",
+        "2026-11-15T23:50:31Z",
+    ],
+)
+@pytest.mark.parametrize("labels", [[], ["ubuntu-24.04"]])
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_nonexecution_has_no_elapsed_time_certification(completed, labels, diagnostic):
+    skipped = _first_attempt_skipped_record(labels)
+    skipped["completed_at"] = completed
+    payload = {"jobs": [skipped]}
+    original = json.dumps(payload, sort_keys=True)
+    dag = _dag_payload(
+        payload, run_id=43981164331, source_head_sha=str(skipped["head_sha"])
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=43981164331,
+        concurrency_cap=20,
+        diagnostic_lower_bound=diagnostic,
+        dag=None if diagnostic else dag,
+        trusted_provenance=None if diagnostic else _trusted_provenance(dag),
+    )
+    assert json.dumps(payload, sort_keys=True) == original
+    summary = report["summary"]
+    assert summary["timing_integrity"] == {
+        "state": "contradictory",
+        "affected_job_ids": [skipped["id"]],
+        "certification": "unavailable",
+        "utilization_scope": "valid_execution_intervals_only",
+    }
+    for field in (
+        "wall_clock_seconds",
+        "peak_concurrency",
+        "peak_slot_utilization",
+        "average_slot_utilization",
+    ):
+        assert summary[field] is None
+    row = report["jobs"][0]
+    assert row["duration_seconds"] is None
+    assert row["dependency_work_cost_seconds"] == 0
+    assert row["github_timing_evidence"]["completed_at"] == completed.replace(
+        "Z", "+00:00"
+    )
+    if diagnostic:
+        assert report["analysis_mode"] == "diagnostic-lower-bound"
+        assert summary["critical_path_lower_bound_seconds"] is None
+    else:
+        assert summary["critical_path_kind"] == "dependency-work-cost"
+        assert "critical_path_seconds" not in summary
+        assert summary["dependency_work_cost_path_seconds"] == 0
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_nonexecution_preserves_executed_measurements_and_failure_edges(diagnostic):
+    payload = _aud093_independent_jobs(10, 20)
+    executed = payload["jobs"]
+    executed[0]["conclusion"] = "failure"
+    executed[0]["core_failure"] = True
+    executed[0]["steps"] = [
+        {
+            "name": "Setup Python",
+            "started_at": "2026-08-31T10:00:00Z",
+            "completed_at": "2026-08-31T10:00:02Z",
+        },
+        {
+            "name": "Run pytest",
+            "started_at": "2026-08-31T10:00:02Z",
+            "completed_at": "2026-08-31T10:00:08Z",
+        },
+        {
+            "name": "Upload artifact",
+            "started_at": "2026-08-31T10:00:08Z",
+            "completed_at": "2026-08-31T10:00:10Z",
+        },
+    ]
+    skipped = _first_attempt_skipped_record([]) | {
+        "run_id": executed[0]["run_id"],
+        "head_sha": executed[0]["head_sha"],
+        "completed_at": "2020-01-01T00:00:00Z",
+        "needs": [executed[0]["name"]],
+    }
+
+    def report_for(records):
+        source = {"jobs": records}
+        dag = _dag_payload(source)
+        return analyze_jobs(
+            parse_jobs(source),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            diagnostic_lower_bound=diagnostic,
+            dag=None if diagnostic else dag,
+            trusted_provenance=None if diagnostic else _trusted_provenance(dag),
+        )
+
+    baseline = report_for(executed)
+    mixed = report_for([*executed, skipped])
+    for bucket in ("queue", "setup", "test", "artifact"):
+        assert baseline["summary"]["timing_seconds"][bucket]["count"] > 0
+    for bucket in ("setup", "test", "artifact"):
+        assert baseline["summary"]["timing_seconds"][bucket]["total_seconds"] > 0
+    for field in (
+        "timing_seconds",
+        "wall_clock_seconds",
+        "peak_concurrency",
+        "average_slot_utilization",
+    ):
+        assert mixed["summary"][field] == baseline["summary"][field]
+    rows = {row["id"]: row for row in mixed["jobs"]}
+    for row in baseline["jobs"]:
+        actual = dict(rows[row["id"]])
+        actual.pop("critical_path_end_basis", None)
+        assert actual == row
+    affected = rows[skipped["id"]]
+    assert affected["continued_after_core_failure"] == (
+        "unknown" if diagnostic else False
+    )
+    if not diagnostic:
+        assert affected["upstream_failure_blocked"] is True
+        assert mixed["summary"]["dependency_work_cost_path_seconds"] == (
+            baseline["summary"]["critical_path_seconds"]
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("run_id", 999), ("head_sha", "b" * 40)],
+)
+def test_nonexecution_still_requires_matching_strict_provenance(field, value):
+    skipped = _first_attempt_skipped_record([])
+    payload = {"jobs": [skipped]}
+    dag = _dag_payload(
+        payload, run_id=43981164331, source_head_sha=str(skipped["head_sha"])
+    )
+    skipped[field] = value
+    with pytest.raises(AnalysisError):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=43981164331,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )

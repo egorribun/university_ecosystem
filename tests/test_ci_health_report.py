@@ -156,3 +156,245 @@ def test_render_report_rejects_untrusted_reason_or_resource_claims(mutator) -> N
 
     with pytest.raises(HealthReportError):
         render_report(report)
+
+
+def _contradictory_report(*, strict=False):
+    payload = {
+        "jobs": [
+            {
+                "id": 7,
+                "run_id": 42,
+                "run_attempt": 1,
+                "head_sha": "a" * 40,
+                "name": "unexecuted",
+                "status": "completed",
+                "conclusion": "skipped",
+                "created_at": "2026-11-17T01:39:10Z",
+                "started_at": "2026-11-17T01:39:10Z",
+                "completed_at": "2020-01-01T00:00:00Z",
+                "steps": [],
+                "runner_id": None,
+                "runner_name": None,
+                "labels": [],
+            }
+        ]
+    }
+    dag = {
+        "schema_version": 1,
+        "repository": "egorribun/university_ecosystem",
+        "run_id": 42,
+        "run_attempt": 1,
+        "source_head_sha": "a" * 40,
+        "tested_commit_sha": "b" * 40,
+        "workflow_path": ".github/workflows/ci.yml",
+        "workflow_ref": "egorribun/university_ecosystem/.github/workflows/ci.yml@refs/pull/1/merge",
+        "workflow_sha": "c" * 40,
+        "workflow_files_sha256": {".github/workflows/ci.yml": "d" * 64},
+        "nodes": [
+            {
+                "job_id": 7,
+                "logical_id": "unexecuted",
+                "needs": [],
+                "phase": "test",
+                "core_role": "required",
+                "skip_classification": "ordinary",
+                "core_failure": False,
+            }
+        ],
+    }
+    dag["dag_sha256"] = hashlib.sha256(
+        json.dumps(dag, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    trusted = {
+        "selector": "select_same_run_artifact_cli",
+        "repository": dag["repository"],
+        "run_id": 42,
+        "run_attempt": 1,
+        "source_head_sha": dag["source_head_sha"],
+        "tested_commit_sha": dag["tested_commit_sha"],
+        "workflow_path": dag["workflow_path"],
+        "workflow_ref": dag["workflow_ref"],
+        "workflow_sha": dag["workflow_sha"],
+        "workflow_files_sha256": dag["workflow_files_sha256"],
+        "dag_sha256": dag["dag_sha256"],
+        "artifact_id": 1,
+        "artifact_name": "ci-critical-path-42-1",
+        "artifact_digest": "e" * 64,
+        "producer_attempt": 1,
+    }
+    return analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=42,
+        concurrency_cap=20,
+        diagnostic_lower_bound=not strict,
+        dag=dag if strict else None,
+        trusted_provenance=trusted if strict else None,
+    )
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_contradictory_timing_caveat_cannot_be_hidden_by_skip_limit(strict):
+    report = _contradictory_report(strict=strict)
+    rendered = render_report(report, max_skipped=0)
+    assert "Timing certification unavailable" in rendered
+    assert "Affected job IDs: 7" in rendered
+    assert "not measured elapsed time" in rendered
+    assert "valid execution intervals only" in rendered
+    assert "Wall clock observed: **— s**" in rendered
+    assert ("CI health (strict)" if strict else "diagnostic lower bound") in rendered
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-summary",
+        "missing-marker",
+        "wrong-ids",
+        "duplicate-ids",
+        "boolean-id",
+        "zero-id",
+        "exact-path",
+        "certified",
+        "measured-duration",
+        "measured-work-cost",
+        "missing-validity",
+        "invented-kind",
+        "raw-time",
+    ],
+)
+@pytest.mark.parametrize("strict", [False, True])
+def test_renderer_rejects_inconsistent_timing_integrity(mutation, strict):
+    report = _contradictory_report(strict=strict)
+    summary = report["summary"]
+    row = report["jobs"][0]
+    integrity = summary["timing_integrity"]
+    if mutation == "missing-summary":
+        del summary["timing_integrity"]
+    elif mutation == "missing-marker":
+        del row["github_timing_evidence"]
+    elif mutation == "wrong-ids":
+        integrity["affected_job_ids"] = [8]
+    elif mutation == "duplicate-ids":
+        integrity["affected_job_ids"] = [7, 7]
+    elif mutation == "boolean-id":
+        integrity["affected_job_ids"] = [True]
+    elif mutation == "zero-id":
+        row["id"] = 0
+        integrity["affected_job_ids"] = [0]
+    elif mutation == "exact-path":
+        summary["critical_path_kind"] = "exact"
+    elif mutation == "certified":
+        integrity["certification"] = "available"
+    elif mutation == "measured-duration":
+        row["duration_seconds"] = 0
+    elif mutation == "measured-work-cost":
+        row["dependency_work_cost_seconds"] = 1
+    elif mutation == "missing-validity":
+        del row["github_timing_evidence"]["timing_validity"]
+    elif mutation == "invented-kind":
+        row["github_timing_evidence"]["kind"] = "unknown"
+    else:
+        row["github_timing_evidence"]["completed_at"] = "invalid"
+    with pytest.raises(HealthReportError):
+        render_report(report, max_skipped=0)
+
+
+def test_renderer_rejects_duplicate_row_identity_with_integrity():
+    report = _contradictory_report()
+    report["jobs"].append(dict(report["jobs"][0]))
+    report["summary"]["job_count"] = 2
+    report["summary"]["timing_integrity"]["affected_job_ids"] = [7, 7]
+    with pytest.raises(HealthReportError, match="unique"):
+        render_report(report)
+
+
+def test_renderer_escapes_affected_name_and_keeps_caveat():
+    report = _contradictory_report()
+    report["jobs"][0]["name"] = "<script>|bad"
+    rendered = render_report(report)
+    assert "&lt;script&gt;" in rendered
+    assert "<script>" not in rendered
+    assert "Timing certification unavailable" in rendered
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "retained_marker",
+    [
+        "dependency_work_cost_seconds",
+        "critical_path_end_basis",
+        "execution_state",
+        "duration_basis",
+        "timing_validity",
+    ],
+)
+def test_renderer_rejects_combined_marker_removal(strict, retained_marker):
+    report = _contradictory_report(strict=strict)
+    del report["summary"]["timing_integrity"]
+    row = report["jobs"][0]
+    row.pop("dependency_work_cost_seconds", None)
+    row.pop("critical_path_end_basis", None)
+    evidence = row["github_timing_evidence"]
+    evidence["kind"] = "unknown"
+    for field in ("execution_state", "duration_basis", "timing_validity"):
+        evidence.pop(field, None)
+    if retained_marker == "dependency_work_cost_seconds":
+        row[retained_marker] = 0
+    elif retained_marker == "critical_path_end_basis":
+        row[retained_marker] = "dependency-work-cost"
+    else:
+        evidence[retained_marker] = {
+            "execution_state": "not_executed",
+            "duration_basis": "nonexecution_work_cost",
+            "timing_validity": "contradictory",
+        }[retained_marker]
+    with pytest.raises(HealthReportError):
+        render_report(report, max_skipped=0)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "wall_clock_seconds",
+        "peak_slot_utilization",
+        "peak_concurrency",
+        "average_slot_utilization",
+    ],
+)
+def test_renderer_rejects_fabricated_all_nonexecution_measurements(strict, field):
+    report = _contradictory_report(strict=strict)
+    report["summary"][field] = 0
+    with pytest.raises(HealthReportError, match="unavailable"):
+        render_report(report)
+
+
+def test_strict_renderer_rejects_missing_work_cost_basis():
+    report = _contradictory_report(strict=True)
+    del report["jobs"][0]["critical_path_end_basis"]
+    with pytest.raises(HealthReportError, match="bases"):
+        render_report(report)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "retained_marker",
+    ["critical_path_kind", "dependency_work_cost_path_seconds"],
+)
+def test_renderer_rejects_orphaned_summary_work_cost_markers(strict, retained_marker):
+    report = _contradictory_report(strict=strict)
+    summary = report["summary"]
+    del summary["timing_integrity"]
+    summary.pop("dependency_work_cost_path_seconds", None)
+    summary["critical_path_kind"] = "exact" if strict else "lower-bound"
+    row = report["jobs"][0]
+    row.pop("dependency_work_cost_seconds", None)
+    row.pop("critical_path_end_basis", None)
+    del row["github_timing_evidence"]
+    if retained_marker == "critical_path_kind":
+        summary[retained_marker] = "dependency-work-cost"
+    else:
+        summary[retained_marker] = 0
+    with pytest.raises(HealthReportError):
+        render_report(report, max_skipped=0)
