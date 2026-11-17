@@ -25,6 +25,9 @@ const { pdf } = vi.hoisted(() => ({
   },
 }))
 
+// Font byte/Unicode correctness is exercised by activityExport.pdf-real.test.ts.
+vi.mock("../pdfFont", () => ({ registerPdfFont: vi.fn().mockResolvedValue(undefined) }))
+
 // Mock dependencies
 vi.mock("html-to-image", () => ({
   toPng: vi.fn().mockResolvedValue("data:image/png;base64,test"),

@@ -2,6 +2,7 @@ type _MockedModuleType1 = typeof import("jspdf")
 import { readFile } from "node:fs/promises"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import fontUrl from "@/assets/fonts/inter-latin-cyrillic-400.ttf?url"
+import i18n from "@/i18n/config"
 
 const { documents, useBuiltinFont } = vi.hoisted(() => ({
   documents: [] as { save: ReturnType<typeof vi.fn>; bytes: Uint8Array | undefined }[],
@@ -38,6 +39,7 @@ vi.mock("jspdf", async (importOriginal) => {
 })
 
 import { exportActivityAsPdf } from "../activityExport"
+import { exportScheduleAsPdf } from "../scheduleExport"
 
 /** Decode the active page font's PDF ToUnicode map, rather than trusting font markers alone. */
 function extractPageText(bytes: Uint8Array): string[] {
@@ -88,7 +90,10 @@ function extractPageText(bytes: Uint8Array): string[] {
   })
 }
 
-describe("AUD-015 real Activity PDF", () => {
+describe.each([
+  { name: "Activity", exportPdf: exportActivityAsPdf, filename: "activity.pdf" },
+  { name: "Schedule", exportPdf: exportScheduleAsPdf, filename: "schedule.pdf" },
+])("real $name PDF", ({ name, exportPdf, filename }) => {
   beforeEach(() => {
     documents.length = 0
     useBuiltinFont.current = false
@@ -121,11 +126,11 @@ describe("AUD-015 real Activity PDF", () => {
       return new Response(fontBytes)
     })
     vi.stubGlobal("fetch", fetchFont)
-    const titles = ["Активность", "École / Łódź / Việt Nam / Москва / ӿ"]
+    const titles = ["Расписание / Активность", "École / Łódź / Việt Nam / Москва / ӿ"]
     const date = new Date().toLocaleDateString()
 
     for (const title of titles) {
-      await expect(exportActivityAsPdf(document.createElement("section"), title)).resolves.toEqual({
+      await expect(exportPdf(document.createElement("section"), title)).resolves.toEqual({
         success: true,
       })
     }
@@ -133,7 +138,7 @@ describe("AUD-015 real Activity PDF", () => {
     expect(fetchFont).toHaveBeenCalledTimes(titles.length)
     expect(documents).toHaveLength(titles.length)
     for (const [index, document] of documents.entries()) {
-      expect(document.save).toHaveBeenCalledExactlyOnceWith("activity.pdf")
+      expect(document.save).toHaveBeenCalledExactlyOnceWith(filename)
       expect(document.bytes).toBeDefined()
       if (!document.bytes) throw new Error("PDF was not saved")
       expect(extractPageText(document.bytes)).toEqual([titles[index], date])
@@ -145,9 +150,7 @@ describe("AUD-015 real Activity PDF", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(fontBytes)))
     useBuiltinFont.current = true
 
-    await expect(
-      exportActivityAsPdf(document.createElement("section"), "Активность")
-    ).resolves.toEqual({
+    await expect(exportPdf(document.createElement("section"), "Активность")).resolves.toEqual({
       success: true,
     })
     const bytes = documents[0]?.bytes
@@ -155,11 +158,32 @@ describe("AUD-015 real Activity PDF", () => {
     expect(() => extractPageText(bytes)).toThrow("Active text font has no Unicode map")
   })
 
+  it("localizes font loading failures without saving a partial PDF", async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage("ru")
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })))
+
+    try {
+      const result = await exportPdf(document.createElement("section"), "Проверка")
+      const expectedLabel = name === "Activity" ? "Активность" : "Расписание"
+
+      expect(result).toEqual({
+        success: false,
+        error: `Не удалось загрузить шрифт PDF: ${expectedLabel}`,
+      })
+      expect(documents).toHaveLength(1)
+      expect(documents[0]?.save).not.toHaveBeenCalled()
+      expect(documents[0]?.bytes).toBeUndefined()
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
+  })
+
   it.each([
     {
       scenario: "HTTP 404",
       load: () => Promise.resolve(new Response(null, { status: 404 })),
-      error: "Activity PDF font could not be loaded",
+      error: `${name} PDF font could not be loaded`,
     },
     {
       scenario: "a rejected request",
@@ -178,9 +202,10 @@ describe("AUD-015 real Activity PDF", () => {
   ])("does not save when font loading fails with $scenario", async ({ load, error }) => {
     vi.stubGlobal("fetch", vi.fn(load))
 
-    await expect(
-      exportActivityAsPdf(document.createElement("section"), "Активность")
-    ).resolves.toEqual({ success: false, error })
+    await expect(exportPdf(document.createElement("section"), "Активность")).resolves.toEqual({
+      success: false,
+      error,
+    })
     expect(documents).toHaveLength(1)
     expect(documents[0]?.save).not.toHaveBeenCalled()
     expect(documents[0]?.bytes).toBeUndefined()

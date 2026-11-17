@@ -108,7 +108,9 @@
   },
   "errors": {
     "generic": "Произошла ошибка",
-    "featureUnavailable": "{{feature}} недоступен"
+    "featureUnavailable": "{{feature}} недоступен",
+    "pdfFontTimeout": "Истекло время загрузки шрифта PDF: {{label}}",
+    "pdfFontLoad": "Не удалось загрузить шрифт PDF: {{label}}"
   },
   "aria": {
     "like": "Нравится",
