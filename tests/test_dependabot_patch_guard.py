@@ -47,7 +47,7 @@ def test_auto_merge_executes_only_for_increasing_stable_patches(
     assert node, "Node is required to execute the actual auto-merge decision"
     harness = (
         'const assert = require("node:assert/strict");\n'
-        'const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;\n'
+        "const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;\n"
         "const calls = [];\n"
         "const github = { graphql: async (query, variables) => {\n"
         "  assert.match(query, /enablePullRequestAutoMerge/);\n"
