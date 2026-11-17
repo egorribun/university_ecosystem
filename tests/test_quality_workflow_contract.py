@@ -7490,18 +7490,22 @@ def _assert_backend_integration_helper(
     expected = ast.literal_eval(expected_node)
     assert {name: len(cases) for name, cases in expected.items()} == {
         "tests.integration.test_mvp_baseline_schema_equivalence": 10,
-        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 47,
+        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 48,
         "tests.integration.test_aud262_receipt_schema_postgres": 15,
         "tests.integration.test_group_list_tenant_http_postgres": 10,
         "tests.integration.test_dlq_retry_postgres": 2,
     }
-    assert sum(map(len, expected.values())) == 84
+    assert sum(map(len, expected.values())) == 85
     assert (
         "test_room_membership_callback_obeys_parent_tenant_rls"
         in expected["tests.integration.test_aud277_360_450_tenant_rls_postgres"]
     )
     assert (
         "test_schedule_query_ignores_shared_cache_across_tenant_rls"
+        in expected["tests.integration.test_aud277_360_450_tenant_rls_postgres"]
+    )
+    assert (
+        "test_notification_cleanup_preserves_claims_under_active_rls"
         in expected["tests.integration.test_aud277_360_450_tenant_rls_postgres"]
     )
     assert (

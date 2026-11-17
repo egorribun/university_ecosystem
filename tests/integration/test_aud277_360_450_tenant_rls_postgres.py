@@ -1940,3 +1940,159 @@ async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
             admin.dispose()
             bypass_rls_ctx.reset(bypass_token)
             tenant_id_ctx.reset(tenant_token)
+
+
+@pytest.mark.asyncio
+async def test_notification_cleanup_preserves_claims_under_active_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Hidden parents cannot establish orphanhood for the global claim ledger."""
+    from app.core.db.listeners import register_tenant_listeners
+    from app.services.notifications.cleanup import cleanup_stale_notifications
+
+    register_tenant_listeners()
+    now = dt.datetime.now(dt.UTC).replace(day=15, hour=12)
+    old = now - dt.timedelta(days=2)
+    parent_ids = [uuid.uuid4(), uuid.uuid4()]
+    claim_ids = [uuid.uuid4() for _ in range(4)]
+    admin = _engine(rls_schema.admin)
+    try:
+        with admin.begin() as connection:
+            # This owned fixture's ordinary role owns notifications under FORCE RLS.
+            role = rls_schema.ordinary.username
+            connection.exec_driver_sql(
+                f'GRANT SELECT, DELETE ON public.notification_deliveries, public.notification_delivery_once TO "{role}"'
+            )
+            for parent, tenant in zip(parent_ids, (_TENANT_A, _TENANT_B), strict=True):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO notifications "
+                        "(id, user_id, title, created_at, tenant_id) "
+                        "VALUES (:id, :user, 'retention proof', :created, :tenant)"
+                    ),
+                    {
+                        "id": parent,
+                        "user": _USER_A,
+                        "created": old,
+                        "tenant": tenant,
+                    },
+                )
+            for index, claim in enumerate(claim_ids):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO notification_delivery_once "
+                        "(id, notification_id, channel, created_at) "
+                        "VALUES (:id, :notification, 'webpush', :created)"
+                    ),
+                    {
+                        "id": claim,
+                        "notification": (
+                            parent_ids[index] if index < 2 else uuid.uuid4()
+                        ),
+                        "created": now if index == 3 else old,
+                    },
+                )
+
+        for tenant in (_TENANT_A, _TENANT_B, None):
+            engine = create_async_engine(
+                rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+                poolclass=sa.pool.NullPool,
+                hide_parameters=True,
+            )
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    assert tuple(
+                        (
+                            await session.execute(
+                                sa.text(
+                                    "SELECT rolsuper, rolbypassrls, "
+                                    "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER') "
+                                    "FROM pg_roles WHERE rolname = current_user"
+                                )
+                            )
+                        ).one()
+                    ) == (False, False, False)
+                    assert (
+                        await session.scalar(
+                            sa.text("SELECT row_security_active('notifications')")
+                        )
+                        is True
+                    )
+                    visible = set(
+                        (
+                            await session.scalars(
+                                sa.text(
+                                    "SELECT id FROM notifications WHERE id = ANY(:ids)"
+                                ),
+                                {"ids": parent_ids},
+                            )
+                        ).all()
+                    )
+                    if tenant == _TENANT_A:
+                        expected = {parent_ids[0]}
+                    elif tenant == _TENANT_B:
+                        expected = {parent_ids[1]}
+                    else:
+                        expected = set()
+                    assert visible == expected
+                    assert await cleanup_stale_notifications(
+                        db=session, retention_days=1, now=now
+                    ) == (0, 0)
+                    retained = set(
+                        (
+                            await session.scalars(
+                                sa.text(
+                                    "SELECT id FROM notification_delivery_once WHERE id = ANY(:ids)"
+                                ),
+                                {"ids": claim_ids},
+                            )
+                        ).all()
+                    )
+                    assert retained == set(claim_ids)
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+                await engine.dispose()
+
+        # Positive reclamation control uses the owned fixture administrator,
+        # never grants bypass to the runtime role or changes production policy.
+        engine = create_async_engine(
+            rls_schema.admin.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            hide_parameters=True,
+        )
+        try:
+            async with async_sessionmaker(engine)() as session:
+                assert (
+                    await session.scalar(
+                        sa.text("SELECT row_security_active('notifications')")
+                    )
+                    is False
+                )
+                await cleanup_stale_notifications(db=session, retention_days=1, now=now)
+                retained = set(
+                    (
+                        await session.scalars(
+                            sa.text(
+                                "SELECT id FROM notification_delivery_once WHERE id = ANY(:ids)"
+                            ),
+                            {"ids": claim_ids},
+                        )
+                    ).all()
+                )
+                assert retained == {claim_ids[0], claim_ids[1], claim_ids[3]}
+        finally:
+            await engine.dispose()
+    finally:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM notification_delivery_once WHERE id = ANY(:ids)"),
+                {"ids": claim_ids},
+            )
+            connection.execute(
+                sa.text("DELETE FROM notifications WHERE id = ANY(:ids)"),
+                {"ids": parent_ids},
+            )
+        admin.dispose()
