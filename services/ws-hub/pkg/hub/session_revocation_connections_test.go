@@ -143,7 +143,11 @@ func TestRevocationSubscriberPreservesCloseErrorAndDropsReference(t *testing.T) 
 func TestRevocationSubscriberTLSRetainsVerifiedTransportWithoutRawSocketExposure(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	t.Cleanup(server.Close)
-	tlsConfig := server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	transport, ok := server.Client().Transport.(*http.Transport)
+	require.True(t, ok)
+	require.NotNil(t, transport.TLSClientConfig)
+	tlsConfig := transport.TLSClientConfig.Clone()
+	require.NotNil(t, tlsConfig)
 	tlsConfig.MinVersion = tls.VersionTLS13
 	source := goredis.NewClient(&goredis.Options{TLSConfig: tlsConfig})
 	t.Cleanup(func() { require.NoError(t, source.Close()) })

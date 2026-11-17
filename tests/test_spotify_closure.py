@@ -214,6 +214,8 @@ async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -
     missing_token_response = MagicMock(status_code=200)
     missing_token_response.json.return_value = {"expires_in": 120}
     missing_token_user = _user()
+    access_before = missing_token_user.spotify.access_token
+    refresh_before = missing_token_user.spotify.refresh_token
     with (
         patch.object(
             spotify,
@@ -224,10 +226,12 @@ async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -
     ):
         with pytest.raises(HTTPException) as exc:
             await spotify._ensure_access_token(db, missing_token_user, locale="ru")
-    assert exc.value.status_code == 401
-    assert missing_token_user.spotify.access_token is None
-    assert missing_token_user.spotify.refresh_token is None
-    db.commit.assert_awaited_once()
+    # A success response without a token does not prove revoked consent:
+    # it is a provider fault, and the stored credentials remain for recovery.
+    assert exc.value.status_code == 503
+    assert missing_token_user.spotify.access_token == access_before
+    assert missing_token_user.spotify.refresh_token == refresh_before
+    db.commit.assert_not_awaited()
 
     db.reset_mock()
     downgraded_response = MagicMock(status_code=200)

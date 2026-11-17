@@ -37,14 +37,17 @@ func TestRevocationStopPublicationRejectsSupersededBootstrap(t *testing.T) {
 	// Hold the old startup precisely after its successful pre-publication
 	// validation, without timing sleeps or changing the production scheduler.
 	go func() {
-		if h.sessionRevocationBootstrapError(oldGeneration, nil, ctx) != nil {
+		h.lifecycleMu.Lock()
+		validationErr := h.sessionRevocationBootstrapErrorLocked(oldGeneration, nil, ctx)
+		h.lifecycleMu.Unlock()
+		if validationErr != nil {
 			published <- true
 			close(validated)
 			return
 		}
 		close(validated)
 		<-resume
-		published <- h.installSessionRevocationStop(oldGeneration, ctx, func() { staleCalled.Store(true) })
+		published <- h.installSessionRevocationStop(oldGeneration, nil, ctx, func() { staleCalled.Store(true) }) == nil
 	}()
 	select {
 	case <-validated:
@@ -74,7 +77,10 @@ func TestRevocationStopPublicationRejectsSupersededBootstrap(t *testing.T) {
 		t.Fatal("Stop lost ownership of the active replacement")
 	}
 	require.False(t, staleCalled.Load())
-	require.Zero(t, server.PubSubNumSub(sessionRevocationsChannel)[sessionRevocationsChannel])
+	// The server releases a closed subscriber connection asynchronously.
+	require.Eventually(t, func() bool {
+		return server.PubSubNumSub(sessionRevocationsChannel)[sessionRevocationsChannel] == 0
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestRevocationStopPublicationKeepsExistingOwnerOnRejection(t *testing.T) {
@@ -96,7 +102,7 @@ func TestRevocationStopPublicationKeepsExistingOwnerOnRejection(t *testing.T) {
 			case "cancelled":
 				cancel()
 			}
-			require.False(t, h.installSessionRevocationStop(3, ctx, func() { staleCalled = true }))
+			require.Error(t, h.installSessionRevocationStop(3, nil, ctx, func() { staleCalled = true }))
 			h.sessionRevocationCancel()
 			require.True(t, ownerCalled)
 			require.False(t, staleCalled)
@@ -109,7 +115,7 @@ func TestRevocationStopPublicationInstallsCurrentOwner(t *testing.T) {
 	t.Cleanup(h.Stop)
 	h.sessionRevocationGeneration = 7
 	called := false
-	require.True(t, h.installSessionRevocationStop(7, context.Background(), func() { called = true }))
+	require.NoError(t, h.installSessionRevocationStop(7, nil, context.Background(), func() { called = true }))
 	h.Stop()
 	require.True(t, called)
 }
