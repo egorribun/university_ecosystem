@@ -1422,6 +1422,11 @@ run_ssr_proof() {
     [[ "$output" == "SSR_MTLS_AUTH=PASS" ]]; then
     record "e-frontend-ssr-mtls-auth" yes
   else
+    # Only finite stage labels may leave the probe; never print raw stderr,
+    # assertion messages, response bodies, tokens, cookies, or signing keys.
+    if [[ "$output" =~ ^SSR_MTLS_AUTH=FAIL\ stage=(configuration|jwks-request|jwks-status|jwks-key|user-request|user-status|signing|signed-request|signed-status|signed-location|signed-cache|forged-request|forged-status|forged-cache|forged-html)$ ]]; then
+      printf '%s\n' "$output"
+    fi
     record "e-frontend-ssr-mtls-auth" no
   fi
   while read -r pod; do

@@ -102,3 +102,31 @@ test("network failure cannot become a successful receipt", async () => {
     })
   )
 })
+
+test("failed user authentication reports its finite boundary without payloads", async () => {
+  const stages = []
+  await assert.rejects(
+    proveSsrAuthentication({
+      ...config,
+      request: fixture({ userStatus: 403 }).request,
+      onStage: (stage) => stages.push(stage),
+    })
+  )
+  assert.deepEqual(stages, [
+    "configuration", "jwks-request", "jwks-status", "jwks-key",
+    "user-request", "user-status",
+  ])
+})
+
+test("forged response failure cannot be attributed to successful signed authentication", async () => {
+  const stages = []
+  await assert.rejects(
+    proveSsrAuthentication({
+      ...config,
+      request: fixture({ rejectedStatus: 307 }).request,
+      onStage: (stage) => stages.push(stage),
+    })
+  )
+  assert.equal(stages.at(-1), "forged-status")
+  assert.ok(stages.includes("signed-cache"))
+})

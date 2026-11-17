@@ -10,7 +10,9 @@ export async function proveSsrAuthentication({
   port,
   backendOrigin,
   request = fetch,
+  onStage = () => {},
 }) {
+  onStage("configuration")
   assert.equal(backendOrigin, "http://127.0.0.1:18000")
   assert.match(String(port), /^[1-9][0-9]{0,4}$/u)
   assert.ok(Number(port) <= 65535)
@@ -22,16 +24,22 @@ export async function proveSsrAuthentication({
       signal: AbortSignal.timeout(15000),
       headers: cookie ? { cookie } : {},
     })
+  onStage("jwks-request")
   const jwksResponse = await get(`${backendOrigin}/.well-known/jwks.json`)
+  onStage("jwks-status")
   assert.equal(jwksResponse.status, 200)
+  onStage("jwks-key")
   const jwks = await jwksResponse.json()
   const publicKey = createPublicKey(privateKey).export({ format: "jwk" })
   const key = jwks.keys.find((item) => item.n === publicKey.n && item.e === publicKey.e)
   assert.ok(key?.kid)
   // Workload authentication must not bypass user authentication.
+  onStage("user-request")
   const userResponse = await get(`${backendOrigin}/api/v1/users/me`)
+  onStage("user-status")
   assert.equal(userResponse.status, 401)
   await userResponse.arrayBuffer()
+  onStage("signing")
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url")
   const unsigned = `${encode({ alg: "RS256", typ: "JWT", kid: key.kid })}.${encode({
     iss: issuer,
@@ -43,22 +51,32 @@ export async function proveSsrAuthentication({
   const signature = sign("RSA-SHA256", Buffer.from(unsigned), privateKey)
   const token = `${unsigned}.${signature.toString("base64url")}`
   const login = `${localOrigin}/login?redirect=%2Fdashboard`
+  onStage("signed-request")
   const accepted = await get(login, `access_token_v2=${token}`)
+  onStage("signed-status")
   assert.ok([301, 302, 303, 307, 308].includes(accepted.status))
+  onStage("signed-location")
   assert.equal(new URL(accepted.headers.get("location"), localOrigin).pathname, "/dashboard")
+  onStage("signed-cache")
   assert.match(accepted.headers.get("cache-control") ?? "", /private/u)
   await accepted.arrayBuffer()
   signature[0] ^= 1
   const forged = `${unsigned}.${signature.toString("base64url")}`
+  onStage("forged-request")
   const rejected = await get(login, `access_token_v2=${forged}`)
+  onStage("forged-status")
   assert.equal(rejected.status, 200)
+  onStage("forged-cache")
   assert.doesNotMatch(rejected.headers.get("cache-control") ?? "", /private/u)
+  onStage("forged-html")
   assert.match(await rejected.text(), /<html[\s>]/iu)
 }
 
 if (process.argv.includes("--run")) {
+  let stage = "configuration"
   try {
     await proveSsrAuthentication({
+      onStage: (value) => { stage = value },
       privateKey: readFileSync(0, "utf8"),
       issuer: process.env.JWT_ISSUER,
       port: process.env.PORT,
@@ -66,7 +84,7 @@ if (process.argv.includes("--run")) {
     })
     console.log("SSR_MTLS_AUTH=PASS")
   } catch {
-    console.log("SSR_MTLS_AUTH=FAIL")
+    console.log(`SSR_MTLS_AUTH=FAIL stage=${stage}`)
     process.exitCode = 1
   }
 }
