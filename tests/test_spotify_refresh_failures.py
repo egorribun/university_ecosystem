@@ -31,6 +31,15 @@ async def connected_spotify_user(db_session, user_factory):
 @pytest.mark.parametrize(
     ("status", "body", "retry_after", "expected_status", "expected_retry"),
     [
+        (200, "not JSON", None, 503, None),
+        (200, "null", None, 503, None),
+        (200, "[]", None, 503, None),
+        (200, "{}", None, 503, None),
+        (200, '{"access_token":null}', None, 503, None),
+        (200, '{"access_token":""}', None, 503, None),
+        (200, '{"access_token":123}', None, 503, None),
+        (200, '{"access_token":true}', None, 503, None),
+        (200, '{"access_token":["synthetic-secret"]}', None, 503, None),
         (429, '{"error":"invalid_grant"}', "10", 429, "10"),
         (429, "upstream busy", None, 429, "5"),
         (429, "upstream busy", "not-a-number", 429, "5"),
@@ -53,6 +62,7 @@ async def test_refresh_failure_preserves_persisted_tokens_and_allows_recovery(
     db_session,
     connected_spotify_user,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     status: int,
     body: str,
     retry_after: str | None,
@@ -62,6 +72,7 @@ async def test_refresh_failure_preserves_persisted_tokens_and_allows_recovery(
     user = connected_spotify_user
     old_access = user.spotify.access_token
     old_refresh = user.spotify.refresh_token
+    old_expiry = user.spotify.token_expires_at
     new_access = secrets.token_urlsafe(24)
     calls = 0
 
@@ -99,6 +110,10 @@ async def test_refresh_failure_preserves_persisted_tokens_and_allows_recovery(
         assert user.spotify.is_connected is True
         assert user.spotify.is_playing is True
         assert user.spotify.scope == "user-read-currently-playing"
+        assert user.spotify.token_expires_at == old_expiry
+        for secret in (old_access, old_refresh, "synthetic-secret"):
+            assert secret not in str(caught.value.detail)
+            assert secret not in caplog.text
 
         persisted = await db_session.get(
             SpotifyIntegration, user.id, populate_existing=True
