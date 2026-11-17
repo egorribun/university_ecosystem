@@ -103,7 +103,9 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
     assert memory_result.target == "in_memory"
     assert db_result.target == "db"
     assert memory_replay.await_count == 2
-    assert all(call.kwargs["bus"] is event_bus for call in memory_replay.await_args_list)
+    assert all(
+        call.kwargs["bus"] is event_bus for call in memory_replay.await_args_list
+    )
     assert db_dlq.auto_replay_jobs.await_count == 2
     # The DB replay re-enqueues through the broker (a missing handler used to make
     # every replayed job fail with "No DB DLQ replay handler is configured").
