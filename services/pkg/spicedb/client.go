@@ -65,8 +65,8 @@ func (c *MemoryClient) CheckPermission(ctx context.Context, resourceType, resour
 		return allowed, nil
 	}
 
-	// Check global tenant admin permission override if tenant is set
-	if tenantID, ok := c.tenantMap[resourceID]; ok {
+	// Only campus resources inherit permissions through the campus-to-tenant mapping.
+	if tenantID, ok := c.tenantMap[resourceID]; resourceType == "campus" && ok {
 		tenantAdminKey := permKey("tenant", tenantID, "admin", userID)
 		if allowed, ok := c.permissions[tenantAdminKey]; ok && allowed {
 			return true, nil
