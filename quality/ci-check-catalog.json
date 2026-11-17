@@ -5426,6 +5426,34 @@
           }
         }
       }
+    },
+    {
+      "path": ".github/workflows/valkey-ttl-characterization.yml",
+      "name": "Valkey TTL characterization",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"egorribun\"],\"paths\":[\".github/workflows/valkey-ttl-characterization.yml\",\"scripts/quality/owned_valkey_ttl_characterization.py\",\"tests/test_owned_valkey_ttl_characterization.py\",\"pyproject.toml\",\"uv.lock\"]}"
+        }
+      ],
+      "jobs": {
+        "characterize": {
+          "profile": "advisory",
+          "check_name_template": "characterize",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
     }
   ]
 }

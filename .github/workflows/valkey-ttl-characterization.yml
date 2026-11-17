@@ -1,0 +1,49 @@
+name: Valkey TTL characterization
+
+on:
+  pull_request:
+    branches: [egorribun]
+    paths:
+      - ".github/workflows/valkey-ttl-characterization.yml"
+      - "scripts/quality/owned_valkey_ttl_characterization.py"
+      - "tests/test_owned_valkey_ttl_characterization.py"
+      - "pyproject.toml"
+      - "uv.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  characterize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      valkey:
+        image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+        ports:
+          - "127.0.0.1:6382:6379"
+        options: >-
+          --label university-ecosystem.valkey-ttl-acceptance=true
+          --label university-ecosystem.valkey-ttl-acceptance.run=${{ github.run_id }}
+          --label university-ecosystem.valkey-ttl-acceptance.attempt=${{ github.run_attempt }}
+          --label university-ecosystem.valkey-ttl-acceptance.job=characterize
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Characterize owned Valkey semantics
+        env:
+          TTL_ACCEPTANCE_CONTAINER_ID: ${{ job.services.valkey.id }}
+        run: uv run --no-sync python scripts/quality/owned_valkey_ttl_characterization.py
