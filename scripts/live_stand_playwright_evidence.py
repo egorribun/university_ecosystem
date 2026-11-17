@@ -151,6 +151,15 @@ _PLAYWRIGHT_A11Y_PHASE_LINE = re.compile(
 )
 _PlaywrightA11yPhaseState = tuple[str, str, str, bool, int, int, int, str, int]
 
+_PLAYWRIGHT_MAP_ZOOM_LINE = re.compile(
+    r"UE_LIVE_MAP_ZOOM_V1 project=(?P<project>desktop|mobile) "
+    r"attempt=(?P<attempt>[01]) sample=(?P<sample>[1-8]) "
+    r"total=(?P<total>[1-9][0-9]{0,2}) step=(?P<step>[0-3]) "
+    r"phase=(?P<phase>[0-4]) duration_ms=(?P<duration>0|[1-9][0-9]{0,4})"
+)
+_PLAYWRIGHT_MAP_ZOOM_LIMIT = 32
+_PlaywrightMapZoomTask = tuple[str, int, int, int, int, int, int]
+
 _PLAYWRIGHT_FOOTER_GEOMETRY_LINE = re.compile(
     r"UE_LIVE_FOOTER_GEOM_V1 project=(?P<project>desktop|mobile) "
     r"req_w_milli=(?P<requested_width>-?(?:0|[1-9][0-9]{0,6})) "
@@ -2168,6 +2177,48 @@ def _live_playwright_a11y_phase_states(output: str) -> list[_PlaywrightA11yPhase
     return records
 
 
+def _live_playwright_map_zoom_tasks(output: str) -> list[_PlaywrightMapZoomTask]:
+    """Accept only fixed map phases and bounded blocking-task durations."""
+    records: list[_PlaywrightMapZoomTask] = []
+    seen: set[tuple[str, int, int]] = set()
+    totals: dict[tuple[str, int], int] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 200 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_MAP_ZOOM_LINE.fullmatch(line)
+        if match is None:
+            continue
+        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        attempt = int(match["attempt"])
+        sample = int(match["sample"])
+        total = int(match["total"])
+        step = int(match["step"])
+        phase = int(match["phase"])
+        duration = int(match["duration"])
+        valid_phase = (
+            (step == 0 and phase == 0)
+            or (1 <= step <= 3 and 1 <= phase <= 3)
+            or (step == 3 and phase == 4)
+        )
+        identity = (project, attempt, sample)
+        attempt_id = (project, attempt)
+        if (
+            sample > total
+            or not valid_phase
+            or not 50 <= duration <= 60_000
+            or identity in seen
+            or (attempt_id in totals and totals[attempt_id] != total)
+        ):
+            continue
+        records.append((project, attempt, sample, total, step, phase, duration))
+        seen.add(identity)
+        totals[attempt_id] = total
+        if len(records) == _PLAYWRIGHT_MAP_ZOOM_LIMIT:
+            break
+    return records
+
+
 def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeometry]:
     """Accept bounded viewport/nav measurements and fixed-block flags only."""
     records: list[_PlaywrightFooterGeometry] = []
@@ -3363,7 +3414,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "events-tab-keyboard.live.spec.ts": (3,),
     "footer-bottom-navigation.live.spec.ts": (98, 282),
     "map-gesture-isolation.live.spec.ts": (178, 209, 248),
-    "map-zoom-longtask.live.spec.ts": (116,),
+    "map-zoom-longtask.live.spec.ts": (102,),
     "messenger-a11y.live.spec.ts": (5,),
     "messenger-focus-trap.live.spec.ts": (3,),
     "messenger-group-isolation.live.spec.ts": (254,),

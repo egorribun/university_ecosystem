@@ -2890,3 +2890,19 @@ Firefox launches, 12.6 GB) still stands, and the exclusion keeps its owner,
 scope and 2027-01-10 expiry. Whether to re-enable rule 40026 is the owner's
 call once a hosted run produces evidence. This adds no threshold, required check
 or audit status, and is not itself a passing scan.
+
+### Map zoom failure diagnostics and live stand companion rebind
+
+The map zoom test reports bounded duration, step and phase values only when its
+existing long-task assertion fails. The redacting runner accepts the closed
+protocol without releasing task timestamps, session data or raw browser output.
+The assertion and its threshold are unchanged; this evidence does not establish
+the cause of the hosted failure.
+
+The owner's standing 2026-10-31 approval for one-to-one rebinds applies to the
+existing `scripts/live_stand.py` Semgrep companion: its ledger digest and the
+SHA-1 identity of that digest in policy row 495 bind the new bytes. A projection
+restores the exact source, ledger and policy predecessors before the NOV16 checks.
+No identity, category, owner, expiry, threshold or required check changes; the
+inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. The rebind is not a passing scan or CI run.

@@ -9031,6 +9031,56 @@ def test_live_playwright_auth_http_parser_deduplicates_and_caps_records() -> Non
     assert live_stand._live_playwright_auth_http_diagnostics(rows) == records[:16]
 
 
+def test_live_playwright_map_zoom_diagnostics_are_failure_only(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=1 total=1 "
+        "step=1 phase=1 duration_ms=57\n"
+    )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert "live E2E map zoom" not in printed.out
+    assert printed.err == ""
+
+
+def test_live_playwright_emits_only_validated_map_zoom_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_MAP_ZOOM_V1 project=desktop attempt=0 sample=1 total=1 "
+        "step=1 phase=1 duration_ms=57\n"
+    )
+    private = "private-value https://private.invalid/path"
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(row + row.rstrip("\n") + " " + private + "\n").encode(),
+        stderr=(row + private + "\n").encode(),
+    )
+    _patch_live_playwright_result(monkeypatch, completed)
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        _EMPTY_HTTP_OPERATIONS_LINE,
+        "live E2E map zoom project=desktop attempt=0 sample=1 total=1 "
+        "step=1 phase=1 duration_ms=57",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in printed.out + printed.err
+    assert printed.err == ""
+
+
 def test_live_playwright_auth_diagnostics_are_failure_only(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
