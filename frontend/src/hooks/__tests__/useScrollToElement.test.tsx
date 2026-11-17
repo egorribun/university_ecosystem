@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -41,12 +42,15 @@ describe("useScrollToElement", () => {
       frames.push(callback)
       return frames.length
     })
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames[id - 1] = () => undefined
+    })
   })
 
   afterEach(() => {
     const errors: unknown[] = []
     // Attempt each stage even if unmounting or a queued callback fails.
-    // The hook does not cancel frames, so execute them before restoring the spy.
+    // Flush remaining frames before restoring the scheduler spies.
     const steps = [
       cleanup,
       flushFrame,
@@ -132,4 +136,46 @@ describe("useScrollToElement", () => {
     expect(first.scrollIntoView).toHaveBeenCalledTimes(1)
     expect(second.scrollIntoView).toHaveBeenCalledTimes(1)
   })
+  it("cancels the old target before a replacement frame and on unmount", () => {
+    const first = targetWithId("old-lesson")
+    const second = targetWithId("new-lesson")
+    document.body.append(first, second)
+    const { rerender, unmount } = renderHook(({ id }) => useScrollToElement(id), {
+      initialProps: { id: first.id },
+    })
+    rerender({ id: second.id })
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1)
+    flushFrame()
+    expect(first.scrollIntoView).not.toHaveBeenCalled()
+    expect(second.scrollIntoView).toHaveBeenCalledOnce()
+
+    rerender({ id: first.id })
+    unmount()
+    flushFrame()
+    expect(first.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it("scrolls once after StrictMode replays setup and cleanup", () => {
+    const target = targetWithId("strict-lesson")
+    document.body.append(target)
+    renderHook(() => useScrollToElement(target.id), { wrapper: StrictMode })
+    flushFrame()
+    expect(target.scrollIntoView).toHaveBeenCalledOnce()
+  })
+
+  it("uses the latest motion option when it changes before the frame", () => {
+    const target = targetWithId("motion-lesson")
+    document.body.append(target)
+    const { rerender } = renderHook(
+      ({ behavior }) => useScrollToElement(target.id, { behavior }),
+      { initialProps: { behavior: "smooth" as ScrollBehavior } }
+    )
+    rerender({ behavior: "instant" })
+    flushFrame()
+    expect(target.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+      behavior: "instant",
+      block: "center",
+    })
+  })
+
 })
