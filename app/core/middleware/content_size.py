@@ -183,13 +183,18 @@ class ContentSizeLimitMiddleware:
             if tmpfile is not None and not tmpfile.closed:
                 await anyio.to_thread.run_sync(tmpfile.close)
 
-        async def _replay_receive() -> dict[str, Any]:
-            return {"type": "http.request", "body": body_bytes, "more_body": False}
-
-        return Request(request.scope, receive=_replay_receive), False
+        return self._build_replay(request, body_bytes), False
 
     def _build_replay(self, request: Request, body_bytes: bytes) -> Request:
+        replayed = False
+
         async def _replay_receive() -> dict[str, Any]:
+            nonlocal replayed
+            if replayed:
+                return await request.receive()
+            # Consume the replay before yielding control. Subsequent receives
+            # must observe the original transport's disconnect or cancellation.
+            replayed = True
             return {"type": "http.request", "body": body_bytes, "more_body": False}
 
         return Request(request.scope, receive=_replay_receive)
