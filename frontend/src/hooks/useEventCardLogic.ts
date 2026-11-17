@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 import { formatRelativeTime } from "@/utils/date"
@@ -58,6 +58,17 @@ export function useEventCardLogic({
   const [loading, setLoading] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const editSessionRef = useRef(0)
+  const mountedRef = useRef(false)
+  const activeSaveSessionRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      editSessionRef.current += 1
+    }
+  }, [])
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   // -- Image Upload State --
@@ -103,7 +114,11 @@ export function useEventCardLogic({
   const editData = editDraft ?? propsDraft
   const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
   const setEditOpenFresh = useCallback((open: boolean) => {
+    editSessionRef.current += 1
+    // Closing a draft does not cancel its already-dispatched server writes.
+    // Keep busy until the entire earlier upload/PATCH chain settles.
     if (open) setEditDraft(null)
+    else setNewImage(null) // Discard cancelled uploads and release their preview through the effect.
     setEditOpen(open)
   }, [])
 
@@ -157,6 +172,9 @@ export function useEventCardLogic({
 
   // -- Handlers --
   const handleEdit = async () => {
+    const session = editSessionRef.current
+    if (!mountedRef.current || activeSaveSessionRef.current !== null) return
+    const isCurrentEdit = () => mountedRef.current && editSessionRef.current === session
     const dateRange = resolveCampusEventDateRange(
       editData.starts_at ?? "",
       editData.ends_at ?? "",
@@ -171,6 +189,7 @@ export function useEventCardLogic({
     }
 
     const telemetryContext = captureActiveTelemetryContext()
+    activeSaveSessionRef.current = session
     setLoading(true)
     try {
       let imgUrl = editData.image_url
@@ -184,7 +203,7 @@ export function useEventCardLogic({
           api.post<{ url: string }>(`/events/upload_image`, data)
         )
         imgUrl = uploadRes.data.url
-        setImageLoading(false)
+        if (mountedRef.current) setImageLoading(false)
       }
       const payload = {
         ...editData,
@@ -202,14 +221,21 @@ export function useEventCardLogic({
         delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
-      setEditOpen(false)
-      telemetryContext.run(() => onChange?.())
-      setSnackbar(t("events:card.messages.saveSuccess"))
+      // Refresh mounted consumers even when this particular editor was closed.
+      if (mountedRef.current) telemetryContext.run(() => onChange?.())
+      if (isCurrentEdit()) {
+        setEditOpen(false)
+        setNewImage(null)
+        setSnackbar(t("events:card.messages.saveSuccess"))
+      }
     } catch {
-      setSnackbar(t("events:card.messages.saveFailure"))
+      if (isCurrentEdit()) setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
-      setImageLoading(false)
-      setLoading(false)
+      if (activeSaveSessionRef.current === session) activeSaveSessionRef.current = null
+      if (mountedRef.current) {
+        setImageLoading(false)
+        setLoading(false)
+      }
     }
   }
 
