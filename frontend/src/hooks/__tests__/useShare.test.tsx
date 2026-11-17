@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { renderHook, act } from "@testing-library/react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { resolveSiteShareUrl, useShare } from "../useShare"
@@ -79,6 +80,24 @@ describe("useShare", () => {
       expect(vi.getTimerCount()).toBe(timersAfterUnmount)
     }
   )
+
+  it("keeps successful actions enabled after StrictMode effect replay", async () => {
+    const { result, unmount } = renderHook(
+      () => useShare({ title: "Test", url: "https://example.com", onNotify, translations }),
+      { wrapper: StrictMode }
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+      await result.current.handleCopyLink()
+    })
+
+    expect(onNotify).toHaveBeenCalledWith("Success")
+    expect(onNotify).toHaveBeenCalledWith("Copied")
+    expect(result.current.copiedLink).toBe(true)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
 
   it("returns share options based on provided URL", () => {
     const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com/foo" }))
