@@ -1,4 +1,4 @@
-package middleware
+package middleware_test
 
 import (
 	"context"
@@ -10,17 +10,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/handlers"
+	gatewaymiddleware "github.com/university-ecosystem/gateway/middleware"
 )
+
+const identityBoundarySecret = "test-secret-key-for-testing-purposes"
+
+// Use public middleware construction: this cross-layer test must not become
+// part of the middleware package that handlers itself imports.
+func newIdentityBoundaryMiddleware(t *testing.T) *gatewaymiddleware.JWTMiddleware {
+	t.Helper()
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	require.NoError(t, client.Ping(t.Context()).Err())
+	return gatewaymiddleware.NewJWTMiddlewareWithConfig(
+		identityBoundarySecret, "", client, gatewaymiddleware.DefaultL1CacheConfig(),
+	)
+}
+
+func identityBoundaryRequest(t *testing.T, token string) *http.Request {
+	t.Helper()
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	return request
+}
 
 func identityBoundaryToken(t *testing.T, subject, tokenID string) string {
 	t.Helper()
 	claims := jwt.MapClaims{
-		"iss":       DefaultJWTIssuer,
-		"aud":       DefaultJWTAudience,
+		"iss":       gatewaymiddleware.DefaultJWTIssuer,
+		"aud":       gatewaymiddleware.DefaultJWTAudience,
 		"exp":       time.Now().Add(time.Hour).Unix(),
 		"iat":       time.Now().Add(-time.Minute).Unix(),
 		"jti":       tokenID,
@@ -28,20 +53,20 @@ func identityBoundaryToken(t *testing.T, subject, tokenID string) string {
 		"is_active": true,
 		"role":      "student",
 	}
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(testSecret))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(identityBoundarySecret))
 	require.NoError(t, err)
 	return token
 }
 
 func TestValidate_RejectsWhitespaceOnlySubject(t *testing.T) {
-	middleware := newUnrevokedJWTMiddleware(t)
+	middleware := newIdentityBoundaryMiddleware(t)
 	router := gin.New()
 	router.GET("/test", middleware.Validate(context.Background()), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
 
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, bearerRequest(t, identityBoundaryToken(t, " \t ", "blank-subject-required")))
+	router.ServeHTTP(recorder, identityBoundaryRequest(t, identityBoundaryToken(t, " \t ", "blank-subject-required")))
 
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
@@ -57,7 +82,7 @@ func TestOptional_DoesNotSignBlankSubjectOrTamperedTokenForBackend(t *testing.T)
 	target, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	middleware := newUnrevokedJWTMiddleware(t)
+	middleware := newIdentityBoundaryMiddleware(t)
 	router := gin.New()
 	router.GET("/test", middleware.Optional(context.Background()), handlers.ProxyHandler(proxy, []byte("synthetic-internal-hmac-key")))
 
