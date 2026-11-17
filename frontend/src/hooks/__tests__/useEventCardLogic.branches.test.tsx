@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 type _MockedModuleType1 = typeof import("@/utils/eventDateTime")
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -353,6 +354,87 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.imageLoading).toBe(false)
     expect(result.current.snackbar).toBe("")
   })
+
+  it.each(["success", "failure"])(
+    "ignores save %s completion after unmount",
+    async (outcome) => {
+      let finish!: () => void
+      let fail!: (error: Error) => void
+      mockPatch.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = () => resolve({ data: {} })
+            fail = reject
+          })
+      )
+      const onChange = vi.fn()
+      const { result, unmount } = renderHook(
+        () => useEventCardLogic({ ...eventProps, onChange }),
+        { wrapper: StrictMode }
+      )
+      act(() => result.current.setEditOpen(true))
+      let pending!: Promise<void>
+      act(() => {
+        pending = result.current.handleEdit()
+      })
+      unmount()
+
+      await act(async () => {
+        if (outcome === "success") finish()
+        else fail(new Error("late failure"))
+        await pending
+      })
+
+      expect(mockPatch).toHaveBeenCalledOnce()
+      expect(onChange).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(["success", "failure"])(
+    "deduplicates same-session saves through %s and permits another attempt",
+    async (outcome) => {
+      let finish!: () => void
+      let fail!: (error: Error) => void
+      mockPatch.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = () => resolve({ data: {} })
+            fail = reject
+          })
+      )
+      const onChange = vi.fn()
+      const { result } = renderHook(
+        () => useEventCardLogic({ ...eventProps, onChange }),
+        { wrapper: StrictMode }
+      )
+      act(() => result.current.setEditOpen(true))
+      const save = result.current.handleEdit
+      let pending!: Promise<void>
+      let duplicate!: Promise<void>
+      act(() => {
+        pending = save()
+        duplicate = save()
+      })
+      await act(async () => {
+        await duplicate
+      })
+      expect(mockPatch).toHaveBeenCalledOnce()
+      expect(result.current.loading).toBe(true)
+      expect(onChange).not.toHaveBeenCalled()
+
+      await act(async () => {
+        if (outcome === "success") finish()
+        else fail(new Error("retryable failure"))
+        await pending
+      })
+      expect(result.current.loading).toBe(false)
+      await act(async () => {
+        await result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(2)
+      expect(onChange).toHaveBeenCalledTimes(outcome === "success" ? 2 : 1)
+    }
+  )
 
   // ---- handleEdit (lines 123-150) ----
 
