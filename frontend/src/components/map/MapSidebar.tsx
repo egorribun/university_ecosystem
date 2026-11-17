@@ -151,7 +151,9 @@ export function MapSidebar({
   const campusTimeZone = useCampusTimezone()
   const minuteClock = useMinuteClock()
   const isOpen = !!building
-  const isBuildingOpenNow = building ? isOpenNow(building.hours, new Date(minuteClock), campusTimeZone) : false
+  const isBuildingOpenNow = building
+    ? isOpenNow(building.hours, new Date(minuteClock), campusTimeZone)
+    : false
   const sidebarTitleId = useId()
   const sidebarDescriptionId = useId()
 
