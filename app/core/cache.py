@@ -311,7 +311,9 @@ class MultiLayerCache:
                 RedisConnectionError,
                 RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache prefix invalidation failed (%s)", type(e).__name__)
+                logger.warning(
+                    "L2 cache prefix invalidation failed (%s)", type(e).__name__
+                )
 
         return count
 
