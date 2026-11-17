@@ -1908,11 +1908,12 @@ def test_aud093_cli_serializes_execution_bound_separately_from_wall_span(
 def _first_attempt_skipped_record() -> dict[str, object]:
     # GitHub run 43981164331, job 133702960401, attempt 1. Preserve the
     # observed eight-second inversion without attributing it to clock skew.
+    # The source head is synthetic; run/job IDs retain the public audit trail.
     return {
         "id": 133702960401,
         "run_id": 43981164331,
         "run_attempt": 1,
-        "head_sha": "61fb428da8cec98c6cd3cb95884a81949bac1856",
+        "head_sha": "a" * 40,
         "name": "live-realtime-visual",
         "status": "completed",
         "conclusion": "skipped",
