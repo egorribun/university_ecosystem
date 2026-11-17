@@ -29,24 +29,29 @@ _STUB_LOG_GUARD = (
     '[ "$count" -lt 64 ] || exit 1\n'
     'printf "%s\\n" "$((count + 1))" > "$COMMAND_COUNT"\n'
 )
+_FRONTEND_ARCHIVE_COPY = (
+    "COPY frontend/scripts/fetch-alpine-zlib-archive.mjs "
+    "/tmp/fetch-alpine-zlib-archive.mjs"
+)
+_FRONTEND_ARCHIVE_CLEANUP = "&& rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs"
 
 
 def _archive_prefix(branch: str) -> str:
     hashes = ARCHIVE_SHA256[branch]
-    url = (
-        f"https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/"
-        "${zlib_arch}/zlib-1.3.2-r1.apk"
-    )
     if branch == "3.24":
         fetch = (
             " && attempt=1"
-            f' && until timeout -s KILL 20 wget -q -O /tmp/zlib.apk "{url}"; do'
+            ' && until timeout -s KILL 20 node /tmp/fetch-alpine-zlib-archive.mjs "$zlib_arch"; do'
             ' if [ "$attempt" -ge 3 ]; then exit 1; fi;'
             " attempt=$((attempt + 1));"
             " sleep 2 || exit 1;"
             " done"
         )
     else:
+        url = (
+            f"https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/"
+            "${zlib_arch}/zlib-1.3.2-r1.apk"
+        )
         fetch = f' && wget -q -O /tmp/zlib.apk "{url}"'
     return (
         'RUN zlib_arch="$(apk --print-arch)"'
@@ -64,6 +69,11 @@ def _runtime_runs(source: str) -> list[str]:
     runtime = re.split(r"(?im)^FROM[ \t]+", source)[-1]
     runtime = re.sub(r"[ \t]*\\\r?\n[ \t]*", " ", runtime)
     return [line for line in runtime.splitlines() if line.startswith("RUN ")]
+
+
+def _archive_shell(run: str, branch: str) -> str:
+    assert run.startswith(_archive_prefix(branch))
+    return run[4:]
 
 
 def _run_archive_shell(
@@ -103,6 +113,16 @@ def _assert_runtime_zlib_pin(source: str, archive_branch: str | None = None) -> 
         assert archive_run.count("&& rm /tmp/zlib.apk") == 1, (
             "remove the verified archive"
         )
+        if archive_branch == "3.24":
+            assert runtime.splitlines().count(_FRONTEND_ARCHIVE_COPY) == 1, (
+                "copy the exact frontend archive helper once"
+            )
+            assert f"{_FRONTEND_ARCHIVE_COPY}\n{archive_run}" in runtime, (
+                "copy the helper immediately before the archive run"
+            )
+            assert archive_run.endswith(_FRONTEND_ARCHIVE_CLEANUP), (
+                "remove both the verified archive and helper after installation"
+            )
         runtime = runtime.replace(archive_run, "RUN " + archive_run[len(prefix) + 4 :])
     installs: list[list[str]] = []
     user_selected = False
@@ -257,14 +277,8 @@ def test_runtime_contract_accepts_repository_install_forms(run: str) -> None:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ("https://dl-cdn.alpinelinux.org", "http://dl-cdn.alpinelinux.org"),
-        ("dl-cdn.alpinelinux.org", "untrusted.example"),
-        ("/main/", "/community/"),
-        ("zlib-1.3.2-r1.apk", "zlib-1.3.2-r0.apk"),
         ("$(apk --print-arch)", "x86_64"),
         ("exit 1 ;;", "exit 0 ;;"),
-        ("wget -q -O", "wget -q --no-check-certificate -O"),
-        ("wget -q -O", "wget -O"),
         ("| sha256sum -c -", "| cat"),
         ("| sha256sum -c -", "| sha256sum -c - || true"),
         ("&& apk add --no-cache", "; apk add --no-cache"),
@@ -288,25 +302,47 @@ def test_runtime_archive_contract_rejects_unsafe_changes(
 
 
 @pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("https://dl-cdn.alpinelinux.org", "http://dl-cdn.alpinelinux.org"),
+        ("dl-cdn.alpinelinux.org", "untrusted.example"),
+        ("/main/", "/community/"),
+        ("zlib-1.3.2-r1.apk", "zlib-1.3.2-r0.apk"),
+        ("wget -q -O", "wget -q --no-check-certificate -O"),
+        ("wget -q -O", "wget -O"),
+    ],
+)
+def test_caddy_archive_contract_rejects_unsafe_changes(old: str, new: str) -> None:
+    source = (ROOT / "services/caddy/Dockerfile").read_text(encoding="utf-8")
+    assert old in source
+    with pytest.raises(AssertionError):
+        _assert_runtime_zlib_pin(source.replace(old, new), "3.23")
+
+
+@pytest.mark.parametrize(
     "dockerfile", DOCKERFILES, ids=lambda path: path.relative_to(ROOT).as_posix()
 )
-@pytest.mark.parametrize("failure", ["", "wget", "sha256sum", "install"])
+@pytest.mark.parametrize("failure", ["", "fetch", "sha256sum", "install"])
 @pytest.mark.parametrize("arch", ["x86_64", "aarch64", "unsupported"])
 def test_runtime_archive_shell_fails_closed(
     dockerfile: Path, failure: str, arch: str, tmp_path: Path
 ) -> None:
     source = dockerfile.read_text(encoding="utf-8")
     branch = ARCHIVE_BRANCHES[dockerfile.relative_to(ROOT).as_posix()]
-    run = next(
-        line[4:]
-        for line in _runtime_runs(source)
-        if line.startswith(_archive_prefix(branch))
+    run = _archive_shell(
+        next(
+            line
+            for line in _runtime_runs(source)
+            if line.startswith(_archive_prefix(branch))
+        ),
+        branch,
     )
     log = tmp_path / "commands.log"
     for command in (
         "apk",
         "timeout",
         "wget",
+        "node",
         "sha256sum",
         "sleep",
         "rm",
@@ -324,6 +360,7 @@ def test_runtime_archive_shell_fails_closed(
             "  IFS= read -r checksum\n"
             '  [ "$checksum" = "$EXPECTED_SHA256  /tmp/zlib.apk" ] || exit 1\n'
             "fi\n"
+            'if [ "$FAILURE" = fetch ] && { [ "$command" = wget ] || [ "$command" = node ]; }; then exit 1; fi\n'
             '[ "$command" != "$FAILURE" ] || exit 1\n'
             'if [ "$command" = apk ] && [ "$1" = add ] && [ "$FAILURE" = install ]; then exit 1; fi\n'
         )
@@ -347,27 +384,36 @@ def test_runtime_archive_shell_fails_closed(
     elif failure:
         assert result.returncode != 0
         assert not any(command.startswith("rm ") for command in commands)
-        if failure in {"wget", "sha256sum"}:
+        if failure in {"fetch", "sha256sum"}:
             assert not any(command.startswith("apk add ") for command in commands)
     else:
         assert result.returncode == 0, result.stderr
-        wget = (
-            "wget -q -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
-            f"v{branch}/main/{arch}/zlib-1.3.2-r1.apk"
-        )
-        assert [command for command in commands if command.startswith("wget ")] == [
-            wget
-        ]
         if branch == "3.24":
-            assert commands[1] == f"timeout -s KILL 20 {wget}"
+            fetch = f"node /tmp/fetch-alpine-zlib-archive.mjs {arch}"
+            assert [command for command in commands if command.startswith("node ")] == [
+                fetch
+            ]
+            assert commands[1] == f"timeout -s KILL 20 {fetch}"
         else:
-            assert commands[1] == wget
+            fetch = (
+                "wget -q -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
+                f"v{branch}/main/{arch}/zlib-1.3.2-r1.apk"
+            )
+            assert [command for command in commands if command.startswith("wget ")] == [
+                fetch
+            ]
+            assert commands[1] == fetch
         install = next(
             command for command in commands if command.startswith("apk add ")
         )
         assert "zlib=1.3.2-r1 /tmp/zlib.apk" in install
         assert commands.index("sha256sum -c -") < commands.index(install)
-        assert commands.index(install) < commands.index("rm /tmp/zlib.apk")
+        cleanup = (
+            "rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs"
+            if branch == "3.24"
+            else "rm /tmp/zlib.apk"
+        )
+        assert commands.index(install) < commands.index(cleanup)
 
 
 @pytest.mark.parametrize(
@@ -379,9 +425,17 @@ def test_runtime_archive_rejects_changed_integrity_or_branch(
 ) -> None:
     source = dockerfile.read_text(encoding="utf-8")
     branch = ARCHIVE_BRANCHES[dockerfile.relative_to(ROOT).as_posix()]
+    changed_source = (
+        source.replace(
+            _FRONTEND_ARCHIVE_COPY,
+            _FRONTEND_ARCHIVE_COPY.replace("frontend/scripts/", "other/"),
+        )
+        if branch == "3.24"
+        else source.replace(f"/alpine/v{branch}/", "/alpine/edge/")
+    )
     for altered in (
         source.replace(ARCHIVE_SHA256[branch][arch], "0" * 64),
-        source.replace(f"/alpine/v{branch}/", "/alpine/edge/"),
+        changed_source,
         source.replace("zlib=1.3.2-r1 /tmp/zlib.apk", "zlib=1.3.2-r1"),
         source + "\nRUN apk add --no-cache zlib=1.3.2-r0\n",
     ):
@@ -393,13 +447,38 @@ def test_runtime_archive_rejects_changed_integrity_or_branch(
     ("old", "new"),
     [
         ("&& attempt=1", "&& attempt=0"),
-        ("timeout -s KILL 20 wget", "wget"),
-        ("timeout -s KILL 20 wget", "timeout -s KILL 0 wget"),
+        ("timeout -s KILL 20 node", "node"),
+        ("timeout -s KILL 20 node", "timeout -s KILL 0 node"),
         ('[ "$attempt" -ge 3 ]', '[ "$attempt" -ge 4 ]'),
         ("then exit 1; fi;", "then exit 0; fi;"),
         ("attempt=$((attempt + 1))", "attempt=$((attempt - 1))"),
         ("sleep 2 || exit 1", "sleep 2 || true"),
-        ("wget -q -O /tmp/zlib.apk", "wget -q -O /tmp/other.apk"),
+        (
+            _FRONTEND_ARCHIVE_COPY,
+            _FRONTEND_ARCHIVE_COPY.replace("frontend/scripts/", "other/"),
+        ),
+        (
+            _FRONTEND_ARCHIVE_COPY,
+            _FRONTEND_ARCHIVE_COPY.removesuffix("fetch-alpine-zlib-archive.mjs")
+            + "other.mjs",
+        ),
+        (
+            _FRONTEND_ARCHIVE_COPY,
+            _FRONTEND_ARCHIVE_COPY + "\n" + _FRONTEND_ARCHIVE_COPY,
+        ),
+        (
+            _FRONTEND_ARCHIVE_COPY + "\nRUN ",
+            _FRONTEND_ARCHIVE_COPY + "\nRUN echo changed\nRUN ",
+        ),
+        (_FRONTEND_ARCHIVE_CLEANUP, "&& rm /tmp/zlib.apk"),
+        (
+            _FRONTEND_ARCHIVE_CLEANUP,
+            "&& rm /tmp/fetch-alpine-zlib-archive.mjs /tmp/zlib.apk",
+        ),
+        (
+            'node /tmp/fetch-alpine-zlib-archive.mjs "$zlib_arch"',
+            'node /tmp/fetch-alpine-zlib-archive.mjs "x86_64"',
+        ),
     ],
 )
 def test_frontend_retry_contract_rejects_unsafe_changes(old: str, new: str) -> None:
@@ -429,7 +508,7 @@ def test_frontend_retry_contract_rejects_unsafe_changes(old: str, new: str) -> N
         (1, False, False, True, 1, False),
     ],
     ids=[
-        "404-then-success",
+        "fetch-failure-then-success",
         "last-attempt",
         "exhausted",
         "timeout-then-success",
@@ -449,27 +528,32 @@ def test_frontend_archive_retry_is_bounded_and_fail_closed(
     tmp_path: Path,
 ) -> None:
     source = (ROOT / "frontend.Dockerfile").read_text(encoding="utf-8")
-    run = next(
-        line[4:] for line in _runtime_runs(source) if line.startswith("RUN zlib_arch=")
+    run = _archive_shell(
+        next(
+            line
+            for line in _runtime_runs(source)
+            if line.startswith(_archive_prefix("3.24"))
+        ),
+        "3.24",
     )
     log = tmp_path / "commands.log"
     attempt_file = tmp_path / "attempts"
-    for command in ("apk", "timeout", "wget", "sha256sum", "sleep", "rm"):
+    for command in ("apk", "timeout", "node", "sha256sum", "sleep", "rm"):
         script = tmp_path / command
         script.write_text(
             "#!/bin/sh\n" + _STUB_LOG_GUARD + f"command={command}\n"
             'printf "%s %s\\n" "$command" "$*" >> "$COMMAND_LOG"\n'
             'if [ "$command $*" = "apk --print-arch" ]; then printf "%s\\n" "$TEST_ARCH"; exit 0; fi\n'
             'if [ "$command" = timeout ] && [ "$FAIL_TIMEOUT" != 1 ]; then shift 3; exec "$@"; fi\n'
-            'if [ "$command" = wget ] && [ "$FAIL_TIMEOUT" = 1 ]; then exit 0; fi\n'
-            'if [ "$command" = wget ] || [ "$command" = timeout ]; then\n'
+            'if [ "$command" = node ] && [ "$FAIL_TIMEOUT" = 1 ]; then exit 0; fi\n'
+            'if [ "$command" = node ] || [ "$command" = timeout ]; then\n'
             "  attempt=0\n"
             '  if [ -f "$ATTEMPT_FILE" ]; then read -r attempt < "$ATTEMPT_FILE"; fi\n'
             "  attempt=$((attempt + 1))\n"
             '  printf "%s\\n" "$attempt" > "$ATTEMPT_FILE"\n'
             '  if [ "$attempt" -le "$FAILED_DOWNLOADS" ]; then\n'
             '    if [ "$command" = timeout ]; then exit 137; fi\n'
-            '    printf "%s\\n" "synthetic HTTP 404" >&2; exit 1\n'
+            '    printf "%s\\n" "synthetic fetch failure" >&2; exit 1\n'
             "  fi\n"
             '  if [ "$command" = timeout ]; then shift 3; exec "$@"; fi\n'
             "fi\n"
@@ -497,20 +581,19 @@ def test_frontend_archive_retry_is_bounded_and_fail_closed(
         },
     )
     commands = log.read_text(encoding="utf-8").splitlines()
-    url = f"https://dl-cdn.alpinelinux.org/alpine/v3.24/main/{arch}/zlib-1.3.2-r1.apk"
-    wget = f"wget -q -O /tmp/zlib.apk {url}"
-    assert [command for command in commands if command.startswith("wget ")] == [
-        wget
+    fetch = f"node /tmp/fetch-alpine-zlib-archive.mjs {arch}"
+    assert [command for command in commands if command.startswith("node ")] == [
+        fetch
     ] * (attempts - min(failed_downloads, attempts) if fail_timeout else attempts)
     assert [command for command in commands if command.startswith("timeout ")] == [
-        f"timeout -s KILL 20 {wget}"
+        f"timeout -s KILL 20 {fetch}"
     ] * attempts
     assert [command for command in commands if command.startswith("sleep ")] == [
         "sleep 2"
     ] * min(failed_downloads, 2)
     assert (result.returncode == 0) is succeeds
     if failed_downloads and not fail_timeout:
-        assert "synthetic HTTP 404" in result.stderr
+        assert "synthetic fetch failure" in result.stderr
     if failed_downloads == 3 or fail_sleep:
         assert not any(command.startswith("sha256sum ") for command in commands)
     else:
@@ -519,10 +602,12 @@ def test_frontend_archive_retry_is_bounded_and_fail_closed(
     if succeeds:
         assert len(installs) == 1
         assert commands.index("sha256sum -c -") < commands.index(installs[0])
-        assert commands.index(installs[0]) < commands.index("rm /tmp/zlib.apk")
+        assert commands.index(installs[0]) < commands.index(
+            "rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs"
+        )
     else:
         assert not installs
-        assert "rm /tmp/zlib.apk" not in commands
+        assert not any(command.startswith("rm ") for command in commands)
 
 
 def test_archive_shell_harness_times_out() -> None:
