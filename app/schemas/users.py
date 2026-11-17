@@ -13,7 +13,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from app.core.localization import translate
@@ -215,29 +214,12 @@ class UserPublicOut(OrmModel, UserProfilePublicFlattened):
     avatar_url_optimized: str | None = None
 
 
-def _omit_identity_update_default(schema: dict[str, Any]) -> None:
-    """The internal omission sentinel is not an accepted explicit input default."""
-    schema.pop("default", None)
-
-
 class UserAdminUpdate(BaseModel):
     full_name: str | None = None
-    email: EmailStr | SkipJsonSchema[None] = Field(
-        default=None, json_schema_extra=_omit_identity_update_default
-    )
-    role: UserRole | SkipJsonSchema[None] = Field(
-        default=None, json_schema_extra=_omit_identity_update_default
-    )
+    email: EmailStr | None = None
+    role: UserRole | None = None
     group_id: uuid.UUID | None = None
     reset_mfa: bool | None = None
-
-    @field_validator("email", "role", mode="before")
-    @classmethod
-    def _reject_null_identity_fields(cls, value: Any) -> Any:
-        """Omission is a partial update; explicit null cannot clear identity."""
-        if value is None:
-            raise ValueError("Email and role cannot be null; omit unchanged fields.")
-        return value
 
 
 class DataExportOut(BaseModel):

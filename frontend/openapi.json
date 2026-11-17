@@ -4902,9 +4902,16 @@
         "additionalProperties": false,
         "properties": {
           "email": {
-            "format": "email",
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Email",
-            "type": "string",
             "x-pii": true
           },
           "full_name": {
@@ -4942,8 +4949,14 @@
             "title": "Reset Mfa"
           },
           "role": {
-            "$ref": "#/components/schemas/UserRole",
-            "title": "Role"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "UserAdminUpdate",
