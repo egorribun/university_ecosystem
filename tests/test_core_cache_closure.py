@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
-from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -14,6 +13,7 @@ from redis.exceptions import (
     NoPermissionError,
     ResponseError,
 )
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.cache import LRUCache, MultiLayerCache, cached
