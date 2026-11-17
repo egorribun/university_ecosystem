@@ -1,14 +1,27 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Current reconciliation — 2026-11-13
+## Current reconciliation — 2026-11-17
 
-The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
-**4S / 2P / 0U / 0N**. This update accepts AUD-167, AUD-251, AUD-432 and AUD-484,
+The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
+**1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
+and AUD-438 on the owner-accepted kind + Calico proof; AUD-154 and AUD-381
+remain open. The [evidence, exact source and limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17)
+and [current 2-finding complement](#current-2-finding-reconciliation--2026-11-17)
+record the decisions. The actual ingress controller and public HTTP route were
+not tested. No overall CI, release or deployment acceptance is implied; this
+documentation change and each later source SHA require their own checks.
+
+<a id="current-reconciliation--2026-11-13"></a>
+
+## Dated reconciliation — 2026-11-13 (506/6; superseded)
+
+At this dated checkpoint the formal total was **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. That update accepted AUD-167, AUD-251, AUD-432 and AUD-484,
 each for its own stated criterion. [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13)
 bind them to hosted runs on main `a061735136fa4fb56805929fe716affbc952f4fc`; the AUD-251 evidence also cites the earlier
-main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings are AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
-and AUD-438. The [current 6-finding complement](#current-6-finding-reconciliation--2026-11-13)
-lists what each still needs. The Kubernetes proof environment is recorded in the
+main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings at that time were AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
+and AUD-438. The [then 6-finding complement](#current-6-finding-reconciliation--2026-11-13)
+listed what each needed at that checkpoint. The Kubernetes proof environment is recorded in the
 [ADR-054 addendum of 2026-11-13](../adr/ADR-054-mvp-docker-compose-deployment-target.md#addendum-2026-11-13-kind--calico-proof-environment).
 No overall CI, release or deployment acceptance is implied; this documentation commit needs
 its own checks.
@@ -64,18 +77,34 @@ This decision left the then 506 dispositions, 242 baseline identities, 27 Gitlea
 15 Semgrep rows, all required context/app pairs, blocking CodeQL, hooks and
 quality floors unchanged. The current policy inventory is 524 dispositions.
 
+<a id="current-2-finding-reconciliation--2026-11-17"></a>
+
+### Current 2-finding complement
+
+- **S (1):** AUD-154 needs a green hosted Owned Live Acceptance run on the exact
+  accepted source, including the existing read-receipt live specification.
+- **P (1):** AUD-381 needs ZAP and Nuclei to pass on the ephemeral Compose stand
+  on main, with a verified ZAP report.
+- **U (0):** none.
+- **N (0):** none.
+
+The scoped acceptance of AUD-169, AUD-188, AUD-189 and AUD-438 is recorded in the
+[2026-11-17 supplement](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+The actual ingress controller and public HTTP route were not exercised, and the
+AUD-189 backup fixture does not establish the separate MVP paired DB/S3 restore.
+
 <a id="current-6-finding-reconciliation--2026-11-13"></a>
 
-### Current 6-finding complement
+### Dated 6-finding complement (506/6; superseded)
 
 - **S (4):** AUD-154, AUD-169, AUD-188, AUD-438.
 - **P (2):** AUD-189, AUD-381.
 - **U (0):** none.
 - **N (0):** none.
 
-This is exactly the previous 10-ID complement minus AUD-167, AUD-251, AUD-432 and
-AUD-484. All other finding-specific acceptance requirements remain. What each open finding
-still needs:
+This was exactly the previous 10-ID complement minus AUD-167, AUD-251, AUD-432 and
+AUD-484. The following requirements describe what each finding needed at that dated
+checkpoint; the current decisions and remaining requirements are recorded above:
 
 - AUD-154 needs a green hosted Owned Live Acceptance run on the exact SHA of its accepted
   equivalence, with the added read-receipt live check; the live suite still has open failures.

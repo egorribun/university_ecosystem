@@ -1,25 +1,40 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Дополнение — 2026-11-17
+## Текущий срез — 2026-11-17
 
-- `main` указывает на
+- Hosted Kind + Calico proof на main
+  [`057ccd2cb835f82d97144e97413b185cf8bd7a03`](https://github.com/egorribun/university_ecosystem/commit/057ccd2cb835f82d97144e97413b185cf8bd7a03):
+  [run 43969553490](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490),
+  [job 133657797517](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/job/133657797517),
+  [receipt 14279491890](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/artifacts/14279491890).
+  Матрица 40/40; приняты AUD-169, AUD-188, AUD-189 и AUD-438 в пределах
+  [зафиксированных доказательств](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+  Реальный ingress controller и публичный HTTP route не запускались; применён
+  ingress-labelled stand-in по принятому владельцем объёму проверки.
+- Формальный итог — **510/512 (99.6%), 2 открытых: 1S / 1P / 0U / 0N**.
+  Этот результат не подтверждает общий CI, выпуск или deployment. Новый SHA
+  документации и каждый последующий SHA требуют собственных required checks.
+
+## Предыдущий срез — 2026-11-17 (`0823bdb`, superseded)
+
+- На тот момент `main` указывал на
   [`0823bdb23f41190c07625fd996f0fc98ae565da7`](https://github.com/egorribun/university_ecosystem/commit/0823bdb23f41190c07625fd996f0fc98ae565da7)
   (слияние [PR #1405](https://github.com/egorribun/university_ecosystem/pull/1405)).
-  Формальный итог аудита остаётся [506/512 при 6 открытых находках](../../audits/INDEX.md):
+  Формальный итог аудита тогда составлял 506/512 при 6 открытых находках;
   документы аудита обновляются только по hosted-доказательствам на точном SHA.
 - Kind-прогон NetworkPolicy на этом SHA прошёл: матрица 40/40, реальный file-processor,
   ротация JWKS по репликам, реальные backup и restore, отброшенные запросы метрик к
   репликам ws-hub. [Run 43931898209](https://github.com/egorribun/university_ecosystem/actions/runs/43931898209),
   [artifact 14264158752](https://github.com/egorribun/university_ecosystem/actions/runs/43931898209/artifacts/14264158752).
-  AUD-189 закрывается после следующего прогона, в котором outbox-worker получает
-  публичный TCP/443 для Web Push (решение владельца, ADR-054, дополнение 2026-11-16).
+  На тот момент AUD-189 требовал следующего прогона с публичным TCP/443 для
+  outbox-worker (решение владельца, ADR-054, дополнение 2026-11-16).
 - Полный Core на этом SHA: 218 пройдено, 2 упало, 8 пропущено, 4 нестабильных.
   [Run 43931883465](https://github.com/egorribun/university_ecosystem/actions/runs/43931883465).
   Серия успешных полных прогонов `main` составляет 0 из 2.
 - DAST на этом SHA не дал отчёта ZAP: в hosted-раннерах ZAP ни разу не запускался
   (uid раннера без записи в passwd, `user.home=?`), см. ADR-047.
   [Run 43931891703](https://github.com/egorribun/university_ecosystem/actions/runs/43931891703).
-- [PR #1406](https://github.com/egorribun/university_ecosystem/pull/1406) несёт исправления:
+- [PR #1406](https://github.com/egorribun/university_ecosystem/pull/1406) содержал исправления:
   бюджет времени тестов нативного push, гонки в admin-stories-smoke и profile-csrf,
   блокировку кнопок медиа профиля до подтверждения личности, запуск ZAP,
   публичный TCP/443 outbox-worker в Helm и локальный режим worktree лаунчера.
@@ -32,7 +47,9 @@
 Полная предыдущая версия этого файла (8286 строк, датированные разделы
 2026-09 — 2026-11-11) сохранена в git: `git show d8891684f:docs/superpowers/plans/STATUS.md`.
 
-## Ветка и источник
+<a id="ветка-и-источник"></a>
+
+## Ветка и источник — срез 2026-11-13
 
 - Main: `5b3357858` — PR #1383 слит 2026-11-12.
 - Ветка `egorribun`: впереди main коммитами закрытия аудита (на момент среза HEAD `d8891684f`).
@@ -43,12 +60,12 @@
   `81ee9ce6c64bd36fa9b0f48a6093bedf48611f7f` (PR #1382). Это исторические источники
   именно этих приёмок, а не текущий main.
 
-## Аудит: 506/512
+## Аудит: текущий итог 2026-11-17 — 510/512
 
-Формальный итог: **506/512 (98.8%) accepted or resolved, 6 open**, **4S / 2P / 0U / 0N**.
-Приняты AUD-167, AUD-251, AUD-432 и AUD-484, каждый по своему критерию. Предыдущий срез
-502/512 сохранён как история. Границы решений:
-[Current scoped supplement — 2026-11-13](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13).
+Формальный итог: **510/512 (99.6%) accepted or resolved, 2 open**, **1S / 1P / 0U / 0N**.
+Приняты AUD-169, AUD-188, AUD-189 и AUD-438 в пределах проверки на kind + Calico.
+Предыдущие срезы 506/512 и 502/512 сохранены как история. Границы решений:
+[Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
 
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment,
 reconciliation, `AUDIT-2026-10.md`, этот файл и `docs/README.md`.
@@ -58,15 +75,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 ### Открытые находки и текущий план
 
 Состав открытых находок — из
-[current 6-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13).
+[current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Green hosted Owned Live Acceptance run на точном SHA (эквивалентность принята владельцем); read-receipt live check добавить, в live-наборе ещё есть падения. |
-| AUD-169 | S | Реальный file-processor в kind + Calico: старт процесса и пара revoked/unrevoked токенов через него; сейчас Redis-проверки идут через stand-in pod. |
-| AUD-188 | S | Реальный JWKS refresher file-processor, приём ProcessFile по gRPC и обновление ключа на каждой реплике без рестарта; сейчас stand-in consumer без refresher. |
-| AUD-438 | S | HTTP GET /metrics: неаутентифицированный успех из monitoring и отказ из неизбранного namespace и публичного ingress; сейчас только TCP-проверки. |
-| AUD-189 | P | В kind: link-local TCP/443, backup public TCP/443 (политика при backup.enabled=true), notifications-worker и outbox-worker по addenda ADR-054 от 2026-11-13. |
+| AUD-154 | S | Green hosted Owned Live Acceptance run на точном SHA (эквивалентность принята владельцем), включая существующий read-receipt live spec. |
 | AUD-381 | P | ZAP и Nuclei на эфемерном Compose stand должны пройти на main; Nuclei проходит, проверенного ZAP-отчёта ещё нет. |
 
 Остальные требования каждой находки не изменены. Закрытие требует проверки конкретного
@@ -88,15 +101,15 @@ source SHA, а не этого среза.
 - AUD-484: решено владельцем 2026-11-12, alerts 2995–3002 dismissed, analyses сохранены.
 - AUD-381: цель — эфемерный Compose stand в CI (решение владельца 2026-11-12). Проверенного ZAP-отчёта ещё нет.
 - AUD-169, AUD-188, AUD-189, AUD-438: kind + Calico принят владельцем как среда доказательств
-  (2026-11-12); открыты до проверок из таблицы выше. AUD-251 принят на этой среде.
+  (2026-11-12); решения и ограничения записаны в supplement от 2026-11-17. AUD-251 принят на этой среде.
 
 ## Следующие шаги
 
-1. Открыть PR из `egorribun` и дождаться required checks на его итоговом SHA. Обычный merge; без admin bypass.
-2. Этап 3: traceability matrix ТЗ 2–13 (MVP_MASTER_PLAN, Блок 4), реальный Chromium,
+1. AUD-154: green hosted Owned Live Acceptance на точном SHA; AUD-381: ZAP и Nuclei с проверенным ZAP-отчётом.
+2. Операционная цель: два последовательных green полных Core run на `main`. [Run 43969553294](https://github.com/egorribun/university_ecosystem/actions/runs/43969553294) стартовал для source `057ccd2cb835f82d97144e97413b185cf8bd7a03`; его итог здесь не заявлен.
+3. Для новых изменений открыть PR и дождаться required checks на его итоговом SHA. Обычный merge; без admin bypass.
+4. Этап 3: traceability matrix ТЗ 2–13 (MVP_MASTER_PLAN, Блок 4), реальный Chromium,
    два последовательных прогона, stop/start и seed.
-3. AUD-169, AUD-188, AUD-189, AUD-438: реальный file-processor и недостающие проверки в kind + Calico run.
-4. AUD-154: green hosted Owned Live Acceptance на точном SHA; AUD-381: проверенный ZAP-отчёт.
 5. Этап 5: один DB/S3 backup и restore в изолированную цель (ещё не запускался).
 6. Этап 4: визуальные и performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
 

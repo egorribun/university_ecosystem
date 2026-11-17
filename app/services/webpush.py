@@ -7,6 +7,7 @@ import logging
 import re
 import socket
 import uuid
+from base64 import urlsafe_b64encode
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
@@ -348,6 +349,7 @@ _OPTION_KEYS: set[str] = {
     "vibrate",
 }
 _META_KEYS: set[str] = {"ttl", "topic", "urgency"}
+_WEBPUSH_TOPIC_HEADER_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 _DEFAULT_TTL_SECONDS = 60 * 60  # 1 hour
 _TTL_BY_URGENCY: dict[str, int] = {
@@ -652,6 +654,16 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     return _DEFAULT_TTL_SECONDS
 
 
+def _webpush_topic_header(topic: str) -> str:
+    """Encode a replacement key without changing the application topic."""
+    # Reserve the underscore prefix for hashed values so a literal valid
+    # topic cannot alias a differently named encoded topic.
+    if not topic.startswith("_") and _WEBPUSH_TOPIC_HEADER_PATTERN.fullmatch(topic):
+        return topic
+    digest = sha256(topic.encode("utf-8", errors="surrogatepass")).digest()
+    return "_" + urlsafe_b64encode(digest).decode("ascii")[:31]
+
+
 def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     user = getattr(sub, "user", None)
     locale = resolve_locale(user=user)
@@ -663,7 +675,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         headers["Urgency"] = str(urgency)
     topic = meta.get("topic")
     if topic:
-        headers["Topic"] = str(topic)
+        headers["Topic"] = _webpush_topic_header(str(topic))
     endpoint = str(sub.endpoint).strip()
     subscription_info = {
         "endpoint": endpoint,

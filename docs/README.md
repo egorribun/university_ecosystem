@@ -1,14 +1,27 @@
 # University Ecosystem documentation
 
-## Current reconciliation — 2026-11-13
+## Current reconciliation — 2026-11-17
 
-The current formal total is **506/512 (98.8%) accepted or resolved, 6 open**:
-**4S / 2P / 0U / 0N**. This update accepts AUD-167, AUD-251, AUD-432 and AUD-484,
+The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
+**1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
+and AUD-438 on the owner-accepted kind + Calico proof; AUD-154 and AUD-381
+remain open. The [evidence, exact source and limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17)
+and [current 2-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17)
+record the decisions. The actual ingress controller and public HTTP route were
+not tested. No overall CI, release or deployment acceptance is implied; this
+documentation change and each later source SHA require their own checks.
+
+<a id="current-reconciliation--2026-11-13"></a>
+
+## Dated reconciliation — 2026-11-13 (506/6; superseded)
+
+At this dated checkpoint the formal total was **506/512 (98.8%) accepted or resolved, 6 open**:
+**4S / 2P / 0U / 0N**. That update accepted AUD-167, AUD-251, AUD-432 and AUD-484,
 each for its own stated criterion. [Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13)
 bind them to hosted runs on main `a061735136fa4fb56805929fe716affbc952f4fc`; the AUD-251 evidence also cites the earlier
-main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings are AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
-and AUD-438. The [current 6-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
-lists what each still needs. The Kubernetes proof environment is recorded in the
+main run on `bed67acdc7f2814b70cde347f7c56dc05794413b`. The open findings at that time were AUD-154, AUD-169, AUD-188, AUD-189, AUD-381
+and AUD-438. The [then 6-finding complement](audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)
+listed what each needed at that checkpoint. The Kubernetes proof environment is recorded in the
 [ADR-054 addendum of 2026-11-13](adr/ADR-054-mvp-docker-compose-deployment-target.md#addendum-2026-11-13-kind--calico-proof-environment).
 No overall CI, release or deployment acceptance is implied; this documentation commit needs
 its own checks.
@@ -131,7 +144,8 @@ handoffs are intentionally not part of the canonical index.
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [MVP Block 4 traceability matrix (ТЗ §2–13)](testing/mvp-traceability-matrix.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-13 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 506 / 512 accepted or resolved (98.8%), 6 open; 53 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-17 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — 510 / 512 accepted or resolved (99.6%), 2 open; 57 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 506 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 6 open (4S / 2P / 0U / 0N), retained as history.
 - [Dated 502 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 10 open (4S / 6P / 0U / 0N), retained as history.
 - [Dated 494 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
 - [Dated 490 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-490-22-scoped-supplement--2026-11-09) — 22 open (13S / 9P / 0U / 0N), retained as history.
@@ -198,7 +212,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 6-finding complement, 2026-11-13 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-6-finding-reconciliation--2026-11-13)                 |
+| Current open findings                         | [Current 2-finding complement, 2026-11-17 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable
