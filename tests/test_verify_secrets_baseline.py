@@ -33244,36 +33244,148 @@ _NOV17_SSR_CHART_PINS = {
     "charts/university-ecosystem/values.yaml": (
         bytes(
             (
-                211, 211, 11, 192, 140, 236, 19, 102,
-                36, 249, 199, 123, 50, 255, 249, 142,
-                71, 84, 80, 107, 10, 106, 78, 253,
-                126, 70, 181, 122, 129, 45, 59, 105,
+                211,
+                211,
+                11,
+                192,
+                140,
+                236,
+                19,
+                102,
+                36,
+                249,
+                199,
+                123,
+                50,
+                255,
+                249,
+                142,
+                71,
+                84,
+                80,
+                107,
+                10,
+                106,
+                78,
+                253,
+                126,
+                70,
+                181,
+                122,
+                129,
+                45,
+                59,
+                105,
             )
         ),
         bytes(
             (
-                155, 221, 250, 121, 91, 203, 80, 77,
-                103, 197, 126, 107, 200, 117, 31, 97,
-                227, 0, 248, 231, 134, 250, 243, 72,
-                8, 235, 169, 175, 85, 175, 99, 189,
+                155,
+                221,
+                250,
+                121,
+                91,
+                203,
+                80,
+                77,
+                103,
+                197,
+                126,
+                107,
+                200,
+                117,
+                31,
+                97,
+                227,
+                0,
+                248,
+                231,
+                134,
+                250,
+                243,
+                72,
+                8,
+                235,
+                169,
+                175,
+                85,
+                175,
+                99,
+                189,
             )
         ),
     ),
     "charts/university-ecosystem/values.schema.json": (
         bytes(
             (
-                91, 211, 14, 169, 45, 81, 152, 159,
-                155, 18, 30, 227, 223, 25, 178, 118,
-                252, 34, 139, 49, 100, 15, 247, 109,
-                52, 76, 25, 77, 207, 208, 34, 188,
+                91,
+                211,
+                14,
+                169,
+                45,
+                81,
+                152,
+                159,
+                155,
+                18,
+                30,
+                227,
+                223,
+                25,
+                178,
+                118,
+                252,
+                34,
+                139,
+                49,
+                100,
+                15,
+                247,
+                109,
+                52,
+                76,
+                25,
+                77,
+                207,
+                208,
+                34,
+                188,
             )
         ),
         bytes(
             (
-                15, 101, 110, 90, 180, 190, 146, 81,
-                62, 71, 131, 104, 192, 202, 193, 153,
-                222, 209, 137, 94, 61, 107, 64, 96,
-                73, 195, 119, 252, 115, 211, 182, 18,
+                15,
+                101,
+                110,
+                90,
+                180,
+                190,
+                146,
+                81,
+                62,
+                71,
+                131,
+                104,
+                192,
+                202,
+                193,
+                153,
+                222,
+                209,
+                137,
+                94,
+                61,
+                107,
+                64,
+                96,
+                73,
+                195,
+                119,
+                252,
+                115,
+                211,
+                182,
+                18,
             )
         ),
     ),
@@ -33282,41 +33394,41 @@ _NOV17_SSR_CHART_REVERSALS = {
     "charts/university-ecosystem/values.schema.json": (
         (
             (
-                b"        \"trustDomain\",\n"
-                b"        \"backendSpiffeID\",\n"
-                b"        \"gatewaySpiffeID\",\n"
-                b"        \"frontendSpiffeID\",\n"
-                b"        \"wsHubSpiffeID\",\n"
-                b"        \"fileProcessorSpiffeID\",\n"
-                b"        \"workloadAPI\"\n"
+                b'        "trustDomain",\n'
+                b'        "backendSpiffeID",\n'
+                b'        "gatewaySpiffeID",\n'
+                b'        "frontendSpiffeID",\n'
+                b'        "wsHubSpiffeID",\n'
+                b'        "fileProcessorSpiffeID",\n'
+                b'        "workloadAPI"\n'
             ),
             (
-                b"        \"trustDomain\",\n"
-                b"        \"backendSpiffeID\",\n"
-                b"        \"gatewaySpiffeID\",\n"
-                b"        \"wsHubSpiffeID\",\n"
-                b"        \"fileProcessorSpiffeID\",\n"
-                b"        \"workloadAPI\"\n"
+                b'        "trustDomain",\n'
+                b'        "backendSpiffeID",\n'
+                b'        "gatewaySpiffeID",\n'
+                b'        "wsHubSpiffeID",\n'
+                b'        "fileProcessorSpiffeID",\n'
+                b'        "workloadAPI"\n'
             ),
         ),
         (
             (
-                b"              \"pattern\": \"^/[A-Za-z0-9._/-]{1,200}$\"\n"
+                b'              "pattern": "^/[A-Za-z0-9._/-]{1,200}$"\n'
                 b"            }\n"
                 b"          }\n"
                 b"        },\n"
-                b"        \"frontendSpiffeID\": {\n"
-                b"          \"type\": \"string\",\n"
-                b"          \"maxLength\": 2048,\n"
-                b"          \"pattern\": \"^(|spiffe://[a-z0-9](?:[a-"
+                b'        "frontendSpiffeID": {\n'
+                b'          "type": "string",\n'
+                b'          "maxLength": 2048,\n'
+                b'          "pattern": "^(|spiffe://[a-z0-9](?:[a-'
                 b"z0-9-]{0,61}[a-z0-9])?(?:\\\\.[a-z0-9](?:[a-z0-9-]"
-                b"{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$\"\n"
+                b'{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"\n'
                 b"        }\n"
                 b"      }\n"
                 b"    },\n"
             ),
             (
-                b"              \"pattern\": \"^/[A-Za-z0-9._/-]{1,200}$\"\n"
+                b'              "pattern": "^/[A-Za-z0-9._/-]{1,200}$"\n'
                 b"            }\n"
                 b"          }\n"
                 b"        }\n"
@@ -33327,41 +33439,41 @@ _NOV17_SSR_CHART_REVERSALS = {
         (
             (
                 b"        },\n"
-                b"        \"concurrencyPolicy\": {\n"
-                b"          \"type\": \"string\",\n"
-                b"          \"enum\": [\n"
-                b"            \"Forbid\"\n"
+                b'        "concurrencyPolicy": {\n'
+                b'          "type": "string",\n'
+                b'          "enum": [\n'
+                b'            "Forbid"\n'
                 b"          ]\n"
                 b"        },\n"
-                b"        \"startingDeadlineSeconds\": {\n"
-                b"          \"type\": \"integer\",\n"
+                b'        "startingDeadlineSeconds": {\n'
+                b'          "type": "integer",\n'
             ),
             (
                 b"        },\n"
-                b"        \"concurrencyPolicy\": {\n"
-                b"          \"type\": \"string\",\n"
-                b"          \"enum\": [\"Forbid\"]\n"
+                b'        "concurrencyPolicy": {\n'
+                b'          "type": "string",\n'
+                b'          "enum": ["Forbid"]\n'
                 b"        },\n"
-                b"        \"startingDeadlineSeconds\": {\n"
-                b"          \"type\": \"integer\",\n"
+                b'        "startingDeadlineSeconds": {\n'
+                b'          "type": "integer",\n'
             ),
         ),
         (
             (
                 b"        },\n"
-                b"        \"autoscaling\": {\n"
-                b"          \"$ref\": \"#/definitions/autoscaling\"\n"
+                b'        "autoscaling": {\n'
+                b'          "$ref": "#/definitions/autoscaling"\n'
                 b"        },\n"
-                b"        \"ssrProxyResources\": {\n"
-                b"          \"$ref\": \"#/definitions/resources\"\n"
+                b'        "ssrProxyResources": {\n'
+                b'          "$ref": "#/definitions/resources"\n'
                 b"        }\n"
                 b"      }\n"
                 b"    },\n"
             ),
             (
                 b"        },\n"
-                b"        \"autoscaling\": {\n"
-                b"          \"$ref\": \"#/definitions/autoscaling\"\n"
+                b'        "autoscaling": {\n'
+                b'          "$ref": "#/definitions/autoscaling"\n'
                 b"        }\n"
                 b"      }\n"
                 b"    },\n"
@@ -33369,68 +33481,68 @@ _NOV17_SSR_CHART_REVERSALS = {
         ),
         (
             (
-                b"        \"prometheus\": {\n"
-                b"          \"type\": \"object\",\n"
-                b"          \"additionalProperties\": false,\n"
-                b"          \"required\": [\n"
-                b"            \"namespaceSelector\",\n"
-                b"            \"podSelector\"\n"
+                b'        "prometheus": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": [\n'
+                b'            "namespaceSelector",\n'
+                b'            "podSelector"\n'
                 b"          ],\n"
-                b"          \"properties\": {\n"
-                b"            \"namespaceSelector\": {\n"
-                b"              \"type\": \"object\",\n"
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
             ),
             (
-                b"        \"prometheus\": {\n"
-                b"          \"type\": \"object\",\n"
-                b"          \"additionalProperties\": false,\n"
-                b"          \"required\": [\"namespaceSelector\", \"podSelector\"],\n"
-                b"          \"properties\": {\n"
-                b"            \"namespaceSelector\": {\n"
-                b"              \"type\": \"object\",\n"
+                b'        "prometheus": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": ["namespaceSelector", "podSelector"],\n'
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
             ),
         ),
         (
             (
-                b"        \"elasticsearch\": {\n"
-                b"          \"type\": \"object\",\n"
-                b"          \"additionalProperties\": false,\n"
-                b"          \"required\": [\n"
-                b"            \"namespaceSelector\",\n"
-                b"            \"podSelector\"\n"
+                b'        "elasticsearch": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": [\n'
+                b'            "namespaceSelector",\n'
+                b'            "podSelector"\n'
                 b"          ],\n"
-                b"          \"properties\": {\n"
-                b"            \"namespaceSelector\": {\n"
-                b"              \"type\": \"object\",\n"
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
             ),
             (
-                b"        \"elasticsearch\": {\n"
-                b"          \"type\": \"object\",\n"
-                b"          \"additionalProperties\": false,\n"
-                b"          \"required\": [\"namespaceSelector\", \"podSelector\"],\n"
-                b"          \"properties\": {\n"
-                b"            \"namespaceSelector\": {\n"
-                b"              \"type\": \"object\",\n"
+                b'        "elasticsearch": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": ["namespaceSelector", "podSelector"],\n'
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
             ),
         ),
     ),
     "charts/university-ecosystem/values.yaml": (
         (
             (
-                b"  trustDomain: \"\"\n"
-                b"  backendSpiffeID: \"\"\n"
-                b"  gatewaySpiffeID: \"\"\n"
-                b"  frontendSpiffeID: \"\"\n"
-                b"  wsHubSpiffeID: \"\"\n"
-                b"  fileProcessorSpiffeID: \"\"\n"
+                b'  trustDomain: ""\n'
+                b'  backendSpiffeID: ""\n'
+                b'  gatewaySpiffeID: ""\n'
+                b'  frontendSpiffeID: ""\n'
+                b'  wsHubSpiffeID: ""\n'
+                b'  fileProcessorSpiffeID: ""\n'
                 b"  workloadAPI:\n"
             ),
             (
-                b"  trustDomain: \"\"\n"
-                b"  backendSpiffeID: \"\"\n"
-                b"  gatewaySpiffeID: \"\"\n"
-                b"  wsHubSpiffeID: \"\"\n"
-                b"  fileProcessorSpiffeID: \"\"\n"
+                b'  trustDomain: ""\n'
+                b'  backendSpiffeID: ""\n'
+                b'  gatewaySpiffeID: ""\n'
+                b'  wsHubSpiffeID: ""\n'
+                b'  fileProcessorSpiffeID: ""\n'
                 b"  workloadAPI:\n"
             ),
         ),
@@ -35866,7 +35978,9 @@ def test_nov17_ssr_chart_rebind_preserves_predecessor(path: str) -> None:
 
 @pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
 @pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate", "changed"])
-def test_nov17_ssr_chart_rebind_rejects_postimage_drift(path: str, mutation: str) -> None:
+def test_nov17_ssr_chart_rebind_rejects_postimage_drift(
+    path: str, mutation: str
+) -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / path).read_bytes()
     for current, _previous in _NOV17_SSR_CHART_REVERSALS[path]:
