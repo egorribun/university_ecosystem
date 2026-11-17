@@ -2974,6 +2974,16 @@ def _live_playwright_failure_locations(
 
 
 _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT = 256
+_PLAYWRIGHT_PUSH_FAILURE_SOURCE = "tests/e2e-live/push-delivery.live.spec.ts"
+_PLAYWRIGHT_PUSH_BROWSER_ERROR = re.compile(
+    r" {4}(?:Error|TimeoutError|TargetClosedError|AbortError|TypeError|RangeError): "
+    r"browserType\."
+    r"(?P<method>launch|launchPersistentContext): [^\r\n]{1,1024}"
+)
+_PLAYWRIGHT_PUSH_BROWSER_ERROR_CATEGORIES = {
+    "launch": "browser_launch",
+    "launchPersistentContext": "browser_persistent_launch",
+}
 _PLAYWRIGHT_FAILURE_EXPECT_LINE = re.compile(r"^ {4}Error: expect\(")
 _PLAYWRIGHT_FAILURE_MATCHER_HEADER = re.compile(
     r"^ {4}Error: expect\((?:locator|page|received)\)\."
@@ -3053,7 +3063,8 @@ def _live_playwright_failure_diagnostics(
         )
         current = None
 
-    for reporter_line in output.split("\n"):
+    reporter_lines = output.split("\n")
+    for line_index, reporter_line in enumerate(reporter_lines):
         if reporter_line and not reporter_line.startswith("    "):
             finish()
         if len(reporter_line) > 4096 or (
@@ -3092,12 +3103,55 @@ def _live_playwright_failure_diagnostics(
                 "matcher": "none",
                 "locator": "none",
                 "in_call_log": False,
+                "at_error_start": True,
+                "push_aggregate": False,
+                "push_aggregate_separated": False,
             }
             continue
         if current is None:
             continue
 
+        # A direct launch header must be the first nonblank error line;
+        # arbitrary later error details and call logs cannot authorize it.
+        if reporter_line and current["at_error_start"]:
+            current["at_error_start"] = False
+            if (
+                current["source"] == _PLAYWRIGHT_PUSH_FAILURE_SOURCE
+                and line_index < len(reporter_lines) - 1
+            ):
+                if reporter_line == "    AggregateError: ":
+                    current["push_aggregate"] = True
+                browser_error = _PLAYWRIGHT_PUSH_BROWSER_ERROR.fullmatch(reporter_line)
+                if browser_error is not None:
+                    current["category"] = _PLAYWRIGHT_PUSH_BROWSER_ERROR_CATEGORIES[
+                        browser_error["method"]
+                    ]
+
+        # The profile fixture wraps launch and cleanup failures in an empty
+        # AggregateError; Playwright prints each child as a separate error.
+        elif current["push_aggregate"]:
+            if not reporter_line:
+                current["push_aggregate_separated"] = True
+            elif current["push_aggregate_separated"]:
+                current["push_aggregate"] = False
+                browser_error = (
+                    _PLAYWRIGHT_PUSH_BROWSER_ERROR.fullmatch(reporter_line)
+                    if line_index < len(reporter_lines) - 1
+                    else None
+                )
+                if (
+                    browser_error is not None
+                    and browser_error["method"] == "launchPersistentContext"
+                ):
+                    current["category"] = "browser_persistent_launch"
+                    current["matcher"] = "none"
+                    current["locator"] = "none"
+                    current["in_call_log"] = False
+            elif _PLAYWRIGHT_FAILURE_FRAME.fullmatch(reporter_line) is None:
+                current["push_aggregate"] = False
+
         if _PLAYWRIGHT_FAILURE_CALL_LOG_START.fullmatch(reporter_line):
+            current["push_aggregate"] = False
             current["in_call_log"] = True
             continue
         if current["in_call_log"]:
