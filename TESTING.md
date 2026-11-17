@@ -62,7 +62,9 @@ The command inherits the fail-closed threshold from `pyproject.toml`; do not
 override it on the command line. It collects the configured Python source roots
 (`app` and `alembic/versions`) for code exercised by this local test run, but it
 does not execute the PostgreSQL migration round-trip and is not the release
-aggregate.
+aggregate. For the MVP baseline upgrade and schema drift check against the test
+database, run `make db-validate` (`make alembic-check` is an alias); the baseline
+requires PostgreSQL and is irreversible, so there is no SQLite round-trip.
 
 The canonical release result is the required `Coverage & Quality Policy Gate`.
 It combines all four backend shard coverage artifacts with the `DB Migration

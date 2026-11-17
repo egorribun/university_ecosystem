@@ -23,6 +23,19 @@
 - Формальный итог — **510/512 (99.6%), 2 открытых: 1S / 1P / 0U / 0N**.
   Этот результат не подтверждает общий CI, выпуск или deployment. Новый SHA
   документации и каждый последующий SHA требуют собственных required checks.
+- Открыт [PR #1422](https://github.com/egorribun/university_ecosystem/pull/1422) из `egorribun`
+  в `main`. В нём: подтверждение личности в настройках, live-диагностика Push и MapLibre
+  и 67 черновых PR автоматического облачного агента (#1409–#1488), влитых в `egorribun`
+  после локальной проверки. Агент ничего не запускал сам, поэтому найденные дефекты
+  исправлены в ветке без ослабления гейтов. Required checks на итоговом SHA ещё не
+  подтверждены. Облачный агент приостановлен владельцем; его очереди Actions отменены.
+- Отложены до перепривязки реестра: #1431, #1443, #1446, #1447, #1453, #1456, #1464, #1481
+  (меняют закреплённые файлы). #1426 (SPIFFE для SSR) не готов к слиянию по оценке самого агента.
+- Cargo Deny: временное исключение RUSTSEC-2026-0543 (`chrono` unmaintained, без уязвимости)
+  до 2026-12-17 по решению владельца; затем переход `rust_ext` на `time`
+  ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#time-boxed-cargo-deny-exception-for-rustsec-2026-0543)).
+- Риск: в Alpine v3.24 появился `zlib-1.4-r0`; закреплённый `zlib-1.3.2-r1` в
+  `frontend.Dockerfile` и `services/caddy/Dockerfile` может исчезнуть с зеркала.
 
 ## Предыдущий срез — 2026-11-17 (`0823bdb`, superseded)
 
@@ -116,7 +129,7 @@ source SHA, а не этого среза.
 
 1. AUD-154: green hosted Owned Live Acceptance на точном SHA; AUD-381: ZAP и Nuclei с проверенным ZAP-отчётом.
 2. Операционная цель: два последовательных green полных Core run на `main`.
-3. Для новых изменений открыть PR и дождаться required checks на его итоговом SHA. Обычный merge; без admin bypass.
+3. Дождаться required checks PR #1422 на его итоговом SHA. Обычный merge; без admin bypass.
 4. Этап 3: traceability matrix ТЗ 2–13 (MVP_MASTER_PLAN, Блок 4), реальный Chromium,
    два последовательных прогона, stop/start и seed.
 5. Этап 5: один DB/S3 backup и restore в изолированную цель (ещё не запускался).

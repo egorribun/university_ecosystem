@@ -2906,3 +2906,25 @@ restores the exact source, ledger and policy predecessors before the NOV16 check
 No identity, category, owner, expiry, threshold or required check changes; the
 inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
 fingerprints and 15 Semgrep rows. The rebind is not a passing scan or CI run.
+
+## Decisions recorded on 2026-11-17
+
+### Time-boxed Cargo Deny exception for RUSTSEC-2026-0543
+
+RUSTSEC-2026-0543 declares every `chrono` release unmaintained and offers no
+safe upgrade. `native/rust_ext` uses `chrono` directly and through the `pyo3`
+`chrono` feature. The advisory reports no vulnerability. The owner approved an
+exception in `native/rust_ext/deny.toml` that names only this advisory and
+states its reason and its removal date, 2026-12-17. It is tied to a separate
+migration of `rust_ext` to the `time` crate (`pyo3` provides a `time`
+feature); the exception is removed in that change. No other advisory, licence,
+ban or source rule changes, and the Cargo Deny jobs remain required.
+
+### Integrating unexecuted automated pull requests
+
+Draft pull requests produced without local execution are integrated only after
+the same local gates run on the merged result: type checks, linters, formatters,
+the complete frontend suite with its 100% coverage floors, Go and Rust tests and
+linters, and the backend tests. A test-first pull request without its
+implementation is completed, not merged red. Hosted required checks on the final
+SHA still decide merge readiness; local runs are not CI evidence.
