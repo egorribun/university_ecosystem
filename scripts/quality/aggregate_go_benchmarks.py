@@ -54,12 +54,17 @@ def _parse_sample(line: str) -> _Sample | None:
         process_suffix = f"-{process_match.group('procs')}"
 
     metrics: list[tuple[float, str]] = []
+    seen_units: set[str] = set()
     for index in range(2, len(fields), 2):
         try:
             value = float(fields[index])
         except ValueError as exc:
             raise ValueError(f"Malformed Go benchmark metric: {line!r}") from exc
-        metrics.append((value, fields[index + 1]))
+        unit = fields[index + 1]
+        if unit in seen_units:
+            raise ValueError(f"Duplicate Go benchmark metric unit: {unit!r}")
+        seen_units.add(unit)
+        metrics.append((value, unit))
 
     return _Sample(
         benchmark_name=benchmark_name,
@@ -82,9 +87,12 @@ def _render_section(section: _Section) -> list[str]:
 
     for samples in section.samples.values():
         first = samples[0]
+        by_unit = [
+            {unit: value for value, unit in sample.metrics} for sample in samples
+        ]
         metric_values = [
-            (median(sample.metrics[index][0] for sample in samples), unit)
-            for index, (_, unit) in enumerate(first.metrics)
+            (median(metrics[unit] for metrics in by_unit), unit)
+            for _, unit in first.metrics
         ]
         iterations = int(median(sample.iterations for sample in samples))
         fields = [
@@ -100,7 +108,7 @@ def _render_section(section: _Section) -> list[str]:
 
 
 def aggregate_go_benchmarks(output: str) -> str:
-    """Return one median benchmark result per package/name/metric shape."""
+    """Return per-unit medians for each package/name with a stable metric set."""
 
     preamble: list[str] = []
     sections: list[_Section] = []
@@ -118,7 +126,14 @@ def aggregate_go_benchmarks(output: str) -> str:
                 current = _Section(package_line=None)
                 sections.append(current)
             key = (sample.benchmark_name, sample.process_suffix)
-            current.samples.setdefault(key, []).append(sample)
+            samples = current.samples.setdefault(key, [])
+            if samples and {unit for _, unit in sample.metrics} != {
+                unit for _, unit in samples[0].metrics
+            }:
+                raise ValueError(
+                    f"Inconsistent Go benchmark metric units: {sample.benchmark_name}"
+                )
+            samples.append(sample)
             continue
 
         if current is None:
