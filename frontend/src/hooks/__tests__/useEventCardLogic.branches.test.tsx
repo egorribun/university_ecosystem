@@ -373,13 +373,15 @@ describe("useEventCardLogic (branches)", () => {
         { wrapper: StrictMode }
       )
       act(() => result.current.setEditOpen(true))
+      const save = result.current.handleEdit
       let pending!: Promise<void>
       act(() => {
-        pending = result.current.handleEdit()
+        pending = save()
       })
       unmount()
 
       await act(async () => {
+        await save() // A retained handler cannot start new work after unmount.
         if (outcome === "success") finish()
         else fail(new Error("late failure"))
         await pending
