@@ -35,9 +35,9 @@ def test_admin_update_openapi_artifacts_match_non_nullable_identity() -> None:
 
 
 def test_admin_update_generated_types_preserve_optional_non_nullable_identity() -> None:
-    generated = (
-        REPOSITORY_ROOT / "frontend/src/api/generated/types.gen.ts"
-    ).read_text(encoding="utf-8")
+    generated = (REPOSITORY_ROOT / "frontend/src/api/generated/types.gen.ts").read_text(
+        encoding="utf-8"
+    )
     identity = generated.split("export type UserAdminUpdate = {", 1)[1].split("}", 1)[0]
 
     assert "  email?: string\n" in identity
