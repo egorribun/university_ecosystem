@@ -291,6 +291,7 @@ const Select = ({
                     tabIndex={-1}
                     onMouseEnter={() => setActiveIndex(index)}
                     onMouseDown={(event) => {
+                      if (event.button !== 0) return
                       // Prevent blur on the trigger button
                       event.preventDefault()
                       selectOption(index)
