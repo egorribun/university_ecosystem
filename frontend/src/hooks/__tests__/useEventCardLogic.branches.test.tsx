@@ -196,6 +196,55 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.previewUrl).toBeNull()
   })
 
+  it("discards a cancelled image draft before reopening and saving", async () => {
+    const { result } = renderHook(() =>
+      useEventCardLogic({ ...eventProps, image_url: "existing.png" })
+    )
+    const file = new File(["draft"], "cancelled.png", { type: "image/png" })
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(file)
+    })
+    expect(result.current.cardImageUrl).toBe("blob:preview-url")
+
+    act(() => result.current.setEditOpen(false))
+
+    expect(result.current.newImage).toBeNull()
+    expect(result.current.previewUrl).toBeNull()
+    expect(result.current.cardImageUrl).toBe("existing.png")
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-url")
+    act(() => result.current.setEditOpen(true))
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ image_url: "existing.png" })
+    )
+  })
+
+  it("keeps the chosen image available to retry a failed save until cancelled", async () => {
+    mockPatch.mockRejectedValueOnce(new Error("offline"))
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    const file = new File(["draft"], "retry.png", { type: "image/png" })
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(file)
+    })
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(result.current.editOpen).toBe(true)
+    expect(result.current.newImage).toBe(file)
+    expect(result.current.previewUrl).toBe("blob:preview-url")
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    act(() => result.current.setEditOpen(false))
+    expect(revokeObjectURL).toHaveBeenCalledOnce()
+  })
+
   // ---- handleEdit (lines 123-150) ----
 
   it("handleEdit: with new image → uploads then patches with returned url (126-144)", async () => {
