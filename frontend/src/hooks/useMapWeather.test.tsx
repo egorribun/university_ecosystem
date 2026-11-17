@@ -158,6 +158,22 @@ describe("useMapWeather — unit-aware cache migration", () => {
 })
 
 describe("useMapWeather — cache hit", () => {
+  it("preserves valid hourly points on a fresh cache hit", async () => {
+    const data: MapWeatherData = {
+      ...FIXTURE_CACHED_DATA,
+      hourlyForecast: [
+        { hour: 0, temperature: -3, condition: "snow" },
+        { hour: 23, temperature: 12, condition: "cloudy" },
+      ],
+    }
+    localStorage.setItem(CACHE_KEY, serializedCache(data))
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(newClient()) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(data)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("returns cached data without a network call when cache is fresh", async () => {
     localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA))
 
