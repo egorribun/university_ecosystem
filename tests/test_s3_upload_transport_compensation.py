@@ -170,3 +170,66 @@ async def test_cancellation_during_sdk_compensation_keeps_delete_alive():
     client.delete_object.assert_awaited_once_with(
         Bucket="uploads", Key="chat_uploads/new.pdf"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["client", "endpoint"])
+async def test_cancelled_compensation_contains_background_delete_error(kind, caplog):
+    client = AsyncMock()
+    client.put_object.side_effect = transport_error("closed")
+    failure = (
+        ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "private-delete-token"}},
+            "DeleteObject",
+        )
+        if kind == "client"
+        else EndpointConnectionError(endpoint_url="https://private.invalid/secret")
+    )
+    started, release = asyncio.Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    unhandled = []
+
+    async def delete_object(**_arguments):
+        started.set()
+        await release.wait()
+        raise failure
+
+    client.delete_object.side_effect = delete_object
+    storage = S3Storage(bucket="uploads", client=client)
+    task = asyncio.create_task(
+        storage.save_file_cancellable("chat_uploads/new.pdf", b"bytes")
+    )
+    cleanup = None
+    loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert len(storage._abandoned_delete_tasks) == 1
+        cleanup = next(iter(storage._abandoned_delete_tasks))
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not cleanup.done()
+        release.set()
+        done, pending = await asyncio.wait({cleanup}, timeout=1)
+        assert done == {cleanup}
+        assert not pending
+        # Run shield's completion callbacks without awaiting the inner task:
+        # awaiting it would consume the very exception this test detects.
+        await asyncio.sleep(0)
+        assert not unhandled
+        assert cleanup.exception() is None
+        assert "s3_abandoned_upload_delete_failed" in caplog.text
+        assert "private-delete-token" not in caplog.text
+        assert "private.invalid" not in caplog.text
+        client.delete_object.assert_awaited_once_with(
+            Bucket="uploads", Key="chat_uploads/new.pdf"
+        )
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        if cleanup is not None:
+            await asyncio.gather(cleanup, return_exceptions=True)
+        loop.set_exception_handler(previous_handler)
