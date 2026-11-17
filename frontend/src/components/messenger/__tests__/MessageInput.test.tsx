@@ -66,9 +66,9 @@ describe("MessageInput", () => {
       fireEvent.change(input, { target: { files: [file] } })
     })
 
-    expect(
-      screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })
-    ).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })).toHaveLength(
+      1
+    )
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
     unmount()
     expect(revokeObjectURLSpy).toHaveBeenCalledTimes(1)
@@ -92,7 +92,6 @@ describe("MessageInput", () => {
 
     expect(createObjectURLSpy).not.toHaveBeenCalled()
   })
-
 
   it.each(["before", "after"] as const)(
     "keeps an inspected attachment that arrives %s an earlier send completes",

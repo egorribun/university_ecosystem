@@ -147,9 +147,7 @@ export function initApiCaching() {
       ) {
         // Bypassing storage must not bypass the session response fence.
         const response = await fetch(request)
-        return currentSessionScope === scope && sessionEpoch === epoch
-          ? response
-          : Response.error()
+        return currentSessionScope === scope && sessionEpoch === epoch ? response : Response.error()
       }
       const cacheName = `${API_CACHE}:${scope}`
       const strategy = new NetworkFirst({

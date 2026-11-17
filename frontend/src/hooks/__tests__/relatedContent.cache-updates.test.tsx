@@ -17,10 +17,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const cases = [
+// Both hooks return items with a title; the shared shape keeps renderHook monomorphic.
+const cases: ReadonlyArray<{
+  root: "news" | "events"
+  useItems: () => ReadonlyArray<{ title: string }>
+}> = [
   { root: "news", useItems: () => useRelatedNews("current", "education") },
   { root: "events", useItems: () => useRelatedEvents("current", "lecture") },
-] as const
+]
 
 describe.each(cases)("related $root cache subscription", ({ root, useItems }) => {
   const key = [root, "list", "account-a"]

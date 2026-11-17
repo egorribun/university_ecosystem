@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-} from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/api/schemas/messageLimits"

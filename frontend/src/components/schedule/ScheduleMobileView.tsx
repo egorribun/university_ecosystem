@@ -81,10 +81,13 @@ export function ScheduleMobileView({
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
   const hiddenWeekdays = useHiddenWeekdays()
   const visibleDayIndices = useMemo(
-    () => weekdayBackend.map((_, index) => index).filter((index) => !hiddenWeekdays.includes(index)),
+    () =>
+      weekdayBackend.map((_, index) => index).filter((index) => !hiddenWeekdays.includes(index)),
     [weekdayBackend, hiddenWeekdays]
   )
-  const [selectedDayIdx, setActiveDayIdx] = useState(() => (hasToday && todayIdx >= 0 ? todayIdx : 0))
+  const [selectedDayIdx, setActiveDayIdx] = useState(() =>
+    hasToday && todayIdx >= 0 ? todayIdx : 0
+  )
   const activeDayIdx = visibleDayIndices.includes(selectedDayIdx)
     ? selectedDayIdx
     : (visibleDayIndices[0] ?? -1)
@@ -208,7 +211,9 @@ export function ScheduleMobileView({
                   )}
                   <span className="relative z-surface flex items-center gap-0.5">
                     {weekdayShort[i] ?? getDayLabel(day)}
-                    {count > 0 && <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>}
+                    {count > 0 && (
+                      <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>
+                    )}
                   </span>
                 </Badge>
               )

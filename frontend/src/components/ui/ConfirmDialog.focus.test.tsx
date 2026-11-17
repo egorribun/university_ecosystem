@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("focus-trap")
 import { useState } from "react"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -7,7 +8,7 @@ import { ConfirmDialog } from "./ConfirmDialog"
 
 // Keep the real focus-trap lifecycle and keyboard handling; jsdom has no layout.
 vi.mock("focus-trap", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("focus-trap")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     createFocusTrap: (

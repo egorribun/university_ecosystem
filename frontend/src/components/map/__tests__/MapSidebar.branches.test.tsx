@@ -93,7 +93,11 @@ describe("MapSidebar branches", () => {
   it("passes campus timezone and hides unknown status while preserving published hours", () => {
     hooks.open = null
     render(<MapSidebar {...baseProps} />)
-    expect(hooks.isOpenNow).toHaveBeenCalledWith(BUILDING.hours, expect.any(Date), "Europe/Istanbul")
+    expect(hooks.isOpenNow).toHaveBeenCalledWith(
+      BUILDING.hours,
+      expect.any(Date),
+      "Europe/Istanbul"
+    )
     expect(screen.queryByText("hours.openNow")).not.toBeInTheDocument()
     expect(screen.queryByText("hours.closedNow")).not.toBeInTheDocument()
     expect(screen.getByText(/08:00–22:00/)).toBeInTheDocument()

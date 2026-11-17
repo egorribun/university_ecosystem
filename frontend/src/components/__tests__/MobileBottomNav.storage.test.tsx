@@ -12,18 +12,35 @@ afterEach(() => {
 })
 
 describe("MobileBottomNav optional scroll storage", () => {
-  it.each(["getItem", "removeItem"] as const)(
-    "keeps navigation usable when marker %s throws",
-    async (method) => {
-      sessionStorage.setItem(marker, "1")
-      const original = Storage.prototype[method]
-      vi.spyOn(Storage.prototype, method).mockImplementation(function (
+  // Each blocker keeps its method's own signature; only the marker key throws.
+  const blockMarker = {
+    getItem: () => {
+      const original = Storage.prototype.getItem
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
         this: Storage,
         key: string
       ) {
         if (key === marker) throw new DOMException("Storage blocked", "SecurityError")
         return original.call(this, key)
       })
+    },
+    removeItem: () => {
+      const original = Storage.prototype.removeItem
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (
+        this: Storage,
+        key: string
+      ) {
+        if (key === marker) throw new DOMException("Storage blocked", "SecurityError")
+        original.call(this, key)
+      })
+    },
+  }
+
+  it.each(["getItem", "removeItem"] as const)(
+    "keeps navigation usable when marker %s throws",
+    async (method) => {
+      sessionStorage.setItem(marker, "1")
+      blockMarker[method]()
       const raf = vi.spyOn(window, "requestAnimationFrame")
       await renderWithRouter({
         ui: MobileBottomNav,

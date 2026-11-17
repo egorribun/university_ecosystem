@@ -215,5 +215,4 @@ describe("buildingHours utils", () => {
       expect(isOpenNow(sampleHours, new Date(Number.NaN), "UTC")).toBeNull()
     })
   })
-
 })
