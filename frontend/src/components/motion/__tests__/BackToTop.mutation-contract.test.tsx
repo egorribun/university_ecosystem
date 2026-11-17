@@ -67,8 +67,7 @@ describe("BackToTop mutation contract", () => {
     const view = render(<BackToTop />)
     const button = screen.getByRole("button")
     const magnetic = button.parentElement!
-    magnetic.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect
+    magnetic.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect
     fireEvent.mouseMove(magnetic, { clientX: 90, clientY: 80 })
     expect(magnetic).toHaveStyle({ transform: "translate3d(12px, 9px, 0)" })
     button.focus()
