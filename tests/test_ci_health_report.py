@@ -158,7 +158,7 @@ def test_render_report_rejects_untrusted_reason_or_resource_claims(mutator) -> N
         render_report(report)
 
 
-def _contradictory_report(*, strict=False):
+def _contradictory_report(*, strict=False, extra_job=None):
     payload = {
         "jobs": [
             {
@@ -202,6 +202,19 @@ def _contradictory_report(*, strict=False):
             }
         ],
     }
+    if extra_job is not None:
+        payload["jobs"].append(extra_job)
+        dag["nodes"].append(
+            {
+                "job_id": extra_job["id"],
+                "logical_id": "other",
+                "needs": [],
+                "phase": "test",
+                "core_role": "required",
+                "skip_classification": "ordinary",
+                "core_failure": False,
+            }
+        )
     dag["dag_sha256"] = hashlib.sha256(
         json.dumps(dag, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -398,3 +411,83 @@ def test_renderer_rejects_orphaned_summary_work_cost_markers(strict, retained_ma
         summary[retained_marker] = 0
     with pytest.raises(HealthReportError):
         render_report(report, max_skipped=0)
+
+
+def _other_interval_job(kind):
+    record = {
+        "id": 8,
+        "run_id": 42,
+        "run_attempt": 1,
+        "head_sha": "a" * 40,
+        "name": "other",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-17T01:39:10Z",
+        "started_at": "2026-11-17T01:39:10Z",
+        "completed_at": "2026-11-17T01:39:10Z",
+        "steps": [],
+    }
+    if kind == "queued":
+        record.update(
+            status="queued", conclusion=None, started_at=None, completed_at=None
+        )
+    elif kind == "positive":
+        record["completed_at"] = "2026-11-17T01:39:20Z"
+    elif kind == "submillisecond":
+        record["completed_at"] = "2026-11-17T01:39:10.000001Z"
+    return record
+
+
+@pytest.mark.parametrize("kind", ["queued", "zero"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "wall_clock_seconds",
+        "peak_slot_utilization",
+        "peak_concurrency",
+        "average_slot_utilization",
+    ],
+)
+def test_mixed_unmeasured_intervals_cannot_fabricate_utilization(kind, strict, field):
+    report = _contradictory_report(strict=strict, extra_job=_other_interval_job(kind))
+    assert report["summary"][field] is None
+    assert "Timing certification unavailable" in render_report(report)
+    report["summary"][field] = 0
+    with pytest.raises(HealthReportError, match="unavailable"):
+        render_report(report)
+
+
+@pytest.mark.parametrize("kind", ["positive", "submillisecond"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_real_positive_interval_preserves_measurements_after_rounding(kind, strict):
+    report = _contradictory_report(strict=strict, extra_job=_other_interval_job(kind))
+    assert report["summary"]["wall_clock_seconds"] is not None
+    if kind == "submillisecond":
+        assert report["jobs"][1]["duration_seconds"] == 0
+    assert "Timing certification unavailable" in render_report(report)
+
+
+@pytest.mark.parametrize("duration", [-1, True, float("nan"), float("inf")])
+def test_interval_cannot_borrow_invalid_numeric_duration(duration):
+    report = _contradictory_report(extra_job=_other_interval_job("zero"))
+    report["jobs"][1]["duration_seconds"] = duration
+    with pytest.raises(HealthReportError):
+        render_report(report)
+
+
+@pytest.mark.parametrize("field", ["started_at", "completed_at"])
+def test_affected_interval_must_match_preserved_raw_evidence(field):
+    report = _contradictory_report()
+    report["jobs"][0]["execution_interval"][field] = "2026-11-17T01:39:11+00:00"
+    with pytest.raises(HealthReportError, match="differs from evidence"):
+        render_report(report)
+
+
+def test_negative_interval_never_supports_utilization():
+    report = _contradictory_report(extra_job=_other_interval_job("zero"))
+    report["jobs"][1]["execution_interval"]["completed_at"] = "2020-01-01T00:00:00Z"
+    assert "Timing certification unavailable" in render_report(report)
+    report["summary"]["wall_clock_seconds"] = 0
+    with pytest.raises(HealthReportError, match="unavailable"):
+        render_report(report)
