@@ -54,14 +54,18 @@ def read_regular(path, limit):
     return data
 
 
+
+def git_blob_digest(data):
+    header = b"blob " + str(len(data)).encode("ascii") + bytes([0])
+    return hashlib.sha1(header + data, usedforsecurity=False).digest()
+
 def validate_sources(root):
     for relative_path, expected in EXPECTED_BLOBS.items():
         path = root / relative_path
         if path.parent.resolve() != path.parent:
             raise ValueError("source directory is redirected")
         data = read_regular(path, MAX_SOURCE_BYTES)
-        blob = b"blob " + str(len(data)).encode("ascii") + b"\\0" + data
-        actual = hashlib.sha1(blob, usedforsecurity=False).digest()
+        actual = git_blob_digest(data)
         if actual != expected:
             raise ValueError("reviewed source changed")
 

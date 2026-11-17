@@ -150,7 +150,7 @@ def test_changed_or_redirected_source_is_rejected(tmp_path, monkeypatch):
     relative = "source.go"
     path = tmp_path / relative
     path.write_bytes(b"reviewed")
-    blob = b"blob 8\\0reviewed"
+    blob = b"blob 8" + bytes([0]) + b"reviewed"
     digest = report.hashlib.sha1(blob, usedforsecurity=False).digest()
     monkeypatch.setattr(report, "EXPECTED_BLOBS", {relative: digest})
     report.validate_sources(tmp_path)
@@ -183,3 +183,12 @@ def test_source_validation_failure_has_generic_error(tmp_path, capsys, monkeypat
     output = capsys.readouterr()
     assert output.out == ""
     assert output.err == "ERROR: reviewed SSR identity receipt unavailable.\n"
+
+
+def test_git_blob_digest_matches_independent_empty_blob_identity():
+    # Canonical Git empty-blob object ID, not computed through the helper.
+    expected = bytes((
+        230, 157, 226, 155, 178, 209, 214, 67, 75, 139,
+        41, 174, 119, 90, 216, 194, 228, 140, 83, 145,
+    ))
+    assert report.git_blob_digest(b"") == expected
