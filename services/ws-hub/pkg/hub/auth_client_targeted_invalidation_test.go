@@ -236,3 +236,97 @@ func TestTargetedWildcardInvalidationPropagatesDeleteFailure(t *testing.T) {
 		client.invalidateRoomAuthorizationCache(context.Background(), rdUser, ""),
 		"synthetic delete failure")
 }
+
+func TestTargetedInvalidationBlocksPublicationAfterRedisDelete(t *testing.T) {
+	for _, mode := range []string{"room", "user"} {
+		t.Run(mode, func(t *testing.T) {
+			mr, rc := newMiniredisClient(t)
+			key := rdUser + ":" + rdRoom
+			require.NoError(t, mr.Set("auth:perms:"+key, "1"))
+			deleted, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(server.Close)
+			t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+			rc.AddHook(targetedInvalidationDeleteHook{after: func() {
+				close(deleted)
+				<-release
+			}})
+			client := mustNewTestAuthClient(t, server.URL, "", rc)
+			done := make(chan error, 1)
+			room := rdRoom
+			if mode == "user" {
+				room = ""
+			}
+			go func() {
+				done <- client.invalidateRoomAuthorizationCache(context.Background(), rdUser, room)
+			}()
+			waitRoomMembershipSignal(t, deleted, "DEL did not finish before lookup")
+			// Real cache-miss/HTTP/publication path: without the barrier this
+			// obtains 200 and SETs L2 after DEL, beyond the final local sweep.
+			require.False(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom))
+			require.False(t, client.requestRoomAuthorization(context.Background(), rdUser, rdRoom, key, 0))
+			require.Zero(t, requests.Load())
+			assertRoomAuthorizationNotCached(t, mr, client, rdUser, rdRoom)
+			releaseOnce.Do(func() { close(release) })
+			require.NoError(t, <-done)
+			require.Empty(t, client.invalidations)
+			assertRoomAuthorizationNotCached(t, mr, client, rdUser, rdRoom)
+			require.True(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom),
+				"the barrier must not permanently revoke backend-authorized access")
+			require.EqualValues(t, 1, requests.Load())
+		})
+	}
+}
+
+func TestTargetedInvalidationOverlappingBarriers(t *testing.T) {
+	for _, rooms := range [][2]string{{rdRoom, rdRoom}, {"", rdRoom}, {rdRoom, ""}} {
+		t.Run(rooms[0]+"/"+rooms[1], func(t *testing.T) {
+			mr, rc := newMiniredisClient(t)
+			key := rdUser + ":" + rdRoom
+			first, second := make(chan struct{}), make(chan struct{})
+			releaseFirst, releaseSecond := make(chan struct{}), make(chan struct{})
+			var onceFirst, onceSecond sync.Once
+			var deletes atomic.Int32
+			rc.AddHook(targetedInvalidationDeleteHook{after: func() {
+				if deletes.Add(1) == 1 {
+					close(first)
+					<-releaseFirst
+				} else {
+					close(second)
+					<-releaseSecond
+				}
+			}})
+			t.Cleanup(func() {
+				onceFirst.Do(func() { close(releaseFirst) })
+				onceSecond.Do(func() { close(releaseSecond) })
+			})
+			client := mustNewTestAuthClient(t, "http://unused.invalid", "", rc)
+			doneFirst, doneSecond := make(chan error, 1), make(chan error, 1)
+			require.NoError(t, mr.Set("auth:perms:"+key, "1"))
+			go func() { doneFirst <- client.invalidateRoomAuthorizationCache(context.Background(), rdUser, rooms[0]) }()
+			waitRoomMembershipSignal(t, first, "first invalidation did not reach DEL")
+			// Model a different replica's entry so wildcard SCAN reaches DEL too.
+			require.NoError(t, mr.Set("auth:perms:"+key, "1"))
+			go func() { doneSecond <- client.invalidateRoomAuthorizationCache(context.Background(), rdUser, rooms[1]) }()
+			waitRoomMembershipSignal(t, second, "second invalidation did not reach DEL")
+			onceFirst.Do(func() { close(releaseFirst) })
+			require.NoError(t, <-doneFirst)
+			client.genMu.RLock()
+			active := client.invalidationActive(key)
+			client.genMu.RUnlock()
+			require.True(t, active, "first completion must not release overlapping barrier")
+			require.False(t, client.CanJoinRoom(context.Background(), rdUser, rdRoom))
+			const otherUser = "44444444-4444-4444-4444-444444444444"
+			client.cache.Add(otherUser+":"+rdRoom, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Minute)})
+			require.True(t, client.CanJoinRoom(context.Background(), otherUser, rdRoom))
+			onceSecond.Do(func() { close(releaseSecond) })
+			require.NoError(t, <-doneSecond)
+			require.Empty(t, client.invalidations)
+		})
+	}
+}

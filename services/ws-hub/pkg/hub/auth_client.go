@@ -84,8 +84,9 @@ type InternalAPIAuthClient struct {
 	// genMu orders cache reads and writes against generation resets. Readers and
 	// writers hold it shared; a reset holds it exclusively while it bumps the
 	// generation and purges L1 and L2. A write whose generation is stale is dropped.
-	genMu      sync.RWMutex
-	generation uint64
+	genMu         sync.RWMutex
+	generation    uint64
+	invalidations map[string]int // active scoped barriers only; guarded by genMu
 
 	callMu sync.Mutex
 	calls  map[string]*call
@@ -232,10 +233,8 @@ func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
 }
 
 // retireLocalRoomAuthorization orders targeted invalidation against cache
-// reads/publication without retaining an unbounded per-key generation map.
+// reads/publication. The caller must hold genMu exclusively.
 func (c *InternalAPIAuthClient) retireLocalRoomAuthorization(userID, roomID string) {
-	c.genMu.Lock()
-	defer c.genMu.Unlock()
 	key := userID + ":" + roomID
 	if roomID != "" {
 		c.callMu.Lock()
@@ -261,12 +260,32 @@ func (c *InternalAPIAuthClient) retireLocalRoomAuthorization(userID, roomID stri
 	}
 }
 
-// Clear on both sides of Redis I/O. A concurrent lookup may observe old L2
-// state during deletion, but its L1 entry or pending publication is retired
-// before invalidation returns. Never hold genMu across network I/O.
+// invalidationActive requires genMu and covers both a room and its user wildcard.
+func (c *InternalAPIAuthClient) invalidationActive(key string) bool {
+	userID, _, _ := strings.Cut(key, ":")
+	return c.invalidations[key] > 0 || c.invalidations[userID+":"] > 0
+}
+
+// Hold a scoped admission barrier across Redis I/O, not the generation mutex.
+// Refcounts keep overlapping room/user invalidations closed until all finish.
 func (c *InternalAPIAuthClient) invalidateRoomAuthorizationCache(ctx context.Context, userID, roomID string) error {
+	key := userID + ":" + roomID
+	c.genMu.Lock()
+	if c.invalidations == nil {
+		c.invalidations = make(map[string]int)
+	}
+	c.invalidations[key]++
 	c.retireLocalRoomAuthorization(userID, roomID)
-	defer c.retireLocalRoomAuthorization(userID, roomID)
+	c.genMu.Unlock()
+	defer func() {
+		c.genMu.Lock()
+		defer c.genMu.Unlock()
+		c.retireLocalRoomAuthorization(userID, roomID)
+		c.invalidations[key]--
+		if c.invalidations[key] == 0 {
+			delete(c.invalidations, key)
+		}
+	}()
 	if c.redis == nil {
 		return nil
 	}
@@ -467,6 +486,9 @@ func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key
 	c.genMu.RLock()
 	defer c.genMu.RUnlock()
 	generation := c.generation
+	if c.invalidationActive(key) {
+		return generation, false, true
+	}
 	entry, ok := c.cache.Get(key)
 	if ok && entry.generation == generation && time.Now().Before(entry.expiresAt) {
 		return generation, entry.allowed, true
@@ -497,7 +519,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Keep the generation stable through map insertion: an older lookup cannot
 	// replace a flight that was created after a reset.
 	c.genMu.RLock()
-	if c.generation != generation {
+	if c.generation != generation || c.invalidationActive(key) {
 		c.genMu.RUnlock()
 		return false
 	}
@@ -511,7 +533,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 			return false
 		}
 		c.genMu.RLock()
-		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && activeCall.res
+		allowed := ctx.Err() == nil && activeCall.generation == c.generation && !activeCall.retired && !c.invalidationActive(key) && activeCall.res
 		c.genMu.RUnlock()
 		return allowed
 	}
@@ -533,7 +555,7 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
 	c.genMu.RLock()
-	if c.generation != generation || newCall.retired {
+	if c.generation != generation || newCall.retired || c.invalidationActive(key) {
 		// A reset or targeted invalidation retires the answer for this caller as well as its waiters.
 		allowed = false
 	} else if authErr == nil {
