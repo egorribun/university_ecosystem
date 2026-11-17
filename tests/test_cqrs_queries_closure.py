@@ -39,7 +39,7 @@ def _schedule() -> ScheduleDTO:
 
 
 @pytest.mark.asyncio
-async def test_schedule_handler_reads_repository_and_populates_enabled_cache():
+async def test_schedule_handler_reads_repository_without_populating_shared_cache():
     db = AsyncMock()
     cache = MemoryCache(default_ttl=300)
     handler = GetScheduleHandler(db, cache)
@@ -56,7 +56,7 @@ async def test_schedule_handler_reads_repository_and_populates_enabled_cache():
     repository_type.return_value.get_by_group.assert_awaited_once_with(group_id)
     assert result.payload[0]["lesson_type_display"] == "Lecture"
     assert result.etag is not None
-    assert await cache.get(f"schedule:group:{group_id}") is not None
+    assert await cache.get(f"schedule:group:{group_id}") is None
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_schedule_handler_reads_repository_without_cache():
             GetScheduleQuery(group_id=group_id, locale="ru", if_none_match=None)
         )
 
-    assert result.etag is None
+    assert result.etag is not None
     assert result.payload[0]["lesson_type_display"] == "Лекция"
 
 
@@ -186,3 +186,46 @@ async def test_stats_handler_skip_cache_and_unknown_kind():
 
     with pytest.raises(HTTPException, match="Unknown stats kind"):
         await handler.handle(_stats_query("unknown"))
+
+
+@pytest.mark.asyncio
+async def test_schedule_validator_tracks_current_localized_rows():
+    row = _schedule()
+    handler = GetScheduleHandler(AsyncMock(), MemoryCache(default_ttl=300))
+    query = GetScheduleQuery(group_id=row.group_id, locale="en", if_none_match=None)
+    with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
+        read = AsyncMock(return_value=[row])
+        repository_type.return_value.get_by_group = read
+        english = await handler.handle(query)
+        query.locale = "ru"
+        query.if_none_match = english.etag
+        russian = await handler.handle(query)
+        assert russian.not_modified is False
+        assert russian.etag != english.etag
+        assert russian.payload[0]["lesson_type_display"] == "Лекция"
+        query.if_none_match = russian.etag
+        unchanged = await handler.handle(query)
+        assert unchanged.not_modified is True
+        read.return_value = []
+        removed = await handler.handle(query)
+        assert removed.payload == []
+        assert removed.not_modified is False
+        assert read.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_schedule_database_failure_never_falls_back_to_shared_cache():
+    from sqlalchemy.exc import SQLAlchemyError
+
+    cache = MemoryCache(default_ttl=300)
+    group_id = uuid4()
+    await cache.set(f"schedule:group:{group_id}", [{"subject": "stale"}])
+    handler = GetScheduleHandler(AsyncMock(), cache)
+    with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
+        repository_type.return_value.get_by_group = AsyncMock(
+            side_effect=SQLAlchemyError("database unavailable")
+        )
+        with pytest.raises(SQLAlchemyError, match="database unavailable"):
+            await handler.handle(
+                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
+            )
