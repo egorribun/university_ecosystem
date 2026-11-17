@@ -309,6 +309,51 @@ describe("useEventCardLogic (branches)", () => {
     }
   )
 
+  it("finishes an already-started upload without closing or clearing a newer draft", async () => {
+    let finishUpload!: () => void
+    mockPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = () => resolve({ data: { url: "first-upload.png" } })
+        })
+    )
+    const onChange = vi.fn()
+    const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(new File(["first"], "first.png", { type: "image/png" }))
+    })
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.handleEdit()
+    })
+    expect(result.current.imageLoading).toBe(true)
+    act(() => result.current.setEditOpen(false))
+    act(() => result.current.setEditOpen(true))
+    const secondImage = new File(["second"], "second.png", { type: "image/png" })
+    act(() => {
+      result.current.setNewImage(secondImage)
+      result.current.setEditData({ ...result.current.editData, title: "Second draft" })
+    })
+
+    await act(async () => {
+      finishUpload()
+      await first
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ title: "Initial Title", image_url: "first-upload.png" })
+    )
+    expect(onChange).toHaveBeenCalledOnce()
+    expect(result.current.editOpen).toBe(true)
+    expect(result.current.editData.title).toBe("Second draft")
+    expect(result.current.newImage).toBe(secondImage)
+    expect(result.current.loading).toBe(false)
+    expect(result.current.imageLoading).toBe(false)
+    expect(result.current.snackbar).toBe("")
+  })
+
   // ---- handleEdit (lines 123-150) ----
 
   it("handleEdit: with new image → uploads then patches with returned url (126-144)", async () => {
