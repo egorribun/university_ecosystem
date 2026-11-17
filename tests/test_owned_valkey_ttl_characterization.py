@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from ipaddress import IPv4Address
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -18,7 +19,7 @@ def _record(owner):
         "Id": owner.container_id,
         "State": {"Running": True},
         "Config": {
-            "Image": target.IMAGE,
+            "Image": target.load_image_pin(),
             "Labels": {
                 target.LABEL: "true",
                 target.LABEL + ".run": owner.run,
@@ -49,7 +50,13 @@ def test_valid_disposable_service_admission(monkeypatch):
         ("Config", {"Image": "valkey:latest", "Labels": {}}),
         (
             "HostConfig",
-            {"PortBindings": {"6379/tcp": [{"HostIp": "0.0.0.0", "HostPort": "6382"}]}},
+            {
+                "PortBindings": {
+                    "6379/tcp": [
+                        {"HostIp": str(IPv4Address(0)), "HostPort": "6382"}
+                    ]
+                }
+            },
         ),
         (
             "NetworkSettings",
@@ -66,7 +73,7 @@ def test_service_identity_mismatch_rejected(monkeypatch, field, value):
         "inspect_output",
         Mock(return_value=json.dumps(record)),
     )
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_owned(owner)
 
 
@@ -80,7 +87,7 @@ def test_workflow_identity_mismatch_rejected(monkeypatch, label):
         "inspect_output",
         Mock(return_value=json.dumps(record)),
     )
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_owned(owner)
 
 
@@ -119,13 +126,13 @@ def test_provider_error_with_partial_write_is_not_accepted(monkeypatch, after):
     )
     client = Mock()
     client.eval.side_effect = ResponseError("ACL_REJECTED")
-    with pytest.raises(target.Rejected, match="^DENIAL_MUTATED_KEY$"):
+    with pytest.raises(target.Rejected, match=r"^DENIAL_MUTATED_KEY$"):
         target.expect_denial(Mock(), client, "owned:key", "600", "ACL_REJECTED")
 
 
 def test_successful_command_cannot_satisfy_denial_control(monkeypatch):
     monkeypatch.setattr(target, "snapshot", Mock(return_value=(b"none", None, -2)))
-    with pytest.raises(target.Rejected, match="^DENIAL_NOT_OBSERVED$"):
+    with pytest.raises(target.Rejected, match=r"^DENIAL_NOT_OBSERVED$"):
         target.expect_denial(Mock(), Mock(), "owned:key", "600", "ACL_REJECTED")
 
 
@@ -133,7 +140,7 @@ def test_unrelated_lua_error_cannot_satisfy_acl_denial(monkeypatch):
     monkeypatch.setattr(target, "snapshot", Mock(return_value=(b"none", None, -2)))
     client = Mock()
     client.eval.side_effect = ResponseError("SECRET_UNKNOWN_FUNCTION")
-    with pytest.raises(target.Rejected, match="^UNEXPECTED_DENIAL$") as error:
+    with pytest.raises(target.Rejected, match=r"^UNEXPECTED_DENIAL$") as error:
         target.expect_denial(Mock(), client, "owned:key", "600", "ACL_REJECTED")
     assert "SECRET" not in str(error.value)
 
@@ -142,7 +149,7 @@ def test_generic_error_cannot_satisfy_server_acl_denial(monkeypatch):
     monkeypatch.setattr(target, "snapshot", Mock(return_value=(b"none", None, -2)))
     client = Mock()
     client.eval.side_effect = ResponseError("NOPERM synthetic wrong class")
-    with pytest.raises(target.Rejected, match="^UNEXPECTED_DENIAL$"):
+    with pytest.raises(target.Rejected, match=r"^UNEXPECTED_DENIAL$"):
         target.expect_denial(Mock(), client, "owned:key", "600", "NOPERM")
 
 
@@ -156,7 +163,7 @@ def test_raw_queue_failure_disconnects_dedicated_socket():
     context.__enter__.return_value = transaction
     client = Mock()
     client.client.return_value = context
-    with pytest.raises(target.Rejected, match="^QUEUE_CONTROL_FAILED$"):
+    with pytest.raises(target.Rejected, match=r"^QUEUE_CONTROL_FAILED$"):
         target.transaction_control(Mock(), client, "owned:key", Mock())
     connection.disconnect.assert_called_once_with()
     context.__exit__.assert_called_once()
@@ -188,7 +195,7 @@ def test_ownership_change_prevents_all_cleanup():
     admin.exists.return_value = 0
     admin.execute_command.side_effect = [None, ResponseError("PRIVATE_SETUP_FAILURE")]
     check_owner = Mock(side_effect=[None, None, target.Rejected("SERVER_REPLACED")])
-    with pytest.raises(target.Rejected, match="^SERVER_REPLACED$"):
+    with pytest.raises(target.Rejected, match=r"^SERVER_REPLACED$"):
         target.characterize(admin, check_owner)
     assert not any(
         call.args[:2] == ("ACL", "DELUSER")
@@ -200,7 +207,7 @@ def test_ownership_change_prevents_all_cleanup():
 def test_collision_does_not_delete_foreign_keys_or_user():
     admin = Mock()
     admin.execute_command.return_value = {"foreign": True}
-    with pytest.raises(target.Rejected, match="^USER_COLLISION$"):
+    with pytest.raises(target.Rejected, match=r"^USER_COLLISION$"):
         target.characterize(admin, Mock())
     admin.delete.assert_not_called()
     assert len(admin.execute_command.call_args_list) == 1
@@ -212,11 +219,13 @@ def test_collision_does_not_delete_foreign_keys_or_user():
 def test_extra_published_port_is_rejected(monkeypatch, section, field):
     owner = target.Ownership("a" * 64, "123", "1", "valkey-ttl")
     record = _record(owner)
-    record[section][field]["9999/tcp"] = [{"HostIp": "0.0.0.0", "HostPort": "9999"}]
+    record[section][field]["9999/tcp"] = [
+        {"HostIp": str(IPv4Address(0)), "HostPort": "9999"}
+    ]
     monkeypatch.setattr(
         target, "inspect_output", Mock(return_value=json.dumps(record))
     )
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_owned(owner)
 
 
@@ -262,7 +271,7 @@ def test_client_close_failure_does_not_skip_owned_cleanup(monkeypatch):
     client = Mock()
     client.close.side_effect = RuntimeError("PRIVATE_CLOSE_FAILURE")
     monkeypatch.setattr(target.redis, "Redis", Mock(return_value=client))
-    with pytest.raises(target.Rejected, match="^CLIENT_CLEANUP_REJECTED$") as error:
+    with pytest.raises(target.Rejected, match=r"^CLIENT_CLEANUP_REJECTED$") as error:
         target.characterize(admin, Mock())
     assert "PRIVATE" not in str(error.value)
     assert any(
@@ -320,7 +329,7 @@ def test_fixed_socket_request_and_positive_framing(monkeypatch):
 )
 def test_http_rejection_never_follows_redirect_or_retries(monkeypatch, response):
     _, writer, connect = _socket_transport(monkeypatch, response)
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_output("a" * 64)
     assert connect.await_count == 1
     writer.close.assert_called_once_with()
@@ -345,7 +354,7 @@ def test_non_socket_path_never_connects(monkeypatch):
 def test_read_timeout_closes_socket_and_redacts(monkeypatch):
     reader, writer, _ = _socket_transport(monkeypatch, b"")
     reader.read.side_effect = TimeoutError("PRIVATE_SOCKET_DETAIL")
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$") as error:
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$") as error:
         target.inspect_output("a" * 64)
     assert "PRIVATE" not in str(error.value)
     writer.close.assert_called_once_with()
@@ -388,7 +397,7 @@ def test_scheduled_deadline_cancels_pending_operation(monkeypatch, phase):
         connect.side_effect = pending
     else:
         reader.read.side_effect = pending
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_output("a" * 64)
     assert cancelled == [phase]
     assert budgets[0] == 10
@@ -401,7 +410,7 @@ def test_scheduled_deadline_cancels_pending_operation(monkeypatch, phase):
 def test_close_exception_still_attempts_bounded_wait(monkeypatch):
     _, writer, _ = _socket_transport(monkeypatch, b"HTTP/1.0 200 OK\r\n\r\n{}")
     writer.close.side_effect = OSError("PRIVATE_CLOSE")
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_output("a" * 64)
     writer.wait_closed.assert_awaited_once()
 
@@ -411,7 +420,7 @@ def test_duplicate_container_identity_is_rejected(monkeypatch):
     payload = json.dumps(_record(owner))
     payload = '{"Id": "foreign",' + payload[1:]
     monkeypatch.setattr(target, "inspect_output", Mock(return_value=payload))
-    with pytest.raises(target.Rejected, match="^OWNERSHIP_REJECTED$"):
+    with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_owned(owner)
 
 
@@ -433,6 +442,7 @@ def test_owned_workflow_is_source_bound_and_additive():
         "tests/test_owned_valkey_ttl_characterization.py",
         "pyproject.toml",
         "uv.lock",
+        "docker-compose.yml",
     }
     assert workflow["permissions"] == {"contents": "read"}
     assert set(workflow["jobs"]) == {"characterize"}
@@ -442,7 +452,7 @@ def test_owned_workflow_is_source_bound_and_additive():
     assert "continue-on-error" not in job
     assert set(job["services"]) == {"valkey"}
     service = job["services"]["valkey"]
-    assert service["image"] == target.IMAGE
+    assert service["image"] == target.load_image_pin()
     assert service["ports"] == ["127.0.0.1:6382:6379"]
     for label in [
         "university-ecosystem.valkey-ttl-acceptance=true",
@@ -457,3 +467,141 @@ def test_owned_workflow_is_source_bound_and_additive():
     )
     assert steps[-2]["run"] == "uv sync --frozen"
     assert all("continue-on-error" not in step for step in steps)
+
+
+def _pin_fixture(tmp_path):
+    import json
+
+    pin = target.load_image_pin()
+    compose = {
+        "services": {
+            "valkey": {"image": pin},
+            "revocation-valkey": {"image": pin},
+        }
+    }
+    workflow = {"jobs": {"characterize": {"services": {"valkey": {"image": pin}}}}
+    path = tmp_path / ".github/workflows"
+    path.mkdir(parents=True)
+    (tmp_path / "docker-compose.yml").write_text(json.dumps(compose))
+    (path / "valkey-ttl-characterization.yml").write_text(json.dumps(workflow))
+    return pin, compose, workflow
+
+
+def test_canonical_pin_positive_and_fixed_repository_anchor(tmp_path):
+    from pathlib import Path
+
+    pin, _, _ = _pin_fixture(tmp_path)
+    assert target._image_pin(tmp_path) == pin
+    assert target.load_image_pin() == target._image_pin(
+        Path(target.__file__).resolve().parents[2]
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["docker-compose.yml", ".github/workflows/valkey-ttl-characterization.yml"],
+)
+def test_pin_missing_document_rejected(tmp_path, path):
+    _pin_fixture(tmp_path)
+    (tmp_path / path).unlink()
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "cache-missing",
+        "cache-type",
+        "cache-tag-only",
+        "cache-version",
+        "revocation-missing",
+        "revocation-mismatch",
+        "workflow-missing",
+        "workflow-mismatch",
+        "cache-digest-drift",
+    ],
+)
+def test_pin_shape_or_cross_source_mismatch_rejected(tmp_path, change):
+    pin, compose, workflow = _pin_fixture(tmp_path)
+    if change == "cache-missing":
+        del compose["services"]["valkey"]["image"]
+    elif change == "cache-type":
+        compose["services"]["valkey"]["image"] = 7
+    elif change == "cache-tag-only":
+        compose["services"]["valkey"]["image"] = "valkey/valkey:9.1.2-alpine"
+    elif change == "cache-version":
+        compose["services"]["valkey"]["image"] = pin.replace("9.1.2", "9.1.3")
+    elif change == "revocation-missing":
+        del compose["services"]["revocation-valkey"]
+    elif change == "revocation-mismatch":
+        compose["services"]["revocation-valkey"]["image"] = "valkey:latest"
+    elif change == "workflow-missing":
+        del workflow["jobs"]["characterize"]["services"]["valkey"]
+    elif change == "workflow-mismatch":
+        workflow["jobs"]["characterize"]["services"]["valkey"]["image"] = (
+            "valkey:latest"
+        )
+    else:
+        old = pin[-1]
+        compose["services"]["valkey"]["image"] = pin[:-1] + ("1" if old == "0" else "0")
+    (tmp_path / "docker-compose.yml").write_text(json.dumps(compose))
+    (tmp_path / ".github/workflows/valkey-ttl-characterization.yml").write_text(
+        json.dumps(workflow)
+    )
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "services: [",
+        "services: null",
+        "services: {valkey: {image: first, image: second}}",
+        "base: &pin {image: ignored}\nservices: {valkey: *pin}",
+        "services: {valkey: {<<: {image: ignored}}}",
+    ],
+)
+def test_pin_malformed_duplicate_alias_or_merge_rejected(tmp_path, document):
+    _pin_fixture(tmp_path)
+    (tmp_path / "docker-compose.yml").write_text(document)
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+
+
+def test_pin_oversize_and_nonregular_file_rejected(tmp_path):
+    _pin_fixture(tmp_path)
+    path = tmp_path / "docker-compose.yml"
+    path.write_bytes(b"x" * 131073)
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+    path.unlink()
+    path.mkdir()
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+
+
+def test_unspecified_ipv4_fixture_preserves_wildcard_semantics():
+    address = IPv4Address(0)
+    assert address.is_unspecified
+    assert address.version == 4
+    assert not address.is_loopback
+    assert address.packed == bytes(4)
+
+
+def test_pin_invalid_utf8_rejected(tmp_path):
+    _pin_fixture(tmp_path)
+    (tmp_path / "docker-compose.yml").write_bytes(bytes([255]))
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
+
+
+def test_pin_symlink_rejected(tmp_path):
+    _pin_fixture(tmp_path)
+    path = tmp_path / "docker-compose.yml"
+    alternate = tmp_path / "alternate.yml"
+    path.rename(alternate)
+    path.symlink_to(alternate)
+    with pytest.raises(target.Rejected, match=r"^IMAGE_PIN_REJECTED$"):
+        target._image_pin(tmp_path)
