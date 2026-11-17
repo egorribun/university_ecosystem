@@ -223,8 +223,11 @@ func redactPlainText(value string) string {
 func redactURLToken(token string) string {
 	trimmed, suffix := trimURLSuffix(token)
 	parsed, err := url.Parse(trimmed)
-	if err != nil || parsed.Host == "" {
-		return redactPlainText(token)
+	if err != nil {
+		// Parsing failure makes userinfo/query boundaries untrustworthy. Plain
+		// text patterns cannot recognize arbitrary opaque URL credentials.
+		// Redact only this URL-shaped token, retaining surrounding diagnostics.
+		return redactedValue + suffix
 	}
 
 	if parsed.User != nil {
