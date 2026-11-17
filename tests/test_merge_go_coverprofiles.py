@@ -124,3 +124,52 @@ def test_merge_profiles_keeps_distinct_ranges_in_same_file(tmp_path: Path) -> No
     assert output.read_text(encoding="utf-8") == (
         "mode: atomic\n" + "\n".join(records) + "\n"
     )
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["01.1,2.1", "1.01,2.1", "1.1,02.1", "1.1,2.01", "+1.1,2.1"],
+)
+@pytest.mark.parametrize("statement_count", [1, 2])
+def test_merge_profiles_compares_numeric_coordinates(
+    tmp_path: Path, location: str, statement_count: int
+) -> None:
+    first = _profile(tmp_path / "first.out", "one.go:1.1,2.1 1 1")
+    second = _profile(
+        tmp_path / "second.out", f"one.go:{location} {statement_count} 0"
+    )
+    output = tmp_path / "merged.out"
+
+    with pytest.raises(ProfileError, match="duplicate coverage block"):
+        merge_profiles((first, second), output)
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["1,2", "x.1,2.1", "-1.1,2.1", "1.-1,2.1", "1.1,-2.1", "1.1,2.-1"],
+)
+def test_merge_profiles_rejects_invalid_coordinates(
+    tmp_path: Path, location: str
+) -> None:
+    profile = _profile(tmp_path / "first.out", f"one.go:{location} 1 1")
+    with pytest.raises(ProfileError, match="coverage block location"):
+        merge_profiles((profile,), tmp_path / "merged.out")
+
+
+def test_merge_profiles_preserves_noncanonical_disjoint_locations(
+    tmp_path: Path,
+) -> None:
+    records = (
+        "C:/source directory/one.go:01.1,2.1 1 1",
+        "C:/source directory/one.go:3.1,04.1 2 0",
+    )
+    profile = _profile(tmp_path / "first.out", *records)
+    output = tmp_path / "merged.out"
+
+    merge_profiles((profile,), output)
+
+    assert output.read_text(encoding="utf-8") == (
+        "mode: atomic\n" + "\n".join(records) + "\n"
+    )
