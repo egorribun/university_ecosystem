@@ -75,14 +75,16 @@ class ScheduleOptimizerService:
                 )
 
         # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
-        # overflow errors when calling .timestamp() on year 1)
+        # overflow errors when calling .timestamp() on year 1). Preserve any
+        # time offset here; the common normalization below attaches UTC only
+        # to naive values and converts aware values without changing the instant.
         st = item.start_time
         if isinstance(st, time):
-            st = datetime.combine(datetime(1970, 1, 1).date(), st, tzinfo=UTC)
+            st = datetime.combine(datetime(1970, 1, 1).date(), st)
 
         et = item.end_time
         if isinstance(et, time):
-            et = datetime.combine(datetime(1970, 1, 1).date(), et, tzinfo=UTC)
+            et = datetime.combine(datetime(1970, 1, 1).date(), et)
 
         return rust_ext.ScheduleItem(
             weekday=str(item.weekday),
