@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -135,7 +134,6 @@ async def test_dispatch_keeps_original_request_when_replay_builder_returns_none(
     app.assert_awaited_once()
 
 
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["ram", "spill", "declared"])
 async def test_replay_delivers_body_once_then_original_disconnect(path, monkeypatch):
@@ -193,7 +191,6 @@ async def test_replay_preserves_starlette_consumed_request_disconnect():
     downstream = _CachedRequest(replay.scope, replay.receive)
     assert (await downstream.wrapped_receive())["body"] == b"body"
     assert await downstream.wrapped_receive() == {"type": "http.disconnect"}
-
 
 
 @pytest.mark.asyncio
