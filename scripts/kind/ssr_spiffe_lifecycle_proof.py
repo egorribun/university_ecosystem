@@ -23,6 +23,27 @@ SOCKET = "unix:///spiffe-workload-api/agent.sock"
 class ProofError(RuntimeError):
     """A required observation was absent or inconsistent."""
 
+_INITIAL_STAGES = frozenset(
+    {
+        "client-fixture",
+        "backend-client-fixture",
+        "initial-identity",
+        "initial-peer",
+        "frozen-fixture",
+        "frozen-route",
+        "frozen-readiness",
+        "source-failure-recovery",
+    }
+)
+
+
+def report_initial_stage(stage: str) -> None:
+    """Report only an attempted boundary, never its cause or provider output."""
+    if type(stage) is not str or stage not in _INITIAL_STAGES:
+        raise ProofError("invalid lifecycle diagnostic stage")
+    print(f"CHECK ssr-live-initial-stage={stage}", flush=True)
+
+
 
 def kubectl_executable() -> str:
     """Resolve the harness-installed CLI; never let subprocess search PATH."""
@@ -415,6 +436,7 @@ try {
         original = service["spec"]["selector"]
         baseline = self.identities()
         try:
+            report_initial_stage("client-fixture")
             client = self.fixture(
                 "client",
                 f"{self.args.release}-frontend",
@@ -422,6 +444,7 @@ try {
                 "idle",
                 self.peer_id,
             )
+            report_initial_stage("backend-client-fixture")
             backend_client = self.fixture(
                 "backend-client",
                 f"{self.args.release}-backend",
@@ -429,8 +452,11 @@ try {
                 "idle",
                 self.self_id,
             )
+            report_initial_stage("initial-identity")
             before = self.inspect(client, self.self_id)
+            report_initial_stage("initial-peer")
             original_peer = self.peer(client)
+            report_initial_stage("frozen-fixture")
             frozen = self.fixture(
                 "frozen",
                 f"{self.args.release}-backend",
@@ -438,8 +464,11 @@ try {
                 "serve",
                 self.self_id,
             )
+            report_initial_stage("frozen-route")
             self.route({LABEL: frozen})
+            report_initial_stage("frozen-readiness")
             wait_for(lambda: self.proxy_status() == 200)
+            report_initial_stage("source-failure-recovery")
             self.source_failure(client)
             print("PASS ssr-live-source-failure-and-recovery", flush=True)
 

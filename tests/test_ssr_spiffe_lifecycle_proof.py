@@ -347,3 +347,119 @@ def test_stream_uses_same_resolved_cli_and_preserves_cleanup(monkeypatch):
         call(timeout=5),
     ]
     process.kill.assert_not_called()
+
+
+_INITIAL_STAGE_ORDER = (
+    "client-fixture",
+    "backend-client-fixture",
+    "initial-identity",
+    "initial-peer",
+    "frozen-fixture",
+    "frozen-route",
+    "frozen-readiness",
+    "source-failure-recovery",
+)
+
+
+@pytest.mark.parametrize("stage", _INITIAL_STAGE_ORDER)
+def test_initial_stage_receipt_is_closed_and_has_no_payload(stage, capsys):
+    proof.report_initial_stage(stage)
+    assert capsys.readouterr().out == f"CHECK ssr-live-initial-stage={stage}\n"
+
+
+def test_invalid_stage_never_formats_or_emits_untrusted_values(capsys):
+    class Untrusted:
+        def __str__(self):
+            raise AssertionError("untrusted diagnostic value rendered")
+
+        def __repr__(self):
+            raise AssertionError("untrusted diagnostic value rendered")
+
+        def __eq__(self, other):
+            raise AssertionError("untrusted diagnostic value compared")
+
+    for stage in (Untrusted(), "unknown", "initial-peer\npayload", None):
+        with pytest.raises(
+            proof.ProofError, match="invalid lifecycle diagnostic stage"
+        ):
+            proof.report_initial_stage(stage)
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("failed_stage", _INITIAL_STAGE_ORDER)
+def test_initial_provider_failure_keeps_cleanup_and_fatal_exit(
+    monkeypatch, capsys, failed_stage
+):
+    class PrivateFailure(proof.ProofError):
+        def __str__(self):
+            raise AssertionError("provider exception rendered")
+
+        def __repr__(self):
+            raise AssertionError("provider exception rendered")
+
+    item = lifecycle()
+    original = {"backend": "production"}
+    item.kubectl = Mock(return_value=json.dumps({"spec": {"selector": original}}))
+    item.identities = Mock(return_value={"pods": []})
+
+    def operation(stage):
+        if stage == failed_stage:
+            raise PrivateFailure("private-provider-payload")
+
+    def fixture(name, *args):
+        operation(
+            {
+                "client": "client-fixture",
+                "backend-client": "backend-client-fixture",
+                "frozen": "frozen-fixture",
+            }[name]
+        )
+        item.pods.append(name)
+        return name
+
+    def route(selector):
+        if selector != original:
+            operation("frozen-route")
+
+    def ready():
+        operation("frozen-readiness")
+        return 200
+
+    item.fixture = Mock(side_effect=fixture)
+    item.inspect = Mock(side_effect=lambda *args: operation("initial-identity"))
+    item.peer = Mock(side_effect=lambda *args: operation("initial-peer"))
+    item.route = Mock(side_effect=route)
+    item.proxy_status = Mock(side_effect=ready)
+    item.source_failure = Mock(
+        side_effect=lambda *args: operation("source-failure-recovery")
+    )
+    monkeypatch.setattr(proof, "wait_for", lambda check, **kwargs: check())
+    monkeypatch.setattr(
+        proof.argparse.ArgumentParser, "parse_args", lambda _: item.args
+    )
+    monkeypatch.setattr(proof, "Lifecycle", lambda _: item)
+
+    assert proof.main() == 1
+    output = capsys.readouterr()
+    expected = _INITIAL_STAGE_ORDER[: _INITIAL_STAGE_ORDER.index(failed_stage) + 1]
+    assert output.out.splitlines() == [
+        *(f"CHECK ssr-live-initial-stage={stage}" for stage in expected),
+        "CHECK ssr-live-fixture-cleanup",
+        "PASS ssr-live-fixture-cleanup",
+        "FAIL ssr-live-spiffe-lifecycle",
+    ]
+    assert output.err == ""
+    assert not item.pods
+    item.route.assert_called_with(original)
+
+
+def test_main_success_does_not_emit_failure_receipt(monkeypatch, capsys):
+    item = lifecycle()
+    item.run = Mock()
+    monkeypatch.setattr(
+        proof.argparse.ArgumentParser, "parse_args", lambda _: item.args
+    )
+    monkeypatch.setattr(proof, "Lifecycle", lambda _: item)
+    assert proof.main() == 0
+    item.run.assert_called_once_with()
+    assert capsys.readouterr().out == ""
