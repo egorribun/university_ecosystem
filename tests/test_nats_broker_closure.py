@@ -963,7 +963,9 @@ async def test_large_delivery_still_terminates_only_after_successful_dlq() -> No
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("base_delay", [-5.0, float("inf"), float("-inf"), float("nan")])
+@pytest.mark.parametrize(
+    "base_delay", [-5.0, float("inf"), float("-inf"), float("nan")]
+)
 async def test_retry_keeps_existing_invalid_configuration_semantics(
     base_delay: float,
 ) -> None:
