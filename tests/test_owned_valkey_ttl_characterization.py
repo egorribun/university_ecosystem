@@ -479,7 +479,7 @@ def _pin_fixture(tmp_path):
             "revocation-valkey": {"image": pin},
         }
     }
-    workflow = {"jobs": {"characterize": {"services": {"valkey": {"image": pin}}}}
+    workflow = {"jobs": {"characterize": {"services": {"valkey": {"image": pin}}}}}
     path = tmp_path / ".github/workflows"
     path.mkdir(parents=True)
     (tmp_path / "docker-compose.yml").write_text(json.dumps(compose))
