@@ -13,10 +13,13 @@
 {{- /* AUD-373: the backend listener requires client certificates, so every backend client must present an SVID.
        A public ingress path that still targets the backend Service would reach it without one and fail. */ -}}
 {{- if .Values.internalHttpMTLS.enabled -}}
+  {{- if eq (int .Values.frontend.service.port) 18000 -}}
+    {{- fail "frontend.service.port must differ from the loopback SSR proxy port 18000" -}}
+  {{- end -}}
   {{- if not .Values.internalHttpMTLS.trustDomain -}}
     {{- fail "internalHttpMTLS.trustDomain is required when internalHttpMTLS.enabled=true" -}}
   {{- end -}}
-  {{- $workloadIdentities := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID -}}
+  {{- $workloadIdentities := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID "frontendSpiffeID" .Values.internalHttpMTLS.frontendSpiffeID -}}
   {{- if .Values.wsHub.enabled -}}
     {{- $_ := set $workloadIdentities "wsHubSpiffeID" .Values.internalHttpMTLS.wsHubSpiffeID -}}
   {{- end -}}

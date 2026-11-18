@@ -5,8 +5,10 @@ name: Internal mTLS kind proof
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, egorribun]
     paths:
+      - "frontend.Dockerfile"
+      - "frontend/**"
       - "backend.Dockerfile"
       - "backend.Dockerfile.dockerignore"
       - ".dockerignore"
@@ -48,7 +50,7 @@ jobs:
   aud373-kind-proof:
     name: AUD-373 kind SPIFFE mTLS proof
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -56,6 +58,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Run kind mTLS proof
         env:

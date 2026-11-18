@@ -34,6 +34,17 @@ verifier = importlib.util.module_from_spec(_VALIDATOR_SPEC)
 sys.modules[_VALIDATOR_SPEC.name] = verifier
 _VALIDATOR_SPEC.loader.exec_module(verifier)
 
+
+def _nov18_ssr_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """Retain every historical assertion after validating the exact new append."""
+    if len(policy.get("records", [])) != 530:
+        return copy.deepcopy(policy)
+    predecessor, suffix = verifier._ssr_disposition_predecessor(policy)
+    assert len(suffix) == 6
+    assert isinstance(predecessor, dict)
+    return copy.deepcopy(predecessor)
+
+
 Finding = tuple[str, str, str, int]
 _FINDING_TYPE = "Secret" + " Keyword"
 _HASHED_FIELD = "hash" + "ed_" + "se" + "cret"
@@ -975,6 +986,7 @@ def _nov13_verify_dispositions(
     predecessor record is forward-projected to the live identity before the
     verifier evaluates any policy or document that carries it.
     """
+    policy_or_document = _nov18_ssr_historical_policy(policy_or_document)
     records = policy_or_document.get("records")
     if isinstance(records, list):
         policy_or_document = {
@@ -1126,9 +1138,11 @@ def test_public_source_pin_matches_the_owner_approved_disposition(
     record_factory: Any,
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_text(
+                encoding="utf-8"
+            )
         )
     )
     expected = record_factory()
@@ -1171,9 +1185,11 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
 
 def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_text(
+                encoding="utf-8"
+            )
         )
     )
     _assert_live_disposition_retirement(policy)
@@ -1186,9 +1202,9 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     assert len(validated) == 509
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
     live_validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 16)
+        repository_root=root, today=verifier.date(2026, 11, 18)
     )
-    assert len(live_validated) == 524
+    assert len(live_validated) == 530
     assert all(
         finding.path not in _RETIRED_DISPOSITION_PATHS for finding in live_validated
     )
@@ -9568,9 +9584,11 @@ def test_c6_source_contract_records_require_explicit_approval() -> None:
     assert Path(verifier.__file__).resolve() == (
         repository / "scripts/verify_secrets_baseline.py"
     )
-    policy = json.loads(
-        (repository / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (
+                repository / "quality/security-false-positive-dispositions.json"
+            ).read_text(encoding="utf-8")
         )
     )
     records = [
@@ -10701,9 +10719,11 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
     root = Path(__file__).resolve().parents[1]
     path = "tests/test_docker_startup_contracts.py"
     expected_digest = _NOV11_GO_IMAGE_SCANNER_DIGEST
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_text(
+                encoding="utf-8"
+            )
         )
     )
     records = [
@@ -15941,7 +15961,9 @@ def test_aud447_allocation_refuses_duplicates_sixth_identity_and_cap_growth() ->
                 _disposition_document(*records, addition),
                 today=verifier.date(2026, 10, 31),
             )
-    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory changed"
+    ):
         _nov13_verify_dispositions(
             _disposition_document(*([records[0]] * 525)),
             today=verifier.date(2026, 10, 31),
@@ -16452,7 +16474,9 @@ def test_nov1_v4_policy_rejects_each_duplicate_identity(index: int) -> None:
 def test_nov1_v4_policy_keeps_the_524_record_cap() -> None:
     assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
     record = _nov1_v4_binding_record(0)
-    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory changed"
+    ):
         _nov13_verify_dispositions(
             _disposition_document(*([record] * 525)),
             today=verifier.date(2026, 11, 1),
@@ -30854,10 +30878,60 @@ def test_aud380_each_current_source_pin_rejects_file_mutation(
 
     mutated_path = tmp_path / relative_path
     mutated_path.write_bytes(mutated_path.read_bytes() + b"\n# source drift control\n")
-    with pytest.raises(
-        AssertionError,
-        match=rf"(?m)^conditional disposition source file SHA-256 changed: {re.escape(relative_path)}$",
-    ):
+    if relative_path in _NOV17_SSR_CHART_PINS:
+        message = f"Helm SSR source postimage changed: {relative_path}"
+    elif relative_path == _NOV18_SSR_SHELL_PATH:
+        message = "SSR shell postimage changed"
+    elif relative_path == _NOV18_SSR_CONTRACT_PATH:
+        message = "SSR contract postimage changed"
+    else:
+        message = (
+            f"conditional disposition source file SHA-256 changed: {relative_path}"
+        )
+    with pytest.raises(AssertionError, match=rf"(?m)^{re.escape(message)}$"):
+        _assert_conditional_owner_source_bindings(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "charts/university-ecosystem/values.schema.json",
+        "charts/university-ecosystem/values.yaml",
+        "scripts/kind/aud373_internal_mtls_proof.sh",
+        "tests/test_internal_mtls_kind_contract.py",
+    ],
+)
+def test_aud380_ssr_predecessor_pin_still_rejects_file_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative_path: str
+) -> None:
+    source_root = Path(__file__).resolve().parents[1]
+    _assert_conditional_owner_source_bindings(source_root)
+    for bound_path in _AUD380_CURRENT_DELTA_SOURCE_SHA256:
+        target = tmp_path / bound_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source_root / bound_path).read_bytes())
+
+    target = tmp_path / relative_path
+    project = _aud154_historical_source_bytes
+    # Validate the complete current postimage before entering the old layer.
+    predecessor = project(relative_path, target.read_bytes())
+    assert (
+        _projected_sha256(predecessor)
+        == (_AUD380_CURRENT_DELTA_SOURCE_SHA256[relative_path])
+    )
+    target.write_bytes(predecessor)
+
+    def already_projected(path: str, actual: bytes) -> bytes:
+        if path == relative_path:
+            return actual
+        return project(path, actual)
+
+    monkeypatch.setitem(globals(), "_aud154_historical_source_bytes", already_projected)
+    # A valid predecessor must pass before its mutation reaches the old pin.
+    _assert_conditional_owner_source_bindings(tmp_path)
+    target.write_bytes(predecessor + b"\n# source drift control\n")
+    message = f"conditional disposition source file SHA-256 changed: {relative_path}"
+    with pytest.raises(AssertionError, match=rf"(?m)^{re.escape(message)}$"):
         _assert_conditional_owner_source_bindings(tmp_path)
 
 
@@ -31530,6 +31604,7 @@ def _nov9_historical_506_policy_bytes(policy: dict[str, Any]) -> bytes:
 def _nov9_historical_506_from_live_policy(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
+    policy = _nov18_ssr_historical_policy(policy)
     if len(policy.get("records", [])) == 524:
         policy = _nov11_historical_509_from_live_policy(policy)
     records = policy.get("records")
@@ -31628,12 +31703,19 @@ def test_nov9_wasm_cli_live_projection_refuses_scope_drift(mutation: str) -> Non
         _nov9_historical_506_from_live_policy(policy)
 
 
+@pytest.mark.parametrize("inventory", ["current", "historical"])
 @pytest.mark.parametrize("mutation", ["missing_byte", "extra_byte", "changed_byte"])
-def test_nov9_wasm_cli_live_policy_rejects_byte_drift(mutation: str) -> None:
+def test_nov9_wasm_cli_live_policy_rejects_byte_drift(
+    mutation: str, inventory: str
+) -> None:
     root = Path(__file__).resolve().parents[1]
     policy_bytes = (
         root / "quality/security-false-positive-dispositions.json"
     ).read_bytes()
+    if inventory == "historical":
+        policy_bytes = _nov9_historical_506_policy_bytes(
+            _nov18_ssr_historical_policy(json.loads(policy_bytes))
+        )
     _nov9_assert_live_policy_bytes(policy_bytes)
     if mutation == "missing_byte":
         policy_bytes = policy_bytes[:-1]
@@ -31643,8 +31725,15 @@ def test_nov9_wasm_cli_live_policy_rejects_byte_drift(mutation: str) -> None:
         policy_bytes = policy_bytes.replace(
             b'"schema_version": 1', b'"schema_version": 2'
         )
-    with pytest.raises(AssertionError, match="live disposition"):
-        _nov9_assert_live_policy_bytes(policy_bytes)
+    if inventory == "current" and mutation == "changed_byte":
+        with pytest.raises(
+            verifier.BaselineArtifactError,
+            match="SSR disposition approval scope changed",
+        ):
+            _nov9_assert_live_policy_bytes(policy_bytes)
+    else:
+        with pytest.raises(AssertionError, match="live disposition"):
+            _nov9_assert_live_policy_bytes(policy_bytes)
 
 
 @pytest.mark.parametrize("index", range(3))
@@ -32194,6 +32283,7 @@ _NOV11_GO_IMAGE_APPROVED_RECORD = {
 
 
 def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    policy = _nov18_ssr_historical_policy(policy)
     policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -32216,6 +32306,7 @@ def _nov11_historical_509_policy_bytes(policy_bytes: bytes) -> bytes:
     assert policy_bytes == _nov9_historical_506_policy_bytes(policy), (
         "live disposition noncanonical bytes changed"
     )
+    policy = _nov18_ssr_historical_policy(policy)
     historical = _nov11_historical_509_from_live_policy(policy)
     historical_bytes = _nov9_historical_506_policy_bytes(historical)
     restored_bytes = _nov9_historical_506_policy_bytes(
@@ -32246,8 +32337,10 @@ def test_nov11_go_and_zap_images_append_exact_approvals() -> None:
 )
 def test_nov11_go_image_projection_refuses_scope_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     if mutation == "missing":
         policy["records"].pop()
@@ -32387,8 +32480,10 @@ def _nov11_restore_helper_identities(policy: dict[str, Any]) -> dict[str, Any]:
 )
 def test_nov11_helper_rebind_rejects_scope_drift(index: int, mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     records = [
         row
@@ -32441,8 +32536,10 @@ _NOV11_PRE_ZAP_POLICY_SHA256 = bytes.fromhex(
 
 def test_nov11_zap_image_preserves_published_policy_and_source_identity() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     _nov11_historical_509_from_live_policy(policy)
     policy = _aud154_historical_policy(policy)
@@ -32479,8 +32576,10 @@ def test_nov11_zap_image_preserves_published_policy_and_source_identity() -> Non
 )
 def test_nov11_zap_image_projection_rejects_scope_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     record = policy["records"][510]
     if mutation == "path":
@@ -32810,8 +32909,10 @@ def test_nov13_loopback_csp_rebind_preserves_exact_predecessor() -> None:
         "quality/semgrep-dispositions.json", ledger_bytes
     )
     assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_CURRENT_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored_policy = _nov13_loopback_csp_historical_policy(policy)
     assert len(restored_policy["records"]) == 512
@@ -32844,8 +32945,12 @@ def test_nov13_loopback_csp_projection_rejects_drift(mutation: str) -> None:
                 "quality/semgrep-dispositions.json", actual
             )
     else:
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"]["hashed_secret_bytes"][
             0
@@ -32951,8 +33056,10 @@ def test_nov13_mfa_settings_rebind_preserves_exact_predecessor() -> None:
         (root / "quality/semgrep-dispositions.json").read_bytes(),
     )
     assert hashlib.sha256(restored_ledger).digest() == _NOV13_MFA_LEDGER_PREVIOUS_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored_policy = _nov13_mfa_settings_historical_policy(policy)
     assert len(restored_policy["records"]) == 512
@@ -32985,8 +33092,12 @@ def test_nov13_mfa_settings_projection_rejects_drift(mutation: str) -> None:
                 "quality/semgrep-dispositions.json", actual
             )
     else:
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"]["hashed_secret_bytes"][
             0
@@ -33237,7 +33348,1000 @@ def test_nov14_image_pull_projection_leaves_other_paths_unchanged(path: str) -> 
     assert _nov14_image_pull_historical_source_bytes(path, actual) is actual
 
 
+# Owner-approved 2026-11-17 Helm SSR source rebind, PR #1426 only.
+# Restore both exact pre-SSR chart files before all historical source checks.
+# No scanner identity, disposition, expiry, or baseline entry is changed.
+_NOV17_SSR_CHART_PINS = {
+    "charts/university-ecosystem/values.yaml": (
+        bytes(
+            (
+                211,
+                211,
+                11,
+                192,
+                140,
+                236,
+                19,
+                102,
+                36,
+                249,
+                199,
+                123,
+                50,
+                255,
+                249,
+                142,
+                71,
+                84,
+                80,
+                107,
+                10,
+                106,
+                78,
+                253,
+                126,
+                70,
+                181,
+                122,
+                129,
+                45,
+                59,
+                105,
+            )
+        ),
+        bytes(
+            (
+                155,
+                221,
+                250,
+                121,
+                91,
+                203,
+                80,
+                77,
+                103,
+                197,
+                126,
+                107,
+                200,
+                117,
+                31,
+                97,
+                227,
+                0,
+                248,
+                231,
+                134,
+                250,
+                243,
+                72,
+                8,
+                235,
+                169,
+                175,
+                85,
+                175,
+                99,
+                189,
+            )
+        ),
+    ),
+    "charts/university-ecosystem/values.schema.json": (
+        bytes(
+            (
+                91,
+                211,
+                14,
+                169,
+                45,
+                81,
+                152,
+                159,
+                155,
+                18,
+                30,
+                227,
+                223,
+                25,
+                178,
+                118,
+                252,
+                34,
+                139,
+                49,
+                100,
+                15,
+                247,
+                109,
+                52,
+                76,
+                25,
+                77,
+                207,
+                208,
+                34,
+                188,
+            )
+        ),
+        bytes(
+            (
+                15,
+                101,
+                110,
+                90,
+                180,
+                190,
+                146,
+                81,
+                62,
+                71,
+                131,
+                104,
+                192,
+                202,
+                193,
+                153,
+                222,
+                209,
+                137,
+                94,
+                61,
+                107,
+                64,
+                96,
+                73,
+                195,
+                119,
+                252,
+                115,
+                211,
+                182,
+                18,
+            )
+        ),
+    ),
+}
+_NOV17_SSR_CHART_REVERSALS = {
+    "charts/university-ecosystem/values.schema.json": (
+        (
+            (
+                b'        "trustDomain",\n'
+                b'        "backendSpiffeID",\n'
+                b'        "gatewaySpiffeID",\n'
+                b'        "frontendSpiffeID",\n'
+                b'        "wsHubSpiffeID",\n'
+                b'        "fileProcessorSpiffeID",\n'
+                b'        "workloadAPI"\n'
+            ),
+            (
+                b'        "trustDomain",\n'
+                b'        "backendSpiffeID",\n'
+                b'        "gatewaySpiffeID",\n'
+                b'        "wsHubSpiffeID",\n'
+                b'        "fileProcessorSpiffeID",\n'
+                b'        "workloadAPI"\n'
+            ),
+        ),
+        (
+            (
+                b'              "pattern": "^/[A-Za-z0-9._/-]{1,200}$"\n'
+                b"            }\n"
+                b"          }\n"
+                b"        },\n"
+                b'        "frontendSpiffeID": {\n'
+                b'          "type": "string",\n'
+                b'          "maxLength": 2048,\n'
+                b'          "pattern": "^(|spiffe://[a-z0-9](?:[a-'
+                b"z0-9-]{0,61}[a-z0-9])?(?:\\\\.[a-z0-9](?:[a-z0-9-]"
+                b'{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"\n'
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+            (
+                b'              "pattern": "^/[A-Za-z0-9._/-]{1,200}$"\n'
+                b"            }\n"
+                b"          }\n"
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+        ),
+        (
+            (
+                b"        },\n"
+                b'        "concurrencyPolicy": {\n'
+                b'          "type": "string",\n'
+                b'          "enum": [\n'
+                b'            "Forbid"\n'
+                b"          ]\n"
+                b"        },\n"
+                b'        "startingDeadlineSeconds": {\n'
+                b'          "type": "integer",\n'
+            ),
+            (
+                b"        },\n"
+                b'        "concurrencyPolicy": {\n'
+                b'          "type": "string",\n'
+                b'          "enum": ["Forbid"]\n'
+                b"        },\n"
+                b'        "startingDeadlineSeconds": {\n'
+                b'          "type": "integer",\n'
+            ),
+        ),
+        (
+            (
+                b"        },\n"
+                b'        "autoscaling": {\n'
+                b'          "$ref": "#/definitions/autoscaling"\n'
+                b"        },\n"
+                b'        "ssrProxyResources": {\n'
+                b'          "$ref": "#/definitions/resources"\n'
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+            (
+                b"        },\n"
+                b'        "autoscaling": {\n'
+                b'          "$ref": "#/definitions/autoscaling"\n'
+                b"        }\n"
+                b"      }\n"
+                b"    },\n"
+            ),
+        ),
+        (
+            (
+                b'        "prometheus": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": [\n'
+                b'            "namespaceSelector",\n'
+                b'            "podSelector"\n'
+                b"          ],\n"
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
+            ),
+            (
+                b'        "prometheus": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": ["namespaceSelector", "podSelector"],\n'
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
+            ),
+        ),
+        (
+            (
+                b'        "elasticsearch": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": [\n'
+                b'            "namespaceSelector",\n'
+                b'            "podSelector"\n'
+                b"          ],\n"
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
+            ),
+            (
+                b'        "elasticsearch": {\n'
+                b'          "type": "object",\n'
+                b'          "additionalProperties": false,\n'
+                b'          "required": ["namespaceSelector", "podSelector"],\n'
+                b'          "properties": {\n'
+                b'            "namespaceSelector": {\n'
+                b'              "type": "object",\n'
+            ),
+        ),
+    ),
+    "charts/university-ecosystem/values.yaml": (
+        (
+            (
+                b'  trustDomain: ""\n'
+                b'  backendSpiffeID: ""\n'
+                b'  gatewaySpiffeID: ""\n'
+                b'  frontendSpiffeID: ""\n'
+                b'  wsHubSpiffeID: ""\n'
+                b'  fileProcessorSpiffeID: ""\n'
+                b"  workloadAPI:\n"
+            ),
+            (
+                b'  trustDomain: ""\n'
+                b'  backendSpiffeID: ""\n'
+                b'  gatewaySpiffeID: ""\n'
+                b'  wsHubSpiffeID: ""\n'
+                b'  fileProcessorSpiffeID: ""\n'
+                b"  workloadAPI:\n"
+            ),
+        ),
+        (
+            (
+                b"\n"
+                b"# Frontend Service (Node SSR)\n"
+                b"frontend:\n"
+                b"  # The SPIFFE sidecar reuses the gateway image,"
+                b" never its gateway identity.\n"
+                b"  ssrProxyResources:\n"
+                b"    requests:\n"
+                b"      cpu: 25m\n"
+                b"      memory: 32Mi\n"
+                b"    limits:\n"
+                b"      cpu: 100m\n"
+                b"      memory: 128Mi\n"
+                b"  replicaCount: 2\n"
+                b"  image:\n"
+                b"    repository: university-frontend\n"
+            ),
+            (
+                b"\n"
+                b"# Frontend Service (Node SSR)\n"
+                b"frontend:\n"
+                b"  replicaCount: 2\n"
+                b"  image:\n"
+                b"    repository: university-frontend\n"
+            ),
+        ),
+    ),
+}
+
+
+def _nov17_ssr_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    pins = _NOV17_SSR_CHART_PINS.get(path)
+    if pins is None:
+        return actual
+    current_sha, previous_sha = pins
+    assert hashlib.sha256(actual).digest() == current_sha, (
+        f"Helm SSR source postimage changed: {path}"
+    )
+    historical = actual
+    for current, previous in _NOV17_SSR_CHART_REVERSALS[path]:
+        assert historical.count(current) == 1, (
+            f"Helm SSR source inverse hunk changed: {path}"
+        )
+        historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == previous_sha, (
+        f"Helm SSR source predecessor changed: {path}"
+    )
+    return historical
+
+
+_NOV18_SSR_SHELL_PATH = "scripts/kind/aud373_internal_mtls_proof.sh"
+_NOV18_SSR_SHELL_CURRENT = bytes(
+    (
+        82,
+        186,
+        240,
+        147,
+        206,
+        203,
+        144,
+        168,
+        235,
+        37,
+        147,
+        1,
+        52,
+        83,
+        162,
+        53,
+        248,
+        175,
+        50,
+        192,
+        56,
+        4,
+        159,
+        225,
+        40,
+        117,
+        110,
+        19,
+        162,
+        131,
+        76,
+        230,
+    )
+)
+_NOV18_SSR_SHELL_PREVIOUS = bytes(
+    (
+        223,
+        242,
+        17,
+        234,
+        164,
+        187,
+        73,
+        27,
+        55,
+        13,
+        205,
+        31,
+        183,
+        212,
+        144,
+        181,
+        193,
+        168,
+        121,
+        15,
+        97,
+        46,
+        203,
+        48,
+        83,
+        125,
+        222,
+        125,
+        153,
+        65,
+        38,
+        85,
+    )
+)
+_NOV18_SSR_SHELL_REVERSALS = (
+    (
+        (
+            b'readonly SPIRE_NAMESPACE="spire"\nreadonly RELEASE="ue"\nreadonly '
+            b'BACKEND_SVC="${RELEASE}-university-ecosystem-backend"\nreadonly F'
+            b'RONTEND_SVC="${RELEASE}-university-ecosystem-frontend"\nreadonly '
+            b'GATEWAY_SVC="${RELEASE}-university-ecosystem-gateway"\nreadonly F'
+            b'ILE_PROCESSOR_SVC="${RELEASE}-university-ecosystem-file-processo'
+            b'r"\nreadonly BACKEND_PORT="8000"\nreadonly GATEWAY_PORT="8080"\nrea'
+            b'donly TRUST_DOMAIN="university.ecosystem"\nreadonly BACKEND_SPIFF'
+            b'E_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-bac'
+            b'kend"\nreadonly GATEWAY_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${'
+            b'NAMESPACE}/sa/${RELEASE}-gateway"\nreadonly FRONTEND_SPIFFE_ID="s'
+            b'piffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-frontend"\n'
+            b'readonly WS_HUB_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPA'
+            b'CE}/sa/${RELEASE}-ws-hub"\nreadonly FILE_PROCESSOR_SPIFFE_ID="spi'
+            b"ffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-file-process"
+            b'or"\nreadonly IMAGE_TAG="ue-r9-aud373-${RUN_SUFFIX}"\n'
+        ),
+        (
+            b'readonly SPIRE_NAMESPACE="spire"\nreadonly RELEASE="ue"\nreadonly '
+            b'BACKEND_SVC="${RELEASE}-university-ecosystem-backend"\nreadonly G'
+            b'ATEWAY_SVC="${RELEASE}-university-ecosystem-gateway"\nreadonly FI'
+            b'LE_PROCESSOR_SVC="${RELEASE}-university-ecosystem-file-processor'
+            b'"\nreadonly BACKEND_PORT="8000"\nreadonly GATEWAY_PORT="8080"\nread'
+            b'only TRUST_DOMAIN="university.ecosystem"\nreadonly BACKEND_SPIFFE'
+            b'_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-back'
+            b'end"\nreadonly GATEWAY_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${N'
+            b'AMESPACE}/sa/${RELEASE}-gateway"\nreadonly WS_HUB_SPIFFE_ID="spif'
+            b'fe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-ws-hub"\nreado'
+            b'nly FILE_PROCESSOR_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAME'
+            b'SPACE}/sa/${RELEASE}-file-processor"\nreadonly IMAGE_TAG="ue-r9-a'
+            b'ud373-${RUN_SUFFIX}"\n'
+        ),
+    ),
+    (
+        (
+            b'DOCKER_DAEMON_ENDPOINT=""\nBACKEND_IMAGE=""\nGATEWAY_IMAGE=""\nFRON'
+            b'TEND_IMAGE=""\nSSR_FIXTURE_IMAGE=""\nFILE_PROCESSOR_IMAGE=""\nBACKE'
+            b'ND_INIT_IMAGE_REPOSITORY=""\nBACKEND_INIT_IMAGE=""\n'
+        ),
+        (
+            b'DOCKER_DAEMON_ENDPOINT=""\nBACKEND_IMAGE=""\nGATEWAY_IMAGE=""\nFILE'
+            b'_PROCESSOR_IMAGE=""\nBACKEND_INIT_IMAGE_REPOSITORY=""\nBACKEND_INI'
+            b'T_IMAGE=""\n'
+        ),
+    ),
+    (
+        (
+            b'  trustDomain: "${TRUST_DOMAIN}"\n  backendSpiffeID: "${BACKEND_S'
+            b'PIFFE_ID}"\n  gatewaySpiffeID: "${GATEWAY_SPIFFE_ID}"\n  frontendS'
+            b'piffeID: "${FRONTEND_SPIFFE_ID}"\n  wsHubSpiffeID: "${WS_HUB_SPIF'
+            b'FE_ID}"\n  fileProcessorSpiffeID: "${FILE_PROCESSOR_SPIFFE_ID}"\ni'
+            b"nternalGrpcMTLS:\n"
+        ),
+        (
+            b'  trustDomain: "${TRUST_DOMAIN}"\n  backendSpiffeID: "${BACKEND_S'
+            b'PIFFE_ID}"\n  gatewaySpiffeID: "${GATEWAY_SPIFFE_ID}"\n  wsHubSpif'
+            b'feID: "${WS_HUB_SPIFFE_ID}"\n  fileProcessorSpiffeID: "${FILE_PRO'
+            b'CESSOR_SPIFFE_ID}"\ninternalGrpcMTLS:\n'
+        ),
+    ),
+    (
+        (
+            b"frontend:\n"
+            b"  replicaCount: 1\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-frontend"\n'
+            b"gateway:\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
+        ),
+        (
+            b"gateway:\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
+        ),
+    ),
+    (
+        (
+            b'  LOCAL_REGISTRY_ADDRESS="$endpoint"\n  BACKEND_IMAGE="${LOCAL_RE'
+            b'GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"\n  GATEWAY_IMAGE'
+            b'="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"\n  F'
+            b'RONTEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-frontend:${I'
+            b'MAGE_TAG}"\n  SSR_FIXTURE_IMAGE="${LOCAL_REGISTRY_ADDRESS}/univer'
+            b'sity-ssr-fixture:${IMAGE_TAG}"\n  FILE_PROCESSOR_IMAGE="${LOCAL_R'
+            b'EGISTRY_ADDRESS}/university-file-processor:${IMAGE_TAG}"\n  BACKE'
+            b'ND_INIT_IMAGE_REPOSITORY="${LOCAL_REGISTRY_ADDRESS}/aud373/fixtu'
+            b're/backend"\n  BACKEND_INIT_IMAGE="${BACKEND_INIT_IMAGE_REPOSITOR'
+            b'Y}:${IMAGE_TAG}"\n'
+        ),
+        (
+            b'  LOCAL_REGISTRY_ADDRESS="$endpoint"\n  BACKEND_IMAGE="${LOCAL_RE'
+            b'GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"\n  GATEWAY_IMAGE'
+            b'="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"\n  F'
+            b'ILE_PROCESSOR_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-file-p'
+            b'rocessor:${IMAGE_TAG}"\n  BACKEND_INIT_IMAGE_REPOSITORY="${LOCAL_'
+            b'REGISTRY_ADDRESS}/aud373/fixture/backend"\n  BACKEND_INIT_IMAGE="'
+            b'${BACKEND_INIT_IMAGE_REPOSITORY}:${IMAGE_TAG}"\n'
+        ),
+    ),
+    (
+        (
+            b'}\n\nbuild_images() {\n  timeout 1800 docker build --file "${ROOT_D'
+            b'IR}/frontend.Dockerfile" \\\n    --tag "$FRONTEND_IMAGE" "$ROOT_DI'
+            b'R" || return 1\n  timeout 120 docker run --rm --init --network no'
+            b'ne --read-only \\\n    --volume "${ROOT_DIR}/scripts/kind:/proof/s'
+            b'cripts/kind:ro" \\\n    --volume "${ROOT_DIR}/frontend/scripts/ser'
+            b'ver-csp.mjs:/proof/frontend/scripts/server-csp.mjs:ro" \\\n    --e'
+            b'ntrypoint node "$FRONTEND_IMAGE" --test /proof/scripts/kind/ssr_'
+            b"mtls_request_proof.test.mjs || return 1\n  timeout 1800 docker bu"
+            b'ild --file "${ROOT_DIR}/backend.Dockerfile" \\\n    --tag "$BACKEN'
+            b'D_IMAGE" "$ROOT_DIR" || return 1\n  timeout 1800 docker build --f'
+            b'ile "${ROOT_DIR}/services/gateway/Dockerfile" \\\n    --tag "$GATE'
+            b'WAY_IMAGE" "$ROOT_DIR" || return 1\n  timeout 1800 docker build -'
+            b'-file "${ROOT_DIR}/services/gateway/Dockerfile" \\\n    --target s'
+            b'sr-mtls-fixture --tag "$SSR_FIXTURE_IMAGE" "$ROOT_DIR" || return'
+            b' 1\n  timeout 1800 docker build --file "${ROOT_DIR}/services/file'
+            b'-processor/Dockerfile" \\\n    --tag "$FILE_PROCESSOR_IMAGE" "$ROO'
+            b'T_DIR" || return 1\n}\n'
+        ),
+        (
+            b'}\n\nbuild_images() {\n  timeout 1800 docker build --file "${ROOT_D'
+            b'IR}/backend.Dockerfile" \\\n    --tag "$BACKEND_IMAGE" "$ROOT_DIR"'
+            b' || return 1\n  timeout 1800 docker build --file "${ROOT_DIR}/ser'
+            b'vices/gateway/Dockerfile" \\\n    --tag "$GATEWAY_IMAGE" "$ROOT_DI'
+            b'R" || return 1\n  timeout 1800 docker build --file "${ROOT_DIR}/s'
+            b'ervices/file-processor/Dockerfile" \\\n    --tag "$FILE_PROCESSOR_'
+            b'IMAGE" "$ROOT_DIR" || return 1\n}\n'
+        ),
+    ),
+    (
+        (
+            b'    return 1\n  fi\n  BACKEND_IMAGE_DIGEST="${digests[0]}"\n  timeo'
+            b'ut 900 docker push "$SSR_FIXTURE_IMAGE" || return 1\n  timeout 90'
+            b'0 docker push "$FRONTEND_IMAGE" || return 1\n  timeout 900 docker'
+            b' push "$GATEWAY_IMAGE" || return 1\n  timeout 900 docker push "$F'
+            b'ILE_PROCESSOR_IMAGE" || return 1\n}\n'
+        ),
+        (
+            b'    return 1\n  fi\n  BACKEND_IMAGE_DIGEST="${digests[0]}"\n  timeo'
+            b'ut 900 docker push "$GATEWAY_IMAGE" || return 1\n  timeout 900 do'
+            b'cker push "$FILE_PROCESSOR_IMAGE" || return 1\n}\n'
+        ),
+    ),
+    (
+        (
+            b'  agent_id="$(wait_for_agent_id)"\n  create_spire_entry "$agent_i'
+            b'd" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"\n  create_spire_entr'
+            b'y "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"\n  create'
+            b'_spire_entry "$agent_id" "$FRONTEND_SPIFFE_ID" "${RELEASE}-front'
+            b'end"\n  kubectl -n "$NAMESPACE" create serviceaccount ssr-wrong-p'
+            b'eer || return 1\n  create_spire_entry "$agent_id" "spiffe://${TRU'
+            b'ST_DOMAIN}/ns/${NAMESPACE}/sa/ssr-wrong-peer" ssr-wrong-peer\n  c'
+            b'reate_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${REL'
+            b'EASE}-file-processor"\n}\n\n'
+        ),
+        (
+            b'  agent_id="$(wait_for_agent_id)"\n  create_spire_entry "$agent_i'
+            b'd" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"\n  create_spire_entr'
+            b'y "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"\n  create'
+            b'_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${RELEASE}'
+            b'-file-processor"\n}\n\n'
+        ),
+    ),
+    (
+        (
+            b'  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migratio'
+            b'n.yaml" || return 1\n  kubectl -n "$NAMESPACE" wait --for=conditi'
+            b"on=complete job/ue-aud373-migrate --timeout=300s || return 1\n  r"
+            b"egister_workloads\n  # Wait for each actual workload below; front"
+            b'end has its real image and own SVID.\n  helm upgrade --install "$'
+            b'RELEASE" "${ROOT_DIR}/charts/university-ecosystem" \\\n    --names'
+            b'pace "$NAMESPACE" \\\n    --values "${WORK_DIR}/values.yaml" \\\n'
+        ),
+        (
+            b'  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migratio'
+            b'n.yaml" || return 1\n  kubectl -n "$NAMESPACE" wait --for=conditi'
+            b"on=complete job/ue-aud373-migrate --timeout=300s || return 1\n  r"
+            b"egister_workloads\n  # Not --wait: the frontend Deployment has no"
+            b" image in this cluster by design, and the\n  # proof only needs t"
+            b"he backend and gateway Deployments to become Available.\n  helm u"
+            b'pgrade --install "$RELEASE" "${ROOT_DIR}/charts/university-ecosy'
+            b'stem" \\\n    --namespace "$NAMESPACE" \\\n    --values "${WORK_DIR}'
+            b'/values.yaml" \\\n'
+        ),
+    ),
+    (
+        (
+            b"  fi\n}\n\n# The actual Node image and SSR entry point authenticate"
+            b" through the loopback\n# proxy. The isolated signing key travels "
+            b"only over stdin, never in receipts.\nrun_ssr_proof() {\n  local ou"
+            b'tput pod logs authorized=no\n  if ! timeout 660 kubectl -n "$NAME'
+            b'SPACE" rollout status \\\n    "deployment/$FRONTEND_SVC" --timeout'
+            b'=600s; then\n    record "e-frontend-ssr-mtls-auth" no\n    return\n'
+            b'  fi\n  if output="$(timeout 90 kubectl -n "$NAMESPACE" exec -i \\'
+            b'\n    "deployment/$FRONTEND_SVC" -c frontend -- node --input-type'
+            b'=module \\\n    -e "$(cat "$ROOT_DIR/scripts/kind/ssr_mtls_request'
+            b'_proof.mjs")" -- --run \\\n    < "$WORK_DIR/jwt-private.pem" 2>/de'
+            b'v/null)" && \\\n    [[ "$output" == "SSR_MTLS_AUTH=PASS" ]]; then\n'
+            b'    record "e-frontend-ssr-mtls-auth" yes\n  else\n    # Only fini'
+            b"te stage labels may leave the probe; never print raw stderr,\n   "
+            b" # assertion messages, response bodies, tokens, cookies, or sign"
+            b'ing keys.\n    if [[ "$output" =~ ^SSR_MTLS_AUTH=FAIL\\ stage=(con'
+            b"figuration|jwks-request|jwks-status|jwks-key|user-request|user-s"
+            b"tatus|signing|signed-request|signed-status|signed-location|signe"
+            b"d-cache|forged-request|forged-status|forged-cache|forged-html)$ "
+            b']]; then\n      printf \'%s\\n\' "$output"\n    fi\n    record "e-fron'
+            b'tend-ssr-mtls-auth" no\n  fi\n  while read -r pod; do\n    [[ -n "$'
+            b'pod" ]] || continue\n    logs="$(timeout 30 kubectl -n "$NAMESPAC'
+            b'E" logs "$pod" -c backend --tail=-1)" || continue\n    if python3'
+            b' -c \'import re, sys; pattern = re.escape(sys.argv[1]) + r"(?=[\\"'
+            b'\\s\\x1b]|$)"; sys.exit(not any("internal_mtls_peer_authorized" in'
+            b" line and re.search(pattern, line) for line in sys.stdin))' \"$FR"
+            b'ONTEND_SPIFFE_ID" <<<"$logs"; then\n      authorized=yes\n    fi\n '
+            b' done < <(timeout 30 kubectl -n "$NAMESPACE" get pods -o name \\\n'
+            b'    | grep "^pod/$BACKEND_SVC-" || true)\n  record "f-backend-log'
+            b's-frontend-spiffe-id" "$authorized"\n}\n\n# Runs the chart\'s readin'
+            b"ess probe command inside each backend pod. Its stdout, stderr an"
+            b"d\n# exit status name the failing SPIFFE step. Bounded by timeout"
+            b"; diagnostics only.\ncollect_backend_probe_diagnostics() {\n"
+        ),
+        (
+            b"  fi\n}\n\n# Runs the chart's readiness probe command inside each b"
+            b"ackend pod. Its stdout, stderr and\n# exit status name the failin"
+            b"g SPIFFE step. Bounded by timeout; diagnostics only.\ncollect_bac"
+            b"kend_probe_diagnostics() {\n"
+        ),
+    ),
+    (
+        (
+            b'  exit "$status"\n}\n\nrun_ssr_lifecycle_proof() {\n  if timeout 120'
+            b'0 python3 "$ROOT_DIR/scripts/kind/ssr_spiffe_lifecycle_proof.py"'
+            b' \\\n    --namespace "$NAMESPACE" --spire-namespace "$SPIRE_NAMESP'
+            b'ACE" \\\n    --release "$RELEASE" --trust-domain "$TRUST_DOMAIN" -'
+            b'-image "$SSR_FIXTURE_IMAGE"; then\n    record "g-ssr-live-spiffe-'
+            b'lifecycle" yes\n    # Re-run the actual SSR signed/forged JWT pat'
+            b'h after authority removal.\n    run_ssr_proof\n  else\n    record "'
+            b'g-ssr-live-spiffe-lifecycle" no\n  fi\n}\n\nmain() {\n  # Signals exi'
+            b"t normally so the EXIT trap still deletes the owned cluster and "
+            b"registry.\n  trap 'exit 130' INT\n"
+        ),
+        (
+            b'  exit "$status"\n}\n\nmain() {\n  # Signals exit normally so the EX'
+            b"IT trap still deletes the owned cluster and registry.\n  trap 'ex"
+            b"it 130' INT\n"
+        ),
+    ),
+    (
+        (
+            b"  deploy_stack\n  install_probe_access\n  run_proofs\n  run_ssr_pro"
+            b'of\n  run_ssr_lifecycle_proof\n  if [[ "$FAILURES" -ne 0 ]]; then\n'
+            b"    printf 'RESULT=FAIL failures=%s\\n' \"$FAILURES\"\n    exit 1\n"
+        ),
+        (
+            b'  deploy_stack\n  install_probe_access\n  run_proofs\n  if [[ "$FAI'
+            b"LURES\" -ne 0 ]]; then\n    printf 'RESULT=FAIL failures=%s\\n' \"$F"
+            b'AILURES"\n    exit 1\n'
+        ),
+    ),
+)
+
+
+def _nov18_ssr_shell_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path != _NOV18_SSR_SHELL_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV18_SSR_SHELL_CURRENT, (
+        "SSR shell postimage changed"
+    )
+    historical = actual
+    for current, previous in _NOV18_SSR_SHELL_REVERSALS:
+        assert historical.count(current) == 1, "SSR shell inverse hunk changed"
+        historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_SHELL_PREVIOUS, (
+        "SSR shell predecessor changed"
+    )
+    return historical
+
+
+_NOV18_SSR_CONTRACT_PATH = "tests/test_internal_mtls_kind_contract.py"
+_NOV18_SSR_CONTRACT_CURRENT = bytes(
+    (
+        222,
+        231,
+        11,
+        49,
+        121,
+        19,
+        152,
+        157,
+        214,
+        21,
+        81,
+        154,
+        128,
+        246,
+        98,
+        227,
+        30,
+        101,
+        223,
+        220,
+        176,
+        82,
+        48,
+        95,
+        215,
+        206,
+        252,
+        210,
+        171,
+        87,
+        50,
+        237,
+    )
+)
+_NOV18_SSR_CONTRACT_PREVIOUS = bytes(
+    (
+        112,
+        88,
+        43,
+        95,
+        191,
+        246,
+        252,
+        74,
+        145,
+        175,
+        224,
+        202,
+        8,
+        234,
+        210,
+        225,
+        230,
+        136,
+        128,
+        109,
+        178,
+        141,
+        36,
+        202,
+        127,
+        140,
+        184,
+        239,
+        143,
+        172,
+        96,
+        75,
+    )
+)
+_NOV18_SSR_CONTRACT_REVERSALS = (
+    (
+        (
+            b").resolve()\n"
+            b'REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"\n'
+            b"REQUIRED_PATHS = {\n"
+            b'    "frontend.Dockerfile",\n'
+            b'    "frontend/**",\n'
+            b'    "backend.Dockerfile",\n'
+            b'    "backend.Dockerfile.dockerignore",\n'
+            b'    ".dockerignore",\n'
+        ),
+        (
+            b").resolve()\n"
+            b'REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"\n'
+            b"REQUIRED_PATHS = {\n"
+            b'    "backend.Dockerfile",\n'
+            b'    "backend.Dockerfile.dockerignore",\n'
+            b'    ".dockerignore",\n'
+        ),
+    ),
+    (
+        (
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:\n"
+            b"    triggers = _triggers(_workflow())\n"
+            b'    assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}\n'
+            b'    assert triggers["pull_request"]["branches"] == ["main", "egorribun"]\n'
+            b'    paths = triggers["pull_request"]["paths"]\n'
+            b"    assert set(paths) == REQUIRED_PATHS\n"
+            b'    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"\n'
+        ),
+        (
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:\n"
+            b"    triggers = _triggers(_workflow())\n"
+            b'    assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}\n'
+            b'    assert triggers["pull_request"]["branches"] == ["main"]\n'
+            b'    paths = triggers["pull_request"]["paths"]\n'
+            b"    assert set(paths) == REQUIRED_PATHS\n"
+            b'    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"\n'
+        ),
+    ),
+    (
+        (
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n"
+            b"    job = _job()\n"
+            b'    assert job["runs-on"] == "ubuntu-24.04"\n'
+            b'    assert job["timeout-minutes"] == 90\n'
+            b"\n"
+            b"\n"
+            b"def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:\n"
+        ),
+        (
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n"
+            b"    job = _job()\n"
+            b'    assert job["runs-on"] == "ubuntu-24.04"\n'
+            b'    assert job["timeout-minutes"] == 40\n'
+            b"\n"
+            b"\n"
+            b"def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:\n"
+        ),
+    ),
+    (
+        (
+            b"def test_checkout_does_not_persist_credentials() -> None:\n"
+            b'    checkout = _step("Check out repository")\n'
+            b'    assert checkout["with"]["persist-credentials"] is False\n'
+            b'    assert checkout["with"]["ref"] == (\n'
+            b'        "${{ github.event.pull_request.head.sha || github.sha }}"\n'
+            b"    )\n"
+            b"\n"
+            b"\n"
+            b"def test_no_continue_on_error_anywhere() -> None:\n"
+        ),
+        (
+            b"def test_checkout_does_not_persist_credentials() -> None:\n"
+            b'    checkout = _step("Check out repository")\n'
+            b'    assert checkout["with"]["persist-credentials"] is False\n'
+            b"\n"
+            b"\n"
+            b"def test_no_continue_on_error_anywhere() -> None:\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"FRONTEND_SPIFFE_ID=frontend\n"
+            b"docker() {{\n"
+            b'  case "$1" in\n'
+            b"    inspect) if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else return 1; fi ;;\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"docker() {{\n"
+            b'  case "$1" in\n'
+            b"    inspect) if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else return 1; fi ;;\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend\n"
+            b"write_secret_file() {{ :; }}\n"
+            b"openssl() {{\n"
+            b'  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi\n'
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"write_secret_file() {{ :; }}\n"
+            b"openssl() {{\n"
+            b'  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi\n'
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend\n"
+            b"write_values_file\n"
+            b'"""\n'
+            b'    bash = shutil.which("bash")\n'
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"write_values_file\n"
+            b'"""\n'
+            b'    bash = shutil.which("bash")\n'
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"FRONTEND_SPIFFE_ID=frontend\n"
+            b"postgres_password=\n"
+            b"migration_seen=0\n"
+            b"write_secret_file() {{\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"postgres_password=\n"
+            b"migration_seen=0\n"
+            b"write_secret_file() {{\n"
+        ),
+    ),
+    (
+        (
+            b"    result = _bash_command(command)\n"
+            b"    assert result.returncode == 0, result.stderr\n"
+            b'    assert "FAIL a-gateway-to-backend-mtls-hop\\n" in result.stdout.decode()\n'
+            b"\n"
+            b"\n"
+            b"def test_kind_builds_and_registers_the_real_frontend() -> None:\n"
+            b"    script = _script()\n"
+            b'    build = _shell_function("build_images")\n'
+            b'    assert "frontend.Dockerfile" in build\n'
+            b'    assert "ssr_mtls_request_proof.test.mjs" in build\n'
+            b'    assert \'docker push "$FRONTEND_IMAGE"\' in _shell_function("push_images")\n'
+            b'    assert \'"$FRONTEND_SPIFFE_ID"\' in _shell_function("register_workloads")\n'
+            b'    assert "  run_ssr_proof\\n" in script\n'
+            b'    proof = _shell_function("run_ssr_proof")\n'
+            b'    assert "rollout status" in proof\n'
+            b'    assert "-c frontend -- node --input-type=module" in proof\n'
+            b"    assert '< \"$WORK_DIR/jwt-private.pem\"' in proof\n"
+            b'    assert \'[[ "$output" == "SSR_MTLS_AUTH=PASS" ]]\' in proof\n'
+            b'    assert "internal_mtls_peer_authorized" in proof\n'
+        ),
+        (
+            b"    result = _bash_command(command)\n"
+            b"    assert result.returncode == 0, result.stderr\n"
+            b'    assert "FAIL a-gateway-to-backend-mtls-hop\\n" in result.stdout.decode()\n'
+        ),
+    ),
+)
+
+
+def _nov18_ssr_contract_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path != _NOV18_SSR_CONTRACT_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV18_SSR_CONTRACT_CURRENT, (
+        "SSR contract postimage changed"
+    )
+    historical = actual
+    for current, previous in _NOV18_SSR_CONTRACT_REVERSALS:
+        assert historical.count(current) == 1, "SSR contract inverse hunk changed"
+        historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_CONTRACT_PREVIOUS, (
+        "SSR contract predecessor changed"
+    )
+    return historical
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov18_ssr_contract_historical_source_bytes(path, actual)
+    actual = _nov18_ssr_shell_historical_source_bytes(path, actual)
+    actual = _nov17_ssr_chart_historical_source_bytes(path, actual)
     actual = _nov16_chart_comment_historical_source_bytes(path, actual)
     actual = _nov14_image_pull_historical_source_bytes(path, actual)
     actual = _nov12_chart_historical_source_bytes(path, actual)
@@ -33307,8 +34411,12 @@ def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
     for path in _AUD154_SOURCE_PINS:
         _aud154_historical_source_bytes(path, (root / path).read_bytes())
     _aud154_historical_policy(
-        json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
     )
 
@@ -33326,8 +34434,10 @@ def test_aud154_source_projection_rejects_changes(path: str) -> None:
 )
 def test_aud154_policy_projection_rejects_scope_drift(index: int, field: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     row = policy["records"][index]
     if field == "digest":
@@ -33459,8 +34569,10 @@ def test_aud375_policy_projection_rejects_metadata_drift(
     index: int, field: str
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     policy["records"][index][field] += " changed"
     with pytest.raises(AssertionError, match="approval metadata changed"):
@@ -33564,8 +34676,12 @@ def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
         (root / "quality/semgrep-dispositions.json").read_bytes(),
     )
     _nov12_csp_historical_policy(
-        json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
     )
 
@@ -33587,8 +34703,10 @@ def test_nov12_map_csp_projection_rejects_source_drift(mutation: str) -> None:
 @pytest.mark.parametrize("field", ["digest", "path", "type", "category", "evidence"])
 def test_nov12_map_csp_policy_projection_rejects_scope_drift(field: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     row = policy["records"][_NOV12_CSP_ROW]
     if field == "digest":
@@ -33634,8 +34752,10 @@ _NOV12_CALICO_APPROVED_RECORD = {
 
 def test_nov12_calico_preserves_published_policy_and_source_identity() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     _nov11_historical_509_from_live_policy(policy)
     restored_policy = _nov13_go_companion_historical_policy(policy)
@@ -33675,8 +34795,10 @@ def test_nov12_calico_preserves_published_policy_and_source_identity() -> None:
 )
 def test_nov12_calico_projection_rejects_scope_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     record = policy["records"][511]
     if mutation == "path":
@@ -33720,8 +34842,10 @@ def test_nov12_calico_approval_has_finite_review_and_expiry() -> None:
 
 def test_nov13_trivy_digest_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _nov13_trivy_historical_policy(policy)
     assert len(restored["records"]) == 512
@@ -33745,8 +34869,10 @@ def test_nov13_trivy_digest_rebind_preserves_exact_predecessor() -> None:
 @pytest.mark.parametrize("mutation", ["path", "digest", "category", "owner", "expiry"])
 def test_nov13_trivy_projection_rejects_scope_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     row = next(
         record
@@ -33872,8 +34998,10 @@ def test_nov13_trivy_workflow_companion_rebind_preserves_exact_predecessor() -> 
     assert hashlib.sha256(restored_ledger).digest() == (
         _NOV13_LOOPBACK_LEDGER_CURRENT_SHA256
     )
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored_policy = _nov13_trivy_historical_policy(policy)
     assert len(restored_policy["records"]) == 512
@@ -33904,8 +35032,12 @@ def test_nov13_trivy_workflow_companion_projection_rejects_drift(mutation: str) 
                 _NOV13_TRIVY_WORKFLOW_LEDGER_PATH, actual
             )
     else:
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"]["hashed_secret_bytes"][
             0
@@ -34173,8 +35305,10 @@ def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
     )
     for path in _RUST_LOCK_TEXT_REVERSALS:
         _rust_lock_source_bytes(path, (root / path).read_bytes())
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _rust_lock_historical_policy(policy)
     for index, _path, _current, previous in _RUST_LOCK_REBINDS:
@@ -34189,8 +35323,12 @@ def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
 def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     if mutation == "policy":
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][494]["identity"]["hashed_secret_bytes"][0] ^= 1
         with pytest.raises(AssertionError, match="rust lock companion identity"):
@@ -34349,8 +35487,10 @@ def test_push_probe_rebind_preserves_exact_predecessor() -> None:
     assert hashlib.sha256(historical_ledger).digest() == (
         _RUST_LOCK_LEDGER_CURRENT_SHA256
     )
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _push_probe_historical_policy(policy)
     assert restored["records"][_PUSH_PROBE_IDENTITY_ROW]["identity"][
@@ -34366,8 +35506,12 @@ def test_push_probe_projection_rejects_drift(
 ) -> None:
     root = Path(__file__).resolve().parents[1]
     if mutation == "policy":
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy = _map_zoom_historical_policy(policy)
         monkeypatch.setitem(globals(), "_map_zoom_historical_policy", copy.deepcopy)
@@ -34667,8 +35811,10 @@ def test_ammonia_rebind_preserves_exact_predecessor() -> None:
         restored = _ammonia_source_bytes(path, (root / path).read_bytes())
         if path in _AMMONIA_TEXT_REVERSALS:
             assert hashlib.sha256(restored).hexdigest() == previous
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored_policy = _ammonia_historical_policy(policy)
     for index, _path, _current, previous in _AMMONIA_REBINDS:
@@ -34683,8 +35829,12 @@ def test_ammonia_rebind_preserves_exact_predecessor() -> None:
 def test_ammonia_projection_rejects_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     if mutation == "policy":
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
         with pytest.raises(AssertionError, match="ammonia companion identity"):
@@ -34908,8 +36058,10 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
         _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
     )
     assert hashlib.sha256(historical_ledger).digest() == _AMMONIA_LEDGER_CURRENT_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _deps_actions_historical_policy(policy)
     for (
@@ -34931,8 +36083,12 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
 def test_deps_actions_projection_rejects_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     if mutation == "policy":
-        policy = json.loads(
-            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        policy = _nov18_ssr_historical_policy(
+            json.loads(
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
+            )
         )
         identity = policy["records"][476]["identity"]
         identity["hashed_secret_bytes"][0] ^= 1
@@ -35078,8 +36234,10 @@ def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
         _NOV15_LEDGER_PATH, ledger_bytes
     )
     assert hashlib.sha256(historical_ledger).digest() == _NOV15_LEDGER_PREVIOUS_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _nov15_http_operations_historical_policy(policy)
     assert len(restored["records"]) == 512
@@ -35115,10 +36273,12 @@ def test_nov15_http_operations_projection_rejects_drift(
     )
     if mutation == "policy":
         policy = _nov16_push_observation_historical_policy_for_tests(
-            json.loads(
-                (
-                    root / "quality/security-false-positive-dispositions.json"
-                ).read_bytes()
+            _nov18_ssr_historical_policy(
+                json.loads(
+                    (
+                        root / "quality/security-false-positive-dispositions.json"
+                    ).read_bytes()
+                )
             )
         )
         policy["records"][_NOV15_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
@@ -35282,11 +36442,13 @@ def _aud189_backup_identities_historical_policy(
 
 
 def test_aud189_backup_identities_append_after_exact_predecessor() -> None:
-    policy = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "quality/security-false-positive-dispositions.json"
-        ).read_text(encoding="utf-8")
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (
+                Path(__file__).resolve().parents[1]
+                / "quality/security-false-positive-dispositions.json"
+            ).read_text(encoding="utf-8")
+        )
     )
     restored = _aud189_backup_identities_historical_policy(policy)
     assert (
@@ -35297,11 +36459,13 @@ def test_aud189_backup_identities_append_after_exact_predecessor() -> None:
 
 
 def test_aud189_backup_identities_projection_rejects_drift() -> None:
-    policy = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "quality/security-false-positive-dispositions.json"
-        ).read_text(encoding="utf-8")
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (
+                Path(__file__).resolve().parents[1]
+                / "quality/security-false-positive-dispositions.json"
+            ).read_text(encoding="utf-8")
+        )
     )
     drifted = copy.deepcopy(policy)
     drifted["records"][-1]["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -35469,7 +36633,7 @@ def _map_zoom_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _map_zoom_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nov18_ssr_historical_policy(policy)
     records = restored["records"]
     assert len(records) == 524, "live disposition count changed for map zoom"
     row = records[_NOV16_IDENTITY_ROW]
@@ -35567,6 +36731,7 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
     )
     assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_PREVIOUS_SHA256
     values = (root / _NOV16_VALUES_PATH).read_bytes()
+    values = _nov17_ssr_chart_historical_source_bytes(_NOV16_VALUES_PATH, values)
     assert hashlib.sha256(values).digest() == _NOV16_VALUES_CURRENT_SHA256
     historical_values = _nov16_chart_comment_historical_source_bytes(
         _NOV16_VALUES_PATH, values
@@ -35580,8 +36745,10 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
     # The predecessor of this layer is exactly what the nov15 layer binds.
     assert _NOV16_LIVE_PREVIOUS_SHA256 == _NOV15_LIVE_CURRENT_SHA256
     assert _NOV16_LEDGER_PREVIOUS_SHA256 == _NOV15_LEDGER_CURRENT_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _nov16_push_observation_historical_policy(policy)
     assert len(restored["records"]) == 524
@@ -35621,10 +36788,12 @@ def test_nov16_push_observation_projection_rejects_drift(
     monkeypatch.setitem(globals(), "_map_zoom_historical_policy", copy.deepcopy)
     if mutation == "policy":
         policy = project_map_policy(
-            json.loads(
-                (
-                    root / "quality/security-false-positive-dispositions.json"
-                ).read_bytes()
+            _nov18_ssr_historical_policy(
+                json.loads(
+                    (
+                        root / "quality/security-false-positive-dispositions.json"
+                    ).read_bytes()
+                )
             )
         )
         policy["records"][_NOV16_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
@@ -35641,6 +36810,7 @@ def test_nov16_push_observation_projection_rejects_drift(
     elif mutation.startswith("values_"):
         path = _NOV16_VALUES_PATH
         values = (root / path).read_bytes()
+        values = _nov17_ssr_chart_historical_source_bytes(path, values)
         if mutation == "values_extra":
             actual = values + b"\n"
         else:
@@ -35703,6 +36873,63 @@ def _nov16_chart_comment_historical_source_bytes(path: str, actual: bytes) -> by
     return historical
 
 
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+def test_nov17_ssr_chart_rebind_preserves_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    historical = _nov17_ssr_chart_historical_source_bytes(path, actual)
+    assert hashlib.sha256(actual).digest() == _NOV17_SSR_CHART_PINS[path][0]
+    assert hashlib.sha256(historical).digest() == _NOV17_SSR_CHART_PINS[path][1]
+    replayed = historical
+    for current, previous in reversed(_NOV17_SSR_CHART_REVERSALS[path]):
+        assert replayed.count(previous) == 1
+        replayed = replayed.replace(previous, current, 1)
+    assert replayed == actual
+
+
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+@pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate", "changed"])
+def test_nov17_ssr_chart_rebind_rejects_postimage_drift(
+    path: str, mutation: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    for current, _previous in _NOV17_SSR_CHART_REVERSALS[path]:
+        mutated = {
+            "extra": actual + b"\n",
+            "missing": actual.replace(current, b"", 1),
+            "duplicate": actual + current,
+            "changed": actual.replace(current, current + b" ", 1),
+        }[mutation]
+        with pytest.raises(AssertionError, match="Helm SSR source postimage changed"):
+            _nov17_ssr_chart_historical_source_bytes(path, mutated)
+
+
+@pytest.mark.parametrize("path", tuple(_NOV17_SSR_CHART_PINS))
+def test_nov17_ssr_chart_rebind_rejects_inverse_drift(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    original = _NOV17_SSR_CHART_REVERSALS[path]
+    for index, (current, previous) in enumerate(original):
+        changed = list(original)
+        changed[index] = (current, previous + b" ")
+        monkeypatch.setitem(_NOV17_SSR_CHART_REVERSALS, path, tuple(changed))
+        with pytest.raises(AssertionError, match="Helm SSR source predecessor changed"):
+            _nov17_ssr_chart_historical_source_bytes(path, actual)
+    monkeypatch.setitem(_NOV17_SSR_CHART_REVERSALS, path, original)
+    current_sha, _previous_sha = _NOV17_SSR_CHART_PINS[path]
+    monkeypatch.setitem(_NOV17_SSR_CHART_PINS, path, (current_sha, bytes(32)))
+    with pytest.raises(AssertionError, match="Helm SSR source predecessor changed"):
+        _nov17_ssr_chart_historical_source_bytes(path, actual)
+
+
+def test_nov17_ssr_chart_rebind_does_not_project_other_paths() -> None:
+    actual = b"unrelated source\n"
+    assert _nov17_ssr_chart_historical_source_bytes("unrelated.yml", actual) is actual
+
+
 def _map_zoom_assert_exact_policy_predecessor(policy: dict[str, Any]) -> None:
     predecessor = json.dumps(
         _map_zoom_historical_policy(policy),
@@ -35737,8 +36964,10 @@ def test_map_zoom_companion_rebind_preserves_exact_predecessor() -> None:
     assert len(ledger["dispositions"]) == 15
     assert historical_ledger_object == expected_ledger
 
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     historical_policy = _map_zoom_historical_policy(policy)
     _map_zoom_assert_exact_policy_predecessor(policy)
@@ -35825,8 +37054,10 @@ def test_map_zoom_source_projection_rejects_drift(
 )
 def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov18_ssr_historical_policy(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     row = policy["records"][_NOV16_IDENTITY_ROW]
     if mutation == "digest":
@@ -35845,3 +37076,396 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
 
 def test_map_zoom_source_projection_leaves_other_paths_unchanged() -> None:
     assert _map_zoom_historical_source_bytes("unrelated", b"unchanged") == b"unchanged"
+
+
+def _nov18_ssr_live_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    return json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+
+
+def _nov18_ssr_candidate_root(tmp_path: Path) -> Path:
+    root = Path(__file__).resolve().parents[1]
+    paths = [
+        "quality/security-false-positive-dispositions.json",
+        *verifier._SSR_DISPOSITION_SOURCE_BLOBS,
+    ]
+    for relative in paths:
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / relative).read_bytes())
+    return tmp_path
+
+
+def test_nov18_ssr_exact_append_preserves_reviewed_predecessor() -> None:
+    policy = _nov18_ssr_live_policy()
+    predecessor, suffix = verifier._ssr_disposition_predecessor(policy)
+    assert len(predecessor["records"]) == 524
+    assert len(suffix) == 6
+    assert predecessor["records"] + suffix == policy["records"]
+    assert all(row["owner"] == "egorribun" for row in suffix)
+    assert all(row["reviewed_on"] == "2026-11-18" for row in suffix)
+    assert all(row["expires_on"] == "2027-01-10" for row in suffix)
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
+    assert _nov18_ssr_historical_policy(policy) == predecessor
+    identities = verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 11, 18)
+    )
+    assert len(identities) == 530
+
+
+@pytest.mark.parametrize("index", range(6))
+@pytest.mark.parametrize(
+    "field",
+    ["path", "type", "digest", "category", "owner", "review", "expiry", "evidence"],
+)
+def test_nov18_ssr_each_approval_field_is_exact(index: int, field: str) -> None:
+    policy = _nov18_ssr_live_policy()
+    row = policy["records"][524 + index]
+    if field in {"path", "type"}:
+        row["identity"][field] += "-changed"
+    elif field == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    else:
+        key = {"review": "reviewed_on", "expiry": "expires_on"}.get(field, field)
+        row[key] += "-changed"
+    with pytest.raises(verifier.BaselineArtifactError, match="approval scope changed"):
+        verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 11, 18)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "extra", "reorder", "prefix", "header"]
+)
+def test_nov18_ssr_rejects_inventory_and_predecessor_drift(mutation: str) -> None:
+    policy = _nov18_ssr_live_policy()
+    if mutation == "missing":
+        policy["records"].pop()
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    elif mutation == "reorder":
+        policy["records"][-1], policy["records"][-2] = (
+            policy["records"][-2],
+            policy["records"][-1],
+        )
+    elif mutation == "prefix":
+        policy["records"][0]["evidence"] += " changed"
+    else:
+        policy["schema_version"] = 2
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 11, 18)
+        )
+
+
+def test_nov18_ssr_expiry_is_inclusive_without_automatic_renewal() -> None:
+    # Existing predecessor approvals can expire earlier. They are not renewed
+    # by this append, so test the new review window independently as well.
+    verifier._validate_ssr_review_window(verifier.date(2027, 1, 10))
+    for current in (verifier.date(2026, 11, 17), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="review window"):
+            verifier._validate_ssr_review_window(current)
+    policy = _nov18_ssr_live_policy()
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2027, 1, 10)
+        )
+    with pytest.raises(verifier.BaselineArtifactError, match="review window"):
+        verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 11, 17)
+        )
+
+
+@pytest.mark.parametrize("relative", tuple(verifier._SSR_DISPOSITION_SOURCE_BLOBS))
+@pytest.mark.parametrize("mutation", ["changed", "missing", "symlink"])
+def test_nov18_ssr_candidate_source_binding(
+    tmp_path: Path, relative: str, mutation: str
+) -> None:
+    root = _nov18_ssr_candidate_root(tmp_path)
+    assert (
+        len(
+            verifier.load_owner_authored_candidate_false_positive_dispositions(
+                repository_root=root, today=verifier.date(2026, 11, 18)
+            )
+        )
+        == 530
+    )
+    target = root / relative
+    if mutation == "changed":
+        target.write_bytes(target.read_bytes() + b"\n")
+    elif mutation == "missing":
+        target.unlink()
+    else:
+        replacement = root / "same-reviewed-bytes"
+        replacement.write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(replacement)
+    # Schema validation alone deliberately makes no source-trust claim.
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _nov18_ssr_live_policy(), today=verifier.date(2026, 11, 18)
+            )
+        )
+        == 530
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="SSR disposition source"):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=root, today=verifier.date(2026, 11, 18)
+        )
+
+
+@pytest.mark.parametrize("mutation", ["none", "missing", "mode", "blob", "duplicate"])
+def test_nov18_ssr_trusted_sources_use_selected_tree_not_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    from types import SimpleNamespace
+
+    selected = "a" * 40
+    policy_raw = (
+        json.dumps(_nov18_ssr_live_policy(), sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    policy_path = "quality/security-false-positive-dispositions.json"
+    calls: list[list[str]] = []
+    executable = tmp_path / "git"
+    executable.write_text("not executed", encoding="utf-8")
+    monkeypatch.setattr(verifier.shutil, "which", lambda _: str(executable))
+
+    def run_git(arguments: list[str], **kwargs: Any) -> Any:
+        calls.append(arguments)
+        assert kwargs["cwd"] == tmp_path
+        assert kwargs["shell"] is False
+        if arguments[1] == "cat-file":
+            assert arguments[3] == selected + "^{commit}"
+            return SimpleNamespace(returncode=0, stdout=b"")
+        if arguments[1] == "show":
+            assert arguments[2] == selected + ":" + policy_path
+            return SimpleNamespace(returncode=0, stdout=policy_raw)
+        assert arguments[1] == "ls-tree"
+        assert selected in arguments
+        relative = arguments[-1]
+        if relative == policy_path:
+            blob = "b" * 40
+            output = f"100644 blob {blob}\t{relative}\n".encode()
+        else:
+            blob = verifier._SSR_DISPOSITION_SOURCE_BLOBS[relative].hex()
+            output = f"100644 blob {blob}\t{relative}\n".encode()
+            if mutation == "missing":
+                output = b""
+            elif mutation == "mode":
+                output = output.replace(b"100644", b"120000")
+            elif mutation == "blob":
+                output = output.replace(blob.encode(), b"c" * 40)
+            elif mutation == "duplicate":
+                output += output
+        return SimpleNamespace(returncode=0, stdout=output)
+
+    monkeypatch.setattr(verifier.subprocess, "run", run_git)
+    if mutation == "none":
+        accepted = verifier.load_trusted_base_false_positive_dispositions(
+            selected, repository_root=tmp_path, today=verifier.date(2026, 11, 18)
+        )
+        assert len(accepted) == 530
+        assert {call[-1] for call in calls if call[1] == "ls-tree"} == {
+            policy_path,
+            *verifier._SSR_DISPOSITION_SOURCE_BLOBS,
+        }
+    else:
+        with pytest.raises(
+            verifier.BaselineArtifactError, match="trusted SSR disposition source"
+        ):
+            verifier.load_trusted_base_false_positive_dispositions(
+                selected, repository_root=tmp_path, today=verifier.date(2026, 11, 18)
+            )
+
+
+def test_nov18_ssr_projection_precedes_historical_identity_rewrites(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _nov18_ssr_live_policy()
+    predecessor = _nov18_ssr_historical_policy(policy)
+    restore = _nov11_restore_helper_identities
+    expected = _nov11_historical_509_from_live_policy(predecessor)
+    observed: list[dict[str, Any]] = []
+
+    def capture_before_rewrite(document: dict[str, Any]) -> dict[str, Any]:
+        observed.append(copy.deepcopy(document))
+        return restore(document)
+
+    monkeypatch.setitem(
+        globals(), "_nov11_restore_helper_identities", capture_before_rewrite
+    )
+    assert _nov11_historical_509_from_live_policy(policy) == expected
+    assert observed == [predecessor]
+    assert len(policy["records"]) == 530
+    assert policy == _nov18_ssr_live_policy()
+
+
+def test_nov18_ssr_invalid_append_never_reaches_historical_rewrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _nov18_ssr_live_policy()
+    policy["records"][-1]["identity"]["hashed_secret_bytes"][0] ^= 1
+    reached: list[object] = []
+    monkeypatch.setitem(
+        globals(),
+        "_nov11_restore_helper_identities",
+        lambda value: reached.append(value),
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="approval scope changed"):
+        _nov11_historical_509_from_live_policy(policy)
+    assert reached == []
+
+
+def test_nov18_ssr_legacy_cap_still_rejects_unapproved_525_records() -> None:
+    record = _nov1_v4_binding_record(0)
+    document = _disposition_document(*([record] * 525))
+    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+        verifier._validate_pre_ssr_false_positive_dispositions(
+            document, today=verifier.date(2026, 11, 1)
+        )
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory"
+    ):
+        verifier.validate_false_positive_dispositions(
+            document, today=verifier.date(2026, 11, 1)
+        )
+
+
+def test_nov18_ssr_shell_rebind_is_exact_and_reversible() -> None:
+    actual = (Path(__file__).resolve().parents[1] / _NOV18_SSR_SHELL_PATH).read_bytes()
+    historical = _nov18_ssr_shell_historical_source_bytes(_NOV18_SSR_SHELL_PATH, actual)
+    assert len(_NOV18_SSR_SHELL_REVERSALS) == 12
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_SHELL_PREVIOUS
+    assert _AUD380_CURRENT_DELTA_SOURCE_SHA256[_NOV18_SSR_SHELL_PATH] == (
+        _NOV18_SSR_SHELL_PREVIOUS
+    )
+    replay = historical
+    for current, previous in reversed(_NOV18_SSR_SHELL_REVERSALS):
+        assert replay.count(previous) == 1
+        replay = replay.replace(previous, current, 1)
+    assert replay == actual
+    unrelated = b"unrelated source remains unchanged"
+    assert _nov18_ssr_shell_historical_source_bytes("other.sh", unrelated) == unrelated
+
+
+@pytest.mark.parametrize("index", range(12))
+@pytest.mark.parametrize("mutation", ["changed", "missing", "duplicate"])
+def test_nov18_ssr_shell_rebind_rejects_source_drift(index: int, mutation: str) -> None:
+    actual = (Path(__file__).resolve().parents[1] / _NOV18_SSR_SHELL_PATH).read_bytes()
+    current, _previous = _NOV18_SSR_SHELL_REVERSALS[index]
+    replacement = {
+        "changed": current + b"# changed\n",
+        "missing": b"",
+        "duplicate": current + current,
+    }[mutation]
+    changed = actual.replace(current, replacement, 1)
+    with pytest.raises(AssertionError, match="SSR shell postimage changed"):
+        _nov18_ssr_shell_historical_source_bytes(_NOV18_SSR_SHELL_PATH, changed)
+
+
+@pytest.mark.parametrize("mutation", ["inverse", "predecessor", "unrelated"])
+def test_nov18_ssr_shell_rebind_rejects_projection_drift(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    actual = (Path(__file__).resolve().parents[1] / _NOV18_SSR_SHELL_PATH).read_bytes()
+    if mutation == "inverse":
+        reversals = list(_NOV18_SSR_SHELL_REVERSALS)
+        current, previous = reversals[0]
+        reversals[0] = (current + b"# invalid", previous)
+        monkeypatch.setitem(globals(), "_NOV18_SSR_SHELL_REVERSALS", tuple(reversals))
+        expected = "SSR shell inverse hunk changed"
+    elif mutation == "predecessor":
+        monkeypatch.setitem(globals(), "_NOV18_SSR_SHELL_PREVIOUS", bytes(32))
+        expected = "SSR shell predecessor changed"
+    else:
+        actual += b"# unrelated extra source\n"
+        expected = "SSR shell postimage changed"
+    with pytest.raises(AssertionError, match=expected):
+        _nov18_ssr_shell_historical_source_bytes(_NOV18_SSR_SHELL_PATH, actual)
+
+
+def test_nov18_ssr_contract_rebind_is_exact_and_reversible() -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    historical = _nov18_ssr_contract_historical_source_bytes(
+        _NOV18_SSR_CONTRACT_PATH, actual
+    )
+    assert len(_NOV18_SSR_CONTRACT_REVERSALS) == 9
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_CONTRACT_PREVIOUS
+    replay = historical
+    for current, previous in reversed(_NOV18_SSR_CONTRACT_REVERSALS):
+        assert replay.count(previous) == 1
+        replay = replay.replace(previous, current, 1)
+    assert replay == actual
+    unrelated = b"unrelated source remains unchanged"
+    assert (
+        _nov18_ssr_contract_historical_source_bytes("other.py", unrelated) == unrelated
+    )
+    # Keep the effective predecessor and all earlier historical pins unchanged.
+    assert _AUD380_CURRENT_DELTA_SOURCE_SHA256[_NOV18_SSR_CONTRACT_PATH] == (
+        _NOV18_SSR_CONTRACT_PREVIOUS
+    )
+    assert _aud154_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, actual) == (
+        historical
+    )
+
+
+@pytest.mark.parametrize("index", range(9))
+@pytest.mark.parametrize("mutation", ["changed", "missing", "duplicate"])
+def test_nov18_ssr_contract_rebind_rejects_source_drift(
+    index: int, mutation: str
+) -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    current, _previous = _NOV18_SSR_CONTRACT_REVERSALS[index]
+    replacement = {
+        "changed": current + b"# changed\n",
+        "missing": b"",
+        "duplicate": current + current,
+    }[mutation]
+    changed = actual.replace(current, replacement, 1)
+    with pytest.raises(AssertionError, match="SSR contract postimage changed"):
+        _nov18_ssr_contract_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, changed)
+
+
+@pytest.mark.parametrize("mutation", ["inverse", "predecessor", "unrelated"])
+def test_nov18_ssr_contract_rebind_rejects_projection_drift(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    if mutation == "inverse":
+        reversals = list(_NOV18_SSR_CONTRACT_REVERSALS)
+        current, previous = reversals[0]
+        reversals[0] = (current + b"# invalid", previous)
+        monkeypatch.setitem(
+            globals(), "_NOV18_SSR_CONTRACT_REVERSALS", tuple(reversals)
+        )
+        message = "SSR contract inverse hunk changed"
+    elif mutation == "predecessor":
+        monkeypatch.setitem(globals(), "_NOV18_SSR_CONTRACT_PREVIOUS", bytes(32))
+        message = "SSR contract predecessor changed"
+    else:
+        actual += b"# unrelated edit\n"
+        message = "SSR contract postimage changed"
+    with pytest.raises(AssertionError, match=message):
+        _nov18_ssr_contract_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, actual)
+
+
+def test_nov18_ssr_contract_rebind_rejects_predecessor_as_current() -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    historical = _nov18_ssr_contract_historical_source_bytes(
+        _NOV18_SSR_CONTRACT_PATH, actual
+    )
+    with pytest.raises(AssertionError, match="SSR contract postimage changed"):
+        _nov18_ssr_contract_historical_source_bytes(
+            _NOV18_SSR_CONTRACT_PATH, historical
+        )

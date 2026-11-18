@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "university-ecosystem.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
@@ -59,7 +60,11 @@ spec:
             # Node SSR requests and JWKS discovery use the in-cluster backend;
             # browser requests remain relative and flow through the gateway.
             - name: BACKEND_ORIGIN
+              {{- if .Values.internalHttpMTLS.enabled }}
+              value: "http://127.0.0.1:18000"
+              {{- else }}
               value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:{{ .Values.backend.service.port }}"
+              {{- end }}
             - name: JWT_ISSUER
               value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
           # TD-04 (audit Wave 12): explicit probe timing.
@@ -90,8 +95,64 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+        {{- if .Values.internalHttpMTLS.enabled }}
+        # Only this loopback proxy receives the Workload API socket. Browser
+        # traffic reaches Node, never this listener or the identity socket.
+        - name: ssr-proxy
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.gateway.image) | quote }}
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          command: ["/ssr-proxy"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: SSR_MTLS_ENABLED
+              value: "true"
+            - name: SSR_BACKEND_ORIGIN
+              value: "https://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:{{ .Values.backend.service.port }}"
+            - name: SSR_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.frontendSpiffeID | quote }}
+            - name: SSR_BACKEND_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
+            - name: SSR_SPIFFE_TRUST_DOMAIN
+              value: {{ .Values.internalHttpMTLS.trustDomain | quote }}
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: {{ printf "unix://%s/agent.sock" .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+          startupProbe:
+            exec:
+              command: ["/ssr-proxy", "probe"]
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/ssr-proxy", "probe"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["/ssr-proxy", "live"]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.frontend.ssrProxyResources | nindent 12 }}
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+              readOnly: true
+        {{- end }}
       volumes:
         - name: tmp
           emptyDir:
             medium: Memory
             sizeLimit: 32Mi
+        {{- if .Values.internalHttpMTLS.enabled }}
+        - name: spiffe-workload-api
+          csi:
+            driver: {{ .Values.internalHttpMTLS.workloadAPI.csiDriver | quote }}
+            readOnly: true
+        {{- end }}

@@ -132,6 +132,7 @@ internalHttpMTLS:
   trustDomain: ""
   backendSpiffeID: ""
   gatewaySpiffeID: ""
+  frontendSpiffeID: ""
   wsHubSpiffeID: ""
   fileProcessorSpiffeID: ""
   workloadAPI:
@@ -262,6 +263,14 @@ backend:
 
 # Frontend Service (Node SSR)
 frontend:
+  # The SPIFFE sidecar reuses the gateway image, never its gateway identity.
+  ssrProxyResources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
   replicaCount: 2
   image:
     repository: university-frontend
