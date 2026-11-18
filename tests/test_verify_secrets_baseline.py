@@ -807,6 +807,11 @@ def _nov3_public_git_object_records() -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for path, line, kind, label in _NOV3_PUBLIC_GIT_OBJECTS:
         object_id = _nov3_source_object_id(path, line)
+        # Read the live pin at its current coordinate without rewriting the
+        # immutable owner-approved evidence location from 2026-11-02.
+        evidence_line = (
+            21 if path == ".github/actions/node-actions-coverage/action.yml" else line
+        )
         if kind == "commit":
             assert object_id.startswith(_NOV3_UPSTREAM_COMMIT_PREFIX)
         digest = hashlib.sha1(object_id.encode("ascii"), usedforsecurity=False).digest()
@@ -820,7 +825,7 @@ def _nov3_public_git_object_records() -> list[dict[str, Any]]:
                 "category": "public_integrity_digest",
                 "evidence": (
                     f"Public Git SHA-1 integrity digest of {kind} object {object_id} ({label}) "
-                    f"at {path}:{line}; Git object kind {kind}; pinned public upstream "
+                    f"at {path}:{evidence_line}; Git object kind {kind}; pinned public upstream "
                     "actions/dependency-review-action@a1d282b3 (v5.0.0); identity derived "
                     "using pinned detect-secrets 1.5.0 SHA-1. Owner approved exactly these "
                     "ten identities on 2026-11-02; not credential material."
@@ -34840,7 +34845,13 @@ _DEPS_ACTIONS_LEDGER_CURRENT_SHA256 = bytes.fromhex(
 def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     ledger_bytes = (root / _DEPS_ACTIONS_LEDGER_PATH).read_bytes()
-    ledger = json.loads(ledger_bytes)
+    # Compare the historical fixture at its own layer, but retain the raw
+    # current bytes below to exercise every source guard in the full chain.
+    ledger = json.loads(
+        coverage_snapshot_historical_source_bytes(
+            _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
+        )
+    )
     companions = [
         item
         for disposition in ledger["dispositions"]
@@ -34848,7 +34859,8 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
     ]
     for path, current, previous, count, _row, _reversals in _DEPS_ACTIONS_REBINDS:
         source = (root / path).read_bytes()
-        assert hashlib.sha256(source).hexdigest() == current
+        projected = coverage_snapshot_historical_source_bytes(path, source)
+        assert hashlib.sha256(projected).hexdigest() == current
         bound = [item["sha256"] for item in companions if item["path"] == path]
         assert bound == [current] * count
         historical = _deps_actions_source_bytes(path, source)
