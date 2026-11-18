@@ -289,6 +289,7 @@ def _validate_timing_integrity(
     path_markers = False
     for job in jobs:
         path_markers = path_markers or "critical_path_end_basis" in job
+        path_markers = path_markers or "execution_interval" in job
         evidence = job.get("github_timing_evidence")
         if evidence is None:
             if "dependency_work_cost_seconds" in job:
@@ -373,7 +374,42 @@ def _validate_timing_integrity(
     expected_kind = "dependency-work-cost" if mode == "strict" else "lower-bound"
     if summary.get("critical_path_kind") != expected_kind:
         raise HealthReportError("contradictory timing cannot certify an exact path")
-    if len(affected) == len(jobs):
+    valid_intervals = False
+    for job in jobs:
+        interval = _mapping(job.get("execution_interval"), "execution_interval")
+        if set(interval) != {"started_at", "completed_at"}:
+            raise HealthReportError("execution interval endpoints are invalid")
+        endpoints: list[datetime | None] = []
+        for field in ("started_at", "completed_at"):
+            raw = interval[field]
+            if raw is None:
+                endpoints.append(None)
+                continue
+            value = _non_empty_text(raw, f"execution_interval.{field}")
+            try:
+                endpoint = datetime.fromisoformat(value)
+            except ValueError as error:
+                raise HealthReportError("invalid execution interval") from error
+            if endpoint.utcoffset() is None:
+                raise HealthReportError("execution interval needs a timezone")
+            endpoints.append(endpoint)
+        started, completed = endpoints
+        duration = _non_negative_number(job.get("duration_seconds"), "duration_seconds")
+        if job["id"] in affected:
+            evidence = _mapping(job["github_timing_evidence"], "timing evidence")
+            if any(interval[field] != evidence[field] for field in interval):
+                raise HealthReportError("contradictory interval differs from evidence")
+            continue
+        if started is None or completed is None:
+            if duration is not None:
+                raise HealthReportError("incomplete interval duration is unavailable")
+            continue
+        delta = (completed - started).total_seconds()
+        if duration != round(max(0.0, delta), 3):
+            raise HealthReportError("execution interval differs from duration")
+        if delta > 0:
+            valid_intervals = True
+    if not valid_intervals:
         for field in (
             "wall_clock_seconds",
             "peak_slot_utilization",
@@ -397,7 +433,7 @@ def _validate_timing_integrity(
             "dependency_work_cost_path_seconds",
             allow_none=False,
         )
-    elif path_markers:
+    elif any("critical_path_end_basis" in job for job in jobs):
         raise HealthReportError("diagnostic timing cannot assert a strict work path")
     return True
 

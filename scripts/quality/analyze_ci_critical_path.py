@@ -1371,7 +1371,13 @@ def _mark_nonexecution_timing(
         if report["analysis_mode"] == "diagnostic-lower-bound":
             summary["critical_path_lower_bound_seconds"] = None
     rows = cast(list[dict[str, object]], report["jobs"])
+    by_id = {job.job_id: job for job in jobs}
     for row in rows:
+        job = by_id[cast(int, row["id"])]
+        row["execution_interval"] = {
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        }
         if report["analysis_mode"] == "strict":
             row["critical_path_end_basis"] = "dependency-work-cost"
         if row["id"] in affected:

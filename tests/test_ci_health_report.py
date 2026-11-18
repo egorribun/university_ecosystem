@@ -9,7 +9,11 @@ from typing import cast
 
 import pytest
 
-from scripts.quality.analyze_ci_critical_path import analyze_jobs, parse_jobs
+from scripts.quality.analyze_ci_critical_path import (
+    AnalysisError,
+    analyze_jobs,
+    parse_jobs,
+)
 from scripts.quality.render_ci_health_report import (
     HealthReportError,
     main,
@@ -438,8 +442,9 @@ def _other_interval_job(kind):
     return record
 
 
-@pytest.mark.parametrize("kind", ["queued", "zero"])
-@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("kind", "strict"), [("queued", False), ("zero", False), ("zero", True)]
+)
 @pytest.mark.parametrize(
     "field",
     [
@@ -491,3 +496,8 @@ def test_negative_interval_never_supports_utilization():
     report["summary"]["wall_clock_seconds"] = 0
     with pytest.raises(HealthReportError, match="unavailable"):
         render_report(report)
+
+
+def test_strict_analysis_still_rejects_queued_jobs():
+    with pytest.raises(AnalysisError, match="strict analysis requires terminal jobs"):
+        _contradictory_report(strict=True, extra_job=_other_interval_job("queued"))
