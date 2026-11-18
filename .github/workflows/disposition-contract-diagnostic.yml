@@ -1,0 +1,103 @@
+name: Disposition Contract Diagnostic
+
+# Additive evidence only. This lane never replaces required CI or Coverage.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/disposition-contract-diagnostic.yml"
+      - "scripts/quality/disposition_contract_diagnostic.py"
+      - "tests/test_disposition_contract_diagnostic.py"
+      - "tests/test_disposition_contract_diagnostic_workflow.py"
+
+permissions:
+  contents: read
+cache-mode: none
+
+concurrency:
+  group: disposition-contract-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    name: Pinned disposition contract diagnostic
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'coff/diagnostic-disposition-contracts' && github.base_ref == 'egorribun' && github.event.pull_request.base.sha == 'bc7313ca450cafedd307b1524ca85c3fc87de382' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ENVIRONMENT: testing
+      OTEL_SDK_DISABLED: "true"
+      REVOCATION_REDIS_URL: redis://localhost:6380/0
+      PYTHON_GIL: "1"
+    services:
+      redis:
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout diagnostic implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          path: diagnostic
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout immutable subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+          path: subject
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify both checkouts
+        env:
+          DIAGNOSTIC_SHA: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+        run: |
+          set -euo pipefail
+          [[ "$DIAGNOSTIC_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C diagnostic rev-parse HEAD)" = "$DIAGNOSTIC_SHA"
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          printf 'diagnostic_sha=%s subject_sha=%s\n' "$DIAGNOSTIC_SHA" "$SUBJECT_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv without shared cache
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          enable-cache: false
+
+      - name: Install immutable subject dependencies
+        working-directory: subject
+        run: |
+          uv lock --check
+          uv sync --frozen
+
+      - name: Recheck immutable tracked sources after installation
+        env:
+          DIAGNOSTIC_SHA: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+        run: |
+          set -euo pipefail
+          test "$(git -C diagnostic rev-parse HEAD)" = "$DIAGNOSTIC_SHA"
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          git -C diagnostic diff --quiet HEAD --
+          git -C diagnostic diff --cached --quiet HEAD --
+          git -C subject diff --quiet HEAD --
+          git -C subject diff --cached --quiet HEAD --
+
+      - name: Diagnose the fixed subject contracts
+        working-directory: subject
+        run: >-
+          .venv/bin/python
+          ../diagnostic/scripts/quality/disposition_contract_diagnostic.py
+          --subject-root "$GITHUB_WORKSPACE/subject"

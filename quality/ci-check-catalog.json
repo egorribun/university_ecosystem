@@ -5426,6 +5426,34 @@
           }
         }
       }
+    },
+    {
+      "path": ".github/workflows/disposition-contract-diagnostic.yml",
+      "name": "Disposition Contract Diagnostic",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\".github/workflows/disposition-contract-diagnostic.yml\",\"scripts/quality/disposition_contract_diagnostic.py\",\"tests/test_disposition_contract_diagnostic.py\",\"tests/test_disposition_contract_diagnostic_workflow.py\"]}"
+        }
+      ],
+      "jobs": {
+        "diagnostic": {
+          "profile": "advisory",
+          "check_name_template": "Pinned disposition contract diagnostic",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'coff/diagnostic-disposition-contracts' && github.base_ref == 'egorribun' && github.event.pull_request.base.sha == 'bc7313ca450cafedd307b1524ca85c3fc87de382' }}",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
     }
   ]
 }
