@@ -16,11 +16,17 @@ from typing import Any
 _TARGETS = {
     "tests/test_verify_secrets_baseline.py": (
         "baseline",
-        bytes.fromhex("ba 08 b3 93 5b 70 48 50 fa 67 66 c2 cd 62 ae 1d 39 dd 69 e9"),
+        bytes.fromhex(
+            "b9 f3 73 08 41 30 ec b2 4e f2 c0 a6 4f 57 e5 ef "
+            "42 72 90 8b de b9 26 7c cb 28 45 80 33 e8 e2 0f"
+        ),
     ),
     "tests/test_coverage_snapshot_disposition_rebind.py": (
         "snapshot",
-        bytes.fromhex("42 33 31 47 7a 69 65 2c 59 7c e8 08 5f 23 92 b7 64 0d d8 0e"),
+        bytes.fromhex(
+            "9c 05 28 e9 78 d9 dc 5a bb 81 e9 e2 97 de 55 4c "
+            "e8 4b 86 8f 0e c6 58 dd 5e d5 00 5a 49 4e 72 bd"
+        ),
     ),
 }
 _PHASES = ("setup", "call", "teardown")
@@ -43,10 +49,7 @@ def source_catalog(root: Path) -> dict[tuple[str, str], tuple[str, int]]:
         data = path.read_bytes()
         if len(data) > _MAX_SOURCE_BYTES:
             raise ValueError("source oversized")
-        digest = hashlib.sha1(
-            b"blob " + str(len(data)).encode("ascii") + b"\0" + data,
-            usedforsecurity=False,
-        ).digest()
+        digest = hashlib.sha256(data).digest()
         if digest != expected:
             raise ValueError("source identity mismatch")
         tree = ast.parse(data.decode("utf-8"))
