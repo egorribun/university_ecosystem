@@ -8,7 +8,7 @@ import yaml
 from scripts.quality.validate_ci_check_catalog import validate_catalog
 
 _WORKFLOW = ".github/workflows/disposition-contract-diagnostic.yml"
-_REPORTER = "ee4b5ac342f99cf46b5c62b238f890bf1273743e"
+_REPORTER = "03e9b1d0e27c2940e519729468da95e8f74c9a54"
 _SUBJECT = "40da5dd9249c5c18cf0972e4c0ba9bc0fee13244"
 
 
