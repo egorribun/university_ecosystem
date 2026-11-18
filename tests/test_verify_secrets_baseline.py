@@ -33781,17 +33781,18 @@ _NOV18_SSR_SHELL_REVERSALS = (
     ),
     (
         (
-            b'    existingSecret: "internal-grpc-mtls-gateway"\n  fileProcessor'
-            b'Server:\n    existingSecret: "internal-grpc-mtls-server"\nfrontend'
-            b':\n  replicaCount: 1\n  image:\n    repository: "${LOCAL_REGISTRY_A'
-            b'DDRESS}/university-frontend"\ngateway:\n  image:\n    repository: "'
-            b'${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
+            b"frontend:\n"
+            b"  replicaCount: 1\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-frontend"\n'
+            b"gateway:\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
         ),
         (
-            b'    existingSecret: "internal-grpc-mtls-gateway"\n  fileProcessor'
-            b'Server:\n    existingSecret: "internal-grpc-mtls-server"\ngateway:'
-            b'\n  image:\n    repository: "${LOCAL_REGISTRY_ADDRESS}/university-'
-            b'gateway"\n'
+            b"gateway:\n"
+            b"  image:\n"
+            b'    repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
         ),
     ),
     (
