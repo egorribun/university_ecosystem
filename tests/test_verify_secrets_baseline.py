@@ -34253,14 +34253,14 @@ _NOV18_SSR_CONTRACT_REVERSALS = (
             b'    build = _shell_function("build_images")\n'
             b'    assert "frontend.Dockerfile" in build\n'
             b'    assert "ssr_mtls_request_proof.test.mjs" in build\n'
-            b"    assert 'docker push \"$FRONTEND_IMAGE\"' in _shell_function(\"push_images\")\n"
-            b"    assert '\"$FRONTEND_SPIFFE_ID\"' in _shell_function(\"register_workloads\")\n"
+            b'    assert \'docker push "$FRONTEND_IMAGE"\' in _shell_function("push_images")\n'
+            b'    assert \'"$FRONTEND_SPIFFE_ID"\' in _shell_function("register_workloads")\n'
             b'    assert "  run_ssr_proof\\n" in script\n'
             b'    proof = _shell_function("run_ssr_proof")\n'
             b'    assert "rollout status" in proof\n'
             b'    assert "-c frontend -- node --input-type=module" in proof\n'
             b"    assert '< \"$WORK_DIR/jwt-private.pem\"' in proof\n"
-            b"    assert '[[ \"$output\" == \"SSR_MTLS_AUTH=PASS\" ]]' in proof\n"
+            b'    assert \'[[ "$output" == "SSR_MTLS_AUTH=PASS" ]]\' in proof\n'
             b'    assert "internal_mtls_peer_authorized" in proof\n'
         ),
         (
