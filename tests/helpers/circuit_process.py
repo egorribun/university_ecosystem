@@ -8,16 +8,29 @@ from collections.abc import Callable
 
 _SCENARIO_DEADLINE_SECONDS = 5
 _RUN_SCENARIO = """
-import importlib
 import sys
+
+
+def _phase(value):
+    try:
+        print("CIRCUIT_CHILD_PHASE=" + value, file=sys.stderr, flush=True)
+    except Exception:
+        return
+
+
+_phase("child_started")
+import importlib
 import pytest
 
 scenario = getattr(importlib.import_module(sys.argv[1]), sys.argv[2])
+_phase("imports_ready")
 with pytest.MonkeyPatch.context() as monkeypatch:
     if sys.argv[3] == "monkeypatch":
         scenario(monkeypatch)
     else:
         scenario()
+    _phase("scenario_returned")
+_phase("cleanup_returned")
 """
 
 
@@ -50,8 +63,8 @@ def assert_circuit_scenario_completes(
     except subprocess.TimeoutExpired as error:
         raise AssertionError(
             f"Circuit contention scenario {scenario.__name__} did not finish "
-            f"within {_SCENARIO_DEADLINE_SECONDS}s; its event loop or cleanup "
-            f"stalled. Owned child was killed and reaped. "
+            f"within {_SCENARIO_DEADLINE_SECONDS}s across child startup, imports, "
+            f"scenario and shutdown. Owned child was killed and reaped. "
             f"stdout={error.stdout!r}; stderr={error.stderr!r}"
         ) from error
     sys.stdout.write(completed.stdout)
