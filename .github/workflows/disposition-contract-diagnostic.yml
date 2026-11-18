@@ -42,7 +42,7 @@ jobs:
       - name: Checkout diagnostic implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 81afe9a5273987eb25c500fab46d9312a10027f1
+          ref: ee4b5ac342f99cf46b5c62b238f890bf1273743e
           path: diagnostic
           fetch-depth: 0
           persist-credentials: false
@@ -50,15 +50,15 @@ jobs:
       - name: Checkout immutable subject
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+          ref: 40da5dd9249c5c18cf0972e4c0ba9bc0fee13244
           path: subject
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify both checkouts
         env:
-          DIAGNOSTIC_SHA: 81afe9a5273987eb25c500fab46d9312a10027f1
-          SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+          DIAGNOSTIC_SHA: ee4b5ac342f99cf46b5c62b238f890bf1273743e
+          SUBJECT_SHA: 40da5dd9249c5c18cf0972e4c0ba9bc0fee13244
         run: |
           set -euo pipefail
           [[ "$DIAGNOSTIC_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -86,8 +86,8 @@ jobs:
 
       - name: Recheck immutable tracked sources after installation
         env:
-          DIAGNOSTIC_SHA: 81afe9a5273987eb25c500fab46d9312a10027f1
-          SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
+          DIAGNOSTIC_SHA: ee4b5ac342f99cf46b5c62b238f890bf1273743e
+          SUBJECT_SHA: 40da5dd9249c5c18cf0972e4c0ba9bc0fee13244
         run: |
           set -euo pipefail
           test "$(git -C diagnostic rev-parse HEAD)" = "$DIAGNOSTIC_SHA"

@@ -8,8 +8,8 @@ import yaml
 from scripts.quality.validate_ci_check_catalog import validate_catalog
 
 _WORKFLOW = ".github/workflows/disposition-contract-diagnostic.yml"
-_REPORTER = "81afe9a5273987eb25c500fab46d9312a10027f1"
-_SUBJECT = "3d751d30f43c6e1e5a6c9aa046ea7137eb20e912"
+_REPORTER = "ee4b5ac342f99cf46b5c62b238f890bf1273743e"
+_SUBJECT = "40da5dd9249c5c18cf0972e4c0ba9bc0fee13244"
 
 
 def test_disposition_diagnostic_is_source_bound_and_advisory() -> None:
