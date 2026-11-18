@@ -64,10 +64,13 @@ def test_explicit_query_and_user_preferences_still_precede_header():
     request = _request("ru;q=0,en;q=1", query=b"lang=ru")
     assert core.resolve_locale("en", request=request) == "en"
     assert core.resolve_locale(request=request) == "ru"
-    assert core.resolve_locale(
-        request=_request("ru;q=0,en;q=1"),
-        user=SimpleNamespace(preferred_locale="ru"),
-    ) == "ru"
+    assert (
+        core.resolve_locale(
+            request=_request("ru;q=0,en;q=1"),
+            user=SimpleNamespace(preferred_locale="ru"),
+        )
+        == "ru"
+    )
 
 
 @pytest.mark.parametrize(
