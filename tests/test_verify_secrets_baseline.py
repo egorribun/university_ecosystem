@@ -17311,8 +17311,112 @@ def test_live_unit_postgres_prerequisite_binding_refuses_other_changes(
         _assert_live_scanner_source_bytes(path, invalid)
 
 
+# Owner-approved 2026-11-18: isolate only the database-free NATS proof.
+_NATS_SQLITE_CURRENT = bytes(
+    (
+        83,
+        121,
+        155,
+        8,
+        248,
+        34,
+        115,
+        52,
+        148,
+        154,
+        145,
+        251,
+        110,
+        69,
+        159,
+        193,
+        89,
+        246,
+        30,
+        135,
+        247,
+        3,
+        36,
+        135,
+        153,
+        145,
+        28,
+        152,
+        93,
+        124,
+        71,
+        4,
+    )
+)
+_NATS_SQLITE_PREVIOUS = bytes(
+    (
+        242,
+        145,
+        86,
+        78,
+        33,
+        156,
+        136,
+        114,
+        216,
+        49,
+        238,
+        146,
+        83,
+        111,
+        176,
+        50,
+        47,
+        195,
+        104,
+        217,
+        118,
+        24,
+        205,
+        73,
+        88,
+        173,
+        121,
+        134,
+        21,
+        90,
+        231,
+        144,
+    )
+)
+_NATS_SQLITE_BLOCK = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              env:\n"
+    b'                  DATABASE_URL: "sqlite+aiosqlite:///:memory:"\n'
+    b"              run: |"
+)
+_NATS_SQLITE_PREDECESSOR = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              run: |"
+)
+
+
+def _nats_sqlite_workflow_predecessor(actual: bytes) -> bytes:
+    assert hashlib.sha256(actual).digest() == _NATS_SQLITE_CURRENT, (
+        "exact reviewed NATS workflow SQLite postimage changed"
+    )
+    assert actual.count(_NATS_SQLITE_BLOCK) == 1, (
+        "exact reviewed NATS workflow SQLite hunk changed"
+    )
+    previous = actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1)
+    assert hashlib.sha256(previous).digest() == _NATS_SQLITE_PREVIOUS, (
+        "exact reviewed NATS workflow SQLite predecessor changed"
+    )
+    return previous
+
+
 def _reviewed_nats_workflow_predecessor(actual: bytes) -> bytes:
     """Reverse only the exact owner-approved NATS proof addition."""
+    actual = _nats_sqlite_workflow_predecessor(actual)
     assert hashlib.sha256(actual).digest() == bytes(
         (
             242,
@@ -36027,3 +36131,54 @@ def test_nats_workflow_binding_rejects_unreviewed_changes(mutation: str) -> None
     assert changed != actual
     with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
         _reviewed_nats_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    previous = _nats_sqlite_workflow_predecessor(actual)
+    assert previous.replace(
+        _NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1
+    ) == actual
+    job = yaml.safe_load(actual)["jobs"]["integration-tests"]
+    old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
+    assert job["env"] == old_job["env"]
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    changed = []
+    for step, old_step in zip(job["steps"], old_job["steps"], strict=True):
+        if step != old_step:
+            changed.append(step["name"])
+            expected = dict(old_step)
+            expected["env"] = {"DATABASE_URL": "sqlite+aiosqlite:///:memory:"}
+            assert step == expected
+    assert changed == ["Verify real NATS live control publication"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "file", "extra"])
+def test_nats_sqlite_projection_rejects_unapproved_bytes(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    changed = {
+        "missing": actual.replace(
+            _NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1
+        ),
+        "duplicate": actual + _NATS_SQLITE_BLOCK,
+        "file": actual.replace(b"sqlite+aiosqlite:///:memory:", b"sqlite:///test.db"),
+        "extra": actual + b"\n",
+    }[mutation]
+    assert changed != actual
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _nats_sqlite_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_projection_rejects_inverse_drift(monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    monkeypatch.setitem(
+        globals(), "_NATS_SQLITE_PREDECESSOR", _NATS_SQLITE_PREDECESSOR + b"\n"
+    )
+    with pytest.raises(AssertionError, match="SQLite predecessor changed"):
+        _nats_sqlite_workflow_predecessor(actual)
