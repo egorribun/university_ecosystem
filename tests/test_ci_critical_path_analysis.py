@@ -2269,3 +2269,118 @@ def test_nonexecution_still_requires_matching_strict_provenance(field, value):
             dag=dag,
             trusted_provenance=_trusted_provenance(dag),
         )
+
+
+def _zero_runner_skipped_record() -> dict[str, object]:
+    # Observed run 44276807129, job 134732326288; no clock-cause inference.
+    return _first_attempt_skipped_record(["ubuntu-24.04"]) | {
+        "id": 134732326288,
+        "run_id": 44276807129,
+        "created_at": "2026-11-18T10:18:30Z",
+        "started_at": "2026-11-18T10:18:30Z",
+        "completed_at": "2026-11-18T10:18:20Z",
+        "runner_id": 0,
+        "runner_name": "",
+        "runner_group_id": 0,
+        "runner_group_name": "",
+    }
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_zero_runner_skip_retains_uncertified_timing(diagnostic: bool) -> None:
+    record = _zero_runner_skipped_record()
+    payload = {"jobs": [record]}
+    original = json.dumps(payload, sort_keys=True)
+    dag = _dag_payload(
+        payload, run_id=44276807129, source_head_sha=str(record["head_sha"])
+    )
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=44276807129,
+        concurrency_cap=20,
+        diagnostic_lower_bound=diagnostic,
+        dag=None if diagnostic else dag,
+        trusted_provenance=None if diagnostic else _trusted_provenance(dag),
+    )
+    assert json.dumps(payload, sort_keys=True) == original
+    assert report["summary"]["timing_integrity"] == {
+        "state": "contradictory",
+        "affected_job_ids": [134732326288],
+        "certification": "unavailable",
+        "utilization_scope": "valid_execution_intervals_only",
+    }
+    row = report["jobs"][0]
+    assert row["duration_seconds"] is None
+    assert row["dependency_work_cost_seconds"] == 0
+    assert row["github_queue_wait_seconds"] is None
+    assert row["github_timing_evidence"]["started_at"] == "2026-11-18T10:18:30+00:00"
+    assert row["github_timing_evidence"]["completed_at"] == "2026-11-18T10:18:20+00:00"
+    for field in (
+        "wall_clock_seconds",
+        "peak_concurrency",
+        "peak_slot_utilization",
+        "average_slot_utilization",
+    ):
+        assert report["summary"][field] is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"runner_id": 1},
+        {"runner_id": False},
+        {"runner_id": True},
+        {"runner_id": 0.0},
+        {"runner_id": None},
+        {"runner_name": "runner"},
+        {"runner_name": None},
+        {"runner_group_id": 1},
+        {"runner_group_id": False},
+        {"runner_group_id": True},
+        {"runner_group_id": None},
+        {"runner_group_id": 0.0},
+        {"runner_group_name": "group"},
+        {"runner_group_name": None},
+        {"status": "queued"},
+        {"run_attempt": 2},
+        {"run_attempt": True},
+        {"head_sha": None},
+        {"head_sha": "invalid"},
+        {"run_id": None},
+        {"run_id": "invalid"},
+        {"created_at": "2026-11-18T10:18:29Z"},
+        {"labels": ["self-hosted"]},
+        {"steps": [{"name": "Run tests"}]},
+        {"conclusion": "success"},
+        {"conclusion": "failure"},
+        {"conclusion": "cancelled"},
+    ],
+)
+def test_zero_runner_skip_rejects_execution_or_ambiguous_shape(
+    change: dict[str, object],
+) -> None:
+    record = _zero_runner_skipped_record() | change
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "runner_id",
+        "runner_name",
+        "runner_group_id",
+        "runner_group_name",
+        "steps",
+        "status",
+        "run_attempt",
+        "head_sha",
+        "run_id",
+    ],
+)
+def test_zero_runner_skip_requires_complete_observed_shape(field: str) -> None:
+    record = _zero_runner_skipped_record()
+    del record[field]
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
