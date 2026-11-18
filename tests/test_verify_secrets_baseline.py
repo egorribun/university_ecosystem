@@ -9586,9 +9586,9 @@ def test_c6_source_contract_records_require_explicit_approval() -> None:
     )
     policy = _nov18_ssr_historical_policy(
         json.loads(
-            (repository / "quality/security-false-positive-dispositions.json").read_text(
-                encoding="utf-8"
-            )
+            (
+                repository / "quality/security-false-positive-dispositions.json"
+            ).read_text(encoding="utf-8")
         )
     )
     records = [
@@ -32878,7 +32878,9 @@ def test_nov13_loopback_csp_projection_rejects_drift(mutation: str) -> None:
     else:
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy["records"][_NOV13_LOOPBACK_CSP_ROW]["identity"]["hashed_secret_bytes"][
@@ -33023,7 +33025,9 @@ def test_nov13_mfa_settings_projection_rejects_drift(mutation: str) -> None:
     else:
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy["records"][_NOV13_MFA_COMPANION_ROW]["identity"]["hashed_secret_bytes"][
@@ -33708,7 +33712,9 @@ def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
     _aud154_historical_policy(
         _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
     )
@@ -33971,7 +33977,9 @@ def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
     _nov12_csp_historical_policy(
         _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
     )
@@ -34325,7 +34333,9 @@ def test_nov13_trivy_workflow_companion_projection_rejects_drift(mutation: str) 
     else:
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy["records"][_NOV13_TRIVY_WORKFLOW_ROW]["identity"]["hashed_secret_bytes"][
@@ -34614,7 +34624,9 @@ def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
     if mutation == "policy":
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy["records"][494]["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -34795,7 +34807,9 @@ def test_push_probe_projection_rejects_drift(
     if mutation == "policy":
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy = _map_zoom_historical_policy(policy)
@@ -35116,7 +35130,9 @@ def test_ammonia_projection_rejects_drift(mutation: str) -> None:
     if mutation == "policy":
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -35368,7 +35384,9 @@ def test_deps_actions_projection_rejects_drift(mutation: str) -> None:
     if mutation == "policy":
         policy = _nov18_ssr_historical_policy(
             json.loads(
-                (root / "quality/security-false-positive-dispositions.json").read_bytes()
+                (
+                    root / "quality/security-false-positive-dispositions.json"
+                ).read_bytes()
             )
         )
         identity = policy["records"][476]["identity"]
@@ -36465,11 +36483,14 @@ def test_nov18_ssr_candidate_source_binding(
     tmp_path: Path, relative: str, mutation: str
 ) -> None:
     root = _nov18_ssr_candidate_root(tmp_path)
-    assert len(
-        verifier.load_owner_authored_candidate_false_positive_dispositions(
-            repository_root=root, today=verifier.date(2026, 11, 18)
+    assert (
+        len(
+            verifier.load_owner_authored_candidate_false_positive_dispositions(
+                repository_root=root, today=verifier.date(2026, 11, 18)
+            )
         )
-    ) == 530
+        == 530
+    )
     target = root / relative
     if mutation == "changed":
         target.write_bytes(target.read_bytes() + b"\n")
@@ -36481,11 +36502,14 @@ def test_nov18_ssr_candidate_source_binding(
         target.unlink()
         target.symlink_to(replacement)
     # Schema validation alone deliberately makes no source-trust claim.
-    assert len(
-        verifier.validate_false_positive_dispositions(
-            _nov18_ssr_live_policy(), today=verifier.date(2026, 11, 18)
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _nov18_ssr_live_policy(), today=verifier.date(2026, 11, 18)
+            )
         )
-    ) == 530
+        == 530
+    )
     with pytest.raises(verifier.BaselineArtifactError, match="SSR disposition source"):
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=root, today=verifier.date(2026, 11, 18)

@@ -6729,7 +6729,6 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-
 # November 18 owner approval is limited to six exact SSR findings. The original
 # 524-record predecessor and finite review metadata remain byte-bound.
 _SSR_DISPOSITION_PREFIX_BLOB = bytes(
@@ -6900,9 +6899,9 @@ def _ssr_disposition_predecessor(document: object) -> tuple[object, list[Any]]:
     predecessor = {**document, "records": records[:_FALSE_POSITIVE_RECORD_LIMIT]}
     suffix = records[_FALSE_POSITIVE_RECORD_LIMIT:]
     try:
-        prefix_raw = (
-            json.dumps(predecessor, indent=2, sort_keys=True) + "\n"
-        ).encode("utf-8")
+        prefix_raw = (json.dumps(predecessor, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
         suffix_raw = (json.dumps(suffix, indent=2, sort_keys=True) + "\n").encode(
             "utf-8"
         )
