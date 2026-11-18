@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -212,3 +213,112 @@ def test_node_action_evidence_from_another_run_is_rejected() -> None:
         selector.select_coverage_producers(
             _arguments(), token="test-token", request=_network(artifacts)
         )
+
+
+@pytest.mark.parametrize("expected_present", [False, True])
+def test_snapshot_diagnostic_preserves_missing_failure(
+    capsys: pytest.CaptureFixture[str], expected_present: bool
+) -> None:
+    artifacts = [
+        _artifact(spec, 1, index + 10)
+        for index, spec in enumerate(selector.COVERAGE_PRODUCER_SPECS)
+        if spec.key != "node_actions"
+    ]
+    if expected_present:
+        artifacts.append({"id": 900, "name": "unrelated-private-name"})
+    network = _network(artifacts)
+    arguments = replace(_arguments(), expected_node_artifact_id="900")
+    with pytest.raises(selector.CoverageProducerSelectionError, match="node_actions"):
+        selector.select_coverage_producers(
+            arguments, token="test-token", request=network
+        )
+    output = capsys.readouterr().err
+    diagnostic = json.loads(output.split("=", 1)[1])
+    assert diagnostic["expected_node_id_present"] is expected_present
+    assert diagnostic["snapshot_count"] == len(artifacts)
+    assert diagnostic["producer_prefix_counts"]["node_actions"] == 0
+    assert set(diagnostic["producer_prefix_counts"]) == {
+        spec.key for spec in selector.COVERAGE_PRODUCER_SPECS
+    }
+    assert "900" not in output
+    assert "private-name" not in output
+    assert "test-token" not in output
+    assert len(network.requests) == 2
+
+
+def test_expected_id_never_authorizes_foreign_provenance(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    artifacts = [
+        _artifact(spec, 1, index + 10)
+        for index, spec in enumerate(selector.COVERAGE_PRODUCER_SPECS)
+    ]
+    node = next(a for a in artifacts if a["name"].startswith("node-actions-"))
+    node["workflow_run"]["head_sha"] = "d" * 40
+    arguments = replace(_arguments(), expected_node_artifact_id=str(node["id"]))
+    with pytest.raises(selector.CoverageProducerSelectionError, match="foreign commit"):
+        selector.select_coverage_producers(
+            arguments, token="test-token", request=_network(artifacts)
+        )
+    diagnostic = json.loads(capsys.readouterr().err.split("=", 1)[1])
+    assert diagnostic["expected_node_id_present"] is True
+
+
+def test_absent_expected_id_does_not_change_valid_selection(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    artifacts = [
+        _artifact(spec, 1, index + 10)
+        for index, spec in enumerate(selector.COVERAGE_PRODUCER_SPECS)
+    ]
+    baseline = selector.select_coverage_producers(
+        _arguments(), token="test-token", request=_network(artifacts)
+    )
+    actual = selector.select_coverage_producers(
+        replace(_arguments(), expected_node_artifact_id="900"),
+        token="test-token",
+        request=_network(artifacts),
+    )
+    assert actual == baseline
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("value", ["", "0", "-1", "01", "+1", " 1", "1\n", "x", "9" * 100])
+def test_malformed_expected_id_fails_before_network(value: str) -> None:
+    network = _Network([])
+    with pytest.raises(selector.CoverageProducerSelectionError, match="ID is invalid"):
+        selector.select_coverage_producers(
+            replace(_arguments(), expected_node_artifact_id=value),
+            token="test-token",
+            request=network,
+        )
+    assert network.requests == []
+
+
+def test_broken_diagnostic_stream_preserves_selection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenStream:
+        def write(self, text: str) -> int:
+            raise OSError("private stream failure")
+
+    monkeypatch.setattr(selector.sys, "stderr", BrokenStream())
+    with pytest.raises(selector.CoverageProducerSelectionError, match="missing"):
+        selector.select_coverage_producers(
+            replace(_arguments(), expected_node_artifact_id="900"),
+            token="test-token",
+            request=_network([]),
+        )
+
+
+def test_upload_identity_is_diagnostic_only_same_job_binding() -> None:
+    root = Path(__file__).resolve().parents[1]
+    action = (root / ".github/actions/node-actions-coverage/action.yml").read_text()
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+    assert "value: ${{ steps.capture_upload.outputs.artifact-id }}" in action
+    assert "id: node_action_coverage" in workflow
+    assert (
+        "EXPECTED_NODE_ARTIFACT_ID: "
+        "${{ steps.node_action_coverage.outputs.artifact-id }}"
+    ) in workflow
+    assert '--expected-node-artifact-id "${EXPECTED_NODE_ARTIFACT_ID}"' in workflow
