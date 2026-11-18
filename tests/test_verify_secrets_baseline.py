@@ -34010,7 +34010,253 @@ def _nov18_ssr_shell_historical_source_bytes(path: str, actual: bytes) -> bytes:
     return historical
 
 
+_NOV18_SSR_CONTRACT_PATH = "tests/test_internal_mtls_kind_contract.py"
+_NOV18_SSR_CONTRACT_CURRENT = bytes(
+    (
+        222,
+        231,
+        11,
+        49,
+        121,
+        19,
+        152,
+        157,
+        214,
+        21,
+        81,
+        154,
+        128,
+        246,
+        98,
+        227,
+        30,
+        101,
+        223,
+        220,
+        176,
+        82,
+        48,
+        95,
+        215,
+        206,
+        252,
+        210,
+        171,
+        87,
+        50,
+        237,
+    )
+)
+_NOV18_SSR_CONTRACT_PREVIOUS = bytes(
+    (
+        112,
+        88,
+        43,
+        95,
+        191,
+        246,
+        252,
+        74,
+        145,
+        175,
+        224,
+        202,
+        8,
+        234,
+        210,
+        225,
+        230,
+        136,
+        128,
+        109,
+        178,
+        141,
+        36,
+        202,
+        127,
+        140,
+        184,
+        239,
+        143,
+        172,
+        96,
+        75,
+    )
+)
+_NOV18_SSR_CONTRACT_REVERSALS = (
+    (
+        (
+            b").resolve()\nREFERENCE_WORKFLOW = ROOT / \".github\" / \"workflows\" "
+            b"/ \"admin-smoke-monitoring.yml\"\nREQUIRED_PATHS = {\n    \"frontend."
+            b"Dockerfile\",\n    \"frontend/**\",\n    \"backend.Dockerfile\",\n    \"b"
+            b"ackend.Dockerfile.dockerignore\",\n    \".dockerignore\",\n"
+        ),
+        (
+            b").resolve()\nREFERENCE_WORKFLOW = ROOT / \".github\" / \"workflows\" "
+            b"/ \"admin-smoke-monitoring.yml\"\nREQUIRED_PATHS = {\n    \"backend.D"
+            b"ockerfile\",\n    \"backend.Dockerfile.dockerignore\",\n    \".dockeri"
+            b"gnore\",\n"
+        ),
+    ),
+    (
+        (
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() "
+            b"-> None:\n    triggers = _triggers(_workflow())\n    assert set(tr"
+            b"iggers) == {\"pull_request\", \"schedule\", \"workflow_dispatch\"}\n   "
+            b" assert triggers[\"pull_request\"][\"branches\"] == [\"main\", \"egorri"
+            b"bun\"]\n    paths = triggers[\"pull_request\"][\"paths\"]\n    assert s"
+            b"et(paths) == REQUIRED_PATHS\n    assert len(paths) == len(REQUIRE"
+            b"D_PATHS), \"duplicate path filters are forbidden\"\n"
+        ),
+        (
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() "
+            b"-> None:\n    triggers = _triggers(_workflow())\n    assert set(tr"
+            b"iggers) == {\"pull_request\", \"schedule\", \"workflow_dispatch\"}\n   "
+            b" assert triggers[\"pull_request\"][\"branches\"] == [\"main\"]\n    pat"
+            b"hs = triggers[\"pull_request\"][\"paths\"]\n    assert set(paths) == "
+            b"REQUIRED_PATHS\n    assert len(paths) == len(REQUIRED_PATHS), \"du"
+            b"plicate path filters are forbidden\"\n"
+        ),
+    ),
+    (
+        (
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n    job = "
+            b"_job()\n    assert job[\"runs-on\"] == \"ubuntu-24.04\"\n    assert jo"
+            b"b[\"timeout-minutes\"] == 90\n\n\ndef test_every_action_is_pinned_by_"
+            b"full_sha_with_version_comment() -> None:\n"
+        ),
+        (
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n    job = "
+            b"_job()\n    assert job[\"runs-on\"] == \"ubuntu-24.04\"\n    assert jo"
+            b"b[\"timeout-minutes\"] == 40\n\n\ndef test_every_action_is_pinned_by_"
+            b"full_sha_with_version_comment() -> None:\n"
+        ),
+    ),
+    (
+        (
+            b"def test_checkout_does_not_persist_credentials() -> None:\n    ch"
+            b"eckout = _step(\"Check out repository\")\n    assert checkout[\"with"
+            b"\"][\"persist-credentials\"] is False\n    assert checkout[\"with\"][\""
+            b"ref\"] == (\n        \"${{ github.event.pull_request.head.sha || gi"
+            b"thub.sha }}\"\n    )\n\n\ndef test_no_continue_on_error_anywhere() ->"
+            b" None:\n"
+        ),
+        (
+            b"def test_checkout_does_not_persist_credentials() -> None:\n    ch"
+            b"eckout = _step(\"Check out repository\")\n    assert checkout[\"with"
+            b"\"][\"persist-credentials\"] is False\n\n\ndef test_no_continue_on_err"
+            b"or_anywhere() -> None:\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
+            b"_SPIFFE_ID=file-processor\nFRONTEND_SPIFFE_ID=frontend\ndocker() {"
+            b"{\n  case \"$1\" in\n    inspect) if [[ \"$*\" == *--format* ]]; then "
+            b"printf '%064d\\\\n' 1; else return 1; fi ;;\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
+            b"_SPIFFE_ID=file-processor\ndocker() {{\n  case \"$1\" in\n    inspect"
+            b") if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else re"
+            b"turn 1; fi ;;\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
+            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
+            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
+            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
+            b"ile-processor\nFRONTEND_SPIFFE_ID=spiffe://university.ecosystem/n"
+            b"s/university-ecosystem/sa/ue-frontend\nwrite_secret_file() {{ :; "
+            b"}}\nopenssl() {{\n  if [[ \"$1\" == genrsa ]]; then :; else command "
+            b"openssl \"$@\"; fi\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
+            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
+            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
+            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
+            b"ile-processor\nwrite_secret_file() {{ :; }}\nopenssl() {{\n  if [[ "
+            b"\"$1\" == genrsa ]]; then :; else command openssl \"$@\"; fi\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
+            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
+            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
+            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
+            b"ile-processor\nFRONTEND_SPIFFE_ID=spiffe://university.ecosystem/n"
+            b"s/university-ecosystem/sa/ue-frontend\nwrite_values_file\n\"\"\"\n    "
+            b"bash = shutil.which(\"bash\")\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
+            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
+            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
+            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
+            b"ile-processor\nwrite_values_file\n\"\"\"\n    bash = shutil.which(\"bas"
+            b"h\")\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
+            b"_SPIFFE_ID=file-processor\nFRONTEND_SPIFFE_ID=frontend\npostgres_p"
+            b"assword=\nmigration_seen=0\nwrite_secret_file() {{\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
+            b"_SPIFFE_ID=file-processor\npostgres_password=\nmigration_seen=0\nwr"
+            b"ite_secret_file() {{\n"
+        ),
+    ),
+    (
+        (
+            b"    result = _bash_command(command)\n    assert result.returncode"
+            b" == 0, result.stderr\n    assert \"FAIL a-gateway-to-backend-mtls-"
+            b"hop\\n\" in result.stdout.decode()\n\n\ndef test_kind_builds_and_regi"
+            b"sters_the_real_frontend() -> None:\n    script = _script()\n    bu"
+            b"ild = _shell_function(\"build_images\")\n    assert \"frontend.Docke"
+            b"rfile\" in build\n    assert \"ssr_mtls_request_proof.test.mjs\" in "
+            b"build\n    assert 'docker push \"$FRONTEND_IMAGE\"' in _shell_funct"
+            b"ion(\"push_images\")\n    assert '\"$FRONTEND_SPIFFE_ID\"' in _shell_"
+            b"function(\"register_workloads\")\n    assert \"  run_ssr_proof\\n\" in"
+            b" script\n    proof = _shell_function(\"run_ssr_proof\")\n    assert "
+            b"\"rollout status\" in proof\n    assert \"-c frontend -- node --inpu"
+            b"t-type=module\" in proof\n    assert '< \"$WORK_DIR/jwt-private.pem"
+            b"\"' in proof\n    assert '[[ \"$output\" == \"SSR_MTLS_AUTH=PASS\" ]]'"
+            b" in proof\n    assert \"internal_mtls_peer_authorized\" in proof\n"
+        ),
+        (
+            b"    result = _bash_command(command)\n    assert result.returncode"
+            b" == 0, result.stderr\n    assert \"FAIL a-gateway-to-backend-mtls-"
+            b"hop\\n\" in result.stdout.decode()\n"
+        ),
+    ),
+)
+
+
+def _nov18_ssr_contract_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    if path != _NOV18_SSR_CONTRACT_PATH:
+        return actual
+    assert hashlib.sha256(actual).digest() == _NOV18_SSR_CONTRACT_CURRENT, (
+        "SSR contract postimage changed"
+    )
+    historical = actual
+    for current, previous in _NOV18_SSR_CONTRACT_REVERSALS:
+        assert historical.count(current) == 1, "SSR contract inverse hunk changed"
+        historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_CONTRACT_PREVIOUS, (
+        "SSR contract predecessor changed"
+    )
+    return historical
+
+
 def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    actual = _nov18_ssr_contract_historical_source_bytes(path, actual)
     actual = _nov18_ssr_shell_historical_source_bytes(path, actual)
     actual = _nov17_ssr_chart_historical_source_bytes(path, actual)
     actual = _nov16_chart_comment_historical_source_bytes(path, actual)
@@ -37056,3 +37302,87 @@ def test_nov18_ssr_shell_rebind_rejects_projection_drift(
         expected = "SSR shell postimage changed"
     with pytest.raises(AssertionError, match=expected):
         _nov18_ssr_shell_historical_source_bytes(_NOV18_SSR_SHELL_PATH, actual)
+
+
+def test_nov18_ssr_contract_rebind_is_exact_and_reversible() -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    historical = _nov18_ssr_contract_historical_source_bytes(
+        _NOV18_SSR_CONTRACT_PATH, actual
+    )
+    assert len(_NOV18_SSR_CONTRACT_REVERSALS) == 9
+    assert hashlib.sha256(historical).digest() == _NOV18_SSR_CONTRACT_PREVIOUS
+    replay = historical
+    for current, previous in reversed(_NOV18_SSR_CONTRACT_REVERSALS):
+        assert replay.count(previous) == 1
+        replay = replay.replace(previous, current, 1)
+    assert replay == actual
+    unrelated = b"unrelated source remains unchanged"
+    assert (
+        _nov18_ssr_contract_historical_source_bytes("other.py", unrelated) == unrelated
+    )
+    # Keep the effective predecessor and all earlier historical pins unchanged.
+    assert _AUD380_CURRENT_DELTA_SOURCE_SHA256[_NOV18_SSR_CONTRACT_PATH] == (
+        _NOV18_SSR_CONTRACT_PREVIOUS
+    )
+    assert _aud154_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, actual) == (
+        historical
+    )
+
+
+@pytest.mark.parametrize("index", range(9))
+@pytest.mark.parametrize("mutation", ["changed", "missing", "duplicate"])
+def test_nov18_ssr_contract_rebind_rejects_source_drift(
+    index: int, mutation: str
+) -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    current, _previous = _NOV18_SSR_CONTRACT_REVERSALS[index]
+    replacement = {
+        "changed": current + b"# changed\n",
+        "missing": b"",
+        "duplicate": current + current,
+    }[mutation]
+    changed = actual.replace(current, replacement, 1)
+    with pytest.raises(AssertionError, match="SSR contract postimage changed"):
+        _nov18_ssr_contract_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, changed)
+
+
+@pytest.mark.parametrize("mutation", ["inverse", "predecessor", "unrelated"])
+def test_nov18_ssr_contract_rebind_rejects_projection_drift(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    if mutation == "inverse":
+        reversals = list(_NOV18_SSR_CONTRACT_REVERSALS)
+        current, previous = reversals[0]
+        reversals[0] = (current + b"# invalid", previous)
+        monkeypatch.setitem(
+            globals(), "_NOV18_SSR_CONTRACT_REVERSALS", tuple(reversals)
+        )
+        message = "SSR contract inverse hunk changed"
+    elif mutation == "predecessor":
+        monkeypatch.setitem(globals(), "_NOV18_SSR_CONTRACT_PREVIOUS", bytes(32))
+        message = "SSR contract predecessor changed"
+    else:
+        actual += b"# unrelated edit\n"
+        message = "SSR contract postimage changed"
+    with pytest.raises(AssertionError, match=message):
+        _nov18_ssr_contract_historical_source_bytes(_NOV18_SSR_CONTRACT_PATH, actual)
+
+
+def test_nov18_ssr_contract_rebind_rejects_predecessor_as_current() -> None:
+    actual = (
+        Path(__file__).resolve().parents[1] / _NOV18_SSR_CONTRACT_PATH
+    ).read_bytes()
+    historical = _nov18_ssr_contract_historical_source_bytes(
+        _NOV18_SSR_CONTRACT_PATH, actual
+    )
+    with pytest.raises(AssertionError, match="SSR contract postimage changed"):
+        _nov18_ssr_contract_historical_source_bytes(
+            _NOV18_SSR_CONTRACT_PATH, historical
+        )
