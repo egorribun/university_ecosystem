@@ -16,7 +16,7 @@ from typing import Any
 _TARGETS = {
     "tests/test_verify_secrets_baseline.py": (
         "baseline",
-        bytes.fromhex("b7 31 f6 85 aa 30 f6 a9 3e 05 89 39 5a e3 2c 29 19 32 58 20"),
+        bytes.fromhex("ba 08 b3 93 5b 70 48 50 fa 67 66 c2 cd 62 ae 1d 39 dd 69 e9"),
     ),
     "tests/test_coverage_snapshot_disposition_rebind.py": (
         "snapshot",
