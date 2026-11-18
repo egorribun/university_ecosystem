@@ -34847,11 +34847,10 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
     ledger_bytes = (root / _DEPS_ACTIONS_LEDGER_PATH).read_bytes()
     # Compare the historical fixture at its own layer, but retain the raw
     # current bytes below to exercise every source guard in the full chain.
-    ledger = json.loads(
-        coverage_snapshot_historical_source_bytes(
-            _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
-        )
+    projected_ledger = coverage_snapshot_historical_source_bytes(
+        _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
     )
+    ledger = json.loads(projected_ledger)
     companions = [
         item
         for disposition in ledger["dispositions"]
