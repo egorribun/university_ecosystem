@@ -546,10 +546,22 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 and queued_field == "created_at"
                 and created == started
                 and record.get("steps") == []
-                and "runner_id" in record
-                and record["runner_id"] is None
-                and "runner_name" in record
-                and record["runner_name"] is None
+                and (
+                    (
+                        "runner_id" in record
+                        and record["runner_id"] is None
+                        and "runner_name" in record
+                        and record["runner_name"] is None
+                    )
+                    or (
+                        type(record.get("runner_id")) is int
+                        and record["runner_id"] == 0
+                        and record.get("runner_name") == ""
+                        and type(record.get("runner_group_id")) is int
+                        and record["runner_group_id"] == 0
+                        and record.get("runner_group_name") == ""
+                    )
+                )
                 and record.get("labels") in ([], ["ubuntu-24.04"])
             ):
                 # Observed in run 43981164331, job 133702960401, attempt 1.
@@ -557,7 +569,9 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 # is requested runner metadata, not proof of execution.
                 # Run 43983640643, job 133721977888, has a ten-second inversion.
                 # Run 43993477629, job 133752022363, has an eleven-second
-                # inversion. No documented elapsed-time bound applies to this
+                # inversion. Run 44276807129, job 134732326288, uses zero
+                # runner/group IDs and empty names instead of null metadata.
+                # No documented elapsed-time bound applies to this
                 # nonexecution classification: contradictory timing is never
                 # certified, regardless of the magnitude of the inversion.
                 # Preserve both timestamps and mark queue timing unavailable;
