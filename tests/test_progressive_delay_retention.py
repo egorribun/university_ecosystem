@@ -120,9 +120,7 @@ async def test_reset_drops_retention_with_counter(clock, monkeypatch, clear_all)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_legacy_entries_use_default_retention_not_sweeper_ttl(
-    clock, monkeypatch
-):
+async def test_legacy_entries_use_default_retention_not_sweeper_ttl(clock, monkeypatch):
     short = delay.ProgressiveDelayTracker(ttl_seconds=60, key_prefix="short")
     normal = delay.ProgressiveDelayTracker(key_prefix="legacy")
     delay._delay_memory[normal._make_key("subject")] = (2, clock[0])
