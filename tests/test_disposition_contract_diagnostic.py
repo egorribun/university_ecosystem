@@ -201,7 +201,7 @@ def test_real_child_mutes_streams_fds_capture_and_atexit(
     ]
 
 
-@pytest.mark.parametrize("code", range(6))
+@pytest.mark.parametrize("code", range(7))
 @pytest.mark.parametrize("output_failure", [False, True])
 def test_main_fd_protocol_and_output_failure_preserve_failure(
     tmp_path: Path,
@@ -345,3 +345,10 @@ def test_bootstrap_failure_closes_owned_descriptors(
     assert closes == expected
     captured = capsys.readouterr()
     assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize("code", [-1, 7, True, "6"])
+def test_receipt_rejects_unsupported_exit_codes(tmp_path: Path, code: object) -> None:
+    summary = diagnostic.Recorder(tmp_path, {}).summary(1)
+    with pytest.raises(ValueError, match="summary invalid"):
+        diagnostic.encode_summary(summary, code)

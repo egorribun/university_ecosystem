@@ -151,7 +151,7 @@ def reproduce(root: Path) -> tuple[int, dict[str, object]]:
     if type(result) is not int and not isinstance(result, pytest.ExitCode):
         raise ValueError("pytest result unavailable")
     code = int(result)
-    if code not in range(6):
+    if code not in range(7):
         raise ValueError("pytest result unavailable")
     return code, recorder.summary(code)
 
@@ -164,7 +164,7 @@ def encode_summary(summary: dict[str, object], exit_code: int) -> bytes:
     if (
         type(summary) is not dict
         or type(exit_code) is not int
-        or exit_code not in range(6)
+        or exit_code not in range(7)
     ):
         raise ValueError("summary invalid")
     if summary.get("status") == "unavailable":
