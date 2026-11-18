@@ -775,7 +775,7 @@ _NOV3_PUBLIC_GIT_OBJECTS = (
     ),
     (
         ".github/actions/node-actions-coverage/action.yml",
-        21,
+        25,
         "commit",
         "checkout ref commit",
     ),
@@ -35845,3 +35845,34 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
 
 def test_map_zoom_source_projection_leaves_other_paths_unchanged() -> None:
     assert _map_zoom_historical_source_bytes("unrelated", b"unchanged") == b"unchanged"
+
+
+def test_node_coverage_checkout_coordinate_matches_capture_pin() -> None:
+    path = ".github/actions/node-actions-coverage/action.yml"
+    entry = next(row for row in _NOV3_PUBLIC_GIT_OBJECTS if row[0] == path)
+    assert entry[1:] == (25, "commit", "checkout ref commit")
+    assert _nov3_source_object_id(path, entry[1]) == _nov3_source_object_id(
+        ".github/actions/dependency-review-capture/capture.cjs", 11
+    )
+
+
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_node_coverage_checkout_coordinate_rejects_missing_or_multiple_ids(
+    monkeypatch: pytest.MonkeyPatch, duplicate: bool
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    relative = ".github/actions/node-actions-coverage/action.yml"
+    target = root / relative
+    original_read = Path.read_text
+    lines = original_read(target, encoding="utf-8").splitlines()
+    lines[24] = lines[24] + " " + lines[24] if duplicate else ""
+    altered = "\n".join(lines)
+
+    def read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path == target:
+            return altered
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    with pytest.raises(AssertionError, match="must hold exactly one Git object id"):
+        _nov3_source_object_id(relative, 25)
