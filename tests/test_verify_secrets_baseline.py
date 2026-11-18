@@ -35817,3 +35817,50 @@ def _coverage_snapshot_policy_fixture(root: Path) -> bytes:
     return coverage_snapshot_historical_policy_bytes(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+
+
+def test_node_coverage_current_pin_preserves_historical_approval_evidence() -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = ".github/actions/node-actions-coverage/action.yml"
+    entry = next(row for row in _NOV3_PUBLIC_GIT_OBJECTS if row[0] == path)
+    assert entry[1] == 25
+    object_id = _nov3_source_object_id(path, entry[1])
+    assert object_id == _nov3_source_object_id(
+        ".github/actions/dependency-review-capture/capture.cjs", 11
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    approved = [row for row in policy["records"] if row["identity"]["path"] == path]
+    generated = [
+        row for row in _nov3_public_git_object_records() if row["identity"]["path"] == path
+    ]
+    assert len(approved) == len(generated) == 1
+    assert f"at {path}:21; Git object kind commit;" in approved[0]["evidence"]
+    assert generated == approved
+
+
+def test_deps_actions_current_fixtures_cross_exact_snapshot_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    paths = (
+        "tests/test_quality_workflow_contract.py",
+        _DEPS_ACTIONS_LEDGER_PATH,
+    )
+    current = {path: (root / path).read_bytes() for path in paths}
+    original = coverage_snapshot_historical_source_bytes
+    for path in paths:
+        assert original(path, current[path]) != current[path]
+    projected: set[str] = set()
+
+    def project(path: str, actual: bytes) -> bytes:
+        result = original(path, actual)
+        if path in current:
+            assert actual == current[path]
+            projected.add(path)
+        return result
+
+    monkeypatch.setitem(globals(), "coverage_snapshot_historical_source_bytes", project)
+    test_deps_actions_rebind_preserves_exact_predecessor()
+    assert projected == set(paths)
