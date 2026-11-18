@@ -34086,154 +34086,187 @@ _NOV18_SSR_CONTRACT_PREVIOUS = bytes(
 _NOV18_SSR_CONTRACT_REVERSALS = (
     (
         (
-            b").resolve()\nREFERENCE_WORKFLOW = ROOT / \".github\" / \"workflows\" "
-            b"/ \"admin-smoke-monitoring.yml\"\nREQUIRED_PATHS = {\n    \"frontend."
-            b"Dockerfile\",\n    \"frontend/**\",\n    \"backend.Dockerfile\",\n    \"b"
-            b"ackend.Dockerfile.dockerignore\",\n    \".dockerignore\",\n"
+            b").resolve()\n"
+            b'REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"\n'
+            b"REQUIRED_PATHS = {\n"
+            b'    "frontend.Dockerfile",\n'
+            b'    "frontend/**",\n'
+            b'    "backend.Dockerfile",\n'
+            b'    "backend.Dockerfile.dockerignore",\n'
+            b'    ".dockerignore",\n'
         ),
         (
-            b").resolve()\nREFERENCE_WORKFLOW = ROOT / \".github\" / \"workflows\" "
-            b"/ \"admin-smoke-monitoring.yml\"\nREQUIRED_PATHS = {\n    \"backend.D"
-            b"ockerfile\",\n    \"backend.Dockerfile.dockerignore\",\n    \".dockeri"
-            b"gnore\",\n"
-        ),
-    ),
-    (
-        (
-            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() "
-            b"-> None:\n    triggers = _triggers(_workflow())\n    assert set(tr"
-            b"iggers) == {\"pull_request\", \"schedule\", \"workflow_dispatch\"}\n   "
-            b" assert triggers[\"pull_request\"][\"branches\"] == [\"main\", \"egorri"
-            b"bun\"]\n    paths = triggers[\"pull_request\"][\"paths\"]\n    assert s"
-            b"et(paths) == REQUIRED_PATHS\n    assert len(paths) == len(REQUIRE"
-            b"D_PATHS), \"duplicate path filters are forbidden\"\n"
-        ),
-        (
-            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() "
-            b"-> None:\n    triggers = _triggers(_workflow())\n    assert set(tr"
-            b"iggers) == {\"pull_request\", \"schedule\", \"workflow_dispatch\"}\n   "
-            b" assert triggers[\"pull_request\"][\"branches\"] == [\"main\"]\n    pat"
-            b"hs = triggers[\"pull_request\"][\"paths\"]\n    assert set(paths) == "
-            b"REQUIRED_PATHS\n    assert len(paths) == len(REQUIRED_PATHS), \"du"
-            b"plicate path filters are forbidden\"\n"
+            b").resolve()\n"
+            b'REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"\n'
+            b"REQUIRED_PATHS = {\n"
+            b'    "backend.Dockerfile",\n'
+            b'    "backend.Dockerfile.dockerignore",\n'
+            b'    ".dockerignore",\n'
         ),
     ),
     (
         (
-            b"def test_job_runner_and_timeout_are_pinned() -> None:\n    job = "
-            b"_job()\n    assert job[\"runs-on\"] == \"ubuntu-24.04\"\n    assert jo"
-            b"b[\"timeout-minutes\"] == 90\n\n\ndef test_every_action_is_pinned_by_"
-            b"full_sha_with_version_comment() -> None:\n"
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:\n"
+            b"    triggers = _triggers(_workflow())\n"
+            b'    assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}\n'
+            b'    assert triggers["pull_request"]["branches"] == ["main", "egorribun"]\n'
+            b'    paths = triggers["pull_request"]["paths"]\n'
+            b"    assert set(paths) == REQUIRED_PATHS\n"
+            b'    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"\n'
         ),
         (
-            b"def test_job_runner_and_timeout_are_pinned() -> None:\n    job = "
-            b"_job()\n    assert job[\"runs-on\"] == \"ubuntu-24.04\"\n    assert jo"
-            b"b[\"timeout-minutes\"] == 40\n\n\ndef test_every_action_is_pinned_by_"
-            b"full_sha_with_version_comment() -> None:\n"
-        ),
-    ),
-    (
-        (
-            b"def test_checkout_does_not_persist_credentials() -> None:\n    ch"
-            b"eckout = _step(\"Check out repository\")\n    assert checkout[\"with"
-            b"\"][\"persist-credentials\"] is False\n    assert checkout[\"with\"][\""
-            b"ref\"] == (\n        \"${{ github.event.pull_request.head.sha || gi"
-            b"thub.sha }}\"\n    )\n\n\ndef test_no_continue_on_error_anywhere() ->"
-            b" None:\n"
-        ),
-        (
-            b"def test_checkout_does_not_persist_credentials() -> None:\n    ch"
-            b"eckout = _step(\"Check out repository\")\n    assert checkout[\"with"
-            b"\"][\"persist-credentials\"] is False\n\n\ndef test_no_continue_on_err"
-            b"or_anywhere() -> None:\n"
+            b"def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:\n"
+            b"    triggers = _triggers(_workflow())\n"
+            b'    assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}\n'
+            b'    assert triggers["pull_request"]["branches"] == ["main"]\n'
+            b'    paths = triggers["pull_request"]["paths"]\n'
+            b"    assert set(paths) == REQUIRED_PATHS\n"
+            b'    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"\n'
         ),
     ),
     (
         (
-            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
-            b"_SPIFFE_ID=file-processor\nFRONTEND_SPIFFE_ID=frontend\ndocker() {"
-            b"{\n  case \"$1\" in\n    inspect) if [[ \"$*\" == *--format* ]]; then "
-            b"printf '%064d\\\\n' 1; else return 1; fi ;;\n"
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n"
+            b"    job = _job()\n"
+            b'    assert job["runs-on"] == "ubuntu-24.04"\n'
+            b'    assert job["timeout-minutes"] == 90\n'
+            b"\n"
+            b"\n"
+            b"def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:\n"
         ),
         (
-            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
-            b"_SPIFFE_ID=file-processor\ndocker() {{\n  case \"$1\" in\n    inspect"
-            b") if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else re"
-            b"turn 1; fi ;;\n"
-        ),
-    ),
-    (
-        (
-            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
-            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
-            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
-            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
-            b"ile-processor\nFRONTEND_SPIFFE_ID=spiffe://university.ecosystem/n"
-            b"s/university-ecosystem/sa/ue-frontend\nwrite_secret_file() {{ :; "
-            b"}}\nopenssl() {{\n  if [[ \"$1\" == genrsa ]]; then :; else command "
-            b"openssl \"$@\"; fi\n"
-        ),
-        (
-            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
-            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
-            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
-            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
-            b"ile-processor\nwrite_secret_file() {{ :; }}\nopenssl() {{\n  if [[ "
-            b"\"$1\" == genrsa ]]; then :; else command openssl \"$@\"; fi\n"
+            b"def test_job_runner_and_timeout_are_pinned() -> None:\n"
+            b"    job = _job()\n"
+            b'    assert job["runs-on"] == "ubuntu-24.04"\n'
+            b'    assert job["timeout-minutes"] == 40\n'
+            b"\n"
+            b"\n"
+            b"def test_every_action_is_pinned_by_full_sha_with_version_comment() -> None:\n"
         ),
     ),
     (
         (
-            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
-            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
-            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
-            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
-            b"ile-processor\nFRONTEND_SPIFFE_ID=spiffe://university.ecosystem/n"
-            b"s/university-ecosystem/sa/ue-frontend\nwrite_values_file\n\"\"\"\n    "
-            b"bash = shutil.which(\"bash\")\n"
+            b"def test_checkout_does_not_persist_credentials() -> None:\n"
+            b'    checkout = _step("Check out repository")\n'
+            b'    assert checkout["with"]["persist-credentials"] is False\n'
+            b'    assert checkout["with"]["ref"] == (\n'
+            b'        "${{ github.event.pull_request.head.sha || github.sha }}"\n'
+            b"    )\n"
+            b"\n"
+            b"\n"
+            b"def test_no_continue_on_error_anywhere() -> None:\n"
         ),
         (
-            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ec"
-            b"osystem/sa/ue-gateway\nWS_HUB_SPIFFE_ID=spiffe://university.ecosy"
-            b"stem/ns/university-ecosystem/sa/ue-ws-hub\nFILE_PROCESSOR_SPIFFE_"
-            b"ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-f"
-            b"ile-processor\nwrite_values_file\n\"\"\"\n    bash = shutil.which(\"bas"
-            b"h\")\n"
-        ),
-    ),
-    (
-        (
-            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
-            b"_SPIFFE_ID=file-processor\nFRONTEND_SPIFFE_ID=frontend\npostgres_p"
-            b"assword=\nmigration_seen=0\nwrite_secret_file() {{\n"
-        ),
-        (
-            b"GATEWAY_SPIFFE_ID=gateway\nWS_HUB_SPIFFE_ID=ws-hub\nFILE_PROCESSOR"
-            b"_SPIFFE_ID=file-processor\npostgres_password=\nmigration_seen=0\nwr"
-            b"ite_secret_file() {{\n"
+            b"def test_checkout_does_not_persist_credentials() -> None:\n"
+            b'    checkout = _step("Check out repository")\n'
+            b'    assert checkout["with"]["persist-credentials"] is False\n'
+            b"\n"
+            b"\n"
+            b"def test_no_continue_on_error_anywhere() -> None:\n"
         ),
     ),
     (
         (
-            b"    result = _bash_command(command)\n    assert result.returncode"
-            b" == 0, result.stderr\n    assert \"FAIL a-gateway-to-backend-mtls-"
-            b"hop\\n\" in result.stdout.decode()\n\n\ndef test_kind_builds_and_regi"
-            b"sters_the_real_frontend() -> None:\n    script = _script()\n    bu"
-            b"ild = _shell_function(\"build_images\")\n    assert \"frontend.Docke"
-            b"rfile\" in build\n    assert \"ssr_mtls_request_proof.test.mjs\" in "
-            b"build\n    assert 'docker push \"$FRONTEND_IMAGE\"' in _shell_funct"
-            b"ion(\"push_images\")\n    assert '\"$FRONTEND_SPIFFE_ID\"' in _shell_"
-            b"function(\"register_workloads\")\n    assert \"  run_ssr_proof\\n\" in"
-            b" script\n    proof = _shell_function(\"run_ssr_proof\")\n    assert "
-            b"\"rollout status\" in proof\n    assert \"-c frontend -- node --inpu"
-            b"t-type=module\" in proof\n    assert '< \"$WORK_DIR/jwt-private.pem"
-            b"\"' in proof\n    assert '[[ \"$output\" == \"SSR_MTLS_AUTH=PASS\" ]]'"
-            b" in proof\n    assert \"internal_mtls_peer_authorized\" in proof\n"
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"FRONTEND_SPIFFE_ID=frontend\n"
+            b"docker() {{\n"
+            b'  case "$1" in\n'
+            b"    inspect) if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else return 1; fi ;;\n"
         ),
         (
-            b"    result = _bash_command(command)\n    assert result.returncode"
-            b" == 0, result.stderr\n    assert \"FAIL a-gateway-to-backend-mtls-"
-            b"hop\\n\" in result.stdout.decode()\n"
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"docker() {{\n"
+            b'  case "$1" in\n'
+            b"    inspect) if [[ \"$*\" == *--format* ]]; then printf '%064d\\\\n' 1; else return 1; fi ;;\n"
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend\n"
+            b"write_secret_file() {{ :; }}\n"
+            b"openssl() {{\n"
+            b'  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi\n'
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"write_secret_file() {{ :; }}\n"
+            b"openssl() {{\n"
+            b'  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi\n'
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"FRONTEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-frontend\n"
+            b"write_values_file\n"
+            b'"""\n'
+            b'    bash = shutil.which("bash")\n'
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway\n"
+            b"WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor\n"
+            b"write_values_file\n"
+            b'"""\n'
+            b'    bash = shutil.which("bash")\n'
+        ),
+    ),
+    (
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"FRONTEND_SPIFFE_ID=frontend\n"
+            b"postgres_password=\n"
+            b"migration_seen=0\n"
+            b"write_secret_file() {{\n"
+        ),
+        (
+            b"GATEWAY_SPIFFE_ID=gateway\n"
+            b"WS_HUB_SPIFFE_ID=ws-hub\n"
+            b"FILE_PROCESSOR_SPIFFE_ID=file-processor\n"
+            b"postgres_password=\n"
+            b"migration_seen=0\n"
+            b"write_secret_file() {{\n"
+        ),
+    ),
+    (
+        (
+            b"    result = _bash_command(command)\n"
+            b"    assert result.returncode == 0, result.stderr\n"
+            b'    assert "FAIL a-gateway-to-backend-mtls-hop\\n" in result.stdout.decode()\n'
+            b"\n"
+            b"\n"
+            b"def test_kind_builds_and_registers_the_real_frontend() -> None:\n"
+            b"    script = _script()\n"
+            b'    build = _shell_function("build_images")\n'
+            b'    assert "frontend.Dockerfile" in build\n'
+            b'    assert "ssr_mtls_request_proof.test.mjs" in build\n'
+            b"    assert 'docker push \"$FRONTEND_IMAGE\"' in _shell_function(\"push_images\")\n"
+            b"    assert '\"$FRONTEND_SPIFFE_ID\"' in _shell_function(\"register_workloads\")\n"
+            b'    assert "  run_ssr_proof\\n" in script\n'
+            b'    proof = _shell_function("run_ssr_proof")\n'
+            b'    assert "rollout status" in proof\n'
+            b'    assert "-c frontend -- node --input-type=module" in proof\n'
+            b"    assert '< \"$WORK_DIR/jwt-private.pem\"' in proof\n"
+            b"    assert '[[ \"$output\" == \"SSR_MTLS_AUTH=PASS\" ]]' in proof\n"
+            b'    assert "internal_mtls_peer_authorized" in proof\n'
+        ),
+        (
+            b"    result = _bash_command(command)\n"
+            b"    assert result.returncode == 0, result.stderr\n"
+            b'    assert "FAIL a-gateway-to-backend-mtls-hop\\n" in result.stdout.decode()\n'
         ),
     ),
 )
