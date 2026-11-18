@@ -283,7 +283,9 @@ def test_absent_expected_id_does_not_change_valid_selection(
     assert capsys.readouterr().err == ""
 
 
-@pytest.mark.parametrize("value", ["", "0", "-1", "01", "+1", " 1", "1\n", "x", "9" * 100])
+@pytest.mark.parametrize(
+    "value", ["", "0", "-1", "01", "+1", " 1", "1\n", "x", "9" * 100]
+)
 def test_malformed_expected_id_fails_before_network(value: str) -> None:
     network = _Network([])
     with pytest.raises(selector.CoverageProducerSelectionError, match="ID is invalid"):
