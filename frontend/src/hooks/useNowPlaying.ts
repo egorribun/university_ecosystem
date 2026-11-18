@@ -247,7 +247,7 @@ export const useNowPlaying = (enabled: boolean) => {
     // Effects never run during server rendering, so the document exists here.
     if (!active) return
     const listener = () => {
-      if (document.visibilityState === "visible" && ownsSession()) {
+      if (document.visibilityState === "visible" && ownsSession() && rateLimitDelay() === 0) {
         void refetch()
       }
     }
