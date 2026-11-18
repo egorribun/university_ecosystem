@@ -31677,7 +31677,8 @@ def test_nov9_wasm_cli_live_policy_rejects_byte_drift(
         )
     if inventory == "current" and mutation == "changed_byte":
         with pytest.raises(
-            verifier.BaselineArtifactError, match="SSR disposition approval scope changed"
+            verifier.BaselineArtifactError,
+            match="SSR disposition approval scope changed",
         ):
             _nov9_assert_live_policy_bytes(policy_bytes)
     else:
