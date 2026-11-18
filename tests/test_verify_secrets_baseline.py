@@ -33644,7 +33644,6 @@ def _nov17_ssr_chart_historical_source_bytes(path: str, actual: bytes) -> bytes:
     return historical
 
 
-
 _NOV18_SSR_SHELL_PATH = "scripts/kind/aud373_internal_mtls_proof.sh"
 _NOV18_SSR_SHELL_CURRENT = bytes(
     (
@@ -33721,187 +33720,187 @@ _NOV18_SSR_SHELL_PREVIOUS = bytes(
 _NOV18_SSR_SHELL_REVERSALS = (
     (
         (
-            b"readonly SPIRE_NAMESPACE=\"spire\"\nreadonly RELEASE=\"ue\"\nreadonly "
-            b"BACKEND_SVC=\"${RELEASE}-university-ecosystem-backend\"\nreadonly F"
-            b"RONTEND_SVC=\"${RELEASE}-university-ecosystem-frontend\"\nreadonly "
-            b"GATEWAY_SVC=\"${RELEASE}-university-ecosystem-gateway\"\nreadonly F"
-            b"ILE_PROCESSOR_SVC=\"${RELEASE}-university-ecosystem-file-processo"
-            b"r\"\nreadonly BACKEND_PORT=\"8000\"\nreadonly GATEWAY_PORT=\"8080\"\nrea"
-            b"donly TRUST_DOMAIN=\"university.ecosystem\"\nreadonly BACKEND_SPIFF"
-            b"E_ID=\"spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-bac"
-            b"kend\"\nreadonly GATEWAY_SPIFFE_ID=\"spiffe://${TRUST_DOMAIN}/ns/${"
-            b"NAMESPACE}/sa/${RELEASE}-gateway\"\nreadonly FRONTEND_SPIFFE_ID=\"s"
-            b"piffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-frontend\"\n"
-            b"readonly WS_HUB_SPIFFE_ID=\"spiffe://${TRUST_DOMAIN}/ns/${NAMESPA"
-            b"CE}/sa/${RELEASE}-ws-hub\"\nreadonly FILE_PROCESSOR_SPIFFE_ID=\"spi"
+            b'readonly SPIRE_NAMESPACE="spire"\nreadonly RELEASE="ue"\nreadonly '
+            b'BACKEND_SVC="${RELEASE}-university-ecosystem-backend"\nreadonly F'
+            b'RONTEND_SVC="${RELEASE}-university-ecosystem-frontend"\nreadonly '
+            b'GATEWAY_SVC="${RELEASE}-university-ecosystem-gateway"\nreadonly F'
+            b'ILE_PROCESSOR_SVC="${RELEASE}-university-ecosystem-file-processo'
+            b'r"\nreadonly BACKEND_PORT="8000"\nreadonly GATEWAY_PORT="8080"\nrea'
+            b'donly TRUST_DOMAIN="university.ecosystem"\nreadonly BACKEND_SPIFF'
+            b'E_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-bac'
+            b'kend"\nreadonly GATEWAY_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${'
+            b'NAMESPACE}/sa/${RELEASE}-gateway"\nreadonly FRONTEND_SPIFFE_ID="s'
+            b'piffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-frontend"\n'
+            b'readonly WS_HUB_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPA'
+            b'CE}/sa/${RELEASE}-ws-hub"\nreadonly FILE_PROCESSOR_SPIFFE_ID="spi'
             b"ffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-file-process"
-            b"or\"\nreadonly IMAGE_TAG=\"ue-r9-aud373-${RUN_SUFFIX}\"\n"
+            b'or"\nreadonly IMAGE_TAG="ue-r9-aud373-${RUN_SUFFIX}"\n'
         ),
         (
-            b"readonly SPIRE_NAMESPACE=\"spire\"\nreadonly RELEASE=\"ue\"\nreadonly "
-            b"BACKEND_SVC=\"${RELEASE}-university-ecosystem-backend\"\nreadonly G"
-            b"ATEWAY_SVC=\"${RELEASE}-university-ecosystem-gateway\"\nreadonly FI"
-            b"LE_PROCESSOR_SVC=\"${RELEASE}-university-ecosystem-file-processor"
-            b"\"\nreadonly BACKEND_PORT=\"8000\"\nreadonly GATEWAY_PORT=\"8080\"\nread"
-            b"only TRUST_DOMAIN=\"university.ecosystem\"\nreadonly BACKEND_SPIFFE"
-            b"_ID=\"spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-back"
-            b"end\"\nreadonly GATEWAY_SPIFFE_ID=\"spiffe://${TRUST_DOMAIN}/ns/${N"
-            b"AMESPACE}/sa/${RELEASE}-gateway\"\nreadonly WS_HUB_SPIFFE_ID=\"spif"
-            b"fe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-ws-hub\"\nreado"
-            b"nly FILE_PROCESSOR_SPIFFE_ID=\"spiffe://${TRUST_DOMAIN}/ns/${NAME"
-            b"SPACE}/sa/${RELEASE}-file-processor\"\nreadonly IMAGE_TAG=\"ue-r9-a"
-            b"ud373-${RUN_SUFFIX}\"\n"
-        ),
-    ),
-    (
-        (
-            b"DOCKER_DAEMON_ENDPOINT=\"\"\nBACKEND_IMAGE=\"\"\nGATEWAY_IMAGE=\"\"\nFRON"
-            b"TEND_IMAGE=\"\"\nSSR_FIXTURE_IMAGE=\"\"\nFILE_PROCESSOR_IMAGE=\"\"\nBACKE"
-            b"ND_INIT_IMAGE_REPOSITORY=\"\"\nBACKEND_INIT_IMAGE=\"\"\n"
-        ),
-        (
-            b"DOCKER_DAEMON_ENDPOINT=\"\"\nBACKEND_IMAGE=\"\"\nGATEWAY_IMAGE=\"\"\nFILE"
-            b"_PROCESSOR_IMAGE=\"\"\nBACKEND_INIT_IMAGE_REPOSITORY=\"\"\nBACKEND_INI"
-            b"T_IMAGE=\"\"\n"
+            b'readonly SPIRE_NAMESPACE="spire"\nreadonly RELEASE="ue"\nreadonly '
+            b'BACKEND_SVC="${RELEASE}-university-ecosystem-backend"\nreadonly G'
+            b'ATEWAY_SVC="${RELEASE}-university-ecosystem-gateway"\nreadonly FI'
+            b'LE_PROCESSOR_SVC="${RELEASE}-university-ecosystem-file-processor'
+            b'"\nreadonly BACKEND_PORT="8000"\nreadonly GATEWAY_PORT="8080"\nread'
+            b'only TRUST_DOMAIN="university.ecosystem"\nreadonly BACKEND_SPIFFE'
+            b'_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-back'
+            b'end"\nreadonly GATEWAY_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${N'
+            b'AMESPACE}/sa/${RELEASE}-gateway"\nreadonly WS_HUB_SPIFFE_ID="spif'
+            b'fe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-ws-hub"\nreado'
+            b'nly FILE_PROCESSOR_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAME'
+            b'SPACE}/sa/${RELEASE}-file-processor"\nreadonly IMAGE_TAG="ue-r9-a'
+            b'ud373-${RUN_SUFFIX}"\n'
         ),
     ),
     (
         (
-            b"  trustDomain: \"${TRUST_DOMAIN}\"\n  backendSpiffeID: \"${BACKEND_S"
-            b"PIFFE_ID}\"\n  gatewaySpiffeID: \"${GATEWAY_SPIFFE_ID}\"\n  frontendS"
-            b"piffeID: \"${FRONTEND_SPIFFE_ID}\"\n  wsHubSpiffeID: \"${WS_HUB_SPIF"
-            b"FE_ID}\"\n  fileProcessorSpiffeID: \"${FILE_PROCESSOR_SPIFFE_ID}\"\ni"
+            b'DOCKER_DAEMON_ENDPOINT=""\nBACKEND_IMAGE=""\nGATEWAY_IMAGE=""\nFRON'
+            b'TEND_IMAGE=""\nSSR_FIXTURE_IMAGE=""\nFILE_PROCESSOR_IMAGE=""\nBACKE'
+            b'ND_INIT_IMAGE_REPOSITORY=""\nBACKEND_INIT_IMAGE=""\n'
+        ),
+        (
+            b'DOCKER_DAEMON_ENDPOINT=""\nBACKEND_IMAGE=""\nGATEWAY_IMAGE=""\nFILE'
+            b'_PROCESSOR_IMAGE=""\nBACKEND_INIT_IMAGE_REPOSITORY=""\nBACKEND_INI'
+            b'T_IMAGE=""\n'
+        ),
+    ),
+    (
+        (
+            b'  trustDomain: "${TRUST_DOMAIN}"\n  backendSpiffeID: "${BACKEND_S'
+            b'PIFFE_ID}"\n  gatewaySpiffeID: "${GATEWAY_SPIFFE_ID}"\n  frontendS'
+            b'piffeID: "${FRONTEND_SPIFFE_ID}"\n  wsHubSpiffeID: "${WS_HUB_SPIF'
+            b'FE_ID}"\n  fileProcessorSpiffeID: "${FILE_PROCESSOR_SPIFFE_ID}"\ni'
             b"nternalGrpcMTLS:\n"
         ),
         (
-            b"  trustDomain: \"${TRUST_DOMAIN}\"\n  backendSpiffeID: \"${BACKEND_S"
-            b"PIFFE_ID}\"\n  gatewaySpiffeID: \"${GATEWAY_SPIFFE_ID}\"\n  wsHubSpif"
-            b"feID: \"${WS_HUB_SPIFFE_ID}\"\n  fileProcessorSpiffeID: \"${FILE_PRO"
-            b"CESSOR_SPIFFE_ID}\"\ninternalGrpcMTLS:\n"
+            b'  trustDomain: "${TRUST_DOMAIN}"\n  backendSpiffeID: "${BACKEND_S'
+            b'PIFFE_ID}"\n  gatewaySpiffeID: "${GATEWAY_SPIFFE_ID}"\n  wsHubSpif'
+            b'feID: "${WS_HUB_SPIFFE_ID}"\n  fileProcessorSpiffeID: "${FILE_PRO'
+            b'CESSOR_SPIFFE_ID}"\ninternalGrpcMTLS:\n'
         ),
     ),
     (
         (
-            b"    existingSecret: \"internal-grpc-mtls-gateway\"\n  fileProcessor"
-            b"Server:\n    existingSecret: \"internal-grpc-mtls-server\"\nfrontend"
-            b":\n  replicaCount: 1\n  image:\n    repository: \"${LOCAL_REGISTRY_A"
-            b"DDRESS}/university-frontend\"\ngateway:\n  image:\n    repository: \""
-            b"${LOCAL_REGISTRY_ADDRESS}/university-gateway\"\n"
+            b'    existingSecret: "internal-grpc-mtls-gateway"\n  fileProcessor'
+            b'Server:\n    existingSecret: "internal-grpc-mtls-server"\nfrontend'
+            b':\n  replicaCount: 1\n  image:\n    repository: "${LOCAL_REGISTRY_A'
+            b'DDRESS}/university-frontend"\ngateway:\n  image:\n    repository: "'
+            b'${LOCAL_REGISTRY_ADDRESS}/university-gateway"\n'
         ),
         (
-            b"    existingSecret: \"internal-grpc-mtls-gateway\"\n  fileProcessor"
-            b"Server:\n    existingSecret: \"internal-grpc-mtls-server\"\ngateway:"
-            b"\n  image:\n    repository: \"${LOCAL_REGISTRY_ADDRESS}/university-"
-            b"gateway\"\n"
-        ),
-    ),
-    (
-        (
-            b"  LOCAL_REGISTRY_ADDRESS=\"$endpoint\"\n  BACKEND_IMAGE=\"${LOCAL_RE"
-            b"GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}\"\n  GATEWAY_IMAGE"
-            b"=\"${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}\"\n  F"
-            b"RONTEND_IMAGE=\"${LOCAL_REGISTRY_ADDRESS}/university-frontend:${I"
-            b"MAGE_TAG}\"\n  SSR_FIXTURE_IMAGE=\"${LOCAL_REGISTRY_ADDRESS}/univer"
-            b"sity-ssr-fixture:${IMAGE_TAG}\"\n  FILE_PROCESSOR_IMAGE=\"${LOCAL_R"
-            b"EGISTRY_ADDRESS}/university-file-processor:${IMAGE_TAG}\"\n  BACKE"
-            b"ND_INIT_IMAGE_REPOSITORY=\"${LOCAL_REGISTRY_ADDRESS}/aud373/fixtu"
-            b"re/backend\"\n  BACKEND_INIT_IMAGE=\"${BACKEND_INIT_IMAGE_REPOSITOR"
-            b"Y}:${IMAGE_TAG}\"\n"
-        ),
-        (
-            b"  LOCAL_REGISTRY_ADDRESS=\"$endpoint\"\n  BACKEND_IMAGE=\"${LOCAL_RE"
-            b"GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}\"\n  GATEWAY_IMAGE"
-            b"=\"${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}\"\n  F"
-            b"ILE_PROCESSOR_IMAGE=\"${LOCAL_REGISTRY_ADDRESS}/university-file-p"
-            b"rocessor:${IMAGE_TAG}\"\n  BACKEND_INIT_IMAGE_REPOSITORY=\"${LOCAL_"
-            b"REGISTRY_ADDRESS}/aud373/fixture/backend\"\n  BACKEND_INIT_IMAGE=\""
-            b"${BACKEND_INIT_IMAGE_REPOSITORY}:${IMAGE_TAG}\"\n"
+            b'    existingSecret: "internal-grpc-mtls-gateway"\n  fileProcessor'
+            b'Server:\n    existingSecret: "internal-grpc-mtls-server"\ngateway:'
+            b'\n  image:\n    repository: "${LOCAL_REGISTRY_ADDRESS}/university-'
+            b'gateway"\n'
         ),
     ),
     (
         (
-            b"}\n\nbuild_images() {\n  timeout 1800 docker build --file \"${ROOT_D"
-            b"IR}/frontend.Dockerfile\" \\\n    --tag \"$FRONTEND_IMAGE\" \"$ROOT_DI"
-            b"R\" || return 1\n  timeout 120 docker run --rm --init --network no"
-            b"ne --read-only \\\n    --volume \"${ROOT_DIR}/scripts/kind:/proof/s"
-            b"cripts/kind:ro\" \\\n    --volume \"${ROOT_DIR}/frontend/scripts/ser"
-            b"ver-csp.mjs:/proof/frontend/scripts/server-csp.mjs:ro\" \\\n    --e"
-            b"ntrypoint node \"$FRONTEND_IMAGE\" --test /proof/scripts/kind/ssr_"
+            b'  LOCAL_REGISTRY_ADDRESS="$endpoint"\n  BACKEND_IMAGE="${LOCAL_RE'
+            b'GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"\n  GATEWAY_IMAGE'
+            b'="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"\n  F'
+            b'RONTEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-frontend:${I'
+            b'MAGE_TAG}"\n  SSR_FIXTURE_IMAGE="${LOCAL_REGISTRY_ADDRESS}/univer'
+            b'sity-ssr-fixture:${IMAGE_TAG}"\n  FILE_PROCESSOR_IMAGE="${LOCAL_R'
+            b'EGISTRY_ADDRESS}/university-file-processor:${IMAGE_TAG}"\n  BACKE'
+            b'ND_INIT_IMAGE_REPOSITORY="${LOCAL_REGISTRY_ADDRESS}/aud373/fixtu'
+            b're/backend"\n  BACKEND_INIT_IMAGE="${BACKEND_INIT_IMAGE_REPOSITOR'
+            b'Y}:${IMAGE_TAG}"\n'
+        ),
+        (
+            b'  LOCAL_REGISTRY_ADDRESS="$endpoint"\n  BACKEND_IMAGE="${LOCAL_RE'
+            b'GISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"\n  GATEWAY_IMAGE'
+            b'="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"\n  F'
+            b'ILE_PROCESSOR_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-file-p'
+            b'rocessor:${IMAGE_TAG}"\n  BACKEND_INIT_IMAGE_REPOSITORY="${LOCAL_'
+            b'REGISTRY_ADDRESS}/aud373/fixture/backend"\n  BACKEND_INIT_IMAGE="'
+            b'${BACKEND_INIT_IMAGE_REPOSITORY}:${IMAGE_TAG}"\n'
+        ),
+    ),
+    (
+        (
+            b'}\n\nbuild_images() {\n  timeout 1800 docker build --file "${ROOT_D'
+            b'IR}/frontend.Dockerfile" \\\n    --tag "$FRONTEND_IMAGE" "$ROOT_DI'
+            b'R" || return 1\n  timeout 120 docker run --rm --init --network no'
+            b'ne --read-only \\\n    --volume "${ROOT_DIR}/scripts/kind:/proof/s'
+            b'cripts/kind:ro" \\\n    --volume "${ROOT_DIR}/frontend/scripts/ser'
+            b'ver-csp.mjs:/proof/frontend/scripts/server-csp.mjs:ro" \\\n    --e'
+            b'ntrypoint node "$FRONTEND_IMAGE" --test /proof/scripts/kind/ssr_'
             b"mtls_request_proof.test.mjs || return 1\n  timeout 1800 docker bu"
-            b"ild --file \"${ROOT_DIR}/backend.Dockerfile\" \\\n    --tag \"$BACKEN"
-            b"D_IMAGE\" \"$ROOT_DIR\" || return 1\n  timeout 1800 docker build --f"
-            b"ile \"${ROOT_DIR}/services/gateway/Dockerfile\" \\\n    --tag \"$GATE"
-            b"WAY_IMAGE\" \"$ROOT_DIR\" || return 1\n  timeout 1800 docker build -"
-            b"-file \"${ROOT_DIR}/services/gateway/Dockerfile\" \\\n    --target s"
-            b"sr-mtls-fixture --tag \"$SSR_FIXTURE_IMAGE\" \"$ROOT_DIR\" || return"
-            b" 1\n  timeout 1800 docker build --file \"${ROOT_DIR}/services/file"
-            b"-processor/Dockerfile\" \\\n    --tag \"$FILE_PROCESSOR_IMAGE\" \"$ROO"
-            b"T_DIR\" || return 1\n}\n"
+            b'ild --file "${ROOT_DIR}/backend.Dockerfile" \\\n    --tag "$BACKEN'
+            b'D_IMAGE" "$ROOT_DIR" || return 1\n  timeout 1800 docker build --f'
+            b'ile "${ROOT_DIR}/services/gateway/Dockerfile" \\\n    --tag "$GATE'
+            b'WAY_IMAGE" "$ROOT_DIR" || return 1\n  timeout 1800 docker build -'
+            b'-file "${ROOT_DIR}/services/gateway/Dockerfile" \\\n    --target s'
+            b'sr-mtls-fixture --tag "$SSR_FIXTURE_IMAGE" "$ROOT_DIR" || return'
+            b' 1\n  timeout 1800 docker build --file "${ROOT_DIR}/services/file'
+            b'-processor/Dockerfile" \\\n    --tag "$FILE_PROCESSOR_IMAGE" "$ROO'
+            b'T_DIR" || return 1\n}\n'
         ),
         (
-            b"}\n\nbuild_images() {\n  timeout 1800 docker build --file \"${ROOT_D"
-            b"IR}/backend.Dockerfile\" \\\n    --tag \"$BACKEND_IMAGE\" \"$ROOT_DIR\""
-            b" || return 1\n  timeout 1800 docker build --file \"${ROOT_DIR}/ser"
-            b"vices/gateway/Dockerfile\" \\\n    --tag \"$GATEWAY_IMAGE\" \"$ROOT_DI"
-            b"R\" || return 1\n  timeout 1800 docker build --file \"${ROOT_DIR}/s"
-            b"ervices/file-processor/Dockerfile\" \\\n    --tag \"$FILE_PROCESSOR_"
-            b"IMAGE\" \"$ROOT_DIR\" || return 1\n}\n"
-        ),
-    ),
-    (
-        (
-            b"    return 1\n  fi\n  BACKEND_IMAGE_DIGEST=\"${digests[0]}\"\n  timeo"
-            b"ut 900 docker push \"$SSR_FIXTURE_IMAGE\" || return 1\n  timeout 90"
-            b"0 docker push \"$FRONTEND_IMAGE\" || return 1\n  timeout 900 docker"
-            b" push \"$GATEWAY_IMAGE\" || return 1\n  timeout 900 docker push \"$F"
-            b"ILE_PROCESSOR_IMAGE\" || return 1\n}\n"
-        ),
-        (
-            b"    return 1\n  fi\n  BACKEND_IMAGE_DIGEST=\"${digests[0]}\"\n  timeo"
-            b"ut 900 docker push \"$GATEWAY_IMAGE\" || return 1\n  timeout 900 do"
-            b"cker push \"$FILE_PROCESSOR_IMAGE\" || return 1\n}\n"
+            b'}\n\nbuild_images() {\n  timeout 1800 docker build --file "${ROOT_D'
+            b'IR}/backend.Dockerfile" \\\n    --tag "$BACKEND_IMAGE" "$ROOT_DIR"'
+            b' || return 1\n  timeout 1800 docker build --file "${ROOT_DIR}/ser'
+            b'vices/gateway/Dockerfile" \\\n    --tag "$GATEWAY_IMAGE" "$ROOT_DI'
+            b'R" || return 1\n  timeout 1800 docker build --file "${ROOT_DIR}/s'
+            b'ervices/file-processor/Dockerfile" \\\n    --tag "$FILE_PROCESSOR_'
+            b'IMAGE" "$ROOT_DIR" || return 1\n}\n'
         ),
     ),
     (
         (
-            b"  agent_id=\"$(wait_for_agent_id)\"\n  create_spire_entry \"$agent_i"
-            b"d\" \"$BACKEND_SPIFFE_ID\" \"${RELEASE}-backend\"\n  create_spire_entr"
-            b"y \"$agent_id\" \"$GATEWAY_SPIFFE_ID\" \"${RELEASE}-gateway\"\n  create"
-            b"_spire_entry \"$agent_id\" \"$FRONTEND_SPIFFE_ID\" \"${RELEASE}-front"
-            b"end\"\n  kubectl -n \"$NAMESPACE\" create serviceaccount ssr-wrong-p"
-            b"eer || return 1\n  create_spire_entry \"$agent_id\" \"spiffe://${TRU"
-            b"ST_DOMAIN}/ns/${NAMESPACE}/sa/ssr-wrong-peer\" ssr-wrong-peer\n  c"
-            b"reate_spire_entry \"$agent_id\" \"$FILE_PROCESSOR_SPIFFE_ID\" \"${REL"
-            b"EASE}-file-processor\"\n}\n\n"
+            b'    return 1\n  fi\n  BACKEND_IMAGE_DIGEST="${digests[0]}"\n  timeo'
+            b'ut 900 docker push "$SSR_FIXTURE_IMAGE" || return 1\n  timeout 90'
+            b'0 docker push "$FRONTEND_IMAGE" || return 1\n  timeout 900 docker'
+            b' push "$GATEWAY_IMAGE" || return 1\n  timeout 900 docker push "$F'
+            b'ILE_PROCESSOR_IMAGE" || return 1\n}\n'
         ),
         (
-            b"  agent_id=\"$(wait_for_agent_id)\"\n  create_spire_entry \"$agent_i"
-            b"d\" \"$BACKEND_SPIFFE_ID\" \"${RELEASE}-backend\"\n  create_spire_entr"
-            b"y \"$agent_id\" \"$GATEWAY_SPIFFE_ID\" \"${RELEASE}-gateway\"\n  create"
-            b"_spire_entry \"$agent_id\" \"$FILE_PROCESSOR_SPIFFE_ID\" \"${RELEASE}"
-            b"-file-processor\"\n}\n\n"
+            b'    return 1\n  fi\n  BACKEND_IMAGE_DIGEST="${digests[0]}"\n  timeo'
+            b'ut 900 docker push "$GATEWAY_IMAGE" || return 1\n  timeout 900 do'
+            b'cker push "$FILE_PROCESSOR_IMAGE" || return 1\n}\n'
         ),
     ),
     (
         (
-            b"  kubectl -n \"$NAMESPACE\" apply -f \"${WORK_DIR}/fixture-migratio"
-            b"n.yaml\" || return 1\n  kubectl -n \"$NAMESPACE\" wait --for=conditi"
+            b'  agent_id="$(wait_for_agent_id)"\n  create_spire_entry "$agent_i'
+            b'd" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"\n  create_spire_entr'
+            b'y "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"\n  create'
+            b'_spire_entry "$agent_id" "$FRONTEND_SPIFFE_ID" "${RELEASE}-front'
+            b'end"\n  kubectl -n "$NAMESPACE" create serviceaccount ssr-wrong-p'
+            b'eer || return 1\n  create_spire_entry "$agent_id" "spiffe://${TRU'
+            b'ST_DOMAIN}/ns/${NAMESPACE}/sa/ssr-wrong-peer" ssr-wrong-peer\n  c'
+            b'reate_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${REL'
+            b'EASE}-file-processor"\n}\n\n'
+        ),
+        (
+            b'  agent_id="$(wait_for_agent_id)"\n  create_spire_entry "$agent_i'
+            b'd" "$BACKEND_SPIFFE_ID" "${RELEASE}-backend"\n  create_spire_entr'
+            b'y "$agent_id" "$GATEWAY_SPIFFE_ID" "${RELEASE}-gateway"\n  create'
+            b'_spire_entry "$agent_id" "$FILE_PROCESSOR_SPIFFE_ID" "${RELEASE}'
+            b'-file-processor"\n}\n\n'
+        ),
+    ),
+    (
+        (
+            b'  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migratio'
+            b'n.yaml" || return 1\n  kubectl -n "$NAMESPACE" wait --for=conditi'
             b"on=complete job/ue-aud373-migrate --timeout=300s || return 1\n  r"
             b"egister_workloads\n  # Wait for each actual workload below; front"
-            b"end has its real image and own SVID.\n  helm upgrade --install \"$"
-            b"RELEASE\" \"${ROOT_DIR}/charts/university-ecosystem\" \\\n    --names"
-            b"pace \"$NAMESPACE\" \\\n    --values \"${WORK_DIR}/values.yaml\" \\\n"
+            b'end has its real image and own SVID.\n  helm upgrade --install "$'
+            b'RELEASE" "${ROOT_DIR}/charts/university-ecosystem" \\\n    --names'
+            b'pace "$NAMESPACE" \\\n    --values "${WORK_DIR}/values.yaml" \\\n'
         ),
         (
-            b"  kubectl -n \"$NAMESPACE\" apply -f \"${WORK_DIR}/fixture-migratio"
-            b"n.yaml\" || return 1\n  kubectl -n \"$NAMESPACE\" wait --for=conditi"
+            b'  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migratio'
+            b'n.yaml" || return 1\n  kubectl -n "$NAMESPACE" wait --for=conditi'
             b"on=complete job/ue-aud373-migrate --timeout=300s || return 1\n  r"
             b"egister_workloads\n  # Not --wait: the frontend Deployment has no"
             b" image in this cluster by design, and the\n  # proof only needs t"
             b"he backend and gateway Deployments to become Available.\n  helm u"
-            b"pgrade --install \"$RELEASE\" \"${ROOT_DIR}/charts/university-ecosy"
-            b"stem\" \\\n    --namespace \"$NAMESPACE\" \\\n    --values \"${WORK_DIR}"
-            b"/values.yaml\" \\\n"
+            b'pgrade --install "$RELEASE" "${ROOT_DIR}/charts/university-ecosy'
+            b'stem" \\\n    --namespace "$NAMESPACE" \\\n    --values "${WORK_DIR}'
+            b'/values.yaml" \\\n'
         ),
     ),
     (
@@ -33909,32 +33908,32 @@ _NOV18_SSR_SHELL_REVERSALS = (
             b"  fi\n}\n\n# The actual Node image and SSR entry point authenticate"
             b" through the loopback\n# proxy. The isolated signing key travels "
             b"only over stdin, never in receipts.\nrun_ssr_proof() {\n  local ou"
-            b"tput pod logs authorized=no\n  if ! timeout 660 kubectl -n \"$NAME"
-            b"SPACE\" rollout status \\\n    \"deployment/$FRONTEND_SVC\" --timeout"
-            b"=600s; then\n    record \"e-frontend-ssr-mtls-auth\" no\n    return\n"
-            b"  fi\n  if output=\"$(timeout 90 kubectl -n \"$NAMESPACE\" exec -i \\"
-            b"\n    \"deployment/$FRONTEND_SVC\" -c frontend -- node --input-type"
-            b"=module \\\n    -e \"$(cat \"$ROOT_DIR/scripts/kind/ssr_mtls_request"
-            b"_proof.mjs\")\" -- --run \\\n    < \"$WORK_DIR/jwt-private.pem\" 2>/de"
-            b"v/null)\" && \\\n    [[ \"$output\" == \"SSR_MTLS_AUTH=PASS\" ]]; then\n"
-            b"    record \"e-frontend-ssr-mtls-auth\" yes\n  else\n    # Only fini"
+            b'tput pod logs authorized=no\n  if ! timeout 660 kubectl -n "$NAME'
+            b'SPACE" rollout status \\\n    "deployment/$FRONTEND_SVC" --timeout'
+            b'=600s; then\n    record "e-frontend-ssr-mtls-auth" no\n    return\n'
+            b'  fi\n  if output="$(timeout 90 kubectl -n "$NAMESPACE" exec -i \\'
+            b'\n    "deployment/$FRONTEND_SVC" -c frontend -- node --input-type'
+            b'=module \\\n    -e "$(cat "$ROOT_DIR/scripts/kind/ssr_mtls_request'
+            b'_proof.mjs")" -- --run \\\n    < "$WORK_DIR/jwt-private.pem" 2>/de'
+            b'v/null)" && \\\n    [[ "$output" == "SSR_MTLS_AUTH=PASS" ]]; then\n'
+            b'    record "e-frontend-ssr-mtls-auth" yes\n  else\n    # Only fini'
             b"te stage labels may leave the probe; never print raw stderr,\n   "
             b" # assertion messages, response bodies, tokens, cookies, or sign"
-            b"ing keys.\n    if [[ \"$output\" =~ ^SSR_MTLS_AUTH=FAIL\\ stage=(con"
+            b'ing keys.\n    if [[ "$output" =~ ^SSR_MTLS_AUTH=FAIL\\ stage=(con'
             b"figuration|jwks-request|jwks-status|jwks-key|user-request|user-s"
             b"tatus|signing|signed-request|signed-status|signed-location|signe"
             b"d-cache|forged-request|forged-status|forged-cache|forged-html)$ "
-            b"]]; then\n      printf '%s\\n' \"$output\"\n    fi\n    record \"e-fron"
-            b"tend-ssr-mtls-auth\" no\n  fi\n  while read -r pod; do\n    [[ -n \"$"
-            b"pod\" ]] || continue\n    logs=\"$(timeout 30 kubectl -n \"$NAMESPAC"
-            b"E\" logs \"$pod\" -c backend --tail=-1)\" || continue\n    if python3"
-            b" -c 'import re, sys; pattern = re.escape(sys.argv[1]) + r\"(?=[\\\""
-            b"\\s\\x1b]|$)\"; sys.exit(not any(\"internal_mtls_peer_authorized\" in"
+            b']]; then\n      printf \'%s\\n\' "$output"\n    fi\n    record "e-fron'
+            b'tend-ssr-mtls-auth" no\n  fi\n  while read -r pod; do\n    [[ -n "$'
+            b'pod" ]] || continue\n    logs="$(timeout 30 kubectl -n "$NAMESPAC'
+            b'E" logs "$pod" -c backend --tail=-1)" || continue\n    if python3'
+            b' -c \'import re, sys; pattern = re.escape(sys.argv[1]) + r"(?=[\\"'
+            b'\\s\\x1b]|$)"; sys.exit(not any("internal_mtls_peer_authorized" in'
             b" line and re.search(pattern, line) for line in sys.stdin))' \"$FR"
-            b"ONTEND_SPIFFE_ID\" <<<\"$logs\"; then\n      authorized=yes\n    fi\n "
-            b" done < <(timeout 30 kubectl -n \"$NAMESPACE\" get pods -o name \\\n"
-            b"    | grep \"^pod/$BACKEND_SVC-\" || true)\n  record \"f-backend-log"
-            b"s-frontend-spiffe-id\" \"$authorized\"\n}\n\n# Runs the chart's readin"
+            b'ONTEND_SPIFFE_ID" <<<"$logs"; then\n      authorized=yes\n    fi\n '
+            b' done < <(timeout 30 kubectl -n "$NAMESPACE" get pods -o name \\\n'
+            b'    | grep "^pod/$BACKEND_SVC-" || true)\n  record "f-backend-log'
+            b's-frontend-spiffe-id" "$authorized"\n}\n\n# Runs the chart\'s readin'
             b"ess probe command inside each backend pod. Its stdout, stderr an"
             b"d\n# exit status name the failing SPIFFE step. Bounded by timeout"
             b"; diagnostics only.\ncollect_backend_probe_diagnostics() {\n"
@@ -33948,19 +33947,19 @@ _NOV18_SSR_SHELL_REVERSALS = (
     ),
     (
         (
-            b"  exit \"$status\"\n}\n\nrun_ssr_lifecycle_proof() {\n  if timeout 120"
-            b"0 python3 \"$ROOT_DIR/scripts/kind/ssr_spiffe_lifecycle_proof.py\""
-            b" \\\n    --namespace \"$NAMESPACE\" --spire-namespace \"$SPIRE_NAMESP"
-            b"ACE\" \\\n    --release \"$RELEASE\" --trust-domain \"$TRUST_DOMAIN\" -"
-            b"-image \"$SSR_FIXTURE_IMAGE\"; then\n    record \"g-ssr-live-spiffe-"
-            b"lifecycle\" yes\n    # Re-run the actual SSR signed/forged JWT pat"
-            b"h after authority removal.\n    run_ssr_proof\n  else\n    record \""
-            b"g-ssr-live-spiffe-lifecycle\" no\n  fi\n}\n\nmain() {\n  # Signals exi"
+            b'  exit "$status"\n}\n\nrun_ssr_lifecycle_proof() {\n  if timeout 120'
+            b'0 python3 "$ROOT_DIR/scripts/kind/ssr_spiffe_lifecycle_proof.py"'
+            b' \\\n    --namespace "$NAMESPACE" --spire-namespace "$SPIRE_NAMESP'
+            b'ACE" \\\n    --release "$RELEASE" --trust-domain "$TRUST_DOMAIN" -'
+            b'-image "$SSR_FIXTURE_IMAGE"; then\n    record "g-ssr-live-spiffe-'
+            b'lifecycle" yes\n    # Re-run the actual SSR signed/forged JWT pat'
+            b'h after authority removal.\n    run_ssr_proof\n  else\n    record "'
+            b'g-ssr-live-spiffe-lifecycle" no\n  fi\n}\n\nmain() {\n  # Signals exi'
             b"t normally so the EXIT trap still deletes the owned cluster and "
             b"registry.\n  trap 'exit 130' INT\n"
         ),
         (
-            b"  exit \"$status\"\n}\n\nmain() {\n  # Signals exit normally so the EX"
+            b'  exit "$status"\n}\n\nmain() {\n  # Signals exit normally so the EX'
             b"IT trap still deletes the owned cluster and registry.\n  trap 'ex"
             b"it 130' INT\n"
         ),
@@ -33968,13 +33967,13 @@ _NOV18_SSR_SHELL_REVERSALS = (
     (
         (
             b"  deploy_stack\n  install_probe_access\n  run_proofs\n  run_ssr_pro"
-            b"of\n  run_ssr_lifecycle_proof\n  if [[ \"$FAILURES\" -ne 0 ]]; then\n"
+            b'of\n  run_ssr_lifecycle_proof\n  if [[ "$FAILURES" -ne 0 ]]; then\n'
             b"    printf 'RESULT=FAIL failures=%s\\n' \"$FAILURES\"\n    exit 1\n"
         ),
         (
-            b"  deploy_stack\n  install_probe_access\n  run_proofs\n  if [[ \"$FAI"
+            b'  deploy_stack\n  install_probe_access\n  run_proofs\n  if [[ "$FAI'
             b"LURES\" -ne 0 ]]; then\n    printf 'RESULT=FAIL failures=%s\\n' \"$F"
-            b"AILURES\"\n    exit 1\n"
+            b'AILURES"\n    exit 1\n'
         ),
     ),
 )
@@ -36993,9 +36992,7 @@ def test_nov18_ssr_legacy_cap_still_rejects_unapproved_525_records() -> None:
 
 def test_nov18_ssr_shell_rebind_is_exact_and_reversible() -> None:
     actual = (Path(__file__).resolve().parents[1] / _NOV18_SSR_SHELL_PATH).read_bytes()
-    historical = _nov18_ssr_shell_historical_source_bytes(
-        _NOV18_SSR_SHELL_PATH, actual
-    )
+    historical = _nov18_ssr_shell_historical_source_bytes(_NOV18_SSR_SHELL_PATH, actual)
     assert len(_NOV18_SSR_SHELL_REVERSALS) == 12
     assert hashlib.sha256(historical).digest() == _NOV18_SSR_SHELL_PREVIOUS
     assert _AUD380_CURRENT_DELTA_SOURCE_SHA256[_NOV18_SSR_SHELL_PATH] == (
@@ -37012,9 +37009,7 @@ def test_nov18_ssr_shell_rebind_is_exact_and_reversible() -> None:
 
 @pytest.mark.parametrize("index", range(12))
 @pytest.mark.parametrize("mutation", ["changed", "missing", "duplicate"])
-def test_nov18_ssr_shell_rebind_rejects_source_drift(
-    index: int, mutation: str
-) -> None:
+def test_nov18_ssr_shell_rebind_rejects_source_drift(index: int, mutation: str) -> None:
     actual = (Path(__file__).resolve().parents[1] / _NOV18_SSR_SHELL_PATH).read_bytes()
     current, _previous = _NOV18_SSR_SHELL_REVERSALS[index]
     replacement = {
