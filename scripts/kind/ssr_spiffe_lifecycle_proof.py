@@ -23,6 +23,7 @@ SOCKET = "unix:///spiffe-workload-api/agent.sock"
 class ProofError(RuntimeError):
     """A required observation was absent or inconsistent."""
 
+
 _INITIAL_STAGES = frozenset(
     {
         "client-fixture",
@@ -42,7 +43,6 @@ def report_initial_stage(stage: str) -> None:
     if type(stage) is not str or stage not in _INITIAL_STAGES:
         raise ProofError("invalid lifecycle diagnostic stage")
     print(f"CHECK ssr-live-initial-stage={stage}", flush=True)
-
 
 
 def kubectl_executable() -> str:
