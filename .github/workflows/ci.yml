@@ -3780,12 +3780,14 @@ jobs:
           python-version: "3.14"
 
       - name: Produce Node action coverage in the current run
+        id: node_action_coverage
         uses: ./.github/actions/node-actions-coverage
 
       - name: Select retry-safe same-run coverage producer artifacts
         id: select_coverage_producers
         shell: bash
         env:
+          EXPECTED_NODE_ARTIFACT_ID: ${{ steps.node_action_coverage.outputs.artifact-id }}
           COVERAGE_REPOSITORY: ${{ github.repository }}
           COVERAGE_RUN_ID: ${{ github.run_id }}
           COVERAGE_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -3802,7 +3804,8 @@ jobs:
             --commit-sha "${COVERAGE_COMMIT_SHA}" \
             --run-head-sha "${COVERAGE_RUN_HEAD_SHA}" \
             --event "${COVERAGE_EVENT}" \
-            --workflow-path ".github/workflows/ci.yml"
+            --workflow-path ".github/workflows/ci.yml" \
+            --expected-node-artifact-id "${EXPECTED_NODE_ARTIFACT_ID}"
 
       - name: Download Python shard coverage data
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
