@@ -214,7 +214,7 @@ def coverage_snapshot_historical_source_bytes(path: str, actual: bytes) -> bytes
     if path not in _SOURCE_BINDINGS:
         return actual
     current, previous = _SOURCE_BINDINGS[path]
-    message = f"conditional disposition source coverage snapshot changed: {path}"
+    message = f"conditional disposition source file SHA-256 changed: {path}"
     assert hashlib.sha256(actual).digest() == current, message
     historical = actual
     if path == _LEDGER_PATH:
