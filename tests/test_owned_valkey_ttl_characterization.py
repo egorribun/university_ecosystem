@@ -52,9 +52,7 @@ def test_valid_disposable_service_admission(monkeypatch):
             "HostConfig",
             {
                 "PortBindings": {
-                    "6379/tcp": [
-                        {"HostIp": str(IPv4Address(0)), "HostPort": "6382"}
-                    ]
+                    "6379/tcp": [{"HostIp": str(IPv4Address(0)), "HostPort": "6382"}]
                 }
             },
         ),
@@ -222,9 +220,7 @@ def test_extra_published_port_is_rejected(monkeypatch, section, field):
     record[section][field]["9999/tcp"] = [
         {"HostIp": str(IPv4Address(0)), "HostPort": "9999"}
     ]
-    monkeypatch.setattr(
-        target, "inspect_output", Mock(return_value=json.dumps(record))
-    )
+    monkeypatch.setattr(target, "inspect_output", Mock(return_value=json.dumps(record)))
     with pytest.raises(target.Rejected, match=r"^OWNERSHIP_REJECTED$"):
         target.inspect_owned(owner)
 
