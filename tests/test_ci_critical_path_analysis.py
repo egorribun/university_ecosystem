@@ -2227,9 +2227,15 @@ def test_nonexecution_preserves_executed_measurements_and_failure_edges(diagnost
     ):
         assert mixed["summary"][field] == baseline["summary"][field]
     rows = {row["id"]: row for row in mixed["jobs"]}
+    originals = {record["id"]: record for record in executed}
     for row in baseline["jobs"]:
         actual = dict(rows[row["id"]])
         actual.pop("critical_path_end_basis", None)
+        original = originals[row["id"]]
+        assert actual.pop("execution_interval") == {
+            field: original[field].replace("Z", "+00:00")
+            for field in ("started_at", "completed_at")
+        }
         assert actual == row
     affected = rows[skipped["id"]]
     assert affected["continued_after_core_failure"] == (
