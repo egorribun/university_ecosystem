@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -959,3 +960,28 @@ async def test_large_delivery_still_terminates_only_after_successful_dlq() -> No
     message.term.assert_awaited_once()
     message.nak.assert_not_awaited()
     message.ack.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("base_delay", [-5.0, float("inf"), float("-inf"), float("nan")])
+async def test_retry_keeps_existing_invalid_configuration_semantics(
+    base_delay: float,
+) -> None:
+    broker = NatsTaskBroker()
+    message = _delivered(5)
+    broker._dead_letter = AsyncMock(return_value=False)  # type: ignore[method-assign]
+    expected = min(base_delay * 2**4, nats_broker_module._RETRY_MAX_DELAY_S)
+
+    with (
+        patch.object(nats_broker_module, "_MAX_DELIVERIES", 5),
+        patch.object(nats_broker_module, "_RETRY_BASE_DELAY_S", base_delay),
+    ):
+        await broker._retry_or_dead_letter(message, _task(), "synthetic failure")
+
+    message.nak.assert_awaited_once()
+    actual = message.nak.await_args.kwargs["delay"]
+    if math.isnan(expected):
+        assert math.isnan(actual)
+    else:
+        assert actual == expected
+    message.term.assert_not_awaited()
