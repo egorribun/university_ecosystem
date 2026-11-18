@@ -350,5 +350,6 @@ def test_bootstrap_failure_closes_owned_descriptors(
 @pytest.mark.parametrize("code", [-1, 7, True, "6"])
 def test_receipt_rejects_unsupported_exit_codes(tmp_path: Path, code: object) -> None:
     summary = diagnostic.Recorder(tmp_path, {}).summary(1)
+    summary["pytest_exit_code"] = code
     with pytest.raises(ValueError, match="summary invalid"):
         diagnostic.encode_summary(summary, code)
