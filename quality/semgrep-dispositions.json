@@ -50,7 +50,7 @@
         },
         {
           "path": ".github/actions/node-actions-coverage/action.yml",
-          "sha256": "b842385afe9985868a8e7edc07ac2e050b2aad1b7f33dc61d07072530ee9f019"
+          "sha256": "91080d173f0712d1e9b52c12536cc1040401e08f5e91d9e59da8e26fc16e0f47"
         },
         {
           "path": ".github/workflows/dependency-review.yml",
@@ -378,7 +378,7 @@
         },
         {
           "path": "tests/test_quality_workflow_contract.py",
-          "sha256": "d03e4c8da0045bf686d08cac6be649f8bf5901852df644426f0cb3666418bc9c"
+          "sha256": "0ef8b54bade0cb8dea7b3321951454742dadbe7453be7ebce5bf1c7c7e70601f"
         }
       ],
       "expires": "2027-01-10",

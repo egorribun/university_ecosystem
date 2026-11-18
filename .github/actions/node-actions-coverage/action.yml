@@ -1,5 +1,9 @@
 name: Produce Node action coverage
 description: Produce strict same-run four-metric coverage and canonical provenance
+outputs:
+  artifact-id:
+    description: Server-issued ID of this same-job upload, for presence diagnostics only
+    value: ${{ steps.capture_upload.outputs.artifact-id }}
 runs:
   using: composite
   steps:

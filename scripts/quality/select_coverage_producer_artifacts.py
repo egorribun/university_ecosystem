@@ -113,6 +113,7 @@ class CoverageProducerArguments:
     run_head_sha: str | None
     event: str
     workflow_path: str
+    expected_node_artifact_id: str | None = None
 
 
 def _selector_arguments(
@@ -135,6 +136,13 @@ def _selector_arguments(
 
 
 def _validate_arguments(arguments: CoverageProducerArguments) -> None:
+    expected_id = arguments.expected_node_artifact_id
+    if expected_id is not None and (
+        _POSITIVE_DECIMAL.fullmatch(expected_id) is None
+        or len(expected_id) > 16
+        or int(expected_id) > same_run._MAX_JSON_SAFE_INTEGER
+    ):
+        raise CoverageProducerSelectionError("expected Node artifact ID is invalid")
     try:
         same_run._validate_arguments(_selector_arguments(arguments))
     except same_run.SameRunArtifactError as error:
@@ -202,6 +210,41 @@ def _select_one(
     }
 
 
+def _emit_snapshot_diagnostic(
+    artifacts: Sequence[Mapping[str, object]],
+    arguments: CoverageProducerArguments,
+) -> None:
+    """Report bounded presence only; never authorize selection or replace failure."""
+
+    if arguments.expected_node_artifact_id is None:
+        return
+    expected_id = int(arguments.expected_node_artifact_id)
+    diagnostic = {
+        "snapshot_count": len(artifacts),
+        "expected_node_id_present": any(
+            type(artifact.get("id")) is int and artifact["id"] == expected_id
+            for artifact in artifacts
+        ),
+        "producer_prefix_counts": {
+            spec.key: sum(
+                isinstance(name := artifact.get("name"), str)
+                and name.startswith(spec.prefix)
+                for artifact in artifacts
+            )
+            for spec in COVERAGE_PRODUCER_SPECS
+        },
+    }
+    try:
+        print(
+            "coverage_snapshot_diagnostic="
+            + json.dumps(diagnostic, sort_keys=True, separators=(",", ":")),
+            file=sys.stderr,
+        )
+    except OSError:
+        # A broken diagnostic stream must not replace the selection exception.
+        return
+
+
 def select_coverage_producers(
     arguments: CoverageProducerArguments,
     *,
@@ -225,10 +268,14 @@ def select_coverage_producers(
     except same_run.SameRunArtifactError as error:
         raise CoverageProducerSelectionError(str(error)) from error
 
-    selected = {
-        spec.key: _select_one(spec, artifacts, arguments)
-        for spec in COVERAGE_PRODUCER_SPECS
-    }
+    try:
+        selected = {
+            spec.key: _select_one(spec, artifacts, arguments)
+            for spec in COVERAGE_PRODUCER_SPECS
+        }
+    except CoverageProducerSelectionError:
+        _emit_snapshot_diagnostic(artifacts, arguments)
+        raise
     seen_ids: set[int] = set()
     seen_names: set[str] = set()
     for key, selection in selected.items():
@@ -347,6 +394,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> CoverageProducerArgum
     parser.add_argument("--run-head-sha")
     parser.add_argument("--event", required=True)
     parser.add_argument("--workflow-path", required=True)
+    parser.add_argument("--expected-node-artifact-id")
     namespace = parser.parse_args(argv)
     return CoverageProducerArguments(
         repository=namespace.repository,
@@ -356,6 +404,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> CoverageProducerArgum
         run_head_sha=namespace.run_head_sha,
         event=namespace.event,
         workflow_path=namespace.workflow_path,
+        expected_node_artifact_id=namespace.expected_node_artifact_id,
     )
 
 
