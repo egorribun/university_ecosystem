@@ -8,30 +8,34 @@ from collections.abc import Callable
 
 _SCENARIO_DEADLINE_SECONDS = 5
 _RUN_SCENARIO = """
-import sys
+from tests.helpers.circuit_process import _run_circuit_scenario
+_run_circuit_scenario()
+"""
 
 
-def _phase(value):
+def _phase(value: str) -> None:
     try:
         print("CIRCUIT_CHILD_PHASE=" + value, file=sys.stderr, flush=True)
     except Exception:
         return
 
 
-_phase("child_started")
-import importlib
-import pytest
+def _run_circuit_scenario() -> None:
+    # This marker follows interpreter/helper bootstrap, not process creation.
+    _phase("helper_entered")
+    import importlib
 
-scenario = getattr(importlib.import_module(sys.argv[1]), sys.argv[2])
-_phase("imports_ready")
-with pytest.MonkeyPatch.context() as monkeypatch:
-    if sys.argv[3] == "monkeypatch":
-        scenario(monkeypatch)
-    else:
-        scenario()
-    _phase("scenario_returned")
-_phase("cleanup_returned")
-"""
+    import pytest
+
+    scenario = getattr(importlib.import_module(sys.argv[1]), sys.argv[2])
+    _phase("imports_ready")
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        if sys.argv[3] == "monkeypatch":
+            scenario(monkeypatch)
+        else:
+            scenario()
+        _phase("scenario_returned")
+    _phase("cleanup_returned")
 
 
 def assert_circuit_scenario_completes(

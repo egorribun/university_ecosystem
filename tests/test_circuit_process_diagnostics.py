@@ -47,13 +47,13 @@ def test_child_phases_preserve_scenario_and_cleanup(
     monkeypatch.setattr(importlib, "import_module", load_module)
     monkeypatch.setattr(pytest.MonkeyPatch, "context", staticmethod(context))
     if failure is None:
-        exec(helper._RUN_SCENARIO, {})
+        helper._run_circuit_scenario()
     else:
         with pytest.raises(RuntimeError) as caught:
-            exec(helper._RUN_SCENARIO, {})
+            helper._run_circuit_scenario()
         assert caught.value is original
 
-    expected = ["child_started"]
+    expected = ["helper_entered"]
     if failure != "import":
         expected.append("imports_ready")
         assert calls[0] == ((token,) if mode == "monkeypatch" else ())
@@ -69,12 +69,14 @@ def test_child_phases_preserve_scenario_and_cleanup(
     ]
 
 
-def test_phase_write_failure_does_not_replace_scenario_error(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("failure", ["write", "flush"])
+def test_phase_output_failure_does_not_replace_scenario_error(
+    monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
     class BrokenStream:
         def write(self, text: str) -> None:
-            raise OSError("synthetic output failure")
+            if failure == "write":
+                raise OSError("synthetic output failure")
 
         def flush(self) -> None:
             raise OSError("synthetic flush failure")
@@ -90,7 +92,7 @@ def test_phase_write_failure_does_not_replace_scenario_error(
         importlib, "import_module", lambda name: SimpleNamespace(scenario=scenario)
     )
     with pytest.raises(RuntimeError) as caught:
-        exec(helper._RUN_SCENARIO, {})
+        helper._run_circuit_scenario()
     assert caught.value is original
 
 
@@ -141,7 +143,16 @@ def test_parent_never_accepts_failed_child(
         helper.assert_circuit_scenario_completes(scenario)
     if failure == "timeout":
         assert caught.value.__cause__ is timeout
-        assert "across child startup, imports, scenario and shutdown" in str(caught.value)
+        assert "across child startup, imports, scenario and shutdown" in str(
+            caught.value
+        )
         assert "event loop or cleanup stalled" not in str(caught.value)
     else:
         assert "exited 7" in str(caught.value)
+
+
+def test_child_launcher_calls_the_tested_entrypoint() -> None:
+    assert helper._RUN_SCENARIO.strip().splitlines() == [
+        "from tests.helpers.circuit_process import _run_circuit_scenario",
+        "_run_circuit_scenario()",
+    ]
