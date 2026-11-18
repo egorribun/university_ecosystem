@@ -65,6 +65,8 @@ _COVERAGE_SELECTOR_ARGV = [
     "${COVERAGE_EVENT}",
     "--workflow-path",
     ".github/workflows/ci.yml",
+    "--expected-node-artifact-id",
+    "${EXPECTED_NODE_ARTIFACT_ID}",
 ]
 
 
@@ -600,6 +602,9 @@ def test_coverage_consumer_has_only_job_scoped_artifact_read_permission() -> Non
     assert workflow["permissions"] == {"contents": "read"}
     assert job.get("permissions") == {"contents": "read", "actions": "read"}
     assert selector["env"] == {
+        "EXPECTED_NODE_ARTIFACT_ID": (
+            "${{ steps.node_action_coverage.outputs.artifact-id }}"
+        ),
         "COVERAGE_REPOSITORY": "${{ github.repository }}",
         "COVERAGE_RUN_ID": "${{ github.run_id }}",
         "COVERAGE_RUN_ATTEMPT": "${{ github.run_attempt }}",
@@ -888,3 +893,22 @@ def test_weekly_duration_writer_authenticates_only_the_guarded_push(
     else:
         assert status != 0
         assert events == []
+
+
+@pytest.mark.parametrize("change", ["missing", "duplicate", "foreign"])
+def test_selector_diagnostic_argument_is_exact_and_unique(change: str) -> None:
+    selector = _step(
+        _load("ci.yml")["jobs"]["coverage-policy-gate"],
+        "Select retry-safe same-run coverage producer artifacts",
+    )
+    run = str(selector["run"])
+    argument = '--expected-node-artifact-id "${EXPECTED_NODE_ARTIFACT_ID}"'
+    assert run.count(argument) == 1
+    replacement = {
+        "missing": "",
+        "duplicate": argument + " " + argument,
+        "foreign": '--expected-node-artifact-id "${UNTRUSTED_ARTIFACT_ID}"',
+    }[change]
+    altered = run.replace(argument, replacement)
+    with pytest.raises(AssertionError, match="coverage selector argv changed"):
+        _assert_coverage_selector_argv(altered)

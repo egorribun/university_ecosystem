@@ -6133,6 +6133,9 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
         job, "Select retry-safe same-run coverage producer artifacts"
     )
     assert selection["env"] == {
+        "EXPECTED_NODE_ARTIFACT_ID": (
+            "${{ steps.node_action_coverage.outputs.artifact-id }}"
+        ),
         "COVERAGE_REPOSITORY": "${{ github.repository }}",
         "COVERAGE_RUN_ID": "${{ github.run_id }}",
         "COVERAGE_RUN_ATTEMPT": "${{ github.run_attempt }}",
