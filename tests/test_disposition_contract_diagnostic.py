@@ -20,10 +20,7 @@ def test_source_ids_require_exact_content(
     data = b"def test_owned():\n    pass\n"
     path = tmp_path / "owned.py"
     path.write_bytes(data)
-    expected = hashlib.sha1(
-        b"blob " + str(len(data)).encode() + b"\0" + data,
-        usedforsecurity=False,
-    ).digest()
+    expected = hashlib.sha256(data).digest()
     monkeypatch.setattr(diagnostic, "_TARGETS", {"owned.py": ("baseline", expected)})
     assert diagnostic.source_catalog(tmp_path) == {
         ("owned.py", "test_owned"): ("baseline", 1)
@@ -182,8 +179,7 @@ def test_real_child_mutes_streams_fds_capture_and_atexit(
             "from scripts.quality import disposition_contract_diagnostic as d\n"
             f"os.environ['GITHUB_WORKSPACE'] = {str(pytester.path)!r}\n"
             f"data = {payload.encode()!r}\n"
-            "digest = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\\0' + data,"
-            " usedforsecurity=False).digest()\n"
+            "digest = hashlib.sha256(data).digest()\n"
             "d._TARGETS = {'test_owned.py': ('baseline', digest)}\n"
             f"raise SystemExit(d.main(['--subject-root', {str(subject)!r}]))\n"
         )
@@ -353,3 +349,76 @@ def test_receipt_rejects_unsupported_exit_codes(tmp_path: Path, code: object) ->
     summary["pytest_exit_code"] = code
     with pytest.raises(ValueError, match="summary invalid"):
         diagnostic.encode_summary(summary, code)
+
+
+def test_source_targets_pin_raw_sha256_of_immutable_subject() -> None:
+    # Exact raw bytes from subject 40da5dd9, not this diagnostic PR checkout.
+    assert diagnostic._TARGETS == {
+        "tests/test_verify_secrets_baseline.py": (
+            "baseline",
+            bytes.fromhex(
+                "b9 f3 73 08 41 30 ec b2 4e f2 c0 a6 4f 57 e5 ef "
+                "42 72 90 8b de b9 26 7c cb 28 45 80 33 e8 e2 0f"
+            ),
+        ),
+        "tests/test_coverage_snapshot_disposition_rebind.py": (
+            "snapshot",
+            bytes.fromhex(
+                "9c 05 28 e9 78 d9 dc 5a bb 81 e9 e2 97 de 55 4c "
+                "e8 4b 86 8f 0e c6 58 dd 5e d5 00 5a 49 4e 72 bd"
+            ),
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        (
+            b"",
+            bytes.fromhex(
+                "e3 b0 c4 42 98 fc 1c 14 9a fb f4 c8 99 6f b9 24 "
+                "27 ae 41 e4 64 9b 93 4c a4 95 99 1b 78 52 b8 55"
+            ),
+        ),
+        (
+            b"abc",
+            bytes.fromhex(
+                "ba 78 16 bf 8f 01 cf ea 41 41 40 de 5d ae 22 23 "
+                "b0 03 61 a3 96 17 7a 9c b4 10 ff 61 f2 00 15 ad"
+            ),
+        ),
+    ],
+)
+def test_source_catalog_uses_standard_raw_sha256_vectors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    data: bytes,
+    expected: bytes,
+) -> None:
+    (tmp_path / "owned.py").write_bytes(data)
+    assert hashlib.sha256(data).digest() == expected
+    monkeypatch.setattr(diagnostic, "_TARGETS", {"owned.py": ("baseline", expected)})
+    # Both inputs are valid Python with no test functions; no digest is mocked.
+    assert diagnostic.source_catalog(tmp_path) == {}
+
+
+@pytest.mark.parametrize("wrong_kind", ["different_digest", "legacy_width"])
+def test_source_catalog_rejects_wrong_sha256_pin_after_valid_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_kind: str
+) -> None:
+    data = b"def test_owned():\n    pass\n"
+    (tmp_path / "owned.py").write_bytes(data)
+    expected = hashlib.sha256(data).digest()
+    monkeypatch.setattr(diagnostic, "_TARGETS", {"owned.py": ("baseline", expected)})
+    assert diagnostic.source_catalog(tmp_path) == {
+        ("owned.py", "test_owned"): ("baseline", 1)
+    }
+    wrong = (
+        bytes([expected[0] ^ 1]) + expected[1:]
+        if wrong_kind == "different_digest"
+        else expected[:20]
+    )
+    monkeypatch.setattr(diagnostic, "_TARGETS", {"owned.py": ("baseline", wrong)})
+    with pytest.raises(ValueError, match="source identity mismatch"):
+        diagnostic.source_catalog(tmp_path)
