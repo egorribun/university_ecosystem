@@ -42,7 +42,7 @@ jobs:
       - name: Checkout diagnostic implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          ref: 8ae036551fb7b19360a0ca238add3de371a0a9ac
           path: diagnostic
           fetch-depth: 0
           persist-credentials: false
@@ -57,7 +57,7 @@ jobs:
 
       - name: Verify both checkouts
         env:
-          DIAGNOSTIC_SHA: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          DIAGNOSTIC_SHA: 8ae036551fb7b19360a0ca238add3de371a0a9ac
           SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
         run: |
           set -euo pipefail
@@ -84,7 +84,7 @@ jobs:
 
       - name: Recheck immutable tracked sources after installation
         env:
-          DIAGNOSTIC_SHA: 6627890e1528f0ba20122f9cc9f288253c0577d1
+          DIAGNOSTIC_SHA: 8ae036551fb7b19360a0ca238add3de371a0a9ac
           SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
         run: |
           set -euo pipefail
