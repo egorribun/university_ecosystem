@@ -35833,7 +35833,9 @@ def test_node_coverage_current_pin_preserves_historical_approval_evidence() -> N
     )
     approved = [row for row in policy["records"] if row["identity"]["path"] == path]
     generated = [
-        row for row in _nov3_public_git_object_records() if row["identity"]["path"] == path
+        row
+        for row in _nov3_public_git_object_records()
+        if row["identity"]["path"] == path
     ]
     assert len(approved) == len(generated) == 1
     assert f"at {path}:21; Git object kind commit;" in approved[0]["evidence"]
