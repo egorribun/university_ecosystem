@@ -1,3 +1,4 @@
+import asyncio
 import os
 import secrets
 from types import SimpleNamespace
@@ -78,8 +79,8 @@ async def test_plaintext_auth_preserves_all_other_call_details(
     assert details.metadata is None
 
 
-@pytest.fixture
-async def spicedb_rpc_server():
+@pytest.fixture(params=["127.0.0.1", "[::1]"])
+async def spicedb_rpc_server(request):
     """Require a synthetic PSK at a real gRPC transport boundary."""
     token = secrets.token_urlsafe(24)
     received = []
@@ -106,11 +107,13 @@ async def spicedb_rpc_server():
     server = grpc.aio.server()
     add_PermissionsServiceServicer_to_server(Permissions(), server)
     add_WatchServiceServicer_to_server(Watch(), server)
-    port = server.add_insecure_port("127.0.0.1:0")
+    host = request.param
+    port = server.add_insecure_port(f"{host}:0")
+    assert port > 0, "required loopback gRPC listener did not bind"
     await server.start()
     try:
         yield SimpleNamespace(
-            token=token, port=port, endpoint=f"127.0.0.1:{port}", received=received
+            token=token, port=port, endpoint=f"{host}:{port}", received=received
         )
     finally:
         await server.stop(0)
@@ -218,9 +221,13 @@ async def test_permission_checker_uses_authenticated_plaintext_transport(
 async def test_watch_once_uses_authenticated_plaintext_transport(spicedb_rpc_server):
     from app.core.spicedb_watch import _watch_once
 
-    await _watch_once(
-        spicedb_rpc_server.token, "127.0.0.1", spicedb_rpc_server.port, False
-    )
+    async with asyncio.timeout(3):
+        await _watch_once(
+            spicedb_rpc_server.token,
+            _parse_endpoint(spicedb_rpc_server.endpoint)[0],
+            spicedb_rpc_server.port,
+            False,
+        )
     assert len(spicedb_rpc_server.received) == 1
     request, _metadata = spicedb_rpc_server.received[0]
     assert request == WatchRequest(optional_object_types=[])
@@ -369,3 +376,46 @@ async def test_get_async_spicedb_channel_insecure():
         mock_close = AsyncMock()
         mock_channel.close = mock_close
         await close_global_spicedb_channel()
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "target"),
+    [
+        ("spicedb", "spicedb:50051"),
+        ("127.0.0.1:1234", "127.0.0.1:1234"),
+        ("[::1]", "[::1]:50051"),
+        ("[2001:db8::1]:1234", "[2001:db8::1]:1234"),
+        ("https://[::1]", "[::1]:443"),
+        ("grpcs://[::1]", "[::1]:50051"),
+        ("grpc://[fe80::1%eth0]:1234", "[fe80::1%eth0]:1234"),
+    ],
+)
+@pytest.mark.parametrize("insecure", [False, True])
+def test_sync_spicedb_preserves_configured_target(
+    endpoint, target, insecure, monkeypatch
+):
+    import app.core.spicedb as spicedb
+
+    monkeypatch.setenv("SPICEDB_INSECURE", str(insecure).lower())
+    monkeypatch.setattr(
+        spicedb,
+        "settings",
+        SimpleNamespace(
+            spicedb_endpoint=endpoint, spicedb_preshared_key="synthetic-token"
+        ),
+    )
+    with (
+        patch("app.core.spicedb.Client") as secure,
+        patch("app.core.spicedb.InsecureClient") as plain,
+        patch("grpcutil.bearer_token_credentials") as credentials,
+    ):
+        SpiceDBClient().get_client()
+        use_ssl = not insecure or endpoint.startswith(("https://", "grpcs://"))
+        chosen, unused = (secure, plain) if use_ssl else (plain, secure)
+        assert chosen.call_args.kwargs["target"] == target
+        unused.assert_not_called()
+        if use_ssl:
+            credentials.assert_called_once_with("synthetic-token")
+        else:
+            assert chosen.call_args.kwargs["token"] == "synthetic-token"
+            credentials.assert_not_called()
