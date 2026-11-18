@@ -30878,10 +30878,59 @@ def test_aud380_each_current_source_pin_rejects_file_mutation(
 
     mutated_path = tmp_path / relative_path
     mutated_path.write_bytes(mutated_path.read_bytes() + b"\n# source drift control\n")
-    with pytest.raises(
-        AssertionError,
-        match=rf"(?m)^conditional disposition source file SHA-256 changed: {re.escape(relative_path)}$",
-    ):
+    if relative_path in _NOV17_SSR_CHART_PINS:
+        message = f"Helm SSR source postimage changed: {relative_path}"
+    elif relative_path == _NOV18_SSR_SHELL_PATH:
+        message = "SSR shell postimage changed"
+    elif relative_path == _NOV18_SSR_CONTRACT_PATH:
+        message = "SSR contract postimage changed"
+    else:
+        message = (
+            f"conditional disposition source file SHA-256 changed: {relative_path}"
+        )
+    with pytest.raises(AssertionError, match=rf"(?m)^{re.escape(message)}$"):
+        _assert_conditional_owner_source_bindings(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "charts/university-ecosystem/values.schema.json",
+        "charts/university-ecosystem/values.yaml",
+        "scripts/kind/aud373_internal_mtls_proof.sh",
+        "tests/test_internal_mtls_kind_contract.py",
+    ],
+)
+def test_aud380_ssr_predecessor_pin_still_rejects_file_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative_path: str
+) -> None:
+    source_root = Path(__file__).resolve().parents[1]
+    _assert_conditional_owner_source_bindings(source_root)
+    for bound_path in _AUD380_CURRENT_DELTA_SOURCE_SHA256:
+        target = tmp_path / bound_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source_root / bound_path).read_bytes())
+
+    target = tmp_path / relative_path
+    project = _aud154_historical_source_bytes
+    # Validate the complete current postimage before entering the old layer.
+    predecessor = project(relative_path, target.read_bytes())
+    assert _projected_sha256(predecessor) == (
+        _AUD380_CURRENT_DELTA_SOURCE_SHA256[relative_path]
+    )
+    target.write_bytes(predecessor)
+
+    def already_projected(path: str, actual: bytes) -> bytes:
+        if path == relative_path:
+            return actual
+        return project(path, actual)
+
+    monkeypatch.setitem(globals(), "_aud154_historical_source_bytes", already_projected)
+    # A valid predecessor must pass before its mutation reaches the old pin.
+    _assert_conditional_owner_source_bindings(tmp_path)
+    target.write_bytes(predecessor + b"\n# source drift control\n")
+    message = f"conditional disposition source file SHA-256 changed: {relative_path}"
+    with pytest.raises(AssertionError, match=rf"(?m)^{re.escape(message)}$"):
         _assert_conditional_owner_source_bindings(tmp_path)
 
 
