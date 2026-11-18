@@ -489,6 +489,7 @@ async def prepare_database() -> AsyncIterator[tuple[URL, AsyncEngine]]:
         # Create vector extension, all tables, and RLS policies for PostgreSQL
         async with engine.begin() as conn:
             await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+            await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             await conn.run_sync(Base.metadata.create_all)
             await conn.exec_driver_sql("ALTER TABLE messages ENABLE ROW LEVEL SECURITY")
             await conn.exec_driver_sql("ALTER TABLE messages FORCE ROW LEVEL SECURITY")
