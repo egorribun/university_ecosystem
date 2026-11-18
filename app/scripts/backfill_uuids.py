@@ -189,7 +189,7 @@ async def backfill_foreign_uuids(
         )
 
 
-async def main() -> None:
+async def main() -> int:
     # This script is commonly invoked directly and therefore does not inherit
     # the web application's logging bootstrap.
     configure_logging()
@@ -208,7 +208,9 @@ async def main() -> None:
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then log (reviewed TD-27-04)
             logger.error("Backfill failed: %s", e)  # LOW-W19: lazy logging
             await session.rollback()
+            return 1
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))
