@@ -171,7 +171,8 @@ def encode_summary(summary: dict[str, object], exit_code: int) -> bytes:
         if (
             set(summary) != {"status", "stage"}
             or type(summary["stage"]) is not str
-            or summary["stage"] not in {
+            or summary["stage"]
+            not in {
                 "admission",
                 "execution",
                 "output_bound",
