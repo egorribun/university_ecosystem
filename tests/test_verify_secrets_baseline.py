@@ -33287,9 +33287,7 @@ def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
         assert bound == [hashlib.sha256((root / path).read_bytes()).hexdigest()]
     for path in _AUD154_SOURCE_PINS:
         _aud154_historical_source_bytes(path, (root / path).read_bytes())
-    _aud154_historical_policy(
-        json.loads(_coverage_snapshot_policy_fixture(root))
-    )
+    _aud154_historical_policy(json.loads(_coverage_snapshot_policy_fixture(root)))
 
 
 @pytest.mark.parametrize("path", tuple(_AUD154_SOURCE_PINS))
@@ -33538,9 +33536,7 @@ def test_nov12_map_csp_rebind_preserves_exact_predecessor() -> None:
         "quality/semgrep-dispositions.json",
         (root / "quality/semgrep-dispositions.json").read_bytes(),
     )
-    _nov12_csp_historical_policy(
-        json.loads(_coverage_snapshot_policy_fixture(root))
-    )
+    _nov12_csp_historical_policy(json.loads(_coverage_snapshot_policy_fixture(root)))
 
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "unrelated"])
@@ -35556,9 +35552,7 @@ def test_nov16_push_observation_projection_rejects_drift(
     )
     monkeypatch.setitem(globals(), "_map_zoom_historical_policy", copy.deepcopy)
     if mutation == "policy":
-        policy = project_map_policy(
-            json.loads(_coverage_snapshot_policy_fixture(root))
-        )
+        policy = project_map_policy(json.loads(_coverage_snapshot_policy_fixture(root)))
         policy["records"][_NOV16_IDENTITY_ROW]["identity"]["hashed_secret_bytes"][
             0
         ] ^= 1

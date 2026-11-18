@@ -7,10 +7,13 @@ The complete predecessor fingerprint protects every other record and field.
 import copy
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from scripts import verify_secrets_baseline as verifier
 
 _POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _LEDGER_PATH = "quality/semgrep-dispositions.json"
@@ -277,3 +280,37 @@ def test_coverage_snapshot_policy_bytes_preserve_exact_predecessor() -> None:
     )
     with pytest.raises(AssertionError, match="not canonical"):
         coverage_snapshot_historical_policy_bytes(actual + b"\n")
+
+
+def test_coverage_snapshot_candidate_loader_accepts_exact_replacements() -> None:
+    root = Path(__file__).resolve().parents[1]
+    findings = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=root, today=date(2026, 11, 18)
+    )
+    assert len(findings) == 524
+    for previous, current in _REBINDS:
+        assert (
+            verifier.FindingIdentity(_LEDGER_PATH, _KIND, current.hex(), 1) in findings
+        )
+        assert (
+            verifier.FindingIdentity(_LEDGER_PATH, _KIND, previous.hex(), 1)
+            not in findings
+        )
+
+
+@pytest.mark.parametrize("pair", [0, 1])
+def test_coverage_snapshot_verifier_rejects_duplicate_replacement(pair: int) -> None:
+    row = _replacement_row(_live_policy(), pair)
+    document = {"schema_version": 1, "records": [row, copy.deepcopy(row)]}
+    with pytest.raises(verifier.BaselineArtifactError, match="duplicate identity"):
+        verifier.validate_false_positive_dispositions(
+            document, today=date(2026, 11, 18)
+        )
+
+
+@pytest.mark.parametrize("pair", [0, 1])
+def test_coverage_snapshot_verifier_rejects_expired_replacement(pair: int) -> None:
+    row = _replacement_row(_live_policy(), pair)
+    document = {"schema_version": 1, "records": [row]}
+    with pytest.raises(verifier.BaselineArtifactError, match="date range is invalid"):
+        verifier.validate_false_positive_dispositions(document, today=date(2027, 1, 11))
