@@ -40,7 +40,9 @@ async def test_non_ascii_or_wrong_internal_token_is_forbidden(path, provided, ca
     assert provided.decode("latin-1") not in caplog.text
 
 
-@pytest.mark.parametrize("configured", ["secr\u00e9t", "\u041f\u0430\u0440\u043e\u043b\u044c"])
+@pytest.mark.parametrize(
+    "configured", ["secr\u00e9t", "\u041f\u0430\u0440\u043e\u043b\u044c"]
+)
 @pytest.mark.parametrize("provided", [b"secret", b"secr\xe9t", b"\xff"])
 def test_non_ascii_configured_token_never_authenticates(configured, provided):
     middleware = InternalAccessMiddleware(
