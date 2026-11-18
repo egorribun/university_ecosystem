@@ -253,9 +253,7 @@ async def test_owned_cleanup_and_failure_boundaries(monkeypatch, failure):
     assert calls == 3
     grant = next(command for command in commands if command[:2] == ("ACL", "SETUSER"))
     patterns = [
-        item[1:]
-        for item in grant
-        if isinstance(item, str) and item.startswith("~")
+        item[1:] for item in grant if isinstance(item, str) and item.startswith("~")
     ]
     assert len(patterns) == 7
     assert all(key.startswith("session:v2:ttl-service-") for key in patterns)
