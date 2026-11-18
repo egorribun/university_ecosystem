@@ -7,6 +7,7 @@ The complete predecessor fingerprint protects every other record and field.
 import copy
 import hashlib
 import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -314,3 +315,21 @@ def test_coverage_snapshot_verifier_rejects_expired_replacement(pair: int) -> No
     document = {"schema_version": 1, "records": [row]}
     with pytest.raises(verifier.BaselineArtifactError, match="date range is invalid"):
         verifier.validate_false_positive_dispositions(document, today=date(2027, 1, 11))
+
+
+@pytest.mark.parametrize("path", list(_SOURCE_BINDINGS))
+def test_coverage_snapshot_source_drift_preserves_historical_error_contract(
+    path: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    # Verify this exact postimage before introducing a single trailing byte.
+    coverage_snapshot_historical_source_bytes(path, actual)
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"(?m)^conditional disposition source file SHA-256 changed: "
+            rf"{re.escape(path)}$"
+        ),
+    ):
+        coverage_snapshot_historical_source_bytes(path, actual + b"\n")
