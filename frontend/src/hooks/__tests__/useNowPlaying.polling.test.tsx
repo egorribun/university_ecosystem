@@ -119,3 +119,36 @@ it("pauses a visibility-triggered Spotify refetch while offline", async () => {
     unmount()
   }
 })
+
+it("preserves Retry-After when the document becomes visible during Spotify backoff", async () => {
+  const { get, result, unmount } = await pollingSession({ track_id: "cached", is_playing: true })
+  const { __testing } = await import("@/hooks/useNowPlaying")
+
+  try {
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("rate limited"), {
+        isAxiosError: true,
+        response: { status: 429, headers: { "retry-after": "10" } },
+      })
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+    expect(get).toHaveBeenCalledTimes(2)
+    const deadline = __testing.getRateLimitedUntil()
+    expect(deadline).toBeGreaterThan(Date.now())
+
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(__testing.getRateLimitedUntil()).toBe(deadline)
+
+    await act(() => vi.advanceTimersByTimeAsync(deadline - Date.now() - 1))
+    expect(get).toHaveBeenCalledTimes(2)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(get).toHaveBeenCalledTimes(3)
+  } finally {
+    unmount()
+  }
+})
