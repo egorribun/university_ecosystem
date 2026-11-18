@@ -28,6 +28,7 @@ artifact or trusted source delta is missing or malformed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -6728,7 +6729,245 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+
+# November 18 owner approval is limited to six exact SSR findings. The original
+# 524-record predecessor and finite review metadata remain byte-bound.
+_SSR_DISPOSITION_PREFIX_BLOB = bytes(
+    [
+        119,
+        47,
+        46,
+        151,
+        169,
+        17,
+        213,
+        142,
+        152,
+        154,
+        222,
+        95,
+        49,
+        217,
+        40,
+        115,
+        140,
+        114,
+        39,
+        249,
+    ]
+)
+_SSR_DISPOSITION_SUFFIX_BLOB = bytes(
+    [
+        83,
+        135,
+        243,
+        178,
+        49,
+        237,
+        28,
+        208,
+        79,
+        241,
+        31,
+        72,
+        142,
+        179,
+        16,
+        201,
+        208,
+        146,
+        47,
+        85,
+    ]
+)
+_SSR_DISPOSITION_SOURCE_BLOBS = {
+    "services/gateway/cmd/ssr-mtls-fixture/main.go": bytes(
+        [
+            212,
+            113,
+            252,
+            9,
+            61,
+            29,
+            21,
+            14,
+            229,
+            180,
+            218,
+            208,
+            161,
+            136,
+            11,
+            98,
+            12,
+            225,
+            173,
+            81,
+        ]
+    ),
+    "services/gateway/cmd/ssr-mtls-fixture/main_test.go": bytes(
+        [
+            68,
+            3,
+            255,
+            104,
+            113,
+            146,
+            134,
+            159,
+            24,
+            124,
+            44,
+            38,
+            65,
+            233,
+            52,
+            45,
+            52,
+            106,
+            93,
+            46,
+        ]
+    ),
+    "services/gateway/cmd/ssr-proxy/main_test.go": bytes(
+        [
+            237,
+            199,
+            26,
+            229,
+            186,
+            179,
+            216,
+            201,
+            65,
+            163,
+            207,
+            219,
+            58,
+            246,
+            75,
+            124,
+            216,
+            184,
+            249,
+            150,
+        ]
+    ),
+    "tests/test_report_ssr_scanner_identities.py": bytes(
+        [
+            236,
+            136,
+            40,
+            55,
+            59,
+            201,
+            4,
+            53,
+            166,
+            115,
+            100,
+            200,
+            244,
+            25,
+            9,
+            11,
+            69,
+            154,
+            122,
+            134,
+        ]
+    ),
+}
+
+
+def _git_blob_digest(raw: bytes) -> bytes:
+    header = b"blob " + str(len(raw)).encode("ascii") + bytes([0])
+    return hashlib.sha1(header + raw, usedforsecurity=False).digest()
+
+
+def _ssr_disposition_predecessor(document: object) -> tuple[object, list[Any]]:
+    """Project only the exact owner-approved append; never discard unknown data."""
+    if (
+        not isinstance(document, dict)
+        or set(document) != _FALSE_POSITIVE_DOCUMENT_FIELDS
+    ):
+        return document, []
+    records = document.get("records")
+    if not isinstance(records, list) or len(records) <= _FALSE_POSITIVE_RECORD_LIMIT:
+        return document, []
+    if len(records) != _FALSE_POSITIVE_RECORD_LIMIT + 6:
+        raise BaselineArtifactError("SSR disposition inventory changed")
+    predecessor = {**document, "records": records[:_FALSE_POSITIVE_RECORD_LIMIT]}
+    suffix = records[_FALSE_POSITIVE_RECORD_LIMIT:]
+    try:
+        prefix_raw = (
+            json.dumps(predecessor, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        suffix_raw = (json.dumps(suffix, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise BaselineArtifactError("SSR disposition encoding is invalid") from error
+    if (
+        _git_blob_digest(prefix_raw) != _SSR_DISPOSITION_PREFIX_BLOB
+        or _git_blob_digest(suffix_raw) != _SSR_DISPOSITION_SUFFIX_BLOB
+    ):
+        raise BaselineArtifactError("SSR disposition approval scope changed")
+    return predecessor, suffix
+
+
 def validate_false_positive_dispositions(
+    document: object, *, today: date | None = None
+) -> set[FindingIdentity]:
+    """Validate schema and exact approval data, not source trust or authorship."""
+    predecessor, suffix = _ssr_disposition_predecessor(document)
+    findings = _validate_pre_ssr_false_positive_dispositions(predecessor, today=today)
+    if suffix:
+        _validate_ssr_review_window(today or date.today())
+        for record in suffix:
+            identity = record["identity"]
+            findings.add(
+                FindingIdentity(
+                    path=identity["path"],
+                    finding_type=identity["type"],
+                    hashed_secret=bytes(identity["hashed_secret_bytes"]).hex(),
+                    line_number=0,
+                )
+            )
+    return findings
+
+
+def _validate_ssr_review_window(current_date: date) -> None:
+    if not date(2026, 11, 18) <= current_date <= date(2027, 1, 10):
+        raise BaselineArtifactError("SSR disposition review window is inactive")
+
+
+def _validate_ssr_candidate_sources(document: object, root: Path) -> None:
+    _, suffix = _ssr_disposition_predecessor(document)
+    if not suffix:
+        return
+    for relative, expected in _SSR_DISPOSITION_SOURCE_BLOBS.items():
+        path = root.joinpath(*relative.split("/"))
+        try:
+            if (
+                path.resolve(strict=True) != path
+                or not path.is_file()
+                or path.stat().st_size > 512 * 1024
+            ):
+                raise BaselineArtifactError("SSR disposition source is unavailable")
+            with path.open("rb") as source:
+                raw = source.read(512 * 1024 + 1)
+        except (OSError, RuntimeError, ValueError) as error:
+            if isinstance(error, BaselineArtifactError):
+                raise
+            raise BaselineArtifactError(
+                "SSR disposition source is unavailable"
+            ) from error
+        if len(raw) > 512 * 1024 or _git_blob_digest(raw) != expected:
+            raise BaselineArtifactError("SSR disposition source changed")
+
+
+def _validate_pre_ssr_false_positive_dispositions(
     document: object, *, today: date | None = None
 ) -> set[FindingIdentity]:
     """Validate exact dispositions without claiming their source is trusted.
@@ -7543,6 +7782,17 @@ def load_trusted_base_false_positive_dispositions(
         raise BaselineArtifactError(
             "false-positive disposition artifact is invalid"
         ) from error
+    _, ssr_suffix = _ssr_disposition_predecessor(document)
+    if ssr_suffix:
+        for source_path, expected in _SSR_DISPOSITION_SOURCE_BLOBS.items():
+            source_entry = run_git(
+                "ls-tree", "--full-tree", trusted_base_sha, "--", source_path
+            )
+            expected_entry = (
+                "100644 blob " + expected.hex() + "\t" + source_path + "\n"
+            ).encode("utf-8")
+            if source_entry != expected_entry:
+                raise BaselineArtifactError("trusted SSR disposition source changed")
     validated = validate_false_positive_dispositions(document, today=today)
     # The trusted PR base may precede retirement. Retired identities never enter
     # the active matching set, even if a removed source path is recreated.
@@ -7584,6 +7834,7 @@ def load_owner_authored_candidate_false_positive_dispositions(
         raise BaselineArtifactError(
             "candidate disposition artifact is invalid"
         ) from error
+    _validate_ssr_candidate_sources(document, root)
     validated = validate_false_positive_dispositions(document, today=today)
     if any(finding.path in _RETIRED_DISPOSITION_SOURCE_PATHS for finding in validated):
         raise BaselineArtifactError("candidate dispositions contain a retired source")
