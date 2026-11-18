@@ -45,6 +45,28 @@ def report_initial_stage(stage: str) -> None:
     print(f"CHECK ssr-live-initial-stage={stage}", flush=True)
 
 
+_RENEWAL_STAGES = frozenset(
+    {
+        "activate",
+        "active-authority-check",
+        "taint-stream-open",
+        "taint-authority",
+        "taint-stream-retirement",
+        "frontend-issuer-renewal",
+        "frontend-leaf-check",
+        "backend-issuer-renewal",
+        "application-identities-check",
+    }
+)
+
+
+def report_renewal_stage(stage: str) -> None:
+    """Report an attempted renewal boundary without provider data or cause."""
+    if type(stage) is not str or stage not in _RENEWAL_STAGES:
+        raise ProofError("invalid renewal diagnostic stage")
+    print(f"CHECK ssr-live-renewal-stage={stage}", flush=True)
+
+
 def kubectl_executable() -> str:
     """Resolve the harness-installed CLI; never let subprocess search PATH."""
     executable = shutil.which("kubectl")
@@ -512,18 +534,27 @@ try {
                 lambda: set(self.inspect(client, self.self_id)["roots"]) == {old, new}
             )
             print("PASS ssr-live-ca-overlap-retires-stale-stream", flush=True)
+            report_renewal_stage("activate")
             self.ca("activate", "-authorityID", new)
+            report_renewal_stage("active-authority-check")
             if authority_id(self.ca("show")["active"]["authority_id"]) != new:
                 raise ProofError("new signer did not activate")
+            report_renewal_stage("taint-stream-open")
             with self.stream():
+                report_renewal_stage("taint-authority")
                 self.ca("taint", "-authorityID", old)
+                report_renewal_stage("taint-stream-retirement")
+            report_renewal_stage("frontend-issuer-renewal")
             wait_for(lambda: self.inspect(client, self.self_id)["issuerKeyID"] == new)
+            report_renewal_stage("frontend-leaf-check")
             after = self.inspect(client, self.self_id)
             if after["leafSHA256"] == before["leafSHA256"]:
                 raise ProofError("frontend SVID was not renewed")
+            report_renewal_stage("backend-issuer-renewal")
             wait_for(
                 lambda: self.inspect(backend_client, self.peer_id)["issuerKeyID"] == new
             )
+            report_renewal_stage("application-identities-check")
             if self.identities() != baseline:
                 raise ProofError("application restarted during live renewal")
             print("PASS ssr-live-forced-svid-renewal-without-restart", flush=True)

@@ -463,3 +463,160 @@ def test_main_success_does_not_emit_failure_receipt(monkeypatch, capsys):
     assert proof.main() == 0
     item.run.assert_called_once_with()
     assert capsys.readouterr().out == ""
+
+
+_RENEWAL_STAGE_ORDER = (
+    "activate",
+    "active-authority-check",
+    "taint-stream-open",
+    "taint-authority",
+    "taint-stream-retirement",
+    "frontend-issuer-renewal",
+    "frontend-leaf-check",
+    "backend-issuer-renewal",
+    "application-identities-check",
+)
+
+
+@pytest.mark.parametrize("stage", _RENEWAL_STAGE_ORDER)
+def test_renewal_stage_is_closed_and_payload_free(stage, capsys):
+    proof.report_renewal_stage(stage)
+    assert capsys.readouterr().out == f"CHECK ssr-live-renewal-stage={stage}\n"
+
+
+def test_renewal_stage_rejects_untrusted_values_without_rendering(capsys):
+    class Untrusted:
+        def __str__(self):
+            raise AssertionError("untrusted value rendered")
+
+        def __repr__(self):
+            raise AssertionError("untrusted value rendered")
+
+        def __eq__(self, other):
+            raise AssertionError("untrusted value compared")
+
+    for stage in (Untrusted(), "unknown", "activate\npayload", None):
+        with pytest.raises(proof.ProofError, match="invalid renewal diagnostic stage"):
+            proof.report_renewal_stage(stage)
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("failed_stage", _RENEWAL_STAGE_ORDER)
+def test_renewal_boundary_failure_preserves_cleanup_and_exit(
+    monkeypatch, capsys, failed_stage
+):
+    from contextlib import contextmanager
+
+    class PrivateFailure(proof.ProofError):
+        def __str__(self):
+            raise AssertionError("provider exception rendered")
+
+        def __repr__(self):
+            raise AssertionError("provider exception rendered")
+
+    item = lifecycle()
+    original = {"backend": "production"}
+    state = {"issuer": "ab", "roots": ["ab"], "streams": 0, "renewed_reads": 0}
+
+    def operation(stage):
+        if stage == failed_stage:
+            raise PrivateFailure("private-provider-payload")
+
+    def material(identity):
+        return {
+            "selfID": identity,
+            "leafSHA256": ("a" if state["issuer"] == "ab" else "b") * 64,
+            "leafNotAfterUnix": 4102444800,
+            "issuerKeyID": state["issuer"],
+            "roots": list(state["roots"]),
+        }
+
+    frozen = material(item.peer_id)
+
+    def command(*args, **kwargs):
+        if args[0] == "get":
+            return json.dumps({"spec": {"selector": original}})
+        if args[0] == "logs":
+            return json.dumps(frozen)
+        return "CHECK=200"
+
+    def fixture(name, *args):
+        item.pods.append(name)
+        return name
+
+    def ca(action, *args):
+        if action == "prepare":
+            state["roots"] = ["ab", "cd"]
+            return {"prepared_authority": {"authority_id": "cd"}}
+        if action == "activate":
+            operation("activate")
+            state["issuer"] = "cd"
+        if action == "show" and state["issuer"] == "cd":
+            operation("active-authority-check")
+        if action == "taint":
+            operation("taint-authority")
+        return {"active": {"authority_id": state["issuer"]}}
+
+    @contextmanager
+    def stream():
+        state["streams"] += 1
+        renewal = state["streams"] == 2
+        if renewal:
+            operation("taint-stream-open")
+        yield
+        if renewal:
+            operation("taint-stream-retirement")
+
+    def inspect(pod, identity):
+        if state["issuer"] == "cd":
+            if identity == item.self_id:
+                state["renewed_reads"] += 1
+                operation(
+                    "frontend-issuer-renewal"
+                    if state["renewed_reads"] == 1
+                    else "frontend-leaf-check"
+                )
+            else:
+                operation("backend-issuer-renewal")
+        return material(identity)
+
+    def identities():
+        if state["issuer"] == "cd":
+            operation("application-identities-check")
+        return {"pods": []}
+
+    def wait(check, **kwargs):
+        assert check()
+
+    item.kubectl = Mock(side_effect=command)
+    item.fixture = Mock(side_effect=fixture)
+    item.route = Mock()
+    item.source_failure = Mock()
+    item.stream = stream
+    item.inspect = Mock(side_effect=inspect)
+    item.peer = Mock(side_effect=lambda *args: material(item.peer_id))
+    item.ca = Mock(side_effect=ca)
+    item.proxy_status = Mock(side_effect=[200, 502, 200])
+    item.identities = Mock(side_effect=identities)
+    monkeypatch.setattr(proof, "wait_for", wait)
+    monkeypatch.setattr(
+        proof.argparse.ArgumentParser, "parse_args", lambda _: item.args
+    )
+    monkeypatch.setattr(proof, "Lifecycle", lambda _: item)
+
+    assert proof.main() == 1
+    output = capsys.readouterr()
+    expected = _RENEWAL_STAGE_ORDER[: _RENEWAL_STAGE_ORDER.index(failed_stage) + 1]
+    assert output.out.splitlines() == [
+        *(f"CHECK ssr-live-initial-stage={stage}" for stage in _INITIAL_STAGE_ORDER),
+        "PASS ssr-live-source-failure-and-recovery",
+        "PASS ssr-live-wrong-peer-same-ca",
+        "PASS ssr-live-ca-overlap-retires-stale-stream",
+        *(f"CHECK ssr-live-renewal-stage={stage}" for stage in expected),
+        "CHECK ssr-live-fixture-cleanup",
+        "PASS ssr-live-fixture-cleanup",
+        "FAIL ssr-live-spiffe-lifecycle",
+    ]
+    assert output.err == ""
+    assert not item.pods
+    item.route.assert_called_with(original)
