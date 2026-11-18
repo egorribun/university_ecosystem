@@ -5447,10 +5447,11 @@
           "needs": [],
           "artifacts": [],
           "retry_policy": {
-            "mode": "none",
-            "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Redis service readiness uses five health probes before pytest starts. These are not test retries; the fixed pytest invocation is not retried and preserves its exit status. Keep readiness retry classification under review."
           }
         }
       }

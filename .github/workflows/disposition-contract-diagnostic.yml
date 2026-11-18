@@ -1,7 +1,7 @@
 name: Disposition Contract Diagnostic
 
 # Additive evidence only. This lane never replaces required CI or Coverage.
-on:
+"on":
   pull_request:
     paths:
       - ".github/workflows/disposition-contract-diagnostic.yml"
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout diagnostic implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 8ae036551fb7b19360a0ca238add3de371a0a9ac
+          ref: 952c17ac33b15341ee218aeb535d6516aa1b1812
           path: diagnostic
           fetch-depth: 0
           persist-credentials: false
@@ -57,7 +57,7 @@ jobs:
 
       - name: Verify both checkouts
         env:
-          DIAGNOSTIC_SHA: 8ae036551fb7b19360a0ca238add3de371a0a9ac
+          DIAGNOSTIC_SHA: 952c17ac33b15341ee218aeb535d6516aa1b1812
           SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
         run: |
           set -euo pipefail
@@ -74,6 +74,8 @@ jobs:
       - name: Set up uv without shared cache
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
         with:
+          version: "0.12.23"
+          working-directory: subject
           enable-cache: false
 
       - name: Install immutable subject dependencies
@@ -84,7 +86,7 @@ jobs:
 
       - name: Recheck immutable tracked sources after installation
         env:
-          DIAGNOSTIC_SHA: 8ae036551fb7b19360a0ca238add3de371a0a9ac
+          DIAGNOSTIC_SHA: 952c17ac33b15341ee218aeb535d6516aa1b1812
           SUBJECT_SHA: 3d751d30f43c6e1e5a6c9aa046ea7137eb20e912
         run: |
           set -euo pipefail

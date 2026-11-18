@@ -8,13 +8,13 @@ import yaml
 from scripts.quality.validate_ci_check_catalog import validate_catalog
 
 _WORKFLOW = ".github/workflows/disposition-contract-diagnostic.yml"
-_REPORTER = "8ae036551fb7b19360a0ca238add3de371a0a9ac"
+_REPORTER = "952c17ac33b15341ee218aeb535d6516aa1b1812"
 _SUBJECT = "3d751d30f43c6e1e5a6c9aa046ea7137eb20e912"
 
 
 def test_disposition_diagnostic_is_source_bound_and_advisory() -> None:
     root = Path(__file__).resolve().parents[1]
-    workflow = yaml.load((root / _WORKFLOW).read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.safe_load((root / _WORKFLOW).read_text())
     catalog = json.loads((root / "quality/ci-check-catalog.json").read_text())
     schema = json.loads((root / "quality/ci-check-catalog.schema.json").read_text())
     assert validate_catalog(catalog, repository_root=root, schema=schema) == []
@@ -22,15 +22,21 @@ def test_disposition_diagnostic_is_source_bound_and_advisory() -> None:
     assert entry["jobs"]["diagnostic"]["profile"] == "advisory"
     assert entry["jobs"]["diagnostic"]["needs"] == []
     assert entry["jobs"]["diagnostic"]["artifacts"] == []
+    retry = entry["jobs"]["diagnostic"]["retry_policy"]
+    assert retry["mode"] == "review-required"
+    assert retry["review_required"] is True
+    assert retry["first_failure_preserved"] is False
+    assert retry["classifier"] == "not-yet-classified"
     assert workflow["permissions"] == {"contents": "read"}
     assert workflow["cache-mode"] == "none"
-    assert workflow["concurrency"]["cancel-in-progress"] == "false"
+    assert workflow["concurrency"]["cancel-in-progress"] is False
     assert set(workflow["on"]) == {"pull_request"}
     assert set(workflow["jobs"]) == {"diagnostic"}
     job = workflow["jobs"]["diagnostic"]
     assert "needs" not in job
     assert "continue-on-error" not in job
-    assert job["timeout-minutes"] == "45"
+    assert type(job["timeout-minutes"]) is int
+    assert job["timeout-minutes"] == 45
     assert job["if"] == (
         "${{ github.event_name == 'pull_request' && "
         "github.event.pull_request.head.repo.full_name == github.repository && "
@@ -51,15 +57,17 @@ def test_disposition_diagnostic_is_source_bound_and_advisory() -> None:
     assert steps[0]["with"] == {
         "ref": _REPORTER,
         "path": "diagnostic",
-        "fetch-depth": "0",
-        "persist-credentials": "false",
+        "fetch-depth": 0,
+        "persist-credentials": False,
     }
     assert steps[1]["with"] == {
         "ref": _SUBJECT,
         "path": "subject",
-        "fetch-depth": "0",
-        "persist-credentials": "false",
+        "fetch-depth": 0,
+        "persist-credentials": False,
     }
+    assert all(type(steps[index]["with"]["fetch-depth"]) is int for index in (0, 1))
+    assert all(steps[index]["with"]["persist-credentials"] is False for index in (0, 1))
     expected_pin_env = {"DIAGNOSTIC_SHA": _REPORTER, "SUBJECT_SHA": _SUBJECT}
     assert steps[2]["env"] == steps[6]["env"] == expected_pin_env
     assert steps[2]["run"].splitlines() == [
@@ -71,7 +79,11 @@ def test_disposition_diagnostic_is_source_bound_and_advisory() -> None:
         '"$DIAGNOSTIC_SHA" "$SUBJECT_SHA"',
     ]
     assert steps[3]["with"] == {"python-version": "3.14"}
-    assert steps[4]["with"] == {"enable-cache": "false"}
+    assert steps[4]["with"] == {
+        "version": "0.12.23",
+        "working-directory": "subject",
+        "enable-cache": False,
+    }
     assert steps[5]["working-directory"] == "subject"
     assert steps[5]["run"].splitlines() == ["uv lock --check", "uv sync --frozen"]
     assert steps[6]["run"].splitlines() == [
