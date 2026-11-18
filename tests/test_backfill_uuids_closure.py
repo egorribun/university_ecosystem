@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import runpy
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -111,7 +114,73 @@ async def test_main_rolls_back_after_backfill_failure():
         ),
         patch.object(backfill_uuids.logger, "error") as error,
     ):
-        await backfill_uuids.main()
+        assert await backfill_uuids.main() == 1
 
     session.rollback.assert_awaited_once_with()
     error.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_phase", ["own", "map", "foreign", None])
+async def test_main_status_preserves_phase_order_and_rollback(failed_phase):
+    session = AsyncMock()
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    user_map = {1: "synthetic-uuid"}
+    phases = {
+        "own": AsyncMock(),
+        "map": AsyncMock(return_value=user_map),
+        "foreign": AsyncMock(),
+    }
+    if failed_phase is not None:
+        phases[failed_phase].side_effect = RuntimeError("synthetic backfill failure")
+
+    with (
+        patch.object(backfill_uuids, "async_session", return_value=context),
+        patch.object(backfill_uuids, "configure_logging"),
+        patch.object(backfill_uuids, "backfill_own_uuids", phases["own"]),
+        patch.object(backfill_uuids, "get_user_id_map", phases["map"]),
+        patch.object(backfill_uuids, "backfill_foreign_uuids", phases["foreign"]),
+        patch.object(backfill_uuids.logger, "info") as info,
+        patch.object(backfill_uuids.logger, "error") as error,
+    ):
+        result = await backfill_uuids.main()
+
+    assert result == (0 if failed_phase is None else 1)
+    phases["own"].assert_awaited_once_with(session)
+    if failed_phase == "own":
+        phases["map"].assert_not_awaited()
+    else:
+        phases["map"].assert_awaited_once_with(session)
+    if failed_phase in ("own", "map"):
+        phases["foreign"].assert_not_awaited()
+    else:
+        phases["foreign"].assert_awaited_once_with(session, user_map)
+    if failed_phase is None:
+        session.rollback.assert_not_awaited()
+        error.assert_not_called()
+        info.assert_called_once_with("Backfill complete!")
+    else:
+        session.rollback.assert_awaited_once_with()
+        error.assert_called_once()
+        info.assert_not_called()
+    context.__aexit__.assert_awaited_once_with(None, None, None)
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_direct_entrypoint_propagates_main_status_without_extra_output(status, capsys):
+    def run(coroutine):
+        assert coroutine.cr_code.co_name == "main"
+        coroutine.close()
+        return status
+
+    with patch.object(asyncio, "run", side_effect=run) as execute:
+        with pytest.raises(SystemExit) as raised:
+            runpy.run_path(str(Path(backfill_uuids.__file__)), run_name="__main__")
+
+    assert raised.value.code == status
+    execute.assert_called_once()
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
