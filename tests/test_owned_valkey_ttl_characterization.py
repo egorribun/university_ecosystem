@@ -441,6 +441,10 @@ def test_owned_workflow_is_source_bound_and_additive():
         "docker-compose.yml",
     }
     assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"] == {
+        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
     assert set(workflow["jobs"]) == {"characterize"}
     job = workflow["jobs"]["characterize"]
     assert job["runs-on"] == "ubuntu-24.04"
