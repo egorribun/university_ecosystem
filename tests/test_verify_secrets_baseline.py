@@ -31653,12 +31653,19 @@ def test_nov9_wasm_cli_live_projection_refuses_scope_drift(mutation: str) -> Non
         _nov9_historical_506_from_live_policy(policy)
 
 
+@pytest.mark.parametrize("inventory", ["current", "historical"])
 @pytest.mark.parametrize("mutation", ["missing_byte", "extra_byte", "changed_byte"])
-def test_nov9_wasm_cli_live_policy_rejects_byte_drift(mutation: str) -> None:
+def test_nov9_wasm_cli_live_policy_rejects_byte_drift(
+    mutation: str, inventory: str
+) -> None:
     root = Path(__file__).resolve().parents[1]
     policy_bytes = (
         root / "quality/security-false-positive-dispositions.json"
     ).read_bytes()
+    if inventory == "historical":
+        policy_bytes = _nov9_historical_506_policy_bytes(
+            _nov18_ssr_historical_policy(json.loads(policy_bytes))
+        )
     _nov9_assert_live_policy_bytes(policy_bytes)
     if mutation == "missing_byte":
         policy_bytes = policy_bytes[:-1]
@@ -31668,8 +31675,14 @@ def test_nov9_wasm_cli_live_policy_rejects_byte_drift(mutation: str) -> None:
         policy_bytes = policy_bytes.replace(
             b'"schema_version": 1', b'"schema_version": 2'
         )
-    with pytest.raises(AssertionError, match="live disposition"):
-        _nov9_assert_live_policy_bytes(policy_bytes)
+    if inventory == "current" and mutation == "changed_byte":
+        with pytest.raises(
+            verifier.BaselineArtifactError, match="SSR disposition approval scope changed"
+        ):
+            _nov9_assert_live_policy_bytes(policy_bytes)
+    else:
+        with pytest.raises(AssertionError, match="live disposition"):
+            _nov9_assert_live_policy_bytes(policy_bytes)
 
 
 @pytest.mark.parametrize("index", range(3))
