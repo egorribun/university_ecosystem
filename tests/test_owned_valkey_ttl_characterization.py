@@ -436,6 +436,9 @@ def test_owned_workflow_is_source_bound_and_additive():
         ".github/workflows/valkey-ttl-characterization.yml",
         "scripts/quality/owned_valkey_ttl_characterization.py",
         "tests/test_owned_valkey_ttl_characterization.py",
+        "scripts/quality/owned_redis_session_characterization.py",
+        "tests/test_owned_redis_session_characterization.py",
+        "app/**",
         "pyproject.toml",
         "uv.lock",
         "docker-compose.yml",
@@ -462,10 +465,24 @@ def test_owned_workflow_is_source_bound_and_additive():
     ]:
         assert "--label " + label in service["options"]
     steps = job["steps"]
-    assert steps[-1]["run"] == (
+    assert steps[-2]["run"] == (
         "uv run --no-sync python scripts/quality/owned_valkey_ttl_characterization.py"
     )
-    assert steps[-2]["run"] == "uv sync --frozen"
+    assert steps[-3]["run"] == "uv sync --frozen"
+    assert steps[-1] == {
+        "name": "Characterize actual session cache service",
+        "env": {
+            "TTL_ACCEPTANCE_CONTAINER_ID": "${{ job.services.valkey.id }}",
+            "ENVIRONMENT": "test",
+            "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+            "ENV_FILE_PATH": "",
+            "ACCESS_TOKEN_EXPIRE_MINUTES": "10",
+        },
+        "run": (
+            "uv run --no-sync python -m scripts.quality."
+            "owned_redis_session_characterization"
+        ),
+    }
     assert all("continue-on-error" not in step for step in steps)
 
 
