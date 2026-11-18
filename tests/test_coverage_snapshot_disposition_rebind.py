@@ -16,7 +16,8 @@ _POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _LEDGER_PATH = "quality/semgrep-dispositions.json"
 _KIND = "Hex High Entropy String"
 _PREDECESSOR_SHA256 = bytes.fromhex(
-    "80 13 9e cc 82 ad 3c 42 db c4 43 ab 7a 5b ef 8d 48 d7 f4 ee 0b 8b 30 2f ee 1e 2f 35 06 10 65 c9"
+    "80 13 9e cc 82 ad 3c 42 db c4 43 ab 7a 5b ef 8d "
+    "48 d7 f4 ee 0b 8b 30 2f ee 1e 2f 35 06 10 65 c9"
 )
 # (predecessor scanner identity, approved replacement scanner identity).
 _REBINDS = (
@@ -147,3 +148,132 @@ def test_coverage_snapshot_inverse_rejects_scope_drift(
         row[mutation] += " changed"
     with pytest.raises(AssertionError, match="coverage snapshot"):
         coverage_snapshot_historical_policy(policy)
+
+
+_SOURCE_BINDINGS = {
+    ".github/actions/node-actions-coverage/action.yml": (
+        bytes.fromhex(
+            "91 08 0d 17 3f 07 12 d1 e9 b5 2c 12 53 6c c1 04 "
+            "04 01 e0 8f 5e 91 d9 e5 9d a8 e2 6f c1 6e 0f 47"
+        ),
+        bytes.fromhex(
+            "b8 42 38 5a fe 99 85 86 8a 8e 7e dc 07 ac 2e 05 "
+            "0b 2a ad 1b 7f 33 dc 61 d0 70 72 53 0e e9 f0 19"
+        ),
+    ),
+    "tests/test_quality_workflow_contract.py": (
+        bytes.fromhex(
+            "0e f8 b5 4b ad e0 cb 8d ea 7b 33 21 95 14 54 74 "
+            "2d ad be 74 53 be 7e bc e5 bf 1c 7c 7e 70 60 1f"
+        ),
+        bytes.fromhex(
+            "d0 3e 4c 8d a0 04 5b f6 86 d0 8c ac 6b e6 49 f8 "
+            "bf 59 01 85 2d f6 44 42 6f 0c b3 66 64 18 bc 9c"
+        ),
+    ),
+    "quality/semgrep-dispositions.json": (
+        bytes.fromhex(
+            "01 6d 59 04 d0 1b 4e bf 89 bf 72 7b b8 79 92 b5 "
+            "c4 a4 57 f7 b5 5a 8b 92 0b 7e 4b e4 71 7c 17 db"
+        ),
+        bytes.fromhex(
+            "a9 bc 31 86 f5 05 2b 2f 08 94 fb aa 6b a1 a6 11 "
+            "18 0c 8d dc 57 d6 cd 2d ea 5c e8 e2 60 12 8a 35"
+        ),
+    ),
+}
+_NODE_OUTPUT_INSERTION = (
+    b"outputs:\n"
+    b"  artifact-id:\n"
+    b"    description: Server-issued ID of this same-job upload, "
+    b"for presence diagnostics only\n"
+    b"    value: ${{ steps.capture_upload.outputs.artifact-id }}\n"
+)
+_WORKFLOW_ENV_INSERTION = (
+    b'        "EXPECTED_NODE_ARTIFACT_ID": (\n'
+    b'            "${{ steps.node_action_coverage.outputs.artifact-id }}"\n'
+    b"        ),\n"
+)
+
+
+def coverage_snapshot_historical_policy_bytes(actual: bytes) -> bytes:
+    policy = json.loads(actual)
+    assert actual == (json.dumps(policy, sort_keys=True, indent=2) + "\n").encode(), (
+        "coverage snapshot policy is not canonical"
+    )
+    restored = coverage_snapshot_historical_policy(policy)
+    return (json.dumps(restored, sort_keys=True, indent=2) + "\n").encode()
+
+
+def coverage_snapshot_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    """Normalize only exact approved postimages before older source guards run."""
+    if path not in _SOURCE_BINDINGS:
+        return actual
+    current, previous = _SOURCE_BINDINGS[path]
+    message = f"conditional disposition source coverage snapshot changed: {path}"
+    assert hashlib.sha256(actual).digest() == current, message
+    historical = actual
+    if path == _LEDGER_PATH:
+        for companion in (
+            ".github/actions/node-actions-coverage/action.yml",
+            "tests/test_quality_workflow_contract.py",
+        ):
+            new_digest, old_digest = _SOURCE_BINDINGS[companion]
+            new_hex = new_digest.hex().encode("ascii")
+            assert historical.count(new_hex) == 1, message
+            historical = historical.replace(
+                new_hex, old_digest.hex().encode("ascii"), 1
+            )
+    else:
+        insertion = (
+            _NODE_OUTPUT_INSERTION
+            if path.endswith("action.yml")
+            else _WORKFLOW_ENV_INSERTION
+        )
+        assert historical.count(insertion) == 1, message
+        historical = historical.replace(insertion, b"", 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+@pytest.mark.parametrize("path", list(_SOURCE_BINDINGS))
+def test_coverage_snapshot_source_inverse_is_exact(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    restored = coverage_snapshot_historical_source_bytes(path, actual)
+    assert hashlib.sha256(restored).digest() == _SOURCE_BINDINGS[path][1]
+    assert actual != restored
+
+
+@pytest.mark.parametrize("path", list(_SOURCE_BINDINGS))
+@pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate", "predecessor"])
+def test_coverage_snapshot_source_inverse_rejects_drift(
+    path: str, mutation: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    if mutation == "extra":
+        actual += b"\n"
+    elif mutation == "missing":
+        actual = actual[:-1]
+    elif mutation == "duplicate":
+        actual += actual
+    else:
+        actual = coverage_snapshot_historical_source_bytes(path, actual)
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        coverage_snapshot_historical_source_bytes(path, actual)
+
+
+def test_coverage_snapshot_source_inverse_leaves_unrelated_paths_unchanged() -> None:
+    assert coverage_snapshot_historical_source_bytes("other", b"same") == b"same"
+
+
+def test_coverage_snapshot_policy_bytes_preserve_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / _POLICY_PATH).read_bytes()
+    restored = coverage_snapshot_historical_policy_bytes(actual)
+    assert json.loads(restored) == coverage_snapshot_historical_policy(
+        json.loads(actual)
+    )
+    with pytest.raises(AssertionError, match="not canonical"):
+        coverage_snapshot_historical_policy_bytes(actual + b"\n")
