@@ -15961,7 +15961,9 @@ def test_aud447_allocation_refuses_duplicates_sixth_identity_and_cap_growth() ->
                 _disposition_document(*records, addition),
                 today=verifier.date(2026, 10, 31),
             )
-    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory changed"
+    ):
         _nov13_verify_dispositions(
             _disposition_document(*([records[0]] * 525)),
             today=verifier.date(2026, 10, 31),
@@ -16472,7 +16474,9 @@ def test_nov1_v4_policy_rejects_each_duplicate_identity(index: int) -> None:
 def test_nov1_v4_policy_keeps_the_524_record_cap() -> None:
     assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 524
     record = _nov1_v4_binding_record(0)
-    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory changed"
+    ):
         _nov13_verify_dispositions(
             _disposition_document(*([record] * 525)),
             today=verifier.date(2026, 11, 1),
@@ -32215,6 +32219,7 @@ _NOV11_GO_IMAGE_APPROVED_RECORD = {
 
 
 def _nov11_historical_509_from_live_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    policy = _nov18_ssr_historical_policy(policy)
     policy = _nov11_restore_helper_identities(policy)
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
@@ -36578,3 +36583,56 @@ def test_nov18_ssr_trusted_sources_use_selected_tree_not_workspace(
             verifier.load_trusted_base_false_positive_dispositions(
                 selected, repository_root=tmp_path, today=verifier.date(2026, 11, 18)
             )
+
+
+def test_nov18_ssr_projection_precedes_historical_identity_rewrites(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _nov18_ssr_live_policy()
+    predecessor = _nov18_ssr_historical_policy(policy)
+    restore = _nov11_restore_helper_identities
+    expected = _nov11_historical_509_from_live_policy(predecessor)
+    observed: list[dict[str, Any]] = []
+
+    def capture_before_rewrite(document: dict[str, Any]) -> dict[str, Any]:
+        observed.append(copy.deepcopy(document))
+        return restore(document)
+
+    monkeypatch.setitem(
+        globals(), "_nov11_restore_helper_identities", capture_before_rewrite
+    )
+    assert _nov11_historical_509_from_live_policy(policy) == expected
+    assert observed == [predecessor]
+    assert len(policy["records"]) == 530
+    assert policy == _nov18_ssr_live_policy()
+
+
+def test_nov18_ssr_invalid_append_never_reaches_historical_rewrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _nov18_ssr_live_policy()
+    policy["records"][-1]["identity"]["hashed_secret_bytes"][0] ^= 1
+    reached: list[object] = []
+    monkeypatch.setitem(
+        globals(),
+        "_nov11_restore_helper_identities",
+        lambda value: reached.append(value),
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="approval scope changed"):
+        _nov11_historical_509_from_live_policy(policy)
+    assert reached == []
+
+
+def test_nov18_ssr_legacy_cap_still_rejects_unapproved_525_records() -> None:
+    record = _nov1_v4_binding_record(0)
+    document = _disposition_document(*([record] * 525))
+    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+        verifier._validate_pre_ssr_false_positive_dispositions(
+            document, today=verifier.date(2026, 11, 1)
+        )
+    with pytest.raises(
+        verifier.BaselineArtifactError, match="SSR disposition inventory"
+    ):
+        verifier.validate_false_positive_dispositions(
+            document, today=verifier.date(2026, 11, 1)
+        )
