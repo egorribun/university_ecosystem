@@ -13,6 +13,7 @@ PROGRESSIVE_DELAY_STEPS: tuple[float, ...] = (1.0, 2.0, 5.0, 10.0, 20.0, 30.0)
 PROGRESSIVE_DELAY_MAX: float = 30.0
 PROGRESSIVE_DELAY_TTL: int = 900  # 15 minutes
 
+
 @dataclass(frozen=True, slots=True)
 class _DelayEntry:
     count: int
