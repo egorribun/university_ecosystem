@@ -419,3 +419,20 @@ def test_sync_spicedb_preserves_configured_target(
         else:
             assert chosen.call_args.kwargs["token"] == "synthetic-token"
             credentials.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("spicedb", "spicedb:1234"),
+        ("127.0.0.1", "127.0.0.1:1234"),
+        ("::1", "[::1]:1234"),
+        ("[::1]", "[::1]:1234"),
+        ("fe80::1%eth0", "[fe80::1%eth0]:1234"),
+        ("[fe80::1%eth0]", "[fe80::1%eth0]:1234"),
+    ],
+)
+def test_format_target_preserves_host_boundaries(host, expected):
+    from app.core.spicedb import _format_target
+
+    assert _format_target(host, 1234) == expected

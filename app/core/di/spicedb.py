@@ -38,10 +38,14 @@ class SpiceDBProvider(Provider):
         """Singleton async gRPC channel — opened once per app process."""
 
         from app.core.config import settings
-        from app.core.spicedb import _parse_endpoint, create_async_spicedb_channel
+        from app.core.spicedb import (
+            _format_target,
+            _parse_endpoint,
+            create_async_spicedb_channel,
+        )
 
         host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
-        target = f"{host}:{port}"
+        target = _format_target(host, port)
         token = settings.spicedb_preshared_key
 
         # TD-W5-08 / Wave 13: keepalive options detect dead connections quickly.
