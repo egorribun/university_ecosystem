@@ -34341,8 +34341,14 @@ def test_push_probe_projection_rejects_drift(
         actual = live.replace(b"        probe,\n", b"", 1)
         path = _PUSH_PROBE_LIVE_STAND_PATH
     else:
-        actual = ledger_bytes + b"\n"
         path = _PUSH_PROBE_LEDGER_PATH
+        ledger_bytes = coverage_snapshot_historical_source_bytes(path, ledger_bytes)
+        monkeypatch.setitem(
+            globals(),
+            "coverage_snapshot_historical_source_bytes",
+            lambda _path, data: data,
+        )
+        actual = ledger_bytes + b"\n"
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _push_probe_source_bytes(path, actual)
 
@@ -35715,7 +35721,16 @@ def test_map_zoom_source_projection_rejects_drift(
             )
     else:
         path = _NOV16_LEDGER_PATH
-        actual = (root / path).read_bytes()
+        # Validate and project the current ledger before corrupting its predecessor.
+        # Bypass only the newer layer so the map digest/count guards are exercised.
+        actual = coverage_snapshot_historical_source_bytes(
+            path, (root / path).read_bytes()
+        )
+        monkeypatch.setitem(
+            globals(),
+            "coverage_snapshot_historical_source_bytes",
+            lambda _path, data: data,
+        )
         current = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
         if mutation == "ledger_missing":
             actual = actual.replace(current, b"0" * len(current), 1)
