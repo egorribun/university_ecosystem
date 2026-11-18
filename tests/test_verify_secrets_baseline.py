@@ -30915,8 +30915,9 @@ def test_aud380_ssr_predecessor_pin_still_rejects_file_mutation(
     project = _aud154_historical_source_bytes
     # Validate the complete current postimage before entering the old layer.
     predecessor = project(relative_path, target.read_bytes())
-    assert _projected_sha256(predecessor) == (
-        _AUD380_CURRENT_DELTA_SOURCE_SHA256[relative_path]
+    assert (
+        _projected_sha256(predecessor)
+        == (_AUD380_CURRENT_DELTA_SOURCE_SHA256[relative_path])
     )
     target.write_bytes(predecessor)
 
