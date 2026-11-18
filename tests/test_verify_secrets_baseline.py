@@ -36139,9 +36139,7 @@ def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
     previous = _nats_sqlite_workflow_predecessor(actual)
-    assert previous.replace(
-        _NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1
-    ) == actual
+    assert previous.replace(_NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1) == actual
     job = yaml.safe_load(actual)["jobs"]["integration-tests"]
     old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
     assert job["env"] == old_job["env"]
@@ -36162,9 +36160,7 @@ def test_nats_sqlite_projection_rejects_unapproved_bytes(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
     changed = {
-        "missing": actual.replace(
-            _NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1
-        ),
+        "missing": actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1),
         "duplicate": actual + _NATS_SQLITE_BLOCK,
         "file": actual.replace(b"sqlite+aiosqlite:///:memory:", b"sqlite:///test.db"),
         "extra": actual + b"\n",
