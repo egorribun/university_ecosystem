@@ -1,5 +1,6 @@
 """Contracts for the advisory Go mutation diagnostic boundary."""
 
+import re
 from pathlib import Path
 
 import yaml
@@ -23,6 +24,38 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     ]
     assert len(matches) == 1, f"expected one step named {name!r}"
     return matches[0]
+
+
+def test_go_mutation_uses_a_separate_compatible_toolchain() -> None:
+    jobs = _load_workflow()["jobs"]
+    diagnostic_setup = _step(jobs["mutation-diagnostic"], "Setup Go")
+    version = diagnostic_setup["with"]["go-version"]
+    assert isinstance(version, str)
+    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)
+    assert tuple(map(int, version.split("."))) >= (1, 27, 0)
+    for job in ("test", "lint"):
+        setup = _step(jobs[job], "Setup Go")
+        assert setup["with"]["go-version"] == "${{ inputs.go-version }}"
+
+
+def test_go_mutation_provenance_matches_the_installed_module() -> None:
+    diagnostic = _load_workflow()["jobs"]["mutation-diagnostic"]
+    install = _step(diagnostic, "Install go-mutesting")["run"]
+    pinned = re.search(
+        r"go install (github\.com/avito-tech/go-mutesting)/cmd/go-mutesting"
+        r"@(v[^\s]+)",
+        install,
+    )
+    assert pinned is not None
+    module, version = pinned.groups()
+    finalize = _step(diagnostic, "Finalize diagnostic failure evidence")
+    assert finalize["env"]["TOOL_VERSION"] == f"{module}@{version}"
+    initialize = _step(diagnostic, "Initialize mutation diagnostic evidence")["run"]
+    assert re.search(
+        rf'"tool_version":\s*\(\s*"{re.escape(module)}@"\s*'
+        rf'"{re.escape(version)}"\s*\)',
+        initialize,
+    )
 
 
 def test_go_coverage_producer_is_independent_of_advisory_mutation() -> None:
