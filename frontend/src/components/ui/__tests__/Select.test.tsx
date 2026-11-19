@@ -391,7 +391,7 @@ describe("Select — open / close", () => {
 })
 
 describe("Select — selection", () => {
-  it.each([1, 2])("ignores mouse button %i without consuming or selecting", (button) => {
+  it.each([1, 2])("ignores mouse button %i without selecting or moving focus", (button) => {
     const onValueChange = vi.fn()
     renderSelect({ value: "apple", onValueChange })
     fireEvent.click(trigger())
@@ -400,7 +400,7 @@ describe("Select — selection", () => {
 
     fireEvent(option, event)
 
-    expect(event.defaultPrevented).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
     expect(onValueChange).not.toHaveBeenCalled()
     expect(trigger()).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("option", { name: "Apple" })).toHaveAttribute("aria-selected", "true")

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { readFile } from "node:fs/promises"
+import process from "node:process"
 import test from "node:test"
+import { URL } from "node:url"
 
 const helper = new URL("./snackbar-clipboard-diagnostic.ts", import.meta.url)
 const base = {
@@ -79,7 +81,10 @@ test("sampling is bounded and never invokes clipboard or changes permissions", a
   assert.doesNotMatch(source, /clipboard\??\.(?:readText|writeText|read|write)\(/u)
   assert.doesNotMatch(source, /\.(?:grantPermissions|clearPermissions)\(/u)
   assert.match(source, /setTimeout/u)
-  const spec = await readFile(new URL("./settings-radio-focus.live.spec.ts", import.meta.url), "utf8")
+  const spec = await readFile(
+    new URL("./settings-radio-focus.live.spec.ts", import.meta.url),
+    "utf8"
+  )
   assert.equal(
     spec.split("\n")[443],
     'test("Settings Snackbar content receives a real pointer click on Profile", async ({ page }) => {'
@@ -136,7 +141,10 @@ await sampleSnackbarClipboardFailure(
 })
 
 test("pointer dismissal freezes timers without a sampled-time pause race", async () => {
-  const source = await readFile(new URL("./settings-radio-focus.live.spec.ts", import.meta.url), "utf8")
+  const source = await readFile(
+    new URL("./settings-radio-focus.live.spec.ts", import.meta.url),
+    "utf8"
+  )
   const spec = source.slice(source.indexOf('test("Settings Snackbar content'))
   const sequence = [
     "await expect(alert).toBeVisible()",

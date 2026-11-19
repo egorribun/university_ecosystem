@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import api, { SKIP_UNAUTHORIZED_HEADER } from "@/api/client"
 import type { NowPlaying } from "@/types/spotify"
@@ -234,6 +234,7 @@ export const useNowPlaying = (enabled: boolean) => {
   })
 
   const { data, refetch } = query
+  const queryClient = useQueryClient()
 
   // The placeholder makes the query successful from the first render; a
   // failed poll keeps the last data, so persisting on every data change
@@ -246,14 +247,31 @@ export const useNowPlaying = (enabled: boolean) => {
   useEffect(() => {
     // Effects never run during server rendering, so the document exists here.
     if (!active) return
-    const listener = () => {
-      if (document.visibilityState === "visible" && ownsSession() && rateLimitDelay() === 0) {
-        void refetch()
+    let resume: ReturnType<typeof setTimeout> | undefined
+    const resumeWhenAllowed = (since: number) => {
+      resume = undefined
+      if (document.visibilityState !== "visible" || !ownsSession()) return
+      const wait = rateLimitDelay()
+      if (wait > 0) {
+        // A hidden document cleared the polling timer. Honour Retry-After,
+        // then resume unless the interval timer has already polled.
+        resume = setTimeout(() => resumeWhenAllowed(since), wait)
+        return
       }
+      const state = queryClient.getQueryState(nowPlayingQueryKey)!
+      if (Math.max(state.dataUpdatedAt, state.errorUpdatedAt) > since) return
+      void refetch()
+    }
+    const listener = () => {
+      clearTimeout(resume)
+      resumeWhenAllowed(Date.now())
     }
     document.addEventListener("visibilitychange", listener)
-    return () => document.removeEventListener("visibilitychange", listener)
-  }, [active, refetch, ownsSession])
+    return () => {
+      clearTimeout(resume)
+      document.removeEventListener("visibilitychange", listener)
+    }
+  }, [active, refetch, ownsSession, queryClient])
 
   return query
 }

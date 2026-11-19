@@ -152,3 +152,76 @@ it("preserves Retry-After when the document becomes visible during Spotify backo
     unmount()
   }
 })
+
+it("resumes polling after Spotify backoff when the 429 arrived while hidden", async () => {
+  let visibility: DocumentVisibilityState = "visible"
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => visibility,
+  })
+  const { get, result, unmount } = await pollingSession({ track_id: "cached", is_playing: true })
+  const { __testing } = await import("@/hooks/useNowPlaying")
+
+  try {
+    visibility = "hidden"
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("rate limited"), {
+        isAxiosError: true,
+        response: { status: 429, headers: { "retry-after": "10" } },
+      })
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+    expect(get).toHaveBeenCalledTimes(2)
+    const deadline = __testing.getRateLimitedUntil()
+
+    visibility = "visible"
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    await act(() => vi.advanceTimersByTimeAsync(deadline - Date.now() - 1))
+    expect(get).toHaveBeenCalledTimes(2)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(get).toHaveBeenCalledTimes(3)
+
+    // Polling continues on its normal interval after the resumed request.
+    await act(() => vi.advanceTimersByTimeAsync(500))
+    expect(get).toHaveBeenCalledTimes(4)
+  } finally {
+    unmount()
+  }
+})
+
+it("drops a pending backoff resume when the document hides again", async () => {
+  let visibility: DocumentVisibilityState = "hidden"
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => visibility,
+  })
+  const { get, result, unmount } = await pollingSession({ track_id: "cached", is_playing: true })
+  const { __testing } = await import("@/hooks/useNowPlaying")
+
+  try {
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("rate limited"), {
+        isAxiosError: true,
+        response: { status: 429, headers: { "retry-after": "10" } },
+      })
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+    const calls = get.mock.calls.length
+    const deadline = __testing.getRateLimitedUntil()
+
+    visibility = "visible"
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    visibility = "hidden"
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    await act(() => vi.advanceTimersByTimeAsync(deadline - Date.now() + 1_000))
+
+    expect(get).toHaveBeenCalledTimes(calls)
+  } finally {
+    unmount()
+  }
+})
