@@ -405,3 +405,70 @@ async def test_reference_cleanup_retains_when_visibility_is_unknown(
     )
     db.execute.assert_not_awaited()
     client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.parametrize("referenced", [True, False])
+@pytest.mark.asyncio
+async def test_reference_cleanup_queries_after_postgres_rls_is_inactive(
+    referenced, db_session, user_factory, monkeypatch
+):
+    from types import SimpleNamespace
+
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="test-bucket",
+        client=client,
+        base_url="https://cdn.example.test/uploads",
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    owner = await user_factory(role="admin")
+    event = await _persist_event(db_session, owner)
+    filename = f"event_{event.id}_{'f' * 32}.png"
+    storage_key = f"tmp/event_images/{filename}"
+    owner_url = f"{storage.base_url}/{storage_key}"
+    reference_url = (
+        owner_url if referenced else f"{storage.base_url}/archive/{filename}.backup"
+    )
+    event.image_url = reference_url
+    await db_session.commit()
+
+    observations = []
+
+    async def row_security_active(statement):
+        observations.append(("visibility", statement))
+        return False
+
+    async def find_references(statement):
+        result = await db_session.execute(statement)
+        frozen = result.freeze()
+        observations.append(("references", statement, frozen().scalars().all()))
+        return frozen()
+
+    postgres_visibility = SimpleNamespace(
+        get_bind=MagicMock(
+            return_value=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        ),
+        scalar=AsyncMock(side_effect=row_security_active),
+        execute=AsyncMock(side_effect=find_references),
+    )
+
+    removed = await content_media.delete_unreferenced_owned_event_image(
+        owner_url, event_id=event.id, db_session=postgres_visibility
+    )
+
+    assert [observation[0] for observation in observations] == [
+        "visibility",
+        "references",
+    ]
+    visibility_query = observations[0][1]
+    assert "pg_catalog.row_security_active" in str(visibility_query)
+    assert "events" in visibility_query.compile().params.values()
+    assert "events.image_url" in str(observations[1][1])
+    assert observations[1][2] == [reference_url]
+    assert removed == (not referenced)
+    if referenced:
+        client.delete_object.assert_not_awaited()
+    else:
+        client.delete_object.assert_awaited_once_with(
+            Bucket="test-bucket", Key=storage_key
+        )
