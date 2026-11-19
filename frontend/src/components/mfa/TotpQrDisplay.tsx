@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, lazy, Suspense } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react"
 import { Copy, Check } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useAnnouncer } from "@/components/ui/LiveRegionProvider"
@@ -19,6 +19,17 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   const { announce } = useAnnouncer()
   const [copied, setCopied] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
+  const mountedRef = useRef(false)
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
+    }
+  }, [])
 
   const normalizedSecret = useMemo(
     () =>
@@ -32,11 +43,19 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(normalizedSecret)
+      if (!mountedRef.current) return
+      if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current)
       setCopied(true)
       announce(t("mfa.totp.copied"))
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
+      feedbackTimerRef.current = setTimeout(() => {
+        feedbackTimerRef.current = null
+        setCopied(false)
+      }, COPY_FEEDBACK_MS)
     } catch {
-      // Ignored
+      // Ignored after this display has unmounted.
+      if (!mountedRef.current) return
+      if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
       setCopied(false)
     }
   }, [announce, normalizedSecret, t])
