@@ -45,7 +45,9 @@ func TestUpgradeAdmissionRetriesBucketRetiredAfterLookup(t *testing.T) {
 	require.False(t, limiter.Allow("client"))
 	require.Equal(t, float64(2), old.tokens)
 	require.True(t, old.retired)
-	require.False(t, old.allow(2, 0))
+	allowed, stale := old.allowCurrent(2, 0)
+	require.False(t, allowed)
+	require.True(t, stale)
 }
 
 func TestUpgradeStaleSweepPreservesReplacement(t *testing.T) {

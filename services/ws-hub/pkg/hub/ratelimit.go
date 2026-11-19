@@ -27,16 +27,10 @@ type wsUpgradeBucket struct {
 	retired  bool // guarded by mu; stale map readers must retry
 }
 
-// allow returns true if a token is available and consumes it.
-// capacity is the max burst; ratePerSec is tokens added per second.
-func (b *wsUpgradeBucket) allow(capacity, ratePerSec float64) bool {
-	allowed, _ := b.allowCurrent(capacity, ratePerSec)
-	return allowed
-}
-
-// allowCurrent serializes admission with retirement. A caller holding a stale
-// sync.Map pointer retries against the current bucket instead of consuming an
-// orphaned budget.
+// allowCurrent consumes a token when one is available; capacity is the max
+// burst and ratePerSec the refill rate. It serializes admission with
+// retirement: a caller holding a stale sync.Map pointer retries against the
+// current bucket instead of consuming an orphaned budget.
 func (b *wsUpgradeBucket) allowCurrent(capacity, ratePerSec float64) (bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
