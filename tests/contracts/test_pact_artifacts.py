@@ -80,6 +80,47 @@ def _run_consumers(
     )
 
 
+@pytest.mark.parametrize(
+    ("mutation_mode", "publish"),
+    [("stats", False), ("app.core.logger.x_get_logger__mutmut_1", True)],
+    ids=["stats", "selected-mutant"],
+)
+def test_pact_child_receives_mutmut_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_mode: str,
+    publish: bool,
+) -> None:
+    source_root = CONTRACTS.resolve().parents[1]
+    source_config = source_root / "pyproject.toml"
+    original = source_config.read_bytes()
+    child = tmp_path / "child"
+    output = tmp_path / "published" if publish else None
+    monkeypatch.setenv("MUTANT_UNDER_TEST", mutation_mode)
+    monkeypatch.setenv("PACT_OUTPUT_DIR", str(tmp_path / "inherited-output"))
+    completed = subprocess.CompletedProcess([], 0, "", "")
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert kwargs["cwd"] == child
+        child_config = child / "pyproject.toml"
+        assert child_config.is_file()
+        assert child_config.read_bytes() == original
+        pytest_config = child / "pytest.ini"
+        assert command[3:5] == ["-c", str(pytest_config)]
+        assert pytest_config.read_text(encoding="utf-8") == "[pytest]\n"
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        assert env["PYTHONPATH"].split(os.pathsep)[0] == str(source_root)
+        assert env["MUTANT_UNDER_TEST"] == mutation_mode
+        assert env.get("PACT_OUTPUT_DIR") == (str(output) if publish else None)
+        return completed
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert _run_consumers(child, output=output) is completed
+    assert source_config.read_bytes() == original
+    assert not (tmp_path / "published").exists()
+
+
 @pytest.mark.parametrize("reverse", [False, True], ids=["ws-first", "nats-first"])
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Pact FFI is unavailable on Windows"
