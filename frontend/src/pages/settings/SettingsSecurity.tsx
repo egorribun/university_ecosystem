@@ -159,6 +159,7 @@ function SettingsSecurityContent({ setSnackbar, openStepUpFor }: SettingsSecurit
           <AccordionSection
             title={t("settings:security.method.totp")}
             subtitle={t("settings:security.totp.description")}
+            disableExpansion={identityPending}
           >
             <div className="flex flex-col gap-4">
               {totpError ? <Alert severity="error">{totpError}</Alert> : null}
@@ -254,6 +255,7 @@ function SettingsSecurityContent({ setSnackbar, openStepUpFor }: SettingsSecurit
           <AccordionSection
             title={t("settings:security.method.emailOtp")}
             subtitle={t("settings:security.emailMfa.description")}
+            disableExpansion={identityPending}
           >
             <div className="flex flex-col gap-4">
               {emailMfaError ? <Alert severity="error">{emailMfaError}</Alert> : null}

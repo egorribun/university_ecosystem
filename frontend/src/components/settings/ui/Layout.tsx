@@ -120,15 +120,18 @@ export function AccordionSection({
   subtitle,
   children,
   defaultExpanded = false,
+  disableExpansion = false,
   className = "",
 }: {
   title: string
   subtitle?: string
   children: React.ReactNode
   defaultExpanded?: boolean
+  disableExpansion?: boolean
   className?: string
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const unavailable = disableExpansion && !expanded
   const contentId = useId()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
@@ -145,10 +148,14 @@ export function AccordionSection({
     >
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          // Keep the description keyboard-accessible while blocking activation.
+          if (!unavailable) setExpanded(!expanded)
+        }}
         aria-expanded={expanded}
         aria-controls={contentId}
-        className="w-full px-4 py-3 text-left transition-colors hover:bg-(--primary-main)/5"
+        aria-disabled={unavailable || undefined}
+        className="w-full px-4 py-3 text-left transition-colors hover:bg-(--primary-main)/5 aria-disabled:cursor-wait aria-disabled:hover:bg-transparent"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
@@ -160,7 +167,10 @@ export function AccordionSection({
             initial={{ rotate: expanded ? 180 : 0 }}
             animate={{ rotate: expanded ? 180 : 0 }}
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
-            className="h-5 w-5 shrink-0 text-brand transition-transform duration-base"
+            className={cn(
+              "h-5 w-5 shrink-0 text-brand transition-transform duration-base",
+              unavailable && "opacity-50"
+            )}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
