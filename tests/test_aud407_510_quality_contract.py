@@ -28,9 +28,9 @@ VALID_POLICY = {
 def _inventory_checkout_root(root: Path) -> Path:
     resolved = root.resolve(strict=True)
     assert resolved == root, "inventory root must use its resolved path"
-    checkout = Path(
-        git_support._git(resolved, "rev-parse", "--show-toplevel")
-    ).resolve(strict=True)
+    checkout = Path(git_support._git(resolved, "rev-parse", "--show-toplevel")).resolve(
+        strict=True
+    )
     prefix = git_support._git(resolved, "rev-parse", "--show-prefix")
     assert prefix in ("", "mutants/"), "unexpected Git inventory prefix"
     expected = checkout if not prefix else checkout / "mutants"
