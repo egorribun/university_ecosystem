@@ -15,8 +15,6 @@ async def _robust_invalidate(cache, *patterns):
 
     # Clear L1 memory caches for relevant patterns
     for pattern in patterns:
-        if pattern.startswith("schedule:"):
-            core_cache.schedule_cache.l1.invalidate_prefix("schedule:")
         if pattern.startswith("news:"):
             core_cache.news_cache.l1.invalidate_prefix("news:")
 
@@ -32,7 +30,7 @@ async def _robust_invalidate(cache, *patterns):
 
 
 @pytest.mark.asyncio
-async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache):
+async def test_schedule_etag_tracks_database_changes(async_client, db_session):
     group = models.Group(name="Test Group", course=1, faculty="IT")
     db_session.add(group)
     await db_session.commit()
@@ -79,14 +77,13 @@ async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache
     db_session.add(second_lesson)
     await db_session.commit()
 
-    await _robust_invalidate(fake_cache, f"schedule:group:{group.id}")
-
     refreshed = await async_client.get(
         f"/schedule/{group.id}", headers={"If-None-Match": first_etag}
     )
     assert refreshed.status_code == 200
     assert refreshed.headers.get("ETag") != first_etag
     assert len(refreshed.json()) == 2
+    assert {item["subject"] for item in refreshed.json()} == {"Math", "Physics"}
 
 
 @pytest.mark.asyncio

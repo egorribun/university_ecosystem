@@ -76,13 +76,13 @@ def test_cqrs_provider():
     container = MagicMock()
     service = MagicMock()
 
-    assert provider.get_schedule_handler(db, cache) is not None
-    assert provider.get_stats_handler(db, cache, analytics_service) is not None
+    assert provider.get_schedule_handler(db).db is db
+    assert provider.get_stats_handler(db, cache, analytics_service).cache is cache
     assert provider.query_bus(container) is not None
     assert provider.command_bus(container) is not None
-    assert provider.create_schedule_handler(service, cache) is not None
-    assert provider.update_schedule_handler(service, cache) is not None
-    assert provider.delete_schedule_handler(service, cache) is not None
+    assert provider.create_schedule_handler(service).service is service
+    assert provider.update_schedule_handler(service).service is service
+    assert provider.delete_schedule_handler(service).service is service
 
 
 # 3. app/core/di/content.py

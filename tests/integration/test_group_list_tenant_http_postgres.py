@@ -26,9 +26,7 @@ from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import app.repositories.schedule_repository as repository_module
 from app.api.users import groups_router
-from app.core.cache import MultiLayerCache
 from app.core.config import settings
 from app.core.db.listeners import register_tenant_listeners
 from app.core.di.content import ContentProvider
@@ -36,6 +34,7 @@ from app.core.di.infrastructure import InfrastructureProvider
 from app.core.middleware.tenant import TenantContextMiddleware
 from app.core.protocols import AsyncDatabaseSession
 from app.core.tenant import bypass_rls_ctx, get_current_tenant, tenant_id_ctx
+from app.deps.cache import MemoryCache, get_cache
 from app.services.group_service import GroupService
 from tests.fixtures import owned_baseline_postgres as owned
 
@@ -234,7 +233,7 @@ class _HTTPGroups:
     engine: Any = field(repr=False)
     evidence: _Evidence
     secret: str = field(repr=False)
-    cache: MultiLayerCache
+    cache: MemoryCache
     last_payload: list[dict[str, Any]] | None = None
     primed_payload: list[dict[str, Any]] | None = None
 
@@ -252,9 +251,12 @@ class _HTTPGroups:
         before_opened = self.evidence.opened
         before_queries = self.evidence.group_queries
         if self.primed_payload is not None:
-            # Prove that this request confronts a live legacy entry, including
-            # an empty-list entry; do not rely only on configured wall time.
-            assert await self.cache.get("schedule:groups") == self.primed_payload
+            # The candidate legacy key is live in the shared test backend,
+            # including for an empty list. The removed process cache is not
+            # injected; the request must still perform its scoped SQL query.
+            entry = await self.cache.get("schedule:groups")
+            assert entry is not None
+            assert entry.payload == self.primed_payload
         response = await self.client.get("/api/v1/groups", headers=headers)
         assert response.status_code == 200
         assert [(row["id"], row["name"]) for row in response.json()] == [
@@ -305,7 +307,7 @@ async def _http_stack(
     evidence = _Evidence()
     # Outlive the entire 300-second case watchdog, including fixture/probe SQL.
     # Production TTL settings remain unchanged.
-    cache = MultiLayerCache(l1_ttl=600.0)
+    cache = MemoryCache(default_ttl=600)
     secret = uuid4().hex
     container = None
     tenant_token = tenant_id_ctx.set("")
@@ -326,7 +328,8 @@ async def _http_stack(
     try:
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(settings, "mvp_tenant_id", state.tenant_a if mvp else None)
-            patch.setattr(repository_module, "schedule_cache", cache)
+            patch.setattr("app.deps.cache._cache_backend", cache)
+            assert get_cache() is cache
             container = make_async_container(
                 _GroupHTTPProvider(sessions, state.role, evidence)
             )
@@ -349,12 +352,14 @@ async def _http_stack(
         try:
             sa.event.remove(engine.sync_engine, "before_cursor_execute", observe_sql)
         finally:
-            cache.l1.clear()
             try:
-                await engine.dispose()
+                await cache.invalidate("schedule:groups")
             finally:
-                bypass_rls_ctx.reset(bypass_token)
-                tenant_id_ctx.reset(tenant_token)
+                try:
+                    await engine.dispose()
+                finally:
+                    bypass_rls_ctx.reset(bypass_token)
+                    tenant_id_ctx.reset(tenant_token)
 
 
 @pytest.mark.asyncio
@@ -413,6 +418,7 @@ async def test_mixed_scope_group_http_unscoped_then_a(owned_groups):
 
 @pytest.mark.asyncio
 async def test_group_http_ignores_legacy_foreign_cache(owned_groups):
+    """A foreign candidate key in the shared backend cannot replace scoped SQL."""
     state = owned_groups
     async with _http_stack(state) as http:
         await http.prime([{"id": str(state.group_a), "name": "Stale foreign group"}])
@@ -470,7 +476,9 @@ async def test_mvp_group_http_foreign_identity_rejected_before_session(owned_gro
         await http.prime_last_result()
         opened, queries = http.evidence.opened, http.evidence.group_queries
         statements = http.evidence.sql_statements
-        assert await http.cache.get("schedule:groups") == http.primed_payload
+        entry = await http.cache.get("schedule:groups")
+        assert entry is not None
+        assert entry.payload == http.primed_payload
         response = await http.client.get(
             "/api/v1/groups", headers=_signed_headers(state.tenant_b, http.secret)
         )

@@ -24,10 +24,8 @@ from app.services.schedule_service import ScheduleService
 
 class CQRSProvider(Provider):
     @provide(scope=Scope.REQUEST)
-    def get_schedule_handler(
-        self, db: AsyncDatabaseSession, cache: BaseCache
-    ) -> GetScheduleHandler:
-        return GetScheduleHandler(db=db, cache=cache)
+    def get_schedule_handler(self, db: AsyncDatabaseSession) -> GetScheduleHandler:
+        return GetScheduleHandler(db=db)
 
     @provide(scope=Scope.REQUEST)
     def get_stats_handler(
@@ -55,18 +53,18 @@ class CQRSProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def create_schedule_handler(
-        self, service: ScheduleService, cache: BaseCache
+        self, service: ScheduleService
     ) -> CreateScheduleHandler:
-        return CreateScheduleHandler(service=service, cache=cache)
+        return CreateScheduleHandler(service=service)
 
     @provide(scope=Scope.REQUEST)
     def update_schedule_handler(
-        self, service: ScheduleService, cache: BaseCache
+        self, service: ScheduleService
     ) -> UpdateScheduleHandler:
-        return UpdateScheduleHandler(service=service, cache=cache)
+        return UpdateScheduleHandler(service=service)
 
     @provide(scope=Scope.REQUEST)
     def delete_schedule_handler(
-        self, service: ScheduleService, cache: BaseCache
+        self, service: ScheduleService
     ) -> DeleteScheduleHandler:
-        return DeleteScheduleHandler(service=service, cache=cache)
+        return DeleteScheduleHandler(service=service)

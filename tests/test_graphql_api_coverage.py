@@ -252,7 +252,7 @@ class TestGetScheduleHandler:
     def test_localize_schedule_payload(self):
         from app.cqrs.queries import GetScheduleHandler
 
-        handler = GetScheduleHandler(db=AsyncMock(), cache=MagicMock())
+        handler = GetScheduleHandler(db=AsyncMock())
         payload = [
             {"lesson_type": "lecture", "subject": "Math"},
             {"lesson_type": "seminar", "subject": "Physics"},
@@ -262,18 +262,13 @@ class TestGetScheduleHandler:
         assert "lesson_type_display" in result[0]
 
     @pytest.mark.asyncio
-    async def test_handle_ignores_shared_cache_hit(self):
+    async def test_handle_reads_repository_for_unmatched_validator(self):
         from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
-        from app.deps.cache import MemoryCache
 
-        cache = MemoryCache(default_ttl=300)
         group_id = uuid.uuid4()
-        entry = await cache.set(
-            f"schedule:group:{group_id}", [{"lesson_type": "lecture"}]
-        )
-        handler = GetScheduleHandler(db=AsyncMock(), cache=cache)
+        handler = GetScheduleHandler(db=AsyncMock())
         query = GetScheduleQuery(
-            group_id=str(group_id), locale="en", if_none_match=f'"{entry.etag}"'
+            group_id=str(group_id), locale="en", if_none_match='"previous-etag"'
         )
         with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
             repository_type.return_value.get_by_group = AsyncMock(return_value=[])
@@ -285,9 +280,8 @@ class TestGetScheduleHandler:
     @pytest.mark.asyncio
     async def test_handle_not_modified_after_repository_read(self):
         from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
-        from app.deps.cache import MemoryCache
 
-        handler = GetScheduleHandler(db=AsyncMock(), cache=MemoryCache(default_ttl=300))
+        handler = GetScheduleHandler(db=AsyncMock())
         query = GetScheduleQuery(group_id=uuid.uuid4(), locale="en", if_none_match=None)
         with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
             repository_type.return_value.get_by_group = AsyncMock(return_value=[])

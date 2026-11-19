@@ -48,10 +48,6 @@ _SCHEDULE_CACHE_CONTROL = f"private, max-age={_SCHEDULE_CACHE_TTL_SECONDS}"
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
 
-def _schedule_cache_key(group_id: uuid.UUID) -> str:
-    return f"schedule:group:{group_id}"
-
-
 def _set_schedule_cache_headers(response: Response) -> None:
     response.headers["Cache-Control"] = _SCHEDULE_CACHE_CONTROL
     expires_at = datetime.now(UTC) + timedelta(seconds=_SCHEDULE_CACHE_TTL_SECONDS)

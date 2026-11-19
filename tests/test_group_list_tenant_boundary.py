@@ -1,7 +1,7 @@
 """Group list responses must use this request's database visibility.
 
 The database boundary below is a controlled test double. These tests exercise
-real tenant middleware, HTTP routing, service/repository code and L1 caching;
+real tenant middleware, HTTP routing and service/repository code;
 they do not claim PostgreSQL RLS or deployed-system execution evidence.
 """
 
@@ -20,9 +20,7 @@ from dishka import Provider, Scope, make_async_container, provide
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 
-import app.repositories.schedule_repository as repository_module
 from app.api.users import groups_router
-from app.core.cache import MultiLayerCache
 from app.core.middleware.tenant import TenantContextMiddleware
 from app.core.tenant import bypass_rls_ctx, get_current_tenant, tenant_id_ctx
 from app.repositories.schedule_repository import GroupRepository
@@ -33,13 +31,6 @@ TENANT_A = str(UUID(int=1))
 TENANT_B = str(UUID(int=2))
 GROUP_A = UUID(int=11)
 GROUP_B = UUID(int=22)
-
-
-@pytest.fixture
-def isolated_group_cache(monkeypatch):
-    cache = MultiLayerCache()
-    monkeypatch.setattr(repository_module, "schedule_cache", cache)
-    return cache
 
 
 def _database(rows):
@@ -109,9 +100,7 @@ def _app(secret, *, mvp_tenant=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("recipient", ["other-tenant", "anonymous", "forged-tenant"])
-async def test_http_group_list_never_reuses_another_scope(
-    isolated_group_cache, recipient
-):
+async def test_http_group_list_never_reuses_another_scope(recipient):
     secret = uuid4().hex
     app, container, scopes = _app(secret)
     if recipient == "other-tenant":
@@ -147,9 +136,7 @@ async def test_http_group_list_never_reuses_another_scope(
 
 
 @pytest.mark.asyncio
-async def test_configured_mvp_rejects_foreign_identity_but_routes_anonymous(
-    isolated_group_cache,
-):
+async def test_configured_mvp_rejects_foreign_identity_but_routes_anonymous():
     """Single configured-tenant HTTP is not a cross-tenant leakage claim."""
     secret = uuid4().hex
     app, container, _scopes = _app(secret, mvp_tenant=UUID(TENANT_A))
@@ -173,19 +160,24 @@ async def test_configured_mvp_rejects_foreign_identity_but_routes_anonymous(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("first_scope,first_bypass", [("", False), (TENANT_A, True)])
 async def test_empty_or_privileged_result_cannot_prime_an_ordinary_request(
-    isolated_group_cache, first_scope, first_bypass
+    first_scope, first_bypass
 ):
     privileged = [GroupDTO(id=GROUP_B, name="Tenant B group")] if first_bypass else []
+    initial_db = _database(privileged)
+    tenant_db = _database([GroupDTO(id=GROUP_A, name="Tenant A group")])
     t_token = tenant_id_ctx.set(first_scope)
     b_token = bypass_rls_ctx.set(first_bypass)
     try:
-        await GroupRepository(_database(privileged)).list_groups()
+        first_rows = await GroupRepository(initial_db).list_groups()
+        assert [(row.id, row.name) for row in first_rows] == [
+            (row.id, row.name) for row in privileged
+        ]
         tenant_id_ctx.set(TENANT_A)
         bypass_rls_ctx.set(False)
-        rows = await GroupRepository(
-            _database([GroupDTO(id=GROUP_A, name="Tenant A group")])
-        ).list_groups()
+        rows = await GroupRepository(tenant_db).list_groups()
         assert [(row.id, row.name) for row in rows] == [(GROUP_A, "Tenant A group")]
+        initial_db.execute.assert_awaited_once()
+        tenant_db.execute.assert_awaited_once()
     finally:
         bypass_rls_ctx.reset(b_token)
         tenant_id_ctx.reset(t_token)
@@ -195,36 +187,33 @@ async def test_empty_or_privileged_result_cannot_prime_an_ordinary_request(
 @pytest.mark.parametrize(
     "current_rows", [[], [GroupDTO(id=GROUP_A, name="Renamed group")]]
 )
-async def test_group_list_observes_committed_database_changes(
-    isolated_group_cache, current_rows
-):
-    await GroupRepository(
-        _database([GroupDTO(id=GROUP_A, name="Previous group")])
-    ).list_groups()
-    result = await GroupRepository(_database(current_rows)).list_groups()
+async def test_group_list_observes_current_database_rows(current_rows):
+    db = _database([GroupDTO(id=GROUP_A, name="Previous group")])
+    repository = GroupRepository(db)
+    first = await repository.list_groups()
+    assert [(row.id, row.name) for row in first] == [(GROUP_A, "Previous group")]
+    db.execute.return_value.scalars.return_value.all.return_value = current_rows
+    result = await repository.list_groups()
     assert [(row.id, row.name) for row in result] == [
         (row.id, row.name) for row in current_rows
     ]
+    assert db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_group_list_does_not_hide_database_failure_with_cached_data(
-    isolated_group_cache,
-):
-    await isolated_group_cache.set(
-        "schedule:groups",
-        [GroupDTO(id=GROUP_B, name="Foreign group").model_dump(mode="json")],
-    )
-    db = _database([])
+async def test_group_list_propagates_database_failure_after_successful_read():
+    db = _database([GroupDTO(id=GROUP_A, name="Tenant A group")])
+    repository = GroupRepository(db)
+    first = await repository.list_groups()
+    assert [(row.id, row.name) for row in first] == [(GROUP_A, "Tenant A group")]
     db.execute.side_effect = RuntimeError("database unavailable")
     with pytest.raises(RuntimeError, match="database unavailable"):
-        await GroupRepository(db).list_groups()
+        await repository.list_groups()
+    assert db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_group_list_retains_database_order_and_safety_limit(
-    isolated_group_cache, db_session
-):
+async def test_group_list_retains_database_order_and_safety_limit(db_session):
     """SQLite validates query ordering/capping, not tenant RLS."""
     from app.models import Group
 

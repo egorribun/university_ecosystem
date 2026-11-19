@@ -153,7 +153,6 @@ def test_vary_helper_and_cache_headers(monkeypatch):
     schedule._set_schedule_cache_headers(response)
     assert response.headers["Cache-Control"] == "private, max-age=300"
     assert "Expires" in response.headers
-    assert schedule._schedule_cache_key(uuid.UUID(int=1)).startswith("schedule:group:")
 
 
 @pytest.mark.asyncio

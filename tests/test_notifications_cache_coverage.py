@@ -354,13 +354,6 @@ class TestCacheWarmup:
         assert _period_days_from_key("invalid") is None
         assert _period_days_from_key("") is None
 
-    def test_schedule_cache_key(self):
-        from app.services.cache_warmup import _schedule_cache_key
-
-        key = _schedule_cache_key("group-1")
-        assert "schedule" in key
-        assert "group-1" in key
-
     @pytest.mark.asyncio
     async def test_warm_cache_disabled(self, monkeypatch):
         from app.core.config import settings

@@ -40,7 +40,6 @@ class CacheSettings(BaseAppSettings):
     stats_cache_ttl_seconds: int = 180
     cache_l1_ttl_seconds: int = 60
     cache_warmup_enabled: bool = False
-    cache_warmup_groups: list[str] | str = ""
     cache_warmup_stats_users: list[str] | str = ""
     cache_warmup_periods: list[str] | str = "30d,90d"
     cache_warmup_max_age_seconds: int = 120
@@ -55,15 +54,11 @@ class CacheSettings(BaseAppSettings):
     cache_news_l1_max_size: int = 200
     cache_news_l1_ttl_s: float = 60.0
     cache_news_l2_ttl_s: float = 3600.0
-    cache_schedule_l1_max_size: int = 100
-    cache_schedule_l1_ttl_s: float = 120.0
-    cache_schedule_l2_ttl_s: float = 7200.0
 
     @field_validator(
         "cache_user_max_size",
         "cache_config_max_size",
         "cache_news_l1_max_size",
-        "cache_schedule_l1_max_size",
     )
     @classmethod
     def _validate_cache_l1_max_size(cls, value: int, info: ValidationInfo) -> int:
@@ -107,10 +102,6 @@ class CacheSettings(BaseAppSettings):
     @cached_property
     def cache_backend_normalized(self) -> str:
         return self.cache_backend.strip().lower()
-
-    @cached_property
-    def cache_warmup_group_ids(self) -> tuple[UUID, ...]:
-        return _coerce_uuid_list(self.cache_warmup_groups)
 
     @cached_property
     def cache_warmup_stats_user_ids(self) -> tuple[UUID, ...]:
