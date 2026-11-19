@@ -207,7 +207,11 @@ def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[s
     accepted: list[str] = []
     findings = 0
     for run in runs:
-        for result in run.get("results") or []:
+        # An absent key is a metadata-only run; any present value must be an array.
+        results = run.get("results", [])
+        if not isinstance(results, list):
+            raise OsvResultError("SARIF run results must be an array")
+        for result in results:
             findings += 1
             message = str((result.get("message") or {}).get("text", ""))
             parsed_message = _parse_message(message)

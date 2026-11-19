@@ -92,51 +92,61 @@ function runProbeChild(options) {
   return { output, record, log }
 }
 
-test("failure observation is armed around the unchanged native poll and runs during profile teardown", async () => {
+test("failure observation is captured before cleanup around each unchanged native poll", async () => {
   const [spec, helper, fixture] = await Promise.all([
     readFile(specUrl, "utf8"),
     readFile(helperUrl, "utf8"),
     readFile(fixtureUrl, "utf8"),
   ])
-  const pollStart = spec.indexOf("const expectedNotificationId = notificationId")
-  const armIndex = spec.indexOf(
-    "const failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)",
-    pollStart
-  )
-  const timeoutIndex = spec.indexOf("timeout: 60_000", armIndex)
-  const pollSuccess = spec.indexOf(".toBe(1)", timeoutIndex)
-  const disarmIndex = spec.indexOf("failureObservation.disarm()", pollSuccess)
-  assert.ok(pollStart >= 0 && armIndex > pollStart)
-  assert.ok(timeoutIndex > armIndex && pollSuccess > timeoutIndex && disarmIndex > pollSuccess)
-  assert.match(spec.slice(armIndex, disarmIndex), /expect\s*\.\s*poll/u)
-  assert.doesNotMatch(spec.slice(armIndex, disarmIndex), /catch\s*\(/u)
+  const scenarios = [
+    {
+      declaration: 'test("chat message reaches Chromium through its real push subscription"',
+      expected: "const expectedNotificationId = notificationId",
+    },
+    {
+      declaration: 'test("quoted group author gets one chat.reply push',
+      expected: "const expectedNotificationId = replyNotificationId",
+    },
+  ]
+  for (const { declaration, expected } of scenarios) {
+    const start = spec.indexOf(declaration)
+    assert.ok(start >= 0)
+    const next = spec.indexOf('\ntest("', start + declaration.length)
+    const scenario = spec.slice(start, next < 0 ? undefined : next)
+    const pollStart = scenario.indexOf(expected)
+    const armIndex = scenario.indexOf(
+      "failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)",
+      pollStart
+    )
+    const timeoutIndex = scenario.indexOf("timeout: 60_000", armIndex)
+    const pollSuccess = scenario.indexOf(".toBe(1)", timeoutIndex)
+    const disarmIndex = scenario.indexOf("failureObservation.disarm()", pollSuccess)
+    const catchIndex = scenario.indexOf("} catch (error) {", disarmIndex)
+    const captureIndex = scenario.indexOf("await failureObservation?.capture()", catchIndex)
+    const unsubscribeIndex = scenario.indexOf(
+      "unsubscribeOnlyNativeSubscription(page, subscriptionEndpoint)",
+      captureIndex
+    )
+    assert.ok(pollStart >= 0 && armIndex > pollStart)
+    assert.ok(timeoutIndex > armIndex && pollSuccess > timeoutIndex && disarmIndex > pollSuccess)
+    assert.ok(catchIndex > disarmIndex && captureIndex > catchIndex)
+    assert.ok(unsubscribeIndex > captureIndex)
+    assert.match(scenario.slice(armIndex, disarmIndex), /expect\s*\.\s*poll/u)
+    assert.doesNotMatch(scenario.slice(armIndex, disarmIndex), /catch\s*\(/u)
+  }
   assert.doesNotMatch(spec, /reportLivePushDeliveryObservation/u)
   assert.match(helper, /normalizeObservation\(\s*await observe/u)
 
-  const statusGate = fixture.indexOf("if (testInfo.status !== testInfo.expectedStatus)")
-  const consume = fixture.indexOf(
-    "const failureObservation = pendingFailureObservation",
-    statusGate
+  const teardownCapture = fixture.indexOf(
+    "await pendingFailureObservation?.captureIfAborted(testInfo.status)"
   )
-  const clear = fixture.indexOf("pendingFailureObservation = undefined", consume)
-  const report = fixture.indexOf("await failureObservation()", clear)
-  const profileVerification = fixture.indexOf("verifyProfileBeforeRemoval(record)", report)
-  assert.ok(statusGate >= 0 && consume > statusGate && clear > consume && report > clear)
-  assert.ok(profileVerification > report)
-  assert.match(fixture, /let pendingFailureObservation: \(\(\) => Promise<void>\) \| undefined/u)
+  const profileVerification = fixture.indexOf("verifyProfileBeforeRemoval(record)", teardownCapture)
+  assert.ok(teardownCapture >= 0 && profileVerification > teardownCapture)
   assert.match(
     fixture,
     /reportLivePushDeliveryObservation\(primary\.page, testInfo\.project\.name, expectedTag\)/u
   )
-  assert.match(fixture, /if \(pendingFailureObservation\) \{[\s\S]*already armed/u)
-  assert.match(
-    fixture,
-    /if \(pendingFailureObservation === observation\) \{[\s\S]*pendingFailureObservation = undefined/u
-  )
-  assert.match(
-    fixture,
-    /catch \{[\s\S]*Observation must not replace the original assertion or timeout/u
-  )
+  assert.match(fixture, /if \(pendingFailureObservation\?\.isArmed\(\)\) \{[\s\S]*already armed/u)
   assert.match(helper, /HOST_CAPTURE_DEADLINE_MS = 1_600/u)
   assert.match(helper, /BROWSER_OBSERVATION_BUDGET_MS = 1_200/u)
   assert.match(helper, /PROBE_BUDGET_MS = 15_000/u)
@@ -162,6 +172,90 @@ test("failure observation is armed around the unchanged native poll and runs dur
     helper,
     /\bfetch\s*\(|\brequest\s*\(|\.locator\s*\(|new URL|\.endpoint\b|\.body\b|\.title\b|process\.stderr/u
   )
+})
+
+test("concurrent failure and abort captures share a pre-cleanup observation", () => {
+  const output = runChild(`
+    import assert from "node:assert/strict"
+    import { createLivePushFailureObservation } from ${JSON.stringify(helperUrl.href)}
+    const events = []
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const handle = createLivePushFailureObservation(async () => {
+      events.push("capture-start")
+      await gate
+      events.push("capture-end")
+    })
+    assert.equal(handle.isArmed(), true)
+    const body = handle.capture()
+    const abort = handle.captureIfAborted("timedOut")
+    let bodyDone = false
+    let abortDone = false
+    body.then(() => { bodyDone = true })
+    abort.then(() => { abortDone = true })
+    await Promise.resolve()
+    assert.deepEqual(events, ["capture-start"])
+    assert.equal(handle.isArmed(), true)
+    assert.equal(bodyDone, false)
+    assert.equal(abortDone, false)
+    release()
+    await Promise.all([body, abort])
+    events.push("unsubscribe", "delete")
+    assert.deepEqual(events, ["capture-start", "capture-end", "unsubscribe", "delete"])
+    assert.equal(handle.isArmed(), false)
+    await handle.capture()
+    assert.equal(events.length, 4)
+  `)
+  assert.equal(output, "")
+})
+
+test("diagnostic rejection is contained and never replaces the original failure", () => {
+  const output = runChild(`
+    import assert from "node:assert/strict"
+    import { createLivePushFailureObservation } from ${JSON.stringify(helperUrl.href)}
+    let calls = 0
+    const original = new Error("original-test-failure")
+    const handle = createLivePushFailureObservation(async () => {
+      calls += 1
+      throw new Error("private-diagnostic-error")
+    })
+    let caught
+    try {
+      try { throw original } catch (error) { await handle.capture(); throw error }
+    } catch (error) { caught = error }
+    await handle.capture()
+    assert.equal(caught, original)
+    assert.equal(calls, 1)
+    assert.equal(handle.isArmed(), false)
+  `)
+  assert.equal(output, "")
+})
+
+test("teardown observes only aborted tests and respects a disarmed poll", () => {
+  const output = runChild(`
+    import assert from "node:assert/strict"
+    import { createLivePushFailureObservation } from ${JSON.stringify(helperUrl.href)}
+    let calls = 0
+    const handle = createLivePushFailureObservation(async () => { calls += 1 })
+    for (const status of ["passed", "failed", "skipped", "unknown", null]) {
+      await handle.captureIfAborted(status)
+    }
+    assert.equal(calls, 0)
+    assert.equal(handle.isArmed(), true)
+    await handle.captureIfAborted("timedOut")
+    await handle.captureIfAborted("interrupted")
+    assert.equal(calls, 1)
+    const interrupted = createLivePushFailureObservation(async () => { calls += 1 })
+    await interrupted.captureIfAborted("interrupted")
+    assert.equal(calls, 2)
+    const disarmed = createLivePushFailureObservation(async () => { calls += 1 })
+    disarmed.disarm()
+    assert.equal(disarmed.isArmed(), false)
+    await disarmed.capture()
+    await disarmed.captureIfAborted("timedOut")
+    assert.equal(calls, 2)
+  `)
+  assert.equal(output, "")
 })
 
 test("push observation emits only bounded closed browser state and never the notification identity", () => {

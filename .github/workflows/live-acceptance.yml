@@ -155,6 +155,14 @@ jobs:
           uv run --frozen --no-sync python -m scripts.live_stand nats-outage
           --in-place --state-dir "$LIVE_STATE_DIR"
 
+      - name: Summarize owned Push worker failure evidence
+        id: push-worker-diagnostic
+        if: ${{ !cancelled() && env.LIVE_E2E_MODE == 'full' && steps.start-stand.outcome == 'success' && steps.core-e2e.outcome == 'failure' }}
+        timeout-minutes: 1
+        env:
+          LIVE_OBSERVATION_SOURCE_SHA: ${{ steps.verify-event-commit.outputs.checked_out_sha }}
+        run: uv run --frozen --no-sync python -m scripts.live_push_worker_observation
+
       - name: Stop owned containers and preserve stand data
         id: stop-stand
         if: ${{ always() && steps.start-stand.outcome != 'skipped' }}

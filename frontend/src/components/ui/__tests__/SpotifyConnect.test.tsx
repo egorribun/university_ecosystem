@@ -15,6 +15,7 @@ import compiledCss from "@/styles/tailwind.css?inline"
 
 const mockState = vi.hoisted(() => ({
   user: null as Record<string, unknown> | null,
+  loading: false,
   nowPlaying: null as Record<string, unknown> | null | undefined,
   isFetching: false,
   refetch: vi.fn(() => Promise.resolve({ data: null })),
@@ -86,7 +87,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: mockState.user, loading: false, setUser: mockState.setUser }),
+  useAuth: () => ({ user: mockState.user, loading: mockState.loading, setUser: mockState.setUser }),
   currentUserQueryKey: ["users", "me"],
 }))
 
@@ -132,6 +133,7 @@ describe("SpotifyConnect", () => {
     rotateBrowserSession()
     window.history.replaceState({}, "", "/settings")
     mockState.user = null
+    mockState.loading = false
     mockState.nowPlaying = null
     mockState.isFetching = false
     mockState.refetch.mockClear()
@@ -1014,9 +1016,13 @@ describe("SpotifyConnect", () => {
       previous: Record<string, unknown>
     ) => Record<string, unknown>
     const nextAccount = { id: "user-2", spotify_connected: true }
+    const originalAccount = mockState.user
     expect(update(nextAccount)).toBe(nextAccount)
-    rotateBrowserSession()
-    expect(update(mockState.user)).toBe(mockState.user)
+    await act(async () => {
+      rotateBrowserSession()
+      expect(update(originalAccount)).toBe(originalAccount)
+      await Promise.resolve()
+    })
   })
 
   it.each(["connect", "disconnect", "refresh"])(
@@ -1049,4 +1055,55 @@ describe("SpotifyConnect", () => {
     expect(mockState.apiGet).not.toHaveBeenCalled()
     expect(mockState.refetch).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["SSR stub", "ssr-stub", false],
+    ["encrypted-cache placeholder", "-1", false],
+    ["loading account", "user-1", true],
+  ])(
+    "keeps connect, disconnect and refresh disabled for %s until identity is confirmed",
+    async (_label, id, loading) => {
+      const user = userEvent.setup()
+      mockState.user = { id, spotify_connected: false }
+      mockState.loading = loading
+      const { rerender } = render(<SpotifyConnect />)
+      const connect = screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
+      expect(connect).toBeDisabled()
+      await user.click(connect)
+      expect(mockState.apiGet).not.toHaveBeenCalled()
+
+      mockState.user = { id, spotify_connected: true }
+      rerender(<SpotifyConnect />)
+      const refresh = screen.getByRole("button", { name: "common:buttons.refresh" })
+      const disconnect = screen.getByRole("button", {
+        name: "settings:integrations.spotify.disconnect",
+      })
+      expect(refresh).toBeDisabled()
+      expect(disconnect).toBeDisabled()
+      await user.click(refresh)
+      await user.click(disconnect)
+      expect(mockState.refetch).not.toHaveBeenCalled()
+      expect(mockState.apiPost).not.toHaveBeenCalled()
+
+      mockState.user = { id: "user-1", spotify_connected: true }
+      mockState.loading = false
+      rerender(<SpotifyConnect />)
+      expect(refresh).toBeEnabled()
+      expect(disconnect).toBeEnabled()
+      await user.click(refresh)
+      await waitFor(() => expect(mockState.refetch).toHaveBeenCalledOnce())
+      await user.click(disconnect)
+      await waitFor(() => expect(mockState.apiPost).toHaveBeenCalledWith("/spotify/disconnect"))
+
+      mockState.user = { id: "user-1", spotify_connected: false }
+      mockState.apiGet.mockRejectedValueOnce(new Error("authorization failed"))
+      rerender(<SpotifyConnect />)
+      const enabledConnect = screen.getByRole("button", {
+        name: "settings:integrations.spotify.connect",
+      })
+      expect(enabledConnect).toBeEnabled()
+      await user.click(enabledConnect)
+      await waitFor(() => expect(mockState.apiGet).toHaveBeenCalledWith("/spotify/auth-url"))
+    }
+  )
 })

@@ -316,7 +316,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "events-tab-keyboard.live.spec.ts": [3],
   "footer-bottom-navigation.live.spec.ts": [98, 282],
   "map-gesture-isolation.live.spec.ts": [178, 209, 248],
-  "map-zoom-longtask.live.spec.ts": [116],
+  "map-zoom-longtask.live.spec.ts": [102],
   "messenger-a11y.live.spec.ts": [5],
   "messenger-focus-trap.live.spec.ts": [3],
   "messenger-group-isolation.live.spec.ts": [254],

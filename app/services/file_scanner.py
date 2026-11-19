@@ -336,6 +336,23 @@ async def _scan_bytes_with_clamd(data: bytes) -> _ScanResult:
     return await _run_scan(_runner)
 
 
+async def _read_clamd_response(reader: asyncio.StreamReader) -> bytes:
+    """Read one bounded NUL-terminated zINSTREAM reply, not one TCP chunk."""
+    response = bytearray()
+    while len(response) < 4096:
+        chunk = await reader.read(4096 - len(response))
+        if not chunk:
+            if not response:
+                return b""
+            raise FileScannerUnavailableError("incomplete clamd response")
+        response.extend(chunk)
+        if b"\0" in response:
+            if response[-1:] != b"\0" or response.count(b"\0") != 1:
+                raise FileScannerUnavailableError("malformed clamd response framing")
+            return bytes(response)
+    raise FileScannerUnavailableError("clamd response too large")
+
+
 async def _scan_upload_with_clamd(
     upload: UploadFile, *, size_limit: int
 ) -> _ScanResult:
@@ -389,7 +406,7 @@ async def _scan_upload_with_clamd(
                 writer.write(struct.pack("!I", 0))
                 await writer.drain()
 
-                response = await reader.read(4096)
+                response = await _read_clamd_response(reader)
             finally:
                 writer.close()
                 try:
@@ -399,7 +416,7 @@ async def _scan_upload_with_clamd(
                     ConnectionError,
                 ):  # RZ-22-01: narrowed — network close errors
                     logger.debug("Failed to close clamd writer cleanly", exc_info=True)
-    except FileScannerPayloadTooLarge:
+    except (FileScannerPayloadTooLarge, FileScannerUnavailableError):
         raise
     except TimeoutError as exc:
         raise FileScannerUnavailableError("clamd scan timed out") from exc

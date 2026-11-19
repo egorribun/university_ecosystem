@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,13 +132,46 @@ func newSessionRevocationSubscriber(source *goredis.Client) *sessionRevocationSu
 		if err != nil {
 			return nil, err
 		}
-		if !subscriber.trackConnection(connection) {
-			return nil, errors.Join(net.ErrClosed, connection.Close())
+		tracked := &sessionRevocationConn{Conn: connection, subscriber: subscriber}
+		if !subscriber.trackConnection(tracked) {
+			return nil, errors.Join(net.ErrClosed, tracked.Close())
 		}
-		return connection, nil
+		// Preserve direct socket inspection for TCP/Unix without exposing the
+		// encrypted socket underneath TLS as an unbuffered transport.
+		if socket, ok := connection.(syscall.Conn); ok {
+			return &sessionRevocationSocketConn{sessionRevocationConn: tracked, Conn: socket}, nil
+		}
+		return tracked, nil
 	}
 	subscriber.client = goredis.NewClient(&options)
 	return subscriber
+}
+
+// sessionRevocationConn releases the shutdown registry reference when go-redis
+// closes a failed/replaced connection. Keep it registered until Close returns so
+// concurrent Stop can still interrupt an in-progress close. A close error is
+// preserved; removing the reference does not claim that the provider succeeded.
+type sessionRevocationConn struct {
+	net.Conn
+	subscriber *sessionRevocationSubscriber
+}
+
+func (c *sessionRevocationConn) Close() error {
+	err := c.Conn.Close()
+	c.subscriber.mu.Lock()
+	delete(c.subscriber.connections, c)
+	c.subscriber.mu.Unlock()
+	return err
+}
+
+// NetConn preserves go-redis's bounded transport inspection path.
+func (c *sessionRevocationConn) NetConn() net.Conn {
+	return c.Conn
+}
+
+type sessionRevocationSocketConn struct {
+	*sessionRevocationConn
+	syscall.Conn
 }
 
 func (s *sessionRevocationSubscriber) trackConnection(connection net.Conn) bool {
@@ -222,13 +256,12 @@ func (h *Hub) registerSessionRevocationBootstrap(
 	return generation, previousCancel, nil
 }
 
-func (h *Hub) sessionRevocationBootstrapError(
+// sessionRevocationBootstrapErrorLocked requires lifecycleMu.
+func (h *Hub) sessionRevocationBootstrapErrorLocked(
 	generation uint64,
 	startupErr error,
 	listenerCtx context.Context,
 ) error {
-	h.lifecycleMu.Lock()
-	defer h.lifecycleMu.Unlock()
 	if !h.stopped.Load() &&
 		h.sessionRevocationGeneration == generation &&
 		startupErr == nil &&
@@ -242,6 +275,25 @@ func (h *Hub) sessionRevocationBootstrapError(
 		return fmt.Errorf("subscribe to session revocations: %w", startupErr)
 	}
 	return fmt.Errorf("session revocation listener startup was cancelled")
+}
+
+// installSessionRevocationStop validates the bootstrap and publishes the
+// concrete subscription closer in one lifecycleMu critical section. A newer
+// Start or Stop may win at any point before it; a superseded startup must not
+// replace its successor's shutdown callback.
+func (h *Hub) installSessionRevocationStop(
+	generation uint64,
+	startupErr error,
+	listenerCtx context.Context,
+	stop context.CancelFunc,
+) error {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if err := h.sessionRevocationBootstrapErrorLocked(generation, startupErr, listenerCtx); err != nil {
+		return err
+	}
+	h.sessionRevocationCancel = stop
+	return nil
 }
 
 // StartSessionRevocationListener consumes canonical session revocation events
@@ -302,21 +354,19 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 		h.sessionRevocationWG.Done()
 	}
 
-	if startupFailure := h.sessionRevocationBootstrapError(generation, startupErr, listenerCtx); startupFailure != nil {
-		finish()
-		return startupFailure
-	}
-	h.lifecycleMu.Lock()
 	// Replace the provisional bootstrap stop function with a concrete Pub/Sub
 	// close. PubSub.Receive only observes a context deadline captured when it
 	// starts; closing the socket is therefore required to wake an already-blocked
 	// read.
-	h.sessionRevocationCancel = func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
+	stopSubscription := func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
 		cancel()
 		closeSubscriber(listenerCtx)
 		closePubSub(listenerCtx)
 	}
-	h.lifecycleMu.Unlock()
+	if startupFailure := h.installSessionRevocationStop(generation, startupErr, listenerCtx, stopSubscription); startupFailure != nil {
+		finish()
+		return startupFailure
+	}
 
 	if _, err := pubsub.Receive(listenerCtx); err != nil {
 		finish()

@@ -23,9 +23,21 @@ import { SearchDialog } from "@/components/search/SearchDialog"
 import enCommon from "@/i18n/locales/en/common.json"
 import ruCommon from "@/i18n/locales/ru/common.json"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+const motionProps = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }))
+vi.mock("framer-motion", async () => {
+  const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const motionDiv = base.m.div!
+  return {
+    ...base,
+    m: {
+      ...base.m,
+      div: (props: Parameters<typeof motionDiv>[0]) => {
+        motionProps.calls.push(props)
+        return motionDiv(props)
+      },
+    },
+  }
+})
 
 const apiGet = vi.hoisted(() => vi.fn())
 vi.mock("@/api/client", () => ({ default: { get: apiGet } }))
@@ -139,6 +151,7 @@ async function showSearchSummary(summary: string) {
 describe("SearchDialog user behavior", () => {
   beforeEach(() => {
     localStorage.clear()
+    motionProps.calls = []
     apiGet.mockReset().mockResolvedValue({ data: response })
   })
 
@@ -148,6 +161,132 @@ describe("SearchDialog user behavior", () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     localStorage.clear()
+  })
+
+  it("announces arrow-key selection and clears the announcement when the query is cleared", async () => {
+    await renderSearch()
+    const input = await showResults()
+    const status = screen.getByRole("status")
+    expect(status).toHaveAttribute("aria-live", "polite")
+    expect(status).toHaveAttribute("aria-atomic", "true")
+    expect(status).toHaveTextContent("Results found: 2")
+
+    press(input, "ArrowDown")
+    expect(status).toHaveTextContent("Selected result: Physics seminar")
+    press(input, "ArrowDown")
+    expect(status).toHaveTextContent("Selected result: Physics news")
+    press(input, "ArrowUp")
+    expect(status).toHaveTextContent("Selected result: Physics seminar")
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }))
+    expect(status).toBeEmptyDOMElement()
+  })
+
+  it.each([
+    ["en", "Searching…", "Results found: 2"],
+    ["ru", "Поиск…", "Найдено результатов: 2"],
+  ])("announces an in-flight search in %s", async (language, announcement, completed) => {
+    let settle: (value: { data: typeof response }) => void = () => {}
+    apiGet.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve
+      })
+    )
+    await renderSearch(language)
+    fireEvent.change(openSearch(), { target: { value: "physics" } })
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(announcement))
+
+    await act(async () => settle({ data: response }))
+    await screen.findByRole("button", { name: "Physics seminar" })
+    expect(screen.getByRole("status")).toHaveTextContent(completed)
+  })
+
+  it.each([
+    ["en", "Results found: 0"],
+    ["ru", "Найдено результатов: 0"],
+  ])("announces a successful empty search in %s", async (language, announcement) => {
+    apiGet.mockResolvedValue({ data: { query: "physics", results: {} } })
+    await renderSearch(language)
+    const input = openSearch()
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
+    fireEvent.change(input, { target: { value: "physics" } })
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(announcement))
+    fireEvent.change(input, { target: { value: "chemistry" } })
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
+  })
+
+  it.each([true, false])("honors reduced motion: %s", async (reduced) => {
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(prefers-reduced-motion: reduce)" && reduced,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    }))
+    await renderSearch()
+    openSearch()
+    const dialog = motionProps.calls.filter((props) => props.role === "dialog").pop()
+    const backdrop = motionProps.calls.filter((props) => props.role === "presentation").pop()
+    expect(dialog).toBeDefined()
+    expect(backdrop).toBeDefined()
+    if (reduced) {
+      expect(dialog?.initial).toBe(false)
+      expect(backdrop?.initial).toBe(false)
+      expect(dialog?.transition).toEqual({ duration: 0 })
+      expect(backdrop?.transition).toEqual({ duration: 0 })
+      expect(dialog?.exit).toEqual({ opacity: 0 })
+    } else {
+      expect(dialog?.initial).toEqual({ opacity: 0, scale: 0.95, y: -20 })
+      expect(dialog?.transition).toMatchObject({ type: "spring" })
+      expect(backdrop?.initial).toEqual({ opacity: 0 })
+    }
+  })
+
+  it.each(['"physics"', '[{"query":"physics"}]', "[42]", "[null]", '["physics", {"query":"lab"}]'])(
+    "ignores structurally invalid recent-search storage: %s",
+    async (stored) => {
+      localStorage.setItem(RECENT_SEARCHES_KEY, stored)
+      await renderSearch()
+      expect(openSearch()).toHaveValue("")
+      expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument()
+      expect(screen.getByText("Use the arrow keys to navigate")).toBeInTheDocument()
+      expect(screen.queryByText("Recent searches")).not.toBeInTheDocument()
+    }
+  )
+
+  it("announces a failed search instead of an empty result and retries on request", async () => {
+    apiGet.mockRejectedValueOnce(new Error("Search unavailable"))
+    await renderSearch()
+    const input = openSearch()
+    fireEvent.change(input, { target: { value: "physics" } })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("An error occurred")
+    expect(screen.getByRole("status")).toBeEmptyDOMElement()
+    expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }))
+    expect(await screen.findByRole("button", { name: "Physics seminar" })).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
+    expect(apiGet).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not select retained stale results after a failed refresh", async () => {
+    const { client, router } = await renderSearch()
+    const input = await showResults()
+    press(input, "ArrowDown")
+    apiGet.mockRejectedValue(new Error("Search unavailable"))
+
+    await act(() => client.invalidateQueries({ queryKey: ["search", "physics"] }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("An error occurred")
+    expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
+    expect(press(input, "Enter").defaultPrevented).toBe(false)
+    expect(router.state.location.pathname).toBe("/")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
   it("waits for the 200ms typing pause and sends only the latest eligible query", async () => {
@@ -382,6 +521,7 @@ describe("SearchDialog user behavior", () => {
     fireEvent.change(input, { target: { value: "unknown" } })
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1))
     expect(container.querySelector(".animate-spin")).toBeInTheDocument()
+    expect(container.querySelector(".animate-spin")).toHaveClass("motion-reduce:animate-none")
     expect(screen.queryByText("No matching results")).not.toBeInTheDocument()
     await act(async () =>
       resolve({ data: { query: "unknown", results: { news: [], events: [] } } })

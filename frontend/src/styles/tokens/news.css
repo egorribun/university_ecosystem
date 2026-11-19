@@ -402,6 +402,11 @@
   container-name: news-card;
 }
 
+/* Keep the transformed grid item above neighbors through the preview's exit animation. */
+.news-theme .css-stagger-item:has(> .news-quick-view-host > .z-floating) {
+  z-index: var(--z-surface);
+}
+
 @container news-card (max-width: 280px) {
   .news-card-title {
     font-size: 0.875rem;

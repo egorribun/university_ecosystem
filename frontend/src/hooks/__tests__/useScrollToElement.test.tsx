@@ -1,10 +1,13 @@
+import { StrictMode } from "react"
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useScrollToElement } from "@/hooks/useScrollToElement"
 
 describe("useScrollToElement", () => {
-  let frames: FrameRequestCallback[]
+  // Pending frames keyed by their scheduler id; cancelling removes only that frame.
+  let frames: Map<number, FrameRequestCallback>
+  let nextFrameId: number
   let targets: HTMLDivElement[]
 
   function targetWithId(id: string) {
@@ -16,7 +19,8 @@ describe("useScrollToElement", () => {
   }
 
   function flushFrame() {
-    const callbacks = frames.splice(0)
+    const callbacks = [...frames.values()]
+    frames.clear()
     const errors: unknown[] = []
     try {
       act(() => {
@@ -35,18 +39,23 @@ describe("useScrollToElement", () => {
   }
 
   beforeEach(() => {
-    frames = []
+    frames = new Map()
+    nextFrameId = 0
     targets = []
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.push(callback)
-      return frames.length
+      nextFrameId += 1
+      frames.set(nextFrameId, callback)
+      return nextFrameId
+    })
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id)
     })
   })
 
   afterEach(() => {
     const errors: unknown[] = []
     // Attempt each stage even if unmounting or a queued callback fails.
-    // The hook does not cancel frames, so execute them before restoring the spy.
+    // Flush remaining frames before restoring the scheduler spies.
     const steps = [
       cleanup,
       flushFrame,
@@ -80,7 +89,7 @@ describe("useScrollToElement", () => {
     })
 
     // Layout can insert the target between the effect and the next frame.
-    expect(frames).toHaveLength(1)
+    expect(frames.size).toBe(1)
     expect(target.scrollIntoView).not.toHaveBeenCalled()
     document.body.appendChild(target)
     flushFrame()
@@ -91,7 +100,7 @@ describe("useScrollToElement", () => {
     expect(other.scrollIntoView).not.toHaveBeenCalled()
 
     rerender({ id: target.id })
-    expect(frames).toHaveLength(0)
+    expect(frames.size).toBe(0)
     expect(target.scrollIntoView).toHaveBeenCalledTimes(1)
   })
 
@@ -104,10 +113,10 @@ describe("useScrollToElement", () => {
       ({ id, behavior }) => useScrollToElement(id, { behavior, block: "start" }),
       { initialProps: { id: null as string | null, behavior: "auto" as ScrollBehavior } }
     )
-    expect(frames).toHaveLength(0)
+    expect(frames.size).toBe(0)
 
     rerender({ id: first.id, behavior: "auto" })
-    expect(frames).toHaveLength(1)
+    expect(frames.size).toBe(1)
     flushFrame()
     expect(first.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
       behavior: "auto",
@@ -115,10 +124,10 @@ describe("useScrollToElement", () => {
     })
 
     rerender({ id: first.id, behavior: "smooth" })
-    expect(frames).toHaveLength(0)
+    expect(frames.size).toBe(0)
 
     rerender({ id: second.id, behavior: "smooth" })
-    expect(frames).toHaveLength(1)
+    expect(frames.size).toBe(1)
     flushFrame()
     expect(second.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
       behavior: "smooth",
@@ -127,9 +136,49 @@ describe("useScrollToElement", () => {
     expect(first.scrollIntoView).toHaveBeenCalledTimes(1)
 
     rerender({ id: "missing", behavior: "smooth" })
-    expect(frames).toHaveLength(1)
+    expect(frames.size).toBe(1)
     flushFrame()
     expect(first.scrollIntoView).toHaveBeenCalledTimes(1)
     expect(second.scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+  it("cancels the old target before a replacement frame and on unmount", () => {
+    const first = targetWithId("old-lesson")
+    const second = targetWithId("new-lesson")
+    document.body.append(first, second)
+    const { rerender, unmount } = renderHook(({ id }) => useScrollToElement(id), {
+      initialProps: { id: first.id },
+    })
+    rerender({ id: second.id })
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1)
+    flushFrame()
+    expect(first.scrollIntoView).not.toHaveBeenCalled()
+    expect(second.scrollIntoView).toHaveBeenCalledOnce()
+
+    rerender({ id: first.id })
+    unmount()
+    flushFrame()
+    expect(first.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it("scrolls once after StrictMode replays setup and cleanup", () => {
+    const target = targetWithId("strict-lesson")
+    document.body.append(target)
+    renderHook(() => useScrollToElement(target.id), { wrapper: StrictMode })
+    flushFrame()
+    expect(target.scrollIntoView).toHaveBeenCalledOnce()
+  })
+
+  it("uses the latest motion option when it changes before the frame", () => {
+    const target = targetWithId("motion-lesson")
+    document.body.append(target)
+    const { rerender } = renderHook(({ behavior }) => useScrollToElement(target.id, { behavior }), {
+      initialProps: { behavior: "smooth" as ScrollBehavior },
+    })
+    rerender({ behavior: "instant" })
+    flushFrame()
+    expect(target.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+      behavior: "instant",
+      block: "center",
+    })
   })
 })

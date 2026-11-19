@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-} from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/api/schemas/messageLimits"
@@ -101,32 +94,29 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   // Wave 183 SW7 — extended with `previewUrl` for Blob URL lifetime mgmt.
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([])
   const [svgRejected, setSvgRejected] = useState(false)
+  const svgRejectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // True while an async send is pending, so a repeated Enter cannot send the same draft twice.
   const sendInFlightRef = useRef(false)
 
-  // Wave 183 SW7 — mirror selectedFiles into a ref so the unmount cleanup
-  // can revoke outstanding Blob URLs without relying on the setState
-  // updater fn (which React does NOT invoke during component unmount —
-  // setState calls after unmount are batched + dropped). Without this
-  // ref, the unmount-cleanup branch would be a no-op + URLs leak.
-  const selectedFilesRef = useRef<SelectedFile[]>(selectedFiles)
-  useEffect(() => {
-    selectedFilesRef.current = selectedFiles
-  }, [selectedFiles])
+  // Own URLs independently of React's replayable state updater functions.
+  // Register immediately so unmount can release even an uncommitted preview.
+  const previewUrlsRef = useRef(new Set<string>())
+  const releasePreview = (url: string) => {
+    if (previewUrlsRef.current.delete(url)) URL.revokeObjectURL(url)
+  }
 
-  // A stable callback ref receives `null` when the hidden picker leaves the
-  // tree, providing the same unmount-only cleanup without a dependency array
-  // that mutation testing could replace with an equivalent static value.
-  const setFileInputRef = useCallback(
-    (node: HTMLInputElement | null) => {
-      if (node === null) {
-        selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
+  useEffect(() => {
+    const previewUrls = previewUrlsRef.current
+    return () => {
+      if (svgRejectionTimerRef.current !== null) {
+        clearTimeout(svgRejectionTimerRef.current)
+        svgRejectionTimerRef.current = null
       }
-      fileInputRef.current = node
-    },
-    [fileInputRef, selectedFilesRef]
-  )
+      previewUrls.forEach((url) => URL.revokeObjectURL(url))
+      previewUrls.clear()
+    }
+  }, [])
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
@@ -145,7 +135,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     const clearDraft = () => {
       // Wave 183 SW7 — revoke Blob URLs once the files are delivered; the
       // controller owns its own optimistic-message URLs.
-      sentFiles.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
+      sentFiles.forEach((entry) => releasePreview(entry.previewUrl))
       setText((current) => (current === sentText ? "" : current))
       setSelectedFiles((current) => current.filter((entry) => !sentFiles.includes(entry)))
       setShowAttachMenu(false)
@@ -232,36 +222,32 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
         return file
       })
     )
+    // File inspection can finish after this composer has left the tree.
+    if (fileInputRef.current !== input) return
     const validFiles = filteredFiles.filter((file): file is File => !!file)
     const rejectedCount = filteredFiles.length - validFiles.length
     if (rejectedCount > 0) {
       setSvgRejected(true)
-      setTimeout(() => setSvgRejected(false), 3000)
+      if (svgRejectionTimerRef.current !== null) clearTimeout(svgRejectionTimerRef.current)
+      svgRejectionTimerRef.current = setTimeout(() => {
+        svgRejectionTimerRef.current = null
+        setSvgRejected(false)
+      }, 3000)
     }
-    setSelectedFiles((previousFiles) => [
-      ...previousFiles,
-      // Wave 183 SW7 — create Blob URL ONCE per file at add time.
-      // Pre-W183 the JSX created a new URL on every parent re-render
-      // (memory leak).
-      ...validFiles.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-      })),
-    ])
+    const additions = validFiles.map((file) => {
+      const id = crypto.randomUUID()
+      const previewUrl = URL.createObjectURL(file)
+      previewUrlsRef.current.add(previewUrl)
+      return { id, file, previewUrl }
+    })
+    setSelectedFiles((previousFiles) => [...previousFiles, ...additions])
     resetFileInput(input)
   }
 
-  const removeFile = (id: string) => {
-    // Wave 183 SW7 — revoke Blob URL when the file is removed from the
-    // attachment preview. Prevents accumulation of orphaned URLs in the
-    // browser table.
-    setSelectedFiles((prev) => {
-      // removeFile is only reachable from a chip rendered from this state.
-      const removed = prev.find((entry) => entry.id === id)!
-      URL.revokeObjectURL(removed.previewUrl)
-      return prev.filter((entry) => entry.id !== id)
-    })
+  // The chip passes its own entry, so removal never depends on a lookup.
+  const removeFile = (removed: SelectedFile) => {
+    releasePreview(removed.previewUrl)
+    setSelectedFiles((previousFiles) => previousFiles.filter((entry) => entry.id !== removed.id))
   }
 
   return (
@@ -281,36 +267,39 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
       </AnimatePresence>
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
-          {selectedFiles.map(({ id, file, previewUrl }) => (
-            <div key={id} className="relative shrink-0 group">
-              {file.type.startsWith("image/") ? (
-                // Wave 183 SW7 — use pre-computed previewUrl from state
-                // (created ONCE per file in handleFileSelect) instead of
-                // calling URL.createObjectURL inline per render. Prevents
-                // memory leak from re-renders triggered by user typing in
-                // the textarea.
-                <SmartImage
-                  srcRaw={previewUrl}
-                  alt={file.name}
-                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm"
-                />
-              ) : (
-                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm text-(--text-secondary)">
-                  <FileText size={32} />
-                </div>
-              )}
-              {/* MSG-A11Y-01 — keep the compact visual glyph while exposing a
+          {selectedFiles.map((entry) => {
+            const { id, file, previewUrl } = entry
+            return (
+              <div key={id} className="relative shrink-0 group">
+                {file.type.startsWith("image/") ? (
+                  // Wave 183 SW7 — use pre-computed previewUrl from state
+                  // (created ONCE per file in handleFileSelect) instead of
+                  // calling URL.createObjectURL inline per render. Prevents
+                  // memory leak from re-renders triggered by user typing in
+                  // the textarea.
+                  <SmartImage
+                    srcRaw={previewUrl}
+                    alt={file.name}
+                    className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm"
+                  />
+                ) : (
+                  <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm text-(--text-secondary)">
+                    <FileText size={32} />
+                  </div>
+                )}
+                {/* MSG-A11Y-01 — keep the compact visual glyph while exposing a
                   concrete 44×44px DOM hit area via min-width/min-height. */}
-              <button
-                type="button"
-                onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/[calc(var(--opacity-hover)*100%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-                aria-label={t("messenger:aria.removeAttachment")}
-              >
-                <X size={14} strokeWidth={3} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => removeFile(entry)}
+                  className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/[calc(var(--opacity-hover)*100%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                  aria-label={t("messenger:aria.removeAttachment")}
+                >
+                  <X size={14} strokeWidth={3} aria-hidden="true" />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
       {/* Wave 207 — reply/quote compose chip. Renders above the input row when
@@ -392,7 +381,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             )}
           </AnimatePresence>
 
-          <input ref={setFileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
         {/* Wave 183 SW4 — added explicit aria-label. Placeholder alone is
             insufficient for screen-reader announcement (A11Y-114-04 pattern;

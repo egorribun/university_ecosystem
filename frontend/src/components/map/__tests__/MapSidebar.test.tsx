@@ -11,6 +11,10 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/contexts/AppShellContext", () => ({
   useAppShell: () => ({ setOverlayState: vi.fn() }),
 }))
+// Building status follows the configured campus zone, not the runner's local clock.
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import { MapSidebar } from "@/components/map/MapSidebar"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
@@ -104,7 +108,8 @@ describe("MapSidebar", () => {
 
   it("updates the building status at open and close time and releases its timers", () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date(2026, 6, 6, 7, 59))
+    // Europe/Istanbul is UTC+3 all year: 04:59 UTC is 07:59 on campus.
+    vi.setSystemTime(new Date(Date.UTC(2026, 6, 6, 4, 59)))
     const clearInterval = vi.spyOn(window, "clearInterval")
     const clearTimeout = vi.spyOn(window, "clearTimeout")
     const view = render(<MapSidebar {...baseProps} />)
@@ -120,7 +125,7 @@ describe("MapSidebar", () => {
       const openDuringHours = screen.getByText("hours.openNow")
       expect(openDuringHours).toHaveStyle({ color: "var(--color-emerald-500)" })
 
-      vi.setSystemTime(new Date(2026, 6, 6, 21, 59))
+      vi.setSystemTime(new Date(Date.UTC(2026, 6, 6, 18, 59)))
       act(() => vi.advanceTimersByTime(60_000))
 
       const closedAtClosingTime = screen.getByText("hours.closedNow")

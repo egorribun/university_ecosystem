@@ -62,7 +62,9 @@ The command inherits the fail-closed threshold from `pyproject.toml`; do not
 override it on the command line. It collects the configured Python source roots
 (`app` and `alembic/versions`) for code exercised by this local test run, but it
 does not execute the PostgreSQL migration round-trip and is not the release
-aggregate.
+aggregate. For the MVP baseline upgrade and schema drift check against the test
+database, run `make db-validate` (`make alembic-check` is an alias); the baseline
+requires PostgreSQL and is irreversible, so there is no SQLite round-trip.
 
 The canonical release result is the required `Coverage & Quality Policy Gate`.
 It combines all four backend shard coverage artifacts with the `DB Migration
@@ -108,6 +110,10 @@ Push-Location services/cmd/uni-cli
 go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
 Pop-Location
 
+Push-Location services/pkg/logging
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
+
 Push-Location services/pkg/spiffe
 go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
 Pop-Location
@@ -118,7 +124,7 @@ Pop-Location
 ```
 
 The quality manifest reports the three deployable services independently and
-merges `uni-cli`, SPIFFE, and SpiceDB evidence into the `go-shared` component
+merges `uni-cli`, logging, SPIFFE, and SpiceDB evidence into the `go-shared` component
 with `scripts/quality/merge_go_coverprofiles.py`. Generated protobuf bindings
 are build-checked but excluded from authored-source coverage.
 

@@ -151,6 +151,15 @@ _PLAYWRIGHT_A11Y_PHASE_LINE = re.compile(
 )
 _PlaywrightA11yPhaseState = tuple[str, str, str, bool, int, int, int, str, int]
 
+_PLAYWRIGHT_MAP_ZOOM_LINE = re.compile(
+    r"UE_LIVE_MAP_ZOOM_V1 project=(?P<project>desktop|mobile) "
+    r"attempt=(?P<attempt>[01]) sample=(?P<sample>[1-8]) "
+    r"total=(?P<total>[1-9][0-9]{0,2}) step=(?P<step>[0-3]) "
+    r"phase=(?P<phase>[0-4]) duration_ms=(?P<duration>0|[1-9][0-9]{0,4})"
+)
+_PLAYWRIGHT_MAP_ZOOM_LIMIT = 32
+_PlaywrightMapZoomTask = tuple[str, int, int, int, int, int, int]
+
 _PLAYWRIGHT_FOOTER_GEOMETRY_LINE = re.compile(
     r"UE_LIVE_FOOTER_GEOM_V1 project=(?P<project>desktop|mobile) "
     r"req_w_milli=(?P<requested_width>-?(?:0|[1-9][0-9]{0,6})) "
@@ -2168,6 +2177,48 @@ def _live_playwright_a11y_phase_states(output: str) -> list[_PlaywrightA11yPhase
     return records
 
 
+def _live_playwright_map_zoom_tasks(output: str) -> list[_PlaywrightMapZoomTask]:
+    """Accept only fixed map phases and bounded blocking-task durations."""
+    records: list[_PlaywrightMapZoomTask] = []
+    seen: set[tuple[str, int, int]] = set()
+    totals: dict[tuple[str, int], int] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 200 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_MAP_ZOOM_LINE.fullmatch(line)
+        if match is None:
+            continue
+        project = _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]]
+        attempt = int(match["attempt"])
+        sample = int(match["sample"])
+        total = int(match["total"])
+        step = int(match["step"])
+        phase = int(match["phase"])
+        duration = int(match["duration"])
+        valid_phase = (
+            (step == 0 and phase == 0)
+            or (1 <= step <= 3 and 1 <= phase <= 3)
+            or (step == 3 and phase == 4)
+        )
+        identity = (project, attempt, sample)
+        attempt_id = (project, attempt)
+        if (
+            sample > total
+            or not valid_phase
+            or not 50 <= duration <= 60_000
+            or identity in seen
+            or (attempt_id in totals and totals[attempt_id] != total)
+        ):
+            continue
+        records.append((project, attempt, sample, total, step, phase, duration))
+        seen.add(identity)
+        totals[attempt_id] = total
+        if len(records) == _PLAYWRIGHT_MAP_ZOOM_LIMIT:
+            break
+    return records
+
+
 def _live_playwright_footer_geometries(output: str) -> list[_PlaywrightFooterGeometry]:
     """Accept bounded viewport/nav measurements and fixed-block flags only."""
     records: list[_PlaywrightFooterGeometry] = []
@@ -2923,6 +2974,16 @@ def _live_playwright_failure_locations(
 
 
 _PLAYWRIGHT_FAILURE_DIAGNOSTIC_LIMIT = 256
+_PLAYWRIGHT_PUSH_FAILURE_SOURCE = "tests/e2e-live/push-delivery.live.spec.ts"
+_PLAYWRIGHT_PUSH_BROWSER_ERROR = re.compile(
+    r" {4}(?:Error|TimeoutError|TargetClosedError|AbortError|TypeError|RangeError): "
+    r"browserType\."
+    r"(?P<method>launch|launchPersistentContext): [^\r\n]{1,1024}"
+)
+_PLAYWRIGHT_PUSH_BROWSER_ERROR_CATEGORIES = {
+    "launch": "browser_launch",
+    "launchPersistentContext": "browser_persistent_launch",
+}
 _PLAYWRIGHT_FAILURE_EXPECT_LINE = re.compile(r"^ {4}Error: expect\(")
 _PLAYWRIGHT_FAILURE_MATCHER_HEADER = re.compile(
     r"^ {4}Error: expect\((?:locator|page|received)\)\."
@@ -3002,7 +3063,8 @@ def _live_playwright_failure_diagnostics(
         )
         current = None
 
-    for reporter_line in output.split("\n"):
+    reporter_lines = output.split("\n")
+    for line_index, reporter_line in enumerate(reporter_lines):
         if reporter_line and not reporter_line.startswith("    "):
             finish()
         if len(reporter_line) > 4096 or (
@@ -3041,12 +3103,55 @@ def _live_playwright_failure_diagnostics(
                 "matcher": "none",
                 "locator": "none",
                 "in_call_log": False,
+                "at_error_start": True,
+                "push_aggregate": False,
+                "push_aggregate_separated": False,
             }
             continue
         if current is None:
             continue
 
+        # A direct launch header must be the first nonblank error line;
+        # arbitrary later error details and call logs cannot authorize it.
+        if reporter_line and current["at_error_start"]:
+            current["at_error_start"] = False
+            if (
+                current["source"] == _PLAYWRIGHT_PUSH_FAILURE_SOURCE
+                and line_index < len(reporter_lines) - 1
+            ):
+                if reporter_line == "    AggregateError: ":
+                    current["push_aggregate"] = True
+                browser_error = _PLAYWRIGHT_PUSH_BROWSER_ERROR.fullmatch(reporter_line)
+                if browser_error is not None:
+                    current["category"] = _PLAYWRIGHT_PUSH_BROWSER_ERROR_CATEGORIES[
+                        browser_error["method"]
+                    ]
+
+        # The profile fixture wraps launch and cleanup failures in an empty
+        # AggregateError; Playwright prints each child as a separate error.
+        elif current["push_aggregate"]:
+            if not reporter_line:
+                current["push_aggregate_separated"] = True
+            elif current["push_aggregate_separated"]:
+                current["push_aggregate"] = False
+                browser_error = (
+                    _PLAYWRIGHT_PUSH_BROWSER_ERROR.fullmatch(reporter_line)
+                    if line_index < len(reporter_lines) - 1
+                    else None
+                )
+                if (
+                    browser_error is not None
+                    and browser_error["method"] == "launchPersistentContext"
+                ):
+                    current["category"] = "browser_persistent_launch"
+                    current["matcher"] = "none"
+                    current["locator"] = "none"
+                    current["in_call_log"] = False
+            elif _PLAYWRIGHT_FAILURE_FRAME.fullmatch(reporter_line) is None:
+                current["push_aggregate"] = False
+
         if _PLAYWRIGHT_FAILURE_CALL_LOG_START.fullmatch(reporter_line):
+            current["push_aggregate"] = False
             current["in_call_log"] = True
             continue
         if current["in_call_log"]:
@@ -3363,7 +3468,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "events-tab-keyboard.live.spec.ts": (3,),
     "footer-bottom-navigation.live.spec.ts": (98, 282),
     "map-gesture-isolation.live.spec.ts": (178, 209, 248),
-    "map-zoom-longtask.live.spec.ts": (116,),
+    "map-zoom-longtask.live.spec.ts": (102,),
     "messenger-a11y.live.spec.ts": (5,),
     "messenger-focus-trap.live.spec.ts": (3,),
     "messenger-group-isolation.live.spec.ts": (254,),

@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { renderHook, act } from "@testing-library/react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { resolveSiteShareUrl, useShare } from "../useShare"
@@ -46,6 +47,105 @@ describe("useShare", () => {
   afterEach(() => {
     vi.useRealTimers()
   })
+
+  it.each(["copy-success", "copy-error", "share-success", "share-error"])(
+    "ignores late %s completion after unmount",
+    async (scenario) => {
+      let resolveOperation!: () => void
+      let rejectOperation!: (error: Error) => void
+      const pending = new Promise<void>((resolve, reject) => {
+        resolveOperation = resolve
+        rejectOperation = reject
+      })
+      const copying = scenario.startsWith("copy")
+      if (copying) vi.mocked(navigator.clipboard.writeText).mockReturnValue(pending)
+      else vi.mocked(navigator.share).mockReturnValue(pending)
+      const { result, unmount } = renderHook(() =>
+        useShare({ title: "Test", url: "https://example.com", onNotify, translations })
+      )
+      let operation!: Promise<void>
+      act(() => {
+        operation = copying ? result.current.handleCopyLink() : result.current.handleShare()
+      })
+      unmount()
+      const timersAfterUnmount = vi.getTimerCount()
+
+      await act(async () => {
+        if (scenario.endsWith("success")) resolveOperation()
+        else rejectOperation(new Error("late failure"))
+        await operation
+      })
+
+      expect(onNotify).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(timersAfterUnmount)
+    }
+  )
+
+  it("keeps successful actions enabled after StrictMode effect replay", async () => {
+    const { result, unmount } = renderHook(
+      () => useShare({ title: "Test", url: "https://example.com", onNotify, translations }),
+      { wrapper: StrictMode }
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+      await result.current.handleCopyLink()
+    })
+
+    expect(onNotify).toHaveBeenCalledWith("Success")
+    expect(onNotify).toHaveBeenCalledWith("Copied")
+    expect(result.current.copiedLink).toBe(true)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(["copy-success", "copy-error", "share-success", "share-error"])(
+    "deduplicates same-tick %s calls and permits retry after completion",
+    async (scenario) => {
+      let resolveOperation!: () => void
+      let rejectOperation!: (error: Error) => void
+      const pending = new Promise<void>((resolve, reject) => {
+        resolveOperation = resolve
+        rejectOperation = reject
+      })
+      const copying = scenario.startsWith("copy")
+      const api = copying ? vi.mocked(navigator.clipboard.writeText) : vi.mocked(navigator.share)
+      api.mockReturnValueOnce(pending)
+      const { result } = renderHook(
+        () => useShare({ title: "Test", url: "https://example.com", onNotify, translations }),
+        { wrapper: StrictMode }
+      )
+      const handler = copying ? result.current.handleCopyLink : result.current.handleShare
+      let first!: Promise<void>
+      let duplicate!: Promise<void>
+      act(() => {
+        first = handler()
+        duplicate = handler()
+      })
+      await act(async () => {
+        await duplicate
+      })
+      expect(api).toHaveBeenCalledOnce()
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(true)
+      expect(onNotify).not.toHaveBeenCalled()
+
+      await act(async () => {
+        if (scenario.endsWith("success")) resolveOperation()
+        else rejectOperation(new Error("retryable failure"))
+        await first
+      })
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(false)
+      expect(onNotify).toHaveBeenCalledOnce()
+
+      // Even the original render's callback can start a new operation after release.
+      await act(async () => {
+        await handler()
+      })
+      expect(api).toHaveBeenCalledTimes(2)
+      expect(onNotify).toHaveBeenCalledTimes(2)
+      expect(copying ? result.current.copyingLink : result.current.sharing).toBe(false)
+    }
+  )
 
   it("returns share options based on provided URL", () => {
     const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com/foo" }))

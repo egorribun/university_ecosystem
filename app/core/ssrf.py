@@ -110,6 +110,8 @@ def _check_resolved(
     If ``ipaddress.ip_address()`` raises ``ValueError`` on malformed sockaddr data
     (e.g., from a custom DNS resolver), the request is rejected rather than allowed.
     """
+    if not resolved:
+        raise ValueError(f"SSRF blocked: no valid addresses for {hostname}")
     for _, _, _, _, sockaddr in resolved:
         try:
             addr = ipaddress.ip_address(sockaddr[0])

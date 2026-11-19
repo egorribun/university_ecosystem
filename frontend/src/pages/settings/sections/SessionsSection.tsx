@@ -21,6 +21,7 @@ interface SessionsSectionProps extends SettingsSectionProps {
   sessionsErrorMessage: string | null
   revokeAllPending: boolean
   revokeSessionPending: boolean
+  identityPending: boolean
   onRevokeSession: (sessionId: string) => Promise<void>
   onRevokeAllSessions: () => Promise<void>
   formatSessionTimestamp: (value: string) => string
@@ -33,6 +34,7 @@ export function SessionsSection({
   sessionsErrorMessage,
   revokeAllPending,
   revokeSessionPending,
+  identityPending,
   onRevokeSession,
   onRevokeAllSessions,
   formatSessionTimestamp,
@@ -49,7 +51,7 @@ export function SessionsSection({
           <Button
             variant="outline"
             color="error"
-            disabled={revokeAllPending}
+            disabled={revokeAllPending || identityPending}
             onClick={() => void onRevokeAllSessions()}
             leadingIcon={
               revokeAllPending ? <CircularProgress size={18} color="inherit" /> : undefined
@@ -95,7 +97,8 @@ export function SessionsSection({
                 : isRevoked
                   ? t("settings:sessions.status.revoked")
                   : t("settings:sessions.status.active")
-              const disableRevoke = session.is_current || isRevoked || revokeSessionPending
+              const disableRevoke =
+                session.is_current || isRevoked || revokeSessionPending || identityPending
 
               return (
                 <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>

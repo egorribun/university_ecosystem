@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
@@ -49,6 +50,29 @@ const baseProps = {
 }
 
 describe("EventFileManager", () => {
+  it.each(["{Enter}", " "])("opens the file picker with the keyboard: %s", async (key) => {
+    const user = userEvent.setup()
+    const { container } = render(<EventFileManager {...baseProps} />)
+    const picker = screen.getByRole("button", {
+      name: "events:detail.sections.files.pickFile",
+    })
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!
+    const openPicker = vi.spyOn(input, "click").mockImplementation(() => {})
+
+    try {
+      expect(picker).toHaveAttribute("type", "button")
+      await user.tab()
+      expect(picker).toHaveFocus()
+      await user.keyboard(key)
+      expect(openPicker).toHaveBeenCalledTimes(1)
+      expect(
+        screen.getByRole("button", { name: "events:detail.upload.submit.label" })
+      ).toBeDisabled()
+    } finally {
+      openPicker.mockRestore()
+    }
+  })
+
   it("renders the file list and upload form when editable", () => {
     render(<EventFileManager {...baseProps} />)
     expect(screen.getByText("events:detail.sections.files.title")).toBeInTheDocument()

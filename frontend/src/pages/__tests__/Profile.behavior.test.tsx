@@ -219,19 +219,30 @@ vi.mock("@/components/profile", () => {
 
   const ProfileHeader = (props: Record<string, unknown>) => {
     profileState.header(props)
-    const { user, onEmailClick, onQrClick, onTelegramClick } = props as {
+    const { user, onEmailClick, onQrClick, onTelegramClick, copyDisabled } = props as {
       user: User | null
       onEmailClick: () => void
       onQrClick: () => void
       onTelegramClick: () => void
+      copyDisabled?: boolean
     }
     return (
       <div data-testid="profile-header">
-        <button type="button" data-testid="email-button" onClick={onEmailClick}>
+        <button
+          type="button"
+          data-testid="email-button"
+          onClick={onEmailClick}
+          disabled={copyDisabled}
+        >
           {user?.email || "profile:placeholders.email"}
         </button>
         {user?.profile_detail?.telegram && (
-          <button type="button" data-testid="telegram-button" onClick={onTelegramClick}>
+          <button
+            type="button"
+            data-testid="telegram-button"
+            onClick={onTelegramClick}
+            disabled={copyDisabled}
+          >
             {user.profile_detail.telegram}
           </button>
         )}
@@ -271,13 +282,24 @@ vi.mock("@/components/profile", () => {
 
   const ProfileEditor = (props: Record<string, unknown>) => {
     profileState.editor(props)
-    const { about, email, fullName, onCancel, onSave, saving, setAbout, setFullName } = props as {
+    const {
+      about,
+      email,
+      fullName,
+      onCancel,
+      onSave,
+      saving,
+      saveDisabled,
+      setAbout,
+      setFullName,
+    } = props as {
       email: string
       fullName: string
       about: string
       onCancel: () => void
       onSave: () => void
       saving: boolean
+      saveDisabled?: boolean
       setAbout: (value: string) => void
       setFullName: (value: string) => void
     }
@@ -295,7 +317,7 @@ vi.mock("@/components/profile", () => {
         />
         <input aria-label="email" value={email} readOnly />
         <span data-testid="saving-state">{String(saving)}</span>
-        <button type="button" onClick={onSave} disabled={saving}>
+        <button type="button" onClick={onSave} disabled={saving || saveDisabled}>
           save profile
         </button>
         <button type="button" onClick={onCancel}>
@@ -385,6 +407,27 @@ describe("Profile behavior", () => {
     profileState.editor.mockReset()
     profileState.vCard.mockReset()
   })
+
+  it.each(["ssr-stub", "-1"])(
+    "disables guarded actions for %s until identity is confirmed",
+    (id) => {
+      authState.user = { ...user, id }
+      searchState.edit = "1"
+      const { rerender } = render(<Profile />)
+
+      expect(screen.getByTestId("email-button")).toBeDisabled()
+      expect(screen.getByTestId("telegram-button")).toBeDisabled()
+      expect(screen.getByRole("button", { name: "save profile" })).toBeDisabled()
+      expect(screen.getByTestId("saving-state")).toHaveTextContent("false")
+      expect(screen.getByRole("button", { name: "cancel profile" })).toBeEnabled()
+
+      authState.user = user
+      rerender(<Profile />)
+      expect(screen.getByTestId("email-button")).toBeEnabled()
+      expect(screen.getByTestId("telegram-button")).toBeEnabled()
+      expect(screen.getByRole("button", { name: "save profile" })).toBeEnabled()
+    }
+  )
 
   afterEach(() => {
     cleanup()
@@ -609,6 +652,20 @@ describe("Profile behavior", () => {
 
     fireEvent.click(screen.getByTestId("email-button"))
 
+    expect(writeText).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
+  it("does not copy contact details when another tab changes the session before rerender", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    mockClipboard(writeText)
+    render(<Profile />)
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "other-tab", hash: null })
+    )
+
+    fireEvent.click(screen.getByTestId("email-button"))
     expect(writeText).not.toHaveBeenCalled()
     expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
   })

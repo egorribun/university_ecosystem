@@ -361,9 +361,11 @@ def test_report_requires_representative_manual_collector_cohort(
     mobile_observations = [
         item for item in report["observations"] if item["device_class"] == "mobile"
     ]
-    for index, item in enumerate(mobile_observations):
+    for item in mobile_observations:
+        # Derive the collector from the navigation's per-metric index so every
+        # metric of one navigation keeps a single collector.
+        index = int(item["metric_id"].rsplit("-", 1)[1])
         item["collector_id"] = f"collector-mobile-{index % 19:04d}"
-        item["observed_at"] = _timestamp(WINDOW_START + timedelta(hours=index % 6))
 
     with pytest.raises(CwvCertificationError, match="insufficient distinct collectors"):
         _evaluate(tmp_path, report)
@@ -423,6 +425,41 @@ def test_manual_collector_cannot_submit_multiple_samples_in_one_route_hour(
 
     with pytest.raises(CwvCertificationError, match="sampling bucket"):
         _evaluate(tmp_path, report)
+
+
+@pytest.mark.parametrize("metric", ["LCP", "INP", "CLS"])
+def test_navigation_cannot_change_manual_collector(tmp_path: Path, metric: str) -> None:
+    report = _report()
+    first_navigation = report["observations"][0]["navigation_id"]
+    target = next(
+        item
+        for item in report["observations"]
+        if item["navigation_id"] == first_navigation and item["metric"] == metric
+    )
+    # This existing collector has no sample in this route/hour bucket.
+    # Keep cohort size and sampling limits valid to isolate navigation binding.
+    target["collector_id"] = "collector-mobile-0001"
+
+    with pytest.raises(CwvCertificationError, match="inconsistent navigation metadata"):
+        _evaluate(tmp_path, report)
+
+
+def test_consistent_navigation_collectors_are_independent_of_report_order(
+    tmp_path: Path,
+) -> None:
+    ordered_path = tmp_path / "ordered"
+    reversed_path = tmp_path / "reversed"
+    ordered_path.mkdir()
+    reversed_path.mkdir()
+    report = _report()
+    report["observations"].reverse()
+
+    ordered = _evaluate(ordered_path, _report())
+    verdict = _evaluate(reversed_path, report)
+
+    assert verdict["valid"] is True
+    assert verdict["segments"] == ordered["segments"]
+    assert verdict["route_segments"] == ordered["route_segments"]
 
 
 @pytest.mark.parametrize("field", ["session_id", "device_class", "route_group"])

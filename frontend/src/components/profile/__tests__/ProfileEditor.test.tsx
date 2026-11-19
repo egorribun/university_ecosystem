@@ -132,4 +132,14 @@ describe("ProfileEditor", () => {
     expect(save).toBeInTheDocument()
     expect(save).toBeDisabled()
   })
+
+  it("disables save without showing the saving label while identity is pending", () => {
+    const onSave = vi.fn()
+    render(<ProfileEditor {...makeProps({ saveDisabled: true, onSave })} />)
+    const save = screen.getByRole("button", { name: "profile:form.save" })
+    expect(save).toBeDisabled()
+    expect(screen.getByRole("button", { name: "profile:form.cancel" })).toBeEnabled()
+    fireEvent.click(save)
+    expect(onSave).not.toHaveBeenCalled()
+  })
 })

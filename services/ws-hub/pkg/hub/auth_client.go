@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,6 +69,7 @@ type call struct {
 	done       chan struct{}
 	res        bool
 	generation uint64
+	retired    bool // guarded by genMu; targeted invalidation retires publication
 }
 
 // InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
@@ -82,8 +84,9 @@ type InternalAPIAuthClient struct {
 	// genMu orders cache reads and writes against generation resets. Readers and
 	// writers hold it shared; a reset holds it exclusively while it bumps the
 	// generation and purges L1 and L2. A write whose generation is stale is dropped.
-	genMu      sync.RWMutex
-	generation uint64
+	genMu         sync.RWMutex
+	generation    uint64
+	invalidations map[string]int // active scoped barriers only; guarded by genMu
 
 	callMu sync.Mutex
 	calls  map[string]*call
@@ -219,41 +222,85 @@ func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
 // The LRU cache Keys() method returns up to 100 000 keys (cache capacity),
 // but the linear scan is bounded and fast (string prefix match, no alloc).
 func (c *InternalAPIAuthClient) Invalidate(userID, roomID string) {
-	if !isValidUUID(userID) {
+	if !isValidUUID(userID) || (roomID != "" && !isValidUUID(roomID)) {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	// This compatibility interface has no error result. Durable revocation
+	// uses RefreshRoomAuthorization, which propagates invalidation failures.
+	_ = c.invalidateRoomAuthorizationCache(ctx, userID, roomID) //nolint:errcheck // best-effort compatibility path; RefreshRoomAuthorization reports failures
+}
 
-	// Wildcard mode: empty roomID means "evict all rooms for this user".
-	if roomID == "" {
-		prefix := userID + ":"
-		for _, k := range c.cache.Keys() {
-			if len(k) > len(prefix) && k[:len(prefix)] == prefix {
-				c.cache.Remove(k)
-			}
-		}
-		// Also purge L2 (Redis) entries matching this user.
-		if c.redis != nil {
-			ctx := context.Background()
-			iter := c.redis.Scan(ctx, 0, "auth:perms:"+userID+":*", 100).Iterator()
-			for iter.Next(ctx) {
-				c.redis.Del(ctx, iter.Val()) //nolint:errcheck
-			}
-		}
-		return
-	}
-
-	if !isValidUUID(roomID) {
-		return
-	}
+// retireLocalRoomAuthorization orders targeted invalidation against cache
+// reads/publication. The caller must hold genMu exclusively.
+func (c *InternalAPIAuthClient) retireLocalRoomAuthorization(userID, roomID string) {
 	key := userID + ":" + roomID
-	c.cache.Remove(key)
-	// RZ-21-03: Also remove from Redis L2 for single-room invalidation.
-	if c.redis != nil {
-		c.redis.Del(context.Background(), "auth:perms:"+key) //nolint:errcheck
+	if roomID != "" {
+		c.callMu.Lock()
+		if active := c.calls[key]; active != nil {
+			active.retired = true
+		}
+		c.callMu.Unlock()
+		c.cache.Remove(key)
+		return
+	}
+	prefix := userID + ":"
+	c.callMu.Lock()
+	for candidate, active := range c.calls {
+		if strings.HasPrefix(candidate, prefix) {
+			active.retired = true
+		}
+	}
+	c.callMu.Unlock()
+	for _, candidate := range c.cache.Keys() {
+		if strings.HasPrefix(candidate, prefix) {
+			c.cache.Remove(candidate)
+		}
 	}
 }
 
-// isValidUUID returns true when s is a canonical RFC-4122 UUID string.
+// invalidationActive requires genMu and covers both a room and its user wildcard.
+func (c *InternalAPIAuthClient) invalidationActive(userID, key string) bool {
+	return c.invalidations[key] > 0 || c.invalidations[userID+":"] > 0
+}
+
+// Hold a scoped admission barrier across Redis I/O, not the generation mutex.
+// Refcounts keep overlapping room/user invalidations closed until all finish.
+func (c *InternalAPIAuthClient) invalidateRoomAuthorizationCache(ctx context.Context, userID, roomID string) error {
+	key := userID + ":" + roomID
+	c.genMu.Lock()
+	if c.invalidations == nil {
+		c.invalidations = make(map[string]int)
+	}
+	c.invalidations[key]++
+	c.retireLocalRoomAuthorization(userID, roomID)
+	c.genMu.Unlock()
+	defer func() {
+		c.genMu.Lock()
+		defer c.genMu.Unlock()
+		c.retireLocalRoomAuthorization(userID, roomID)
+		c.invalidations[key]--
+		if c.invalidations[key] == 0 {
+			delete(c.invalidations, key)
+		}
+	}()
+	if c.redis == nil {
+		return nil
+	}
+	if roomID != "" {
+		return c.redis.Del(ctx, "auth:perms:"+userID+":"+roomID).Err()
+	}
+	iter := c.redis.Scan(ctx, 0, "auth:perms:"+userID+":*", 100).Iterator()
+	for iter.Next(ctx) {
+		if err := c.redis.Del(ctx, iter.Val()).Err(); err != nil {
+			return err
+		}
+	}
+	return iter.Err()
+}
+
+// isValidUUID accepts the UUID encodings supported by uuid.Parse.
 // Rejects empty strings, non-UUID garbage, and injection payloads before
 // they can reach the query string or the cache key.
 func isValidUUID(s string) bool {
@@ -363,14 +410,9 @@ func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
 		return false, fmt.Errorf("invalid user or room id for authorization refresh")
 	}
 
-	key := userID + ":" + roomID
-	c.cache.Remove(key)
-	if c.redis != nil {
-		if err := c.redis.Del(ctx, "auth:perms:"+key).Err(); err != nil {
-			return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
-		}
+	if err := c.invalidateRoomAuthorizationCache(ctx, userID, roomID); err != nil {
+		return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
 	}
-
 	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
@@ -430,38 +472,63 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	}
 
 	key := userID + ":" + roomID
-	generation, allowed, cached := c.cachedRoomAuthorization(ctx, key)
+	generation, allowed, cached := c.cachedRoomAuthorization(ctx, userID, key)
 	if cached {
 		return allowed
 	}
 	return c.requestRoomAuthorization(ctx, userID, roomID, key, generation)
 }
 
-func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key string) (uint64, bool, bool) {
+func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, userID, key string) (uint64, bool, bool) {
 	// 1 and 2. Fast path (L1) and shared path (L2, PERF-006) under the shared
 	// generation lock. A reset cannot interleave with these reads.
 	c.genMu.RLock()
 	defer c.genMu.RUnlock()
 	generation := c.generation
+	if c.invalidationActive(userID, key) {
+		return generation, false, true
+	}
 	entry, ok := c.cache.Get(key)
 	if ok && entry.generation == generation && time.Now().Before(entry.expiresAt) {
 		return generation, entry.allowed, true
 	}
 	if c.redis != nil {
-		redisKey := "auth:perms:" + key
-		val, err := c.redis.Get(ctx, redisKey).Result()
-		if err == nil {
-			allowed := val == "1"
-			// Populate L1 from L2 — use same TTL constant so L1 never outlives L2.
+		allowed, expiresAt, ok := c.cachedRedisRoomAuthorization(ctx, "auth:perms:"+key)
+		if ok {
 			c.cache.Add(key, cacheEntry{
 				allowed:    allowed,
-				expiresAt:  time.Now().Add(authCacheTTL),
+				expiresAt:  expiresAt,
 				generation: generation,
 			})
 			return generation, allowed, true
 		}
 	}
 	return generation, false, false
+}
+
+// cachedRedisRoomAuthorization reads a decision and its remaining lease in one
+// MULTI/EXEC transaction, so a concurrent writer cannot pair an old value with a
+// new TTL. Anchor expiry before the round trip: network/queue time must shorten,
+// never extend, the shared lease. Invalid/unbounded leases are cache misses.
+func (c *InternalAPIAuthClient) cachedRedisRoomAuthorization(
+	ctx context.Context, key string,
+) (bool, time.Time, bool) {
+	started := time.Now()
+	var value *redis.StringCmd
+	var remaining *redis.DurationCmd
+	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		value = pipe.Get(ctx, key)
+		remaining = pipe.PTTL(ctx, key)
+		return nil
+	})
+	if err != nil || ctx.Err() != nil || remaining.Val() <= 0 {
+		return false, time.Time{}, false
+	}
+	expiresAt := started.Add(min(remaining.Val(), authCacheTTL))
+	if !time.Now().Before(expiresAt) {
+		return false, time.Time{}, false
+	}
+	return value.Val() == "1", expiresAt, true
 }
 
 func (c *InternalAPIAuthClient) requestRoomAuthorization(
@@ -473,23 +540,15 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 	// Keep the generation stable through map insertion: an older lookup cannot
 	// replace a flight that was created after a reset.
 	c.genMu.RLock()
-	if c.generation != generation {
+	if c.generation != generation || c.invalidationActive(userID, key) {
 		c.genMu.RUnlock()
 		return false
 	}
 	c.callMu.Lock()
-	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation {
+	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation && !activeCall.retired {
 		c.callMu.Unlock()
 		c.genMu.RUnlock()
-		select {
-		case <-activeCall.done:
-		case <-ctx.Done():
-			return false
-		}
-		c.genMu.RLock()
-		allowed := ctx.Err() == nil && activeCall.generation == c.generation && activeCall.res
-		c.genMu.RUnlock()
-		return allowed
+		return c.awaitRoomAuthorization(ctx, userID, key, activeCall)
 	}
 	newCall := &call{done: make(chan struct{}), generation: generation}
 	c.calls[key] = newCall
@@ -508,15 +567,51 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	return c.publishRoomAuthorization(ctx, userID, key, newCall, allowed, authErr)
+}
+
+// awaitRoomAuthorization joins an in-flight lookup. Its answer is accepted only
+// while the waiter's context, the generation and the flight are all still current.
+func (c *InternalAPIAuthClient) awaitRoomAuthorization(
+	ctx context.Context,
+	userID, key string,
+	activeCall *call,
+) bool {
+	select {
+	case <-activeCall.done:
+	case <-ctx.Done():
+		return false
+	}
 	c.genMu.RLock()
-	if c.generation != generation {
-		// A reset retires the answer for this caller as well as its waiters.
+	defer c.genMu.RUnlock()
+	return ctx.Err() == nil && c.roomFlightCurrent(userID, key, activeCall) && activeCall.res
+}
+
+// roomFlightCurrent requires genMu: neither a reset nor a targeted
+// invalidation may have retired the flight's answer.
+func (c *InternalAPIAuthClient) roomFlightCurrent(userID, key string, flight *call) bool {
+	return flight.generation == c.generation && !flight.retired && !c.invalidationActive(userID, key)
+}
+
+// publishRoomAuthorization records the flight's answer for its waiters and
+// caches only a successful, still-current decision in L1 and L2.
+func (c *InternalAPIAuthClient) publishRoomAuthorization(
+	ctx context.Context,
+	userID, key string,
+	newCall *call,
+	allowed bool,
+	authErr error,
+) bool {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	if !c.roomFlightCurrent(userID, key, newCall) {
+		// A reset or targeted invalidation retires the answer for this caller as well as its waiters.
 		allowed = false
 	} else if authErr == nil {
 		c.cache.Add(key, cacheEntry{
 			allowed:    allowed,
 			expiresAt:  time.Now().Add(authCacheTTL),
-			generation: generation,
+			generation: newCall.generation,
 		})
 
 		if c.redis != nil {
@@ -529,7 +624,5 @@ func (c *InternalAPIAuthClient) requestRoomAuthorization(
 		}
 	}
 	newCall.res = allowed
-	c.genMu.RUnlock()
-
 	return allowed
 }

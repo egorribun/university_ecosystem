@@ -1,11 +1,12 @@
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { useSessionProfileRefresh } from "./useSessionProfileRefresh"
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { extractApiError } from "@/utils/error"
 import { formatDate } from "@/utils/date"
 
 import { useAuth } from "@/contexts/AuthContext"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import {
   startTotpEnrollment,
   confirmTotpEnrollment,
@@ -59,6 +60,7 @@ export function useTotpEnrollment({
 }: UseTotpEnrollmentOptions): UseTotpEnrollmentReturn {
   const { t } = useTranslation(["settings", "common"])
   const { user, setUser } = useAuth()
+  const identityReady = !useConfirmedIdentityPending()
   const captureOperation = useProfileSessionGuard()
   const refreshUser = useSessionProfileRefresh()
 
@@ -179,38 +181,38 @@ export function useTotpEnrollment({
     ]
   )
 
+  const prepareAutoResume = useEffectEvent((pendingId: string) => {
+    const attempted = autoResumeAttempt.current
+    if (attempted?.owner === captureOperation && attempted.pendingId === pendingId) return null
+    const isCurrent = captureOperation()
+    return () => {
+      if (!isCurrent()) return
+      autoResumeAttempt.current = { pendingId, owner: captureOperation }
+      void handleStartTotp({ payload: { reuse_existing: true } })
+    }
+  })
+
   // One automatic attempt per pending enrollment and mounted account.
-  // Manual retries and the step-up continuation still use the handler directly.
+  // A session rotation invalidates a queued attempt without scheduling a new
+  // one for the old profile. Manual retries remain available.
   useEffect(() => {
     if (!pendingTotpEnrollment) {
       autoResumeAttempt.current = null
       return
     }
-    if (totpDraft || totpBusy || totpLimitReached) return
-    const pendingId = pendingTotpEnrollment.id
-    const attempted = autoResumeAttempt.current
-    if (attempted?.owner === captureOperation && attempted.pendingId === pendingId) return
-
+    if (!identityReady || totpDraft || totpBusy || totpLimitReached) return
+    const resume = prepareAutoResume(pendingTotpEnrollment.id)
+    if (!resume) return
     let cancelled = false
     // StrictMode cleanup cancels the first setup before it owns a request.
     queueMicrotask(() => {
       if (cancelled) return
-      const isCurrent = captureOperation()
-      if (!isCurrent()) return
-      autoResumeAttempt.current = { pendingId, owner: captureOperation }
-      void handleStartTotp({ payload: { reuse_existing: true } })
+      resume()
     })
     return () => {
       cancelled = true
     }
-  }, [
-    captureOperation,
-    handleStartTotp,
-    pendingTotpEnrollment,
-    totpBusy,
-    totpDraft,
-    totpLimitReached,
-  ])
+  }, [identityReady, pendingTotpEnrollment, totpBusy, totpDraft, totpLimitReached, user?.id])
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {

@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
+import { useEffect, useRef, type ChangeEvent, type RefObject } from "react"
 
 import { useAuth } from "@/contexts/AuthContext"
-import { getConfirmedUserId } from "@/stores/authIdentity"
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
 import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
 
@@ -20,12 +22,15 @@ import type { SettingsSectionProps } from "@/pages/settings/types"
 export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])
   const navigate = useNavigate()
-  const { user, loading: identityLoading } = useAuth()
+  const { user } = useAuth()
+  const captureOperation = useProfileSessionGuard()
+  const avatarPickRef = useRef<(() => boolean) | null>(null)
+  const coverPickRef = useRef<(() => boolean) | null>(null)
   // Media actions run only for a confirmed account (useProfileSessionGuard drops
   // them otherwise). The SSR role stub and the encrypted-cache placeholder are not
   // one, so keep the controls disabled until the real identity arrives instead of
   // offering a click that silently does nothing.
-  const identityPending = getConfirmedUserId({ user, loading: identityLoading }) === null
+  const identityPending = useConfirmedIdentityPending()
 
   const {
     avatarSrc,
@@ -46,6 +51,43 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
     inputRef: coverInputRef,
     upload: uploadCover,
   } = useCoverUpload(setSnackbar)
+
+  useEffect(() => {
+    const avatarInput = avatarInputRef.current!
+    const coverInput = coverInputRef.current!
+    const cancelAvatarPick = () => {
+      avatarPickRef.current = null
+    }
+    const cancelCoverPick = () => {
+      coverPickRef.current = null
+    }
+    avatarInput.addEventListener("cancel", cancelAvatarPick)
+    coverInput.addEventListener("cancel", cancelCoverPick)
+    return () => {
+      avatarInput.removeEventListener("cancel", cancelAvatarPick)
+      coverInput.removeEventListener("cancel", cancelCoverPick)
+    }
+  }, [avatarInputRef, coverInputRef])
+
+  const startPick = (receipt: RefObject<(() => boolean) | null>, trigger: () => void) => {
+    receipt.current = null
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
+    receipt.current = isCurrent
+    trigger()
+  }
+
+  const completePick = (
+    event: ChangeEvent<HTMLInputElement>,
+    receipt: RefObject<(() => boolean) | null>,
+    upload: (file: File) => void
+  ) => {
+    const file = event.currentTarget.files?.[0]
+    const isCurrent = receipt.current
+    receipt.current = null
+    event.currentTarget.value = ""
+    if (file && isCurrent?.()) upload(file)
+  }
 
   return (
     <SectionCard component="section">
@@ -77,7 +119,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 <Button
                   size="sm"
                   variant="solid"
-                  onClick={triggerAvatarPick}
+                  onClick={() => startPick(avatarPickRef, triggerAvatarPick)}
                   disabled={avatarBusy || identityPending}
                   className="w-full sm:w-auto"
                 >
@@ -119,7 +161,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 <Button
                   size="sm"
                   variant="solid"
-                  onClick={triggerCoverPick}
+                  onClick={() => startPick(coverPickRef, triggerCoverPick)}
                   disabled={coverBusy || identityPending}
                   className="w-full sm:w-auto"
                 >
@@ -171,28 +213,14 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         type="file"
         accept="image/png,image/jpeg,image/webp"
         hidden
-        onChange={(e) => {
-          const f = e.currentTarget.files?.[0]
-          if (f) {
-            uploadAvatar(f)
-          } else {
-            return
-          }
-        }}
+        onChange={(event) => completePick(event, avatarPickRef, uploadAvatar)}
       />
       <input
         ref={coverInputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
         hidden
-        onChange={(e) => {
-          const f = e.currentTarget.files?.[0]
-          if (f) {
-            uploadCover(f)
-          } else {
-            return
-          }
-        }}
+        onChange={(event) => completePick(event, coverPickRef, uploadCover)}
       />
     </SectionCard>
   )

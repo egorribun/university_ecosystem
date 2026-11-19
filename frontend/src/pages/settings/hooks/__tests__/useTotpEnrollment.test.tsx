@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { StrictMode, type PropsWithChildren } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { acceptBrowserSessionGeneration, rotateBrowserSession } from "@/stores/sessionEpoch"
 import type { MfaTotpEnrollment, TotpEnrollmentStart } from "@/types/Mfa"
 import { useTotpEnrollment } from "../useTotpEnrollment"
 
@@ -193,6 +194,19 @@ describe("useTotpEnrollment — start and confirm", () => {
     expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
   })
 
+  it("does not auto-resume after the session rotates before the queued attempt", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending", confirmed_at: null })]
+    const { unmount } = renderTotpHook()
+
+    rotateBrowserSession()
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
+    unmount()
+  })
+
   it("starts enrollment with a payload and stores the draft", async () => {
     const { result } = renderTotpHook()
     const payload = { label: "Authenticator", reuse_existing: false }
@@ -213,6 +227,24 @@ describe("useTotpEnrollment — start and confirm", () => {
     await waitFor(() =>
       expect(mocks.startTotpEnrollment).toHaveBeenCalledWith({ reuse_existing: true })
     )
+    await waitFor(() => expect(result.current.totpDraft).toEqual(draft()))
+  })
+
+  it("resumes after a cross-tab session binding is accepted without an auth rerender", async () => {
+    rotateBrowserSession()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "remote-session", hash: null })
+    )
+    mocks.user.totp_enrollments = [enrollment({ confirmed_at: null })]
+    const { result } = renderTotpHook()
+    expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
+
+    await act(async () => {
+      acceptBrowserSessionGeneration()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledOnce())
     await waitFor(() => expect(result.current.totpDraft).toEqual(draft()))
   })
 
@@ -308,7 +340,7 @@ describe("useTotpEnrollment — start and confirm", () => {
     await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
   })
 
-  it("does not consume an automatic attempt before the account is confirmed", async () => {
+  it("resumes a pending enrollment once the same account finishes loading", async () => {
     const pending = enrollment({ id: "pending", confirmed_at: null })
     mocks.loading = true
     mocks.user.totp_enrollments = [pending]
@@ -322,10 +354,14 @@ describe("useTotpEnrollment — start and confirm", () => {
     expect(result.current.totpBusy).toBe(false)
 
     mocks.loading = false
-    mocks.user = { ...mocks.user, totp_enrollments: [{ ...pending }] }
     rerender()
 
     await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
+    expect(mocks.startTotpEnrollment).toHaveBeenCalledExactlyOnceWith({ reuse_existing: true })
+    rerender()
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(mocks.startTotpEnrollment).toHaveBeenCalledOnce()
   })
 

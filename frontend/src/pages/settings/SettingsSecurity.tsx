@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
+import { useConfirmedIdentityPending } from "@/hooks/useConfirmedIdentityPending"
+import { useSessionIdentity } from "@/hooks/useSessionIdentity"
 
 import { EmailSection, PasswordSection } from "./sections"
 
@@ -17,6 +19,7 @@ import {
 import { TotpQrDisplay } from "@/components/mfa/TotpQrDisplay"
 import { OtpEntry } from "@/components/mfa/OtpEntry"
 import { MailCheck, Smartphone } from "lucide-react"
+import { SecurityOtpFieldset } from "./SecurityOtpFieldset"
 
 import type { SetSnackbar } from "./types"
 
@@ -27,9 +30,19 @@ interface SettingsSecurityProps {
   isActive?: boolean
 }
 
-export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurityProps) {
+const ignoreOtpSubmit = () => undefined
+
+export function SettingsSecurity(props: SettingsSecurityProps) {
+  const { user } = useAuth()
+  const [sessionEpoch, sessionGeneration] = useSessionIdentity()
+  const sessionKey = JSON.stringify([user?.id ?? null, sessionEpoch, sessionGeneration])
+  return <SettingsSecurityContent key={sessionKey} {...props} />
+}
+
+function SettingsSecurityContent({ setSnackbar, openStepUpFor }: SettingsSecurityProps) {
   const { t } = useTranslation(["settings", "common"])
   const { user } = useAuth()
+  const identityPending = useConfirmedIdentityPending()
 
   // --- Email Change ---
   const {
@@ -108,6 +121,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
         emailValue={emailValue}
         emailPassword={emailPassword}
         emailBusy={emailBusy}
+        identityPending={identityPending}
         emailError={emailError}
         emailPasswordError={emailPasswordError}
         pendingEmail={pendingEmail}
@@ -126,6 +140,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
         isNewPasswordError={isNewPasswordError}
         confirmPasswordMessage={confirmPasswordMessage}
         passwordBusy={passwordBusy}
+        identityPending={identityPending}
         onCurrentPasswordChange={setCurrentPasswordValue}
         onNewPasswordChange={setNewPasswordValue}
         onConfirmPasswordChange={setConfirmPasswordValue}
@@ -171,7 +186,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                     size="small"
                     variant="outlined"
                     color="error"
-                    disabled={totpBusy}
+                    disabled={totpBusy || identityPending}
                     onClick={() => handleDisableTotp(enrollment.id)}
                   >
                     {t("settings:security.totp.remove")}
@@ -194,7 +209,13 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                   <TotpQrDisplay secret={totpDraft.secret} otpauthUrl={totpDraft.otpauth_url} />
 
                   <div className="flex flex-col gap-2">
-                    <OtpEntry loading={totpBusy} onSubmit={handleConfirmTotp} error={totpError} />
+                    <SecurityOtpFieldset identityPending={identityPending}>
+                      <OtpEntry
+                        loading={totpBusy}
+                        onSubmit={identityPending ? ignoreOtpSubmit : handleConfirmTotp}
+                        error={totpError}
+                      />
+                    </SecurityOtpFieldset>
 
                     <p className="text-xs text-(--text-tertiary) text-center px-2">
                       {t("settings:security.totp.pendingHelper")}
@@ -205,6 +226,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                       color="error"
                       size="small"
                       onClick={handleCancelTotp}
+                      disabled={totpBusy || identityPending}
                       className="self-center mt-1"
                     >
                       {t("settings:security.totp.cancel")}
@@ -215,7 +237,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                 <Button
                   variant="outlined"
                   onClick={() => handleStartTotp()}
-                  disabled={totpBusy}
+                  disabled={totpBusy || identityPending}
                   className="self-start"
                 >
                   {t("settings:security.totp.add")}
@@ -245,17 +267,19 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                       })}
                     </p>
                   </div>
-                  <OtpEntry
-                    method="email_otp"
-                    loading={emailMfaBusy}
-                    error={emailMfaError}
-                    onSubmit={handleConfirmEmailMfa}
-                  />
+                  <SecurityOtpFieldset identityPending={identityPending}>
+                    <OtpEntry
+                      method="email_otp"
+                      loading={emailMfaBusy}
+                      error={emailMfaError}
+                      onSubmit={identityPending ? ignoreOtpSubmit : handleConfirmEmailMfa}
+                    />
+                  </SecurityOtpFieldset>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outlined"
                       size="small"
-                      disabled={emailMfaBusy}
+                      disabled={emailMfaBusy || identityPending}
                       onClick={handleResendEmailMfa}
                     >
                       {t("settings:security.emailMfa.resend")}
@@ -263,7 +287,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                     <Button
                       variant="text"
                       size="small"
-                      disabled={emailMfaBusy}
+                      disabled={emailMfaBusy || identityPending}
                       onClick={handleCancelEmailMfa}
                     >
                       {t("common:buttons.cancel")}
@@ -277,7 +301,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurit
                   onClick={
                     emailMfaEnabled ? handleDisableEmailMfa : () => void handleStartEmailMfa()
                   }
-                  disabled={emailMfaBusy}
+                  disabled={emailMfaBusy || identityPending}
                   className="self-start"
                 >
                   {emailMfaEnabled

@@ -1128,7 +1128,9 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		ReplayGuard:       replayGuard,
 	}
 
-	var schemaOpts []graphql.SchemaOpt
+	// Enforce expanded field depth in the AST validator: lexical brace counts
+	// in the HTTP middleware cannot account for named fragment spreads.
+	schemaOpts := []graphql.SchemaOpt{graphql.MaxDepth(10)}
 	// TD-W16-02: Disable introspection in staging too — prevents schema leakage.
 	if cfg.Environment == "production" || cfg.Environment == "staging" {
 		schemaOpts = append(schemaOpts, graphql.RestrictIntrospection(denyGraphQLIntrospection))

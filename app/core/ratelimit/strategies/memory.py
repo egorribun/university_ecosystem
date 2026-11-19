@@ -4,7 +4,7 @@ import collections
 import math
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager
 
 from app.core.ratelimit.models import RateLimitInfo
@@ -40,6 +40,16 @@ def _snapshot_memory_window_keys() -> list[str]:
         return list(_memory_windows.keys())
 
 
+class _MemoryWindow(collections.deque[float]):
+    """Keep retention metadata with the timestamps it protects."""
+
+    __slots__ = ("retention_seconds",)
+
+    def __init__(self, values: Iterable[float], retention_seconds: int) -> None:
+        super().__init__(values)
+        self.retention_seconds = retention_seconds
+
+
 class MemorySlidingWindowStrategy:
     """In-memory sliding window rate limit strategy."""
 
@@ -55,7 +65,14 @@ class MemorySlidingWindowStrategy:
         cutoff = now - window_seconds
 
         with _shard_lock(key):
-            window = _memory_windows.setdefault(key, collections.deque())
+            window = _memory_windows.get(key)
+            if not isinstance(window, _MemoryWindow):
+                window = _MemoryWindow(
+                    window if window is not None else (), window_seconds
+                )
+                _memory_windows[key] = window
+            else:
+                window.retention_seconds = max(window.retention_seconds, window_seconds)
 
             # Evict timestamps that have fallen outside the sliding window.
             while window and window[0] <= cutoff:

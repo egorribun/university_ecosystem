@@ -59,5 +59,10 @@ export function markIfFromBottom() {
   const el = getScrollRoot()
   const threshold = 24
   const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
-  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1")
+  if (!nearBottom) return
+  try {
+    sessionStorage.setItem("__scrollTopNext", "1")
+  } catch {
+    // Scroll restoration is best-effort when storage is blocked or full.
+  }
 }

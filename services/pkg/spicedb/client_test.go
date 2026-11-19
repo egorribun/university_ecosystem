@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -96,24 +97,31 @@ func TestMemoryClientRejectsCancelledEvaluation(t *testing.T) {
 }
 
 func TestEvaluateWithTimeoutStopsWaitingAtDeadline(t *testing.T) {
-	started := make(chan struct{})
-	allowed, err := EvaluateWithTimeout(
-		context.Background(),
-		func(ctx context.Context) (bool, error) {
-			close(started)
-			<-ctx.Done()
-			return false, ctx.Err()
-		},
-		10*time.Millisecond,
-	)
+	synctest.Test(t, func(t *testing.T) {
+		started := make(chan struct{})
+		allowed, err := EvaluateWithTimeout(
+			context.Background(),
+			func(ctx context.Context) (bool, error) {
+				close(started)
+				<-ctx.Done()
+				return false, ctx.Err()
+			},
+			10*time.Millisecond,
+		)
 
-	<-started
-	if allowed {
-		t.Fatal("timed-out evaluation must fail closed")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected deadline exceeded, got %v", err)
-	}
+		synctest.Wait()
+		select {
+		case <-started:
+		default:
+			t.Fatal("deadline test callback never started")
+		}
+		if allowed {
+			t.Fatal("timed-out evaluation must fail closed")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected deadline exceeded, got %v", err)
+		}
+	})
 }
 
 func TestPermKeyFormat(t *testing.T) {
