@@ -69,7 +69,7 @@ async def test_invisible_parent_rejected_before_any_mutation(operation, scope):
 
 
 @pytest.mark.asyncio
-async def test_sqlite_real_repositories_validate_effective_parent_without_cache():
+async def test_sqlite_real_repositories_validate_effective_parent():
     from sqlalchemy import select
 
     from app import models
@@ -94,34 +94,26 @@ async def test_sqlite_real_repositories_validate_effective_parent_without_cache(
             start_time=START,
             end_time=END,
         )
-        with patch(
-            "app.repositories.schedule_repository.schedule_cache.get",
-            new=AsyncMock(
-                side_effect=AssertionError("Parent authorization must not read cache")
-            ),
-        ):
-            with pytest.raises(EntityNotFound):
-                await service.create_schedule(data)
-            assert not (await db.execute(select(models.Schedule))).scalars().all()
-            assert not (await db.execute(select(StoredEvent))).scalars().all()
-            created = await service.create_schedule(
-                data.model_copy(update={"group_id": group.id})
-            )
-            with pytest.raises(EntityNotFound):
-                await service.update_schedule(
-                    created.id, ScheduleUpdate(group_id=missing)
-                )
-            persisted = await service.repo.get_for_update_fresh(created.id)
-            assert persisted.group_id == group.id
-            updated = await service.update_schedule(
-                created.id, ScheduleUpdate(group_id=other.id)
-            )
-            assert updated.group_id == other.id
-            unchanged = await service.update_schedule(
-                created.id, ScheduleUpdate(room="202")
-            )
-            assert unchanged.group_id == other.id
-            assert unchanged.room == "202"
+        with pytest.raises(EntityNotFound):
+            await service.create_schedule(data)
+        assert not (await db.execute(select(models.Schedule))).scalars().all()
+        assert not (await db.execute(select(StoredEvent))).scalars().all()
+        created = await service.create_schedule(
+            data.model_copy(update={"group_id": group.id})
+        )
+        with pytest.raises(EntityNotFound):
+            await service.update_schedule(created.id, ScheduleUpdate(group_id=missing))
+        persisted = await service.repo.get_for_update_fresh(created.id)
+        assert persisted.group_id == group.id
+        updated = await service.update_schedule(
+            created.id, ScheduleUpdate(group_id=other.id)
+        )
+        assert updated.group_id == other.id
+        unchanged = await service.update_schedule(
+            created.id, ScheduleUpdate(room="202")
+        )
+        assert unchanged.group_id == other.id
+        assert unchanged.room == "202"
 
 
 @pytest.mark.asyncio

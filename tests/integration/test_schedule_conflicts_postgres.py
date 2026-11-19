@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -14,7 +13,6 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models as models
-from app.core.cache import schedule_cache
 from app.core.exceptions.domain import BusinessRuleViolation
 from app.repositories.schedule_repository import ScheduleRepository
 from app.repositories.unit_of_work import uow_from_session
@@ -31,26 +29,6 @@ pytestmark = [
         reason="Set RUN_INTEGRATION_TESTS=1 for PostgreSQL concurrency coverage",
     ),
 ]
-
-
-def _install_local_schedule_cache(monkeypatch) -> tuple[dict[str, Any], list[str]]:
-    cache: dict[str, Any] = {}
-    reads: list[str] = []
-
-    async def get(key: str) -> Any:
-        reads.append(key)
-        return cache.get(key)
-
-    async def set_value(key: str, value: Any) -> None:
-        cache[key] = value
-
-    async def delete(key: str) -> None:
-        cache.pop(key, None)
-
-    monkeypatch.setattr(schedule_cache, "get", get)
-    monkeypatch.setattr(schedule_cache, "set", set_value)
-    monkeypatch.setattr(schedule_cache, "delete", delete)
-    return cache, reads
 
 
 async def _wait_for_advisory_wait(observer: AsyncSession, pid: int) -> None:
@@ -172,10 +150,9 @@ async def _run_update(
 
 @pytest.mark.asyncio
 async def test_concurrent_creates_recheck_teacher_conflict_after_transaction_lock(
-    db_session, monkeypatch
+    db_session,
 ):
     assert db_session.bind.dialect.name == "postgresql"
-    _install_local_schedule_cache(monkeypatch)
     groups = [
         models.Group(name=f"aud228-create-{uuid4().hex}"),
         models.Group(name=f"aud228-create-{uuid4().hex}"),
@@ -225,10 +202,9 @@ async def test_concurrent_creates_recheck_teacher_conflict_after_transaction_loc
 
 @pytest.mark.asyncio
 async def test_concurrent_updates_recheck_group_conflict_after_commit(
-    db_session, monkeypatch
+    db_session,
 ):
     assert db_session.bind.dialect.name == "postgresql"
-    _install_local_schedule_cache(monkeypatch)
     group = models.Group(name=f"aud228-update-{uuid4().hex}")
     db_session.add(group)
     await db_session.flush()
@@ -283,10 +259,9 @@ async def test_concurrent_updates_recheck_group_conflict_after_commit(
 
 @pytest.mark.asyncio
 async def test_update_refreshes_prefetched_row_after_waiting_for_lock(
-    db_session, monkeypatch
+    db_session,
 ):
     assert db_session.bind.dialect.name == "postgresql"
-    _install_local_schedule_cache(monkeypatch)
     groups = [
         models.Group(name=f"aud228-refresh-{uuid4().hex}"),
         models.Group(name=f"aud228-refresh-{uuid4().hex}"),
@@ -361,11 +336,8 @@ async def test_update_refreshes_prefetched_row_after_waiting_for_lock(
 
 
 @pytest.mark.asyncio
-async def test_create_conflict_ignores_stale_capped_group_cache(
-    db_session, monkeypatch
-):
+async def test_create_conflict_checks_rows_beyond_display_limit(db_session):
     assert db_session.bind.dialect.name == "postgresql"
-    _cached, cache_reads = _install_local_schedule_cache(monkeypatch)
     group = models.Group(name=f"aud228-cache-{uuid4().hex}")
     db_session.add(group)
     await db_session.flush()
@@ -379,16 +351,13 @@ async def test_create_conflict_ignores_stale_capped_group_cache(
 
     display_rows = await ScheduleRepository(db_session).get_by_group(group_id)
     assert len(display_rows) == 500
-    assert cache_reads == []
 
-    # Preserve the capped snapshot a different worker could still hold, then
-    # commit a conflicting row beyond its display cap. Reads and write
-    # validation must bypass that now-stale process-local view.
-    _cached[f"schedule:group:{group_id}"] = [
-        row.model_dump(mode="json") for row in display_rows
-    ]
+    # A conflicting row beyond the display cap must still be checked on write.
     db_session.add(_schedule_row(group_id, weekday="tuesday", start_time=tuesday))
     await db_session.commit()
+    display_rows = await ScheduleRepository(db_session).get_by_group(group_id)
+    assert len(display_rows) == 500
+    assert all(row.weekday == "monday" for row in display_rows)
     service = ScheduleService(uow_from_session(db_session), ScheduleOptimizerService())
     try:
         with patch("app.services.audit_service.get_secure_audit_service") as factory:
@@ -404,7 +373,14 @@ async def test_create_conflict_ignores_stale_capped_group_cache(
                         parity="both",
                     )
                 )
-        assert cache_reads == []
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(models.Schedule)
+                .where(models.Schedule.group_id == group_id)
+            )
+            == 501
+        )
     finally:
         await db_session.rollback()
         await db_session.execute(
@@ -478,7 +454,6 @@ async def test_seed_writer_holds_shared_lock_and_api_rechecks_after_seed_commit(
     db_session, monkeypatch
 ):
     assert db_session.bind.dialect.name == "postgresql"
-    _install_local_schedule_cache(monkeypatch)
     seed_group = await seed_demo_data.seed_group(db_session)
     seed_user = await seed_demo_data.seed_user(db_session, seed_group)
     api_group = models.Group(name=f"aud228-seed-api-{uuid4().hex}")

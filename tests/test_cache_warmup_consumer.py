@@ -3,7 +3,7 @@
 import time
 from contextlib import nullcontext
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -232,7 +232,6 @@ async def test_startup_skips_system_event_warmup_for_auth_only_endpoint(
         patch("app.services.cache_warmup.get_cache", return_value=fake_cache),
         patch("app.services.cache_warmup.async_session") as session_factory,
         patch("app.services.cache_warmup.settings") as settings,
-        patch("app.services.cache_warmup._warm_schedule", new_callable=AsyncMock),
         patch("app.services.cache_warmup._warm_stats", new_callable=AsyncMock),
         patch("app.services.cache_warmup._warm_news", new_callable=AsyncMock),
         patch("app.services.event_service.EventService") as event_service,
@@ -271,7 +270,6 @@ async def test_startup_warmers_can_query_shared_session_without_overlap():
             patch("app.services.cache_warmup.settings") as settings,
             patch("app.services.cache_warmup.get_cache", return_value=cache),
             patch("app.services.cache_warmup.async_session", sessions),
-            patch("app.services.cache_warmup._warm_schedule", query),
             patch("app.services.cache_warmup._warm_stats", query),
             patch("app.services.cache_warmup._warm_news", query),
         ):
@@ -281,11 +279,11 @@ async def test_startup_warmers_can_query_shared_session_without_overlap():
         await engine.dispose()
 
     assert errors == []
-    assert results == [1, 1, 1]
+    assert results == [1, 1]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scope", ["schedule", "stats", "user_stats"])
+@pytest.mark.parametrize("scope", ["stats", "user_stats"])
 async def test_warmup_fanout_can_query_shared_session_without_overlap(scope):
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -308,7 +306,6 @@ async def test_warmup_fanout_can_query_shared_session_without_overlap(scope):
 
             with (
                 patch("app.services.cache_warmup.settings") as settings,
-                patch("app.services.cache_warmup._warm_schedule_group", query),
                 patch("app.services.cache_warmup._warm_stats_for_user", query)
                 if scope == "stats"
                 else nullcontext(),
@@ -320,8 +317,6 @@ async def test_warmup_fanout_can_query_shared_session_without_overlap(scope):
                     "app.services.user.analytics_service.UserAnalyticsService"
                 ) as svc,
             ):
-                settings.cache_warmup_group_ids = ("one", "two")
-                settings.cache_default_ttl_seconds = 60
                 settings.cache_warmup_stats_user_ids = ("user",)
                 settings.cache_warmup_period_keys = ("30d", "90d")
                 svc.return_value.get_attendance_stats = AsyncMock(
@@ -331,9 +326,7 @@ async def test_warmup_fanout_can_query_shared_session_without_overlap(scope):
                 svc.return_value.get_participation_stats = AsyncMock(
                     side_effect=query_stat
                 )
-                if scope == "schedule":
-                    await cache_warmup._warm_schedule(cache, db)
-                elif scope == "stats":
+                if scope == "stats":
                     await cache_warmup._warm_stats(cache, db)
                 else:
                     await cache_warmup._warm_stats_for_user(cache, db, "user", "30d")
@@ -345,13 +338,13 @@ async def test_warmup_fanout_can_query_shared_session_without_overlap(scope):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scope", ["schedule", "stats", "user_stats"])
+@pytest.mark.parametrize("scope", ["stats", "user_stats"])
 async def test_warmup_fanout_continues_after_one_item_fails(scope):
     cache = MemoryCache()
+    db = MagicMock()
     worker = AsyncMock(side_effect=[ValueError("first failed"), None])
     with (
         patch("app.services.cache_warmup.settings") as settings,
-        patch("app.services.cache_warmup._warm_schedule_group", worker),
         patch("app.services.cache_warmup._warm_stats_for_user", worker)
         if scope == "stats"
         else nullcontext(),
@@ -361,8 +354,6 @@ async def test_warmup_fanout_continues_after_one_item_fails(scope):
         ),
         patch("app.services.user.analytics_service.UserAnalyticsService") as svc,
     ):
-        settings.cache_warmup_group_ids = ("one", "two")
-        settings.cache_default_ttl_seconds = 60
         settings.cache_warmup_stats_user_ids = ("user",)
         settings.cache_warmup_period_keys = ("30d", "90d")
         svc.return_value.get_attendance_stats = AsyncMock(
@@ -370,14 +361,14 @@ async def test_warmup_fanout_continues_after_one_item_fails(scope):
         )
         svc.return_value.get_grade_stats = AsyncMock()
         svc.return_value.get_participation_stats = AsyncMock()
-        if scope == "schedule":
-            await cache_warmup._warm_schedule(cache, MagicMock())
-            assert worker.await_count == 2
-        elif scope == "stats":
-            await cache_warmup._warm_stats(cache, MagicMock())
-            assert worker.await_count == 2
+        if scope == "stats":
+            await cache_warmup._warm_stats(cache, db)
+            assert worker.await_args_list == [
+                call(cache, db, "user", "30d", skip_cache=False),
+                call(cache, db, "user", "90d", skip_cache=False),
+            ]
         else:
-            await cache_warmup._warm_stats_for_user(cache, MagicMock(), "user", "30d")
+            await cache_warmup._warm_stats_for_user(cache, db, "user", "30d")
             svc.return_value.get_attendance_stats.assert_awaited_once()
             svc.return_value.get_grade_stats.assert_awaited_once()
             svc.return_value.get_participation_stats.assert_awaited_once()

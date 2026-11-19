@@ -1521,11 +1521,8 @@ async def test_schedule_service_parent_ownership(
     rls_schema: SimpleNamespace,
     operation: str,
     parent_owner: str,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Real service, repository, transaction listener and ordinary-role RLS."""
-    from unittest.mock import AsyncMock
-
     from app.core.db.listeners import register_tenant_listeners
     from app.core.exceptions.domain import EntityNotFound
     from app.repositories.unit_of_work import uow_from_session
@@ -1533,10 +1530,6 @@ async def test_schedule_service_parent_ownership(
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
 
-    # Cache invalidation is unrelated to database authorization; no Redis needed.
-    monkeypatch.setattr(
-        "app.repositories.schedule_repository.schedule_cache.delete", AsyncMock()
-    )
     register_tenant_listeners()
     target, original, schedule_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     start = dt.datetime(2026, 11, 9, 9, tzinfo=dt.UTC)
@@ -1831,12 +1824,12 @@ async def test_room_membership_callback_obeys_parent_tenant_rls(
 @pytest.mark.asyncio
 async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
     rls_schema: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Real warmup, query handler, session listener and non-bypass PostgreSQL role."""
+    """Legacy cache entries cannot override a non-bypass PostgreSQL RLS session."""
     from app.core.db.listeners import register_tenant_listeners
     from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
-    from app.deps.cache import MemoryCache
-    from app.services.cache_warmup import _warm_schedule_group
+    from app.deps.cache import MemoryCache, get_cache
 
     register_tenant_listeners()
     group_id, lesson_id = uuid.uuid4(), uuid.uuid4()
@@ -1849,6 +1842,8 @@ async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
         connect_args={"timeout": 5},
     )
     cache = MemoryCache(default_ttl=300)
+    monkeypatch.setattr("app.deps.cache._cache_backend", cache)
+    assert get_cache() is cache
     tenant_token = tenant_id_ctx.set(str(_TENANT_B))
     bypass_token = bypass_rls_ctx.set(False)
     try:
@@ -1874,15 +1869,20 @@ async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
             )
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
-            await _warm_schedule_group(cache, session, group_id, ttl_seconds=300)
-            entry = await cache.get(f"schedule:group:{group_id}")
-            assert entry is not None
-            assert entry.payload[0]["subject"] == "private B schedule"
-            visible = await GetScheduleHandler(session, cache).handle(
+            visible = await GetScheduleHandler(session).handle(
                 GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
             )
             assert visible.payload[0]["subject"] == "private B schedule"
             assert visible.etag is not None
+
+        # Recreate a live legacy shared entry with foreign data and its own
+        # validator. The current handler has no schedule-cache dependency.
+        cache_key = f"schedule:group:{group_id}"
+        stale_payload = [dict(visible.payload[0], subject="stale private B schedule")]
+        entry = await cache.set(cache_key, stale_payload, ttl=300)
+        assert await cache.get(cache_key) == entry
+        assert entry.payload[0]["subject"] == "stale private B schedule"
+        assert f'"{entry.etag}"' != visible.etag
 
         for tenant in (_TENANT_A, None):
             tenant_id_ctx.set(str(tenant) if tenant else "")
@@ -1903,17 +1903,18 @@ async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
                         {"id": lesson_id},
                     )
                 ) == 0
-                # Warmup really populated an unscoped legacy key. Neither its
-                # body nor either old validator can bypass the current RLS.
+                # Neither the live legacy entry nor either old validator can
+                # bypass the current RLS.
                 for validator in (None, visible.etag, f'"{entry.etag}"'):
-                    hidden = await GetScheduleHandler(session, cache).handle(
+                    assert await cache.get(cache_key) == entry
+                    hidden = await GetScheduleHandler(session).handle(
                         GetScheduleQuery(
                             group_id=group_id, locale="en", if_none_match=validator
                         )
                     )
                     assert hidden.payload == []
                     assert hidden.not_modified is False
-                unchanged = await GetScheduleHandler(session, cache).handle(
+                unchanged = await GetScheduleHandler(session).handle(
                     GetScheduleQuery(
                         group_id=group_id, locale="en", if_none_match=hidden.etag
                     )
@@ -1922,7 +1923,7 @@ async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
                 assert unchanged.payload is None
         tenant_id_ctx.set(str(_TENANT_B))
         async with factory() as session:
-            restored = await GetScheduleHandler(session, cache).handle(
+            restored = await GetScheduleHandler(session).handle(
                 GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
             )
             assert restored.payload[0]["subject"] == "private B schedule"

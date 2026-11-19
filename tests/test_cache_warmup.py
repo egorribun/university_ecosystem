@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -25,58 +26,11 @@ async def test_is_entry_fresh():
         assert cache_warmup._is_entry_fresh(entry)
 
 
-def test_schedule_cache_key():
-    uid = str(uuid.uuid4())
-    assert cache_warmup._schedule_cache_key(uid) == f"schedule:group:{uid}"
-
-
 def test_period_days_from_key():
     assert cache_warmup._period_days_from_key("7d") == 7
     assert cache_warmup._period_days_from_key("30D") == 30
     assert cache_warmup._period_days_from_key("invalid") is None
     assert cache_warmup._period_days_from_key(None) is None
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_group():
-    mock_cache = AsyncMock()
-    mock_cache.enabled = True
-    mock_cache.get.return_value = None
-    mock_db = AsyncMock()
-
-    with (
-        patch("app.services.schedule_service.ScheduleService") as MockService,
-        patch("app.repositories.schedule_repository.ScheduleRepository"),
-        patch("app.repositories.schedule_repository.GroupRepository"),
-        patch("app.services.schedule_optimizer.ScheduleOptimizerService"),
-    ):
-        mock_service_instance = MockService.return_value
-        # Mock objects often behave like dicts if configured, but model_validate
-        # expects obj or dict. If model_validate(obj), it tries getattr.
-        # Let's return a Mock that has these attributes.
-
-        mock_item = MagicMock()
-        mock_item.id = uuid.uuid4()
-        mock_item.group_id = uuid.uuid4()
-        mock_item.subject = "Math"
-        mock_item.teacher = "Doe"
-        mock_item.room = "101"
-        mock_item.weekday = "monday"
-        mock_item.parity = "both"
-        mock_item.lesson_type = "lecture"
-        mock_item.lesson_type_display = "Lecture"
-        mock_item.time_start = "10:00"
-        mock_item.time_end = "11:30"
-
-        mock_service_instance.get_schedule = AsyncMock(return_value=[mock_item])
-
-        group_id = uuid.uuid4()
-        await cache_warmup._warm_schedule_group(
-            mock_cache, mock_db, group_id, ttl_seconds=60
-        )
-
-        mock_cache.set.assert_called_once()
-        assert f"schedule:group:{group_id}" in mock_cache.set.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -93,9 +47,11 @@ async def test_warm_cache_enabled():
         patch("app.services.cache_warmup.settings") as mock_settings,
         patch("app.services.cache_warmup.get_cache") as mock_get_cache,
         patch("app.services.cache_warmup.async_session") as mock_session_cls,
-        patch("app.services.cache_warmup._warm_schedule") as mock_warm_schedule,
         patch("app.services.cache_warmup._warm_stats") as mock_warm_stats,
         patch("app.services.cache_warmup._warm_news") as mock_warm_news,
+        patch("app.services.cache_warmup.news_cache_version") as mock_news_version,
+        patch("app.services.cache_warmup.get_current_tenant", return_value=None),
+        patch("app.services.cache_warmup.get_bypass_rls", return_value=False),
     ):
         mock_settings.cache_warmup_enabled = True
         mock_cache = AsyncMock()
@@ -104,13 +60,33 @@ async def test_warm_cache_enabled():
 
         mock_db = AsyncMock()
         mock_session_cls.return_value.__aenter__.return_value = mock_db
+        mock_news_version.prepare_warmup = AsyncMock()
+        steps = []
+
+        def record_step(name):
+            async def run(*_args):
+                steps.append(f"{name}:start")
+                await asyncio.sleep(0)
+                steps.append(f"{name}:end")
+
+            return run
+
+        mock_warm_stats.side_effect = record_step("stats")
+        mock_news_version.prepare_warmup.side_effect = record_step("prepare_news")
+        mock_db.rollback.side_effect = record_step("rollback")
+        mock_warm_news.side_effect = record_step("news")
 
         await cache_warmup.warm_cache()
 
-        mock_warm_schedule.assert_called_once()
-        mock_warm_stats.assert_called_once()
-        mock_warm_news.assert_called_once()
+        mock_warm_stats.assert_awaited_once_with(mock_cache, mock_db)
+        mock_news_version.prepare_warmup.assert_awaited_once_with(mock_cache)
         mock_db.rollback.assert_awaited_once()
+        mock_warm_news.assert_awaited_once_with(mock_cache, mock_db)
+        assert steps == [
+            f"{name}:{stage}"
+            for name in ("stats", "prepare_news", "rollback", "news")
+            for stage in ("start", "end")
+        ]
 
 
 @pytest.mark.asyncio
@@ -212,69 +188,8 @@ async def test_warm_news():
 
 # --------------------------------------------------------------------------- #
 # Track C (session 6) additions — early-return guards +                         #
-# _warm_schedule / _warm_stats wrappers + warm_cache backend-disabled/error.   #
+# _warm_stats wrapper + warm_cache backend-disabled/error.                   #
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_group_skips_when_cache_disabled():
-    cache = AsyncMock()
-    cache.enabled = False
-    await cache_warmup._warm_schedule_group(
-        cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
-    )
-    cache.get.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_group_skips_when_cached_fresh():
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = CacheEntry(payload={}, stored_at=time.time(), etag="x")
-    await cache_warmup._warm_schedule_group(
-        cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
-    )
-    cache.set.assert_not_called()  # fresh entry → no recompute
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_group_skips_when_no_rows():
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
-    with (
-        patch("app.services.schedule_service.ScheduleService") as mock_service,
-        patch("app.services.schedule_optimizer.ScheduleOptimizerService"),
-    ):
-        mock_service.return_value.get_schedule = AsyncMock(return_value=[])
-        await cache_warmup._warm_schedule_group(
-            cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
-        )
-    cache.set.assert_not_called()  # empty schedule → nothing cached
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_skips_without_group_ids():
-    with (
-        patch("app.services.cache_warmup.settings") as ms,
-        patch("app.services.cache_warmup._warm_schedule_group") as warm_group,
-    ):
-        ms.cache_warmup_group_ids = []
-        await cache_warmup._warm_schedule(AsyncMock(), AsyncMock())
-
-    warm_group.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_warm_schedule_fans_out_per_group():
-    with (
-        patch("app.services.cache_warmup.settings") as ms,
-        patch("app.services.cache_warmup._warm_schedule_group", AsyncMock()) as mwsg,
-    ):
-        ms.cache_warmup_group_ids = ("g1", "g2")
-        ms.cache_default_ttl_seconds = 300
-        await cache_warmup._warm_schedule(AsyncMock(), AsyncMock())
-    assert mwsg.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -291,14 +206,20 @@ async def test_warm_stats_skips_without_user_ids():
 
 @pytest.mark.asyncio
 async def test_warm_stats_fans_out_per_user_period():
+    cache = AsyncMock()
+    db = AsyncMock()
     with (
         patch("app.services.cache_warmup.settings") as ms,
         patch("app.services.cache_warmup._warm_stats_for_user", AsyncMock()) as mwsfu,
     ):
-        ms.cache_warmup_stats_user_ids = ("u1",)
+        ms.cache_warmup_stats_user_ids = ("u1", "u2")
         ms.cache_warmup_period_keys = ("30d", "90d")
-        await cache_warmup._warm_stats(AsyncMock(), AsyncMock())
-    assert mwsfu.await_count == 2  # 1 user x 2 periods
+        await cache_warmup._warm_stats(cache, db)
+    assert mwsfu.await_args_list == [
+        call(cache, db, user, period, skip_cache=False)
+        for user in ("u1", "u2")
+        for period in ("30d", "90d")
+    ]
 
 
 @pytest.mark.asyncio
@@ -359,10 +280,9 @@ async def test_warm_cache_swallows_connection_errors():
         patch("app.services.cache_warmup.get_cache") as mgc,
         patch("app.services.cache_warmup.async_session") as msess,
         patch(
-            "app.services.cache_warmup._warm_schedule",
+            "app.services.cache_warmup._warm_stats",
             AsyncMock(side_effect=ConnectionError("boom")),
-        ) as warm_schedule,
-        patch("app.services.cache_warmup._warm_stats", AsyncMock()) as warm_stats,
+        ) as warm_stats,
         patch("app.services.cache_warmup._warm_news", AsyncMock()) as warm_news,
         patch("app.services.cache_warmup.logger.exception") as log_exception,
     ):
@@ -374,8 +294,7 @@ async def test_warm_cache_swallows_connection_errors():
         msess.return_value.__aenter__.return_value = db
         await cache_warmup.warm_cache()
 
-    warm_schedule.assert_awaited_once_with(backend, db)
-    warm_stats.assert_not_awaited()
+    warm_stats.assert_awaited_once_with(backend, db)
     warm_news.assert_not_awaited()
     db.rollback.assert_not_awaited()
     log_exception.assert_called_once_with("Cache warmup failed")

@@ -301,13 +301,9 @@ and are not part of this inventory.
 | `CACHE_NEWS_L1_MAX_SIZE` | Cache news l1 max size. Defined in `app/core/config/cache.py`. | `200` |
 | `CACHE_NEWS_L1_TTL_S` | Cache news l1 TTL s. Defined in `app/core/config/cache.py`. | `60.0` |
 | `CACHE_NEWS_L2_TTL_S` | Cache news l2 TTL s. Defined in `app/core/config/cache.py`. | `3600.0` |
-| `CACHE_SCHEDULE_L1_MAX_SIZE` | Cache schedule l1 max size. Defined in `app/core/config/cache.py`. | `100` |
-| `CACHE_SCHEDULE_L1_TTL_S` | Cache schedule l1 TTL s. Defined in `app/core/config/cache.py`. | `120.0` |
-| `CACHE_SCHEDULE_L2_TTL_S` | Cache schedule l2 TTL s. Defined in `app/core/config/cache.py`. | `7200.0` |
 | `CACHE_USER_MAX_SIZE` | Cache user max size. Defined in `app/core/config/cache.py`. | `500` |
 | `CACHE_USER_TTL_S` | Cache user TTL s. Defined in `app/core/config/cache.py`. | `60.0` |
 | `CACHE_WARMUP_ENABLED` | Cache warmup enabled. Defined in `app/core/config/cache.py`. | `false` |
-| `CACHE_WARMUP_GROUPS` | Cache warmup groups. Defined in `app/core/config/cache.py`. | Empty |
 | `CACHE_WARMUP_MAX_AGE_SECONDS` | Cache warmup max age (seconds). Defined in `app/core/config/cache.py`. | `120` |
 | `CACHE_WARMUP_PERIODS` | Cache warmup periods. Defined in `app/core/config/cache.py`. | `30d,90d` |
 | `CACHE_WARMUP_STATS_USERS` | Cache warmup stats users. Defined in `app/core/config/cache.py`. | Empty |

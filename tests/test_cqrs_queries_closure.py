@@ -39,41 +39,52 @@ def _schedule() -> ScheduleDTO:
 
 
 @pytest.mark.asyncio
-async def test_schedule_handler_reads_repository_without_populating_shared_cache():
+async def test_schedule_handler_reads_repository_on_every_request():
     db = AsyncMock()
-    cache = MemoryCache(default_ttl=300)
-    handler = GetScheduleHandler(db, cache)
+    handler = GetScheduleHandler(db)
     row = _schedule()
+    changed = row.model_copy(update={"subject": "Physics"})
     group_id = uuid4()
 
     with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
-        repository_type.return_value.get_by_group = AsyncMock(return_value=[row])
+        read = AsyncMock(side_effect=[[row], [changed]])
+        repository_type.return_value.get_by_group = read
         result = await handler.handle(
             GetScheduleQuery(group_id=str(group_id), locale="en", if_none_match=None)
         )
+        next_result = await handler.handle(
+            GetScheduleQuery(group_id=str(group_id), locale="en", if_none_match=None)
+        )
 
-    repository_type.assert_called_once_with(db)
-    repository_type.return_value.get_by_group.assert_awaited_once_with(group_id)
+    assert repository_type.call_count == 2
+    assert all(call.args == (db,) for call in repository_type.call_args_list)
+    assert read.await_count == 2
+    assert all(call.args == (group_id,) for call in read.await_args_list)
     assert result.payload[0]["lesson_type_display"] == "Lecture"
     assert result.etag is not None
-    assert await cache.get(f"schedule:group:{group_id}") is None
+    assert result.payload[0]["subject"] == "Mathematics"
+    assert next_result.payload[0]["subject"] == "Physics"
+    assert next_result.etag != result.etag
 
 
 @pytest.mark.asyncio
-async def test_schedule_handler_reads_repository_without_cache():
+async def test_schedule_handler_localizes_repository_result():
     db = AsyncMock()
-    handler = GetScheduleHandler(db, NullCache())
+    handler = GetScheduleHandler(db)
     row = _schedule()
     group_id = uuid4()
 
     with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
-        repository_type.return_value.get_by_group = AsyncMock(return_value=[row])
+        read = AsyncMock(return_value=[row])
+        repository_type.return_value.get_by_group = read
         result = await handler.handle(
             GetScheduleQuery(group_id=group_id, locale="ru", if_none_match=None)
         )
 
     assert result.etag is not None
     assert result.payload[0]["lesson_type_display"] == "Лекция"
+    repository_type.assert_called_once_with(db)
+    read.assert_awaited_once_with(group_id)
 
 
 def _stats_query(kind: str, *, skip_cache: bool = True, if_none_match=None):
@@ -191,7 +202,7 @@ async def test_stats_handler_skip_cache_and_unknown_kind():
 @pytest.mark.asyncio
 async def test_schedule_validator_tracks_current_localized_rows():
     row = _schedule()
-    handler = GetScheduleHandler(AsyncMock(), MemoryCache(default_ttl=300))
+    handler = GetScheduleHandler(AsyncMock())
     query = GetScheduleQuery(group_id=row.group_id, locale="en", if_none_match=None)
     with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
         read = AsyncMock(return_value=[row])
@@ -211,21 +222,21 @@ async def test_schedule_validator_tracks_current_localized_rows():
         assert removed.payload == []
         assert removed.not_modified is False
         assert read.await_count == 4
+        assert all(call.args == (row.group_id,) for call in read.await_args_list)
 
 
 @pytest.mark.asyncio
-async def test_schedule_database_failure_never_falls_back_to_shared_cache():
+async def test_schedule_database_failure_propagates_even_with_matching_validator():
     from sqlalchemy.exc import SQLAlchemyError
 
-    cache = MemoryCache(default_ttl=300)
-    group_id = uuid4()
-    await cache.set(f"schedule:group:{group_id}", [{"subject": "stale"}])
-    handler = GetScheduleHandler(AsyncMock(), cache)
+    row = _schedule()
+    handler = GetScheduleHandler(AsyncMock())
+    query = GetScheduleQuery(group_id=row.group_id, locale="en", if_none_match=None)
     with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
-        repository_type.return_value.get_by_group = AsyncMock(
-            side_effect=SQLAlchemyError("database unavailable")
-        )
+        read = AsyncMock(side_effect=[[row], SQLAlchemyError("database unavailable")])
+        repository_type.return_value.get_by_group = read
+        initial = await handler.handle(query)
+        query.if_none_match = initial.etag
         with pytest.raises(SQLAlchemyError, match="database unavailable"):
-            await handler.handle(
-                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
-            )
+            await handler.handle(query)
+        assert read.await_count == 2

@@ -338,9 +338,7 @@ class MultiLayerCache:
         }
 
 
-def _init_caches() -> tuple[
-    LRUCache[Any], LRUCache[Any], MultiLayerCache, MultiLayerCache
-]:
+def _init_caches() -> tuple[LRUCache[Any], LRUCache[Any], MultiLayerCache]:
     """Build global cache singletons from settings (late import avoids circular deps)."""
     from app.core.config import settings
 
@@ -358,16 +356,11 @@ def _init_caches() -> tuple[
             l1_ttl=settings.cache_news_l1_ttl_s,
             l2_ttl=settings.cache_news_l2_ttl_s,
         ),
-        MultiLayerCache(
-            l1_max_size=settings.cache_schedule_l1_max_size,
-            l1_ttl=settings.cache_schedule_l1_ttl_s,
-            l2_ttl=settings.cache_schedule_l2_ttl_s,
-        ),
     )
 
 
 # Global L1/L2 cache instances — parameters driven by settings at import time
-user_cache, config_cache, news_cache, schedule_cache = _init_caches()
+user_cache, config_cache, news_cache = _init_caches()
 
 
 def cached(
@@ -417,6 +410,5 @@ __all__ = [
     "cached",
     "config_cache",
     "news_cache",
-    "schedule_cache",
     "user_cache",
 ]

@@ -7,7 +7,6 @@ from typing import Any
 from sqlalchemy import or_, select, text
 
 import app.models as models
-from app.core.cache import schedule_cache
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
@@ -148,12 +147,4 @@ class ScheduleRepository(
         if creator_id is not None:
             data["creator_id"] = creator_id
 
-        result = await super().create(data)
-
-        # Clear legacy per-group and group-list cache entries.
-        group_id = data.get("group_id")
-        if group_id is not None:
-            await schedule_cache.delete(f"schedule:group:{group_id}")
-        await schedule_cache.delete("schedule:groups")
-
-        return result
+        return await super().create(data)

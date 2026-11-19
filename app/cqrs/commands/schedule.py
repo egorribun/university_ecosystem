@@ -2,7 +2,6 @@ import uuid
 from dataclasses import dataclass
 
 from app.cqrs.base import Command, CommandHandler
-from app.deps.cache import BaseCache
 from app.models.enums import UserRole
 from app.schemas import schemas
 from app.schemas.dtos import ScheduleDTO
@@ -18,16 +17,13 @@ class CreateScheduleCommand(Command):
 
 
 class CreateScheduleHandler(CommandHandler[CreateScheduleCommand, ScheduleDTO]):
-    def __init__(self, service: ScheduleService, cache: BaseCache):
+    def __init__(self, service: ScheduleService):
         self.service = service
-        self.cache = cache
 
     async def handle(self, command: CreateScheduleCommand) -> ScheduleDTO:
-        result = await self.service.create_schedule(
+        return await self.service.create_schedule(
             command.data, locale=command.locale, creator_id=command.actor_id
         )
-        await self.cache.invalidate(f"schedule:group:{result.group_id}")
-        return result
 
 
 @dataclass
@@ -41,9 +37,8 @@ class UpdateScheduleCommand(Command):
 
 
 class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
-    def __init__(self, service: ScheduleService, cache: BaseCache):
+    def __init__(self, service: ScheduleService):
         self.service = service
-        self.cache = cache
 
     async def handle(self, command: UpdateScheduleCommand) -> ScheduleDTO:
         sched = await self.service.get_by_id(command.schedule_id)
@@ -56,14 +51,7 @@ class UpdateScheduleHandler(CommandHandler[UpdateScheduleCommand, ScheduleDTO]):
             if sched.creator_id is None or sched.creator_id != command.actor_id:
                 raise PermissionError("Not the owner of this schedule")
 
-        previous_group = sched.group_id
-        updated = await self.service.update_schedule(command.schedule_id, command.data)
-
-        await self.cache.invalidate(
-            f"schedule:group:{previous_group}",
-            f"schedule:group:{updated.group_id}",
-        )
-        return updated
+        return await self.service.update_schedule(command.schedule_id, command.data)
 
 
 @dataclass
@@ -75,9 +63,8 @@ class DeleteScheduleCommand(Command):
 
 
 class DeleteScheduleHandler(CommandHandler[DeleteScheduleCommand, bool]):
-    def __init__(self, service: ScheduleService, cache: BaseCache):
+    def __init__(self, service: ScheduleService):
         self.service = service
-        self.cache = cache
 
     async def handle(self, command: DeleteScheduleCommand) -> bool:
         sched = await self.service.get_by_id(command.schedule_id)
@@ -89,10 +76,4 @@ class DeleteScheduleHandler(CommandHandler[DeleteScheduleCommand, bool]):
             if sched.creator_id is None or sched.creator_id != command.actor_id:
                 raise PermissionError("Not authorized to delete this schedule")
 
-        group_id = sched.group_id
-        deleted = await self.service.delete_schedule(command.schedule_id)
-
-        if deleted:
-            await self.cache.invalidate(f"schedule:group:{group_id}")
-
-        return deleted
+        return await self.service.delete_schedule(command.schedule_id)

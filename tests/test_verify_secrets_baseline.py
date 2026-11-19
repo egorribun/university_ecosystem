@@ -17400,7 +17400,38 @@ _NATS_SQLITE_PREDECESSOR = (
 )
 
 
+_FROZEN_RC_SELECTOR_REPLACEMENTS = (
+    (
+        b"test_schedule_repository_ignores_stale_process_cache",
+        b"test_schedule_repository_returns_current_database_rows",
+    ),
+    (
+        b"test_create_invokes_service_and_invalidates_cache",
+        b"test_create_invokes_service_with_actor_and_locale",
+    ),
+    (
+        b"test_update_owner_succeeds_and_invalidates_both_groups",
+        b"test_update_owner_delegates_group_change_to_service",
+    ),
+    (
+        b"test_delete_owner_success_invalidates_cache",
+        b"test_delete_owner_delegates_to_service",
+    ),
+)
+
+
+def _frozen_rc_selector_workflow_predecessor(actual: bytes) -> bytes:
+    """Reverse the four selections; the caller validates the entire predecessor."""
+    for old, current in _FROZEN_RC_SELECTOR_REPLACEMENTS:
+        assert actual.count(old) == 0 and actual.count(current) == 1, (
+            "exact reviewed NATS workflow frozen-RC selector changed"
+        )
+        actual = actual.replace(current, old, 1)
+    return actual
+
+
 def _nats_sqlite_workflow_predecessor(actual: bytes) -> bytes:
+    actual = _frozen_rc_selector_workflow_predecessor(actual)
     assert hashlib.sha256(actual).digest() == _NATS_SQLITE_CURRENT, (
         "exact reviewed NATS workflow SQLite postimage changed"
     )
@@ -36218,6 +36249,50 @@ def test_transport_diagnostic_policy_rejects_drift(mutation: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "old, current",
+    _FROZEN_RC_SELECTOR_REPLACEMENTS,
+    ids=["repository", "create", "update", "delete"],
+)
+def test_frozen_rc_selector_projection_restores_exact_nats_predecessor(
+    old: bytes, current: bytes
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    assert actual.count(old) == 0
+    assert actual.count(current) == 1
+
+    previous = _nats_sqlite_workflow_predecessor(actual)
+
+    assert hashlib.sha256(previous).digest() == _NATS_SQLITE_PREVIOUS
+    assert previous.count(old) == 1
+    assert previous.count(current) == 0
+
+
+@pytest.mark.parametrize(
+    "old, current",
+    _FROZEN_RC_SELECTOR_REPLACEMENTS,
+    ids=["repository", "create", "update", "delete"],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "old", "unrelated"])
+def test_frozen_rc_selector_projection_rejects_unreviewed_bytes(
+    old: bytes, current: bytes, mutation: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    assert actual.count(old) == 0 and actual.count(current) == 1
+    if mutation == "missing":
+        changed = actual.replace(current, b"", 1)
+    elif mutation == "duplicate":
+        changed = actual.replace(current, current + b" " + current, 1)
+    elif mutation == "old":
+        changed = actual + b" " + old
+    else:
+        changed = actual + b"\n# unrelated workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _nats_sqlite_workflow_predecessor(changed)
+
+
 def test_nats_workflow_inverse_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
@@ -36294,7 +36369,9 @@ def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
     previous = _nats_sqlite_workflow_predecessor(actual)
-    assert previous.replace(_NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1) == actual
+    assert previous.replace(
+        _NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1
+    ) == _frozen_rc_selector_workflow_predecessor(actual)
     job = yaml.safe_load(actual)["jobs"]["integration-tests"]
     old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
     assert job["env"] == old_job["env"]

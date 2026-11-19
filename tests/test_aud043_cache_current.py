@@ -38,12 +38,11 @@ def _cold_cache(kind):
     return cache
 
 
-async def _run_warmup(cache, schedule=None):
+async def _run_warmup(cache, warm_stats=None):
     with (
         patch.object(cache_warmup.settings, "cache_warmup_enabled", True),
         patch("app.services.cache_warmup.get_cache", return_value=cache),
-        patch("app.services.cache_warmup._warm_schedule", schedule or AsyncMock()),
-        patch("app.services.cache_warmup._warm_stats", AsyncMock()),
+        patch("app.services.cache_warmup._warm_stats", warm_stats or AsyncMock()),
     ):
         await cache_warmup.warm_cache()
 

@@ -246,7 +246,8 @@ def test_transport_allocation_rejects_extracted_runner_drift(
 
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
-# Preserve all 136 original selectors, including intentional file/node overlaps.
+# Preserve the 136 original selector slots, including intentional file/node overlaps;
+# the retired schedule warmup case is replaced by the enabled warmup proof.
 # Ninety-five explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
@@ -304,7 +305,7 @@ _CONSUMER_SELECTORS = (
     "tests/test_cache_settings_closure.py::test_cache_warmup_uuid_ids_load_from_environment",
     "tests/test_cache_settings_closure.py::test_cache_warmup_properties_coerce_and_deduplicate_values",
     "tests/test_cache_settings_closure.py::test_cache_warmup_properties_handle_empty_and_iterable_inputs",
-    "tests/test_cache_warmup.py::test_warm_schedule_fans_out_per_group",
+    "tests/test_cache_warmup.py::test_warm_cache_enabled",
     "tests/test_cache_warmup.py::test_warm_stats_fans_out_per_user_period",
     "tests/test_exception_handlers_and_request_ids.py::test_asgi_json_problem_emits_problem_json",
     "tests/test_exception_handlers.py::TestAsgiJsonProblem::test_with_custom_headers",

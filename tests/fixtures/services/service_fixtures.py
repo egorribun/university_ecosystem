@@ -65,23 +65,18 @@ async def fake_cache(
 
     # Inject into global caches
     fake_client = mock_global_redis
-    orig_sched_redis = core_cache.schedule_cache._redis
     orig_news_redis = core_cache.news_cache._redis
 
-    core_cache.schedule_cache._redis = fake_client
     core_cache.news_cache._redis = fake_client
 
     # Clear L1 memory caches
-    core_cache.schedule_cache.l1.clear()
     core_cache.news_cache.l1.clear()
 
     try:
         yield cache
     finally:
         # Restore originals
-        core_cache.schedule_cache._redis = orig_sched_redis
         core_cache.news_cache._redis = orig_news_redis
-        core_cache.schedule_cache.l1.clear()
         core_cache.news_cache.l1.clear()
 
         await cache.close()
