@@ -391,6 +391,25 @@ describe("Select — open / close", () => {
 })
 
 describe("Select — selection", () => {
+  it.each([1, 2])("ignores mouse button %i without consuming or selecting", (button) => {
+    const onValueChange = vi.fn()
+    renderSelect({ value: "apple", onValueChange })
+    fireEvent.click(trigger())
+    const option = screen.getByRole("option", { name: "Banana" })
+    const event = new MouseEvent("mousedown", { button, bubbles: true, cancelable: true })
+
+    fireEvent(option, event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(onValueChange).not.toHaveBeenCalled()
+    expect(trigger()).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("option", { name: "Apple" })).toHaveAttribute("aria-selected", "true")
+
+    fireEvent.mouseDown(option, { button: 0 })
+    expect(onValueChange).toHaveBeenCalledExactlyOnceWith("banana")
+    expect(trigger()).toHaveAttribute("aria-expanded", "false")
+  })
+
   it("calls onValueChange and closes when an option is chosen via mousedown", () => {
     const onValueChange = vi.fn()
     renderSelect({ onValueChange })
