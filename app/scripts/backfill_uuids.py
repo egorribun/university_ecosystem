@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -153,22 +153,27 @@ async def backfill_foreign_uuids(
 
         total_processed = 0
         skipped = 0
+        last_id: Any = None
 
         while True:
-            # Get records where legacy is NOT null but shadow IS null, paginated
-            stmt = (
-                select(model)
-                .where(
-                    getattr(model, legacy_col).is_not(None),
-                    getattr(model, shadow_col).is_(None),
-                )
-                .limit(1000)
-            )
+            # Unmapped legacy users keep the shadow column NULL, so a plain
+            # "shadow IS NULL" page would select the same rows forever. Page by
+            # id (keyset) so every candidate is visited exactly once.
+            filters = [
+                getattr(model, legacy_col).is_not(None),
+                getattr(model, shadow_col).is_(None),
+            ]
+            # Every TABLES_USER_FK model declares an "id" primary-key column.
+            id_column = cast(Any, model).id
+            if last_id is not None:
+                filters.append(id_column > last_id)
+            stmt = select(model).where(*filters).order_by(id_column).limit(1000)
             result = await session.execute(stmt)
             records = result.scalars().all()
 
             if not records:
                 break
+            last_id = cast(Any, records[-1]).id
 
             for record in records:
                 legacy_id = getattr(record, legacy_col)

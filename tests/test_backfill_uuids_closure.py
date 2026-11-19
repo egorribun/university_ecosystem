@@ -73,11 +73,14 @@ async def test_backfill_own_uuids_normalizes_naive_timestamp_and_missing_field()
 async def test_backfill_foreign_uuids_counts_unknown_legacy_users_as_skipped():
     class DummyModel:
         __tablename__ = "dummy_fk"
+        id = MagicMock()
         user_id = MagicMock()
         shadow_user_id = MagicMock()
 
-    linked = SimpleNamespace(user_id=1, shadow_user_id=None)
-    skipped = SimpleNamespace(user_id=2, shadow_user_id=None)
+    DummyModel.id.__gt__.return_value = MagicMock(name="after_page")
+
+    linked = SimpleNamespace(id=10, user_id=1, shadow_user_id=None)
+    skipped = SimpleNamespace(id=11, user_id=2, shadow_user_id=None)
     result = MagicMock()
     result.scalars.return_value.all.side_effect = [[linked, skipped], []]
     session = AsyncMock()
@@ -96,6 +99,44 @@ async def test_backfill_foreign_uuids_counts_unknown_legacy_users_as_skipped():
     assert linked.shadow_user_id == "uuid-1"
     assert skipped.shadow_user_id is None
     assert session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_backfill_foreign_uuids_pages_past_unmapped_rows():
+    class DummyModel:
+        __tablename__ = "dummy_fk"
+        id = MagicMock()
+        user_id = MagicMock()
+        shadow_user_id = MagicMock()
+
+    DummyModel.id.__gt__.return_value = MagicMock(name="after_page")
+
+    unmapped = SimpleNamespace(id=7, user_id=99, shadow_user_id=None)
+    result = MagicMock()
+    # A real database returns the unmapped row again unless the next page
+    # starts after it; the keyset filter is what ends the scan.
+    result.scalars.return_value.all.side_effect = [[unmapped], []]
+    session = AsyncMock()
+    session.execute.return_value = result
+    select = MagicMock()
+
+    with (
+        patch.object(
+            backfill_uuids,
+            "TABLES_USER_FK",
+            [(DummyModel, "user_id", "shadow_user_id")],
+        ),
+        patch.object(backfill_uuids, "select", select),
+    ):
+        await backfill_uuids.backfill_foreign_uuids(session, {})
+
+    first, second = select.return_value.where.call_args_list
+    assert len(first.args) == 2
+    assert len(second.args) == 3
+    DummyModel.id.__gt__.assert_called_once_with(7)
+    assert second.args[2] is DummyModel.id.__gt__.return_value
+    assert unmapped.shadow_user_id is None
+    assert session.execute.await_count == 2
 
 
 @pytest.mark.asyncio

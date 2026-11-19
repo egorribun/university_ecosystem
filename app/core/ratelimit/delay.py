@@ -21,15 +21,7 @@ class _DelayEntry:
     retention_seconds: int
 
 
-def _delay_entry(value: _DelayEntry | tuple[int, float]) -> _DelayEntry:
-    if isinstance(value, _DelayEntry):
-        return value
-    # Legacy entries contain no custom TTL evidence. Use the documented
-    # default rather than the unrelated tracker that happens to sweep them.
-    return _DelayEntry(value[0], value[1], PROGRESSIVE_DELAY_TTL)
-
-
-_delay_memory: dict[str, _DelayEntry | tuple[int, float]] = {}
+_delay_memory: dict[str, _DelayEntry] = {}
 _delay_memory_lock = asyncio.Lock()
 # MED-W19: Track last cleanup time to enable periodic pruning of _delay_memory.
 _delay_memory_last_cleanup: float = 0.0
@@ -87,15 +79,14 @@ class ProgressiveDelayTracker:
             if now_ts - _delay_memory_last_cleanup >= _DELAY_MEMORY_CLEANUP_INTERVAL:
                 stale_keys = [
                     key
-                    for key, value in _delay_memory.items()
-                    if now_ts - (entry := _delay_entry(value)).last_time
-                    > entry.retention_seconds
+                    for key, entry in _delay_memory.items()
+                    if now_ts - entry.last_time > entry.retention_seconds
                 ]
                 for k in stale_keys:
                     del _delay_memory[k]
                 _delay_memory_last_cleanup = now_ts
 
-            entry = _delay_entry(_delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl)))
+            entry = _delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl))
             count = entry.count
             retention = max(entry.retention_seconds, self._ttl)
             if now_ts - entry.last_time > self._ttl:
@@ -126,7 +117,7 @@ class ProgressiveDelayTracker:
                 pass
 
         async with _delay_memory_lock:
-            entry = _delay_entry(_delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl)))
+            entry = _delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl))
             count = entry.count
             if time.time() - entry.last_time > self._ttl:
                 count = 0
