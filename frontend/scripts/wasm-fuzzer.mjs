@@ -11,10 +11,7 @@ export const SANITIZER_WASM_PATH = path.resolve(
   frontendDir,
   "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm"
 )
-export const CRYPTO_WASM_PATH = path.resolve(
-  frontendDir,
-  "rust-crypto/pkg/uni_wasm_crypto_bg.wasm"
-)
+export const CRYPTO_WASM_PATH = path.resolve(frontendDir, "rust-crypto/pkg/uni_wasm_crypto_bg.wasm")
 
 const WASM_MAGIC = 0x0061736d
 // Real wasm-bindgen modules are hundreds of kilobytes; placeholders are tiny.

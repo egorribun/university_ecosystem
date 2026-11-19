@@ -189,6 +189,55 @@ def _local_evidence(
     return expected_digests, evidence_path, evidence_sha, backend_values
 
 
+def test_legacy_upload_reuses_validated_full_framework_report() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["checkov"]["steps"]
+    by_name = {step.get("name"): (index, step) for index, step in enumerate(steps)}
+    scan_index, scan = by_name["Run full-framework Checkov scan"]
+    guard_index, _ = by_name[
+        "Require all Checkov scans and Helm coverage guards to pass"
+    ]
+    filter_index, _ = by_name["Remove inline-suppressed results from SARIF"]
+
+    assert scan["with"]["directory"] == "."
+    assert scan["with"]["framework"] == "all"
+    assert scan["with"]["output_file_path"] == "results.sarif,"
+    ci = yaml.safe_load(
+        (CANDIDATE_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    pinned_upload = next(
+        step["uses"]
+        for step in ci["jobs"]["docker-security-scan-additional"]["steps"]
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    )
+
+    uploads = [
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    assert len(uploads) == 5
+    assert all(step["uses"] == pinned_upload for _, step in uploads)
+    reports = {
+        step["with"].get("category", "legacy-default"): step["with"]["sarif_file"]
+        for _, step in uploads
+    }
+    assert reports == {
+        "legacy-default": "filtered-results.sarif",
+        "checkov-all": "filtered-results.sarif",
+        "checkov-helm-university-ecosystem": "filtered-helm-university-ecosystem.sarif",
+        "checkov-helm-revocation-store": "filtered-helm-revocation-store.sarif",
+        "checkov-helm-redis-compat": "filtered-helm-redis-compat.sarif",
+    }
+    legacy_index, legacy = by_name["Upload legacy full-framework Checkov results"]
+    assert legacy["with"] == {"sarif_file": "filtered-results.sarif"}
+    assert legacy.get("if", "success()") in {"success()", "${{ success() }}"}
+    named_index, _ = by_name["Upload all-framework Checkov results"]
+    assert scan_index < guard_index < filter_index < named_index < legacy_index
+
+
 class CheckovHelmCoverageContracts(unittest.TestCase):
     def test_helm_contexts_match_staging_and_revocation_contract_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
