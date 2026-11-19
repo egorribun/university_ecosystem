@@ -43,6 +43,11 @@ def _run_consumers(
         source = CONTRACTS / name
         if source.exists():
             shutil.copyfile(source, directory / name)
+    # mutmut resolves configuration from the instrumented child's working directory.
+    shutil.copyfile(
+        CONTRACTS.resolve().parents[1] / "pyproject.toml",
+        directory / "pyproject.toml",
+    )
     config = directory / "pytest.ini"
     config.write_text("[pytest]\n", encoding="utf-8")
     env = {
