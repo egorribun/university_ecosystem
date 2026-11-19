@@ -1,36 +1,24 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Текущий срез — 2026-11-19
+## Текущий срез — 2026-11-19, 13:57 UTC
 
-- `main` —
-  [`64f7fd5148e8c6668b401e755be9459172f99ec8`](https://github.com/egorribun/university_ecosystem/commit/64f7fd5148e8c6668b401e755be9459172f99ec8)
-  (слияние [PR #1422](https://github.com/egorribun/university_ecosystem/pull/1422): 124 required
-  checks green на `bc7313ca4`). Перед слиянием перезапущены только упавшие Security Audit
-  jobs: advisory GHSA-fc5q-39xc-vjpf (picomatch) отозвана GitHub 2026-11-18.
-- Проверки после слияния на `64f7fd514`:
-  - Kind + Calico NetworkPolicy — успех,
-    [run 44471108615](https://github.com/egorribun/university_ecosystem/actions/runs/44471108615).
-  - DAST — Nuclei прошёл; ZAP на hosted-раннере впервые запустился и сообщил о 5
-    предупреждениях уровня medium (правила 10055 ×2, 10106, 10202, 40025),
-    [run 44471112462](https://github.com/egorribun/university_ecosystem/actions/runs/44471112462).
-    Опубликованный SARIF не содержит URL; разбор требует локального DAST-стенда. AUD-381 открыт.
-  - Полный Core —
-    [run 44471116074](https://github.com/egorribun/university_ecosystem/actions/runs/44471116074):
-    217 пройдено, 8 пропущено, 7 нестабильных. Упали notification-topics-delivery
-    (desktop, mobile), push-delivery (mobile), а также впервые admin-stories-rbac и
-    events-scroll-restoration (mobile). Браузер подписан (`subscription=true`), но
-    уведомления не приходят (`matches=0`); выборка воркера: `sent=9 gone=3`, три ответа
-    провайдера 4xx. Успешных полных Core run подряд на `main` пока нет (цель — два).
-- Формальный итог — **510/512 (99.6%), 2 открытых: 1S / 1P / 0U / 0N**. Документы аудита
-  обновляются только по hosted-доказательствам на точном SHA.
-- В `egorribun` влита вторая волна PR облачного агента после полной локальной проверки:
-  #1431, #1443, #1446, #1447, #1453, #1456, #1464, #1481, #1489–#1498, #1508–#1517 и
-  Dependabot Go (#1445, #1448, #1450). Найденные дефекты исправлены (ETag расписания,
-  бесконечный цикл UUID backfill, фокус Select, возобновление опроса Spotify и др.),
-  четыре companion-записи перепривязаны один к одному (ADR-047, 2026-11-19), правило
-  retention под RLS вынесено в [ADR-055](../../adr/ADR-055-retention-cleanup-under-tenant-rls.md).
-  #1501 закрыт как дубликат. Открытыми оставлены #1426 (SPIFFE для SSR) и диагностические
-  эксперименты #1506, #1507, #1518: они добавляют workflow без продуктовой пользы.
+- PR #1519 слит в `main` обычным слиянием `02c3664abff423960fbac9a35d1e3990575517c3`.
+  На исходном коммите `18aa310f9f029449f4a250c7e1befbee0bcb8656` прошли все 78 обязательных пар context/app,
+  включая Coverage & Quality Policy Gate (job `135602417513`) и CI Success (job `135604664230`).
+  [PR #1519](https://github.com/egorribun/university_ecosystem/pull/1519) · [CI run 44525616113](https://github.com/egorribun/university_ecosystem/actions/runs/44525616113)
+- Пять анализов CodeQL на PR merge SHA `5fe7775e821214beab6f48aa495d2b45617f4dc0`
+  завершились без находок. Дерево этого коммита совпадает с деревом `02c3664ab`.
+  GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks` в проверке правил `5231970851`.
+  Checkov опубликовал пять отчётов без находок, включая отчёт под историческим идентификатором.
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/44525615911) · [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/44525615909)
+- На точном `02c3664ab` [Kubernetes NetworkPolicy run 44537388732](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732)
+  выполнялся, [полный Core run 44537394864](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864)
+  стоял в очереди. Результата DAST на этом SHA ещё нет.
+  Два последовательных green полных Core run на `main` пока не подтверждены.
+- Формальный итог аудита — **510/512 (99.6%)**. Открыты AUD-154 (S) и AUD-381 (P).
+- Коммит `140145bdb` в `egorribun` удаляет серверный кэш расписания, его прогрев и инвалидацию.
+  Расписание и список групп читаются из базы в транзакции текущего арендатора. Сервер вычисляет HTTP ETag
+  по локализованному ответу. Это изменение проходит проверки в отдельном PR.
 - Cargo Deny: исключение RUSTSEC-2026-0543 (`chrono`) действует до 2026-12-17; затем
   переход `rust_ext` на `time`
   ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#time-boxed-cargo-deny-exception-for-rustsec-2026-0543)).
@@ -39,9 +27,29 @@
   `v3.23/main`, где пакет уже не индексирован (там `1.4-r0`). Оба пина убираются обновлением
   базовых образов: `node:24.22.3-alpine` и пересобранный `caddy:2.11.7-alpine` уже содержат
   `zlib-1.3.2-r1`. Для Node это требует пересборки пакета react-compiler/zod compat.
-- В исходниках `egorribun` удалены серверный кэш расписания, его прогрев и инвалидация.
-  Запрос расписания читает строки в транзакции текущего арендатора и вычисляет HTTP ETag
-  по локализованному ответу. Список групп также читается из базы.
+
+## Предыдущий срез — 2026-11-19, main `64f7fd514` (история)
+
+- `64f7fd5148e8c6668b401e755be9459172f99ec8` — слияние
+  [PR #1422](https://github.com/egorribun/university_ecosystem/pull/1422). Перед слиянием
+  перезапускались упавшие Security Audit jobs: advisory GHSA-fc5q-39xc-vjpf (picomatch)
+  отозвана GitHub 2026-11-18.
+- Kind + Calico NetworkPolicy прошёл в [run 44471108615](https://github.com/egorribun/university_ecosystem/actions/runs/44471108615).
+  В последнем DAST [run 44471112462](https://github.com/egorribun/university_ecosystem/actions/runs/44471112462)
+  Nuclei прошёл, ZAP сообщил о пяти medium (10055 ×2, 10106, 10202, 40025).
+  В SARIF нет URL; AUD-381 остаётся открытым, свежего результата на `02c3664ab` нет.
+- Последний полный Core на этом старом SHA — [run 44512654784](https://github.com/egorribun/university_ecosystem/actions/runs/44512654784):
+  219 passed, 1 failed, 8 skipped, 4 flaky. Диагностика двух native Push случаев
+  (desktop notification-topics и mobile push-delivery) показала `subscription=true`,
+  `matches=0`. Более ранний [run 44471116074](https://github.com/egorribun/university_ecosystem/actions/runs/44471116074)
+  дал 217 passed, 8 skipped, 7 flaky и ошибки уведомлений и мобильных admin-stories/events;
+  выборка его воркера — `sent=9 gone=3`, три ответа провайдера 4xx.
+- В `egorribun` была интегрирована вторая волна PR облачного агента: #1431, #1443,
+  #1446, #1447, #1453, #1456, #1464, #1481, #1489–#1498, #1508–#1517 и Dependabot Go
+  (#1445, #1448, #1450). Найденные дефекты исправлены; четыре companion-записи
+  перепривязаны один к одному (ADR-047, 2026-11-19), retention под RLS описан в
+  [ADR-055](../../adr/ADR-055-retention-cleanup-under-tenant-rls.md). #1501 закрыт
+  как дубликат; #1426 и диагностические #1506, #1507, #1518 оставлены открытыми.
 
 ## Предыдущий срез — 2026-11-17 (superseded)
 
@@ -78,7 +86,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Green hosted Owned Live Acceptance run на точном SHA (эквивалентность принята владельцем), включая существующий read-receipt live spec. |
-| AUD-381 | P | ZAP и Nuclei на эфемерном Compose stand должны пройти на main; Nuclei проходит, проверенного ZAP-отчёта ещё нет. |
+| AUD-381 | P | Нужен успешный отчёт ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний опубликованный отчёт ZAP содержит пять предупреждений medium. |
 
 Остальные требования каждой находки не изменены. Закрытие требует проверки конкретного
 source SHA, а не этого среза.
@@ -89,7 +97,7 @@ source SHA, а не этого среза.
 | --- | --- |
 | 1. Решение и документы | Выполнен. |
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
-| 3. Core и продукт | Не начат. |
+| 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
 | 4. Визуал и performance | Утверждён только визуальный пакет Home12. |
 | 5. Security, ledger, данные | Восстановление DB/S3 backup никогда не запускалось. |
 | 6. Выпуск | Не начат. |
@@ -97,24 +105,22 @@ source SHA, а не этого среза.
 ## Открытые решения владельца
 
 - AUD-484: решено владельцем 2026-11-12, alerts 2995–3002 dismissed, analyses сохранены.
-- AUD-381: цель — эфемерный Compose stand в CI (решение владельца 2026-11-12). Проверенного ZAP-отчёта ещё нет.
+- Для AUD-381 владелец выбрал эфемерный Compose-стенд в CI (2026-11-12).
 - AUD-169, AUD-188, AUD-189, AUD-438: kind + Calico принят владельцем как среда доказательств
   (2026-11-12); решения и ограничения записаны в supplement от 2026-11-17. AUD-251 принят на этой среде.
 
 ## Следующие шаги
 
-1. AUD-154: green hosted Owned Live Acceptance на точном SHA — сначала причина недоставки
-   push (выборка воркера `sent=9 gone=3`) и новые мобильные падения admin-stories-rbac и
-   events-scroll-restoration. AUD-381: разобрать 5 предупреждений ZAP на локальном
-   DAST-стенде и исправить их или вынести на решение владельца.
-2. Операционная цель: два последовательных green полных Core run на `main`.
-3. Завершить [PR #1519](https://github.com/egorribun/university_ecosystem/pull/1519)
-   по обязательным проверкам. Отдельным PR провести удаление серверного кэша расписания
-   через те же проверки на итоговом SHA.
-4. Этап 3: traceability matrix ТЗ 2–13 (MVP_MASTER_PLAN, Блок 4), реальный Chromium,
-   два последовательных прогона, stop/start и seed.
-5. Этап 5: один DB/S3 backup и restore в изолированную цель (ещё не запускался).
-6. Этап 4: визуальные и performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
+1. Провести удаление серверного кэша расписания через отдельный PR с обязательными проверками на итоговом SHA.
+2. AUD-154: установить причину недоставки native Push и добиться green hosted Owned
+   Live Acceptance на точном SHA с read-receipt. AUD-381: разобрать пять исторических
+   ZAP warnings и получить проверенные ZAP и Nuclei на `main`. Отдельно подтвердить
+   два последовательных green полных Core run на `main`.
+3. Этапы 3 и 4: сверить traceability matrix ТЗ §2–13 с кодом и выполнить live Chromium,
+   mocked Firefox/WebKit, idempotent seed и stop/start; согласовать визуальные и
+   performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
+4. Этап 5: один DB/S3 backup и restore в изолированную цель; затем этап 6 — frozen RC,
+   full smoke, required checks и обычный выпуск по мастер-плану.
 
 ## History
 
