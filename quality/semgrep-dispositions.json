@@ -134,7 +134,7 @@
       "companions": [
         {
           "path": "scripts/tests/prepare-release-version.test.mjs",
-          "sha256": "cfe3451d270a8e78a74469d9e5249fa6869a263d1b184ef7553998a06ed69a23"
+          "sha256": "f1ec9f06b65c847407de61dbd753af45b659c8184789ff1c983216ad178aedc0"
         }
       ],
       "context": {
@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "6a90ea108de5caae2519b869e1e6b8e830a0b08ca3cd426ac18965d5ef1af8a2"
+          "sha256": "7b4c533f5a8dfde09c2cd95dca338b67b22d03e4ccef6b2a15d5566c5ad878cb"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -478,7 +478,7 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "1ab896dc7b839f71cf85df15d6dc07d43d84f37894ad941cc90220f8d35d5c39"
+          "sha256": "4b63abcb851f9006283d95b0bc957d9f1a8ce96cf98b3e5d0d97ff47e7eb2c94"
         },
         {
           "path": "frontend/package-lock.json",
