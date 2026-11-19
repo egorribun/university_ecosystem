@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode, type MouseEvent } from "react"
 interface MagneticProps {
   children: ReactNode
   strength?: number
+  disabled?: boolean
   className?: string
 }
 
@@ -14,11 +15,17 @@ interface MagneticProps {
 // no framer features are needed here.
 const TRANSITION = "transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)"
 
-export default function Magnetic({ children, strength = 0.5, className }: MagneticProps) {
+export default function Magnetic({
+  children,
+  strength = 0.5,
+  disabled = false,
+  className,
+}: MagneticProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: 0, y: 0 })
 
   const handleMouseMove = (e: MouseEvent) => {
+    if (disabled) return
     const { clientX, clientY } = e
     const { left, top, width, height } = ref.current!.getBoundingClientRect()
 
@@ -41,9 +48,9 @@ export default function Magnetic({ children, strength = 0.5, className }: Magnet
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{
-        transform: `translate3d(${pos.x}px, ${pos.y}px, 0)`,
-        transition: TRANSITION,
-        willChange: "transform",
+        transform: disabled ? "none" : `translate3d(${pos.x}px, ${pos.y}px, 0)`,
+        transition: disabled ? "none" : TRANSITION,
+        willChange: disabled ? "auto" : "transform",
       }}
       className={className}
     >

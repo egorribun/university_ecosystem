@@ -4,6 +4,7 @@ import asyncio
 import functools
 import inspect
 import json
+import math
 import os
 import uuid
 from collections.abc import Awaitable, Callable
@@ -602,7 +603,18 @@ class NatsTaskBroker:
                 await msg.term()
                 return
             # Persisting failed: keep the message alive rather than lose the task.
-        delay = min(_RETRY_BASE_DELAY_S * 2 ** (delivered - 1), _RETRY_MAX_DELAY_S)
+        if math.isfinite(_RETRY_BASE_DELAY_S) and _RETRY_BASE_DELAY_S >= 0:
+            delay = min(_RETRY_BASE_DELAY_S, _RETRY_MAX_DELAY_S)
+            remaining = delivered - 1
+            # Binary64 doubles exactly until saturation. Even the smallest
+            # positive subnormal reaches the cap within 1084 iterations;
+            # zero exits immediately, regardless of the delivery count.
+            while remaining > 0 and 0 < delay < _RETRY_MAX_DELAY_S:
+                delay = min(delay * 2, _RETRY_MAX_DELAY_S)
+                remaining -= 1
+        else:
+            # Invalid configuration policy is unchanged by this bounded fix.
+            delay = min(_RETRY_BASE_DELAY_S * 2 ** (delivered - 1), _RETRY_MAX_DELAY_S)
         await msg.nak(delay=delay)
 
     async def _dead_letter(

@@ -126,7 +126,7 @@ async def test_in_memory_dlq_thundering_herd_prevention() -> None:
 
     slow_bus = AsyncMock()
 
-    async def slow_publish(event: DomainEvent) -> None:
+    async def slow_publish(event: DomainEvent, *, durable: bool = False) -> None:
         await asyncio.sleep(0.1)
 
     slow_bus.publish.side_effect = slow_publish
@@ -379,7 +379,7 @@ async def test_cancelled_in_memory_dlq_probe_reopens_breaker() -> None:
     bus = AsyncMock()
     entered = asyncio.Event()
 
-    async def block_publish(_event: DomainEvent) -> None:
+    async def block_publish(_event: DomainEvent, *, durable: bool = False) -> None:
         entered.set()
         await asyncio.Event().wait()
 

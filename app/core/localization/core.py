@@ -80,7 +80,7 @@ def _locale_from_accept_language(header_value: Any) -> str | None:
                     except ValueError:
                         quality = 0.0
         normalized = _normalize_locale(lang)
-        if normalized:
+        if normalized and 0.0 < quality <= 1.0:
             candidates.append((quality, normalized))
     if not candidates:
         return None

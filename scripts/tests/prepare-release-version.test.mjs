@@ -162,6 +162,11 @@ test("preserves stable release versions across all four targets", () => {
 
 for (const version of [
   "2.3.4-alpha",
+  "2.3.4-0",
+  "2.3.4-rc.0",
+  "2.3.4-rc01",
+  "2.3.4+001",
+  "2.3.4-rc.1+001",
   "2.3.4-alpha.1",
   "2.3.4-a1",
   "2.3.4-beta.2",
@@ -209,6 +214,11 @@ for (const version of [
 }
 
 for (const [version, message] of [
+  ["2.3.4-01", "Invalid semantic version"],
+  ["2.3.4-rc.01", "Invalid semantic version"],
+  ["2.3.4-rc.01+001", "Invalid semantic version"],
+  ["2.3.4-dev.00", "Invalid semantic version"],
+  ["2.3.4-rc.1.post.02", "Invalid semantic version"],
   ["2.3.4-rc.foo", "Python package metadata"],
   ["2.3.4-alpha.1.extra", "Python package metadata"],
   ["2.3.4-dev.1.post.2", "Python package metadata"],

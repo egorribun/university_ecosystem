@@ -412,6 +412,36 @@ jobs:
               run: |
                   uv sync --frozen
 
+            - name: Verify real NATS live control publication
+              timeout-minutes: 5
+              shell: bash
+              env:
+                  DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+              run: |
+                  set -euo pipefail
+                  uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \
+                    --timeout-disable-debugger-detection \
+                    tests/integration/test_infrastructure.py::test_real_core_control_needs_no_jetstream_ack \
+                    --junitxml=nats-control-report.xml
+                  python3 - <<'PY'
+                  from xml.etree import ElementTree
+
+                  root = ElementTree.parse("nats-control-report.xml").getroot()
+                  cases = list(root.iter("testcase"))
+                  expected = (
+                      "tests.integration.test_infrastructure",
+                      "test_real_core_control_needs_no_jetstream_ack",
+                  )
+                  if len(cases) != 1 or (
+                      cases[0].get("classname"), cases[0].get("name")
+                  ) != expected or any(
+                      cases[0].find(status) is not None
+                      for status in ("skipped", "failure", "error")
+                  ):
+                      raise SystemExit("Required real NATS control proof did not pass")
+                  print("NATS_CONTROL_REAL_BROKER_VERIFIED_PASS")
+                  PY
+
             - name: Verify borrowed-session PostgreSQL proofs (AUD-363 and AUD-454)
               timeout-minutes: 5
               env:
@@ -622,4 +652,5 @@ jobs:
                   path: |
                       pytest-report.xml
                       mfa-mailpit-report.xml
+                      nats-control-report.xml
                   if-no-files-found: ignore

@@ -836,3 +836,59 @@ def test_explicit_session_preclean_uses_original_engine_and_url(
         assert "PRAGMA foreign_keys=OFF" in statements
     else:
         assert any(sql.startswith("SELECT tablename") for sql in statements)
+
+
+@pytest.mark.parametrize("failed_extension", [None, "vector", "pg_trgm"])
+def test_postgres_extensions_precede_metadata_and_fail_closed(
+    failed_extension: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_environment: None,
+) -> None:
+    url = "postgresql+asyncpg://test@localhost:5432/test"
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET", "1")
+    monkeypatch.setattr(fixture_database, "init_database", lambda: None)
+    statements = []
+    expected = [
+        "CREATE EXTENSION IF NOT EXISTS vector",
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+    ]
+    extension_error = RuntimeError("extension provisioning refused")
+    metadata_reached = UnexpectedConnection("metadata boundary reached")
+
+    class FakeConnection:
+        async def __aenter__(self) -> FakeConnection:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def exec_driver_sql(self, sql: str) -> None:
+            statements.append(sql)
+            if sql == f"CREATE EXTENSION IF NOT EXISTS {failed_extension}":
+                raise extension_error
+
+        async def run_sync(self, function: object) -> None:
+            assert function == fixture_database.Base.metadata.create_all
+            assert statements == expected
+            raise metadata_reached
+
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.url = make_url(url)
+
+        def begin(self) -> FakeConnection:
+            return FakeConnection()
+
+    monkeypatch.setattr(fixture_database.database, "_engine", FakeEngine())
+    if failed_extension is None:
+        with pytest.raises(UnexpectedConnection) as caught:
+            _advance_prepare()
+        assert caught.value is metadata_reached
+        assert statements == expected
+    else:
+        with pytest.raises(RuntimeError) as caught:
+            _advance_prepare()
+        assert caught.value is extension_error
+        count = 1 if failed_extension == "vector" else 2
+        assert statements == expected[:count]

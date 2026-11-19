@@ -121,6 +121,8 @@ class InternalAccessMiddleware:
             ValueError,
         ):  # RZ-22-01: narrowed — bytes decode errors
             return False
+        if not provided.isascii() or not self.header_token.isascii():
+            return False
         return secrets.compare_digest(provided, self.header_token)
 
     def _make_vary_send(self, send: Send) -> Send:

@@ -13,6 +13,11 @@ RUNNER = ROOT / "scripts/ci/backend-run-integration-tests.ps1"
 TENANT_CLASS = "tests.integration.test_aud277_360_450_tenant_rls_postgres"
 PREVIOUS_TENANT_CASES = (
     "test_no_permissive_true_policy_remains_on_core_tables",
+    # RLS retention and membership cases from #1464, #1443, #1446 and #1456.
+    "test_event_image_cleanup_retains_rls_hidden_legacy_reference",
+    "test_room_membership_callback_obeys_parent_tenant_rls",
+    "test_schedule_query_ignores_shared_cache_across_tenant_rls",
+    "test_notification_cleanup_preserves_claims_under_active_rls",
     "test_tenant_session_sees_only_its_rows_and_never_null_rows",
     "test_guc_bypass_cannot_expose_other_tenants_or_null_rows",
     "test_dedicated_bypass_role_member_sees_every_row",
@@ -127,13 +132,13 @@ def test_tenant_cohort_preserves_all_previous_names_and_adds_exact_mfa_cases():
         *WEEKLY_CASES,
         *SCHEDULE_CASES,
     )
-    assert sum(map(len, expected.values())) == 82
+    assert sum(map(len, expected.values())) == 86
 
 
 def test_complete_expanded_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 82\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 86\n"
 
 
 @pytest.mark.parametrize(
@@ -175,6 +180,6 @@ def test_same_length_duplicate_cannot_replace_missing_mfa_case(tmp_path, monkeyp
     source, root = receipt()
     cases = [case for case in root if case.get("classname") == TENANT_CLASS]
     cases[-1].set("name", cases[-2].get("name"))
-    assert len(cases) == 45
+    assert len(cases) == 49
     with pytest.raises(SystemExit, match=TENANT_CLASS):
         execute(source, root, tmp_path, monkeypatch)

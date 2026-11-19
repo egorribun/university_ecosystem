@@ -3,6 +3,7 @@
 import * as React from "react"
 import { m, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface RadioGroupProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
   value?: string
@@ -45,6 +46,7 @@ interface RadioGroupItemProps extends Omit<React.InputHTMLAttributes<HTMLInputEl
 
 const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
   ({ className, value, disabled, ...props }, ref) => {
+    const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
     const context = React.useContext(RadioGroupContext)
     if (!context) throw new Error("RadioGroupItem must be used within a RadioGroup")
 
@@ -86,10 +88,12 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
           <AnimatePresence>
             {isSelected && (
               <m.span
-                initial={{ scale: 0 }}
+                initial={prefersReduced ? false : { scale: 0 }}
                 animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                exit={{ scale: prefersReduced ? 1 : 0 }}
+                transition={
+                  prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 30 }
+                }
                 className="h-2.5 w-2.5 rounded-full bg-brand"
               />
             )}

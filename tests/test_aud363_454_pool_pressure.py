@@ -101,9 +101,16 @@ async def test_typing_at_pool_capacity_reaches_authorized_recipients(
                     "CREATE TABLE active_sessions (user_id CHAR(32), jti TEXT, expires_at DATETIME, revoked_at DATETIME, mfa_epoch INTEGER)"
                 )
             )
+            # Membership checks join both tenant-protected parents (#1443).
+            await connection.execute(
+                text("CREATE TABLE chats (id CHAR(32) PRIMARY KEY)")
+            )
+            await connection.execute(
+                text("INSERT INTO chats (id) VALUES (:id)"), {"id": chat_id.hex}
+            )
             await connection.execute(
                 text("INSERT INTO users (id, is_active, mfa_epoch) VALUES (:id, 1, 0)"),
-                {"id": recipient_id.hex},
+                [{"id": recipient_id.hex}, {"id": actor_id.hex}],
             )
             await connection.execute(
                 text(

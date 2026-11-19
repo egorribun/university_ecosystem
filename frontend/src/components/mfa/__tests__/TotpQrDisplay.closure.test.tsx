@@ -243,3 +243,125 @@ describe("TotpQrDisplay live announcements", () => {
     }
   })
 })
+
+describe("TotpQrDisplay copy feedback lifecycle", () => {
+  it("keeps feedback for the full interval after the latest successful copy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const { unmount } = render(
+      <TotpQrDisplay otpauthUrl="otpauth://totp/Feedback" secret={String(123)} />
+    )
+    try {
+      await screen.findByTestId("qr-code")
+      vi.useFakeTimers()
+      const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
+      const copy = async () => {
+        await act(async () => {
+          fireEvent.click(button)
+          await Promise.resolve()
+        })
+      }
+      await copy()
+      act(() => vi.advanceTimersByTime(2000))
+      await copy()
+      expect(writeText).toHaveBeenCalledTimes(2)
+      expect(button).toHaveClass("text-success-text")
+
+      act(() => vi.advanceTimersByTime(500))
+      expect(button).toHaveClass("text-success-text")
+      act(() => vi.advanceTimersByTime(1999))
+      expect(button).toHaveClass("text-success-text")
+      act(() => vi.advanceTimersByTime(1))
+      expect(button).not.toHaveClass("text-success-text")
+    } finally {
+      unmount()
+    }
+  })
+
+  it("releases its pending feedback timer on unmount", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const { unmount } = render(
+      <TotpQrDisplay otpauthUrl="otpauth://totp/Cleanup" secret={String(123)} />
+    )
+    try {
+      await screen.findByTestId("qr-code")
+      vi.useFakeTimers()
+      const beforeCopy = vi.getTimerCount()
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledOnce()
+      expect(vi.getTimerCount()).toBe(beforeCopy + 1)
+
+      unmount()
+
+      expect(vi.getTimerCount()).toBe(beforeCopy)
+    } finally {
+      unmount()
+    }
+  })
+})
+
+it("does not start copy feedback after an unmounted clipboard request completes", async () => {
+  let finishCopy!: () => void
+  const writeText = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishCopy = resolve
+      })
+  )
+  vi.stubGlobal("navigator", { clipboard: { writeText } })
+  const { unmount } = render(
+    <TotpQrDisplay otpauthUrl="otpauth://totp/Pending" secret={String(123)} />
+  )
+  try {
+    await screen.findByTestId("qr-code")
+    vi.useFakeTimers()
+    const beforeCopy = vi.getTimerCount()
+    fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+    expect(writeText).toHaveBeenCalledOnce()
+    unmount()
+
+    await act(async () => {
+      finishCopy()
+      await Promise.resolve()
+    })
+
+    expect(vi.getTimerCount()).toBe(beforeCopy)
+  } finally {
+    unmount()
+  }
+})
+
+it("ignores a clipboard rejection that settles after unmount", async () => {
+  let failCopy!: (error: Error) => void
+  const writeText = vi.fn(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        failCopy = reject
+      })
+  )
+  vi.stubGlobal("navigator", { clipboard: { writeText } })
+  const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+  const { unmount } = render(
+    <TotpQrDisplay otpauthUrl="otpauth://totp/Rejected" secret={String(123)} />
+  )
+  try {
+    await screen.findByTestId("qr-code")
+    fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+    expect(writeText).toHaveBeenCalledOnce()
+    unmount()
+    clearTimeoutSpy.mockClear()
+
+    await act(async () => {
+      failCopy(new Error("clipboard denied"))
+      await Promise.resolve()
+    })
+
+    expect(clearTimeoutSpy).not.toHaveBeenCalled()
+  } finally {
+    unmount()
+  }
+})

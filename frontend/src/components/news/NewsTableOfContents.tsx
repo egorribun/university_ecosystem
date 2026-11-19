@@ -15,6 +15,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   const [collapsed, setCollapsed] = useState(true)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const isDesktop = useMediaQuery("(min-width: 1024px)")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Reset collapsed state when headings change (article navigation)
   useEffect(() => {
@@ -56,7 +57,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
     const el = document.getElementById(id)
     if (!el) return
 
-    el.scrollIntoView({ behavior: "smooth", block: "start" })
+    el.scrollIntoView({ behavior: prefersReducedMotion ? "instant" : "smooth", block: "start" })
     setActiveId(id)
     // Collapsing after navigation is harmless on desktop (where the desktop
     // media query keeps the list expanded) and gives mobile a deterministic

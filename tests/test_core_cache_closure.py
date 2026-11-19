@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
+from redis.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    BusyLoadingError,
+    DataError,
+    NoPermissionError,
+    ResponseError,
+)
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.cache import LRUCache, MultiLayerCache, cached
 
@@ -160,3 +171,96 @@ async def test_cached_decorator_with_l1_ttl():
     assert await load_lru("c") == {"value": "c"}
     assert await load_lru("c") == {"value": "c"}
     assert lru_calls == 1
+
+
+async def _invoke_l2_operation(cache, operation):
+    if operation == "get":
+        return await cache.get("prefix:key")
+    if operation == "set":
+        return await cache.set("prefix:key", {"value": 1})
+    if operation == "delete":
+        return await cache.delete("prefix:key")
+    return await cache.invalidate_prefix("prefix:")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        RedisConnectionError,
+        RedisTimeoutError,
+        BusyLoadingError,
+    ],
+)
+@pytest.mark.parametrize("operation", ["get", "set", "delete", "scan", "scan-delete"])
+async def test_multilayer_real_redis_transport_errors_fail_soft(
+    error_type, operation, caplog
+):
+    redis = AsyncMock()
+    redis.scan.return_value = (0, [b"prefix:remote"])
+    method = "delete" if operation == "scan-delete" else operation
+    getattr(redis, method).side_effect = error_type("private-redis-endpoint-marker")
+    cache = MultiLayerCache(redis_client=redis)
+    if operation not in {"get", "set"}:
+        cache.l1.set("prefix:key", "old")
+    with patch("app.core.metrics.record_redis_command") as metric:
+        result = await _invoke_l2_operation(cache, operation)
+    getattr(redis, method).assert_awaited_once()
+    if operation in {"scan", "scan-delete"}:
+        assert result == 1
+    else:
+        assert result is None
+    if operation == "set":
+        assert cache.l1.get("prefix:key") == {"value": 1}
+    else:
+        assert cache.l1.get("prefix:key") is None
+    if operation in {"get", "set"}:
+        metric.assert_called_once_with(operation, 0.0, success=False)
+    assert "private-redis-endpoint-marker" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        AuthenticationError,
+        AuthorizationError,
+        ResponseError,
+        NoPermissionError,
+        DataError,
+        ValueError,
+        asyncio.CancelledError,
+    ],
+)
+@pytest.mark.parametrize("operation", ["get", "set", "delete", "scan", "scan-delete"])
+async def test_multilayer_nontransport_errors_and_cancellation_propagate(
+    error_type, operation
+):
+    redis = AsyncMock()
+    redis.scan.return_value = (0, [b"prefix:remote"])
+    method = "delete" if operation == "scan-delete" else operation
+    error = error_type("synthetic failure")
+    getattr(redis, method).side_effect = error
+    cache = MultiLayerCache(redis_client=redis)
+    with pytest.raises(error_type) as caught:
+        await _invoke_l2_operation(cache, operation)
+    assert caught.value is error
+
+
+@pytest.mark.asyncio
+async def test_cached_source_recovers_after_real_redis_transport_failure():
+    redis = AsyncMock()
+    redis.get.side_effect = RedisConnectionError("unavailable")
+    redis.set.side_effect = RedisTimeoutError("unavailable")
+    cache = MultiLayerCache(redis_client=redis)
+    source = AsyncMock(return_value={"value": "source"})
+
+    @cached(cache, lambda: "key")
+    async def load():
+        return await source()
+
+    assert await load() == {"value": "source"}
+    assert await load() == {"value": "source"}
+    source.assert_awaited_once()
+    redis.get.assert_awaited_once_with("key")
+    redis.set.assert_awaited_once()

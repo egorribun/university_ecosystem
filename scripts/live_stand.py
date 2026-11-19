@@ -190,6 +190,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_skipped_identities as _live_playwright_skipped_identities,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_snackbar_clipboard_diagnostics as _live_playwright_snackbar_clipboard_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_story_memory_cycle_trace_diagnostics as _live_playwright_story_memory_cycle_trace_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5814,6 +5817,7 @@ def _run_live_playwright(
     page_errors = _live_playwright_page_errors(stdout)
     page_error_details = _live_playwright_page_error_details(stdout)
     profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
+    snackbar_diagnostics = _live_playwright_snackbar_clipboard_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
         dict.fromkeys(
@@ -6194,6 +6198,8 @@ def _run_live_playwright(
             flush=True,
         )
     if return_code != 0:
+        for record in snackbar_diagnostics:
+            print(f"live E2E snackbar clipboard {record}", flush=True)
         for (
             project,
             status,
@@ -8060,6 +8066,12 @@ def _verify_live_caddy_probe_log(
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
 
 
+def _run_live_playwright_diagnosed(owner: StandOwner, **arguments: Any) -> None:
+    from scripts.live_transport_diagnostic import run
+
+    run(sys.modules[__name__], owner, arguments)
+
+
 def _e2e_locked(
     admin_password: str,
     *,
@@ -8160,14 +8172,16 @@ def _e2e_locked(
                 )
                 _require_owned_docker_daemon(owner, docker_context=docker_context)
             if selected_specs:
-                _run_live_playwright(
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,
                     specs=selected_specs,
                 )
             else:
-                _run_live_playwright(
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,

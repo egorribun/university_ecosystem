@@ -3705,3 +3705,31 @@ def _live_playwright_http_operations(output: str) -> dict[str, object]:
         "completeness": completeness,
         "correlation": correlation,
     }
+
+
+_PLAYWRIGHT_SNACKBAR_CLIPBOARD_LINE = re.compile(
+    r"UE_LIVE_SNACKBAR_CLIPBOARD_V1 "
+    r"(?P<payload>project=(?:desktop|mobile) "
+    r"permission=(?:granted|denied|prompt|unavailable) "
+    r"secure=(?:true|false|unknown) focused=(?:true|false|unknown) "
+    r"clipboard=(?:true|false|unknown) hydrated=(?:true|false|unknown) "
+    r"enabled=(?:true|false|unknown) alerts=(?:unknown|0|[1-9][0-9]{0,2}))"
+)
+
+
+def _live_playwright_snackbar_clipboard_diagnostics(output: str) -> list[str]:
+    """Retain closed clipboard capability metadata, never clipboard content."""
+    records: list[str] = []
+    for raw_line in output.split("\n")[:-1]:
+        line = raw_line.removesuffix("\r")
+        if len(line) > 320 or not line.isascii() or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_SNACKBAR_CLIPBOARD_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record = match["payload"]
+        if record not in records:
+            records.append(record)
+            if len(records) == 4:
+                break
+    return records

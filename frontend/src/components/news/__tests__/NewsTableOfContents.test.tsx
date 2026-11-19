@@ -30,7 +30,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/hooks/useMediaQuery", () => ({
   default: (query: string) => {
     mediaQueries.push(query)
-    return mediaMock()
+    return mediaMock(query)
   },
 }))
 
@@ -64,7 +64,7 @@ describe("NewsTableOfContents", () => {
       .querySelectorAll("#background, #methodology, #data-pipeline, #findings")
       .forEach((el) => el.remove())
     mediaMock.mockReset()
-    mediaMock.mockReturnValue(true) // desktop by default
+    mediaMock.mockImplementation((query: string) => query === "(min-width: 1024px)")
     mediaQueries.length = 0
     translationNamespaces.length = 0
     observerState.callbacks = []
@@ -188,6 +188,38 @@ describe("NewsTableOfContents", () => {
     await user.click(screen.getByRole("button", { name: "Background" }))
     expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" })
     document.body.removeChild(target)
+  })
+
+  it("updates heading scroll behavior when reduced motion changes", () => {
+    let reduce = true
+    mediaMock.mockImplementation((query: string) =>
+      query === "(prefers-reduced-motion: reduce)" ? reduce : true
+    )
+    const target = document.createElement("h2")
+    target.id = "background"
+    target.scrollIntoView = vi.fn()
+    document.body.appendChild(target)
+    const view = render(<NewsTableOfContents headings={HEADINGS} />)
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Background" }))
+      expect(target.scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: "instant",
+        block: "start",
+      })
+      expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
+
+      reduce = false
+      view.rerender(<NewsTableOfContents headings={HEADINGS} />)
+      fireEvent.click(screen.getByRole("button", { name: "Background" }))
+      expect(target.scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: "smooth",
+        block: "start",
+      })
+    } finally {
+      view.unmount()
+      target.remove()
+    }
   })
 
   it("tracks intersecting headings and ignores missing scroll targets", () => {

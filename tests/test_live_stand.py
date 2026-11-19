@@ -5490,6 +5490,13 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         verify_core_caddy_container,
     )
     monkeypatch.setattr(live_stand, "_run_live_playwright", run_playwright)
+    # The login transport diagnostic has its own tests; keep this admission
+    # order independent of its best-effort Docker reads.
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_playwright_diagnosed",
+        lambda _owner, **arguments: run_playwright(**arguments),
+    )
     monkeypatch.setattr(live_stand, "_verify_live_caddy_probe_log", verify_log)
 
     if expire_after is None:

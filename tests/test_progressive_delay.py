@@ -12,10 +12,12 @@ from redis.exceptions import RedisError
 from app.core.ratelimit.delay import (
     PROGRESSIVE_DELAY_MAX,
     PROGRESSIVE_DELAY_STEPS,
+    PROGRESSIVE_DELAY_TTL,
     ProgressiveDelayInfo,
     ProgressiveDelayTracker,
     _delay_memory,
     _delay_memory_lock,
+    _DelayEntry,
     clear_delay_memory,
 )
 from app.core.ratelimit.fastapi import get_progressive_delay_tracker
@@ -171,7 +173,9 @@ class TestProgressiveDelayTrackerMemory:
         """Memory backend prunes stale items on failure recording."""
         tracker = ProgressiveDelayTracker(ttl_seconds=1)
         async with _delay_memory_lock:
-            _delay_memory["test:stale"] = (1, time.time() - 10.0)
+            _delay_memory["test:stale"] = _DelayEntry(
+                1, time.time() - PROGRESSIVE_DELAY_TTL - 1, PROGRESSIVE_DELAY_TTL
+            )
 
         from app.core.ratelimit import delay as delay_module
 
@@ -285,7 +289,9 @@ class TestProgressiveDelayTrackerRedis:
         """Get delay falls back to memory on RedisError."""
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
         async with _delay_memory_lock:
-            _delay_memory[tracker._make_key("test:fb_get")] = (4, time.time())
+            _delay_memory[tracker._make_key("test:fb_get")] = _DelayEntry(
+                4, time.time(), PROGRESSIVE_DELAY_TTL
+            )
 
         async def failing_get(key):
             raise RedisError("Connection failure")
@@ -303,7 +309,9 @@ class TestProgressiveDelayTrackerRedis:
         """Reset swallows RedisError/OSError and pops local memory."""
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
         async with _delay_memory_lock:
-            _delay_memory[tracker._make_key("test:fb_reset")] = (2, time.time())
+            _delay_memory[tracker._make_key("test:fb_reset")] = _DelayEntry(
+                2, time.time(), PROGRESSIVE_DELAY_TTL
+            )
 
         async def failing_delete(key):
             raise OSError("OS connection refused")

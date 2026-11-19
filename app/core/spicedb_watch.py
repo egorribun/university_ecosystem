@@ -23,7 +23,11 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.spicedb import _parse_endpoint, create_async_spicedb_channel
+from app.core.spicedb import (
+    _format_target,
+    _parse_endpoint,
+    create_async_spicedb_channel,
+)
 
 logger = get_logger(__name__)
 
@@ -41,7 +45,7 @@ async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
 
     from app.auth.rbac import _permission_cache
 
-    target = f"{host}:{port}"
+    target = _format_target(host, port)
     channel = create_async_spicedb_channel(target, token, use_ssl=use_ssl)
 
     try:

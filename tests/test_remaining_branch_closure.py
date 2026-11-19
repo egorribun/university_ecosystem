@@ -358,13 +358,13 @@ async def test_ws_hub_control_event_retries_then_succeeds(
     standalone_ws_client, monkeypatch
 ):
     client, broker = standalone_ws_client
-    broker.publish.side_effect = [ConnectionError("temporary"), None]
+    broker.publish_core.side_effect = [ConnectionError("temporary"), None]
     monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", AsyncMock())
 
     await client.publish_control_event("user-1", action="logout", reason="test")
 
-    assert broker.publish.call_count == 2
-    assert broker.publish.call_args_list[-1].args[0] == "ws_hub.control"
+    assert broker.publish_core.call_count == 2
+    assert broker.publish_core.call_args_list[-1].args[0] == "ws_hub.control"
 
 
 @pytest.mark.asyncio
@@ -374,14 +374,14 @@ async def test_ws_hub_control_event_records_final_failure(
     import app.services.ws_hub_client as module
 
     client, broker = standalone_ws_client
-    broker.publish.side_effect = ConnectionError("down")
+    broker.publish_core.side_effect = ConnectionError("down")
     monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", AsyncMock())
     counter = MagicMock()
     monkeypatch.setattr(module, "_INVALIDATION_FAILURES", counter)
 
     await client.publish_control_event("user-1")
 
-    assert broker.publish.call_count == 2
+    assert broker.publish_core.call_count == 2
     counter.inc.assert_called_once()
 
 

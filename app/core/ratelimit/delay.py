@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 
 from redis.exceptions import RedisError
 
@@ -12,7 +13,15 @@ PROGRESSIVE_DELAY_STEPS: tuple[float, ...] = (1.0, 2.0, 5.0, 10.0, 20.0, 30.0)
 PROGRESSIVE_DELAY_MAX: float = 30.0
 PROGRESSIVE_DELAY_TTL: int = 900  # 15 minutes
 
-_delay_memory: dict[str, tuple[int, float]] = {}
+
+@dataclass(frozen=True, slots=True)
+class _DelayEntry:
+    count: int
+    last_time: float
+    retention_seconds: int
+
+
+_delay_memory: dict[str, _DelayEntry] = {}
 _delay_memory_lock = asyncio.Lock()
 # MED-W19: Track last cleanup time to enable periodic pruning of _delay_memory.
 _delay_memory_last_cleanup: float = 0.0
@@ -68,21 +77,25 @@ class ProgressiveDelayTracker:
             global _delay_memory_last_cleanup
             now_ts = time.time()
             if now_ts - _delay_memory_last_cleanup >= _DELAY_MEMORY_CLEANUP_INTERVAL:
-                cutoff_ts = (
-                    now_ts - self._ttl
-                )  # RZ-33-10: use TTL (900s), not max_delay (30s)
                 stale_keys = [
-                    k for k, (_, ts) in _delay_memory.items() if ts < cutoff_ts
+                    key
+                    for key, entry in _delay_memory.items()
+                    if now_ts - entry.last_time > entry.retention_seconds
                 ]
                 for k in stale_keys:
                     del _delay_memory[k]
                 _delay_memory_last_cleanup = now_ts
 
-            count, last_time = _delay_memory.get(key, (0, 0.0))
-            if now_ts - last_time > self._ttl:
+            entry = _delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl))
+            count = entry.count
+            retention = max(entry.retention_seconds, self._ttl)
+            if now_ts - entry.last_time > self._ttl:
                 count = 0
+                retention = self._ttl
             count += 1
-            _delay_memory[key] = (count, now_ts)
+            # Reads and counter resets still use the caller's TTL. Cleanup
+            # alone retains the longest TTL observed in this counter lifetime.
+            _delay_memory[key] = _DelayEntry(count, now_ts, retention)
             failures = count
 
         delay = self._calculate_delay(failures)
@@ -104,8 +117,9 @@ class ProgressiveDelayTracker:
                 pass
 
         async with _delay_memory_lock:
-            count, last_time = _delay_memory.get(key, (0, 0.0))
-            if time.time() - last_time > self._ttl:
+            entry = _delay_memory.get(key, _DelayEntry(0, 0.0, self._ttl))
+            count = entry.count
+            if time.time() - entry.last_time > self._ttl:
                 count = 0
             failures = count
 

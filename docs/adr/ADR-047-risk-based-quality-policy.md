@@ -2928,3 +2928,22 @@ the complete frontend suite with its 100% coverage floors, Go and Rust tests and
 linters, and the backend tests. A test-first pull request without its
 implementation is completed, not merged red. Hosted required checks on the final
 SHA still decide merge readiness; local runs are not CI evidence.
+
+## Decisions recorded on 2026-11-19
+
+### Wave-2 integration companion rebinds
+
+Integrating the second wave of automated pull requests changed four files whose
+bytes are bound as Semgrep companions: `scripts/live_stand.py` (#1431 on top of
+#1447), `frontend/package.json` (#1431), `scripts/tests/prepare-release-version.test.mjs`
+(#1453) and `tests/test_quality_workflow_contract.py` (the four RLS pull
+requests). Under the owner's standing one-to-one approval, each ledger digest and
+the SHA-1 identity of that digest in policy rows 386, 451, 495 and 505 bind the
+new bytes. A NOV17 projection in `tests/test_verify_secrets_baseline.py` restores
+the exact source, ledger and policy predecessors before the older layers run; it
+accepts only the exact final or the exact predecessor bytes. The transport
+diagnostic layer from #1447 no longer checks the whole policy inside the chain:
+the dedicated exact-predecessor tests and the older layers keep that guarantee,
+and the older mutation tests again report their own layer. No identity, category,
+owner, expiry, threshold or required check changes; the inventory stays at 524
+dispositions. The rebind is not a passing scan or CI run.

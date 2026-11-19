@@ -46,6 +46,13 @@ def _parse_endpoint(raw_endpoint: str) -> tuple[str, int, bool]:
     return host, port, use_ssl
 
 
+def _format_target(host: str, port: int) -> str:
+    """Preserve IPv6 host boundaries in a gRPC host:port target."""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"{host}:{port}"
+
+
 # ---------------------------------------------------------------------------
 # Synchronous client (legacy, kept for CLI / management commands only)
 # ---------------------------------------------------------------------------
@@ -72,7 +79,7 @@ class SpiceDBClient:
             )
 
         host, port, use_ssl = _parse_endpoint(self._endpoint)
-        target = f"{host}:{port}"
+        target = _format_target(host, port)
 
         if use_ssl:
             from grpcutil import bearer_token_credentials
@@ -219,7 +226,7 @@ async def acquire_shared_spicedb_channel() -> grpc.aio.Channel:
         async with _get_channel_lock():
             if _global_channel is None:
                 host, port, use_ssl = _parse_endpoint(settings.spicedb_endpoint)
-                target = f"{host}:{port}"
+                target = _format_target(host, port)
                 token = settings.spicedb_preshared_key
 
                 _KEEPALIVE_OPTIONS = [

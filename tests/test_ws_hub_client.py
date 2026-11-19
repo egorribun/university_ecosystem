@@ -1,11 +1,15 @@
+import asyncio
 import hashlib
 import hmac
 import json
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from nats.errors import ConnectionClosedError
 
+from app.core.nats_broker import NatsTaskBroker
 from app.services.ws_hub_client import WsHubClient, invalidate_ws_hub_cache
 
 
@@ -222,3 +226,89 @@ def test_get_client(monkeypatch):
 
     assert c1 is c2
     assert isinstance(c1, WsHubClient)
+
+
+@pytest.mark.asyncio
+async def test_control_uses_real_core_broker_without_request_reply(ws_client):
+    client, _ = ws_client
+    broker = NatsTaskBroker()
+    connection = SimpleNamespace(
+        is_connected=True,
+        publish=AsyncMock(),
+        request=AsyncMock(side_effect=AssertionError("Core control has no responder")),
+    )
+    broker._nc = connection
+    broker._js = SimpleNamespace(
+        publish=AsyncMock(side_effect=AssertionError("Control has no stream"))
+    )
+    client._broker = broker
+
+    await client.publish_control_event("user-1")
+    await client.publish_control_event("user-2")
+
+    assert connection.publish.await_count == 2
+    assert [
+        json.loads(call.args[1])["data"]["user_id"]
+        for call in connection.publish.await_args_list
+    ] == ["user-1", "user-2"]
+    for call in connection.publish.await_args_list:
+        assert call.args[0] == "ws_hub.control"
+        payload = json.loads(call.args[1])
+        signed = json.dumps(
+            payload["data"], sort_keys=True, separators=(",", ":")
+        ).encode()
+        assert (
+            payload["signature"]
+            == hmac.new(b"testsecret", signed, hashlib.sha256).hexdigest()
+        )
+        assert payload["data"]["action"] == "disconnect"
+        assert payload["data"]["reason"] == "access_revoked"
+        assert "reply" not in call.kwargs
+    connection.request.assert_not_awaited()
+    broker._js.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected", [False, True])
+async def test_control_transport_failure_is_counted_after_bounded_retries(
+    ws_client, monkeypatch, connected
+):
+    client, _ = ws_client
+    broker = NatsTaskBroker()
+    connection = SimpleNamespace(
+        is_connected=connected,
+        publish=AsyncMock(side_effect=ConnectionClosedError()),
+    )
+    broker._nc = connection
+    client._broker = broker
+    counter = MagicMock()
+    sleep = AsyncMock()
+    monkeypatch.setattr("app.services.ws_hub_client._INVALIDATION_FAILURES", counter)
+    monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", sleep)
+
+    await client.publish_control_event("user-1")
+
+    assert connection.publish.await_count == (2 if connected else 0)
+    sleep.assert_awaited_once()
+    counter.inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_control_cancellation_does_not_retry_or_count_failure(
+    ws_client, monkeypatch
+):
+    client, broker = ws_client
+    broker.publish_core.side_effect = asyncio.CancelledError()
+    sleep = AsyncMock()
+    counter = MagicMock()
+    monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", sleep)
+    monkeypatch.setattr("app.services.ws_hub_client._INVALIDATION_FAILURES", counter)
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.publish_control_event("user-1")
+
+    broker.publish_core.assert_awaited_once()
+    assert broker.publish_core.call_args.kwargs == {"strict": True}
+    broker.publish.assert_not_awaited()
+    sleep.assert_not_awaited()
+    counter.inc.assert_not_called()

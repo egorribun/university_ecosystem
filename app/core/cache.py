@@ -18,6 +18,9 @@ from typing import Any
 
 import orjson
 from prometheus_client import Counter
+from redis.exceptions import AuthenticationError, AuthorizationError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.logging import get_logger
 
@@ -215,12 +218,17 @@ class MultiLayerCache:
                     # Populate L1 from L2
                     self.l1.set(key, value)
                     return value
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache get failed: %s", e)
+                logger.warning("L2 cache get failed (%s)", type(e).__name__)
                 # PERF-14-04 (audit 2026-03-23): Increment redis_command_errors_total
                 # so Alertmanager can fire on sustained L2 degradation.
                 # Deferred import avoids circular-import risk (core.metrics imports
@@ -247,12 +255,17 @@ class MultiLayerCache:
                 # PERF-W19-01: serialize with orjson so Redis stores valid bytes,
                 # not the str() representation of a Python object.
                 await self._redis.set(key, orjson.dumps(value), ex=int(self.l2_ttl))
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache set failed: %s", e)
+                logger.warning("L2 cache set failed (%s)", type(e).__name__)
                 # PERF-14-04 (audit 2026-03-23): Same pattern as get() above.
                 try:
                     from app.core.metrics import record_redis_command
@@ -267,12 +280,17 @@ class MultiLayerCache:
         if self._redis is not None:
             try:
                 await self._redis.delete(key)
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache delete failed: %s", e)
+                logger.warning("L2 cache delete failed (%s)", type(e).__name__)
 
     async def invalidate_prefix(self, prefix: str) -> int:
         """
@@ -296,12 +314,19 @@ class MultiLayerCache:
                         count += len(keys)
                     if cursor == 0:
                         break
+            except (AuthenticationError, AuthorizationError):
+                # Credential rejection is not an optional-cache network outage.
+                raise
             except (
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as e:  # RZ-22-01: narrowed — Redis errors
-                logger.warning("L2 cache prefix invalidation failed: %s", e)
+                logger.warning(
+                    "L2 cache prefix invalidation failed (%s)", type(e).__name__
+                )
 
         return count
 

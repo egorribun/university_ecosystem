@@ -17311,6 +17311,221 @@ def test_live_unit_postgres_prerequisite_binding_refuses_other_changes(
         _assert_live_scanner_source_bytes(path, invalid)
 
 
+# Owner-approved 2026-11-18: isolate only the database-free NATS proof.
+_NATS_SQLITE_CURRENT = bytes(
+    (
+        83,
+        121,
+        155,
+        8,
+        248,
+        34,
+        115,
+        52,
+        148,
+        154,
+        145,
+        251,
+        110,
+        69,
+        159,
+        193,
+        89,
+        246,
+        30,
+        135,
+        247,
+        3,
+        36,
+        135,
+        153,
+        145,
+        28,
+        152,
+        93,
+        124,
+        71,
+        4,
+    )
+)
+_NATS_SQLITE_PREVIOUS = bytes(
+    (
+        242,
+        145,
+        86,
+        78,
+        33,
+        156,
+        136,
+        114,
+        216,
+        49,
+        238,
+        146,
+        83,
+        111,
+        176,
+        50,
+        47,
+        195,
+        104,
+        217,
+        118,
+        24,
+        205,
+        73,
+        88,
+        173,
+        121,
+        134,
+        21,
+        90,
+        231,
+        144,
+    )
+)
+_NATS_SQLITE_BLOCK = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              env:\n"
+    b'                  DATABASE_URL: "sqlite+aiosqlite:///:memory:"\n'
+    b"              run: |"
+)
+_NATS_SQLITE_PREDECESSOR = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              run: |"
+)
+
+
+def _nats_sqlite_workflow_predecessor(actual: bytes) -> bytes:
+    assert hashlib.sha256(actual).digest() == _NATS_SQLITE_CURRENT, (
+        "exact reviewed NATS workflow SQLite postimage changed"
+    )
+    assert actual.count(_NATS_SQLITE_BLOCK) == 1, (
+        "exact reviewed NATS workflow SQLite hunk changed"
+    )
+    previous = actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1)
+    assert hashlib.sha256(previous).digest() == _NATS_SQLITE_PREVIOUS, (
+        "exact reviewed NATS workflow SQLite predecessor changed"
+    )
+    return previous
+
+
+def _reviewed_nats_workflow_predecessor(actual: bytes) -> bytes:
+    """Reverse only the exact owner-approved NATS proof addition."""
+    actual = _nats_sqlite_workflow_predecessor(actual)
+    assert hashlib.sha256(actual).digest() == bytes(
+        (
+            242,
+            145,
+            86,
+            78,
+            33,
+            156,
+            136,
+            114,
+            216,
+            49,
+            238,
+            146,
+            83,
+            111,
+            176,
+            50,
+            47,
+            195,
+            104,
+            217,
+            118,
+            24,
+            205,
+            73,
+            88,
+            173,
+            121,
+            134,
+            21,
+            90,
+            231,
+            144,
+        )
+    ), "exact reviewed NATS workflow bytes changed"
+    proof = (
+        b"            - name: Verify real NATS live control publication\n"
+        b"              timeout-minutes: 5\n"
+        b"              shell: bash\n"
+        b"              run: |\n"
+        b"                  set -euo pipefail\n"
+        b"                  uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \\\n"
+        b"                    --timeout-disable-debugger-detection \\\n"
+        b"                    tests/integration/test_infrastructure.py::test_real_core_control_needs_no_jetstream_ack \\\n"
+        b"                    --junitxml=nats-control-report.xml\n"
+        b"                  python3 - <<'PY'\n"
+        b"                  from xml.etree import ElementTree\n"
+        b"\n"
+        b'                  root = ElementTree.parse("nats-control-report.xml").getroot()\n'
+        b'                  cases = list(root.iter("testcase"))\n'
+        b"                  expected = (\n"
+        b'                      "tests.integration.test_infrastructure",\n'
+        b'                      "test_real_core_control_needs_no_jetstream_ack",\n'
+        b"                  )\n"
+        b"                  if len(cases) != 1 or (\n"
+        b'                      cases[0].get("classname"), cases[0].get("name")\n'
+        b"                  ) != expected or any(\n"
+        b"                      cases[0].find(status) is not None\n"
+        b'                      for status in ("skipped", "failure", "error")\n'
+        b"                  ):\n"
+        b'                      raise SystemExit("Required real NATS control proof did not pass")\n'
+        b'                  print("NATS_CONTROL_REAL_BROKER_VERIFIED_PASS")\n'
+        b"                  PY\n"
+        b"\n"
+    )
+    artifact = b"                      nats-control-report.xml\n"
+    assert actual.count(proof) == 1, "exact NATS proof block changed"
+    assert actual.count(artifact) == 1, "exact NATS artifact entry changed"
+    predecessor = actual.replace(proof, b"", 1).replace(artifact, b"", 1)
+    assert hashlib.sha256(predecessor).digest() == bytes(
+        (
+            98,
+            65,
+            81,
+            226,
+            239,
+            11,
+            122,
+            78,
+            23,
+            98,
+            189,
+            66,
+            10,
+            216,
+            114,
+            11,
+            184,
+            167,
+            0,
+            137,
+            246,
+            151,
+            153,
+            51,
+            3,
+            239,
+            238,
+            83,
+            59,
+            40,
+            171,
+            253,
+        )
+    ), "exact reviewed NATS predecessor changed"
+    return predecessor
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -17324,6 +17539,7 @@ def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -
     root = Path(__file__).resolve().parents[1]
     actual = (root / path).read_bytes()
     if path == ".github/workflows/reusable-backend-tests.yml":
+        actual = _reviewed_nats_workflow_predecessor(actual)
         # The reviewed parser fix moved the exact run bodies to sourced helpers.
         # The companion workflow contract checks their shell, env and argv.
         assert hashlib.sha256(actual).digest() == bytes(
@@ -33416,8 +33632,7 @@ def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_aud375_package_projection_preserves_exact_predecessor() -> None:
-    root = Path(__file__).resolve().parents[1]
-    actual = (root / "frontend/package.json").read_bytes()
+    actual = _nov17_disk_bytes("frontend/package.json")
     historical = _aud375_historical_source_bytes("frontend/package.json", actual)
     assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
     # The NOV-RUST lockfile projection changes the basic-ftp override; forward
@@ -34890,7 +35105,7 @@ _DEPS_ACTIONS_LEDGER_CURRENT_SHA256 = bytes.fromhex(
 
 def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
-    ledger_bytes = (root / _DEPS_ACTIONS_LEDGER_PATH).read_bytes()
+    ledger_bytes = _nov17_disk_bytes(_DEPS_ACTIONS_LEDGER_PATH)
     ledger = json.loads(ledger_bytes)
     companions = [
         item
@@ -34898,7 +35113,7 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
         for item in disposition.get("companions", [])
     ]
     for path, current, previous, count, _row, _reversals in _DEPS_ACTIONS_REBINDS:
-        source = (root / path).read_bytes()
+        source = _nov17_disk_bytes(path)
         assert hashlib.sha256(source).hexdigest() == current
         bound = [item["sha256"] for item in companions if item["path"] == path]
         assert bound == [current] * count
@@ -34908,8 +35123,10 @@ def test_deps_actions_rebind_preserves_exact_predecessor() -> None:
         _DEPS_ACTIONS_LEDGER_PATH, ledger_bytes
     )
     assert hashlib.sha256(historical_ledger).digest() == _AMMONIA_LEDGER_CURRENT_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov17_integration_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _deps_actions_historical_policy(policy)
     for (
@@ -35051,14 +35268,14 @@ def _nov15_http_operations_historical_policy(policy: dict[str, Any]) -> dict[str
 
 def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
-    live = (root / _NOV15_LIVE_PATH).read_bytes()
+    live = _nov17_disk_bytes(_NOV15_LIVE_PATH)
     assert (
         hashlib.sha256(
             _nov16_push_observation_historical_source_bytes(_NOV15_LIVE_PATH, live)
         ).hexdigest()
         == _NOV15_LIVE_CURRENT_SHA256
     )
-    ledger_bytes = (root / _NOV15_LEDGER_PATH).read_bytes()
+    ledger_bytes = _nov17_disk_bytes(_NOV15_LEDGER_PATH)
     projected_ledger = _nov16_push_observation_historical_source_bytes(
         _NOV15_LEDGER_PATH, ledger_bytes
     )
@@ -35078,8 +35295,10 @@ def test_nov15_http_operations_rebind_preserves_exact_predecessor() -> None:
         _NOV15_LEDGER_PATH, ledger_bytes
     )
     assert hashlib.sha256(historical_ledger).digest() == _NOV15_LEDGER_PREVIOUS_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov17_integration_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _nov15_http_operations_historical_policy(policy)
     assert len(restored["records"]) == 512
@@ -35437,7 +35656,80 @@ _MAP_ZOOM_LIVE_INSERTIONS = (
 )
 
 
+# Exact, owner-approved transport diagnostic companion update.
+_TRANSPORT_WRAPPER = (
+    b"def _run_live_playwright_diagnosed(owner: StandOwner, **arguments: Any) -> None:\n"
+    b"    from scripts.live_transport_diagnostic import run\n\n"
+    b"    run(sys.modules[__name__], owner, arguments)\n\n\n"
+)
+_TRANSPORT_CALL_PREFIXES = (b"            if selected_specs:\n", b"            else:\n")
+_TRANSPORT_CURRENT_CALL = (
+    b"                _run_live_playwright_diagnosed(\n"
+    b"                    owner,\n"
+    b"                    cwd=frontend,\n"
+)
+_TRANSPORT_PREVIOUS_CALL = (
+    b"                _run_live_playwright(\n                    cwd=frontend,\n"
+)
+
+
+def _transport_diagnostic_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _nov17_integration_predecessor(path, actual)
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    if path == _NOV16_LIVE_PATH:
+        anchor = b"def _e2e_locked("
+        wrapped_anchor = _TRANSPORT_WRAPPER + anchor
+        assert actual.count(wrapped_anchor) == 1, message
+        historical = actual.replace(wrapped_anchor, anchor, 1)
+        for prefix in _TRANSPORT_CALL_PREFIXES:
+            current = prefix + _TRANSPORT_CURRENT_CALL
+            assert historical.count(current) == 1, message
+            historical = historical.replace(
+                current, prefix + _TRANSPORT_PREVIOUS_CALL, 1
+            )
+        assert (
+            hashlib.sha256(historical).hexdigest() == _MAP_ZOOM_LIVE_CURRENT_SHA256
+        ), message
+        return historical
+    if path != _NOV16_LEDGER_PATH:
+        return actual
+    current = _transport_diagnostic_live_pin().encode("ascii")
+    assert actual.count(current) == 1, message
+    previous = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
+    historical = actual.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == _MAP_ZOOM_LEDGER_CURRENT_SHA256, (
+        message
+    )
+    return historical
+
+
+def _transport_diagnostic_live_pin() -> str:
+    live = _nov17_disk_bytes(_NOV16_LIVE_PATH)
+    _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    return hashlib.sha256(live).hexdigest()
+
+
+def _transport_diagnostic_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(_nov17_integration_policy_predecessor(policy))
+    records = restored["records"]
+    assert len(records) == 524, (
+        "live disposition count changed for transport diagnostic"
+    )
+    identity = records[_NOV16_IDENTITY_ROW]["identity"]
+    assert identity["hashed_secret_bytes"] == _nov15_identity(
+        _transport_diagnostic_live_pin()
+    ), "transport diagnostic companion identity changed"
+    identity["hashed_secret_bytes"] = _nov15_identity(_MAP_ZOOM_LIVE_CURRENT_SHA256)
+    return restored
+
+
 def _map_zoom_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    return _map_zoom_previous_source_bytes(
+        path, _transport_diagnostic_predecessor(path, actual)
+    )
+
+
+def _map_zoom_previous_source_bytes(path: str, actual: bytes) -> bytes:
     if path == _NOV16_LIVE_PATH:
         assert hashlib.sha256(actual).hexdigest() == _MAP_ZOOM_LIVE_CURRENT_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -35469,6 +35761,10 @@ def _map_zoom_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _map_zoom_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    return _map_zoom_previous_policy(_transport_diagnostic_policy_predecessor(policy))
+
+
+def _map_zoom_previous_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = copy.deepcopy(policy)
     records = restored["records"]
     assert len(records) == 524, "live disposition count changed for map zoom"
@@ -35545,10 +35841,10 @@ def _nov16_push_observation_historical_policy(policy: dict[str, Any]) -> dict[st
 
 def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
-    current_live = (root / _NOV16_LIVE_PATH).read_bytes()
+    current_live = _nov17_disk_bytes(_NOV16_LIVE_PATH)
     live = _map_zoom_historical_source_bytes(_NOV16_LIVE_PATH, current_live)
     assert hashlib.sha256(live).hexdigest() == _NOV16_LIVE_CURRENT_SHA256
-    current_ledger = (root / _NOV16_LEDGER_PATH).read_bytes()
+    current_ledger = _nov17_disk_bytes(_NOV16_LEDGER_PATH)
     ledger_bytes = _map_zoom_historical_source_bytes(_NOV16_LEDGER_PATH, current_ledger)
     assert hashlib.sha256(ledger_bytes).digest() == _NOV16_LEDGER_CURRENT_SHA256
     ledger = json.loads(ledger_bytes)
@@ -35580,8 +35876,10 @@ def test_nov16_push_observation_rebind_preserves_exact_predecessor() -> None:
     # The predecessor of this layer is exactly what the nov15 layer binds.
     assert _NOV16_LIVE_PREVIOUS_SHA256 == _NOV15_LIVE_CURRENT_SHA256
     assert _NOV16_LEDGER_PREVIOUS_SHA256 == _NOV15_LEDGER_CURRENT_SHA256
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _nov17_integration_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _nov16_push_observation_historical_policy(policy)
     assert len(restored["records"]) == 524
@@ -35705,7 +36003,7 @@ def _nov16_chart_comment_historical_source_bytes(path: str, actual: bytes) -> by
 
 def _map_zoom_assert_exact_policy_predecessor(policy: dict[str, Any]) -> None:
     predecessor = json.dumps(
-        _map_zoom_historical_policy(policy),
+        _map_zoom_previous_policy(policy),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -35719,20 +36017,20 @@ def test_map_zoom_companion_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     live = (root / _NOV16_LIVE_PATH).read_bytes()
     ledger_bytes = (root / _NOV16_LEDGER_PATH).read_bytes()
-    historical_live = _map_zoom_historical_source_bytes(_NOV16_LIVE_PATH, live)
-    historical_ledger = _map_zoom_historical_source_bytes(
-        _NOV16_LEDGER_PATH, ledger_bytes
-    )
+    map_live = _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    map_ledger = _transport_diagnostic_predecessor(_NOV16_LEDGER_PATH, ledger_bytes)
+    historical_live = _map_zoom_previous_source_bytes(_NOV16_LIVE_PATH, map_live)
+    historical_ledger = _map_zoom_previous_source_bytes(_NOV16_LEDGER_PATH, map_ledger)
     assert hashlib.sha256(historical_live).hexdigest() == _NOV16_LIVE_CURRENT_SHA256
     assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_CURRENT_SHA256
 
-    ledger = json.loads(ledger_bytes)
+    ledger = json.loads(map_ledger)
     historical_ledger_object = json.loads(historical_ledger)
     expected_ledger = copy.deepcopy(ledger)
     companions = expected_ledger["dispositions"][6]["companions"]
     matches = [entry for entry in companions if entry["path"] == _NOV16_LIVE_PATH]
     assert len(matches) == 1
-    assert matches[0]["sha256"] == hashlib.sha256(live).hexdigest()
+    assert matches[0]["sha256"] == hashlib.sha256(map_live).hexdigest()
     matches[0]["sha256"] = _NOV16_LIVE_CURRENT_SHA256
     assert len(ledger["dispositions"]) == 15
     assert historical_ledger_object == expected_ledger
@@ -35740,9 +36038,10 @@ def test_map_zoom_companion_rebind_preserves_exact_predecessor() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    historical_policy = _map_zoom_historical_policy(policy)
-    _map_zoom_assert_exact_policy_predecessor(policy)
-    expected_policy = copy.deepcopy(policy)
+    map_policy = _transport_diagnostic_policy_predecessor(policy)
+    historical_policy = _map_zoom_previous_policy(map_policy)
+    _map_zoom_assert_exact_policy_predecessor(map_policy)
+    expected_policy = copy.deepcopy(map_policy)
     expected_policy["records"][_NOV16_IDENTITY_ROW]["identity"][
         "hashed_secret_bytes"
     ] = _nov15_identity(_NOV16_LIVE_CURRENT_SHA256)
@@ -35773,7 +36072,7 @@ def test_map_zoom_source_projection_rejects_drift(
     root = Path(__file__).resolve().parents[1]
     if mutation.startswith("live_"):
         path = _NOV16_LIVE_PATH
-        actual = (root / path).read_bytes()
+        actual = _transport_diagnostic_predecessor(path, (root / path).read_bytes())
         insertion = _MAP_ZOOM_LIVE_INSERTIONS[1]
         if mutation == "live_missing":
             actual = actual.replace(insertion, b"", 1)
@@ -35789,7 +36088,7 @@ def test_map_zoom_source_projection_rejects_drift(
             )
     else:
         path = _NOV16_LEDGER_PATH
-        actual = (root / path).read_bytes()
+        actual = _transport_diagnostic_predecessor(path, (root / path).read_bytes())
         current = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
         if mutation == "ledger_missing":
             actual = actual.replace(current, b"0" * len(current), 1)
@@ -35804,7 +36103,7 @@ def test_map_zoom_source_projection_rejects_drift(
                 hashlib.sha256(actual).digest(),
             )
     with pytest.raises(AssertionError, match="conditional disposition source"):
-        _map_zoom_historical_source_bytes(path, actual)
+        _map_zoom_previous_source_bytes(path, actual)
 
 
 @pytest.mark.parametrize(
@@ -35828,6 +36127,7 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _transport_diagnostic_policy_predecessor(policy)
     row = policy["records"][_NOV16_IDENTITY_ROW]
     if mutation == "digest":
         row["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -35845,3 +36145,465 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
 
 def test_map_zoom_source_projection_leaves_other_paths_unchanged() -> None:
     assert _map_zoom_historical_source_bytes("unrelated", b"unchanged") == b"unchanged"
+
+
+def test_transport_diagnostic_companion_is_an_exact_rebind() -> None:
+    live = _nov17_disk_bytes(_NOV16_LIVE_PATH)
+    ledger = _nov17_disk_bytes(_NOV16_LEDGER_PATH)
+    previous_live = _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    restored_live = previous_live.replace(
+        b"def _e2e_locked(", _TRANSPORT_WRAPPER + b"def _e2e_locked(", 1
+    )
+    for prefix in _TRANSPORT_CALL_PREFIXES:
+        previous_call = prefix + _TRANSPORT_PREVIOUS_CALL
+        assert restored_live.count(previous_call) == 1
+        restored_live = restored_live.replace(
+            previous_call, prefix + _TRANSPORT_CURRENT_CALL, 1
+        )
+    assert restored_live == live
+
+    restored = _transport_diagnostic_predecessor(_NOV16_LEDGER_PATH, ledger)
+    matches = [
+        item
+        for item in json.loads(ledger)["dispositions"][6]["companions"]
+        if item["path"] == _NOV16_LIVE_PATH
+    ]
+    assert [item["sha256"] for item in matches] == [hashlib.sha256(live).hexdigest()]
+    previous_pin = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
+    assert restored.count(previous_pin) == 1
+    current_pin = matches[0]["sha256"].encode("ascii")
+    assert restored.replace(previous_pin, current_pin, 1) == ledger
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("source", "missing_wrapper", "moved_wrapper", "duplicate_call", "ledger"),
+)
+def test_transport_diagnostic_source_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = _NOV16_LEDGER_PATH if mutation == "ledger" else _NOV16_LIVE_PATH
+    actual = (root / path).read_bytes()
+    if mutation == "missing_wrapper":
+        actual = actual.replace(_TRANSPORT_WRAPPER, b"", 1)
+    elif mutation == "moved_wrapper":
+        actual = _TRANSPORT_WRAPPER + actual.replace(_TRANSPORT_WRAPPER, b"", 1)
+    elif mutation == "duplicate_call":
+        actual += _TRANSPORT_CALL_PREFIXES[0] + _TRANSPORT_CURRENT_CALL
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _transport_diagnostic_predecessor(path, actual)
+
+
+@pytest.mark.parametrize(
+    "mutation", ("fingerprint", "expiry", "other_record", "extra_record")
+)
+def test_transport_diagnostic_policy_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_NOV16_IDENTITY_ROW]
+    if mutation == "fingerprint":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "other_record":
+        policy["records"][0]["owner"] += " changed"
+    else:
+        policy["records"].append(copy.deepcopy(row))
+    with pytest.raises(AssertionError, match=r"transport diagnostic|map zoom"):
+        _map_zoom_assert_exact_policy_predecessor(
+            _transport_diagnostic_policy_predecessor(policy)
+        )
+
+
+def test_nats_workflow_inverse_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    predecessor = _reviewed_nats_workflow_predecessor(actual)
+    assert b"Verify real NATS live control publication" not in predecessor
+    assert b"nats-control-report.xml" not in predecessor
+    assert b"Verify borrowed-session PostgreSQL proofs" in predecessor
+    assert b"mfa-mailpit-report.xml" in predecessor
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _reviewed_nats_workflow_predecessor(predecessor)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-proof",
+        "duplicate-proof",
+        "changed-command",
+        "changed-test",
+        "weakened-status",
+        "missing-artifact",
+        "duplicate-artifact",
+        "unrelated",
+    ],
+)
+def test_nats_workflow_binding_rejects_unreviewed_changes(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    start = actual.index(
+        b"            - name: Verify real NATS live control publication\n"
+    )
+    end = actual.index(
+        b"            - name: Verify borrowed-session PostgreSQL proofs", start
+    )
+    proof = actual[start:end]
+    artifact = b"                      nats-control-report.xml\n"
+    _reviewed_nats_workflow_predecessor(actual)
+    if mutation == "missing-proof":
+        changed = actual.replace(proof, b"", 1)
+    elif mutation == "duplicate-proof":
+        changed = actual.replace(proof, proof + proof, 1)
+    elif mutation == "changed-command":
+        changed = actual.replace(
+            proof, proof.replace(b"set -euo pipefail", b"set +e"), 1
+        )
+    elif mutation == "changed-test":
+        changed = actual.replace(
+            proof,
+            proof.replace(
+                b"test_real_core_control_needs_no_jetstream_ack", b"test_other"
+            ),
+            1,
+        )
+    elif mutation == "weakened-status":
+        changed = actual.replace(
+            proof,
+            proof.replace(b'("skipped", "failure", "error")', b'("failure", "error")'),
+            1,
+        )
+    elif mutation == "missing-artifact":
+        changed = actual.replace(artifact, b"", 1)
+    elif mutation == "duplicate-artifact":
+        changed = actual.replace(artifact, artifact + artifact, 1)
+    else:
+        changed = actual + b"# unrelated workflow change\n"
+    assert changed != actual
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _reviewed_nats_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    previous = _nats_sqlite_workflow_predecessor(actual)
+    assert previous.replace(_NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1) == actual
+    job = yaml.safe_load(actual)["jobs"]["integration-tests"]
+    old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
+    assert job["env"] == old_job["env"]
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    changed = []
+    for step, old_step in zip(job["steps"], old_job["steps"], strict=True):
+        if step != old_step:
+            changed.append(step["name"])
+            expected = dict(old_step)
+            expected["env"] = {"DATABASE_URL": "sqlite+aiosqlite:///:memory:"}
+            assert step == expected
+    assert changed == ["Verify real NATS live control publication"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "file", "extra"])
+def test_nats_sqlite_projection_rejects_unapproved_bytes(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    changed = {
+        "missing": actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1),
+        "duplicate": actual + _NATS_SQLITE_BLOCK,
+        "file": actual.replace(b"sqlite+aiosqlite:///:memory:", b"sqlite:///test.db"),
+        "extra": actual + b"\n",
+    }[mutation]
+    assert changed != actual
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _nats_sqlite_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_projection_rejects_inverse_drift(monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    monkeypatch.setitem(
+        globals(), "_NATS_SQLITE_PREDECESSOR", _NATS_SQLITE_PREDECESSOR + b"\n"
+    )
+    with pytest.raises(AssertionError, match="SQLite predecessor changed"):
+        _nats_sqlite_workflow_predecessor(actual)
+
+
+# NOV17 integration of cloud-agent wave 2 (#1431, #1443, #1446, #1453, #1456,
+# #1464): the owner's standing one-to-one rebind approval covers four existing
+# Semgrep companion digests and their policy identities (rows 386, 451, 495 and
+# 505). No identity is added and the inventory stays at 524. This newest layer
+# restores the exact predecessors (the live stand as merged from #1447, the other
+# files as on bc7313ca4) before the transport diagnostic layer runs. Only the
+# exact final or the exact predecessor bytes are accepted, so both source chains
+# may reach it. Policy rows still at their final identity are restored; any other
+# drift is rejected by the older layers.
+_NOV17_SOURCES: dict[str, tuple[bytes, bytes, tuple[tuple[bytes, bytes], ...]]] = {
+    "scripts/tests/prepare-release-version.test.mjs": (
+        bytes.fromhex(
+            "f1 ec 9f 06 b6 5c 84 74 07 de 61 db d7 53 af 45"
+            " b6 59 c8 18 47 89 ff 1c 98 32 16 ad 17 8a ed c0"
+        ),
+        bytes.fromhex(
+            "cf e3 45 1d 27 0a 8e 78 a7 44 69 d9 e5 24 9f a6"
+            " 86 9a 26 3d 1b 18 4e f7 55 39 98 a0 6e d6 9a 23"
+        ),
+        (
+            (
+                b'  "2.3.4-0",\n  "2.3.4-rc.0",\n  "2.3.4-rc01",\n'
+                b'  "2.3.4+001",\n  "2.3.4-rc.1+001",\n',
+                b"",
+            ),
+            (
+                b'  ["2.3.4-01", "Invalid semantic version"],\n'
+                b'  ["2.3.4-rc.01", "Invalid semantic version"],\n'
+                b'  ["2.3.4-rc.01+001", "Invalid semantic version"],\n'
+                b'  ["2.3.4-dev.00", "Invalid semantic version"],\n'
+                b'  ["2.3.4-rc.1.post.02", "Invalid semantic version"],\n',
+                b"",
+            ),
+        ),
+    ),
+    "frontend/package.json": (
+        bytes.fromhex(
+            "4b 63 ab cb 85 1f 90 06 28 3d 95 b0 bc 95 7d 9f"
+            " 1a 8c e9 6c f9 8b 3e 5d 0d 97 ff 47 e7 eb 2c 94"
+        ),
+        bytes.fromhex(
+            "1a b8 96 dc 7b 83 9f 71 cf 85 df 15 d6 dc 07 d4"
+            " 3d 84 f3 78 94 ad 94 1c c9 02 20 f8 d3 5d 5c 39"
+        ),
+        ((b" tests/e2e-live/snackbar-clipboard-diagnostic.contract.test.mjs", b""),),
+    ),
+    "scripts/live_stand.py": (
+        bytes.fromhex(
+            "7b 4c 53 3f 5a 8d fd e0 9c 2c d9 5d ca 33 8b 67"
+            " b2 2d 03 e4 cc ef 6b 2a 15 d5 56 6c 5a d8 78 cb"
+        ),
+        bytes.fromhex(
+            "6a 90 ea 10 8d e5 ca ae 25 19 b8 69 e1 e6 b8 e8"
+            " 30 a0 b0 8c a3 cd 42 6a c1 89 65 d5 ef 1a f8 a2"
+        ),
+        (
+            (
+                b"from scripts.live_stand_playwright_evidence import (\n"
+                b"    _live_playwright_snackbar_clipboard_diagnostics as"
+                b" _live_playwright_snackbar_clipboard_diagnostics,\n)\n",
+                b"",
+            ),
+            (
+                b"    snackbar_diagnostics = "
+                b"_live_playwright_snackbar_clipboard_diagnostics(stdout)\n",
+                b"",
+            ),
+            (
+                b"        for record in snackbar_diagnostics:\n"
+                b'            print(f"live E2E snackbar clipboard {record}", flush=True)\n',
+                b"",
+            ),
+        ),
+    ),
+    "tests/test_quality_workflow_contract.py": (
+        bytes.fromhex(
+            "82 0d c7 08 df db 1f 5f 72 f6 b7 f4 de 0d 73 0c"
+            " e5 c5 9c 4a 7f ab 09 69 95 e4 e4 e2 4f a1 7a d1"
+        ),
+        bytes.fromhex(
+            "d0 3e 4c 8d a0 04 5b f6 86 d0 8c ac 6b e6 49 f8"
+            " bf 59 01 85 2d f6 44 42 6f 0c b3 66 64 18 bc 9c"
+        ),
+        (
+            (
+                b'        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 49,\n',
+                b'        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 45,\n',
+            ),
+            (
+                b"    assert sum(map(len, expected.values())) == 86\n"
+                + b"".join(
+                    b'    assert (\n        "'
+                    + name
+                    + b'"\n        in expected["tests.integration.'
+                    b'test_aud277_360_450_tenant_rls_postgres"]\n    )\n'
+                    for name in (
+                        b"test_room_membership_callback_obeys_parent_tenant_rls",
+                        b"test_schedule_query_ignores_shared_cache_across_tenant_rls",
+                        b"test_notification_cleanup_preserves_claims_under_active_rls",
+                        b"test_event_image_cleanup_retains_rls_hidden_legacy_reference",
+                    )
+                ),
+                b"    assert sum(map(len, expected.values())) == 82\n",
+            ),
+        ),
+    ),
+}
+_NOV17_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_NOV17_LEDGER_SHA256 = (
+    bytes.fromhex(
+        "4d 7b a9 6b 03 ca 07 06 0e 13 c6 4c 45 59 1d 1c"
+        " 6b 0e 18 9b 85 6e e8 76 34 0f 9c e7 c6 ef 47 3a"
+    ),
+    bytes.fromhex(
+        "0d 2f 9a 85 0d 0b 75 31 80 d6 06 76 c9 de 83 d3"
+        " 96 82 0d 4c 37 80 b8 95 b7 c5 d5 2a ea a8 62 d7"
+    ),
+)
+_NOV17_POLICY_ROWS = {
+    386: "scripts/tests/prepare-release-version.test.mjs",
+    451: "frontend/package.json",
+    495: "scripts/live_stand.py",
+    505: "tests/test_quality_workflow_contract.py",
+}
+_NOV17_POLICY_PREDECESSOR_SHA256 = bytes.fromhex(
+    "5e 59 85 86 d6 88 16 e5 77 76 31 6f ed 57 5f 0d"
+    " 43 db 42 7e 82 c7 65 7b 3a ce 3f a5 37 3a 33 11"
+)
+
+
+def _nov17_integration_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    if path == _NOV17_LEDGER_PATH:
+        current, previous = _NOV17_LEDGER_SHA256
+        if hashlib.sha256(actual).digest() != current:
+            assert hashlib.sha256(actual).digest() == previous, message
+            return actual
+        historical = actual
+        for final, predecessor, _ in _NOV17_SOURCES.values():
+            pin = final.hex().encode("ascii")
+            assert historical.count(pin) == 1, message
+            historical = historical.replace(pin, predecessor.hex().encode("ascii"), 1)
+        assert hashlib.sha256(historical).digest() == previous, message
+        return historical
+    if path not in _NOV17_SOURCES:
+        return actual
+    final, predecessor, edits = _NOV17_SOURCES[path]
+    if hashlib.sha256(actual).digest() != final:
+        # Only the exact predecessor may pass (the other chain already ran).
+        assert hashlib.sha256(actual).digest() == predecessor, message
+        return actual
+    historical = actual
+    for current_fragment, previous_fragment in edits:
+        assert historical.count(current_fragment) == 1, message
+        historical = historical.replace(current_fragment, previous_fragment, 1)
+    assert hashlib.sha256(historical).digest() == predecessor, message
+    return historical
+
+
+def _nov17_integration_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    for row, path in _NOV17_POLICY_ROWS.items():
+        if row >= len(records):
+            continue
+        identity = records[row]["identity"]
+        final, predecessor, _ = _NOV17_SOURCES[path]
+        if identity["path"] == _NOV17_LEDGER_PATH and identity[
+            "hashed_secret_bytes"
+        ] == _nov15_identity(final.hex()):
+            identity["hashed_secret_bytes"] = _nov15_identity(predecessor.hex())
+    return restored
+
+
+def _nov17_disk_bytes(path: str) -> bytes:
+    root = Path(__file__).resolve().parents[1]
+    return _nov17_integration_predecessor(path, (root / path).read_bytes())
+
+
+def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger_bytes = (root / _NOV17_LEDGER_PATH).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    bound = {
+        item["path"]: item["sha256"]
+        for disposition in ledger["dispositions"]
+        for item in disposition.get("companions", [])
+        if item["path"] in _NOV17_SOURCES
+    }
+    for path, (final, predecessor, _) in _NOV17_SOURCES.items():
+        actual = (root / path).read_bytes()
+        assert hashlib.sha256(actual).digest() == final
+        assert bound[path] == final.hex()
+        historical = _nov17_integration_predecessor(path, actual)
+        assert hashlib.sha256(historical).digest() == predecessor
+        # A second pass (the other source chain) leaves the predecessor intact.
+        assert _nov17_integration_predecessor(path, historical) == historical
+    restored_ledger = _nov17_integration_predecessor(_NOV17_LEDGER_PATH, ledger_bytes)
+    assert hashlib.sha256(restored_ledger).digest() == _NOV17_LEDGER_SHA256[1]
+    expected = copy.deepcopy(ledger)
+    for disposition in expected["dispositions"]:
+        for item in disposition.get("companions", []):
+            if item["path"] in _NOV17_SOURCES:
+                item["sha256"] = _NOV17_SOURCES[item["path"]][1].hex()
+    assert json.loads(restored_ledger) == expected
+
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored_policy = _nov17_integration_policy_predecessor(policy)
+    canonical = json.dumps(
+        restored_policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _NOV17_POLICY_PREDECESSOR_SHA256
+    changed = [
+        index
+        for index, (now, before) in enumerate(
+            zip(policy["records"], restored_policy["records"], strict=True)
+        )
+        if now != before
+    ]
+    assert changed == sorted(_NOV17_POLICY_ROWS)
+    # The older layers still receive their exact predecessor input.
+    _map_zoom_historical_policy(policy)
+    for path in (*_NOV17_SOURCES, _NOV17_LEDGER_PATH):
+        _map_zoom_historical_source_bytes(path, (root / path).read_bytes())
+        _aud154_historical_source_bytes(path, (root / path).read_bytes())
+
+
+@pytest.mark.parametrize("path", (*_NOV17_SOURCES, _NOV17_LEDGER_PATH))
+@pytest.mark.parametrize("mutation", ("extra", "changed_edit", "duplicate_edit"))
+def test_nov17_integration_chain_rejects_drift(path: str, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    if mutation == "extra":
+        actual += b"\n"
+    elif path == _NOV17_LEDGER_PATH:
+        pin = _NOV17_SOURCES["scripts/live_stand.py"][0].hex().encode("ascii")
+        actual = (
+            actual.replace(pin, b"0" * len(pin), 1)
+            if mutation == "changed_edit"
+            else actual + pin
+        )
+    else:
+        fragment = _NOV17_SOURCES[path][2][0][0]
+        actual = (
+            actual.replace(fragment, fragment[:-1] + b"#", 1)
+            if mutation == "changed_edit"
+            else actual + fragment
+        )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov17_integration_predecessor(path, actual)
+
+
+@pytest.mark.parametrize("row", sorted(_NOV17_POLICY_ROWS))
+@pytest.mark.parametrize("mutation", ("digest", "expires_on", "evidence", "category"))
+def test_nov17_integration_policy_chain_rejects_drift(row: int, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    record = policy["records"][row]
+    if mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    else:
+        record[mutation] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
+
+
+def test_nov17_integration_layer_leaves_other_paths_unchanged() -> None:
+    assert _nov17_integration_predecessor("unrelated", b"unchanged") == b"unchanged"

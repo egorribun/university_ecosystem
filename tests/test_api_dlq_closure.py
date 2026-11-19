@@ -11,6 +11,7 @@ import app.api.dlq as dlq_module
 from app.api.deps import get_current_admin_user_from_dishka
 from app.api.dlq import DLQReplayRequest, get_dlq_status, trigger_dlq_replay
 from app.core.database import get_db
+from app.core.events import event_bus
 from tests.conftest import build_dishka_app, call_injected, dishka_overrides
 
 
@@ -102,6 +103,9 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
     assert memory_result.target == "in_memory"
     assert db_result.target == "db"
     assert memory_replay.await_count == 2
+    assert all(
+        call.kwargs["bus"] is event_bus for call in memory_replay.await_args_list
+    )
     assert db_dlq.auto_replay_jobs.await_count == 2
     # The DB replay re-enqueues through the broker (a missing handler used to make
     # every replayed job fail with "No DB DLQ replay handler is configured").
@@ -192,4 +196,4 @@ async def test_replay_dlq_rejects_nonpositive_batch_and_accepts_one():
     assert zero.status_code == 422
     assert negative.status_code == 422
     assert minimum.status_code == 200
-    replay.assert_awaited_once_with(batch_size=1, force=False)
+    replay.assert_awaited_once_with(bus=event_bus, batch_size=1, force=False)

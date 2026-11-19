@@ -51,15 +51,15 @@ def test_group_receipt_adds_ten_cases_without_changing_legacy_cohorts():
             for classname, names in expected.items()
             if classname != GROUP_CLASS
         )
-        == 72
+        == 76
     )
-    assert sum(map(len, expected.values())) == 82
+    assert sum(map(len, expected.values())) == 86
 
 
 def test_complete_group_postgres_receipt_passes(tmp_path, monkeypatch, capsys):
     source, root = _receipt()
     execute(source, root, tmp_path, monkeypatch)
-    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 82\n"
+    assert capsys.readouterr().out == "INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS 86\n"
 
 
 @pytest.mark.parametrize("name", GROUP_CASES)

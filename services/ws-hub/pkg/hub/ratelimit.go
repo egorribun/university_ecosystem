@@ -24,13 +24,19 @@ type wsUpgradeBucket struct {
 	mu       sync.Mutex
 	tokens   float64
 	lastRefr time.Time
+	retired  bool // guarded by mu; stale map readers must retry
 }
 
-// allow returns true if a token is available and consumes it.
-// capacity is the max burst; ratePerSec is tokens added per second.
-func (b *wsUpgradeBucket) allow(capacity, ratePerSec float64) bool {
+// allowCurrent consumes a token when one is available; capacity is the max
+// burst and ratePerSec the refill rate. It serializes admission with
+// retirement: a caller holding a stale sync.Map pointer retries against the
+// current bucket instead of consuming an orphaned budget.
+func (b *wsUpgradeBucket) allowCurrent(capacity, ratePerSec float64) (bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.retired {
+		return false, true
+	}
 
 	now := time.Now()
 	// Refill tokens proportional to elapsed time.
@@ -39,10 +45,10 @@ func (b *wsUpgradeBucket) allow(capacity, ratePerSec float64) bool {
 	b.tokens = min(capacity, b.tokens+elapsed*ratePerSec)
 
 	if b.tokens < 1 {
-		return false
+		return false, false
 	}
 	b.tokens--
-	return true
+	return true, false
 }
 
 // WSUpgradeRateLimiter holds per-IP buckets and runs periodic GC.
@@ -83,11 +89,37 @@ func (l *WSUpgradeRateLimiter) startGC() {
 
 // Allow returns true if the request from ip should be permitted.
 func (l *WSUpgradeRateLimiter) Allow(ip string) bool {
+	return l.allowFromBucket(ip, l.bucketFor(ip))
+}
+
+func (l *WSUpgradeRateLimiter) bucketFor(ip string) *wsUpgradeBucket {
 	raw, _ := l.buckets.LoadOrStore(ip, &wsUpgradeBucket{
-		tokens:   l.capacity, // new IPs start with a full bucket
+		tokens:   l.capacity,
 		lastRefr: time.Now(),
 	})
-	return raw.(*wsUpgradeBucket).allow(l.capacity, l.ratePerSec)
+	return raw.(*wsUpgradeBucket)
+}
+
+// allowFromBucket also handles a bucket retired after the initial map lookup.
+func (l *WSUpgradeRateLimiter) allowFromBucket(ip string, bucket *wsUpgradeBucket) bool {
+	for {
+		allowed, retired := bucket.allowCurrent(l.capacity, l.ratePerSec)
+		if !retired {
+			return allowed
+		}
+		bucket = l.bucketFor(ip)
+	}
+}
+
+// expireBucket holds the same lock used by admission through map removal.
+// CompareAndDelete cannot remove a replacement encountered by a stale sweep.
+func (l *WSUpgradeRateLimiter) expireBucket(key any, b *wsUpgradeBucket, now time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if now.Sub(b.lastRefr) > l.idleTimeout {
+		b.retired = true
+		l.buckets.CompareAndDelete(key, b)
+	}
 }
 
 // Stop terminates the GC goroutine.  Call this during hub shutdown.
@@ -111,13 +143,7 @@ func (l *WSUpgradeRateLimiter) gcLoop() {
 		case <-ticker.C:
 			now := time.Now()
 			l.buckets.Range(func(k, v any) bool {
-				b := v.(*wsUpgradeBucket)
-				b.mu.Lock()
-				idle := now.Sub(b.lastRefr)
-				b.mu.Unlock()
-				if idle > l.idleTimeout {
-					l.buckets.Delete(k)
-				}
+				l.expireBucket(k, v.(*wsUpgradeBucket), now)
 				return true
 			})
 		case <-l.stopGC:

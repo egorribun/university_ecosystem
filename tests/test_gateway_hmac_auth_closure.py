@@ -10,9 +10,11 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 from fastapi import HTTPException, status
 
 from app.api.deps import auth as auth_module
+from app.services.auth.redis_session import RedisSessionService
 from tests.helpers.synthetic_credentials import make_test_password
 
 _HMAC_SECRET = make_test_password(
@@ -118,6 +120,7 @@ def _auth_harness(
         revocation_factory=revocation_factory,
         repository_factory=repository_factory,
         user=user,
+        session=session,
     )
 
 
@@ -322,3 +325,58 @@ async def test_operator_tenant_checks_stored_user_even_with_valid_gateway_proof(
     harness.revocation_factory.assert_awaited_once()
     harness.redis_service.get_session.assert_awaited_once_with(session_id)
     assert harness.db.get.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["active", "missing", "revoked"])
+async def test_malformed_session_cache_cannot_replace_durable_auth(monkeypatch, state):
+    user_id, jti = str(uuid4()), "malformed-cache-auth"
+    headers = _gateway_headers(
+        user_id,
+        jti,
+        signature=_independent_gateway_signature(_HMAC_SECRET, user_id, jti),
+    )
+    harness = _auth_harness(
+        monkeypatch, headers, secret=_HMAC_SECRET, environment="production"
+    )
+    repository = harness.repository_factory.return_value
+    repository.get_active_session_with_user = AsyncMock(
+        return_value=(harness.user, harness.session) if state == "active" else None
+    )
+    harness.revocation_client.exists.return_value = state == "revoked"
+
+    async with FakeRedis(decode_responses=False) as client:
+        await client.hset(
+            f"session:v2:{jti}",
+            mapping={"is_active": "1", "mfa_epoch": "malformed"},
+        )
+        factory = AsyncMock(return_value=client)
+        monkeypatch.setattr(
+            "app.services.auth.redis_session._get_shared_client", factory
+        )
+        service = RedisSessionService(redis_url="redis://localhost")
+        if state == "active":
+            result = await auth_module._resolve_current_user(
+                harness.request, None, harness.db, service
+            )
+            assert result is harness.user
+            assert harness.request.state.active_session is harness.session
+            recovered = await service.get_session(jti)
+            assert recovered is not None
+            assert recovered["user_id"] == user_id
+        else:
+            with pytest.raises(HTTPException) as rejected:
+                await auth_module._resolve_current_user(
+                    harness.request, None, harness.db, service
+                )
+            assert rejected.value.status_code == 401
+            assert not hasattr(harness.request.state, "active_session")
+
+    harness.db.get.assert_not_awaited()
+    if state == "revoked":
+        factory.assert_not_awaited()
+        repository.get_active_session_with_user.assert_not_awaited()
+    else:
+        repository.get_active_session_with_user.assert_awaited_once_with(
+            harness.user.id, jti, load_options=list(auth_module.USER_AUTH_LOAD_OPTIONS)
+        )

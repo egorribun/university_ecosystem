@@ -1,8 +1,11 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import nats
 import psycopg
@@ -17,6 +20,7 @@ from app.core.nats_broker import NatsTaskBroker, broker
 from app.models import Event, Notification, Tenant
 from app.models.domain_events import StoredEvent
 from app.services.notifications import delivery as notification_delivery
+from app.services.ws_hub_client import WsHubClient
 from app.tasks.notifications import enqueue_event_notification_task
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
@@ -315,3 +319,85 @@ async def test_real_jetstream_task_dispatch_persists_uuid_notification(
         finally:
             await broker.close()
             assert broker._nc is None and broker._js is None
+
+
+@pytest.mark.asyncio
+async def test_real_core_control_needs_no_jetstream_ack(nats_server, monkeypatch):
+    """Exercise the real Python publisher against an owned, streamless subject."""
+    import app.services.ws_hub_client as control_module
+
+    host = nats_server.get_container_host_ip()
+    port = nats_server.get_exposed_port(4222)
+    monkeypatch.setattr(settings, "nats_url", f"nats://{host}:{port}")
+    monkeypatch.setattr(settings, "nats_auth_token", None)
+    monkeypatch.setattr(settings, "ws_hub_internal_secret", "control-test-secret")
+    real_broker = NatsTaskBroker()
+    monkeypatch.setattr(nats_broker_module, "broker", real_broker)
+    failures = MagicMock()
+    monkeypatch.setattr(control_module, "_INVALIDATION_FAILURES", failures)
+    client = WsHubClient()
+    subscriber = None
+    try:
+        await real_broker.connect()
+        connection = real_broker._nc
+        assert connection is not None
+        subscriber = await nats.connect(f"nats://{host}:{port}")
+        subscription = await subscriber.subscribe("ws_hub.control")
+        await subscriber.flush(timeout=2)
+
+        # Negative control: a real Core subscriber receives a JetStream request
+        # but cannot provide its persistence acknowledgement. Shorten only this
+        # separate probe's timeout; the production broker retains its default.
+        with pytest.raises(nats.errors.TimeoutError):
+            await connection.jetstream(timeout=0.25).publish(
+                "ws_hub.control", b"puback-negative-control"
+            )
+        probe = await subscription.next_msg(timeout=2)
+        assert probe.data == b"puback-negative-control"
+        assert probe.reply
+
+        # Calls use the real broker and signer. The 3s bound rejects the old
+        # default 5s PubAck wait even before its retry, not a latency benchmark.
+        async with asyncio.timeout(3):
+            await client.publish_control_event("control-user-1")
+            await client.publish_control_event("control-user-2")
+        await connection.flush(timeout=2)
+        for user_id in ("control-user-1", "control-user-2"):
+            message = await subscription.next_msg(timeout=2)
+            assert message.subject == "ws_hub.control"
+            assert message.reply == ""
+            payload = json.loads(message.data)
+            assert payload["data"]["user_id"] == user_id
+            assert payload["data"]["action"] == "disconnect"
+            assert payload["data"]["reason"] == "access_revoked"
+            signed = json.dumps(
+                payload["data"], sort_keys=True, separators=(",", ":")
+            ).encode()
+            assert (
+                payload["signature"]
+                == hmac.new(b"control-test-secret", signed, hashlib.sha256).hexdigest()
+            )
+        with pytest.raises(nats.errors.TimeoutError):
+            await subscription.next_msg(timeout=0.1)
+        failures.inc.assert_not_called()
+
+        # Core has no responder requirement: success here is enqueue, NOT
+        # delivery. No subscriber, stream, or durable replay is manufactured.
+        await subscription.unsubscribe()
+        await subscriber.flush(timeout=2)
+        async with asyncio.timeout(3):
+            await client.publish_control_event("no-live-subscriber")
+        await connection.flush(timeout=2)
+        failures.inc.assert_not_called()
+
+        # A real closed connection is not silently reported as success.
+        await connection.close()
+        async with asyncio.timeout(3):
+            await client.publish_control_event("closed-connection")
+        failures.inc.assert_called_once()
+    finally:
+        try:
+            if subscriber is not None:
+                await subscriber.close()
+        finally:
+            await real_broker.close()

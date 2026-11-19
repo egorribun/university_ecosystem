@@ -28,4 +28,6 @@ class ScheduleDTO(DTOModel):
     parity: str = "both"
     lesson_type: str | None = None
     creator_id: uuid.UUID | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # The schedule table has no creation timestamp. Never fabricate one: a
+    # read-time value would change every response and its ETag.
+    created_at: datetime | None = None
