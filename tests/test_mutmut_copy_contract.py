@@ -8,7 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_ALSO_COPY = {
+    ".env.docker.example",
     ".env.example",
+    ".semgrep.yml",
     "CONFIGURATION.md",
     ".gitleaks.toml",
     "SECURITY.md",
@@ -24,7 +26,10 @@ REQUIRED_ALSO_COPY = {
     "schema.zed",
     "charts/revocation-store",
     "config",
+    "docker-compose.runtime-app.allowlist",
+    "docker-compose.runtime-worker.allowlist",
     "frontend/openapi.json",
+    "frontend/vendor",
     "frontend/package-lock.json",
     "frontend/playwright.config.ts",
     "frontend/src/__tests__",
@@ -48,6 +53,7 @@ REQUIRED_ALSO_COPY = {
     "frontend/tests/e2e/visual-regression.spec.ts",
     "k8s/gateway-api",
     "k8s/ingress.yaml",
+    "k8s/monitoring",
     "k8s/secrets-example.yaml",
     "k8s/README.md",
     "native/rust_ext/fuzz/fuzz_targets",
@@ -127,3 +133,29 @@ def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
     }
     for file_path, parent in parent_providers.items():
         assert configured.index(parent) < configured.index(file_path), file_path
+
+
+def test_mutmut_asset_directories_remain_narrow_regular_inputs() -> None:
+    """Copy only the reviewed assets, never an unrelated file or symlink."""
+
+    expected_directories = {
+        "frontend/vendor": {"react-compiler-zod-compat-1.0.0.tgz"},
+        "k8s/monitoring": {"prometheus-rules.yaml"},
+    }
+    for relative, expected_names in expected_directories.items():
+        directory = ROOT / relative
+        assert directory.is_dir()
+        assert not directory.is_symlink()
+        children = list(directory.iterdir())
+        assert {child.name for child in children} == expected_names
+        assert all(child.is_file() and not child.is_symlink() for child in children)
+
+    for relative in (
+        ".env.docker.example",
+        ".semgrep.yml",
+        "docker-compose.runtime-app.allowlist",
+        "docker-compose.runtime-worker.allowlist",
+    ):
+        path = ROOT / relative
+        assert path.is_file()
+        assert not path.is_symlink()
