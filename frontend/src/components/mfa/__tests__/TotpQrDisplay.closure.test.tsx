@@ -334,3 +334,34 @@ it("does not start copy feedback after an unmounted clipboard request completes"
     unmount()
   }
 })
+
+it("ignores a clipboard rejection that settles after unmount", async () => {
+  let failCopy!: (error: Error) => void
+  const writeText = vi.fn(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        failCopy = reject
+      })
+  )
+  vi.stubGlobal("navigator", { clipboard: { writeText } })
+  const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+  const { unmount } = render(
+    <TotpQrDisplay otpauthUrl="otpauth://totp/Rejected" secret={String(123)} />
+  )
+  try {
+    await screen.findByTestId("qr-code")
+    fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+    expect(writeText).toHaveBeenCalledOnce()
+    unmount()
+    clearTimeoutSpy.mockClear()
+
+    await act(async () => {
+      failCopy(new Error("clipboard denied"))
+      await Promise.resolve()
+    })
+
+    expect(clearTimeoutSpy).not.toHaveBeenCalled()
+  } finally {
+    unmount()
+  }
+})
