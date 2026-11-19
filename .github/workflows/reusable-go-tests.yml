@@ -331,7 +331,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ inputs.go-version }}
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: |
             services/gateway/go.sum
@@ -454,7 +454,7 @@ jobs:
               "run_attempt": os.environ["RUN_ATTEMPT"],
               "tool_version": (
                   "github.com/avito-tech/go-mutesting@"
-                  "v0.0.0-20251226130216-48d0401f00fb"
+                  "v0.0.0-20261002081621-9ce5f731e321"
               ),
               "go_version": os.environ["GO_VERSION"],
               "config_sha256": os.environ["CONFIG_SHA256"],
