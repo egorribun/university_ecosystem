@@ -190,6 +190,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_skipped_identities as _live_playwright_skipped_identities,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_snackbar_clipboard_diagnostics as _live_playwright_snackbar_clipboard_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_story_memory_cycle_trace_diagnostics as _live_playwright_story_memory_cycle_trace_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5814,6 +5817,7 @@ def _run_live_playwright(
     page_errors = _live_playwright_page_errors(stdout)
     page_error_details = _live_playwright_page_error_details(stdout)
     profile_save_diagnostics = _live_playwright_profile_save_diagnostics(stdout)
+    snackbar_diagnostics = _live_playwright_snackbar_clipboard_diagnostics(stdout)
     # A header from one stream must never authorize frames from the other.
     failure_locations = list(
         dict.fromkeys(
@@ -6194,6 +6198,8 @@ def _run_live_playwright(
             flush=True,
         )
     if return_code != 0:
+        for record in snackbar_diagnostics:
+            print(f"live E2E snackbar clipboard {record}", flush=True)
         for (
             project,
             status,
