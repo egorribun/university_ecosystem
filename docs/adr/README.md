@@ -54,3 +54,4 @@ This directory contains architectural decision records (ADRs) for the University
 52. [ADR-052: Backend SPIFFE Identity at the HTTP Transport Boundary](ADR-052-backend-spiffe-transport.md)
 53. [ADR-053: Operator-Scoped Single-Organization MVP Authentication](ADR-053-operator-scoped-mvp-authentication.md)
 54. [ADR-054: Docker Compose Is the MVP Deployment Target](ADR-054-mvp-docker-compose-deployment-target.md)
+55. [ADR-055: Retention Cleanup Under Tenant RLS](ADR-055-retention-cleanup-under-tenant-rls.md)

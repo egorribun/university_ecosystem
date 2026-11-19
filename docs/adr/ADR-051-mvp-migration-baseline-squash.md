@@ -236,27 +236,3 @@ identical. This approval does not authorize other renames, schema drift,
 populated-database upgrades, or historical migration rewrites. The actual
 owned-PostgreSQL schema-equivalence receipt remains mandatory and is not
 established by the source-only harness.
-
-
-### Notification claim retention under row-level security
-
-A PostgreSQL retention query must not infer that a delivery claim is orphaned
-from a parent notification hidden by tenant RLS. Both the orphan candidate query
-and the final DELETE require `pg_catalog.row_security_active('notifications')`
-to be false in their current session. This uses the same relation resolution as
-the ORM query and changes neither roles nor policies. SQLite retains its existing
-non-RLS orphan cleanup behavior; unsupported dialects fail before cleanup.
-
-When RLS is active, old claims are conservatively retained, including true
-orphans. Policy-level `ue_rls_bypass` membership still reports active RLS and
-does not override this guard. Consequently the normal runtime may accumulate
-orphan claims; this change does not claim complete ledger reclamation. A separately
-authorized maintenance session with demonstrably unfiltered parent visibility
-can reclaim old true orphans using the same bounded cleanup. The application
-does not acquire BYPASSRLS, turn off FORCE RLS, or introduce a privileged function.
-Live unread notifications retain deduplication evidence after delivery-attempt
-history expires. Provider acceptance and database commit remain non-atomic.
-
-Semantics checked against PostgreSQL's
-[row security implementation](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/utils/misc/rls.c)
-and [information function documentation](https://github.com/postgres/postgres/blob/master/doc/src/sgml/func/func-info.sgml).

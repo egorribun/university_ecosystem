@@ -108,6 +108,7 @@ handoffs are intentionally not part of the canonical index.
 - [Temporal network access runbook](runbooks/temporal-network-access.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Rejected-upload quarantine and capacity](runbooks/upload-quarantine.md)
+- [Event image retention under tenant RLS](runbooks/event-image-retention.md)
 - [Observability configuration and reference examples](observability/README.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
@@ -135,6 +136,9 @@ handoffs are intentionally not part of the canonical index.
 - [ADR-054: Docker Compose is the MVP deployment target](adr/ADR-054-mvp-docker-compose-deployment-target.md)
   — scope accepted 2026-11-02 and implemented in source; full source-bound
   hosted acceptance remains pending.
+- [ADR-055: Retention cleanup under tenant RLS](adr/ADR-055-retention-cleanup-under-tenant-rls.md)
+  — notification claims and event images are retained, not deleted, while tenant
+  RLS hides their parents or references.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
