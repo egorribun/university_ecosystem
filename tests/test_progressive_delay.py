@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 from app.core.ratelimit.delay import (
     PROGRESSIVE_DELAY_MAX,
     PROGRESSIVE_DELAY_STEPS,
+    PROGRESSIVE_DELAY_TTL,
     ProgressiveDelayInfo,
     ProgressiveDelayTracker,
     _delay_memory,
@@ -171,7 +172,7 @@ class TestProgressiveDelayTrackerMemory:
         """Memory backend prunes stale items on failure recording."""
         tracker = ProgressiveDelayTracker(ttl_seconds=1)
         async with _delay_memory_lock:
-            _delay_memory["test:stale"] = (1, time.time() - 10.0)
+            _delay_memory["test:stale"] = (1, time.time() - PROGRESSIVE_DELAY_TTL - 1)
 
         from app.core.ratelimit import delay as delay_module
 
