@@ -3,12 +3,14 @@ from __future__ import annotations
 import importlib
 import json
 import os
+from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 from scripts.quality import validate_quality_contract as validator
+from tests import test_contract_validation_workflow_contract as git_support
 
 ROOT = Path(__file__).resolve().parents[1]
 TODAY = date(2026, 10, 28)
@@ -21,6 +23,67 @@ VALID_POLICY = {
         "exclude": ["src/**/*.test.{ts,tsx}"],
     }
 }
+
+
+def _inventory_checkout_root(root: Path) -> Path:
+    resolved = root.resolve(strict=True)
+    assert resolved == root, "inventory root must use its resolved path"
+    checkout = Path(
+        git_support._git(resolved, "rev-parse", "--show-toplevel")
+    ).resolve(strict=True)
+    prefix = git_support._git(resolved, "rev-parse", "--show-prefix")
+    assert prefix in ("", "mutants/"), "unexpected Git inventory prefix"
+    expected = checkout if not prefix else checkout / "mutants"
+    assert resolved == expected, "inventory root does not match its Git prefix"
+    return checkout
+
+
+def _use_checkout_inventory(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout = _inventory_checkout_root(root)
+    original = validator._tracked_source_paths
+
+    def tracked(requested_root: Path, roots: Sequence[str]) -> tuple[str, ...]:
+        assert requested_root == root, "unexpected inventory caller root"
+        return original(checkout, roots)
+
+    monkeypatch.setattr(validator, "_tracked_source_paths", tracked)
+
+
+@pytest.fixture
+def tracked_checkout_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Policy and source fixtures stay in the sandbox; only the index lives
+    # in the checkout that Git resolves above it.
+    _use_checkout_inventory(ROOT, monkeypatch)
+
+
+def test_checkout_inventory_reuses_only_the_real_git_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path.resolve()
+    git_support._git(checkout, "init", "-q")
+    tracked_path = "frontend/src/tracked.ts"
+    tracked = checkout / tracked_path
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("export const tracked = true;\n", encoding="utf-8")
+    tracked.with_name("untracked.ts").write_text(
+        "export const untracked = true;\n", encoding="utf-8"
+    )
+    git_support._git(checkout, "add", "--", tracked_path)
+    sandbox = checkout / "mutants"
+    sandbox.mkdir()
+    nested = sandbox / "nested"
+    nested.mkdir()
+
+    assert validator._tracked_source_paths(sandbox, ["frontend/src"]) == ()
+    for root in (checkout, sandbox):
+        with monkeypatch.context() as patch:
+            _use_checkout_inventory(root, patch)
+            assert validator._tracked_source_paths(root, ["frontend/src"]) == (
+                tracked_path,
+            )
+            assert validator._tracked_source_paths(root, ["app"]) == ()
+    with pytest.raises(AssertionError, match="unexpected Git inventory prefix"):
+        _inventory_checkout_root(nested)
 
 
 def _mutation_registry(created: date, expires: date) -> dict[str, object]:
@@ -164,6 +227,7 @@ def test_aud510_producer_and_validator_apply_current_policy_identically(
 
 def test_aud510_current_policy_matches_for_tracked_frontend_sources(
     monkeypatch: pytest.MonkeyPatch,
+    tracked_checkout_inventory: None,
 ) -> None:
     monkeypatch.syspath_prepend(str(ROOT / "scripts/quality"))
     producer = importlib.import_module("normalize_coverage_reports")
@@ -254,7 +318,9 @@ def test_aud510_deep_brace_policy_is_reported_as_invalid(
 
 
 def test_aud510_malformed_glob_cannot_hide_real_tracked_tier0_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tracked_checkout_inventory: None,
 ) -> None:
     quality = tmp_path / "quality"
     quality.mkdir()
@@ -508,7 +574,9 @@ def test_aud510_windows_nocase_matches_ecmascript_without_full_unicode_folding(
 
 
 def test_aud510_top_level_exclusion_cannot_hide_tracked_nested_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tracked_checkout_inventory: None,
 ) -> None:
     quality = tmp_path / "quality"
     quality.mkdir()
