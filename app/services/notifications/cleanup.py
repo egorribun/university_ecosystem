@@ -10,7 +10,7 @@ import datetime as dt
 from datetime import UTC
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, func, or_, select, true
+from sqlalchemy import ColumnElement, delete, func, or_, select, true
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
@@ -53,12 +53,13 @@ async def cleanup_stale_notifications(
             )
 
     dialect = db.get_bind().dialect.name
+    orphan_visibility: ColumnElement[bool]
     if dialect == "postgresql":
         # Match the ORM's relation resolution. A hidden parent is not an orphan.
         # Keep the guard in each SELECT and DELETE, not a stale Python precheck.
-        orphan_visibility = func.pg_catalog.row_security_active(
-            "notifications"
-        ).is_(False)
+        orphan_visibility = func.pg_catalog.row_security_active("notifications").is_(
+            False
+        )
     elif dialect == "sqlite":
         orphan_visibility = true()
     else:

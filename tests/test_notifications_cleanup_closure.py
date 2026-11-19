@@ -127,9 +127,7 @@ async def test_orphan_visibility_guard_is_rechecked_in_select_and_delete(dialect
     db.scalars.side_effect = [empty, empty, candidate, empty]
     db.execute.return_value = MagicMock(rowcount=1)
 
-    await cleanup_stale_notifications(
-        db=db, retention_days=30, now=datetime.now(UTC)
-    )
+    await cleanup_stale_notifications(db=db, retention_days=30, now=datetime.now(UTC))
 
     statements = [
         db.scalars.await_args_list[2].args[0],
