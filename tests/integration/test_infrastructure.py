@@ -51,13 +51,19 @@ def redis_client():
 @pytest.fixture
 def nats_server():
     from testcontainers.core.container import DockerContainer
+    from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
     with (
         DockerContainer(
             "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
         )
         .with_exposed_ports(4222)
-        .with_command("-js") as nats
+        .with_command("-js")
+        .waiting_for(
+            LogMessageWaitStrategy("Server is ready")
+            .with_startup_timeout(5)
+            .with_poll_interval(0.1)
+        ) as nats
     ):
         yield nats
 
