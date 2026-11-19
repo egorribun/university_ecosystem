@@ -170,9 +170,7 @@ def prepare(live: Any, owner: Any) -> Capture | Unavailable | None:
         return Unavailable(stage)
 
 
-def emit_failure(
-    live: Any, owner: Any, capture: Capture | Unavailable | None
-) -> None:
+def emit_failure(live: Any, owner: Any, capture: Capture | Unavailable | None) -> None:
     """Read only pinned containers, reverify afterwards, emit finite aggregates."""
     stage = "output"
     try:
