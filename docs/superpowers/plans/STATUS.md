@@ -1,32 +1,56 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Текущий срез — 2026-11-19, 13:57 UTC
+## Текущий срез — 2026-11-19, 16:36 UTC
 
-- PR #1519 слит в `main` обычным слиянием `02c3664abff423960fbac9a35d1e3990575517c3`.
+- PR #1524 вошёл в `main` обычным слиянием `85b0b2a08d67de0faa16c90ecf7091cb410a3eee`.
+  На исходном коммите `3c7f651092de5b00240b1898dfafe859c09b9e07` прошли все 78 обязательных пар context/app,
+  включая Coverage & Quality Policy Gate (job `135681305145`) и CI Success (job `135687551066`).
+  В PostgreSQL job `135658513142` прошли 436 тестов, 14 пропущены. Все 86 сценариев обязательной когорты прошли.
+  [PR #1524](https://github.com/egorribun/university_ecosystem/pull/1524) · [CI run 44551542543](https://github.com/egorribun/university_ecosystem/actions/runs/44551542543)
+- На PR merge SHA `4e73285723492326b8ab00de2a2ade4df655607b` пять анализов CodeQL
+  и пять отчётов Checkov завершились без находок. Дерево этого коммита совпадает с деревом `85b0b2a08`.
+  GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks` в проверке правил `5235140478`.
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/44551542238) ·
+  [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/44551541576).
+- На `85b0b2a08` Kubernetes NetworkPolicy job `135690589182` подтвердил все 40 проб матрицы
+  (15 разрешённых соединений и 25 запрещённых), 24 проверки реального file-processor и 6 проверок
+  ограниченных соединений для ws-hub и Prometheus. Публичный HTTP-маршрут и реальный ingress controller
+  остаются вне этой проверки. [Kubernetes NetworkPolicy run 44561178071](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071) · [Артефакт 14552260459](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071/artifacts/14552260459)
+- Полный Core job `135690685646` на `85b0b2a08` выполняет E2E-проверки. Для закрытия AUD-154 нужны
+  два последовательных успешных полных Core-прогона на `main`. Свежего отчёта DAST для этого SHA пока нет.
+  [Полный Core run 44561200602](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602)
+- Ранее PR #1519 был слит в `main` обычным слиянием `02c3664abff423960fbac9a35d1e3990575517c3`.
   На исходном коммите `18aa310f9f029449f4a250c7e1befbee0bcb8656` прошли все 78 обязательных пар context/app,
   включая Coverage & Quality Policy Gate (job `135602417513`) и CI Success (job `135604664230`).
   [PR #1519](https://github.com/egorribun/university_ecosystem/pull/1519) · [CI run 44525616113](https://github.com/egorribun/university_ecosystem/actions/runs/44525616113)
-- Пять анализов CodeQL на PR merge SHA `5fe7775e821214beab6f48aa495d2b45617f4dc0`
+- Для PR #1519 пять анализов CodeQL на PR merge SHA `5fe7775e821214beab6f48aa495d2b45617f4dc0`
   завершились без находок. Дерево этого коммита совпадает с деревом `02c3664ab`.
   GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks` в проверке правил `5231970851`.
   Checkov опубликовал пять отчётов без находок, включая отчёт под историческим идентификатором.
   [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/44525615911) · [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/44525615909)
-- На точном `02c3664ab` [Kubernetes NetworkPolicy run 44537388732](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732)
-  выполнялся, [полный Core run 44537394864](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864)
-  стоял в очереди. Результата DAST на этом SHA ещё нет.
-  Два последовательных green полных Core run на `main` пока не подтверждены.
+- На предыдущем `02c3664ab` прошли 40 из 40 проб NetworkPolicy в kind и Calico. Проверка охватывала
+  внутрикластерные маршруты. Реальный ingress controller и публичный HTTP-маршрут остаются непроверенными.
+  [Kubernetes NetworkPolicy run 44537388732](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732) · [Артефакт 14538737204](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732/artifacts/14538737204)
+- На `02c3664ab` полный Core завершился с ошибкой. Результат — 220 passed, 8 skipped, 4 flaky.
+  В отчёте указаны три desktop-сценария — `admin-stories-rbac`, `email-otp-mfa-login` и
+  `schedule-200-equivalent-reflow`. Все шесть проверок AUD-154 (sent, Enter-sent и read-receipt
+  на desktop и mobile) прошли с первой попытки. Отдельный full-stack smoke был пропущен после ошибки
+  проверки frozen-RC. Поле `source_sha` в `quality/frozen-rc.json` равно `null`.
+  [Полный Core run 44537394864](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864) · [Артефакт 14541137444](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864/artifacts/14541137444)
+- Последний опубликованный отчёт DAST относится к `64f7fd514` и содержит пять предупреждений ZAP уровня medium.
+  [DAST run 44471112462](https://github.com/egorribun/university_ecosystem/actions/runs/44471112462)
 - Формальный итог аудита — **510/512 (99.6%)**. Открыты AUD-154 (S) и AUD-381 (P).
 - Коммит `140145bdb` в `egorribun` удаляет серверный кэш расписания, его прогрев и инвалидацию.
   Расписание и список групп читаются из базы в транзакции текущего арендатора. Сервер вычисляет HTTP ETag
-  по локализованному ответу. Это изменение проходит проверки в отдельном PR.
+  по локализованному ответу. Изменение вошло в `main` с PR #1524.
 - Cargo Deny: исключение RUSTSEC-2026-0543 (`chrono`) действует до 2026-12-17; затем
   переход `rust_ext` на `time`
   ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#time-boxed-cargo-deny-exception-for-rustsec-2026-0543)).
-- zlib: `frontend.Dockerfile` получает подписанный `zlib-1.3.2-r1` из release-ISO Alpine
-  3.24.3 с проверкой SHA-256; `services/caddy/Dockerfile` по-прежнему качает его из
-  `v3.23/main`, где пакет уже не индексирован (там `1.4-r0`). Оба пина убираются обновлением
-  базовых образов: `node:24.22.3-alpine` и пересобранный `caddy:2.11.7-alpine` уже содержат
-  `zlib-1.3.2-r1`. Для Node это требует пересборки пакета react-compiler/zod compat.
+- `frontend.Dockerfile` на `node:24.21.0-alpine` устанавливает подписанный
+  `zlib-1.3.2-r1` из release-ISO Alpine 3.24.3 с проверкой SHA-256. Для той же версии `services/caddy/Dockerfile`
+  обращается к изменяемому репозиторию `v3.23/main` и проверяет контрольную сумму и подпись. Существующий
+  контракт упаковки react-compiler/zod compat закрепляет Node v24.21.0 и npm 11.17.0
+  и проверяет совпадение двух архивов.
 
 ## Предыдущий срез — 2026-11-19, main `64f7fd514` (история)
 
@@ -111,11 +135,12 @@ source SHA, а не этого среза.
 
 ## Следующие шаги
 
-1. Провести удаление серверного кэша расписания через отдельный PR с обязательными проверками на итоговом SHA.
-2. AUD-154: установить причину недоставки native Push и добиться green hosted Owned
-   Live Acceptance на точном SHA с read-receipt. AUD-381: разобрать пять исторических
-   ZAP warnings и получить проверенные ZAP и Nuclei на `main`. Отдельно подтвердить
-   два последовательных green полных Core run на `main`.
+1. Проверить результаты запущенных на `85b0b2a08` Core и Kubernetes NetworkPolicy runs.
+2. AUD-154: разобраться с четырьмя flaky в Core run на `02c3664ab` и ранее наблюдавшейся
+   недоставкой native Push; получить green hosted Owned Live Acceptance на точном SHA
+   с read-receipt. AUD-381: разобрать пять исторических ZAP warnings и получить
+   проверенные ZAP и Nuclei на `main`. Отдельно подтвердить два последовательных
+   green полных Core run на `main`.
 3. Этапы 3 и 4: сверить traceability matrix ТЗ §2–13 с кодом и выполнить live Chromium,
    mocked Firefox/WebKit, idempotent seed и stop/start; согласовать визуальные и
    performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
