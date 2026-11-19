@@ -834,11 +834,24 @@ class ChaosLoadTestOrchestrator:
         poll_start = time.monotonic()
         recovered = False
         max_wait = _RECOVERY_POLL_BUDGET_SEC
+        probe_counts = dict.fromkeys(
+            ("accepted", "other_http", "no_response", "invalid"), 0
+        )
+        last_probe = "none"
 
         while (time.monotonic() - poll_start) < max_wait:
             status, _lat, _err = self._send_http_request(self.target_url, timeout=2.0)
             if status in (200, 201, 202, 204):
                 recovered = True
+                last_probe = "accepted"
+            elif 100 <= status <= 599:
+                last_probe = "other_http"
+            elif status == 0:
+                last_probe = "no_response"
+            else:
+                last_probe = "invalid"
+            probe_counts[last_probe] += 1
+            if recovered:
                 break
             await asyncio.sleep(1.0)
 
@@ -853,6 +866,15 @@ class ChaosLoadTestOrchestrator:
             "Recovery verification load test: %d requests, %s success rate",
             metrics.total_requests,
             metrics.displayed_success_rate,
+        )
+        logger.info(
+            "Recovery health probes: accepted=%d other_http=%d no_response=%d "
+            "invalid=%d last=%s",
+            probe_counts["accepted"],
+            probe_counts["other_http"],
+            probe_counts["no_response"],
+            probe_counts["invalid"],
+            last_probe,
         )
         self.results["phase6"] = metrics
         return metrics
