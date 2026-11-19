@@ -632,11 +632,13 @@ also_copy = [
     ".dockerignore",
     ".lighthouserc.js",
     ".trivyignore.yaml",
+    ".semgrep.yml",
     "quality",
      # Configuration-reference contract tests read the operator-facing example
      # and documentation from the repository root during mutmut's isolated
      # baseline/stats pass.
      ".env.example",
+     ".env.docker.example",
      "CONFIGURATION.md",
      # The directory creates the destination parent before the exact allowlist
     # file is copied below; mutmut's copy2 path does not create parents.
@@ -672,6 +674,8 @@ also_copy = [
     "docker-compose.sandbox.yml",
     "docker-compose.test.yml",
     "docker-compose.live.yml",
+    "docker-compose.runtime-app.allowlist",
+    "docker-compose.runtime-worker.allowlist",
     "codecov.yml",
     "renovate.json",
     "uv.lock",
@@ -680,6 +684,8 @@ also_copy = [
     "docs",
     "containers/quality",
     "k8s/kyverno",
+    # Singleton alert-rule directory; copying it creates its destination.
+    "k8s/monitoring",
     # Standalone Kubernetes contracts read the root ingress and example secret
     # manifests directly; keep these inputs in the isolated baseline tree so
     # mutmut's stats pass exercises the same repository surface as CI.
@@ -718,6 +724,8 @@ also_copy = [
     "frontend/rust-crypto/fuzz/fuzz_targets",
     "frontend/rust-crypto/fuzz/Cargo.toml",
     "frontend/scripts",
+    # Singleton compiler adapter archive, without build or dependency trees.
+    "frontend/vendor",
     "frontend/knip.json",
     "frontend/openapi.json",
     # Generated SDK/types and MSW handlers are asserted by auth contract tests
