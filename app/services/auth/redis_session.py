@@ -86,7 +86,7 @@ class RedisSessionService:
     async def get_session(self, jti: str) -> RedisSessionData | None:
         """Retrieve session data from Redis.
 
-        Returns None on cache miss, Redis failure, or when the session has been
+        Returns None on cache miss, malformed data, Redis failure, or when it has been
         marked inactive (is_active != "1"). Callers can treat None as a cache
         miss and fall back to the DB, which enforces revocation correctly.
         """
@@ -97,6 +97,10 @@ class RedisSessionService:
         try:
             client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             raw = await cast("Awaitable[Any]", client.hgetall(key))
+        except (RedisError, OSError):
+            return None
+
+        try:
             if not raw:
                 return None
 
@@ -126,8 +130,9 @@ class RedisSessionService:
                 is_active=True,
                 mfa_epoch=int(data.get("mfa_epoch", "0")),
             )
-        except (RedisError, OSError):
-            # Fail open (fallback to DB)
+        except ValueError:
+            # Invalid UTF-8 or an invalid integer epoch is a corrupt cache hint,
+            # not session authority. The caller still validates durable state.
             return None
 
     async def update_last_seen(self, jti: str) -> None:
