@@ -20,6 +20,7 @@ import threading
 import time
 import uuid
 
+from nats.errors import Error as NatsError
 from prometheus_client import Counter
 
 from app.core.logging import get_logger
@@ -48,9 +49,9 @@ class WsHubClient:
     """Async client for ws-hub distributed cache invalidation via NATS.
 
     M-007 (audit 2026-03-10): Replaces the legacy HTTP-based invalidation with
-    asynchronous NATS JetStream events. This ensures that the Python backend
-    never blocks on the ws-hub internal API, and invalidation messages are
-    persisted in JetStream if the ws-hub is temporarily unreachable.
+    asynchronous NATS events. Cache and room-revocation events use JetStream;
+    live session-control events use Core NATS without delivery acknowledgement
+    or replay. Neither path calls the ws-hub internal HTTP API.
     """
 
     def __init__(self) -> None:
@@ -148,10 +149,16 @@ class WsHubClient:
         action: str = "disconnect",
         reason: str = "access_revoked",
     ) -> None:
-        """Publish a signed control event to NATS JetStream subject 'ws_hub.control'.
+        """Publish a signed live control event to Core NATS subject 'ws_hub.control'.
 
         The ws-hub listens on 'ws_hub.control', verifies the signature using
         ws_hub_internal_secret, and disconnects all active WebSocket connections for user_id.
+        This subject has no JetStream stream or PubAck responder. Success means
+        the connected client accepted the publish, not delivery acknowledgement
+        or replay durability; this remains a best-effort live disconnect.
+        The lifespan owns connection/reconnection. Known transport failures
+        are retried once and then counted; there is no application-level replay.
+        The NATS client's in-memory buffering is not a durability guarantee.
         """
         payload_content = {
             "user_id": str(user_id),
@@ -177,9 +184,11 @@ class WsHubClient:
         last_exc: Exception | None = None
         for attempt in range(_MAX_PUBLISH_ATTEMPTS):
             try:
-                await self._broker.publish("ws_hub.control", full_payload)
+                await self._broker.publish_core(
+                    "ws_hub.control", full_payload, strict=True
+                )
                 return
-            except (ConnectionError, TimeoutError, OSError) as exc:
+            except (NatsError, ConnectionError, TimeoutError, OSError) as exc:
                 last_exc = exc
                 if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
                     backoff = _RETRY_BACKOFF_SECONDS * (2**attempt)

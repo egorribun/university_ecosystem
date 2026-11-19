@@ -3571,7 +3571,7 @@
           "artifacts": [
             {
               "name_pattern": "postgres-test-failures-${{ inputs.test-group-name }}",
-              "path_pattern": "pytest-report.xml\nmfa-mailpit-report.xml\n",
+              "path_pattern": "pytest-report.xml\nmfa-mailpit-report.xml\nnats-control-report.xml\n",
               "required": false,
               "provenance": "input"
             }

@@ -17311,6 +17311,221 @@ def test_live_unit_postgres_prerequisite_binding_refuses_other_changes(
         _assert_live_scanner_source_bytes(path, invalid)
 
 
+# Owner-approved 2026-11-18: isolate only the database-free NATS proof.
+_NATS_SQLITE_CURRENT = bytes(
+    (
+        83,
+        121,
+        155,
+        8,
+        248,
+        34,
+        115,
+        52,
+        148,
+        154,
+        145,
+        251,
+        110,
+        69,
+        159,
+        193,
+        89,
+        246,
+        30,
+        135,
+        247,
+        3,
+        36,
+        135,
+        153,
+        145,
+        28,
+        152,
+        93,
+        124,
+        71,
+        4,
+    )
+)
+_NATS_SQLITE_PREVIOUS = bytes(
+    (
+        242,
+        145,
+        86,
+        78,
+        33,
+        156,
+        136,
+        114,
+        216,
+        49,
+        238,
+        146,
+        83,
+        111,
+        176,
+        50,
+        47,
+        195,
+        104,
+        217,
+        118,
+        24,
+        205,
+        73,
+        88,
+        173,
+        121,
+        134,
+        21,
+        90,
+        231,
+        144,
+    )
+)
+_NATS_SQLITE_BLOCK = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              env:\n"
+    b'                  DATABASE_URL: "sqlite+aiosqlite:///:memory:"\n'
+    b"              run: |"
+)
+_NATS_SQLITE_PREDECESSOR = (
+    b"            - name: Verify real NATS live control publication\n"
+    b"              timeout-minutes: 5\n"
+    b"              shell: bash\n"
+    b"              run: |"
+)
+
+
+def _nats_sqlite_workflow_predecessor(actual: bytes) -> bytes:
+    assert hashlib.sha256(actual).digest() == _NATS_SQLITE_CURRENT, (
+        "exact reviewed NATS workflow SQLite postimage changed"
+    )
+    assert actual.count(_NATS_SQLITE_BLOCK) == 1, (
+        "exact reviewed NATS workflow SQLite hunk changed"
+    )
+    previous = actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1)
+    assert hashlib.sha256(previous).digest() == _NATS_SQLITE_PREVIOUS, (
+        "exact reviewed NATS workflow SQLite predecessor changed"
+    )
+    return previous
+
+
+def _reviewed_nats_workflow_predecessor(actual: bytes) -> bytes:
+    """Reverse only the exact owner-approved NATS proof addition."""
+    actual = _nats_sqlite_workflow_predecessor(actual)
+    assert hashlib.sha256(actual).digest() == bytes(
+        (
+            242,
+            145,
+            86,
+            78,
+            33,
+            156,
+            136,
+            114,
+            216,
+            49,
+            238,
+            146,
+            83,
+            111,
+            176,
+            50,
+            47,
+            195,
+            104,
+            217,
+            118,
+            24,
+            205,
+            73,
+            88,
+            173,
+            121,
+            134,
+            21,
+            90,
+            231,
+            144,
+        )
+    ), "exact reviewed NATS workflow bytes changed"
+    proof = (
+        b"            - name: Verify real NATS live control publication\n"
+        b"              timeout-minutes: 5\n"
+        b"              shell: bash\n"
+        b"              run: |\n"
+        b"                  set -euo pipefail\n"
+        b"                  uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \\\n"
+        b"                    --timeout-disable-debugger-detection \\\n"
+        b"                    tests/integration/test_infrastructure.py::test_real_core_control_needs_no_jetstream_ack \\\n"
+        b"                    --junitxml=nats-control-report.xml\n"
+        b"                  python3 - <<'PY'\n"
+        b"                  from xml.etree import ElementTree\n"
+        b"\n"
+        b'                  root = ElementTree.parse("nats-control-report.xml").getroot()\n'
+        b'                  cases = list(root.iter("testcase"))\n'
+        b"                  expected = (\n"
+        b'                      "tests.integration.test_infrastructure",\n'
+        b'                      "test_real_core_control_needs_no_jetstream_ack",\n'
+        b"                  )\n"
+        b"                  if len(cases) != 1 or (\n"
+        b'                      cases[0].get("classname"), cases[0].get("name")\n'
+        b"                  ) != expected or any(\n"
+        b"                      cases[0].find(status) is not None\n"
+        b'                      for status in ("skipped", "failure", "error")\n'
+        b"                  ):\n"
+        b'                      raise SystemExit("Required real NATS control proof did not pass")\n'
+        b'                  print("NATS_CONTROL_REAL_BROKER_VERIFIED_PASS")\n'
+        b"                  PY\n"
+        b"\n"
+    )
+    artifact = b"                      nats-control-report.xml\n"
+    assert actual.count(proof) == 1, "exact NATS proof block changed"
+    assert actual.count(artifact) == 1, "exact NATS artifact entry changed"
+    predecessor = actual.replace(proof, b"", 1).replace(artifact, b"", 1)
+    assert hashlib.sha256(predecessor).digest() == bytes(
+        (
+            98,
+            65,
+            81,
+            226,
+            239,
+            11,
+            122,
+            78,
+            23,
+            98,
+            189,
+            66,
+            10,
+            216,
+            114,
+            11,
+            184,
+            167,
+            0,
+            137,
+            246,
+            151,
+            153,
+            51,
+            3,
+            239,
+            238,
+            83,
+            59,
+            40,
+            171,
+            253,
+        )
+    ), "exact reviewed NATS predecessor changed"
+    return predecessor
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -17324,6 +17539,7 @@ def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -
     root = Path(__file__).resolve().parents[1]
     actual = (root / path).read_bytes()
     if path == ".github/workflows/reusable-backend-tests.yml":
+        actual = _reviewed_nats_workflow_predecessor(actual)
         # The reviewed parser fix moved the exact run bodies to sourced helpers.
         # The companion workflow contract checks their shell, env and argv.
         assert hashlib.sha256(actual).digest() == bytes(
@@ -35450,8 +35666,7 @@ _TRANSPORT_CURRENT_CALL = (
     b"                    cwd=frontend,\n"
 )
 _TRANSPORT_PREVIOUS_CALL = (
-    b"                _run_live_playwright(\n"
-    b"                    cwd=frontend,\n"
+    b"                _run_live_playwright(\n                    cwd=frontend,\n"
 )
 
 
@@ -35478,9 +35693,9 @@ def _transport_diagnostic_predecessor(path: str, actual: bytes) -> bytes:
     assert actual.count(current) == 1, message
     previous = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
     historical = actual.replace(current, previous, 1)
-    assert (
-        hashlib.sha256(historical).digest() == _MAP_ZOOM_LEDGER_CURRENT_SHA256
-    ), message
+    assert hashlib.sha256(historical).digest() == _MAP_ZOOM_LEDGER_CURRENT_SHA256, (
+        message
+    )
     return historical
 
 
@@ -35991,5 +36206,122 @@ def test_transport_diagnostic_policy_rejects_drift(mutation: str) -> None:
         policy["records"][0]["owner"] += " changed"
     else:
         policy["records"].append(copy.deepcopy(row))
-    with pytest.raises(AssertionError, match="transport diagnostic|map zoom"):
+    with pytest.raises(AssertionError, match=r"transport diagnostic|map zoom"):
         _transport_diagnostic_policy_predecessor(policy)
+
+
+def test_nats_workflow_inverse_preserves_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    predecessor = _reviewed_nats_workflow_predecessor(actual)
+    assert b"Verify real NATS live control publication" not in predecessor
+    assert b"nats-control-report.xml" not in predecessor
+    assert b"Verify borrowed-session PostgreSQL proofs" in predecessor
+    assert b"mfa-mailpit-report.xml" in predecessor
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _reviewed_nats_workflow_predecessor(predecessor)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-proof",
+        "duplicate-proof",
+        "changed-command",
+        "changed-test",
+        "weakened-status",
+        "missing-artifact",
+        "duplicate-artifact",
+        "unrelated",
+    ],
+)
+def test_nats_workflow_binding_rejects_unreviewed_changes(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    start = actual.index(
+        b"            - name: Verify real NATS live control publication\n"
+    )
+    end = actual.index(
+        b"            - name: Verify borrowed-session PostgreSQL proofs", start
+    )
+    proof = actual[start:end]
+    artifact = b"                      nats-control-report.xml\n"
+    _reviewed_nats_workflow_predecessor(actual)
+    if mutation == "missing-proof":
+        changed = actual.replace(proof, b"", 1)
+    elif mutation == "duplicate-proof":
+        changed = actual.replace(proof, proof + proof, 1)
+    elif mutation == "changed-command":
+        changed = actual.replace(
+            proof, proof.replace(b"set -euo pipefail", b"set +e"), 1
+        )
+    elif mutation == "changed-test":
+        changed = actual.replace(
+            proof,
+            proof.replace(
+                b"test_real_core_control_needs_no_jetstream_ack", b"test_other"
+            ),
+            1,
+        )
+    elif mutation == "weakened-status":
+        changed = actual.replace(
+            proof,
+            proof.replace(b'("skipped", "failure", "error")', b'("failure", "error")'),
+            1,
+        )
+    elif mutation == "missing-artifact":
+        changed = actual.replace(artifact, b"", 1)
+    elif mutation == "duplicate-artifact":
+        changed = actual.replace(artifact, artifact + artifact, 1)
+    else:
+        changed = actual + b"# unrelated workflow change\n"
+    assert changed != actual
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _reviewed_nats_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    previous = _nats_sqlite_workflow_predecessor(actual)
+    assert previous.replace(_NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1) == actual
+    job = yaml.safe_load(actual)["jobs"]["integration-tests"]
+    old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
+    assert job["env"] == old_job["env"]
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    changed = []
+    for step, old_step in zip(job["steps"], old_job["steps"], strict=True):
+        if step != old_step:
+            changed.append(step["name"])
+            expected = dict(old_step)
+            expected["env"] = {"DATABASE_URL": "sqlite+aiosqlite:///:memory:"}
+            assert step == expected
+    assert changed == ["Verify real NATS live control publication"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "file", "extra"])
+def test_nats_sqlite_projection_rejects_unapproved_bytes(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    changed = {
+        "missing": actual.replace(_NATS_SQLITE_BLOCK, _NATS_SQLITE_PREDECESSOR, 1),
+        "duplicate": actual + _NATS_SQLITE_BLOCK,
+        "file": actual.replace(b"sqlite+aiosqlite:///:memory:", b"sqlite:///test.db"),
+        "extra": actual + b"\n",
+    }[mutation]
+    assert changed != actual
+    with pytest.raises(AssertionError, match="exact reviewed NATS workflow"):
+        _nats_sqlite_workflow_predecessor(changed)
+
+
+def test_nats_sqlite_projection_rejects_inverse_drift(monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / ".github/workflows/reusable-backend-tests.yml").read_bytes()
+    monkeypatch.setitem(
+        globals(), "_NATS_SQLITE_PREDECESSOR", _NATS_SQLITE_PREDECESSOR + b"\n"
+    )
+    with pytest.raises(AssertionError, match="SQLite predecessor changed"):
+        _nats_sqlite_workflow_predecessor(actual)
