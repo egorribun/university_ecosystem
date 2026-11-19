@@ -35437,7 +35437,79 @@ _MAP_ZOOM_LIVE_INSERTIONS = (
 )
 
 
+# Exact, owner-approved transport diagnostic companion update.
+_TRANSPORT_WRAPPER = (
+    b"def _run_live_playwright_diagnosed(owner: StandOwner, **arguments: Any) -> None:\n"
+    b"    from scripts.live_transport_diagnostic import run\n\n"
+    b"    run(sys.modules[__name__], owner, arguments)\n\n\n"
+)
+_TRANSPORT_CALL_PREFIXES = (b"            if selected_specs:\n", b"            else:\n")
+_TRANSPORT_CURRENT_CALL = (
+    b"                _run_live_playwright_diagnosed(\n"
+    b"                    owner,\n"
+    b"                    cwd=frontend,\n"
+)
+_TRANSPORT_PREVIOUS_CALL = (
+    b"                _run_live_playwright(\n"
+    b"                    cwd=frontend,\n"
+)
+
+
+def _transport_diagnostic_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    if path == _NOV16_LIVE_PATH:
+        anchor = b"def _e2e_locked("
+        wrapped_anchor = _TRANSPORT_WRAPPER + anchor
+        assert actual.count(wrapped_anchor) == 1, message
+        historical = actual.replace(wrapped_anchor, anchor, 1)
+        for prefix in _TRANSPORT_CALL_PREFIXES:
+            current = prefix + _TRANSPORT_CURRENT_CALL
+            assert historical.count(current) == 1, message
+            historical = historical.replace(
+                current, prefix + _TRANSPORT_PREVIOUS_CALL, 1
+            )
+        assert (
+            hashlib.sha256(historical).hexdigest() == _MAP_ZOOM_LIVE_CURRENT_SHA256
+        ), message
+        return historical
+    if path != _NOV16_LEDGER_PATH:
+        return actual
+    current = _transport_diagnostic_live_pin().encode("ascii")
+    assert actual.count(current) == 1, message
+    previous = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
+    historical = actual.replace(current, previous, 1)
+    assert (
+        hashlib.sha256(historical).digest() == _MAP_ZOOM_LEDGER_CURRENT_SHA256
+    ), message
+    return historical
+
+
+def _transport_diagnostic_live_pin() -> str:
+    live = (Path(__file__).resolve().parents[1] / _NOV16_LIVE_PATH).read_bytes()
+    _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    return hashlib.sha256(live).hexdigest()
+
+
+def _transport_diagnostic_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    assert len(records) == 524, "transport diagnostic disposition count changed"
+    identity = records[_NOV16_IDENTITY_ROW]["identity"]
+    assert identity["hashed_secret_bytes"] == _nov15_identity(
+        _transport_diagnostic_live_pin()
+    ), "transport diagnostic companion identity changed"
+    identity["hashed_secret_bytes"] = _nov15_identity(_MAP_ZOOM_LIVE_CURRENT_SHA256)
+    _map_zoom_assert_exact_policy_predecessor(restored)
+    return restored
+
+
 def _map_zoom_historical_source_bytes(path: str, actual: bytes) -> bytes:
+    return _map_zoom_previous_source_bytes(
+        path, _transport_diagnostic_predecessor(path, actual)
+    )
+
+
+def _map_zoom_previous_source_bytes(path: str, actual: bytes) -> bytes:
     if path == _NOV16_LIVE_PATH:
         assert hashlib.sha256(actual).hexdigest() == _MAP_ZOOM_LIVE_CURRENT_SHA256, (
             f"conditional disposition source file SHA-256 changed: {path}"
@@ -35469,6 +35541,10 @@ def _map_zoom_historical_source_bytes(path: str, actual: bytes) -> bytes:
 
 
 def _map_zoom_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    return _map_zoom_previous_policy(_transport_diagnostic_policy_predecessor(policy))
+
+
+def _map_zoom_previous_policy(policy: dict[str, Any]) -> dict[str, Any]:
     restored = copy.deepcopy(policy)
     records = restored["records"]
     assert len(records) == 524, "live disposition count changed for map zoom"
@@ -35705,7 +35781,7 @@ def _nov16_chart_comment_historical_source_bytes(path: str, actual: bytes) -> by
 
 def _map_zoom_assert_exact_policy_predecessor(policy: dict[str, Any]) -> None:
     predecessor = json.dumps(
-        _map_zoom_historical_policy(policy),
+        _map_zoom_previous_policy(policy),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -35719,20 +35795,20 @@ def test_map_zoom_companion_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     live = (root / _NOV16_LIVE_PATH).read_bytes()
     ledger_bytes = (root / _NOV16_LEDGER_PATH).read_bytes()
-    historical_live = _map_zoom_historical_source_bytes(_NOV16_LIVE_PATH, live)
-    historical_ledger = _map_zoom_historical_source_bytes(
-        _NOV16_LEDGER_PATH, ledger_bytes
-    )
+    map_live = _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    map_ledger = _transport_diagnostic_predecessor(_NOV16_LEDGER_PATH, ledger_bytes)
+    historical_live = _map_zoom_previous_source_bytes(_NOV16_LIVE_PATH, map_live)
+    historical_ledger = _map_zoom_previous_source_bytes(_NOV16_LEDGER_PATH, map_ledger)
     assert hashlib.sha256(historical_live).hexdigest() == _NOV16_LIVE_CURRENT_SHA256
     assert hashlib.sha256(historical_ledger).digest() == _NOV16_LEDGER_CURRENT_SHA256
 
-    ledger = json.loads(ledger_bytes)
+    ledger = json.loads(map_ledger)
     historical_ledger_object = json.loads(historical_ledger)
     expected_ledger = copy.deepcopy(ledger)
     companions = expected_ledger["dispositions"][6]["companions"]
     matches = [entry for entry in companions if entry["path"] == _NOV16_LIVE_PATH]
     assert len(matches) == 1
-    assert matches[0]["sha256"] == hashlib.sha256(live).hexdigest()
+    assert matches[0]["sha256"] == hashlib.sha256(map_live).hexdigest()
     matches[0]["sha256"] = _NOV16_LIVE_CURRENT_SHA256
     assert len(ledger["dispositions"]) == 15
     assert historical_ledger_object == expected_ledger
@@ -35740,9 +35816,10 @@ def test_map_zoom_companion_rebind_preserves_exact_predecessor() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    historical_policy = _map_zoom_historical_policy(policy)
-    _map_zoom_assert_exact_policy_predecessor(policy)
-    expected_policy = copy.deepcopy(policy)
+    map_policy = _transport_diagnostic_policy_predecessor(policy)
+    historical_policy = _map_zoom_previous_policy(map_policy)
+    _map_zoom_assert_exact_policy_predecessor(map_policy)
+    expected_policy = copy.deepcopy(map_policy)
     expected_policy["records"][_NOV16_IDENTITY_ROW]["identity"][
         "hashed_secret_bytes"
     ] = _nov15_identity(_NOV16_LIVE_CURRENT_SHA256)
@@ -35773,7 +35850,7 @@ def test_map_zoom_source_projection_rejects_drift(
     root = Path(__file__).resolve().parents[1]
     if mutation.startswith("live_"):
         path = _NOV16_LIVE_PATH
-        actual = (root / path).read_bytes()
+        actual = _transport_diagnostic_predecessor(path, (root / path).read_bytes())
         insertion = _MAP_ZOOM_LIVE_INSERTIONS[1]
         if mutation == "live_missing":
             actual = actual.replace(insertion, b"", 1)
@@ -35789,7 +35866,7 @@ def test_map_zoom_source_projection_rejects_drift(
             )
     else:
         path = _NOV16_LEDGER_PATH
-        actual = (root / path).read_bytes()
+        actual = _transport_diagnostic_predecessor(path, (root / path).read_bytes())
         current = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
         if mutation == "ledger_missing":
             actual = actual.replace(current, b"0" * len(current), 1)
@@ -35804,7 +35881,7 @@ def test_map_zoom_source_projection_rejects_drift(
                 hashlib.sha256(actual).digest(),
             )
     with pytest.raises(AssertionError, match="conditional disposition source"):
-        _map_zoom_historical_source_bytes(path, actual)
+        _map_zoom_previous_source_bytes(path, actual)
 
 
 @pytest.mark.parametrize(
@@ -35828,6 +35905,7 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _transport_diagnostic_policy_predecessor(policy)
     row = policy["records"][_NOV16_IDENTITY_ROW]
     if mutation == "digest":
         row["identity"]["hashed_secret_bytes"][0] ^= 1
@@ -35845,3 +35923,73 @@ def test_map_zoom_policy_projection_rejects_drift(mutation: str) -> None:
 
 def test_map_zoom_source_projection_leaves_other_paths_unchanged() -> None:
     assert _map_zoom_historical_source_bytes("unrelated", b"unchanged") == b"unchanged"
+
+
+def test_transport_diagnostic_companion_is_an_exact_rebind() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / _NOV16_LIVE_PATH).read_bytes()
+    ledger = (root / _NOV16_LEDGER_PATH).read_bytes()
+    previous_live = _transport_diagnostic_predecessor(_NOV16_LIVE_PATH, live)
+    restored_live = previous_live.replace(
+        b"def _e2e_locked(", _TRANSPORT_WRAPPER + b"def _e2e_locked(", 1
+    )
+    for prefix in _TRANSPORT_CALL_PREFIXES:
+        previous_call = prefix + _TRANSPORT_PREVIOUS_CALL
+        assert restored_live.count(previous_call) == 1
+        restored_live = restored_live.replace(
+            previous_call, prefix + _TRANSPORT_CURRENT_CALL, 1
+        )
+    assert restored_live == live
+
+    restored = _transport_diagnostic_predecessor(_NOV16_LEDGER_PATH, ledger)
+    matches = [
+        item
+        for item in json.loads(ledger)["dispositions"][6]["companions"]
+        if item["path"] == _NOV16_LIVE_PATH
+    ]
+    assert [item["sha256"] for item in matches] == [hashlib.sha256(live).hexdigest()]
+    previous_pin = _MAP_ZOOM_LIVE_CURRENT_SHA256.encode("ascii")
+    assert restored.count(previous_pin) == 1
+    current_pin = matches[0]["sha256"].encode("ascii")
+    assert restored.replace(previous_pin, current_pin, 1) == ledger
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("source", "missing_wrapper", "moved_wrapper", "duplicate_call", "ledger"),
+)
+def test_transport_diagnostic_source_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = _NOV16_LEDGER_PATH if mutation == "ledger" else _NOV16_LIVE_PATH
+    actual = (root / path).read_bytes()
+    if mutation == "missing_wrapper":
+        actual = actual.replace(_TRANSPORT_WRAPPER, b"", 1)
+    elif mutation == "moved_wrapper":
+        actual = _TRANSPORT_WRAPPER + actual.replace(_TRANSPORT_WRAPPER, b"", 1)
+    elif mutation == "duplicate_call":
+        actual += _TRANSPORT_CALL_PREFIXES[0] + _TRANSPORT_CURRENT_CALL
+    else:
+        actual += b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _transport_diagnostic_predecessor(path, actual)
+
+
+@pytest.mark.parametrize(
+    "mutation", ("fingerprint", "expiry", "other_record", "extra_record")
+)
+def test_transport_diagnostic_policy_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_NOV16_IDENTITY_ROW]
+    if mutation == "fingerprint":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "other_record":
+        policy["records"][0]["owner"] += " changed"
+    else:
+        policy["records"].append(copy.deepcopy(row))
+    with pytest.raises(AssertionError, match="transport diagnostic|map zoom"):
+        _transport_diagnostic_policy_predecessor(policy)

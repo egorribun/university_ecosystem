@@ -8060,6 +8060,12 @@ def _verify_live_caddy_probe_log(
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
 
 
+def _run_live_playwright_diagnosed(owner: StandOwner, **arguments: Any) -> None:
+    from scripts.live_transport_diagnostic import run
+
+    run(sys.modules[__name__], owner, arguments)
+
+
 def _e2e_locked(
     admin_password: str,
     *,
@@ -8160,14 +8166,16 @@ def _e2e_locked(
                 )
                 _require_owned_docker_daemon(owner, docker_context=docker_context)
             if selected_specs:
-                _run_live_playwright(
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,
                     specs=selected_specs,
                 )
             else:
-                _run_live_playwright(
+                _run_live_playwright_diagnosed(
+                    owner,
                     cwd=frontend,
                     environment=playwright_environment,
                     mode=mode,
