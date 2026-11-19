@@ -119,7 +119,9 @@ async def cleanup_access_logs(
         return 0
     if owns_session:
         async with async_session() as session:
-            return await cleanup_access_logs(db=session, retention_days=retention)
+            count = await cleanup_access_logs(db=session, retention_days=retention)
+            await session.commit()
+            return count
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     assert db is not None  # noqa: S101
     repo = AuditRepository(db)

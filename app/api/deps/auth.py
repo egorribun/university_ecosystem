@@ -169,10 +169,18 @@ async def _resolve_current_user(
                 session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
             except (ValueError, TypeError):  # RZ-28-01
                 session = None
-        if not session or session.revoked_at:
-            # session_id missing/stale in old cache entries — fall through to DB
+        if (
+            not session
+            or session.revoked_at
+            or session.user_id != user_id
+            or session.jti != jti
+        ):
+            # Redis supplies only a lookup hint, never session authority. Bind
+            # both the cached PK and the fallback to the authenticated identity.
             res_s = await db.execute(
-                select(ActiveSession).where(ActiveSession.jti == jti)
+                select(ActiveSession).where(
+                    ActiveSession.jti == jti, ActiveSession.user_id == user_id
+                )
             )
             session = res_s.scalars().first()
             if not session or session.revoked_at:

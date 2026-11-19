@@ -97,7 +97,11 @@ export const StepUpDialog = ({
       setVerifying(true)
       setError(null)
       try {
-        await submitMfaChallenge(payload)
+        const accepted = await submitMfaChallenge(payload)
+        if (accepted !== true) {
+          setError(t("mfa.stepUp.verifyFailed"))
+          return
+        }
         onCompleted()
         onClose()
       } catch (err) {

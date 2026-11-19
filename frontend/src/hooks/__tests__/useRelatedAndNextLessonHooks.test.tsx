@@ -15,6 +15,7 @@ const mockGetQueriesData = vi.fn()
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     getQueriesData: mockGetQueriesData,
+    getQueryCache: () => ({ subscribe: () => () => undefined }),
   }),
   QueryClient: class {},
 }))

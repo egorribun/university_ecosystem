@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import postcss from "postcss"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { MotionValue } from "framer-motion"
+import eventStyles from "@/styles/tokens/events.css?inline"
+
+const previewState = vi.hoisted(() => ({ exiting: false }))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -113,6 +117,7 @@ vi.mock("@/components/events/EventQuickView", () => ({
     description: string
   }) => (
     <div
+      className={visible || previewState.exiting ? "z-floating" : undefined}
       data-testid="event-quick-view"
       data-visible={String(visible)}
       data-position={position}
@@ -236,6 +241,7 @@ const makeProps = (overrides: Partial<EventCardViewProps> = {}): EventCardViewPr
 
 afterEach(() => {
   vi.restoreAllMocks()
+  previewState.exiting = false
 })
 
 describe("EventCardView closure paths", () => {
@@ -266,6 +272,9 @@ describe("EventCardView closure paths", () => {
     expect(quickView).toHaveAttribute("data-visible", "false")
     expect(quickView).toHaveAttribute("data-position", "top")
     expect(card).toHaveClass("events-card-container", "cursor-pointer")
+    expect(card).toHaveClass("overflow-hidden")
+    expect(quickView.parentElement).toBe(card.parentElement)
+    expect(card).not.toContainElement(quickView)
     fireEvent.mouseEnter(card)
     expect(quickView).toHaveAttribute("data-visible", "true")
     expect(quickView).toHaveAttribute("data-position", "bottom")
@@ -280,6 +289,39 @@ describe("EventCardView closure paths", () => {
     expect(hero).toHaveAttribute("data-transitioning", "false")
   })
 
+  it("raises the grid item until its quick view finishes exiting", () => {
+    const view = () => (
+      <div className="events-theme">
+        <div className="css-stagger-item" data-testid="grid-item">
+          <EventCardView {...makeProps()} />
+        </div>
+      </div>
+    )
+    const { rerender } = render(view())
+    const gridItem = screen.getByTestId("grid-item")
+    const card = screen.getByTestId("event-card")
+    const elevated = () => {
+      const values: string[] = []
+      postcss.parse(eventStyles).walkRules((rule) => {
+        if (!rule.selector.includes(":has(") || !gridItem.matches(rule.selector)) return
+        rule.walkDecls("z-index", (declaration) => {
+          values.push(declaration.value)
+        })
+      })
+      return values.includes("var(--z-surface)")
+    }
+
+    expect(elevated()).toBe(false)
+    fireEvent.mouseEnter(card)
+    expect(elevated()).toBe(true)
+    previewState.exiting = true
+    fireEvent.mouseLeave(card)
+    expect(elevated()).toBe(true)
+    previewState.exiting = false
+    rerender(view())
+    expect(elevated()).toBe(false)
+  })
+
   it("keeps hover and transition behavior disabled when requested", () => {
     render(<EventCardView {...makeProps({ hoveringDisabled: true })} />)
     const card = screen.getByTestId("event-card")
@@ -289,10 +331,24 @@ describe("EventCardView closure paths", () => {
     fireEvent.mouseEnter(card)
     fireEvent.pointerDown(card)
 
-    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "false")
+    expect(screen.queryByTestId("event-quick-view")).not.toBeInTheDocument()
     expect(screen.getByTestId("event-card-hero")).toHaveAttribute("data-transitioning", "false")
     expect(clearEventsHeroId).not.toHaveBeenCalled()
   })
+
+  it.each(["hoveringDisabled", "editOpen", "confirmDeleteOpen"] as const)(
+    "hides an open preview when %s becomes active",
+    async (state) => {
+      const { rerender } = render(<EventCardView {...makeProps()} />)
+      const card = screen.getByTestId("event-card")
+      fireEvent.mouseEnter(card)
+      expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "true")
+
+      rerender(<EventCardView {...makeProps({ [state]: true })} />)
+      expect(screen.queryByTestId("event-quick-view")).not.toBeInTheDocument()
+      await act(async () => undefined)
+    }
+  )
 
   it("uses the top quick-view position and empty description fallback for sparse cards", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
@@ -360,7 +416,7 @@ describe("EventCardView closure paths", () => {
     fireEvent.mouseEnter(card)
     fireEvent.pointerDown(card)
 
-    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "false")
+    expect(screen.queryByTestId("event-quick-view")).not.toBeInTheDocument()
     expect(clear).not.toHaveBeenCalled()
   })
 

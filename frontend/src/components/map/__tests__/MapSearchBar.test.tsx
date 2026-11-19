@@ -855,4 +855,52 @@ describe("MapSearchBar", () => {
     expect(input).not.toHaveAttribute("aria-activedescendant")
     expect(input).toHaveFocus()
   })
+
+  it("keeps results selectable when focus returns before the blur delay", () => {
+    vi.useFakeTimers()
+    const onSelectBuilding = vi.fn()
+    const view = render(<MapSearchBar {...baseProps} onSelectBuilding={onSelectBuilding} />)
+    try {
+      const input = screen.getByRole("combobox")
+      act(() => input.focus())
+      fireEvent.change(input, { target: { value: "Главный" } })
+      act(() => input.blur())
+      act(() => vi.advanceTimersByTime(100))
+      act(() => input.focus())
+      act(() => vi.advanceTimersByTime(200))
+
+      expect(input).toHaveFocus()
+      expect(input).toHaveAttribute("aria-expanded", "true")
+      expect(screen.getByRole("listbox")).toBeInTheDocument()
+      fireEvent.keyDown(input, { key: "ArrowDown" })
+      fireEvent.keyDown(input, { key: "Enter" })
+      expect(onSelectBuilding).toHaveBeenCalledOnce()
+      expect(onSelectBuilding).toHaveBeenCalledWith("ГУК")
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it("starts a fresh close delay after refocus and a second blur", () => {
+    vi.useFakeTimers()
+    const view = render(<MapSearchBar {...baseProps} />)
+    try {
+      const input = screen.getByRole("combobox")
+      act(() => input.focus())
+      fireEvent.change(input, { target: { value: "Главный" } })
+      act(() => input.blur())
+      act(() => vi.advanceTimersByTime(100))
+      act(() => input.focus())
+      act(() => input.blur())
+      act(() => vi.advanceTimersByTime(100))
+
+      expect(screen.getByRole("listbox")).toBeInTheDocument()
+      act(() => vi.advanceTimersByTime(100))
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
 })

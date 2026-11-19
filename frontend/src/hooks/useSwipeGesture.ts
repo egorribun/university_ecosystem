@@ -21,6 +21,7 @@ interface SwipeGestureResult {
     onTouchStart: (e: React.TouchEvent) => void
     onTouchMove: (e: React.TouchEvent) => void
     onTouchEnd: () => void
+    onTouchCancel: () => void
   }
 }
 
@@ -77,6 +78,11 @@ export function useSwipeGesture({
     [enabled, isDragging, direction]
   )
 
+  const onTouchCancel = useCallback(() => {
+    setDragOffset(0)
+    setIsDragging(false)
+  }, [])
+
   const onTouchEnd = useCallback(() => {
     const absOffset = Math.abs(dragOffset)
     if (enabled && absOffset > threshold) {
@@ -89,6 +95,6 @@ export function useSwipeGesture({
   return {
     dragOffset,
     isDragging,
-    handlers: { onTouchStart, onTouchMove, onTouchEnd },
+    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel },
   }
 }

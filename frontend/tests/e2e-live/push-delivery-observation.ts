@@ -52,6 +52,38 @@ const PROBE_VALUES: readonly Probe[] = [
 ]
 const emittedRecords = new Set<string>()
 
+/** Coordinate failure capture between the test body and abort teardown. */
+export function createLivePushFailureObservation(observe: () => Promise<void>) {
+  let pending: (() => Promise<void>) | undefined = observe
+  let inFlight: Promise<void> | undefined
+  const capture = async () => {
+    if (inFlight) {
+      await inFlight
+      return
+    }
+    if (!pending) return
+    const current = pending
+    pending = undefined
+    inFlight = Promise.resolve()
+      .then(current)
+      .catch(() => {
+        // Observation must not replace the original assertion or timeout.
+      })
+    await inFlight
+    inFlight = undefined
+  }
+  return {
+    isArmed: () => pending !== undefined || inFlight !== undefined,
+    disarm: () => {
+      pending = undefined
+    },
+    capture,
+    captureIfAborted: async (status: unknown) => {
+      if (status === "timedOut" || status === "interrupted") await capture()
+    },
+  }
+}
+
 function fallbackObservation(permission: Permission): Observation {
   return {
     permission,

@@ -408,7 +408,7 @@ def evaluate_report(
     collector_hour_samples: set[tuple[str, str, str, datetime]] = set()
     metric_ids: set[str] = set()
     navigation_metrics: set[tuple[str, str]] = set()
-    navigation_metadata: dict[str, tuple[str, str, str]] = {}
+    navigation_metadata: dict[str, tuple[str, str, str, str]] = {}
     for index, observation in enumerate(observations):
         field = f"observations[{index}]"
         if observation["release_sha"] != expected_commit_sha:
@@ -436,7 +436,8 @@ def evaluate_report(
                 f"duplicate navigation metric: {navigation_id}/{metric}"
             )
         navigation_metrics.add(navigation_metric)
-        metadata = (device, session_id, route_group)
+        # The signed envelope binds one collector to each navigation.
+        metadata = (device, session_id, route_group, collector_id)
         previous_metadata = navigation_metadata.setdefault(navigation_id, metadata)
         if previous_metadata != metadata:
             raise CwvCertificationError(

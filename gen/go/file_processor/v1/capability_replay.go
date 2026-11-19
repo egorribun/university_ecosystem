@@ -93,6 +93,11 @@ func (r *CapabilityReplayRegistry) consumeAt(ctx context.Context, nonce string, 
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Cancellation may occur while waiting for another admission to release
+	// the registry. Check again before purging or recording any state.
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	for key, expiry := range r.entries {
 		if !expiry.After(now) {
 			delete(r.entries, key)

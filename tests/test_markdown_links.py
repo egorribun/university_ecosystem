@@ -155,3 +155,31 @@ def test_current_authored_markdown_relative_links_resolve() -> None:
 
     missing = find_missing(ROOT, documents, tracked=tracked)
     assert missing == []
+
+
+@pytest.mark.parametrize(
+    ("headings", "expected"),
+    [
+        (["Run", "Run-1", "Run"], {"run", "run-1", "run-2"}),
+        (["Run", "Run", "Run-1"], {"run", "run-1", "run-1-1"}),
+        (
+            ["Run", "Run-1", "Run-2", "Run", "Run"],
+            {"run", "run-1", "run-2", "run-3", "run-4"},
+        ),
+    ],
+)
+def test_heading_anchors_reserve_generated_slugs(
+    headings: list[str], expected: set[str]
+) -> None:
+    content = "\n".join(f"# {heading}" for heading in headings)
+    assert heading_anchors(content) == expected
+
+
+def test_find_missing_accepts_collision_resolved_heading(tmp_path: Path) -> None:
+    document = tmp_path / "README.md"
+    document.write_text(
+        "# Run\n# Run-1\n# Run\n[third](#run-2)\n[absent](#run-3)\n",
+        encoding="utf-8",
+    )
+
+    assert find_missing(tmp_path, [document]) == ["README.md:5 -> #run-3"]

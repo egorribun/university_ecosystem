@@ -44,9 +44,10 @@ def test_error_categories_are_closed(error, category):
     assert error not in result
 
 
-def test_caddy_only_counts_exact_login_transport_errors():
+@pytest.mark.parametrize("logger", ["http.log.error", "http.log.error.log0"])
+def test_caddy_only_counts_exact_login_transport_errors(logger):
     record = {
-        "logger": "http.log.error",
+        "logger": logger,
         "status": 502,
         "msg": "EOF",
         "request": {"method": "POST", "uri": "/api/v1/auth/login"},
@@ -54,6 +55,8 @@ def test_caddy_only_counts_exact_login_transport_errors():
     assert diagnostic.summarize("caddy", line(record))["eof"] == 1
     for change in (
         {"logger": "http.log.access"},
+        {"logger": "http.log.access.log0"},
+        {"logger": "http.log.error.log0.foreign"},
         {"status": 200},
         {"request": {"method": "GET", "uri": "/api/v1/auth/login"}},
         {"request": {"method": "POST", "uri": "/api/v1/auth/login?secret=x"}},

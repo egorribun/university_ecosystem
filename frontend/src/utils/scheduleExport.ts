@@ -9,6 +9,7 @@
  */
 import { logError } from "@/app/logger"
 import i18n from "@/i18n/config"
+import { registerPdfFont } from "./pdfFont"
 
 export interface ExportResult {
   success: boolean
@@ -90,6 +91,8 @@ export async function exportScheduleAsPdf(
 
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
+
+    await registerPdfFont(pdf, i18n.t("schedule:title.default"))
 
     // Title
     pdf.setFontSize(14)

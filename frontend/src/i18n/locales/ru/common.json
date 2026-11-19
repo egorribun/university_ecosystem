@@ -20,6 +20,9 @@
     "minuteShort": "мин"
   },
   "search": {
+    "resultCount": "Найдено результатов: {{count}}",
+    "loading": "Поиск…",
+    "activeResult": "Выбранный результат: {{title}}",
     "title": "Поиск",
     "placeholder": "Поиск…",
     "inputLabel": "Поиск по приложению",
@@ -105,7 +108,9 @@
   },
   "errors": {
     "generic": "Произошла ошибка",
-    "featureUnavailable": "{{feature}} недоступен"
+    "featureUnavailable": "{{feature}} недоступен",
+    "pdfFontTimeout": "Истекло время загрузки шрифта PDF: {{label}}",
+    "pdfFontLoad": "Не удалось загрузить шрифт PDF: {{label}}"
   },
   "aria": {
     "like": "Нравится",

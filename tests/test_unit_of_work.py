@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -172,3 +173,85 @@ async def test_borrowed_session_rolls_back_but_is_not_closed_on_error():
     mock_session.rollback.assert_awaited_once()
     mock_session.close.assert_not_awaited()
     assert uow.session is mock_session
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled", [False, True])
+@pytest.mark.parametrize("close_fails", [False, True])
+async def test_owned_exit_closes_after_rollback_failure(cancelled, close_fails, caplog):
+    session = AsyncMock(spec=AsyncSession)
+    rollback_error = asyncio.CancelledError() if cancelled else RuntimeError("rollback")
+    close_error = RuntimeError("private-close-detail")
+    session.rollback.side_effect = rollback_error
+    if close_fails:
+        session.close.side_effect = close_error
+    uow = UnitOfWork(lambda: session)
+
+    with pytest.raises(type(rollback_error)) as raised:
+        async with uow:
+            raise ValueError("body")
+
+    assert raised.value is rollback_error
+    session.rollback.assert_awaited_once()
+    session.close.assert_awaited_once()
+    assert "private-close-detail" not in caplog.text
+    if close_fails:
+        assert uow.session is session
+        assert uow._owns_session
+        session.close.side_effect = None
+        await uow.__aexit__(None, None, None)
+        assert session.close.await_count == 2
+    assert uow._session is None
+    assert not uow._owns_session
+
+
+@pytest.mark.asyncio
+async def test_borrowed_exit_rollback_failure_preserves_ownership():
+    session = AsyncMock(spec=AsyncSession)
+    rollback_error = RuntimeError("rollback")
+    session.rollback.side_effect = rollback_error
+    uow = uow_from_session(session)
+
+    with pytest.raises(RuntimeError) as raised:
+        async with uow:
+            raise ValueError("body")
+
+    assert raised.value is rollback_error
+    session.close.assert_not_awaited()
+    assert uow.session is session
+    assert not uow._owns_session
+
+
+@pytest.mark.asyncio
+async def test_owned_exit_close_cancellation_is_not_suppressed():
+    session = AsyncMock(spec=AsyncSession)
+    session.rollback.side_effect = RuntimeError("rollback")
+    cancelled = asyncio.CancelledError()
+    session.close.side_effect = cancelled
+    uow = UnitOfWork(lambda: session)
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        async with uow:
+            raise ValueError("body")
+
+    assert raised.value is cancelled
+    session.close.assert_awaited_once()
+    assert uow.session is session
+    assert uow._owns_session
+
+
+@pytest.mark.asyncio
+async def test_owned_exit_primary_close_failure_propagates():
+    session = AsyncMock(spec=AsyncSession)
+    close_error = RuntimeError("close")
+    session.close.side_effect = close_error
+    uow = UnitOfWork(lambda: session)
+
+    with pytest.raises(RuntimeError) as raised:
+        async with uow:
+            pass
+
+    assert raised.value is close_error
+    session.rollback.assert_not_awaited()
+    assert uow.session is session
+    assert uow._owns_session

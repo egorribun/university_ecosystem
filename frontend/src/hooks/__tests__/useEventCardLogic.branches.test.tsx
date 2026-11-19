@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 type _MockedModuleType1 = typeof import("@/utils/eventDateTime")
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -196,7 +197,301 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.previewUrl).toBeNull()
   })
 
+  it("discards a cancelled image draft before reopening and saving", async () => {
+    const { result } = renderHook(() =>
+      useEventCardLogic({ ...eventProps, image_url: "existing.png" })
+    )
+    const file = new File(["draft"], "cancelled.png", { type: "image/png" })
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(file)
+    })
+    expect(result.current.cardImageUrl).toBe("blob:preview-url")
+
+    act(() => result.current.setEditOpen(false))
+
+    expect(result.current.newImage).toBeNull()
+    expect(result.current.previewUrl).toBeNull()
+    expect(result.current.cardImageUrl).toBe("existing.png")
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-url")
+    act(() => result.current.setEditOpen(true))
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ image_url: "existing.png" })
+    )
+  })
+
+  it("keeps the chosen image available to retry a failed save until cancelled", async () => {
+    mockPatch.mockRejectedValueOnce(new Error("offline"))
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    const file = new File(["draft"], "retry.png", { type: "image/png" })
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(file)
+    })
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(result.current.editOpen).toBe(true)
+    expect(result.current.newImage).toBe(file)
+    expect(result.current.previewUrl).toBe("blob:preview-url")
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    act(() => result.current.setEditOpen(false))
+    expect(revokeObjectURL).toHaveBeenCalledOnce()
+  })
+
+  it.each(["success", "failure"])(
+    "blocks a reopened editor save until the older save settles with %s",
+    async (outcome) => {
+      let finishFirst!: () => void
+      let failFirst!: (error: Error) => void
+      let finishSecond!: () => void
+      mockPatch
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finishFirst = () => resolve({ data: {} })
+              failFirst = reject
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishSecond = () => resolve({ data: {} })
+            })
+        )
+      const onChange = vi.fn()
+      const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+      act(() => result.current.setEditOpen(true))
+      let first!: Promise<void>
+      act(() => {
+        first = result.current.handleEdit()
+      })
+      act(() => result.current.setEditOpen(false))
+      act(() => result.current.setEditOpen(true))
+      const secondImage = new File(["second"], "second.png", { type: "image/png" })
+      act(() => {
+        result.current.setNewImage(secondImage)
+        result.current.setEditData({ ...result.current.editData, title: "Second draft" })
+      })
+      let second!: Promise<void>
+      await act(async () => {
+        second = result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledOnce()
+      expect(mockPost).not.toHaveBeenCalled()
+      expect(result.current.loading).toBe(true)
+
+      await act(async () => {
+        if (outcome === "success") finishFirst()
+        else failFirst(new Error("late failure"))
+        await first
+      })
+
+      expect(result.current.editOpen).toBe(true)
+      expect(result.current.editData.title).toBe("Second draft")
+      expect(result.current.newImage).toBe(secondImage)
+      expect(result.current.loading).toBe(false)
+      expect(result.current.snackbar).toBe("")
+      expect(onChange).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0)
+
+      await act(async () => {
+        second = result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(2)
+      await act(async () => {
+        finishSecond()
+        await second
+      })
+      expect(result.current.editOpen).toBe(false)
+      expect(result.current.newImage).toBeNull()
+      expect(result.current.previewUrl).toBeNull()
+      expect(result.current.loading).toBe(false)
+    }
+  )
+
+  it("finishes an already-started upload without closing or clearing a newer draft", async () => {
+    let finishUpload!: () => void
+    mockPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = () => resolve({ data: { url: "first-upload.png" } })
+        })
+    )
+    const onChange = vi.fn()
+    const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setNewImage(new File(["first"], "first.png", { type: "image/png" }))
+    })
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.handleEdit()
+    })
+    expect(result.current.imageLoading).toBe(true)
+    act(() => result.current.setEditOpen(false))
+    act(() => result.current.setEditOpen(true))
+    const secondImage = new File(["second"], "second.png", { type: "image/png" })
+    act(() => {
+      result.current.setNewImage(secondImage)
+      result.current.setEditData({ ...result.current.editData, title: "Second draft" })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+    expect(mockPost).toHaveBeenCalledOnce()
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(true)
+    expect(result.current.imageLoading).toBe(true)
+
+    await act(async () => {
+      finishUpload()
+      await first
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ title: "Initial Title", image_url: "first-upload.png" })
+    )
+    expect(onChange).toHaveBeenCalledOnce()
+    expect(result.current.editOpen).toBe(true)
+    expect(result.current.editData.title).toBe("Second draft")
+    expect(result.current.newImage).toBe(secondImage)
+    expect(result.current.loading).toBe(false)
+    expect(result.current.imageLoading).toBe(false)
+    expect(result.current.snackbar).toBe("")
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+    expect(mockPatch).toHaveBeenNthCalledWith(
+      2,
+      "/events/event-1",
+      expect.objectContaining({ title: "Second draft", image_url: "uploaded.png" })
+    )
+    expect(mockPost).toHaveBeenCalledTimes(2)
+    expect(result.current.editOpen).toBe(false)
+  })
+
+  it.each(["success", "failure"])("ignores save %s completion after unmount", async (outcome) => {
+    let finish!: () => void
+    let fail!: (error: Error) => void
+    mockPatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          finish = () => resolve({ data: {} })
+          fail = reject
+        })
+    )
+    const onChange = vi.fn()
+    const { result, unmount } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }), {
+      wrapper: StrictMode,
+    })
+    act(() => result.current.setEditOpen(true))
+    const save = result.current.handleEdit
+    let pending!: Promise<void>
+    act(() => {
+      pending = save()
+    })
+    unmount()
+
+    await act(async () => {
+      await save() // A retained handler cannot start new work after unmount.
+      if (outcome === "success") finish()
+      else fail(new Error("late failure"))
+      await pending
+    })
+
+    expect(mockPatch).toHaveBeenCalledOnce()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it.each(["success", "failure"])(
+    "deduplicates same-session saves through %s and permits another attempt",
+    async (outcome) => {
+      let finish!: () => void
+      let fail!: (error: Error) => void
+      mockPatch.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = () => resolve({ data: {} })
+            fail = reject
+          })
+      )
+      const onChange = vi.fn()
+      const { result } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }), {
+        wrapper: StrictMode,
+      })
+      act(() => result.current.setEditOpen(true))
+      const save = result.current.handleEdit
+      let pending!: Promise<void>
+      let duplicate!: Promise<void>
+      act(() => {
+        pending = save()
+        duplicate = save()
+      })
+      await act(async () => {
+        await duplicate
+      })
+      expect(mockPatch).toHaveBeenCalledOnce()
+      expect(result.current.loading).toBe(true)
+      expect(onChange).not.toHaveBeenCalled()
+
+      await act(async () => {
+        if (outcome === "success") finish()
+        else fail(new Error("retryable failure"))
+        await pending
+      })
+      expect(result.current.loading).toBe(false)
+      await act(async () => {
+        await result.current.handleEdit()
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(2)
+      expect(onChange).toHaveBeenCalledTimes(outcome === "success" ? 2 : 1)
+    }
+  )
+
   // ---- handleEdit (lines 123-150) ----
+
+  it("finishes an upload that settles after unmount without touching unmounted state", async () => {
+    let finishUpload!: () => void
+    mockPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = () => resolve({ data: { url: "late-upload.png" } })
+        })
+    )
+    const onChange = vi.fn()
+    const { result, unmount } = renderHook(() => useEventCardLogic({ ...eventProps, onChange }))
+    act(() => {
+      result.current.setNewImage(new File(["img"], "late.png", { type: "image/png" }))
+      result.current.setEditOpen(true)
+    })
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.handleEdit()
+    })
+    unmount()
+
+    await act(async () => {
+      finishUpload()
+      await pending
+    })
+
+    // The dispatched write chain completes; no unmounted consumer is refreshed.
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({ image_url: "late-upload.png" })
+    )
+    expect(onChange).not.toHaveBeenCalled()
+  })
 
   it("handleEdit: with new image → uploads then patches with returned url (126-144)", async () => {
     const onChange = vi.fn()

@@ -682,8 +682,10 @@ api.interceptors.request.use(async (config) => {
       await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
     } catch (error) {
       // A request-interceptor rejection has no response config for the response
-      // interceptor to release, so give back the slot acquired above here.
+      // interceptor to clean up. Release both the queue slot and any mutation
+      // key registered before the wait so the same operation can be retried.
       releaseClientQueueSlot(candidate)
+      _cleanupIdempotencyKey(candidate)
       throw error
     }
   }

@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
 SUPPORTED_MODES = frozenset({"set", "count", "atomic"})
+# CI produces/consumes profiles on 64-bit Go runners. Atoi rejects larger
+# values on every Go architecture; do not impose a 32-bit/Python-host ceiling.
+_MAX_GO_INT = (1 << 63) - 1
+_LOCATION = re.compile(
+    r"(.+):([+-]?[0-9]+)\.([+-]?[0-9]+),([+-]?[0-9]+)\.([+-]?[0-9]+)"
+)
 
 
 class ProfileError(ValueError):
@@ -16,6 +23,22 @@ class ProfileError(ValueError):
 
 def _fail(message: str) -> NoReturn:
     raise ProfileError(message)
+
+
+def _location_key(location: str) -> tuple[str, tuple[int, ...]]:
+    """Compare coordinates numerically, as Go's coverage parser does."""
+    match = _LOCATION.fullmatch(location)
+    if match is None:
+        _fail(f"malformed coverage block location: {location}")
+    try:
+        coordinates = tuple(int(value) for value in match.groups()[1:])
+    except ValueError as error:
+        raise ProfileError("invalid coverage block location coordinates") from error
+    if any(value < 0 for value in coordinates):
+        _fail(f"negative coverage block location coordinate: {location}")
+    if any(value > _MAX_GO_INT for value in coordinates):
+        _fail("coverage block location exceeds Go int64 range")
+    return match.group(1), coordinates
 
 
 def _read_profile(path: Path) -> tuple[str, list[tuple[str, str]]]:
@@ -51,6 +74,8 @@ def _read_profile(path: Path) -> tuple[str, list[tuple[str, str]]]:
             _fail(f"negative statement count in {path}:{line_number}")
         if execution_count < 0:
             _fail(f"negative execution count in {path}:{line_number}")
+        if statement_count > _MAX_GO_INT or execution_count > _MAX_GO_INT:
+            _fail(f"coverage counter exceeds Go int64 range in {path}:{line_number}")
         records.append((f"{block} {statement_count}", str(execution_count)))
     return mode, records
 
@@ -66,7 +91,7 @@ def merge_profiles(inputs: Sequence[Path], output: Path) -> None:
 
     expected_mode: str | None = None
     merged: list[str] = []
-    seen_blocks: set[str] = set()
+    seen_blocks: set[tuple[str, tuple[int, ...]]] = set()
     for path in inputs:
         mode, records = _read_profile(path)
         if expected_mode is None:
@@ -77,9 +102,13 @@ def merge_profiles(inputs: Sequence[Path], output: Path) -> None:
                 f"found {mode} in {path}"
             )
         for block, execution_count in records:
-            if block in seen_blocks:
-                _fail(f"duplicate coverage block across input profiles: {block}")
-            seen_blocks.add(block)
+            # Statement count is evidence about a source range, not its identity.
+            # Conflicting counts must not let the same range appear disjoint.
+            location = block.rsplit(" ", maxsplit=1)[0]
+            key = _location_key(location)
+            if key in seen_blocks:
+                _fail(f"duplicate coverage block across input profiles: {location}")
+            seen_blocks.add(key)
             merged.append(f"{block} {execution_count}")
 
     if expected_mode is None:

@@ -536,6 +536,31 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             ):
                 queued = None
                 rerun_timing_kind = "rerun_skipped_record_with_prior_completion"
+            elif (
+                api_run_id is not None
+                and api_run_attempt == 1
+                and api_head_sha is not None
+                and record.get("status") == "completed"
+                and conclusion == "skipped"
+                and queued_field == "created_at"
+                and created == started
+                and record.get("steps") == []
+                and "runner_id" in record
+                and record["runner_id"] is None
+                and "runner_name" in record
+                and record["runner_name"] is None
+                and record.get("labels") in ([], ["ubuntu-24.04"])
+                and started - completed <= timedelta(seconds=10)
+            ):
+                # Observed in run 43981164331, job 133702960401, attempt 1.
+                # Also run 43982705590, job 133718444854: the Ubuntu selector
+                # is requested runner metadata, not proof of execution.
+                # Run 43983640643, job 133721977888, has a ten-second inversion.
+                # These exact no-runner/no-steps shapes record no execution.
+                # Preserve both timestamps and mark queue timing unavailable;
+                # do not infer clock skew or broaden executed-job validation.
+                queued = None
+                rerun_timing_kind = "first_attempt_unexecuted_skip_timestamp_inversion"
             # GitHub occasionally emits a one-second inverted pair for a
             # skipped or cancelled job that never received a runner (there
             # are no steps and therefore no elapsed work to measure). Treat
@@ -1192,7 +1217,12 @@ def _rerun_timing_evidence(job: JobTiming) -> dict[str, object]:
     return {
         "github_timing_evidence": {
             "kind": job.rerun_timing_kind,
-            "queue_wait_reason": "original_queue_timestamp_unavailable",
+            "queue_wait_reason": (
+                "unexecuted_job_has_no_measured_queue"
+                if job.rerun_timing_kind
+                == "first_attempt_unexecuted_skip_timestamp_inversion"
+                else "original_queue_timestamp_unavailable"
+            ),
             "created_at": (
                 job.api_created_at.isoformat() if job.api_created_at else None
             ),
@@ -1437,7 +1467,11 @@ def analyze_jobs(
             earliest_core_failure
             and job.started_at
             and job.started_at > earliest_core_failure
-            and job.rerun_timing_kind != "rerun_skipped_record_with_prior_completion"
+            and job.rerun_timing_kind
+            not in {
+                "rerun_skipped_record_with_prior_completion",
+                "first_attempt_unexecuted_skip_timestamp_inversion",
+            }
             and not dag_evidence.core_failures[job.job_id]
         )
         job_rows.append(

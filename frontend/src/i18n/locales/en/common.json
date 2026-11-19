@@ -20,6 +20,9 @@
     "minuteShort": "min"
   },
   "search": {
+    "resultCount": "Results found: {{count}}",
+    "loading": "Searching…",
+    "activeResult": "Selected result: {{title}}",
     "title": "Search",
     "placeholder": "Search…",
     "inputLabel": "Search the application",
@@ -94,7 +97,9 @@
   },
   "errors": {
     "generic": "An error occurred",
-    "featureUnavailable": "{{feature}} unavailable"
+    "featureUnavailable": "{{feature}} unavailable",
+    "pdfFontTimeout": "{{label}} PDF font load timed out",
+    "pdfFontLoad": "{{label}} PDF font could not be loaded"
   },
   "pagination": {
     "rowsPerPage": "Rows per page",

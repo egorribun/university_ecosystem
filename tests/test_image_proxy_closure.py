@@ -6,6 +6,7 @@ import runpy
 import sys
 from io import BytesIO
 from pathlib import Path
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -235,9 +236,7 @@ def test_process_image_resize_preserves_aspect_ratio():
 
     with Image.open(BytesIO(data)) as resized:
         assert resized.size == (5, 10)
-    # Pillow's resized image has no source ``format`` metadata, so the
-    # existing original-mode fallback intentionally encodes it as JPEG.
-    assert mime == "image/jpeg"
+    assert mime == "image/png"
 
 
 def test_process_image_original_without_format_uses_canonical_jpeg_encoder_name():
@@ -340,3 +339,35 @@ def test_image_proxy_imports_without_the_avif_plugin():
     assert namespace["_cache_decode"](
         namespace["_cache_encode"](b"data", "image/png")
     ) == (b"data", "image/png")
+
+
+@pytest.mark.parametrize("mode", ["RGBA", "LA", "P"])
+def test_process_image_original_downscale_preserves_png_and_alpha(mode: str) -> None:
+    """Original-mode PNG resizing must not attempt the JPEG-only fallback."""
+    with Image.new(mode, (32, 16)) as source, BytesIO() as payload:
+        source.save(payload, format="PNG")
+        data, mime = _process_image(payload.getvalue(), 8, "original")
+
+    assert mime == "image/png"
+    with Image.open(BytesIO(data)) as resized:
+        assert resized.format == "PNG"
+        assert resized.size == (8, 4)
+        assert resized.mode == mode
+        if mode == "RGBA":
+            assert resized.getpixel((0, 0))[3] == 0
+        elif mode == "LA":
+            assert resized.getpixel((0, 0))[1] == 0
+
+
+@pytest.mark.parametrize("format_preference", ["original", "webp"])
+def test_process_image_downscale_keeps_at_least_one_row(
+    format_preference: Literal["original", "webp"],
+) -> None:
+    """A valid panoramic source must not become a zero-height target."""
+    with Image.new("RGB", (2000, 1), "red") as source, BytesIO() as payload:
+        source.save(payload, format="PNG")
+        data, mime = _process_image(payload.getvalue(), 8, format_preference)
+
+    assert mime == ("image/png" if format_preference == "original" else "image/webp")
+    with Image.open(BytesIO(data)) as resized:
+        assert resized.size == (8, 1)

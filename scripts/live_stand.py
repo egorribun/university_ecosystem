@@ -130,6 +130,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_login_failures as _live_playwright_login_failures,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_map_zoom_tasks as _live_playwright_map_zoom_tasks,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_navbar_geometries as _live_playwright_navbar_geometries,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5801,6 +5804,7 @@ def _run_live_playwright(
     a11y_contrast_diagnostics = _live_playwright_a11y_contrasts(stdout)
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
+    map_zoom_tasks = _live_playwright_map_zoom_tasks(stdout) if return_code != 0 else []
     footer_geometries = _live_playwright_footer_geometries(stdout)
     news_viewports = _live_playwright_news_viewports(stdout)
     news_overflows = _live_playwright_news_overflows(stdout)
@@ -5888,6 +5892,12 @@ def _run_live_playwright(
         + json.dumps(http_operations, separators=(",", ":")),
         flush=True,
     )
+    for project, attempt, sample, total, step, phase, duration in map_zoom_tasks:
+        print(
+            f"live E2E map zoom project={project} attempt={attempt} sample={sample} "
+            f"total={total} step={step} phase={phase} duration_ms={duration}",
+            flush=True,
+        )
     for project, check, status in http_statuses:
         print(
             f"live E2E HTTP project={project} check={check} status={status}",

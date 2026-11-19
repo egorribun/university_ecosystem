@@ -6,8 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException, Request
 
-from app.auth.fingerprint import SessionFingerprint, _compute_fingerprint_hash
+from app.auth.fingerprint import (
+    SessionFingerprint,
+    SuspiciousActivityDetector,
+    _compute_fingerprint_hash,
+    extract_fingerprint,
+)
 from app.services.auth.fingerprint_service import AuthFingerprintService
 
 
@@ -262,3 +268,63 @@ async def test_validate_fingerprint_propagates_redis_failure():
 
     db.commit.assert_not_awaited()
     db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_agent", "current_agent"),
+    [
+        (b"Browser/1 (caf\xe9)", b"Browser/1 (caf\xe9)"),
+        (b"Browser/1 (caf\xe9)", b"Browser/1 (caf\xe8)"),
+        (b"Browser/1 (caf\xe9)", b"Browser/1 (cafe)"),
+        (b"Browser/1 (cafe)", b"Browser/1 (caf\xe9)"),
+    ],
+)
+async def test_validate_fingerprint_handles_non_ascii_header_bytes(
+    stored_agent, current_agent, monkeypatch
+):
+    def request(agent, language):
+        return Request(
+            {
+                "type": "http",
+                "headers": [
+                    (b"user-agent", agent),
+                    (b"accept-language", language),
+                ],
+                "client": ("127.0.0.1", 1234),
+            }
+        )
+
+    stored = extract_fingerprint(request(stored_agent, b"en"))
+    service, user, session, db = _context(stored.fingerprint_hash)
+    session.user_agent = stored.user_agent
+    service.request = request(current_agent, b"ru")
+    current = extract_fingerprint(service.request)
+    assert stored.user_agent == stored_agent.decode("latin-1")
+    assert current.user_agent == current_agent.decode("latin-1")
+    detector = SuspiciousActivityDetector()
+    monkeypatch.setattr(
+        "app.services.auth.fingerprint_service.get_suspicious_activity_detector",
+        lambda: detector,
+    )
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    redis = SimpleNamespace(revoke_session=AsyncMock())
+
+    if stored_agent == current_agent:
+        await service.validate_fingerprint(user, session, db, redis)
+        assert session.revoked_at is None
+        db.commit.assert_not_awaited()
+        redis.revoke_session.assert_not_awaited()
+        assert detector.get_recent_events() == []
+    else:
+        with pytest.raises(HTTPException) as caught:
+            await service.validate_fingerprint(user, session, db, redis)
+        assert caught.value.status_code == 403
+        assert session.revoked_at is not None
+        redis.revoke_session.assert_awaited_once_with(
+            session.jti, expires_at=session.expires_at
+        )
+        db.commit.assert_awaited_once()
+        events = detector.get_recent_events()
+        assert len(events) == 1
+        assert "user_agent" in events[0].details["mismatched_fields"]

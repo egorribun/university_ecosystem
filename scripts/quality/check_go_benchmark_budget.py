@@ -39,6 +39,12 @@ def _metric_sample(line: str, benchmark: str, metric: str) -> float | None:
     if len(fields) < 4 or (len(fields) - 2) % 2:
         raise BenchmarkEvidenceError(f"malformed benchmark record: {line!r}")
 
+    units = fields[3::2]
+    if len(units) != len(set(units)):
+        raise BenchmarkEvidenceError(
+            f"duplicate metric unit in benchmark record: {line!r}"
+        )
+
     for index in range(2, len(fields), 2):
         if fields[index + 1] != metric:
             continue

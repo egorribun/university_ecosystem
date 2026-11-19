@@ -208,6 +208,11 @@
   container-name: events-card;
 }
 
+/* Keep the transformed grid item above neighbors through the preview's exit animation. */
+.events-theme .css-stagger-item:has(> .event-quick-view-host > .z-floating) {
+  z-index: var(--z-surface);
+}
+
 @container events-card (max-width: 280px) {
   .events-card-title {
     font-size: 0.875rem;

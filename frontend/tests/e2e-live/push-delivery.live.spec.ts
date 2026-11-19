@@ -554,7 +554,7 @@ test("chat message reaches Chromium through its real push subscription", async (
   const contexts: BrowserContext[] = []
   let testFailure: unknown
   let testFailed = false
-
+  let failureObservation: ReturnType<typeof nativePushProfiles.armFailureObservation> | undefined
   try {
     const origin = new URL(liveBaseUrl).origin
     await page.context().grantPermissions(["notifications"], { origin })
@@ -711,7 +711,7 @@ test("chat message reaches Chromium through its real push subscription", async (
       throw new Error("the persisted test notification did not have an identity")
     }
 
-    const failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
+    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
     await expect
       .poll(
         async () =>
@@ -758,8 +758,8 @@ test("chat message reaches Chromium through its real push subscription", async (
   } catch (error) {
     testFailure = error
     testFailed = true
+    await failureObservation?.capture()
   }
-
   {
     const adminContext = contexts[0]
     const adminPage = adminContext?.pages()[0] ?? null
@@ -838,6 +838,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
   const contexts: BrowserContext[] = []
   let testFailure: unknown
   let testFailed = false
+  let failureObservation: ReturnType<typeof nativePushProfiles.armFailureObservation> | undefined
 
   try {
     const origin = new URL(liveBaseUrl).origin
@@ -1150,7 +1151,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
     if (!expectedNotificationId) {
       throw new Error("the persisted group reply notification did not have an identity")
     }
-    const failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
+    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
     await expect
       .poll(
         async () =>
@@ -1213,6 +1214,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
   } catch (error) {
     testFailure = error
     testFailed = true
+    await failureObservation?.capture()
   }
 
   {

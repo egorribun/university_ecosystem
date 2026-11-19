@@ -56,7 +56,7 @@ export const AuthContext = createContext<AuthContextActions>({
   logout: async () => {},
   setUser: noopSetUser,
   refresh: async () => {},
-  submitMfaChallenge: async () => {},
+  submitMfaChallenge: async () => false,
   requireMfa: async () => null,
   resetEtagCache,
   authOperation: false,
