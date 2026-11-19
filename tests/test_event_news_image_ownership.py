@@ -170,7 +170,13 @@ async def test_reference_aware_cleanup_rejects_unowned_inputs_before_query(
 
     from app.services.content_media import delete_unreferenced_owned_event_image
 
-    db_session = SimpleNamespace(execute=AsyncMock())
+    # An unfiltered dialect keeps the visibility guard from masking the input checks.
+    db_session = SimpleNamespace(
+        execute=AsyncMock(),
+        get_bind=MagicMock(
+            return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+        ),
+    )
     event_id = uuid4()
     owned_url = f"/static/tmp/event_images/event_{event_id}_{'a' * 32}.png"
     resolve_backend = MagicMock(return_value=object())
@@ -330,7 +336,10 @@ async def test_reference_aware_cleanup_retains_on_non_string_query_result(
     )
     monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
     db_session = SimpleNamespace(
-        execute=AsyncMock(return_value=_ResultWithInvalidImageValue())
+        execute=AsyncMock(return_value=_ResultWithInvalidImageValue()),
+        get_bind=MagicMock(
+            return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+        ),
     )
     event_id = uuid4()
     filename = f"event_{event_id}_{'d' * 32}.png"
@@ -343,4 +352,56 @@ async def test_reference_aware_cleanup_retains_on_non_string_query_result(
 
     assert removed is False
     db_session.execute.assert_awaited_once()
+    client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.parametrize("active", [True, None, 0, "false"])
+@pytest.mark.asyncio
+async def test_reference_cleanup_requires_explicit_unfiltered_visibility(
+    active, monkeypatch
+):
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.scalar = AsyncMock(return_value=active)
+    db.execute = AsyncMock()
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="media", base_url="https://cdn.example.test/media", client=client
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    owner = uuid4()
+    url = "/".join((storage.base_url, f"tmp/event_images/event_{owner}_{'a' * 32}.png"))
+
+    assert not await content_media.delete_unreferenced_owned_event_image(
+        url, event_id=owner, db_session=db
+    )
+    db.scalar.assert_awaited_once()
+    assert "pg_catalog.row_security_active" in str(db.scalar.call_args.args[0])
+    db.execute.assert_not_awaited()
+    client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure", ["dialect", "visibility"])
+@pytest.mark.asyncio
+async def test_reference_cleanup_retains_when_visibility_is_unknown(
+    failure, monkeypatch
+):
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = (
+        "unknown" if failure == "dialect" else "postgresql"
+    )
+    db.scalar = AsyncMock(side_effect=RuntimeError("unavailable"))
+    db.execute = AsyncMock()
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="media", base_url="https://cdn.example.test/media", client=client
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    owner = uuid4()
+    url = "/".join((storage.base_url, f"tmp/event_images/event_{owner}_{'a' * 32}.png"))
+
+    assert not await content_media.delete_unreferenced_owned_event_image(
+        url, event_id=owner, db_session=db
+    )
+    db.execute.assert_not_awaited()
     client.delete_object.assert_not_awaited()

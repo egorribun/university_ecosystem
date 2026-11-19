@@ -103,6 +103,8 @@ def test_prepare_push_payload_for_user():
 @pytest.mark.asyncio
 async def test_cleanup_stale_notifications_refined(monkeypatch):
     db = AsyncMock()
+    db.get_bind = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
     mock_settings = MagicMock(
         notifications_retention_days=30, notifications_retention_batch_size=10
     )
@@ -144,6 +146,8 @@ async def test_cleanup_stale_notifications_zero_retention():
 async def test_cleanup_stale_notifications_no_db(monkeypatch):
     mock_session_ctx = MagicMock()
     mock_db = AsyncMock()
+    mock_db.get_bind = MagicMock()
+    mock_db.get_bind.return_value.dialect.name = "sqlite"
     mock_session_ctx.__aenter__.return_value = mock_db
     monkeypatch.setattr(
         "app.services.notifications.cleanup._async_session", lambda: mock_session_ctx

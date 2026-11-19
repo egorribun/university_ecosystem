@@ -249,14 +249,6 @@ class TestDataLoaders:
 
 
 class TestGetScheduleHandler:
-    def test_schedule_cache_key(self):
-        from app.cqrs.queries import GetScheduleHandler
-
-        handler = GetScheduleHandler(db=AsyncMock(), cache=MagicMock())
-        key = handler._schedule_cache_key("group-123")
-        assert "schedule" in key
-        assert "group-123" in key
-
     def test_localize_schedule_payload(self):
         from app.cqrs.queries import GetScheduleHandler
 
@@ -270,33 +262,39 @@ class TestGetScheduleHandler:
         assert "lesson_type_display" in result[0]
 
     @pytest.mark.asyncio
-    async def test_handle_cache_hit(self):
+    async def test_handle_ignores_shared_cache_hit(self):
         from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
         from app.deps.cache import MemoryCache
 
         cache = MemoryCache(default_ttl=300)
-        await cache.set("schedule:group:g1", [{"lesson_type": "lecture"}])
-
+        group_id = uuid.uuid4()
+        entry = await cache.set(
+            f"schedule:group:{group_id}", [{"lesson_type": "lecture"}]
+        )
         handler = GetScheduleHandler(db=AsyncMock(), cache=cache)
-        query = GetScheduleQuery(group_id="g1", locale="en", if_none_match=None)
-        result = await handler.handle(query)
-
-        assert result.payload is not None
+        query = GetScheduleQuery(
+            group_id=str(group_id), locale="en", if_none_match=f'"{entry.etag}"'
+        )
+        with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
+            repository_type.return_value.get_by_group = AsyncMock(return_value=[])
+            result = await handler.handle(query)
+        repository_type.return_value.get_by_group.assert_awaited_once_with(group_id)
+        assert result.payload == []
         assert result.not_modified is False
 
     @pytest.mark.asyncio
-    async def test_handle_not_modified(self):
+    async def test_handle_not_modified_after_repository_read(self):
         from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
         from app.deps.cache import MemoryCache
 
-        cache = MemoryCache(default_ttl=300)
-        entry = await cache.set("schedule:group:g1", [{"lesson_type": "lecture"}])
-
-        handler = GetScheduleHandler(db=AsyncMock(), cache=cache)
-        query = GetScheduleQuery(
-            group_id="g1", locale="en", if_none_match=f'"{entry.etag}"'
-        )
-        result = await handler.handle(query)
+        handler = GetScheduleHandler(db=AsyncMock(), cache=MemoryCache(default_ttl=300))
+        query = GetScheduleQuery(group_id=uuid.uuid4(), locale="en", if_none_match=None)
+        with patch("app.cqrs.queries.ScheduleRepository") as repository_type:
+            repository_type.return_value.get_by_group = AsyncMock(return_value=[])
+            first = await handler.handle(query)
+            query.if_none_match = first.etag
+            result = await handler.handle(query)
+        assert repository_type.return_value.get_by_group.await_count == 2
         assert result.not_modified is True
 
     def test_query_result_dataclass(self):

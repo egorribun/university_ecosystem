@@ -96,6 +96,11 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
             )
             await connection.execute(
                 text(
+                    "CREATE TABLE chats (id UUID PRIMARY KEY, tenant_id UUID NOT NULL)"
+                )
+            )
+            await connection.execute(
+                text(
                     "CREATE TABLE chat_participants (chat_id UUID NOT NULL, user_id UUID NOT NULL)"
                 )
             )
@@ -119,6 +124,10 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
                 ],
             )
             await connection.execute(
+                text("INSERT INTO chats (id, tenant_id) VALUES (:id, :tenant)"),
+                {"id": chat_id, "tenant": tenant_a},
+            )
+            await connection.execute(
                 chat_participants.insert(),
                 [
                     {"chat_id": chat_id, "user_id": user_id}
@@ -132,6 +141,15 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
             await connection.execute(
                 text(
                     "CREATE POLICY tenant_scope ON users USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
+                )
+            )
+            await connection.execute(
+                text("ALTER TABLE chats ENABLE ROW LEVEL SECURITY")
+            )
+            await connection.execute(text("ALTER TABLE chats FORCE ROW LEVEL SECURITY"))
+            await connection.execute(
+                text(
+                    "CREATE POLICY tenant_scope ON chats USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
                 )
             )
 
@@ -178,6 +196,10 @@ async def test_read_committed_revalidation_respects_rls_and_preserves_dirty_uow(
         async with owned_postgres.sessions() as session:
             assert (
                 await session.scalar(text("SELECT row_security_active('users')"))
+                is True
+            )
+            assert (
+                await session.scalar(text("SELECT row_security_active('chats')"))
                 is True
             )
             stale = User(id=owned_postgres.recipient_id, is_active=True, mfa_epoch=0)

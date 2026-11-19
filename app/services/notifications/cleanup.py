@@ -10,7 +10,7 @@ import datetime as dt
 from datetime import UTC
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, true
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
@@ -51,6 +51,18 @@ async def cleanup_stale_notifications(
             return await cleanup_stale_notifications(
                 db=session, retention_days=retention_days, now=now_value
             )
+
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        # Match the ORM's relation resolution. A hidden parent is not an orphan.
+        # Keep the guard in each SELECT and DELETE, not a stale Python precheck.
+        orphan_visibility = func.pg_catalog.row_security_active(
+            "notifications"
+        ).is_(False)
+    elif dialect == "sqlite":
+        orphan_visibility = true()
+    else:
+        raise RuntimeError("Notification retention requires PostgreSQL or SQLite")
 
     cutoff = now_value - dt.timedelta(days=int(retention_days))
 
@@ -124,6 +136,7 @@ async def cleanup_stale_notifications(
             .where(
                 NotificationDeliveryOnce.created_at < cutoff,
                 ~live_notification,
+                orphan_visibility,
             )
             .order_by(NotificationDeliveryOnce.id)
             .limit(batch_size)
@@ -136,6 +149,7 @@ async def cleanup_stale_notifications(
                 NotificationDeliveryOnce.id.in_(claim_ids),
                 NotificationDeliveryOnce.created_at < cutoff,
                 ~live_notification,
+                orphan_visibility,
             )
         )
         await db.commit()

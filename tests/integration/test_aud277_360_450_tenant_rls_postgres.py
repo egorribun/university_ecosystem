@@ -1702,3 +1702,536 @@ async def test_schedule_service_parent_ownership(
             admin.dispose()
             bypass_rls_ctx.reset(bypass)
             tenant_id_ctx.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_room_membership_callback_obeys_parent_tenant_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Real ordinary-role SQL must not authorize a hidden tenant's membership."""
+    from fastapi import HTTPException
+
+    from app.api.internal.chat import check_participant
+    from app.core.db.listeners import register_tenant_listeners
+    from app.models.chat import chat_participants
+    from app.repositories.chat_repository import ChatRepository
+    from tests.conftest import call_injected
+
+    # A normal tenant-B DM and its two members, not a forged cross-tenant edge.
+    user_b, peer_b, chat_b = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    register_tenant_listeners()
+    try:
+        with admin.begin() as connection:
+            for user_id in (user_b, peer_b):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO users (id, email, hashed_password, tenant_id) "
+                        "VALUES (:id, :email, :credential, :tenant)"
+                    ),
+                    {
+                        "id": user_id,
+                        "email": f"{user_id}@example.invalid",
+                        "credential": "!" + uuid.uuid4().hex,
+                        "tenant": _TENANT_B,
+                    },
+                )
+            connection.execute(
+                sa.text("INSERT INTO chats (id, tenant_id) VALUES (:id, :tenant)"),
+                {"id": chat_b, "tenant": _TENANT_B},
+            )
+            for user_id in (user_b, peer_b):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO chat_participants (chat_id, user_id) "
+                        "VALUES (:chat, :user)"
+                    ),
+                    {"chat": chat_b, "user": user_id},
+                )
+
+        for tenant, expected in (
+            (_TENANT_A, False),
+            (_TENANT_B, True),
+            (None, False),
+        ):
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    flags = (
+                        await session.execute(
+                            sa.text(
+                                "SELECT rolsuper, rolbypassrls, "
+                                "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                                "row_security_active('public.chats'), "
+                                "row_security_active('public.users') "
+                                "FROM pg_roles WHERE rolname = current_user"
+                            )
+                        )
+                    ).one()
+                    assert tuple(flags) == (False, False, False, True, True)
+                    # Negative control: this unprotected edge really exists
+                    # even when its user and chat are hidden by the policies.
+                    raw_membership = await session.scalar(
+                        sa.select(
+                            sa.exists().where(
+                                chat_participants.c.chat_id == chat_b,
+                                chat_participants.c.user_id == user_b,
+                            )
+                        )
+                    )
+                    assert raw_membership is True
+                    repo = ChatRepository(session)
+                    assert await repo.check_participant(chat_b, user_b) is expected
+                    assert await repo.check_participant(chat_b, _USER_A) is False
+                    assert await repo.check_participant(_CHAT_A, _USER_A) is (
+                        tenant == _TENANT_A
+                    )
+                    if expected:
+                        response = await call_injected(
+                            check_participant,
+                            user_id=user_b,
+                            room_id=chat_b,
+                            provides={"AsyncDatabaseSession": session},
+                        )
+                        assert response == {"participant": True}
+                    else:
+                        with pytest.raises(HTTPException) as denied:
+                            await call_injected(
+                                check_participant,
+                                user_id=user_b,
+                                room_id=chat_b,
+                                provides={"AsyncDatabaseSession": session},
+                            )
+                        assert denied.value.status_code == 403
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+    finally:
+        await engine.dispose()
+        try:
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text("DELETE FROM chats WHERE id = :id"), {"id": chat_b}
+                )
+                connection.execute(
+                    sa.text("DELETE FROM users WHERE id IN (:user, :peer)"),
+                    {"user": user_b, "peer": peer_b},
+                )
+        finally:
+            admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_schedule_query_ignores_shared_cache_across_tenant_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Real warmup, query handler, session listener and non-bypass PostgreSQL role."""
+    from app.core.db.listeners import register_tenant_listeners
+    from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
+    from app.deps.cache import MemoryCache
+    from app.services.cache_warmup import _warm_schedule_group
+
+    register_tenant_listeners()
+    group_id, lesson_id = uuid.uuid4(), uuid.uuid4()
+    start = dt.datetime(2026, 11, 9, 9, tzinfo=dt.UTC)
+    admin = _engine(rls_schema.admin)
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    cache = MemoryCache(default_ttl=300)
+    tenant_token = tenant_id_ctx.set(str(_TENANT_B))
+    bypass_token = bypass_rls_ctx.set(False)
+    try:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO groups(id, name, tenant_id) VALUES (:id, :name, :tenant)"
+                ),
+                {"id": group_id, "name": str(group_id), "tenant": _TENANT_B},
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO schedule(id, group_id, tenant_id, subject, weekday, start_time, end_time, lesson_type) "
+                    "VALUES (:id, :group, :tenant, 'private B schedule', 'monday', :start, :end, 'lecture')"
+                ),
+                {
+                    "id": lesson_id,
+                    "group": group_id,
+                    "tenant": _TENANT_B,
+                    "start": start,
+                    "end": start + dt.timedelta(hours=1),
+                },
+            )
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            await _warm_schedule_group(cache, session, group_id, ttl_seconds=300)
+            entry = await cache.get(f"schedule:group:{group_id}")
+            assert entry is not None
+            assert entry.payload[0]["subject"] == "private B schedule"
+            visible = await GetScheduleHandler(session, cache).handle(
+                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
+            )
+            assert visible.payload[0]["subject"] == "private B schedule"
+            assert visible.etag is not None
+
+        for tenant in (_TENANT_A, None):
+            tenant_id_ctx.set(str(tenant) if tenant else "")
+            async with factory() as session:
+                evidence = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT rolsuper, rolbypassrls, pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER'), "
+                            "row_security_active('public.groups'), row_security_active('public.schedule') "
+                            "FROM pg_roles WHERE rolname=current_user"
+                        )
+                    )
+                ).one()
+                assert tuple(evidence) == (False, False, False, True, True)
+                assert (
+                    await session.scalar(
+                        sa.text("SELECT count(*) FROM schedule WHERE id=:id"),
+                        {"id": lesson_id},
+                    )
+                ) == 0
+                # Warmup really populated an unscoped legacy key. Neither its
+                # body nor either old validator can bypass the current RLS.
+                for validator in (None, visible.etag, f'"{entry.etag}"'):
+                    hidden = await GetScheduleHandler(session, cache).handle(
+                        GetScheduleQuery(
+                            group_id=group_id, locale="en", if_none_match=validator
+                        )
+                    )
+                    assert hidden.payload == []
+                    assert hidden.not_modified is False
+                unchanged = await GetScheduleHandler(session, cache).handle(
+                    GetScheduleQuery(
+                        group_id=group_id, locale="en", if_none_match=hidden.etag
+                    )
+                )
+                assert unchanged.not_modified is True
+                assert unchanged.payload is None
+        tenant_id_ctx.set(str(_TENANT_B))
+        async with factory() as session:
+            restored = await GetScheduleHandler(session, cache).handle(
+                GetScheduleQuery(group_id=group_id, locale="en", if_none_match=None)
+            )
+            assert restored.payload[0]["subject"] == "private B schedule"
+    finally:
+        try:
+            await engine.dispose()
+            with admin.begin() as connection:
+                connection.execute(
+                    sa.text("DELETE FROM schedule WHERE id=:id"), {"id": lesson_id}
+                )
+                connection.execute(
+                    sa.text("DELETE FROM groups WHERE id=:id"), {"id": group_id}
+                )
+        finally:
+            admin.dispose()
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
+
+
+@pytest.mark.asyncio
+async def test_notification_cleanup_preserves_claims_under_active_rls(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Hidden parents cannot establish orphanhood for the global claim ledger."""
+    from app.core.db.listeners import register_tenant_listeners
+    from app.services.notifications.cleanup import cleanup_stale_notifications
+
+    register_tenant_listeners()
+    now = dt.datetime.now(dt.UTC).replace(day=15, hour=12)
+    old = now - dt.timedelta(days=2)
+    parent_ids = [uuid.uuid4(), uuid.uuid4()]
+    claim_ids = [uuid.uuid4() for _ in range(4)]
+    admin = _engine(rls_schema.admin)
+    try:
+        with admin.begin() as connection:
+            # This owned fixture's ordinary role owns notifications under FORCE RLS.
+            role = rls_schema.ordinary.username
+            connection.exec_driver_sql(
+                f'GRANT SELECT, DELETE ON public.notification_deliveries, public.notification_delivery_once TO "{role}"'
+            )
+            for parent, tenant in zip(parent_ids, (_TENANT_A, _TENANT_B), strict=True):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO notifications "
+                        "(id, user_id, title, created_at, tenant_id) "
+                        "VALUES (:id, :user, 'retention proof', :created, :tenant)"
+                    ),
+                    {
+                        "id": parent,
+                        "user": _USER_A,
+                        "created": old,
+                        "tenant": tenant,
+                    },
+                )
+            for index, claim in enumerate(claim_ids):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO notification_delivery_once "
+                        "(id, notification_id, channel, created_at) "
+                        "VALUES (:id, :notification, 'webpush', :created)"
+                    ),
+                    {
+                        "id": claim,
+                        "notification": (
+                            parent_ids[index] if index < 2 else uuid.uuid4()
+                        ),
+                        "created": now if index == 3 else old,
+                    },
+                )
+
+        for tenant in (_TENANT_A, _TENANT_B, None):
+            engine = create_async_engine(
+                rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+                poolclass=sa.pool.NullPool,
+                hide_parameters=True,
+            )
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    assert tuple(
+                        (
+                            await session.execute(
+                                sa.text(
+                                    "SELECT rolsuper, rolbypassrls, "
+                                    "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER') "
+                                    "FROM pg_roles WHERE rolname = current_user"
+                                )
+                            )
+                        ).one()
+                    ) == (False, False, False)
+                    assert (
+                        await session.scalar(
+                            sa.text("SELECT row_security_active('notifications')")
+                        )
+                        is True
+                    )
+                    visible = set(
+                        (
+                            await session.scalars(
+                                sa.text(
+                                    "SELECT id FROM notifications WHERE id = ANY(:ids)"
+                                ),
+                                {"ids": parent_ids},
+                            )
+                        ).all()
+                    )
+                    if tenant == _TENANT_A:
+                        expected = {parent_ids[0]}
+                    elif tenant == _TENANT_B:
+                        expected = {parent_ids[1]}
+                    else:
+                        expected = set()
+                    assert visible == expected
+                    assert await cleanup_stale_notifications(
+                        db=session, retention_days=1, now=now
+                    ) == (0, 0)
+                    retained = set(
+                        (
+                            await session.scalars(
+                                sa.text(
+                                    "SELECT id FROM notification_delivery_once WHERE id = ANY(:ids)"
+                                ),
+                                {"ids": claim_ids},
+                            )
+                        ).all()
+                    )
+                    assert retained == set(claim_ids)
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+                await engine.dispose()
+
+        # Positive reclamation control uses the owned fixture administrator,
+        # never grants bypass to the runtime role or changes production policy.
+        engine = create_async_engine(
+            rls_schema.admin.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            hide_parameters=True,
+        )
+        try:
+            async with async_sessionmaker(engine)() as session:
+                assert (
+                    await session.scalar(
+                        sa.text("SELECT row_security_active('notifications')")
+                    )
+                    is False
+                )
+                await cleanup_stale_notifications(db=session, retention_days=1, now=now)
+                retained = set(
+                    (
+                        await session.scalars(
+                            sa.text(
+                                "SELECT id FROM notification_delivery_once WHERE id = ANY(:ids)"
+                            ),
+                            {"ids": claim_ids},
+                        )
+                    ).all()
+                )
+                assert retained == {claim_ids[0], claim_ids[1], claim_ids[3]}
+        finally:
+            await engine.dispose()
+    finally:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM notification_delivery_once WHERE id = ANY(:ids)"),
+                {"ids": claim_ids},
+            )
+            connection.execute(
+                sa.text("DELETE FROM notifications WHERE id = ANY(:ids)"),
+                {"ids": parent_ids},
+            )
+        admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_event_image_cleanup_retains_rls_hidden_legacy_reference(
+    rls_schema: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tenant-filtered absence cannot authorize deletion of shared artwork."""
+    from unittest.mock import AsyncMock
+
+    from app.core.db.listeners import register_tenant_listeners
+    from app.services import content_media
+    from app.services.storage import S3Storage
+
+    owner_id, reference_id = uuid.uuid4(), uuid.uuid4()
+    key = f"tmp/event_images/event_{owner_id}_{'a' * 32}.png"
+    url = f"https://cdn.example.test/media/{key}"
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="media", base_url="https://cdn.example.test/media", client=client
+    )
+    monkeypatch.setattr(content_media, "_get_storage_backend", lambda: storage)
+    admin = _engine(rls_schema.admin)
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    admin_engine = create_async_engine(
+        rls_schema.admin.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    try:
+        with admin.begin() as connection:
+            # Model the committed owner replacement and a supported legacy alias.
+            for event_id, tenant, image in (
+                (owner_id, _TENANT_A, None),
+                (reference_id, _TENANT_B, url),
+            ):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO events "
+                        "(id, title, starts_at, ends_at, tenant_id, image_url) "
+                        "VALUES (:id, 'legacy shared artwork', now(), "
+                        "now() + interval '1 hour', :tenant, :image)"
+                    ),
+                    {"id": event_id, "tenant": tenant, "image": image},
+                )
+        for tenant, visible in (
+            (_TENANT_A, {owner_id}),
+            (_TENANT_B, {reference_id}),
+            (None, set()),
+        ):
+            tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
+            bypass_token = bypass_rls_ctx.set(False)
+            try:
+                async with async_sessionmaker(engine)() as session:
+                    role = (
+                        await session.execute(
+                            sa.text(
+                                "SELECT rolsuper, rolbypassrls, "
+                                "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER') "
+                                "FROM pg_roles WHERE rolname = current_user"
+                            )
+                        )
+                    ).one()
+                    assert tuple(role) == (False, False, False)
+                    assert (
+                        await session.scalar(
+                            sa.text("SELECT row_security_active('events')")
+                        )
+                        is True
+                    )
+                    assert (
+                        set(
+                            (
+                                await session.execute(
+                                    sa.text(
+                                        "SELECT id FROM events WHERE id IN (:a, :b)"
+                                    ),
+                                    {"a": owner_id, "b": reference_id},
+                                )
+                            ).scalars()
+                        )
+                        == visible
+                    )
+                    removed = await content_media.delete_unreferenced_owned_event_image(
+                        url, event_id=owner_id, db_session=session
+                    )
+                    assert removed is False
+                    client.delete_object.assert_not_awaited()
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
+
+        # Owned admin is a positive control, never a production role escalation.
+        async with async_sessionmaker(admin_engine)() as session:
+            assert (
+                await session.scalar(sa.text("SELECT row_security_active('events')"))
+                is False
+            )
+            assert not await content_media.delete_unreferenced_owned_event_image(
+                url, event_id=owner_id, db_session=session
+            )
+            client.delete_object.assert_not_awaited()
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM events WHERE id = :id"), {"id": reference_id}
+            )
+        tenant_token = tenant_id_ctx.set(str(_TENANT_A))
+        bypass_token = bypass_rls_ctx.set(False)
+        try:
+            async with async_sessionmaker(engine)() as session:
+                # Even a genuine orphan is deferred under active RLS.
+                assert not await content_media.delete_unreferenced_owned_event_image(
+                    url, event_id=owner_id, db_session=session
+                )
+                client.delete_object.assert_not_awaited()
+        finally:
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
+        async with async_sessionmaker(admin_engine)() as session:
+            assert await content_media.delete_unreferenced_owned_event_image(
+                url, event_id=owner_id, db_session=session
+            )
+        client.delete_object.assert_awaited_once_with(Bucket="media", Key=key)
+    finally:
+        await engine.dispose()
+        await admin_engine.dispose()
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text("DELETE FROM events WHERE id IN (:a, :b)"),
+                {"a": owner_id, "b": reference_id},
+            )
+        admin.dispose()

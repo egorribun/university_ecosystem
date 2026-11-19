@@ -695,6 +695,9 @@ async def test_cleanup_stale_notifications_empty_db():
     from app.services.notifications.cleanup import cleanup_stale_notifications
 
     mock_db = AsyncMock()
+    # Retention selects its orphan guard from the bound dialect.
+    mock_db.get_bind = MagicMock()
+    mock_db.get_bind.return_value.dialect.name = "sqlite"
     mock_scalars = AsyncMock()
     mock_scalars.all = MagicMock(return_value=[])
     mock_db.scalars = AsyncMock(return_value=mock_scalars)

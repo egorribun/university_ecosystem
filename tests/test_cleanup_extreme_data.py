@@ -37,6 +37,8 @@ async def test_cleanup_expired_sessions_handles_db_lock_exception() -> None:
 async def test_cleanup_stale_notifications_handles_db_lock_exception() -> None:
     """Verify cleanup_stale_notifications handles database exceptions properly during batch delete."""
     mock_db = AsyncMock()
+    mock_db.get_bind = MagicMock()
+    mock_db.get_bind.return_value.dialect.name = "sqlite"
     # Mock return value for scalars to return some ids first, then raise OperationalError on delete execution
     mock_scalars_result = MagicMock()
     mock_scalars_result.all.return_value = [1, 2, 3]
@@ -56,6 +58,8 @@ async def test_cleanup_stale_notifications_handles_db_lock_exception() -> None:
 async def test_cleanup_stale_notifications_with_null_and_future_timestamps() -> None:
     """Verify notification cleanup handles extreme date inputs without raising value errors."""
     mock_db = AsyncMock()
+    mock_db.get_bind = MagicMock()
+    mock_db.get_bind.return_value.dialect.name = "sqlite"
 
     # 1. Test null and future IDs returned
     mock_scalars_result = MagicMock()
