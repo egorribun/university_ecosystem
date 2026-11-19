@@ -31,6 +31,14 @@ belong to those non-blocking evidence lanes; the 100% full-run assertion is not
 a required release check. A retry-cache hit or preflight-only validation is
 not a fresh shard run.
 
+For the latest nightly result, check the tested commit and failed jobs in the
+[Nightly Full Quality Gate run history](https://github.com/egorribun/university_ecosystem/actions/workflows/nightly-full-gate.yml).
+The failure issue and optional Slack alert are not the run history. If
+`main` advances during the run, `Report nightly regression` rejects the
+outdated event or workflow SHA before updating the issue or sending Slack.
+Use the failed run and its logs in Actions; retrying the same obsolete source
+does not make it eligible to send an alert.
+
 ## MIG-PASS-01 CI image preflight
 
 The existing required `DB Migration Gate (Postgres)` context also verifies the
