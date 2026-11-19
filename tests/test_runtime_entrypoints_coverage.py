@@ -142,13 +142,19 @@ def test_asyncio_modules_execute_their_script_entrypoints(
 ) -> None:
     received: list[Coroutine[Any, Any, object]] = []
 
-    def close_coroutine(coroutine: Coroutine[Any, Any, object]) -> None:
+    def close_coroutine(coroutine: Coroutine[Any, Any, object]) -> int | None:
         received.append(coroutine)
         coroutine.close()
+        return 0 if module_name == "app.scripts.backfill_uuids" else None
 
     monkeypatch.setattr(asyncio, "run", close_coroutine)
 
-    runpy.run_module(module_name, run_name="__main__")
+    if module_name == "app.scripts.backfill_uuids":
+        with pytest.raises(SystemExit) as exc_info:
+            runpy.run_module(module_name, run_name="__main__")
+        assert exc_info.value.code == 0
+    else:
+        runpy.run_module(module_name, run_name="__main__")
 
     assert len(received) == 1
 
