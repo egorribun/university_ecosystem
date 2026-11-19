@@ -5,6 +5,9 @@ import { Select, type SelectOption } from "../Select"
 
 const translationNamespaceSpy = vi.hoisted(() => vi.fn())
 const motionPropsSpy = vi.hoisted(() => vi.fn())
+const prefersReducedMock = vi.hoisted(() => vi.fn(() => false))
+
+vi.mock("@/hooks/useMediaQuery", () => ({ default: prefersReducedMock }))
 
 /**
  * Select — accessible WAI-ARIA listbox (pure props-driven, no API / context).
@@ -86,6 +89,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   translationNamespaceSpy.mockClear()
   motionPropsSpy.mockClear()
+  prefersReducedMock.mockReturnValue(false)
 })
 
 describe("Select — rendering & ARIA", () => {
@@ -217,6 +221,22 @@ describe("Select — rendering & ARIA", () => {
 
     fireEvent.click(opened)
     expect(opened.querySelector("svg")).not.toHaveClass("rotate-180")
+  })
+
+  it("removes dropdown entrance and exit motion when reduced motion is requested", () => {
+    prefersReducedMock.mockReturnValue(true)
+    renderSelect()
+    fireEvent.click(trigger())
+
+    expect(prefersReducedMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    const motionProps = motionPropsSpy.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(motionProps.initial).toBe(false)
+    expect(motionProps.animate).toEqual({ opacity: 1, y: 4, scale: 1 })
+    expect(motionProps.exit).toEqual({ opacity: 0 })
+    expect(motionProps.transition).toEqual({ duration: 0 })
+    expect(screen.getByRole("listbox")).toBeInTheDocument()
+    fireEvent.keyDown(trigger(), { key: "Escape" })
+    expect(trigger()).toHaveAttribute("aria-expanded", "false")
   })
 
   it("preserves motion and keyboard-focus contracts for the listbox", () => {
