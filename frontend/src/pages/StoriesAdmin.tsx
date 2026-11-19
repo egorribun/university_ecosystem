@@ -437,7 +437,11 @@ export default function StoriesAdmin() {
     setLoading(true)
     setListError(null)
     try {
-      const response = await apiClient.get<StoryItem[]>("/stories")
+      // Mutations target individual story URLs, so a cached collection can
+      // otherwise hide their changes. Bypass both HTTP and service-worker caches.
+      const response = await apiClient.get<StoryItem[]>("/stories", {
+        headers: { "Cache-Control": "no-cache, no-store" },
+      })
       const data = Array.isArray(response.data) ? response.data : []
       setStories(data)
       setListError(null)

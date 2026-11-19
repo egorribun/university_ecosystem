@@ -187,7 +187,9 @@ describe("StoriesAdmin", () => {
     render(<StoriesAdmin />)
 
     expect(await screen.findByText(story.title)).toBeInTheDocument()
-    expect(mocks.getStories).toHaveBeenCalledWith("/stories")
+    expect(mocks.getStories).toHaveBeenCalledWith("/stories", {
+      headers: { "Cache-Control": "no-cache, no-store" },
+    })
 
     fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.unpublish" }))
     await waitFor(() => {
@@ -201,6 +203,32 @@ describe("StoriesAdmin", () => {
     await waitFor(() => {
       expect(mocks.deleteStory).toHaveBeenCalledWith(story.id)
     })
+  })
+
+  it("refreshes from the server after unpublishing a cached story", async () => {
+    const cachedStories = [story]
+    let serverStories = [story]
+    mocks.getStories.mockImplementation(async (_path, options) => {
+      const directives = (options?.headers?.["Cache-Control"] ?? "")
+        .split(",")
+        .map((value: string) => value.trim())
+      return {
+        data:
+          directives.includes("no-cache") && directives.includes("no-store")
+            ? serverStories
+            : cachedStories,
+      }
+    })
+    mocks.updateStory.mockImplementation(async () => {
+      serverStories = []
+    })
+
+    render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.unpublish" }))
+
+    await waitFor(() => expect(screen.queryByText(story.title)).not.toBeInTheDocument())
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
   })
 
   it("advances story expiry on one shared clock without changing item order or edits", async () => {
@@ -706,7 +734,11 @@ describe("StoriesAdmin", () => {
 
     mocks.getStories.mockClear()
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
-    await waitFor(() => expect(mocks.getStories).toHaveBeenCalledWith("/stories"))
+    await waitFor(() =>
+      expect(mocks.getStories).toHaveBeenCalledWith("/stories", {
+        headers: { "Cache-Control": "no-cache, no-store" },
+      })
+    )
 
     const publishedInput = screen.getAllByLabelText("stories:form.publishedAt").at(-1)!
     const expiryInput = screen.getAllByLabelText("stories:form.expiresAt").at(-1)!

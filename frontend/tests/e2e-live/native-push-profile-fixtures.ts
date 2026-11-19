@@ -7,7 +7,8 @@ import {
   removeBeforeCleanupDeadline,
   withVerifiedNativePushBrowserExit,
 } from "./native-push-profile-cleanup"
-import { test as liveTest, ownedSessionOrigin } from "./fixtures"
+import { test as liveTest, ownedSessionOrigin, liveDeadlineBoundedTimeoutMs } from "./fixtures"
+import { readPlaywrightTestSlotDeadlineAtMs } from "../../scripts/live-registration-admission.mjs"
 import {
   createLivePushFailureObservation,
   reportLivePushDeliveryObservation,
@@ -26,6 +27,23 @@ const PROFILE_OWNER_MARKER = ".ue-live-native-push-owner"
 const PROFILE_CLOSE_TIMEOUT_MS = 10_000
 const PROFILE_CLEANUP_TIMEOUT_MS = 30_000
 
+export function livePushObservationBudgetMs(
+  testInfo: TestInfo,
+  cleanupReserveMs = PROFILE_CLEANUP_TIMEOUT_MS
+): number {
+  if (!Number.isFinite(cleanupReserveMs) || cleanupReserveMs < 0) return 0
+  // The topic delivery scenario uses a 360-second slot, supported by this
+  // shared adapter even though the rate-limit retry wrapper caps slots at 180 seconds.
+  let deadlineAtMs: number | null
+  try {
+    deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(testInfo)
+  } catch {
+    return 0
+  }
+  if (deadlineAtMs === null) return 0
+  return liveDeadlineBoundedTimeoutMs(deadlineAtMs - cleanupReserveMs, 1_200) ?? 0
+}
+
 /**
  * Live Web Push subscriptions need the branded Google Chrome build with its push
  * service. Playwright's open-source Chromium fails `pushManager.subscribe` with
@@ -43,7 +61,8 @@ export type NativePushProfileRegistry = {
   primary: NativePushProfile
   create: () => Promise<NativePushProfile>
   armFailureObservation: (
-    expectedTag: string
+    expectedTag: string,
+    onCapture?: () => Promise<void>
   ) => ReturnType<typeof createLivePushFailureObservation>
 }
 
@@ -325,13 +344,18 @@ export const test = liveTest.extend<NativePushProfileFixtures & NativePushProfil
       const registry: NativePushProfileRegistry = {
         primary,
         create: () => createOwnedProfile(browser, testInfo, nativePushChannel, records),
-        armFailureObservation: (expectedTag) => {
+        armFailureObservation: (expectedTag, onCapture) => {
           if (pendingFailureObservation?.isArmed()) {
             throw new Error("Native Push failure observation is already armed")
           }
-          const observation = createLivePushFailureObservation(() =>
-            reportLivePushDeliveryObservation(primary.page, testInfo.project.name, expectedTag)
-          )
+          const observation = createLivePushFailureObservation(async () => {
+            // The additional recipient observation shares the established
+            // browser diagnostic's window instead of extending it serially.
+            await Promise.all([
+              reportLivePushDeliveryObservation(primary.page, testInfo.project.name, expectedTag),
+              onCapture?.(),
+            ])
+          })
           pendingFailureObservation = observation
           return observation
         },

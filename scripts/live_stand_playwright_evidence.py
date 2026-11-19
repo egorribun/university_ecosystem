@@ -222,6 +222,23 @@ _PLAYWRIGHT_NEWS_VIEWPORT_LINE = re.compile(
 )
 _PLAYWRIGHT_NEWS_VIEWPORT_LIMIT = 20
 _PlaywrightNewsViewport = tuple[str, str, int, int, int, int, int, int, int]
+_PLAYWRIGHT_EVENTS_GEOMETRY_LINE = re.compile(
+    r"UE_LIVE_EVENTS_GEOMETRY_V1 project=(?P<project>desktop|mobile) "
+    r"language=(?P<language>ru|en) attempt=(?P<attempt>0|1) "
+    r"phase=(?P<phase>before|back|back-forward) "
+    r"viewportWidth=(?P<viewportWidth>[1-9][0-9]{0,5}) "
+    r"viewportHeight=(?P<viewportHeight>[1-9][0-9]{0,5}) "
+    r"documentHeight=(?P<documentHeight>0|[1-9][0-9]{0,5}) "
+    r"scrollY=(?P<scrollY>0|[1-9][0-9]{0,5}) "
+    r"gridTop=(?P<gridTop>-?(?:0|[1-9][0-9]{0,5})) "
+    r"linkTop=(?P<linkTop>-?(?:0|[1-9][0-9]{0,5})) "
+    r"linkHeight=(?P<linkHeight>0|[1-9][0-9]{0,5}) "
+    r"selectedIndex=(?P<selectedIndex>0|[1-9][0-9]?) "
+    r"cardCount=(?P<cardCount>[1-9][0-9]?|100) "
+    r"heights=(?P<heights>(?:0|[1-9][0-9]{0,5})"
+    r"(?:,(?:0|[1-9][0-9]{0,5})){0,11})"
+)
+_PLAYWRIGHT_EVENTS_GEOMETRY_LIMIT = 24
 _PLAYWRIGHT_NEWS_OVERFLOW_LINE = re.compile(
     r"UE_LIVE_NEWS_OVERFLOW_V1 project=(?P<project>desktop|mobile) "
     r"language=(?P<language>ru|en) "
@@ -267,6 +284,16 @@ _PLAYWRIGHT_PUSH_OBSERVATION_LINE = re.compile(
     r"invalid-state|not-supported|other|timeout)"
 )
 _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
+
+_PLAYWRIGHT_PUSH_RECIPIENT_LINE = re.compile(
+    r"UE_LIVE_PUSH_RECIPIENT_V1 project=(?P<project>desktop|mobile) "
+    r"retry=(?P<retry>[01]) "
+    r"scenario=(?P<scenario>chat|reply|news|events|schedule|release) "
+    r"check=(?P<check>none|pending|multiple|auth|other|invalid|"
+    r"session-owner-match|session-owner-mismatch|unreadable|network) "
+    r"subscription=(?P<subscription>same|changed|missing|unavailable)"
+)
+_PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
 
 _PLAYWRIGHT_STORY_MEMORY_PREFIX = "STORY_MEMORY_DIAG "
 _PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT = 8192
@@ -2352,6 +2379,57 @@ def _live_playwright_news_viewports(output: str) -> list[_PlaywrightNewsViewport
     return records
 
 
+def _live_playwright_events_geometries(output: str) -> list[dict[str, object]]:
+    """Keep only fixed numeric layout samples, one per project/locale/attempt/phase."""
+    records: list[dict[str, object]] = []
+    seen: set[tuple[str, str, int, str]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 384 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_EVENTS_GEOMETRY_LINE.fullmatch(line)
+        if match is None:
+            continue
+        count = int(match["cardCount"])
+        selected = int(match["selectedIndex"])
+        heights = [int(height) for height in match["heights"].split(",")]
+        if selected >= count or len(heights) != min(count, 12):
+            continue
+        key = (
+            match["project"],
+            match["language"],
+            int(match["attempt"]),
+            match["phase"],
+        )
+        if key in seen:
+            continue
+        numeric_fields = (
+            "viewportWidth",
+            "viewportHeight",
+            "documentHeight",
+            "scrollY",
+            "gridTop",
+            "linkTop",
+            "linkHeight",
+            "selectedIndex",
+            "cardCount",
+        )
+        records.append(
+            {
+                "project": key[0],
+                "language": key[1],
+                "attempt": key[2],
+                "phase": key[3],
+                **{field: int(match[field]) for field in numeric_fields},
+                "heights": heights,
+            }
+        )
+        seen.add(key)
+        if len(records) == _PLAYWRIGHT_EVENTS_GEOMETRY_LIMIT:
+            break
+    return records
+
+
 def _live_playwright_news_overflows(output: str) -> list[_PlaywrightNewsOverflow]:
     # Parse only the fixed overflow fields; the element path is charset-checked.
     records: list[_PlaywrightNewsOverflow] = []
@@ -2450,6 +2528,32 @@ def _live_playwright_push_observations(
             break
         observations.append(record)
     return observations
+
+
+def _live_playwright_push_recipient_observations(
+    output: str,
+) -> list[tuple[str, int, str, str, str]]:
+    """Retain only finite session-owner and subscription comparison classes."""
+    records: list[tuple[str, int, str, str, str]] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 180 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PUSH_RECIPIENT_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record = (
+            match["project"],
+            int(match["retry"]),
+            match["scenario"],
+            match["check"],
+            match["subscription"],
+        )
+        if record not in records:
+            records.append(record)
+            if len(records) == _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT:
+                break
+    return records
 
 
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:

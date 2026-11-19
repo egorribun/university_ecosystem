@@ -4,6 +4,8 @@ The tail is run-level, may be rotated or truncated, and has no test-attempt
 correlation. Counts are saturated marginals, not unique sends or delivery proof.
 Each count saturates at nine; nine means at least nine. ``http_none`` means no
 numeric status was recorded, not that no provider request occurred.
+The separate success summary distinguishes HTTP 201 from other 2xx responses
+only for rows classified as sent; it is not proof of browser delivery.
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ class WorkerSummary:
     statuses: tuple[int, ...]
     stages: tuple[int, ...]
     http_classes: tuple[int, ...]
+    success_http: tuple[int, int] = (0, 0)
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -87,6 +90,7 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
     status_counts = [0] * len(_STATUSES)
     stage_counts = [0] * len(_STAGES)
     http_counts = [0] * len(_HTTP_CLASSES)
+    success_http = [0, 0]
     for line in lines:
         if len(line) > MAX_LINE_BYTES:
             return None
@@ -127,6 +131,7 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
             stage = extra["error_stage"]
             if type(stage) is not str or stage not in _STAGES[:-1]:
                 return None
+        code = None
         if "status_code" not in extra:
             http_class = "none"
         else:
@@ -134,13 +139,23 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
             if type(code) is not int or not 100 <= code <= 599:
                 return None
             http_class = f"{code // 100}xx"
+        if status == "sent" and code is not None and 200 <= code <= 299:
+            success_index = 0 if code == 201 else 1
+            success_http[success_index] = min(
+                _COUNT_LIMIT, success_http[success_index] + 1
+            )
         for counts, index in (
             (status_counts, _STATUSES.index(status)),
             (stage_counts, _STAGES.index(stage)),
             (http_counts, _HTTP_CLASSES.index(http_class)),
         ):
             counts[index] = min(_COUNT_LIMIT, counts[index] + 1)
-    return WorkerSummary(tuple(status_counts), tuple(stage_counts), tuple(http_counts))
+    return WorkerSummary(
+        tuple(status_counts),
+        tuple(stage_counts),
+        tuple(http_counts),
+        (success_http[0], success_http[1]),
+    )
 
 
 def render_summary(summary: WorkerSummary) -> str:
@@ -154,6 +169,7 @@ def render_summary(summary: WorkerSummary) -> str:
             (summary.statuses, len(_STATUSES)),
             (summary.stages, len(_STAGES)),
             (summary.http_classes, len(_HTTP_CLASSES)),
+            (summary.success_http, 2),
         )
     ):
         raise ValueError
@@ -181,6 +197,16 @@ def render_summary(summary: WorkerSummary) -> str:
     )
     return "live E2E worker push sample=tail " + " ".join(
         f"{name}={value}" for name, value in fields
+    )
+
+
+def render_success_summary(summary: WorkerSummary) -> str:
+    """Render only successful-provider response classes, not delivery proof."""
+    render_summary(summary)  # Reuse the same closed, bounded validation.
+    count_201, count_other_2xx = summary.success_http
+    return (
+        "live E2E worker push success_http sample=tail "
+        f"sent_http_201={count_201} sent_http_other_2xx={count_other_2xx}"
     )
 
 
@@ -264,10 +290,14 @@ def main() -> int:
             os.environ.get("LIVE_OBSERVATION_SOURCE_SHA", ""),
         )
         output = render_summary(summary)
+        success_output = render_success_summary(summary)
     except Exception:
         output = "live E2E worker push sample=unavailable"
+        success_output = None
     try:
         print(output, flush=True)
+        if success_output is not None:
+            print(success_output, flush=True)
     except OSError:
         pass
     return 0

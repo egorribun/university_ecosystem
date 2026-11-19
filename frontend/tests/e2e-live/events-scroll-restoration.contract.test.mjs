@@ -1,9 +1,16 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import { performance } from "node:perf_hooks"
+import process from "node:process"
 import test from "node:test"
+import { clearTimeout, setTimeout } from "node:timers"
 import { URL } from "node:url"
+import { JSDOM } from "jsdom"
+import * as eventsGeometry from "./events-geometry.ts"
+import { collectEventsGeometry } from "./events-geometry.ts"
 
 const specUrl = new URL("./events-scroll-restoration.live.spec.ts", import.meta.url)
+const geometryUrl = new URL("./events-geometry.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const seedUrl = new URL("../../../scripts/seed_demo_data.py", import.meta.url)
 const packageUrl = new URL("../../package.json", import.meta.url)
@@ -32,6 +39,7 @@ const cardViewUrl = new URL(
 
 const [
   spec,
+  geometry,
   config,
   seed,
   packageJson,
@@ -47,6 +55,7 @@ const [
   eventCardView,
 ] = await Promise.all([
   readFile(specUrl, "utf8"),
+  readFile(geometryUrl, "utf8"),
   readFile(configUrl, "utf8"),
   readFile(seedUrl, "utf8"),
   readFile(packageUrl, "utf8"),
@@ -195,4 +204,205 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
     packageJson,
     /test:e2e:live:contract"\s*:\s*"node --test[^\n]*events-scroll-restoration\.contract\.test\.mjs/u
   )
+})
+
+test("Events geometry reports bounded numeric snapshots without weakening history assertions", () => {
+  assert.match(spec, /UE_LIVE_EVENTS_GEOMETRY_V1 project=/u)
+  assert.match(spec, /project !== "desktop" && project !== "mobile"/u)
+  assert.match(spec, /attempt !== 0 && attempt !== 1/u)
+  assert.match(geometry, /cards\s*\.slice\(0, 12\)/u)
+  assert.match(geometry, /selected\?\.closest\("#events-tabpanel > \.grid"\)/u)
+  assert.match(
+    geometry,
+    /eventLink\.evaluate\(collectEventsGeometry, undefined, \{ timeout: 500 \}\)/u
+  )
+  assert.match(spec, /liveTestSlotDeadlineAtMs\(info\)/u)
+  assert.match(spec, /liveDeadlineBoundedTimeoutMs\(deadlineAtMs, 500\)/u)
+  assert.match(spec, /sampleEventsGeometry\(eventLink, budgetMs\)/u)
+  assert.match(spec, /Number\.isSafeInteger\(value\)/u)
+  assert.match(spec, /Math\.abs\(value\) > 999_999/u)
+  assert.match(geometry, /\{ timeout: 500 \}/u)
+  assert.match(spec, /reportEventsGeometry\(selectedEvent, locale\.code, "before"\)/u)
+  assert.match(
+    spec,
+    /finally \{\s*await reportEventsGeometry\(restoredEvent, locale\.code, "back"\)/u
+  )
+  assert.match(
+    spec,
+    /finally \{\s*await reportEventsGeometry\(restoredEventAfterForward, locale\.code, "back-forward"\)/u
+  )
+  assert.equal((spec.match(/\.toBe\(originalPosition\.scrollY\)/gu) ?? []).length, 2)
+  assert.equal((spec.match(/\.toBe\(originalPosition\.top\)/gu) ?? []).length, 2)
+  const diagnostic = spec.slice(
+    spec.indexOf("async function reportEventsGeometry"),
+    spec.indexOf("async function openLanguageOptions")
+  )
+  assert.doesNotMatch(
+    diagnostic + geometry,
+    /textContent|innerHTML|outerHTML|href|cookie|localStorage/u
+  )
+})
+
+test("Events geometry measures the populated grid and changes in preceding cards", () => {
+  const populatedList = eventList.slice(
+    eventList.indexOf("{/* ── Card grid (populated feed) ── */}")
+  )
+  assert.match(eventList, /<section[\s\S]*?id="events-tabpanel"/u)
+  assert.match(populatedList, /<div className="grid [^"]+">\s*\{eventsList\.map/u)
+  assert.match(eventCardView, /data-testid="event-card"/u)
+
+  const card = (index) => `
+    <div class="css-stagger-item">
+      <div class="event-quick-view-host"><article data-testid="event-card">
+        <div><h3><a>synthetic event ${index}</a></h3></div>
+      </article></div>
+    </div>`
+  const dom = new JSDOM(`
+    <section id="events-tabpanel">
+      <div class="grid" id="another-grid">${card("outside")}</div>
+      <div class="grid grid-cols-1" id="populated-grid">${card(0)}${card(1)}${card(2)}</div>
+    </section>`)
+  const { document } = dom.window
+  const grid = document.querySelector("#populated-grid")
+  const cards = Array.from(grid.querySelectorAll('[data-testid="event-card"]'))
+  const selectedLink = cards[2].querySelector("a")
+  let firstHeight = 300
+  grid.getBoundingClientRect = () => ({ top: -200 })
+  cards[0].getBoundingClientRect = () => ({ height: firstHeight })
+  cards[1].getBoundingClientRect = () => ({ height: 320 })
+  cards[2].getBoundingClientRect = () => ({ height: 340 })
+  selectedLink.getBoundingClientRect = () => ({ top: 280 + firstHeight - 300, height: 40 })
+
+  const before = collectEventsGeometry(selectedLink)
+  assert.equal(before.gridTop, -200)
+  assert.equal(before.selectedIndex, 2)
+  assert.equal(before.cardCount, 3)
+  assert.deepEqual(before.heights, [300, 320, 340])
+  assert.equal(before.linkTop, 280)
+
+  firstHeight = 337
+  const after = collectEventsGeometry(selectedLink)
+  assert.equal(after.selectedIndex, 2)
+  assert.equal(after.cardCount, 3)
+  assert.deepEqual(after.heights, [337, 320, 340])
+  assert.equal(after.linkTop, 317)
+
+  grid.className = "not-an-events-grid"
+  assert.equal(collectEventsGeometry(selectedLink), null)
+  dom.window.close()
+})
+
+test("Events geometry preserves the card count and height sample limits", () => {
+  const dom = new JSDOM('<section id="events-tabpanel"><div class="grid"></div></section>')
+  const grid = dom.window.document.querySelector(".grid")
+  for (let index = 0; index < 13; index += 1) {
+    const wrapper = dom.window.document.createElement("div")
+    wrapper.innerHTML = '<article data-testid="event-card"><h3><a>synthetic</a></h3></article>'
+    grid.append(wrapper)
+  }
+  const link = grid.querySelectorAll("a")[12]
+  const sample = collectEventsGeometry(link)
+  assert.equal(sample.selectedIndex, 12)
+  assert.equal(sample.cardCount, 13)
+  assert.equal(sample.heights.length, 12)
+  for (let index = 13; index < 101; index += 1) {
+    grid.append(grid.firstElementChild.cloneNode(true))
+  }
+  assert.equal(collectEventsGeometry(link), null)
+  assert.equal(collectEventsGeometry(dom.window.document.body), null)
+  dom.window.close()
+})
+
+test("a stalled or late-rejecting geometry read cannot replace the history failure", async () => {
+  const originalFailure = new Error("synthetic history assertion")
+  const unhandled = []
+  const onUnhandled = (error) => unhandled.push(error)
+  process.on("unhandledRejection", onUnhandled)
+  let rejectEvaluation
+  let guard
+  let independentTimer
+  let independentTimerFired = false
+  try {
+    const locator = {
+      evaluate: (callback, argument, options) => {
+        assert.equal(callback, collectEventsGeometry)
+        assert.equal(argument, undefined)
+        assert.deepEqual(options, { timeout: 500 })
+        return new Promise((_resolve, reject) => {
+          rejectEvaluation = reject
+        })
+      },
+    }
+    independentTimer = setTimeout(() => {
+      independentTimerFired = true
+    }, 40)
+    const acceptance = async () => {
+      try {
+        throw originalFailure
+      } finally {
+        await eventsGeometry.sampleEventsGeometry(locator, 20)
+      }
+    }
+    await Promise.race([
+      assert.rejects(acceptance(), (error) => error === originalFailure),
+      new Promise((_resolve, reject) => {
+        guard = setTimeout(() => reject(new Error("geometry observer did not stop waiting")), 1500)
+      }),
+    ])
+    rejectEvaluation(new Error("private late evaluation failure"))
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    assert.deepEqual(unhandled, [])
+    assert.equal(independentTimerFired, true)
+  } finally {
+    clearTimeout(guard)
+    clearTimeout(independentTimer)
+    process.off("unhandledRejection", onUnhandled)
+  }
+})
+
+test("geometry sampling returns fast results and skips an exhausted diagnostic budget", async () => {
+  const expected = { selectedIndex: 2 }
+  let calls = 0
+  const locator = {
+    evaluate: async () => {
+      calls += 1
+      return expected
+    },
+  }
+  assert.equal(await eventsGeometry.sampleEventsGeometry(locator, 0), null)
+  assert.equal(await eventsGeometry.sampleEventsGeometry(locator, 501), null)
+  assert.equal(calls, 0)
+  assert.equal(await eventsGeometry.sampleEventsGeometry(locator, 500), expected)
+  assert.equal(calls, 1)
+  assert.equal(
+    await eventsGeometry.sampleEventsGeometry(
+      {
+        evaluate: () => {
+          throw new Error("private")
+        },
+      },
+      500
+    ),
+    null
+  )
+})
+
+test("geometry sampling skips an evaluation whose budget expires before it starts", async (t) => {
+  let now = 100
+  let calls = 0
+  const clock = t.mock.method(performance, "now", () => now)
+  try {
+    const locator = {
+      evaluate: async () => {
+        calls += 1
+        return null
+      },
+    }
+    const pending = eventsGeometry.sampleEventsGeometry(locator, 20)
+    now = 120
+    assert.equal(await pending, null)
+    assert.equal(calls, 0)
+  } finally {
+    clock.mock.restore()
+  }
 })

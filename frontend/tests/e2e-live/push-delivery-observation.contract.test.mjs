@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import process from "node:process"
 import test from "node:test"
 import { URL } from "node:url"
+import "./push-recipient-observation.contract.test.mjs"
 
 const helperUrl = new URL("./push-delivery-observation.ts", import.meta.url)
 const specUrl = new URL("./push-delivery.live.spec.ts", import.meta.url)
@@ -115,7 +116,7 @@ test("failure observation is captured before cleanup around each unchanged nativ
     const scenario = spec.slice(start, next < 0 ? undefined : next)
     const pollStart = scenario.indexOf(expected)
     const armIndex = scenario.indexOf(
-      "failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)",
+      "failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId,",
       pollStart
     )
     const timeoutIndex = scenario.indexOf("timeout: 60_000", armIndex)
@@ -144,7 +145,7 @@ test("failure observation is captured before cleanup around each unchanged nativ
   assert.ok(teardownCapture >= 0 && profileVerification > teardownCapture)
   assert.match(
     fixture,
-    /reportLivePushDeliveryObservation\(primary\.page, testInfo\.project\.name, expectedTag\)/u
+    /reportLivePushDeliveryObservation\(\s*primary\.page,\s*testInfo\.project\.name,\s*expectedTag\s*\)/u
   )
   assert.match(fixture, /if \(pendingFailureObservation\?\.isArmed\(\)\) \{[\s\S]*already armed/u)
   assert.match(helper, /HOST_CAPTURE_DEADLINE_MS = 1_600/u)

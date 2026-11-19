@@ -108,6 +108,14 @@ test("admin story management is denied to both non-admin live roles", async () =
     /getByRole\("heading",[\s\S]{0,180}name:\s*\/Stories management\|Управление сторис\/u,[\s\S]{0,120}toHaveCount\(0\)/u
   )
   assert.match(spec, /adminPage\.goto\("\/admin\/stories"\)/u)
+  assert.match(spec, /const viewport = page\.viewportSize\(\)/u)
+  assert.match(spec, /if \(!viewport\) throw new Error/u)
+  assert.match(spec, /const \{ deviceScaleFactor, hasTouch, isMobile, screen, userAgent \} =/u)
+  assert.match(spec, /test\.info\(\)\.project\.use/u)
+  assert.match(
+    spec,
+    /adminContext = await browser\.newContext\(\{[\s\S]*?viewport,[\s\S]*?deviceScaleFactor,[\s\S]*?hasTouch,[\s\S]*?isMobile,[\s\S]*?screen,[\s\S]*?userAgent,/u
+  )
   assert.match(spec, /adminPage\)\.toHaveURL\(\s*\/\\\/admin\\\/stories\$\/u/u)
   assert.match(
     spec,

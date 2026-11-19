@@ -36231,8 +36231,10 @@ def test_transport_diagnostic_source_rejects_drift(mutation: str) -> None:
 )
 def test_transport_diagnostic_policy_rejects_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _aud154_combined_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     row = policy["records"][_NOV16_IDENTITY_ROW]
     if mutation == "fingerprint":
@@ -36542,7 +36544,96 @@ _NOV17_POLICY_PREDECESSOR_SHA256 = bytes.fromhex(
 )
 
 
+_AUD154_COMBINED_LIVE_SHA256 = bytes.fromhex(
+    "c4 54 5d eb 4f 19 01 32 26 da e1 ed 3a 7d 2d cc"
+    " d6 c5 57 42 4f cd db a3 6b 8f 47 dc 21 9a 72 a2"
+)
+_AUD154_COMBINED_LEDGER_SHA256 = bytes.fromhex(
+    "43 3a 89 d6 01 38 12 69 6e 01 86 fe 3c c6 c4 bd"
+    " a7 ad 1a 7e ad 85 7c 6a 31 ea 32 03 bb 3f c9 2c"
+)
+_AUD154_COMBINED_POLICY_ROW_PREDECESSOR_SHA256 = bytes.fromhex(
+    "25 57 46 e2 b2 25 17 3f ac c8 82 1f 98 b0 48 c5"
+    " a4 42 b9 e5 a6 9e e2 16 75 ad f8 51 d5 15 e8 33"
+)
+_AUD154_COMBINED_LIVE_INSERTIONS = (
+    b"from scripts.live_stand_playwright_evidence import (\n"
+    b"    _live_playwright_events_geometries as _live_playwright_events_geometries,\n)\n",
+    b"from scripts.live_stand_playwright_evidence import (\n"
+    b"    _live_playwright_push_recipient_observations as"
+    b" _live_playwright_push_recipient_observations,\n)\n",
+    b"    push_recipient_observations = _live_playwright_push_recipient_observations(stdout)\n",
+    b"    events_geometries = _live_playwright_events_geometries(stdout)\n",
+    b"    for project, retry, scenario, check, subscription in push_recipient_observations:\n"
+    b"        print(\n"
+    b'            f"live E2E push recipient project={project} retry={retry} "\n'
+    b'            f"scenario={scenario} check={check} subscription={subscription}",\n'
+    b"            flush=True,\n"
+    b"        )\n",
+    b"    for record in events_geometries:\n"
+    b"        print(\n"
+    b'            "live E2E events geometry " + json.dumps(record, separators=(",", ":")),\n'
+    b"            flush=True,\n"
+    b"        )\n",
+)
+
+
+def _aud154_combined_source_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    if path == "scripts/live_stand.py":
+        current = _AUD154_COMBINED_LIVE_SHA256
+        previous, older, _ = _NOV17_SOURCES[path]
+    elif path == _NOV17_LEDGER_PATH:
+        current = _AUD154_COMBINED_LEDGER_SHA256
+        previous, older = _NOV17_LEDGER_SHA256
+    else:
+        return actual
+    digest = hashlib.sha256(actual).digest()
+    if digest in (previous, older):
+        return actual
+    assert digest == current, message
+    historical = actual
+    if path == "scripts/live_stand.py":
+        for insertion in _AUD154_COMBINED_LIVE_INSERTIONS:
+            assert historical.count(insertion) == 1, message
+            historical = historical.replace(insertion, b"", 1)
+    else:
+        current_pin = _AUD154_COMBINED_LIVE_SHA256.hex().encode("ascii")
+        previous_pin = _NOV17_SOURCES["scripts/live_stand.py"][0].hex().encode("ascii")
+        assert historical.count(current_pin) == 1, message
+        historical = historical.replace(current_pin, previous_pin, 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+def _aud154_combined_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= 495:
+        return restored
+    row = records[495]
+    identity = row["identity"]
+    if identity["hashed_secret_bytes"] != _nov15_identity(
+        _AUD154_COMBINED_LIVE_SHA256.hex()
+    ):
+        return restored
+    assert identity["path"] == _NOV17_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    identity["hashed_secret_bytes"] = _nov15_identity(
+        _NOV17_SOURCES["scripts/live_stand.py"][0].hex()
+    )
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert (
+        hashlib.sha256(canonical).digest()
+        == _AUD154_COMBINED_POLICY_ROW_PREDECESSOR_SHA256
+    ), "live disposition predecessor or approval metadata changed"
+    return restored
+
+
 def _nov17_integration_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _aud154_combined_source_predecessor(path, actual)
     message = f"conditional disposition source file SHA-256 changed: {path}"
     if path == _NOV17_LEDGER_PATH:
         current, previous = _NOV17_LEDGER_SHA256
@@ -36572,7 +36663,7 @@ def _nov17_integration_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nov17_integration_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _aud154_combined_policy_predecessor(policy)
     records = restored["records"]
     for row, path in _NOV17_POLICY_ROWS.items():
         if row >= len(records):
@@ -36591,9 +36682,147 @@ def _nov17_disk_bytes(path: str) -> bytes:
     return _nov17_integration_predecessor(path, (root / path).read_bytes())
 
 
+def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live = (root / "scripts/live_stand.py").read_bytes()
+    live_digest = hashlib.sha256(live).digest()
+    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger = json.loads(ledger_bytes)
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    bound = [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == "scripts/live_stand.py"
+    ]
+    assert bound == [live_digest.hex()]
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    assert policy["records"][495]["identity"]["hashed_secret_bytes"] == (
+        _nov15_identity(live_digest.hex())
+    )
+
+    previous_live = _aud154_combined_source_predecessor("scripts/live_stand.py", live)
+    previous_ledger = _aud154_combined_source_predecessor(
+        "quality/semgrep-dispositions.json", ledger_bytes
+    )
+    previous_policy = _aud154_combined_policy_predecessor(policy)
+    assert (
+        hashlib.sha256(previous_live).digest()
+        == _NOV17_SOURCES["scripts/live_stand.py"][0]
+    )
+    assert hashlib.sha256(previous_ledger).digest() == _NOV17_LEDGER_SHA256[0]
+    assert previous_policy["records"][495]["identity"]["hashed_secret_bytes"] == (
+        _nov15_identity(_NOV17_SOURCES["scripts/live_stand.py"][0].hex())
+    )
+    for index, (current, previous) in enumerate(
+        zip(policy["records"], previous_policy["records"], strict=True)
+    ):
+        if index != 495:
+            assert current == previous
+    _aud154_historical_policy(policy)
+    _map_zoom_historical_source_bytes("scripts/live_stand.py", live)
+    _map_zoom_historical_source_bytes("quality/semgrep-dispositions.json", ledger_bytes)
+
+
+@pytest.mark.parametrize(
+    "path", ["scripts/live_stand.py", "quality/semgrep-dispositions.json"]
+)
+@pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate"])
+def test_aud154_combined_source_rejects_drift(path: str, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    fragment = (
+        b"    events_geometries = _live_playwright_events_geometries(stdout)\n"
+        if path == "scripts/live_stand.py"
+        else hashlib.sha256((root / "scripts/live_stand.py").read_bytes())
+        .hexdigest()
+        .encode("ascii")
+    )
+    assert actual.count(fragment) == 1
+    if mutation == "extra":
+        changed = actual + b"\n"
+    elif mutation == "missing":
+        changed = actual.replace(fragment, b"", 1)
+    else:
+        changed = actual.replace(fragment, fragment + fragment, 1)
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov17_integration_predecessor(path, changed)
+
+
+@pytest.mark.parametrize(
+    "path", ["scripts/live_stand.py", "quality/semgrep-dispositions.json"]
+)
+def test_aud154_combined_projection_rejects_a_missing_bound_fragment(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    if path == "scripts/live_stand.py":
+        fragment = _AUD154_COMBINED_LIVE_INSERTIONS[0]
+        digest_name = "_AUD154_COMBINED_LIVE_SHA256"
+    else:
+        fragment = _AUD154_COMBINED_LIVE_SHA256.hex().encode("ascii")
+        digest_name = "_AUD154_COMBINED_LEDGER_SHA256"
+    assert actual.count(fragment) == 1
+    changed = actual.replace(fragment, b"", 1)
+    monkeypatch.setitem(globals(), digest_name, hashlib.sha256(changed).digest())
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _aud154_combined_source_predecessor(path, changed)
+
+
+def test_aud154_combined_projection_rejects_a_changed_predecessor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = "scripts/live_stand.py"
+    _previous, older, edits = _NOV17_SOURCES[path]
+    monkeypatch.setitem(_NOV17_SOURCES, path, (bytes(32), older, edits))
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _aud154_combined_source_predecessor(path, (root / path).read_bytes())
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "path",
+        "type",
+        "category",
+        "owner",
+        "expiry",
+        "evidence",
+        "other",
+        "extra",
+    ],
+)
+def test_aud154_combined_policy_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    if mutation == "digest":
+        policy["records"][495]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation in {"path", "type"}:
+        policy["records"][495]["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        policy["records"][495][mutation] += " changed"
+    elif mutation == "expiry":
+        policy["records"][495]["expires_on"] += " changed"
+    elif mutation == "other":
+        policy["records"][0]["evidence"] += " changed"
+    else:
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
+
+
 def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
-    ledger_bytes = (root / _NOV17_LEDGER_PATH).read_bytes()
+    ledger_bytes = _aud154_combined_source_predecessor(
+        _NOV17_LEDGER_PATH, (root / _NOV17_LEDGER_PATH).read_bytes()
+    )
     ledger = json.loads(ledger_bytes)
     bound = {
         item["path"]: item["sha256"]
@@ -36602,7 +36831,7 @@ def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
         if item["path"] in _NOV17_SOURCES
     }
     for path, (final, predecessor, _) in _NOV17_SOURCES.items():
-        actual = (root / path).read_bytes()
+        actual = _aud154_combined_source_predecessor(path, (root / path).read_bytes())
         assert hashlib.sha256(actual).digest() == final
         assert bound[path] == final.hex()
         historical = _nov17_integration_predecessor(path, actual)
@@ -36618,8 +36847,10 @@ def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
                 item["sha256"] = _NOV17_SOURCES[item["path"]][1].hex()
     assert json.loads(restored_ledger) == expected
 
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _aud154_combined_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored_policy = _nov17_integration_policy_predecessor(policy)
     canonical = json.dumps(
@@ -36645,7 +36876,7 @@ def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
 @pytest.mark.parametrize("mutation", ("extra", "changed_edit", "duplicate_edit"))
 def test_nov17_integration_chain_rejects_drift(path: str, mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    actual = (root / path).read_bytes()
+    actual = _aud154_combined_source_predecessor(path, (root / path).read_bytes())
     if mutation == "extra":
         actual += b"\n"
     elif path == _NOV17_LEDGER_PATH:

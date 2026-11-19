@@ -112,6 +112,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_counts as _live_playwright_counts,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_events_geometries as _live_playwright_events_geometries,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_failure_diagnostics as _live_playwright_failure_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -155,6 +158,9 @@ from scripts.live_stand_playwright_evidence import (
 )
 from scripts.live_stand_playwright_evidence import (
     _live_playwright_push_observations as _live_playwright_push_observations,
+)
+from scripts.live_stand_playwright_evidence import (
+    _live_playwright_push_recipient_observations as _live_playwright_push_recipient_observations,
 )
 from scripts.live_stand_playwright_evidence import (
     _live_playwright_pwa_bundle_route_diagnostics as _live_playwright_pwa_bundle_route_diagnostics,
@@ -5753,6 +5759,7 @@ def _run_live_playwright(
     http_statuses = _live_playwright_http_statuses(stdout)
     http_operations = _live_playwright_http_operations(stdout)
     push_observations = _live_playwright_push_observations(stdout)
+    push_recipient_observations = _live_playwright_push_recipient_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
     story_memory_cycle_trace_diagnostics = (
         _live_playwright_story_memory_cycle_trace_diagnostics(stdout)
@@ -5809,6 +5816,7 @@ def _run_live_playwright(
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
     map_zoom_tasks = _live_playwright_map_zoom_tasks(stdout) if return_code != 0 else []
     footer_geometries = _live_playwright_footer_geometries(stdout)
+    events_geometries = _live_playwright_events_geometries(stdout)
     news_viewports = _live_playwright_news_viewports(stdout)
     news_overflows = _live_playwright_news_overflows(stdout)
     navbar_geometries = _live_playwright_navbar_geometries(stdout)
@@ -5924,6 +5932,12 @@ def _run_live_playwright(
             f"state={state} controller={str(controller).lower()} "
             f"subscription={str(subscription).lower()} matches={matches} "
             f"shown={shown} untagged={str(untagged).lower()} probe={probe}",
+            flush=True,
+        )
+    for project, retry, scenario, check, subscription in push_recipient_observations:
+        print(
+            f"live E2E push recipient project={project} retry={retry} "
+            f"scenario={scenario} check={check} subscription={subscription}",
             flush=True,
         )
     for record in story_setup_diagnostics:
@@ -6102,6 +6116,11 @@ def _run_live_playwright(
             f"fixed_cb_found={str(fixed_cb_found).lower()} fixed_cb_depth={fixed_cb_depth} "
             f"cb_left_milli={cb_left} cb_right_milli={cb_right} "
             f"cb_top_milli={cb_top} cb_bottom_milli={cb_bottom}",
+            flush=True,
+        )
+    for record in events_geometries:
+        print(
+            "live E2E events geometry " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
     for (
