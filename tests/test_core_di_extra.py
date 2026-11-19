@@ -46,8 +46,8 @@ async def test_cqrs_provider_dependencies():
 
     mock_db = AsyncMock()
     mock_cache = AsyncMock()
-    handler = provider.get_schedule_handler(db=mock_db, cache=mock_cache)
-    assert handler is not None
+    handler = provider.get_schedule_handler(db=mock_db)
+    assert handler.db is mock_db
 
     mock_container = AsyncMock()
     bus = provider.query_bus(container=mock_container)
@@ -59,22 +59,19 @@ async def test_cqrs_provider_dependencies():
     stats_handler = provider.get_stats_handler(
         db=mock_db, cache=mock_cache, analytics_service=mock_analytics
     )
-    assert stats_handler is not None
+    assert stats_handler.cache is mock_cache
 
     c_bus = provider.command_bus(container=mock_container)
     assert c_bus is not None
 
     assert (
-        provider.create_schedule_handler(service=mock_service, cache=mock_cache)
-        is not None
+        provider.create_schedule_handler(service=mock_service).service is mock_service
     )
     assert (
-        provider.update_schedule_handler(service=mock_service, cache=mock_cache)
-        is not None
+        provider.update_schedule_handler(service=mock_service).service is mock_service
     )
     assert (
-        provider.delete_schedule_handler(service=mock_service, cache=mock_cache)
-        is not None
+        provider.delete_schedule_handler(service=mock_service).service is mock_service
     )
 
 

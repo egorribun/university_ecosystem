@@ -41,7 +41,6 @@ def test_cache_ttl_validators_reject_invalid_values():
         "cache_user_max_size",
         "cache_config_max_size",
         "cache_news_l1_max_size",
-        "cache_schedule_l1_max_size",
     ),
 )
 @pytest.mark.parametrize("value", (0, -1))
@@ -56,7 +55,6 @@ def test_cache_l1_capacity_rejects_non_positive_values(field, value):
         "cache_user_max_size",
         "cache_config_max_size",
         "cache_news_l1_max_size",
-        "cache_schedule_l1_max_size",
     ),
 )
 def test_cache_l1_capacity_accepts_positive_boundary(field):
@@ -85,51 +83,49 @@ def test_nats_auth_token_file_errors_are_validation_errors(monkeypatch):
 
 
 def test_cache_warmup_properties_coerce_and_deduplicate_values():
-    first_group, second_group = uuid.uuid4(), uuid.uuid4()
     first_user, second_user = uuid.uuid4(), uuid.uuid4()
     settings = CacheSettings(
-        cache_warmup_groups=f"{first_group}, bad, {second_group}, {first_group}",
         cache_warmup_stats_users=f"{first_user},invalid,{second_user}",
         cache_warmup_periods="30D, 90d, , 30d, 7D",
     )
-    assert settings.cache_warmup_group_ids == (first_group, second_group, first_group)
     assert settings.cache_warmup_stats_user_ids == (first_user, second_user)
     assert settings.cache_warmup_period_keys == ("30d", "90d", "7d")
 
 
 def test_cache_warmup_properties_handle_empty_and_iterable_inputs():
     settings = CacheSettings(
-        cache_warmup_groups=[],
         cache_warmup_stats_users=[],
         cache_warmup_periods=[],
     )
-    assert settings.cache_warmup_group_ids == ()
     assert settings.cache_warmup_stats_user_ids == ()
     assert settings.cache_warmup_period_keys == ()
 
 
 def test_cache_warmup_properties_preserve_uuid_ids_and_skip_invalid_tokens():
-    group_ids = (uuid.uuid4(), uuid.uuid4())
-    user_id = uuid.uuid4()
+    user_ids = (uuid.uuid4(), uuid.uuid4())
     settings = CacheSettings(
-        cache_warmup_groups=f"{group_ids[0]},not-a-uuid,{group_ids[1]},{group_ids[0]}",
-        cache_warmup_stats_users=f"{user_id},invalid",
+        cache_warmup_stats_users=f"{user_ids[0]},invalid,{user_ids[1]},{user_ids[0]}",
     )
 
-    assert settings.cache_warmup_group_ids == (*group_ids, group_ids[0])
-    assert settings.cache_warmup_stats_user_ids == (user_id,)
+    assert settings.cache_warmup_stats_user_ids == (*user_ids, user_ids[0])
 
 
 @pytest.mark.parametrize("as_json", [False, True], ids=["csv", "json-list"])
 def test_cache_warmup_uuid_ids_load_from_environment(monkeypatch, as_json):
-    group_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
-    user_ids = [str(uuid.uuid4())]
-    group_value = json.dumps(group_ids) if as_json else ",".join(group_ids)
+    user_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
     user_value = json.dumps(user_ids) if as_json else ",".join(user_ids)
-    monkeypatch.setenv("CACHE_WARMUP_GROUPS", group_value)
     monkeypatch.setenv("CACHE_WARMUP_STATS_USERS", user_value)
 
     settings = CacheSettings(_env_file=None)
 
-    assert settings.cache_warmup_group_ids == tuple(map(uuid.UUID, group_ids))
     assert settings.cache_warmup_stats_user_ids == tuple(map(uuid.UUID, user_ids))
+
+
+def test_schedule_cache_settings_are_not_exposed():
+    assert {
+        "cache_warmup_groups",
+        "cache_schedule_l1_max_size",
+        "cache_schedule_l1_ttl_s",
+        "cache_schedule_l2_ttl_s",
+    }.isdisjoint(CacheSettings.model_fields)
+    assert not hasattr(CacheSettings(), "cache_warmup_group_ids")

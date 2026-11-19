@@ -37,9 +37,8 @@ class QueryResult:
 
 
 class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
-    def __init__(self, db: AsyncSession, cache: BaseCache) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self.cache = cache
 
     def _localize_schedule_payload(
         self, payload: Sequence[Any], locale: str | None
@@ -54,9 +53,8 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         return localized
 
     async def handle(self, query: GetScheduleQuery) -> QueryResult:
-        # Shared group-only entries can outlive the tenant scope that filled them.
-        # Always query through this session's RLS before evaluating a validator.
-        # Fetch from DB using Repository  # LOW-W19: ScheduleRepository import moved to top-level
+        # Group-keyed server caches cannot carry tenant scope, so the schedule is
+        # always read through this session's RLS before a validator is evaluated.
         repo = ScheduleRepository(self.db)
 
         rows = await repo.get_by_group(
@@ -71,7 +69,7 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
             payload, locale=query.locale
         )
 
-        # Hash the localized representation, never an unscoped cached payload.
+        # The ETag is the digest of exactly the localized representation served.
         digest = hashlib.sha256(
             json.dumps(
                 localized_payload,

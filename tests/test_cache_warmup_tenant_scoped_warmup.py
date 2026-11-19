@@ -29,7 +29,6 @@ async def _run_warm_cache() -> tuple[AsyncMock, AsyncMock, AsyncMock]:
         patch("app.services.cache_warmup.settings") as settings_mock,
         patch("app.services.cache_warmup.get_cache", return_value=cache),
         patch("app.services.cache_warmup.async_session") as session_factory,
-        patch("app.services.cache_warmup._warm_schedule", AsyncMock()),
         patch("app.services.cache_warmup._warm_stats", AsyncMock()),
         patch("app.services.cache_warmup._warm_news", warm_news),
         patch("app.services.cache_warmup.news_cache_version", news_version),

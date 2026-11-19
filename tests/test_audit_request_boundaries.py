@@ -64,25 +64,24 @@ async def test_schedule_delete_preserves_actor_to_actual_handler(
         get_by_id=AsyncMock(return_value=None if missing else record),
         delete_schedule=AsyncMock(return_value=True),
     )
-    cache = AsyncMock()
-    handler = DeleteScheduleHandler(service, cache)
+    handler = DeleteScheduleHandler(service)
     bus = SimpleNamespace(execute=handler.handle)
+    schedule_id = uuid.uuid4()
     if status == 200:
         assert await call_injected(
             _delete_schedule,
-            id=uuid.uuid4(),
+            id=schedule_id,
             request=request(),
             user=actor,
             checker=SimpleNamespace(check_admin=AsyncMock(return_value=True)),
             provides={"CommandBus": bus},
         ) == {"ok": True}
-        service.delete_schedule.assert_awaited_once()
-        cache.invalidate.assert_awaited_once_with(f"schedule:group:{record.group_id}")
+        service.delete_schedule.assert_awaited_once_with(schedule_id)
     else:
         with pytest.raises(HTTPException) as exc:
             await call_injected(
                 _delete_schedule,
-                id=uuid.uuid4(),
+                id=schedule_id,
                 request=request(),
                 user=actor,
                 checker=SimpleNamespace(check_admin=AsyncMock(return_value=True)),
@@ -90,6 +89,7 @@ async def test_schedule_delete_preserves_actor_to_actual_handler(
             )
         assert exc.value.status_code == status
         service.delete_schedule.assert_not_awaited()
+    service.get_by_id.assert_awaited_once_with(schedule_id)
 
 
 async def test_summary_uses_one_real_async_session_sequentially():

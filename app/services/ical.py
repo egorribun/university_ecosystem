@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from app.schemas.dtos import ScheduleDTO
 
     # A lesson reaches this generator either as the mapped row or as the DTO
-    # the schedule service returns (including from cache); every field is read
+    # the schedule service returns; every field is read
     # through ``getattr``, so both shapes work and both are declared.
     LessonLike = models.Schedule | ScheduleDTO
 

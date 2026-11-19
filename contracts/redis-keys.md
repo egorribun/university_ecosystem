@@ -261,18 +261,6 @@ are `app/api/deps/etag.py` and the endpoint/warmup modules listed above.
 
 ---
 
-### Schedule Cache
-
-| Key Pattern | TTL | Owner (write) | Readers | Purpose |
-|-------------|-----|---------------|---------|---------|
-| `schedule:groups` | `cache_schedule_l2_ttl_s` for repository cache (default 7200s) | Python `app/repositories/schedule_repository.py` | Python schedule repository | Cached schedule group list |
-| `schedule:group:{group_id}` | Repository L2 `cache_schedule_l2_ttl_s` (default 7200s); cache warmup uses configured `cache_default_ttl_seconds` (default 300s) | Python `app/repositories/schedule_repository.py`, `app/services/cache_warmup.py` | Python schedule API, repository, and warmup | Schedule rows for one group |
-
-Both TTL settings are runtime-configurable; these defaults describe current
-configuration and are not fixed key-contract constants.
-
----
-
 ### Health Probe
 
 | Key Pattern | TTL | Owner (write) | Readers | Purpose |

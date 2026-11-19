@@ -7,14 +7,12 @@ from typing import TYPE_CHECKING
 
 from fastapi.encoders import jsonable_encoder
 
-from app.api.schedule import _SCHEDULE_CACHE_TTL_SECONDS
 from app.core.cache_versioning import news_cache_version
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.core.tenant import get_bypass_rls, get_current_tenant
 from app.deps.cache import BaseCache, CacheEntry, get_cache
-from app.schemas import schemas
 from app.services import stats_cache
 
 if TYPE_CHECKING:
@@ -28,53 +26,6 @@ def _is_entry_fresh(entry: CacheEntry) -> bool:
     if max_age <= 0:
         return True
     return (time.time() - entry.stored_at) <= max_age
-
-
-def _schedule_cache_key(group_id: uuid.UUID | str) -> str:
-    return f"schedule:group:{group_id}"
-
-
-async def _warm_schedule_group(
-    cache: BaseCache, db: AsyncSession, group_id: uuid.UUID | str, *, ttl_seconds: int
-) -> None:
-    if not cache.enabled:
-        return
-
-    cache_key = _schedule_cache_key(group_id)
-    cached = await cache.get(cache_key)
-    if cached and _is_entry_fresh(cached):
-        return
-
-    from app.repositories.unit_of_work import uow_from_session
-    from app.services.schedule_optimizer import ScheduleOptimizerService
-    from app.services.schedule_service import ScheduleService
-
-    uow = uow_from_session(db)
-    optimizer = ScheduleOptimizerService()
-    service = ScheduleService(uow, optimizer)
-
-    rows = await service.get_schedule(group_id)
-    if not rows:
-        return
-
-    models_out = [schemas.ScheduleOut.model_validate(item) for item in rows]
-    payload = jsonable_encoder(models_out)
-    await cache.set(cache_key, payload, ttl=ttl_seconds)
-
-
-async def _warm_schedule(cache: BaseCache, db: AsyncSession) -> None:
-    if not settings.cache_warmup_group_ids:
-        return
-    ttl = (
-        getattr(settings, "cache_default_ttl_seconds", _SCHEDULE_CACHE_TTL_SECONDS)
-        or _SCHEDULE_CACHE_TTL_SECONDS
-    )
-    for group_id in settings.cache_warmup_group_ids:
-        # Keep best-effort isolation while serializing access to the shared session.
-        await asyncio.gather(
-            _warm_schedule_group(cache, db, str(group_id), ttl_seconds=ttl),
-            return_exceptions=True,
-        )
 
 
 def _period_days_from_key(period_key: str) -> int | None:
@@ -196,7 +147,6 @@ async def warm_cache() -> None:
             # Event lists require a user and contain that user's attendance data.
             # Startup has no identity for an event-list cache entry.
             # One AsyncSession cannot safely run concurrent database operations.
-            await _warm_schedule(cache, db)
             await _warm_stats(cache, db)
             if not get_current_tenant() and not get_bypass_rls():
                 await news_cache_version.prepare_warmup(cache)

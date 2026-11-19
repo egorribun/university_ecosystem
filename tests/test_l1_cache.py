@@ -11,7 +11,7 @@ from app.core.cache import (
     LRUCache,
     MultiLayerCache,
     config_cache,
-    schedule_cache,
+    news_cache,
     user_cache,
 )
 
@@ -242,10 +242,10 @@ class TestGlobalCaches:
         assert user_cache is not None
         assert isinstance(user_cache, LRUCache)
 
-    def test_schedule_cache_exists(self):
-        """Test schedule_cache singleton."""
-        assert schedule_cache is not None
-        assert isinstance(schedule_cache, MultiLayerCache)
+    def test_news_cache_exists(self):
+        """Test news_cache singleton."""
+        assert news_cache is not None
+        assert isinstance(news_cache, MultiLayerCache)
 
     def test_config_cache_exists(self):
         """Test config_cache singleton."""

@@ -54,9 +54,9 @@ class ScheduleService:
         creator_id: uuid.UUID | None = None,
     ) -> ScheduleDTO:
         # Serialize the conflict read and write in one transaction. The
-        # repository query bypasses the display cache and its 500-row cap.
+        # conflict query bypasses the 500-row display limit.
         await self.repo.lock_schedule_mutations()
-        # Resolve the parent in this transaction, not the shared display cache.
+        # Resolve the parent in this transaction before writing.
         # RLS hides foreign and unowned groups from the ordinary application role.
         if not await self.group_repo.get(data.group_id, with_for_update=True):
             raise EntityNotFound("Group", str(data.group_id))
