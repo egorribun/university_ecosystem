@@ -21,6 +21,7 @@ import sys
 import tempfile
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 
 MAX_INPUT_BYTES = 16 * 1024 * 1024
@@ -279,6 +280,164 @@ def _validate_jobs(
     return jobs
 
 
+def _validate_timing_integrity(
+    summary: Mapping[str, object], jobs: Sequence[Mapping[str, object]], mode: object
+) -> bool:
+    """Do not let the human projection discard contradictory timing markers."""
+    affected: list[int] = []
+    identifiers: list[int] = []
+    path_markers = False
+    for job in jobs:
+        path_markers = path_markers or "critical_path_end_basis" in job
+        path_markers = path_markers or "execution_interval" in job
+        evidence = job.get("github_timing_evidence")
+        if evidence is None:
+            if "dependency_work_cost_seconds" in job:
+                raise HealthReportError("nonexecution work cost lacks timing evidence")
+            continue
+        evidence = _mapping(evidence, "github_timing_evidence")
+        kind = evidence.get("kind")
+        marked = evidence.get("timing_validity") == "contradictory"
+        introduced = "dependency_work_cost_seconds" in job or any(
+            field in evidence
+            for field in ("timing_validity", "execution_state", "duration_basis")
+        )
+        if kind != "first_attempt_unexecuted_skip_timestamp_inversion":
+            if introduced:
+                raise HealthReportError("unrecognized contradictory timing marker")
+            continue
+        identifier = _non_negative_int(job.get("id"), "affected job id")
+        if identifier == 0:
+            raise HealthReportError("affected job id must be positive")
+        if (
+            not marked
+            or evidence.get("execution_state") != "not_executed"
+            or evidence.get("duration_basis") != "nonexecution_work_cost"
+            or job.get("status") != "completed"
+            or job.get("conclusion") != "skipped"
+            or "duration_seconds" not in job
+            or job.get("duration_seconds") is not None
+            or isinstance(job.get("dependency_work_cost_seconds"), bool)
+            or job.get("dependency_work_cost_seconds") != 0
+        ):
+            raise HealthReportError("invalid nonexecution timing evidence")
+        for field in (
+            "github_queue_wait_seconds",
+            "setup_install_seconds",
+            "actual_test_seconds",
+            "artifact_seconds",
+        ):
+            if job.get(field) is not None:
+                raise HealthReportError("nonexecution timing must remain unavailable")
+        timestamps: list[datetime] = []
+        for field in ("created_at", "started_at", "completed_at"):
+            value = _non_empty_text(evidence.get(field), f"timing.{field}")
+            try:
+                timestamp = datetime.fromisoformat(value)
+            except ValueError as error:
+                raise HealthReportError("invalid raw timing timestamp") from error
+            if timestamp.tzinfo is None:
+                raise HealthReportError("raw timing timestamp needs a timezone")
+            timestamps.append(timestamp)
+        created, started, completed = timestamps
+        if created != started or completed >= started:
+            raise HealthReportError("raw timing does not match contradictory marker")
+        affected.append(identifier)
+    integrity = summary.get("timing_integrity")
+    summary_markers = (
+        summary.get("critical_path_kind") == "dependency-work-cost"
+        or "dependency_work_cost_path_seconds" in summary
+    )
+    if integrity is None and not affected and not path_markers and not summary_markers:
+        return False
+    integrity = _mapping(integrity, "summary.timing_integrity")
+    if (
+        integrity.get("state") != "contradictory"
+        or integrity.get("certification") != "unavailable"
+        or integrity.get("utilization_scope") != "valid_execution_intervals_only"
+        or not affected
+    ):
+        raise HealthReportError("invalid timing integrity state")
+    for job in jobs:
+        identifier = _non_negative_int(job.get("id"), "job id")
+        if identifier == 0 or identifier in identifiers:
+            raise HealthReportError("job ids must be unique and positive")
+        identifiers.append(identifier)
+    declared = integrity.get("affected_job_ids")
+    if not isinstance(declared, list):
+        raise HealthReportError("affected job ids must be an array")
+    for identifier in declared:
+        if _non_negative_int(identifier, "affected job id") == 0:
+            raise HealthReportError("affected job id must be positive")
+    if sorted(declared) != sorted(affected):
+        raise HealthReportError("timing integrity does not match affected jobs")
+    expected_kind = "dependency-work-cost" if mode == "strict" else "lower-bound"
+    if summary.get("critical_path_kind") != expected_kind:
+        raise HealthReportError("contradictory timing cannot certify an exact path")
+    valid_intervals = False
+    for job in jobs:
+        interval = _mapping(job.get("execution_interval"), "execution_interval")
+        if set(interval) != {"started_at", "completed_at"}:
+            raise HealthReportError("execution interval endpoints are invalid")
+        endpoints: list[datetime | None] = []
+        for field in ("started_at", "completed_at"):
+            raw = interval[field]
+            if raw is None:
+                endpoints.append(None)
+                continue
+            value = _non_empty_text(raw, f"execution_interval.{field}")
+            try:
+                endpoint = datetime.fromisoformat(value)
+            except ValueError as error:
+                raise HealthReportError("invalid execution interval") from error
+            if endpoint.utcoffset() is None:
+                raise HealthReportError("execution interval needs a timezone")
+            endpoints.append(endpoint)
+        started, completed = endpoints
+        duration = _non_negative_number(job.get("duration_seconds"), "duration_seconds")
+        if job["id"] in affected:
+            evidence = _mapping(job["github_timing_evidence"], "timing evidence")
+            if any(interval[field] != evidence[field] for field in interval):
+                raise HealthReportError("contradictory interval differs from evidence")
+            continue
+        if started is None or completed is None:
+            if duration is not None:
+                raise HealthReportError("incomplete interval duration is unavailable")
+            continue
+        delta = (completed - started).total_seconds()
+        if duration != round(max(0.0, delta), 3):
+            raise HealthReportError("execution interval differs from duration")
+        if delta > 0:
+            valid_intervals = True
+    if not valid_intervals:
+        for field in (
+            "wall_clock_seconds",
+            "peak_slot_utilization",
+            "peak_concurrency",
+            "average_slot_utilization",
+        ):
+            if field not in summary or summary[field] is not None:
+                raise HealthReportError("nonexecution utilization must be unavailable")
+        if mode == "diagnostic-lower-bound":
+            if summary.get("critical_path_lower_bound_seconds") is not None:
+                raise HealthReportError("nonexecution elapsed bound is unavailable")
+    if mode == "strict":
+        if any(
+            job.get("critical_path_end_basis") != "dependency-work-cost" for job in jobs
+        ):
+            raise HealthReportError("strict work cost path needs explicit row bases")
+        if "critical_path_seconds" in summary:
+            raise HealthReportError("exact critical path timing must be unavailable")
+        _non_negative_number(
+            summary.get("dependency_work_cost_path_seconds"),
+            "dependency_work_cost_path_seconds",
+            allow_none=False,
+        )
+    elif any("critical_path_end_basis" in job for job in jobs):
+        raise HealthReportError("diagnostic timing cannot assert a strict work path")
+    return True
+
+
 def _validated_parts(
     report: object,
 ) -> tuple[
@@ -301,6 +460,7 @@ def _validated_parts(
     timing = _validate_timing(summary)
     resource = _validate_resource_usage(summary)
     jobs = _validate_jobs(root, job_count)
+    _validate_timing_integrity(summary, jobs, root.get("analysis_mode"))
     return root, summary, jobs, timing, resource, digest
 
 
@@ -337,6 +497,7 @@ def render_report(report: object, *, max_skipped: int = 20) -> str:
     root, summary, jobs, timing, resource, digest = _validated_parts(report)
     run_id, repository, mode = _validate_report_identity(root)
 
+    contradictory = _validate_timing_integrity(summary, jobs, mode)
     outcomes = {outcome: 0 for outcome in OUTCOME_ORDER}
     for job in jobs:
         outcomes[_outcome(job)] += 1
@@ -365,6 +526,22 @@ def render_report(report: object, *, max_skipped: int = 20) -> str:
         "| Outcome | Count |",
         "|---|---:|",
     ]
+    if contradictory:
+        integrity = _mapping(summary["timing_integrity"], "timing_integrity")
+        affected_ids = integrity["affected_job_ids"]
+        if not isinstance(affected_ids, list):
+            raise HealthReportError("affected job ids must be an array")
+        affected = ", ".join(str(value) for value in affected_ids)
+        lines[2:2] = [
+            "> **Timing certification unavailable:** contradictory API timestamps "
+            "were preserved for nonexecuted jobs. Zero dependency work cost is "
+            "not measured elapsed time. Strict mode validates DAG provenance, "
+            "not these timestamps.",
+            f"> Affected job IDs: {_safe_cell(affected)}.",
+            "> Wall clock and utilization include valid execution intervals only; "
+            "unavailable when none exist.",
+            "",
+        ]
     lines.extend(
         f"| {_safe_cell(outcome)} | {count} |"
         for outcome, count in outcomes.items()
