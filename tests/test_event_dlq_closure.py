@@ -1,11 +1,13 @@
 """Branch closure tests for in-memory DeadLetterQueue recovery paths."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.core.event_dlq import DeadLetterQueue, FailedEvent
+from app.core.events import EventBus, UserCreated
 
 
 def _event(event_id="event-1", event_type="test.event"):
@@ -111,3 +113,113 @@ async def test_remove_returns_false_for_unknown_event():
 
     assert await dlq.remove("second") is True
     assert await dlq.remove("missing") is False
+
+
+async def _strict_replay(queue, bus, mode):
+    if mode == "manual":
+        return await queue.replay(bus)
+    return await queue.auto_replay(
+        bus=bus, base_backoff=0, jitter=0, rate_limit_delay=0
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["manual", "auto"])
+@pytest.mark.parametrize(
+    "outcome", ["success", "failure", "no-handler", "wildcard-only"]
+)
+async def test_real_event_bus_replay_requires_handler_success(mode, outcome):
+    bus = EventBus()
+    queue = DeadLetterQueue()
+    bus.set_dlq(queue)
+    event = UserCreated()
+    effects = []
+
+    async def completed(evt):
+        effects.append(evt.event_id)
+
+    async def failed(_evt):
+        raise RuntimeError("synthetic-handler-failure")
+
+    if outcome in {"success", "failure"}:
+        bus.subscribe(event.event_type, completed)
+    if outcome == "wildcard-only":
+        bus.subscribe_all(completed)
+    if outcome == "failure":
+        bus.subscribe(event.event_type, failed)
+    await queue.add(event, RuntimeError("initial"))
+    original = (await queue.get_all())[0]
+
+    result = await _strict_replay(queue, bus, mode)
+
+    if outcome == "success":
+        assert result == (1, 0)
+        assert queue.size == 0
+        assert effects == [event.event_id]
+    else:
+        assert result == (0, 1)
+        assert await queue.get_all() == [original]
+        assert original.retry_count == (1 if mode == "auto" else 0)
+        if outcome in {"no-handler", "wildcard-only"}:
+            assert effects == []
+        if outcome == "failure":
+            assert effects == [event.event_id]
+            bus.unsubscribe(event.event_type, failed)
+            assert await _strict_replay(queue, bus, mode) == (1, 0)
+            # Replay is at-least-once: successful siblings run again.
+            assert effects == [event.event_id, event.event_id]
+            assert queue.size == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["manual", "auto"])
+async def test_real_event_bus_replay_cancellation_retains_event(mode):
+    bus = EventBus()
+    queue = DeadLetterQueue()
+    bus.set_dlq(queue)
+    event = UserCreated()
+    entered = asyncio.Event()
+    cleaned = asyncio.Event()
+
+    async def blocked(_evt):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaned.set()
+
+    bus.subscribe(event.event_type, blocked)
+    await queue.add(event, RuntimeError("initial"))
+    original = (await queue.get_all())[0]
+    task = asyncio.create_task(_strict_replay(queue, bus, mode))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cleaned.is_set()
+        assert await queue.get_all() == [original]
+        assert original.retry_count == 0
+        assert queue.is_replaying is False
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_auto_replay_without_bus_preserves_queued_record_and_status():
+    queue = DeadLetterQueue()
+    event = UserCreated()
+    await queue.add(event, RuntimeError("initial"))
+    original = (await queue.get_all())[0]
+    before = await queue.get_replay_status()
+
+    assert await queue.auto_replay() == (0, 0)
+
+    remaining = await queue.get_all()
+    assert len(remaining) == 1
+    assert remaining[0] is original
+    assert original.retry_count == 0
+    assert await queue.get_replay_status() == before
+    assert queue.is_replaying is False

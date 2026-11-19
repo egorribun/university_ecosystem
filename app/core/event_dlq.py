@@ -168,6 +168,12 @@ class DeadLetterQueue:
         """
         Automated recovery replay engine.
 
+        Strict dispatch awaits handler outcomes without recursively enqueueing
+        failures. It does not create a database transaction or durable storage.
+        Successful siblings may run again after partial failure; handlers must
+        be idempotent. Existing terminal policy drops events at max_retries.
+        In-memory records are also lost on process restart or capacity eviction.
+
         Features:
         - Thundering herd prevention via asyncio lock
         - Rate-limited batch processing
@@ -230,7 +236,7 @@ class DeadLetterQueue:
                                 break
 
                         try:
-                            await target_bus.publish(failed.event)
+                            await target_bus.publish(failed.event, durable=True)
                             await self.remove(failed.event.event_id)
                             batch_success += 1
                             self._total_replayed_success += 1
@@ -388,6 +394,9 @@ class DeadLetterQueue:
         """
         Replay events from the DLQ.
 
+        Strict dispatch retains failed events and avoids recursive DLQ entries.
+        Partial successes may run again; this is not exactly-once delivery.
+
         Args:
             bus: The EventBus to publish events to.
             event_type: Optional filter to replay only specific event types.
@@ -410,7 +419,7 @@ class DeadLetterQueue:
 
         for failed in events_to_replay:
             try:
-                await bus.publish(failed.event)
+                await bus.publish(failed.event, durable=True)
                 success_count += 1
                 success_ids.add(failed.event.event_id)
                 logger.info(

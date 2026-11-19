@@ -32,6 +32,7 @@ from app.api.validation import (
 )
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.event_dlq import dead_letter_queue as in_memory_dlq
+from app.core.events import event_bus
 from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit.circuit_breaker import get_circuit_breaker
@@ -200,6 +201,7 @@ async def trigger_dlq_replay(
 
     if request.target in ("all", "in_memory"):
         in_mem_success, in_mem_failed = await in_memory_dlq.auto_replay(
+            bus=event_bus,
             batch_size=request.batch_size,
             force=request.force,
         )
