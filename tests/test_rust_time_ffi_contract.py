@@ -1,11 +1,21 @@
 """Native time behavior at the Python ABI boundary."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
+ROOT = Path(__file__).resolve().parents[1]
+
 rust_ext = pytest.importorskip("rust_ext", reason="rust_ext not built")
+
+
+def test_native_source_uses_time_without_chrono() -> None:
+    """The ABI checks below exercise the time-based implementation."""
+    source = (ROOT / "native/rust_ext/src/lib.rs").read_text(encoding="utf-8")
+    assert "chrono" not in source.lower()
+    assert "use time::{" in source
 
 
 def test_partition_dates_and_errors_remain_python_compatible() -> None:
