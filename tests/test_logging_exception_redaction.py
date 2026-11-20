@@ -12,6 +12,7 @@ import pytest
 
 from app.core.logging import (
     _format_safe_exc_info,
+    _redact_free_text,
     _safe_exception_attributes,
     _safe_exception_snapshot,
 )
@@ -182,7 +183,10 @@ def test_non_list_exception_note_is_rendered_without_iterating_its_characters() 
 def test_traceback_snapshot_never_reads_source_lines_or_frame_locals(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "exception_probe.py"
+    synthetic_phone = "4" * 11
+    source = tmp_path / f"{synthetic_phone}-exception_probe.py"
+    safe_parent = _redact_free_text(str(source.parent))
+    safe_source = str(Path(safe_parent) / "[REDACTED]-exception_probe.py")
     source.write_text(
         "def fail():\n"
         "    local_payload = 'synthetic-value'\n"
@@ -199,9 +203,11 @@ def test_traceback_snapshot_never_reads_source_lines_or_frame_locals(
     assert "synthetic-value" not in json.dumps(attributes)
     assert "local_payload" not in json.dumps(attributes)
     frames = details["frames"]
-    assert frames[-1] == {"file": str(source), "line": 3, "function": "fail"}
+    assert frames[-1] == {"file": safe_source, "line": 3, "function": "fail"}
+    assert synthetic_phone not in frames[-1]["file"]
+    assert synthetic_phone not in json.dumps(attributes)
     assert all(set(frame) == {"file", "line", "function"} for frame in frames)
     assert (
-        f'  File "{source}", line 3, in fail\nValueError: safe message'
+        f'  File "{safe_source}", line 3, in fail\nValueError: safe message'
         in attributes["exception.stacktrace"]
     )
