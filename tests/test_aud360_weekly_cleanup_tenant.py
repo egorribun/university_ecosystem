@@ -152,19 +152,37 @@ async def test_sqlite_legacy_orphan_cleanup_preserves_valid_parent():
         await engine.dispose()
 
 
-def test_module_entrypoint_calls_cleanup_without_opening_database(monkeypatch):
+def test_main_schedules_weekly_cleanup_once_without_opening_database(monkeypatch):
+    pending = object()
+    selected = MagicMock(return_value=pending)
+    runner = MagicMock(return_value={"subscriptions_removed": 0})
+    database = MagicMock(side_effect=AssertionError("unexpected database access"))
+    monkeypatch.setattr(cleanup, "run_weekly_cleanup", selected)
+    monkeypatch.setattr(cleanup.asyncio, "run", runner)
+    monkeypatch.setattr(cleanup, "async_session", database)
+
+    cleanup.main()
+
+    selected.assert_called_once_with()
+    runner.assert_called_once_with(pending)
+    database.assert_not_called()
+
+
+def test_module_entrypoint_submits_one_coroutine_without_running_it(monkeypatch):
+    import inspect
     import runpy
 
     calls = []
 
     def run(coroutine):
-        calls.append(coroutine.cr_code.co_name)
+        assert inspect.iscoroutine(coroutine)
         coroutine.close()
+        calls.append(coroutine)
         return {"subscriptions_removed": 0}
 
     monkeypatch.setattr(cleanup.asyncio, "run", run)
     runpy.run_path(cleanup.__file__, run_name="__main__")
-    assert calls == ["run_weekly_cleanup"]
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
