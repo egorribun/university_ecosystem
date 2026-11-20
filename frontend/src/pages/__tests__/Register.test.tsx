@@ -115,6 +115,7 @@ describe("Register page", () => {
     const password = screen.getByLabelText(matchText(tAuth("fields.password")))
     const confirmation = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
     expect(password.closest("form")).toHaveAttribute("method", "post")
+    expect(password.closest("form")).toHaveAttribute("data-csrf", "header")
     expect(password).toHaveAttribute("name", "password")
     expect(confirmation).toHaveAttribute("name", "confirmPassword")
   })

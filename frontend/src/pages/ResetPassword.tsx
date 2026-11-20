@@ -34,6 +34,7 @@ import {
   clearLegacyResetTokenForMigration,
   type CapturedLegacyResetToken,
 } from "@/features/auth/legacyResetTokenState"
+import { API_SUBMITTED_FORM } from "@/utils/apiSubmittedForm"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
 import {
   captureActiveTelemetryContext,
@@ -712,6 +713,7 @@ export default function ResetPassword() {
                   </div>
 
                   <form
+                    {...API_SUBMITTED_FORM}
                     method="post"
                     onSubmit={handleTelemetrySubmit}
                     autoComplete="on"

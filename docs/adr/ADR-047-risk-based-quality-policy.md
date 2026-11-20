@@ -3045,3 +3045,45 @@ unchanged. Predecessor projection restores the exact prior proof, AUD-433 test
 and policy record before earlier checks. No identity is added: the inventory
 remains 242 baseline identities, 524 dispositions, 27 Gitleaks fingerprints and
 15 Semgrep rows. This record does not establish a passing scan or hosted checks.
+
+## Decisions recorded on 2026-11-21
+
+### ZAP CSRF-token alerts on script-submitted forms
+
+The owner approved reporting ZAP rules 10202 (Absence of Anti-CSRF Tokens) and
+20012 (Anti-CSRF Tokens Check) as informational for the login, registration and
+password-reset forms. Script submits these forms through the API client, which
+echoes the double-submit `csrf_token` cookie in the `X-CSRF-Token` header. The
+backend CSRF middleware rejects unsafe requests without it, so the forms carry no
+hidden token field.
+
+- **Mechanism.** The forms spread `API_SUBMITTED_FORM`
+  (`frontend/src/utils/apiSubmittedForm.ts`), which renders
+  `data-csrf="header"`. The scan passes
+  `rules.csrf.ignore.attname=data-csrf` and `rules.csrf.ignore.attvalue=header`
+  (`scripts/quality/zap_runner.py`). Both rules then raise those forms at
+  informational risk. `tests/test_dast_accepted_policy_contract.py` requires
+  every native POST form in the frontend to carry the marker.
+- **Scope.** Only forms with that exact attribute and value. An unmarked form
+  keeps its medium risk and fails the gate.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10, together with the
+  other DAST decisions in this record.
+
+### ZAP CSP sub-alert 10055-6 accepted at low risk
+
+The owner accepted the risk of `style-src 'unsafe-inline'`. React style props
+and framer-motion write inline styles, and removing them is not MVP scope.
+`.zap/rules.tsv` matches a rule ID, not a sub-alert, so rule 10055 stays enabled.
+At start, the scan hook (`scripts/quality/zap_origin_evidence.py`) installs one
+global ZAP alert filter. The filter lowers alert reference 10055-6 from medium to
+low, and only when the evidence header keeps the exact directive
+`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`. A hook that
+cannot install the filter stops the scan, so no report is produced.
+
+- **Scope.** Only sub-alert 10055-6 with that directive. A wider `style-src`
+  and every other 10055 sub-alert, including the `img-src` wildcard (10055-4),
+  keep ZAP's own risk. The contract test binds the backend and Node SSR policies
+  to the filter's evidence pattern.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10.
+- **Not established.** Neither decision is a passing scan. AUD-381 still needs a
+  green hosted ZAP run on `main` with a verified report.

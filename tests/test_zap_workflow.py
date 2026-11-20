@@ -320,7 +320,9 @@ def test_native_runner_executes_the_exact_full_scan_command():
         "-m",
         "10",
         "-z",
-        "-config ajaxSpider.maxDuration=10 -config scanner.maxScanDurationInMins=30",
+        "-config ajaxSpider.maxDuration=10 -config scanner.maxScanDurationInMins=30"
+        " -config rules.csrf.ignore.attname=data-csrf"
+        " -config rules.csrf.ignore.attvalue=header",
         "-T",
         "60",
         "--hook=/zap/origin-hook.py",

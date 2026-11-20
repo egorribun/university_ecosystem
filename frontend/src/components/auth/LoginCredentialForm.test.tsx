@@ -104,6 +104,7 @@ describe("LoginCredentialForm — default render", () => {
 
     expect(form?.getAttribute("method")).toBe("post")
     expect(form?.method).toBe("post")
+    expect(form).toHaveAttribute("data-csrf", "header")
     expect(password).toHaveAttribute("name", "password")
   })
 
