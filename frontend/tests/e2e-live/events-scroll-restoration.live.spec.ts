@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { sampleEventsGeometry } from "./events-geometry"
+import { isStaggerRowSettled } from "../e2e/utils/eventsPosition"
 import { liveDeadlineBoundedTimeoutMs, liveTestSlotDeadlineAtMs, loginAs, test } from "./fixtures"
 
 const LANGUAGE_KEY = "ue:language"
-
 const EVENT_LOCALES = [
   {
     code: "ru",
@@ -156,7 +156,7 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
   await expect(selectedEvent).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
   await selectedEvent.scrollIntoViewIfNeeded()
-
+  await expect.poll(() => selectedEvent.evaluate(isStaggerRowSettled)).toBe(true)
   const selectedHref = await selectedEvent.getAttribute("href")
   expect(selectedHref).toMatch(/^\/events\/[0-9a-f-]+$/u)
   const selectedUrl = new URL(selectedHref ?? "", page.url())
