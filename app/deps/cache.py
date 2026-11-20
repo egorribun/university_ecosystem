@@ -48,9 +48,11 @@ from nats.errors import (
 )
 from nats.errors import Error as NatsError
 from nats.js.errors import (
+    BucketNotFoundError,
     KeyNotFoundError,
     NoKeysError,
     NoStreamResponseError,
+    NotFoundError,
     ServerError,
     ServiceUnavailableError,
 )
@@ -77,7 +79,7 @@ class StrictCacheInvalidationError(CacheBackendUnavailable):
     """A strict cache invalidation did not complete and must be retried."""
 
 
-_NATS_CACHE_TRANSPORT_ERRORS = (
+_NATS_CACHE_UNAVAILABLE_ERRORS = (
     OSError,
     CacheBackendUnavailable,
     ConnectionClosedError,
@@ -88,9 +90,17 @@ _NATS_CACHE_TRANSPORT_ERRORS = (
     OutboundBufferLimitError,
     StaleConnectionError,
     NoStreamResponseError,
+    NotFoundError,
     ServerError,
     ServiceUnavailableError,
 )
+
+
+def _missing_nats_bucket(exc: NotFoundError) -> bool:
+    # A cached KV handle reports the deleted stream as JetStream 404/10059.
+    return isinstance(exc, BucketNotFoundError) or (
+        type(exc) is NotFoundError and exc.code == 404 and exc.err_code == 10059
+    )
 
 
 def _strict_exact_keys(keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -762,7 +772,11 @@ class NatsKVCache(BaseCache):
         try:
             kv = await self._get_kv()
             await kv.put(_encode_kv_key(key), envelope)
-        except _NATS_CACHE_TRANSPORT_ERRORS as exc:  # RZ-22-01: NATS transport failures
+        except (
+            _NATS_CACHE_UNAVAILABLE_ERRORS
+        ) as exc:  # RZ-22-01: NATS availability failures
+            if isinstance(exc, NotFoundError) and not _missing_nats_bucket(exc):
+                raise
             logger.warning(
                 "NATS KV set failed",
                 cache_key_fingerprint=_cache_key_fingerprint(key),
@@ -794,7 +808,11 @@ class NatsKVCache(BaseCache):
                             await kv.delete(k)
                 else:
                     await kv.delete(_encode_kv_key(key))
-        except _NATS_CACHE_TRANSPORT_ERRORS as exc:  # RZ-22-01: NATS transport failures
+        except (
+            _NATS_CACHE_UNAVAILABLE_ERRORS
+        ) as exc:  # RZ-22-01: NATS availability failures
+            if isinstance(exc, NotFoundError) and not _missing_nats_bucket(exc):
+                raise
             logger.warning("NATS KV invalidate failed", error_type=type(exc).__name__)
 
     async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
