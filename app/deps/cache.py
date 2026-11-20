@@ -911,6 +911,35 @@ class TieredCache(BaseCache):
         )
 
 
+async def supports_bounded_retention(cache: BaseCache, max_age_seconds: int) -> bool:
+    """Check that cache storage expires entries within the requested bound."""
+    if isinstance(cache, TieredCache):
+        return await supports_bounded_retention(
+            cache.l1, max_age_seconds
+        ) and await supports_bounded_retention(cache.l2, max_age_seconds)
+    if isinstance(cache, NatsKVCache):
+        # KV put() does not apply its per-entry TTL; the bucket must enforce it.
+        try:
+            bucket = await cache._get_kv()
+            bucket_ttl = (await bucket.status()).ttl
+        except (NatsError, OSError, CacheBackendUnavailable):
+            return False
+        return (
+            isinstance(bucket_ttl, int | float)
+            and not isinstance(bucket_ttl, bool)
+            and 0 < bucket_ttl <= max_age_seconds
+        )
+    return isinstance(cache, MemoryCache | RedisCache | RedisClusterCache | NullCache)
+
+
+def bounded_cache_ttl(cache: BaseCache, max_age_seconds: int) -> int:
+    """Use the shortest positive configured TTL without exceeding the bound."""
+    candidates = [max_age_seconds, settings.cache_default_ttl_seconds]
+    if isinstance(cache, TieredCache):
+        candidates.append(settings.cache_l1_ttl_seconds)
+    return min(value for value in candidates if value > 0)
+
+
 P = ParamSpec("P")
 R = TypeVar("R")
 
@@ -1003,6 +1032,12 @@ def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
     )
     normalized = orjson.loads(serialized) if serialized else jsonable
     return normalized, serialized
+
+
+def cache_payload_etag(payload: Any) -> str:
+    """Hash a payload using the same canonical representation as cache entries."""
+    _, serialized = _normalize_payload(payload)
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def create_cache_backend() -> BaseCache:
@@ -1123,6 +1158,8 @@ __all__ = [
     "NullCache",
     "RedisCache",
     "TieredCache",
+    "bounded_cache_ttl",
+    "cache_payload_etag",
     "cached",
     "create_cache_backend",
     "etag_matches",
@@ -1130,4 +1167,5 @@ __all__ = [
     "get_cache",
     "set_cache_backend",
     "shutdown_cache",
+    "supports_bounded_retention",
 ]
