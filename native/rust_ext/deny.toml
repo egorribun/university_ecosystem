@@ -6,13 +6,6 @@ targets = []
 [advisories]
 db-path = "~/.cargo-deny-advisories"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Owner decision 2026-11-17: RUSTSEC-2026-0543 declares chrono (used directly
-# and through pyo3's `chrono` feature) unmaintained. It reports no
-# vulnerability and offers no safe upgrade. Remove this exception by
-# 2026-12-17, when rust_ext moves to the `time` crate.
-ignore = [
-  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; owner-approved until the rust_ext migration to `time` (remove by 2026-12-17)" },
-]
 
 [licenses]
 allow = [

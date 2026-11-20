@@ -1,12 +1,12 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
 #![allow(unexpected_cfgs)]
-use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::any::Any;
 use std::fmt::Display;
 use subtle::{Choice, ConstantTimeEq};
+use time::{Date, Month, OffsetDateTime, SignedDuration as Duration, Weekday};
 use zeroize::Zeroizing;
 
 // pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject
@@ -183,7 +183,7 @@ fn check_conflict_with_metadata(
     b_metadata: &ConflictMetadata,
 ) -> bool {
     let (a_day, b_day) = match (a_metadata.weekday, b_metadata.weekday) {
-        (Some(a), Some(b)) => (a.num_days_from_monday(), b.num_days_from_monday()),
+        (Some(a), Some(b)) => (a.number_days_from_monday(), b.number_days_from_monday()),
         _ => {
             // Preserve the legacy comparison for unknown custom weekday labels.
             if !weekday_comparison_value(a_metadata)
@@ -596,19 +596,31 @@ fn find_optimal_slot_py(
     py.detach(|| find_optimal_slot(duration_minutes, existing_schedule, available_blocks))
 }
 
-fn checked_slot_end(start: DateTime<Utc>, duration: Duration) -> Option<DateTime<Utc>> {
-    start.checked_add_signed(duration)
+// Preserve the date range accepted by the previous implementation, including
+// signed years used by existing partition names. `time` enables large dates so
+// those names are not truncated to its default +/-9999-year range.
+const MIN_SUPPORTED_YEAR: i32 = -262_143;
+const MAX_SUPPORTED_YEAR: i32 = 262_142;
+
+fn supported_year(year: i32) -> bool {
+    (MIN_SUPPORTED_YEAR..=MAX_SUPPORTED_YEAR).contains(&year)
+}
+
+fn checked_slot_end(start: OffsetDateTime, duration: Duration) -> Option<OffsetDateTime> {
+    start
+        .checked_add(duration)
+        .filter(|date| supported_year(date.year()))
 }
 
 fn weekday_name(wd: Weekday) -> &'static str {
     match wd {
-        Weekday::Mon => "monday",
-        Weekday::Tue => "tuesday",
-        Weekday::Wed => "wednesday",
-        Weekday::Thu => "thursday",
-        Weekday::Fri => "friday",
-        Weekday::Sat => "saturday",
-        Weekday::Sun => "sunday",
+        Weekday::Monday => "monday",
+        Weekday::Tuesday => "tuesday",
+        Weekday::Wednesday => "wednesday",
+        Weekday::Thursday => "thursday",
+        Weekday::Friday => "friday",
+        Weekday::Saturday => "saturday",
+        Weekday::Sunday => "sunday",
     }
 }
 
@@ -621,7 +633,7 @@ fn find_optimal_slot(
         "find_optimal_slot",
         std::panic::AssertUnwindSafe(|| {
             find_optimal_slot_at(
-                Utc::now().date_naive(),
+                OffsetDateTime::now_utc().date(),
                 duration_minutes,
                 existing_schedule,
                 available_blocks,
@@ -631,7 +643,7 @@ fn find_optimal_slot(
 }
 
 fn find_optimal_slot_at(
-    today: NaiveDate,
+    today: Date,
     duration_minutes: u32,
     existing_schedule: Vec<ScheduleItem>,
     available_blocks: Vec<(String, Vec<u32>)>,
@@ -647,14 +659,15 @@ fn find_optimal_slot_at(
         };
         let target_date = next_weekday(today, target_wd);
         for hour in hours {
-            let start_date_time = target_date
-                .and_hms_opt(hour, 0, 0)
-                .map(|ndt| Utc.from_utc_datetime(&ndt));
+            let start_date_time = u8::try_from(hour)
+                .ok()
+                .and_then(|hour| target_date.with_hms(hour, 0, 0).ok())
+                .map(|date_time| date_time.assume_utc());
 
             let Some(start_dt) = start_date_time else {
                 continue;
             };
-            // `duration_minutes` is a u32, so conversion to chrono's
+            // `duration_minutes` is a u32, so conversion to an
             // i64-backed duration cannot overflow; keeping this path
             // infallible avoids an unreachable branch in the scheduler.
             let dur = Duration::minutes(duration_minutes as i64);
@@ -665,8 +678,8 @@ fn find_optimal_slot_at(
             let candidate = ScheduleItem {
                 id: None,
                 weekday: day.clone(),
-                start_time: start_dt.timestamp(),
-                end_time: end_dt.timestamp(),
+                start_time: start_dt.unix_timestamp(),
+                end_time: end_dt.unix_timestamp(),
                 parity: "both".to_string(),
             };
 
@@ -683,31 +696,34 @@ fn find_optimal_slot_at(
 }
 
 /// Find the next date (today or later) that falls on the given weekday.
-fn next_weekday(from: NaiveDate, target: Weekday) -> NaiveDate {
-    let current = from.weekday().num_days_from_monday();
-    let target_num = target.num_days_from_monday();
-    let days_ahead = (target_num as i64 - current as i64 + 7) % 7;
-    // If today is the target weekday, use today (days_ahead == 0).
-    from + Duration::days(days_ahead)
+fn next_weekday(from: Date, target: Weekday) -> Date {
+    let current = from.weekday().number_days_from_monday();
+    let target_num = target.number_days_from_monday();
+    let days_ahead = (i64::from(target_num) - i64::from(current) + 7) % 7;
+    // Keep the prior overflow behavior when adding beyond the supported range.
+    match from.checked_add(Duration::days(days_ahead)) {
+        Some(date) if supported_year(date.year()) => date,
+        _ => panic!("`NaiveDate + TimeDelta` overflowed"),
+    }
 }
 
-/// Parse a weekday string (case-insensitive) into a chrono Weekday.
+/// Parse a weekday string (case-insensitive).
 pub fn parse_weekday(s: &str) -> Option<Weekday> {
     let trimmed = s.trim();
     if trimmed.eq_ignore_ascii_case("monday") || trimmed.eq_ignore_ascii_case("mon") {
-        Some(Weekday::Mon)
+        Some(Weekday::Monday)
     } else if trimmed.eq_ignore_ascii_case("tuesday") || trimmed.eq_ignore_ascii_case("tue") {
-        Some(Weekday::Tue)
+        Some(Weekday::Tuesday)
     } else if trimmed.eq_ignore_ascii_case("wednesday") || trimmed.eq_ignore_ascii_case("wed") {
-        Some(Weekday::Wed)
+        Some(Weekday::Wednesday)
     } else if trimmed.eq_ignore_ascii_case("thursday") || trimmed.eq_ignore_ascii_case("thu") {
-        Some(Weekday::Thu)
+        Some(Weekday::Thursday)
     } else if trimmed.eq_ignore_ascii_case("friday") || trimmed.eq_ignore_ascii_case("fri") {
-        Some(Weekday::Fri)
+        Some(Weekday::Friday)
     } else if trimmed.eq_ignore_ascii_case("saturday") || trimmed.eq_ignore_ascii_case("sat") {
-        Some(Weekday::Sat)
+        Some(Weekday::Saturday)
     } else if trimmed.eq_ignore_ascii_case("sunday") || trimmed.eq_ignore_ascii_case("sun") {
-        Some(Weekday::Sun)
+        Some(Weekday::Sunday)
     } else {
         None
     }
@@ -734,10 +750,30 @@ impl<'py> FromPyObject<'_, 'py> for PartitionInfo {
     }
 }
 
-fn utc_month_start(year: i32, month: u32, error_message: &str) -> PyResult<chrono::DateTime<Utc>> {
-    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
-        .single()
+fn checked_utc_month_start(year: i32, month: u32) -> Option<OffsetDateTime> {
+    let month = Month::try_from(u8::try_from(month).ok()?).ok()?;
+    let date = Date::from_calendar_date(year, month, 1).ok()?;
+    if !supported_year(year) {
+        return None;
+    }
+    Some(date.midnight().assume_utc())
+}
+
+fn utc_month_start(year: i32, month: u32, error_message: &str) -> PyResult<OffsetDateTime> {
+    checked_utc_month_start(year, month)
         .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(error_message.to_string()))
+}
+
+fn format_utc_month_start(date: OffsetDateTime) -> String {
+    let year = date.year();
+    let year = if year < 0 {
+        format!("-{:04}", year.unsigned_abs())
+    } else if year > 9_999 {
+        format!("+{year}")
+    } else {
+        format!("{year:04}")
+    };
+    format!("{year}-{:02}-01T00:00:00+00:00", u8::from(date.month()))
 }
 
 #[pyfunction]
@@ -763,7 +799,7 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
                     "month_offset {month_offset} is out of the allowed range [-120, 120]"
                 )));
             }
-            let now = Utc::now();
+            let now = OffsetDateTime::now_utc();
             // RZ-33-24: Use div_euclid/rem_euclid for correct negative month_offset
             // arithmetic.  Rust's `/` and `%` truncate toward zero, which produces
             // wrong results when total_months is zero or negative (e.g., January with
@@ -784,8 +820,8 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
 
             Ok(PartitionInfo {
                 name: format!("{}_y{}m{:02}", table_name, target_year, target_month),
-                start_date: start_date.to_rfc3339(),
-                end_date: end_date.to_rfc3339(),
+                start_date: format_utc_month_start(start_date),
+                end_date: format_utc_month_start(end_date),
             })
         }),
     )
@@ -875,13 +911,13 @@ pub fn is_partition_expired(
                 (p_year, p_month + 1)
             };
 
-            if let Some(p_end_date) = Utc
-                .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-                .single()
-            {
-                if let Some(dur) = Duration::try_days(retention_days) {
-                    if let Some(cutoff) = Utc::now().checked_sub_signed(dur) {
-                        return p_end_date < cutoff;
+            if let Some(p_end_date) = checked_utc_month_start(next_year, next_month) {
+                if let Some(seconds) = retention_days.checked_mul(86_400) {
+                    let duration = Duration::seconds(seconds);
+                    if let Some(cutoff) = OffsetDateTime::now_utc().checked_sub(duration) {
+                        if supported_year(cutoff.year()) {
+                            return p_end_date < cutoff;
+                        }
                     }
                 }
             }
@@ -1054,7 +1090,6 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[allow(clippy::unwrap_used, clippy::expect_used)] // test code legitimately uses unwrap/expect
 mod tests {
     use super::*;
-    use chrono::{DateTime, Timelike};
 
     struct ZeroizeDropProbe(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
@@ -1234,6 +1269,114 @@ mod tests {
     }
 
     #[test]
+    fn slot_timestamps_use_utc_across_week_and_dst_boundaries() {
+        for (today, weekday, hour, duration, expected_start, expected_end) in [
+            (
+                (2026, 1, 4),
+                "sunday",
+                23,
+                120,
+                1_767_567_600,
+                1_767_574_800,
+            ),
+            ((2026, 3, 8), "sunday", 9, 60, 1_772_960_400, 1_772_964_000),
+            ((2026, 11, 1), "sunday", 9, 60, 1_793_523_600, 1_793_527_200),
+        ] {
+            let date =
+                Date::from_calendar_date(today.0, Month::try_from(today.1).unwrap(), today.2)
+                    .unwrap();
+            let slot = find_optimal_slot_at(
+                date,
+                duration,
+                Vec::new(),
+                vec![(weekday.to_string(), vec![hour])],
+            )
+            .unwrap();
+            assert_eq!(
+                (slot.start_time, slot.end_time),
+                (expected_start, expected_end)
+            );
+            assert_eq!(slot.weekday, weekday);
+            assert_eq!(slot.parity, "both");
+        }
+    }
+
+    #[test]
+    fn signed_year_and_large_retention_expiry_preserve_checked_range() {
+        for (name, days, expected) in [
+            ("events_y-10000m01", 0, true),
+            ("events_y-262143m01", 0, true),
+            ("events_y-262144m01", 0, false),
+            ("events_y-300000m01", 0, false),
+            ("events_y-1000000m01", 0, false),
+            ("events_y-10000m01", 100_000_000, false),
+            ("events_y-10000m01", i64::MAX, false),
+            ("events_y-10000m01", i64::MAX / 86_400, false),
+            ("events_y-10000m01", i64::MAX / 86_400 + 1, false),
+            ("events_y-10000m01", 106_751_991_167, false),
+            ("events_y0m01", 0, false),
+            ("events_y-1m12", 0, true),
+        ] {
+            assert_eq!(
+                is_partition_expired(name.to_string(), "events".to_string(), days).unwrap(),
+                expected,
+                "{name} with retention {days}"
+            );
+        }
+    }
+
+    #[test]
+    fn partition_month_format_keeps_utc_and_extended_years() {
+        for (year, month, expected) in [
+            (1, 1, "0001-01-01T00:00:00+00:00"),
+            (2024, 2, "2024-02-01T00:00:00+00:00"),
+            (10_000, 12, "+10000-12-01T00:00:00+00:00"),
+            (-1, 12, "-0001-12-01T00:00:00+00:00"),
+        ] {
+            let date = checked_utc_month_start(year, month).unwrap();
+            assert_eq!(format_utc_month_start(date), expected);
+        }
+        assert!(checked_utc_month_start(MIN_SUPPORTED_YEAR - 1, 1).is_none());
+        assert!(checked_utc_month_start(MAX_SUPPORTED_YEAR + 1, 1).is_none());
+        assert!(checked_utc_month_start(2026, 256).is_none());
+    }
+
+    #[test]
+    fn pyo3_time_conversion_preserves_utc_and_fixed_offsets() {
+        use time::UtcOffset;
+        Python::initialize();
+        Python::attach(|py| {
+            for offset in [UtcOffset::UTC, UtcOffset::from_hms(-5, 0, 0).unwrap()] {
+                let original = Date::from_calendar_date(2026, Month::March, 8)
+                    .unwrap()
+                    .with_hms_micro(1, 30, 0, 123_456)
+                    .unwrap()
+                    .assume_offset(offset);
+                let value = original.into_pyobject(py).unwrap();
+                let restored: OffsetDateTime = value.extract().unwrap();
+                assert_eq!(
+                    restored.unix_timestamp_nanos(),
+                    original.unix_timestamp_nanos()
+                );
+                assert_eq!(restored.offset(), offset);
+            }
+            let datetime = py.import("datetime").unwrap().getattr("datetime").unwrap();
+            let naive = datetime.call1((2026, 3, 8, 1, 30)).unwrap();
+            assert!(naive
+                .extract::<OffsetDateTime>()
+                .unwrap_err()
+                .is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+        });
+    }
+
+    #[test]
+    fn next_weekday_keeps_overflow_failure_at_the_historical_limit() {
+        let last = Date::from_calendar_date(MAX_SUPPORTED_YEAR, Month::December, 31).unwrap();
+        let next = last.weekday().next();
+        assert!(std::panic::catch_unwind(|| next_weekday(last, next)).is_err());
+    }
+
+    #[test]
     fn partition_info_out_of_range_minus_121() {
         // One past the minimum — should return an error, not panic.
         let result = get_partition_info("audit_logs".to_string(), -121);
@@ -1257,7 +1400,7 @@ mod tests {
 
     #[test]
     fn partition_info_december_rolls_into_january() {
-        let month = Utc::now().month() as i32;
+        let month = OffsetDateTime::now_utc().month() as i32;
         let offset = 12 - month;
         let info = get_partition_info("events".to_string(), offset).unwrap();
         assert!(info.name.ends_with("m12"));
@@ -1309,23 +1452,21 @@ mod tests {
 
     #[test]
     fn aud045_historical_months_are_retained_until_their_end() {
-        let now = Utc::now();
-        let current_month = Utc
-            .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
-            .single()
-            .unwrap();
+        let now = OffsetDateTime::now_utc();
+        let current_month =
+            utc_month_start(now.year(), u32::from(u8::from(now.month())), "Invalid date").unwrap();
         let previous_month = current_month - Duration::days(1);
         let days = i64::from(now.day()) + 1;
         for name in [
             format!(
                 "notifications_{:04}_{:02}",
                 previous_month.year(),
-                previous_month.month()
+                u8::from(previous_month.month())
             ),
             format!(
                 "notifications_y{:04}m{:02}",
                 previous_month.year(),
-                previous_month.month()
+                u8::from(previous_month.month())
             ),
         ] {
             assert!(
@@ -1453,10 +1594,8 @@ mod tests {
     #[test]
     fn partition_expiry_handles_unrepresentable_retention_through_python() {
         Python::initialize();
-        assert!(Duration::try_days(100_000_000).is_some());
-        assert!(Utc::now()
-            .checked_sub_signed(Duration::days(100_000_000))
-            .is_none());
+        let cutoff = OffsetDateTime::now_utc().checked_sub(Duration::days(100_000_000));
+        assert!(cutoff.is_none_or(|date| !supported_year(date.year())));
         Python::attach(|py| {
             let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
             rust_ext(&module).unwrap();
@@ -1829,9 +1968,9 @@ mod tests {
 
     #[test]
     fn test_parse_weekday() {
-        assert_eq!(parse_weekday("monday"), Some(Weekday::Mon));
-        assert_eq!(parse_weekday("MON"), Some(Weekday::Mon));
-        assert_eq!(parse_weekday("Friday"), Some(Weekday::Fri));
+        assert_eq!(parse_weekday("monday"), Some(Weekday::Monday));
+        assert_eq!(parse_weekday("MON"), Some(Weekday::Monday));
+        assert_eq!(parse_weekday("Friday"), Some(Weekday::Friday));
         assert_eq!(parse_weekday("invalid"), None);
     }
 
@@ -2172,10 +2311,13 @@ mod tests {
     }
 
     #[test]
-    fn find_optimal_slot_rejects_durations_that_overflow_chrono() {
-        assert!(checked_slot_end(DateTime::<Utc>::MAX_UTC, Duration::seconds(1)).is_none());
-
-        let max_date = DateTime::<Utc>::MAX_UTC.date_naive();
+    fn find_optimal_slot_rejects_durations_beyond_supported_range() {
+        let max_date = Date::from_calendar_date(MAX_SUPPORTED_YEAR, Month::December, 31).unwrap();
+        let max_time = max_date
+            .with_hms_nano(23, 59, 59, 999_999_999)
+            .unwrap()
+            .assume_utc();
+        assert!(checked_slot_end(max_time, Duration::seconds(1)).is_none());
         let max_weekday = weekday_name(max_date.weekday()).to_string();
         assert!(
             find_optimal_slot_at(max_date, u32::MAX, Vec::new(), vec![(max_weekday, vec![0])],)
@@ -2186,10 +2328,12 @@ mod tests {
     #[test]
     fn find_optimal_slot_returns_none_when_all_candidates_conflict() {
         let day = "monday".to_string();
-        let date = next_weekday(Utc::now().date_naive(), Weekday::Mon);
-        let start = Utc
-            .from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
-            .timestamp();
+        let date = next_weekday(OffsetDateTime::now_utc().date(), Weekday::Monday);
+        let start = date
+            .with_hms(0, 0, 0)
+            .unwrap()
+            .assume_utc()
+            .unix_timestamp();
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: day.clone(),
@@ -2219,13 +2363,13 @@ mod tests {
         // weekday.  This verifies the public scheduling behavior for all
         // seven localized weekday names returned by the rollover path.
         for weekday in [
-            Weekday::Mon,
-            Weekday::Tue,
-            Weekday::Wed,
-            Weekday::Thu,
-            Weekday::Fri,
-            Weekday::Sat,
-            Weekday::Sun,
+            Weekday::Monday,
+            Weekday::Tuesday,
+            Weekday::Wednesday,
+            Weekday::Thursday,
+            Weekday::Friday,
+            Weekday::Saturday,
+            Weekday::Sunday,
         ] {
             let day = weekday_name(weekday).to_string();
             let available = vec![(day.clone(), vec![23])];
@@ -2243,12 +2387,14 @@ mod tests {
 
     #[test]
     fn find_optimal_slot_rejects_real_day_two_conflicts() {
-        let target_weekday = Weekday::Mon;
-        let target_date = next_weekday(Utc::now().date_naive(), target_weekday);
-        let next_date = target_date.succ_opt().unwrap();
-        let existing_start = Utc
-            .from_utc_datetime(&next_date.and_hms_opt(0, 30, 0).unwrap())
-            .timestamp();
+        let target_weekday = Weekday::Monday;
+        let target_date = next_weekday(OffsetDateTime::now_utc().date(), target_weekday);
+        let next_date = target_date.next_day().unwrap();
+        let existing_start = next_date
+            .with_hms(0, 30, 0)
+            .unwrap()
+            .assume_utc()
+            .unix_timestamp();
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: weekday_name(next_date.weekday()).to_string(),
@@ -2265,12 +2411,14 @@ mod tests {
 
     #[test]
     fn find_optimal_slot_accepts_non_conflicting_real_day_two_item() {
-        let target_weekday = Weekday::Mon;
-        let target_date = next_weekday(Utc::now().date_naive(), target_weekday);
-        let next_date = target_date.succ_opt().unwrap();
-        let existing_start = Utc
-            .from_utc_datetime(&next_date.and_hms_opt(3, 0, 0).unwrap())
-            .timestamp();
+        let target_weekday = Weekday::Monday;
+        let target_date = next_weekday(OffsetDateTime::now_utc().date(), target_weekday);
+        let next_date = target_date.next_day().unwrap();
+        let existing_start = next_date
+            .with_hms(3, 0, 0)
+            .unwrap()
+            .assume_utc()
+            .unix_timestamp();
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: weekday_name(next_date.weekday()).to_string(),
@@ -2289,14 +2437,18 @@ mod tests {
 
     #[test]
     fn find_optimal_slot_accepts_non_conflicting_real_same_day_item() {
-        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        assert_eq!(monday.weekday(), Weekday::Mon);
-        let existing_start = Utc
-            .from_utc_datetime(&monday.and_hms_opt(12, 0, 0).unwrap())
-            .timestamp();
-        let expected_start = Utc
-            .from_utc_datetime(&monday.and_hms_opt(9, 0, 0).unwrap())
-            .timestamp();
+        let monday = Date::from_calendar_date(2026, Month::January, 5).unwrap();
+        assert_eq!(monday.weekday(), Weekday::Monday);
+        let existing_start = monday
+            .with_hms(12, 0, 0)
+            .unwrap()
+            .assume_utc()
+            .unix_timestamp();
+        let expected_start = monday
+            .with_hms(9, 0, 0)
+            .unwrap()
+            .assume_utc()
+            .unix_timestamp();
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: "monday".to_string(),
@@ -2430,7 +2582,7 @@ mod tests {
         let found = slot.unwrap().expect("10:00 must remain available");
         assert_eq!(found.weekday, "monday");
         assert_eq!(
-            DateTime::<Utc>::from_timestamp(found.start_time, 0)
+            OffsetDateTime::from_unix_timestamp(found.start_time)
                 .unwrap()
                 .time()
                 .hour(),
@@ -2453,7 +2605,7 @@ mod tests {
                 .unwrap()
         );
 
-        // Duration::try_days rejects an i64-sized duration before subtraction.
+        // The checked conversion rejects an i64-sized duration before subtraction.
         assert!(!is_partition_expired(
             "events_y2020m01".to_string(),
             "events".to_string(),
@@ -2474,19 +2626,25 @@ mod tests {
 
     #[test]
     fn test_next_weekday() {
-        let from = NaiveDate::from_ymd_opt(2026, 7, 3).unwrap(); // Friday
+        let from = Date::from_calendar_date(2026, Month::July, 3).unwrap(); // Friday
 
         // Target Friday -> should be today (2026-07-03)
-        let friday = next_weekday(from, Weekday::Fri);
+        let friday = next_weekday(from, Weekday::Friday);
         assert_eq!(friday, from);
 
         // Target Saturday -> should be tomorrow (2026-07-04)
-        let saturday = next_weekday(from, Weekday::Sat);
-        assert_eq!(saturday, NaiveDate::from_ymd_opt(2026, 7, 4).unwrap());
+        let saturday = next_weekday(from, Weekday::Saturday);
+        assert_eq!(
+            saturday,
+            Date::from_calendar_date(2026, Month::July, 4).unwrap()
+        );
 
         // Target Thursday -> should be next week (2026-07-09)
-        let thursday = next_weekday(from, Weekday::Thu);
-        assert_eq!(thursday, NaiveDate::from_ymd_opt(2026, 7, 9).unwrap());
+        let thursday = next_weekday(from, Weekday::Thursday);
+        assert_eq!(
+            thursday,
+            Date::from_calendar_date(2026, Month::July, 9).unwrap()
+        );
     }
 
     #[test]
@@ -2608,13 +2766,13 @@ mod tests {
         // Derive Tuesday from the selected Monday candidate rather than from
         // today independently; otherwise the test is date-dependent whenever
         // today is Tuesday through Sunday.
-        let monday_date = next_weekday(Utc::now().date_naive(), Weekday::Mon);
+        let monday_date = next_weekday(OffsetDateTime::now_utc().date(), Weekday::Monday);
         let tuesday_date = monday_date + Duration::days(1);
         let tuesday_midnight = tuesday_date
-            .and_hms_opt(0, 0, 0)
+            .with_hms(0, 0, 0)
             .unwrap()
-            .and_utc()
-            .timestamp();
+            .assume_utc()
+            .unix_timestamp();
 
         let existing = vec![ScheduleItem {
             id: Some(1),
@@ -2635,8 +2793,8 @@ mod tests {
 
     #[test]
     fn find_optimal_slot_normalizes_epoch_day2_conflict() {
-        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        assert_eq!(monday.weekday(), Weekday::Mon);
+        let monday = Date::from_calendar_date(2026, Month::January, 5).unwrap();
+        assert_eq!(monday.weekday(), Weekday::Monday);
         let existing = vec![ScheduleItem {
             id: Some(2),
             weekday: "tuesday".to_string(),
@@ -2656,7 +2814,7 @@ mod tests {
 
     #[test]
     fn find_optimal_slot_normalizes_epoch_day2_non_conflict() {
-        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let monday = Date::from_calendar_date(2026, Month::January, 5).unwrap();
         let existing = vec![ScheduleItem {
             id: Some(3),
             weekday: "tuesday".to_string(),
@@ -2938,7 +3096,7 @@ mod tests {
             .expect("Optimal slot search must succeed");
 
         // Hour 10 conflicts with the 1970 baseline item (10:00-11:00). So hour 11 (11:00-12:00) must be picked.
-        let slot_dt = DateTime::<Utc>::from_timestamp(slot.start_time, 0).unwrap();
+        let slot_dt = OffsetDateTime::from_unix_timestamp(slot.start_time).unwrap();
         assert_eq!(
             slot_dt.time().hour(),
             11,
@@ -3219,7 +3377,7 @@ mod tests {
         let slot_mid = find_optimal_slot(60, existing_midnight, available_mid)
             .unwrap()
             .expect("Must find slot for hour 1");
-        let dt_mid = DateTime::<Utc>::from_timestamp(slot_mid.start_time, 0).unwrap();
+        let dt_mid = OffsetDateTime::from_unix_timestamp(slot_mid.start_time).unwrap();
         assert_eq!(
             dt_mid.time().hour(),
             1,
@@ -3238,7 +3396,7 @@ mod tests {
         let slot_night = find_optimal_slot(60, existing_night, available_night)
             .unwrap()
             .expect("Must find slot for hour 22");
-        let dt_night = DateTime::<Utc>::from_timestamp(slot_night.start_time, 0).unwrap();
+        let dt_night = OffsetDateTime::from_unix_timestamp(slot_night.start_time).unwrap();
         assert_eq!(
             dt_night.time().hour(),
             22,

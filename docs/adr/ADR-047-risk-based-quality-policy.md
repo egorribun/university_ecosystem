@@ -2920,6 +2920,20 @@ migration of `rust_ext` to the `time` crate (`pyo3` provides a `time`
 feature); the exception is removed in that change. No other advisory, licence,
 ban or source rule changes, and the Cargo Deny jobs remain required.
 
+This migration removes `chrono` from both native and fuzz lockfiles,
+switches the PyO3 integration feature to `time`, and removes this one exception
+from `native/rust_ext/deny.toml`. The existing UTC timestamps, partition strings,
+checked date range and fail-closed retention behavior remain the compatibility
+contract; `time` enables large dates to preserve signed historical years. The
+public Rust `parse_weekday` return type is now `time::Weekday`, so direct Rust
+consumers must adapt, while the Python API still exchanges integers and strings.
+
+Removing the obsolete exception does not attest to a passing advisory scan,
+performance gate, or hosted check. Run Cargo Deny for all three configured
+crates, fuzz and native checks, paired native performance measurements, and all
+required checks against the final source SHA. The decision does not alter any
+other disposition or quality threshold.
+
 ### Integrating unexecuted automated pull requests
 
 Draft pull requests produced without local execution are integrated only after
