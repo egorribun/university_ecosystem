@@ -8,15 +8,11 @@ import { Counter, Rate } from 'k6/metrics';
 // deliberately NOT in `errors` — see ws_connects_established below.
 const errors = new Rate('errors');
 
-// ROUND-12 (per the maintainer decision): the WS 101 UPGRADE is gated SEPARATELY.
-// ws-hub enforces a PER-IP WS-upgrade token bucket hardcoded to 10 / 60 s
-// (services/ws-hub/pkg/hub/hub.go:103 NewWSUpgradeRateLimiter(10,60); handlers.go:85
-// returns 429). It is a SECURITY control (boundary-burst protection) with no env
-// override — and ALL k6 VUs share ONE source IP via the socat host-publish, so a
-// single-IP load test can only ever land ~ burst(10) + refill(50s / 6s) ≈ 18
-// upgrades; the rest get 429 BY DESIGN. So we do NOT fail the run on throttled
-// upgrades; instead we COUNT successful 101s and assert the WS path works
-// end-to-end (login -> ticket -> 101 -> join -> message) at least a handful of times.
+// WebSocket upgrades have a separate gate. ws-hub uses a per-client-IP token
+// bucket with a default burst of 120 and refill of 120 per minute, configurable
+// via WS_UPGRADE_RATE_PER_MINUTE on ws-hub. VUs behind one socat source IP share
+// that budget, so the hub can return HTTP 429 once the bucket is exhausted.
+// ws_connects_established counts HTTP 101 responses, not room joins or messages.
 const wsConnects = new Counter('ws_connects_established');
 
 // k6 Options & SLA thresholds
@@ -27,13 +23,10 @@ export const options = {
         { duration: '10s', target: 0 },  // Ramp down
     ],
     thresholds: {
-        // `errors` (the AUTH chain) is the strict gate: every csrf / register /
-        // login / reprime / ticket must succeed (<1%). ws_connecting latency stays
-        // relaxed for the contended CI runner (precedent: f75de0ed7 "relax k6
-        // latencies"). ws_connects_established asserts the WS path works end-to-end
-        // at least a handful of times — NOT every attempt, because the per-IP
-        // upgrade limiter throttles a single-IP load test by design (see the
-        // ws_connects note above). 5 is well under the ~18 reachable (burst 10).
+        // The authentication chain (CSRF, register, login, reprime, ticket) has an
+        // error-rate gate below 1%. ws_connecting keeps a relaxed latency budget
+        // for contended CI runners. Require at least five HTTP 101 upgrades
+        // rather than expecting every attempt to fit the shared per-IP budget.
         errors: ['rate<0.01'],
         ws_connecting: ['p(95)<500'],
         ws_connects_established: ['count>=5'],
@@ -179,11 +172,8 @@ export default function () {
     }
     const ticket = JSON.parse(ticketRes.body).ticket;
 
-    // 5. Establish the WebSocket connection with the ticket.
-    // ws-hub serves the upgrade at exact /ws (services/ws-hub/main.go:133
-    // http.Handle("/ws", ...)). The /ws/chat -> /ws rewrite lives only in the
-    // DEV infrastructure/Caddyfile; k6 connects directly to ws-hub (Caddy is
-    // bypassed in CI), so /ws/chat would 404 — connect to /ws.
+    // Connect directly to ws-hub on its /ws route; this path does not depend on
+    // Caddy's same-origin /ws/chat routing.
     const url = `${WS_URL}/ws?ticket=${encodeURIComponent(ticket)}`;
 
     const res = ws.connect(url, {}, function (socket) {
@@ -226,11 +216,9 @@ export default function () {
         }, 8000);
     });
 
-    // INFORMATIONAL check (surfaces the throttle in the summary) — NOT added to
-    // the hard `errors` gate, because ws-hub's per-IP upgrade limiter 429s a
-    // single-IP load test BY DESIGN. We COUNT the successful 101s instead; the
-    // ws_connects_established threshold (count>=5) proves the WS path works
-    // end-to-end without failing on the expected per-IP throttle.
+    // Report upgrade results without adding them to the authentication error
+    // rate. The separate counter gates HTTP 101 responses; it does not verify
+    // application-message delivery.
     const wsOk = check(res, {
         'websocket connection established (101)': (r) => r && r.status === 101,
     });

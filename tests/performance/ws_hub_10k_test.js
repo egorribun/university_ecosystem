@@ -6,15 +6,14 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 // ws_hub_10k_test.js — 10 000 VU WebSocket stress test for ws-hub.
 //
 // Architecture notes:
-//   - ws-hub enforces a per-IP WS-upgrade token bucket (10 / 60 s, hardcoded).
-//     At 10 k VU scale with a single socat IP, the upgrade throttle IS a hard
-//     constraint — most VUs will get a 429. We count successful 101s and assert
-//     only that the upgrade path functions at all, not that every VU connects.
-//   - The AUTH steps (CSRF / register / login / ticket) are the correctness gate
-//     and must succeed at <1% error rate.
-//   - This test is intended for isolated ws-hub deployments with WS_UPGRADE_LIMIT
-//     raised (e.g. 10000 / 60) to allow meaningful load; the thresholds below
-//     reflect that environment.
+//   - ws-hub uses a per-client-IP WebSocket upgrade token bucket with a default
+//     burst of 120 and refill of 120 per minute. When VUs saturate one socat IP
+//     at that budget, most VUs will get a 429. We gate the number of sockets that
+//     open, not the success of every upgrade attempt.
+//   - The authentication chain (CSRF, register, login, reprime, ticket) must
+//     stay below a 1% error rate.
+//   - This workload assumes an isolated performance environment sized for the
+//     load, including its per-IP upgrade budget (WS_UPGRADE_RATE_PER_MINUTE).
 
 const errors = new Rate('errors');
 const wsConnectsEstablished = new Counter('ws_connects_established');
@@ -34,11 +33,11 @@ export const options = {
         // WS upgrade: p95 connection setup under 2 seconds in a properly configured
         // env where the upgrade limiter is relaxed.
         ws_connection_duration: ['p(95)<2000'],
-        // At least 50 000 WS messages received across all VUs (proves bidirectional
-        // delivery works under load, not just connection establishment).
+        // More than 50 000 incoming WebSocket frames across all VUs. The counter
+        // does not correlate incoming frames to specific messages sent by a VU.
         ws_msgs_received: ['count>50000'],
-        // At least 100 successful 101 upgrades (sanity gate — not every VU since
-        // per-IP rate limiting is a known design constraint for single-IP load tests).
+        // At least 100 sockets must open. A shared per-IP upgrade budget can
+        // prevent some attempts from opening a socket.
         ws_connects_established: ['count>=100'],
     },
 };
