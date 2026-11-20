@@ -159,3 +159,29 @@ def test_mutmut_asset_directories_remain_narrow_regular_inputs() -> None:
         path = ROOT / relative
         assert path.is_file()
         assert not path.is_symlink()
+
+
+def test_mutmut_also_copy_keeps_redis_compat_chart_closed() -> None:
+    """Keep the standalone Helm chart available without copying all charts."""
+
+    with (ROOT / "pyproject.toml").open("rb") as project_file:
+        project = tomllib.load(project_file)
+
+    configured = set(project["tool"]["mutmut"]["also_copy"])
+    assert "charts/redis-compat" in configured
+    assert "charts" not in configured
+
+    chart = ROOT / "charts" / "redis-compat"
+    templates = chart / "templates"
+    for directory in (chart.parent, chart, templates):
+        assert directory.is_dir() and not directory.is_symlink()
+
+    chart_files = {"Chart.yaml", "values.yaml", "values.schema.json"}
+    template_files = {"_helpers.tpl", "redis.yaml"}
+    assert {child.name for child in chart.iterdir()} == chart_files | {"templates"}
+    assert {child.name for child in templates.iterdir()} == template_files
+
+    for directory, names in ((chart, chart_files), (templates, template_files)):
+        for name in names:
+            path = directory / name
+            assert path.is_file() and not path.is_symlink(), path
