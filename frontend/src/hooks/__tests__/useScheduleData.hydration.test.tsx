@@ -66,7 +66,7 @@ it.each(["cold", "cached"] as const)(
       vi.fn(() => new Promise(() => undefined))
     )
     let server = true
-    vi.spyOn(api, "get").mockImplementation(async (url) => {
+    const apiGet = vi.spyOn(api, "get").mockImplementation(async (url) => {
       if (!server) return new Promise(() => undefined)
       if (url === "/users/me") return { data: user } as never
       if (url === "/groups") return { data: groups } as never
@@ -94,7 +94,9 @@ it.each(["cold", "cached"] as const)(
     expect(JSON.stringify(transferred)).not.toContain("fixture-user")
 
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window")!
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")!
     Object.defineProperty(globalThis, "window", { configurable: true, value: undefined })
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: undefined })
     let html: string
     try {
       html = renderToString(
@@ -106,8 +108,18 @@ it.each(["cold", "cached"] as const)(
           </CampusTimezoneProvider>
         </QueryClientProvider>
       )
+      const priorGroupReads = apiGet.mock.calls.filter(([url]) => url === "/groups").length
+      await serverClient.refetchQueries({
+        queryKey: scheduleGroupsQueryOptions().queryKey,
+        type: "all",
+      })
+      expect(apiGet.mock.calls.filter(([url]) => url === "/groups")).toHaveLength(
+        priorGroupReads + 1
+      )
+      expect(serverClient.getQueryData(scheduleGroupsQueryOptions().queryKey)).toEqual(groups)
     } finally {
       Object.defineProperty(globalThis, "window", descriptor)
+      Object.defineProperty(globalThis, "localStorage", storageDescriptor)
     }
     expect(html).toContain('data-group="none"')
     expect(html).toContain('data-loading="false"')
