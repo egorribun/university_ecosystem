@@ -5,16 +5,13 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseFragment } from "parse5"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const rootDir = path.resolve(__dirname, "../..")
+const frontendDir = path.resolve(__dirname, "..")
 
 export const SANITIZER_WASM_PATH = path.resolve(
-  rootDir,
-  "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm"
+  frontendDir,
+  "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm"
 )
-export const CRYPTO_WASM_PATH = path.resolve(
-  rootDir,
-  "frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm"
-)
+export const CRYPTO_WASM_PATH = path.resolve(frontendDir, "rust-crypto/pkg/uni_wasm_crypto_bg.wasm")
 
 const WASM_MAGIC = 0x0061736d
 // Real wasm-bindgen modules are hundreds of kilobytes; placeholders are tiny.
