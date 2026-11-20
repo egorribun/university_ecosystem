@@ -77,6 +77,9 @@ type TrustedTypesGlobal = Window & { trustedTypes?: unknown }
 
 const URL_ATTRIBUTES = new Set(["href", "src"])
 const SAFE_PROTOCOLS = new Set(["http:", "https:"])
+// Relative URLs resolve against this reserved origin, so only they keep it.
+const RELATIVE_URL_BASE = "https://article.invalid"
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i
 const SAFE_ID_PATTERN = /^[\p{L}\p{N}_-]{1,64}$/u
 const SAFE_CODE_CLASS_PATTERN = /^language-[a-z0-9_+-]+$/i
 const SAFE_ALIGN_VALUES = new Set(["left", "center", "right", "justify"])
@@ -99,7 +102,7 @@ const isUnsafeUrlAttribute = (name: string, value: string): boolean => {
 
   let url: URL
   try {
-    url = new URL(compact, "https://ue.local")
+    url = new URL(compact, RELATIVE_URL_BASE)
   } catch {
     return true
   }
@@ -107,7 +110,11 @@ const isUnsafeUrlAttribute = (name: string, value: string): boolean => {
   if (url.protocol === "data:") {
     return name !== "src" || !SAFE_DATA_IMAGE_URL_PATTERN.test(value.trim())
   }
-  return !SAFE_PROTOCOLS.has(url.protocol)
+  if (!SAFE_PROTOCOLS.has(url.protocol)) return true
+  // Article images load only from this site: img-src allows no other origin
+  // apart from Spotify album art (ADR-047). An image keeps only a relative URL;
+  // protocol-relative and backslash-authority forms resolve away from the base.
+  return name === "src" && (URL_SCHEME_PATTERN.test(compact) || url.origin !== RELATIVE_URL_BASE)
 }
 
 const hasEntityReference = (value: string): boolean => /&(?:#|[a-z])/i.test(value)
@@ -158,7 +165,7 @@ const sanitizeUrlValue = (name: "href" | "src", value: string, decode: boolean):
   return normalized && !isUnsafeUrlAttribute(name, normalized) ? normalized : null
 }
 
-/** Returns a safe http(s), relative, or fragment article URL. */
+/** Returns a safe article URL: http(s), relative or fragment links; same-site images. */
 export const sanitizeArticleUrl = (name: "href" | "src", value: string): string | null => {
   return sanitizeUrlValue(name, value, true)
 }

@@ -10,6 +10,8 @@ fails closed.
 """
 
 import asyncio
+import functools
+import hashlib
 import secrets
 import sys
 from datetime import UTC, datetime, timedelta
@@ -52,6 +54,7 @@ from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
+from app.utils.files import _cache_control_for_subdir, _get_storage_backend
 from scripts.seed_target import require_owned_live_stand_target
 from scripts.seed_tenant import (
     ensure_seed_tenant,
@@ -109,6 +112,60 @@ def _pair(base: datetime, pair: int) -> tuple[datetime, datetime]:
 # Data definitions
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Demo media
+# ---------------------------------------------------------------------------
+
+# Bundled demo photographs (provenance in demo_media/PROVENANCE.json). The seed
+# stores them like uploads so pages load them from the site itself: img-src
+# allows no third-party image host apart from Spotify album art (ADR-047).
+DEMO_MEDIA_DIR = Path(__file__).resolve().parent / "demo_media"
+# Public prefixes served by the image proxy. The content-addressed ``demo_``
+# names match no upload ownership pattern, so ownership-based cleanup of one
+# news item, story or event never deletes an image other rows share.
+_DEMO_MEDIA_PREFIXES = {
+    "news": "news_images",
+    "event": "tmp/event_images",
+    "story": "story_covers",
+}
+
+
+@functools.cache
+def _demo_media_key(file_name: str) -> str:
+    kind = file_name.partition("-")[0]
+    digest = hashlib.sha256((DEMO_MEDIA_DIR / file_name).read_bytes()).hexdigest()
+    return f"{_DEMO_MEDIA_PREFIXES[kind]}/demo_{digest[:32]}.webp"
+
+
+def demo_media_url(file_name: str) -> str:
+    """Return the storage URL that the seed records for a bundled demo image."""
+    base_url = _get_storage_backend().base_url
+    key = _demo_media_key(file_name)
+    return f"{base_url}/{key}" if base_url else f"/{key}"
+
+
+def _demo_media_files() -> list[str]:
+    return sorted(path.name for path in DEMO_MEDIA_DIR.glob("*.webp"))
+
+
+async def install_demo_media() -> None:
+    """Store every bundled demo image once under its content-addressed key."""
+    backend = _get_storage_backend()
+    for file_name in _demo_media_files():
+        key = _demo_media_key(file_name)
+        if await backend.exists(key):
+            continue
+        url = await backend.save_file(
+            key,
+            (DEMO_MEDIA_DIR / file_name).read_bytes(),
+            content_type="image/webp",
+            cache_control=_cache_control_for_subdir(key.rpartition("/")[0]),
+        )
+        if url != demo_media_url(file_name):
+            raise RuntimeError("demo media storage URL does not match its seed URL")
+    print(f"  ✓ Demo media: {len(_demo_media_files())} images")
+
+
 NEWS_DATA = [
     {
         "title": "ГУУ вошёл в топ-20 лучших университетов страны",
@@ -141,7 +198,7 @@ NEWS_DATA = [
             "Подробные результаты и сравнительные таблицы доступны на сайте "
             "рейтингового агентства."
         ),
-        "image_url": "https://picsum.photos/seed/news1/800/600",
+        "image_url": demo_media_url("news-01.webp"),
     },
     {
         "title": "Открыт приём заявок на международную конференцию по ИИ",
@@ -152,7 +209,7 @@ NEWS_DATA = [
             "опубликованы в сборнике, индексируемом в Scopus. "
             "Участие бесплатное для студентов и аспирантов университета."
         ),
-        "image_url": "https://picsum.photos/seed/news2/800/600",
+        "image_url": demo_media_url("news-02.webp"),
     },
     {
         "title": "Студенты ГУУ победили на хакатоне FinTech Challenge 2026",
@@ -163,7 +220,7 @@ NEWS_DATA = [
             "на основе машинного обучения. Призовой фонд составил 300 000 рублей, "
             "а победители получили предложения о стажировке от трёх крупных банков."
         ),
-        "image_url": "https://picsum.photos/seed/news3/800/600",
+        "image_url": demo_media_url("news-03.webp"),
     },
     {
         "title": "Новая лаборатория робототехники открылась в корпусе А",
@@ -174,7 +231,7 @@ NEWS_DATA = [
             "зрения и стенды для отработки алгоритмов управления. Лаборатория "
             "доступна студентам с 3-го курса специальности «Мехатроника и робототехника»."
         ),
-        "image_url": "https://picsum.photos/seed/news4/800/600",
+        "image_url": demo_media_url("news-04.webp"),
     },
     {
         "title": "День открытых дверей пройдёт 12 апреля",
@@ -184,7 +241,7 @@ NEWS_DATA = [
             "факультетов, задать вопросы приёмной комиссии и поучаствовать в "
             "демонстрационных мастер-классах. Регистрация открыта на сайте университета."
         ),
-        "image_url": "https://picsum.photos/seed/news5/800/600",
+        "image_url": demo_media_url("news-05.webp"),
     },
     {
         "title": "Стипендии имени Сеченова для студентов-медиков",
@@ -194,7 +251,7 @@ NEWS_DATA = [
             "Необходимые документы: академическое портфолио, рекомендательное письмо "
             "научного руководителя и эссе о карьерных целях. Дедлайн — 30 апреля."
         ),
-        "image_url": "https://picsum.photos/seed/news6/800/600",
+        "image_url": demo_media_url("news-06.webp"),
     },
     {
         "title": "Весенний спортивный фестиваль «Здоровый кампус»",
@@ -204,7 +261,7 @@ NEWS_DATA = [
             "теннису, а также забег «5 км за ГУУ» на набережной. Победители получат "
             "сертификаты в спортивный магазин. Регистрация команд до 16 апреля."
         ),
-        "image_url": "https://picsum.photos/seed/news7/800/600",
+        "image_url": demo_media_url("news-07.webp"),
     },
     {
         "title": "Соглашение о сотрудничестве с «Яндекс Образованием»",
@@ -215,7 +272,7 @@ NEWS_DATA = [
             "оплачиваемой стажировки в командах Яндекса. Первые места доступны уже в "
             "летнем наборе 2026 года."
         ),
-        "image_url": "https://picsum.photos/seed/news8/800/600",
+        "image_url": demo_media_url("news-08.webp"),
     },
     {
         "title": "Конкурс студенческих стартапов — подайте заявку до 5 мая",
@@ -225,7 +282,7 @@ NEWS_DATA = [
             "GreenTech и FinTech. Победители получат финансирование до 500 000 рублей "
             "и место в коворкинге технопарка сроком на один год."
         ),
-        "image_url": "https://picsum.photos/seed/news9/800/600",
+        "image_url": demo_media_url("news-09.webp"),
     },
     {
         "title": "Новый курс «Этика ИИ» открылся для всех направлений",
@@ -235,7 +292,7 @@ NEWS_DATA = [
             "Лекции будет читать приглашённый профессор из НИУ ВШЭ. Запись открыта в "
             "личном кабинете студента. Количество мест ограничено — 120 человек."
         ),
-        "image_url": "https://picsum.photos/seed/news10/800/600",
+        "image_url": demo_media_url("news-10.webp"),
     },
 ]
 
@@ -243,77 +300,77 @@ STORIES_DATA = [
     {
         "title": "🎓 Сессия: советы по подготовке",
         "short_text": "Как сдать сессию на отлично: 7 проверенных способов от старших курсов.",
-        "cover_url": "https://picsum.photos/seed/story1/400/700",
+        "cover_url": demo_media_url("story-01.webp"),
     },
     {
         "title": "📢 Открытая лекция: Web 3.0",
         "short_text": "Завтра в 18:00 аудитория 301 — лекция об архитектуре децентрализованных приложений.",
-        "cover_url": "https://picsum.photos/seed/story2/400/700",
+        "cover_url": demo_media_url("story-02.webp"),
     },
     {
         "title": "🏆 Наши победили!",
         "short_text": "Команда ГУУ заняла 1-е место на региональном чемпионате по программированию.",
-        "cover_url": "https://picsum.photos/seed/story3/400/700",
+        "cover_url": demo_media_url("story-03.webp"),
     },
     {
         "title": "☕ Новая кофейня в корпусе Б",
         "short_text": "Открылась студенческая кофейня с завтраками от 99 рублей. Работает с 8:00.",
-        "cover_url": "https://picsum.photos/seed/story4/400/700",
+        "cover_url": demo_media_url("story-04.webp"),
     },
     {
         "title": "📚 Библиотека обновила каталог",
         "short_text": "Поступило 200+ новых книг по программированию, Data Science и кибербезопасности.",
-        "cover_url": "https://picsum.photos/seed/story5/400/700",
+        "cover_url": demo_media_url("story-05.webp"),
     },
     {
         "title": "🎸 Репетиция студ. группы",
         "short_text": "Студенческая рок-группа «Нулевой указатель» ищет барабанщика. Проба сил в пт 17:00.",
-        "cover_url": "https://picsum.photos/seed/story6/400/700",
+        "cover_url": demo_media_url("story-06.webp"),
     },
     {
         "title": "🌱 Субботник в кампусе",
         "short_text": "Присоединяйся к весеннему субботнику в эту субботу. Начало в 10:00, корпус А.",
-        "cover_url": "https://picsum.photos/seed/story7/400/700",
+        "cover_url": demo_media_url("story-07.webp"),
     },
     {
         "title": "💼 Ярмарка вакансий",
         "short_text": "15 апреля — день карьеры. 40+ компаний ищут стажёров и выпускников.",
-        "cover_url": "https://picsum.photos/seed/story8/400/700",
+        "cover_url": demo_media_url("story-08.webp"),
     },
     {
         "title": "🔬 День науки в ГУУ",
         "short_text": "Выставка научных проектов студентов. Голосуй за лучший — призы от партнёров.",
-        "cover_url": "https://picsum.photos/seed/story9/400/700",
+        "cover_url": demo_media_url("story-09.webp"),
     },
     {
         "title": "🍕 Пицца-вечер факультета",
         "short_text": "Пятница, 19:00, холл ИИТ — неформальная встреча потока с преподавателями.",
-        "cover_url": "https://picsum.photos/seed/story10/400/700",
+        "cover_url": demo_media_url("story-10.webp"),
     },
     {
         "title": "📱 Обновление мобильного приложения",
         "short_text": "Вышла версия 2.5 приложения ГУУ: push-уведомления о парах и новый чат группы.",
-        "cover_url": "https://picsum.photos/seed/story11/400/700",
+        "cover_url": demo_media_url("story-11.webp"),
     },
     {
         "title": "🎨 Выставка студенческих работ",
         "short_text": "В галерее корпуса В открылась выставка дизайн-проектов 4-го курса.",
-        "cover_url": "https://picsum.photos/seed/story12/400/700",
+        "cover_url": demo_media_url("story-12.webp"),
     },
     {
         "title": "🏋️ Тренажёрный зал",
         "short_text": "Запишись на секцию по единоборствам — набор до 20 апреля, спорт. корпус 2 этаж.",
-        "cover_url": "https://picsum.photos/seed/story13/400/700",
+        "cover_url": demo_media_url("story-13.webp"),
     },
     {
         "title": "🚀 Митап: стартапы и карьера в IT",
         "short_text": "Выпускники расскажут о своём пути от первокурсника до CTO. Среда 18:30.",
-        "cover_url": "https://picsum.photos/seed/story14/400/700",
+        "cover_url": demo_media_url("story-14.webp"),
     },
     {
         "title": "🌍 Программа обмена 2026–27",
         "short_text": "Открыт приём заявок на академический обмен с университетами Германии и Финляндии.",
-        "cover_url": "https://picsum.photos/seed/story15/400/700",
+        "cover_url": demo_media_url("story-15.webp"),
     },
 ]
 
@@ -325,7 +382,7 @@ EVENTS_DATA = [
         "event_type": "lecture",
         "starts_at": _dt(2026, 4, 10, 15, 0),
         "ends_at": _dt(2026, 4, 10, 17, 0),
-        "image_url": "https://picsum.photos/seed/event1/800/600",
+        "image_url": demo_media_url("event-01.webp"),
     },
     {
         "title": "Воркшоп «FastAPI: от нуля до продакшена»",
@@ -334,7 +391,7 @@ EVENTS_DATA = [
         "event_type": "workshop",
         "starts_at": _dt(2026, 4, 15, 10, 0),
         "ends_at": _dt(2026, 4, 15, 18, 0),
-        "image_url": "https://picsum.photos/seed/event2/800/600",
+        "image_url": demo_media_url("event-02.webp"),
     },
     {
         "title": "Олимпиада по алгоритмическому программированию",
@@ -343,7 +400,7 @@ EVENTS_DATA = [
         "event_type": "competition",
         "starts_at": _dt(2026, 4, 20, 9, 0),
         "ends_at": _dt(2026, 4, 20, 14, 0),
-        "image_url": "https://picsum.photos/seed/event3/800/600",
+        "image_url": demo_media_url("event-03.webp"),
     },
     {
         "title": "Весенний концерт студенческих творческих коллективов",
@@ -352,7 +409,7 @@ EVENTS_DATA = [
         "event_type": "cultural",
         "starts_at": _dt(2026, 4, 25, 18, 30),
         "ends_at": _dt(2026, 4, 25, 21, 0),
-        "image_url": "https://picsum.photos/seed/event4/800/600",
+        "image_url": demo_media_url("event-04.webp"),
     },
     {
         "title": "Ярмарка вакансий «Карьера в IT»",
@@ -361,7 +418,7 @@ EVENTS_DATA = [
         "event_type": "workshop",
         "starts_at": _dt(2026, 5, 6, 11, 0),
         "ends_at": _dt(2026, 5, 6, 17, 0),
-        "image_url": "https://picsum.photos/seed/event5/800/600",
+        "image_url": demo_media_url("event-05.webp"),
     },
     {
         "title": "Хакатон «Цифровой университет»",
@@ -370,7 +427,7 @@ EVENTS_DATA = [
         "event_type": "competition",
         "starts_at": _dt(2026, 5, 16, 10, 0),
         "ends_at": _dt(2026, 5, 18, 10, 0),
-        "image_url": "https://picsum.photos/seed/event6/800/600",
+        "image_url": demo_media_url("event-06.webp"),
     },
     {
         "title": "Мастер-класс: публичные выступления и питчинг",
@@ -379,7 +436,7 @@ EVENTS_DATA = [
         "event_type": "workshop",
         "starts_at": _dt(2026, 5, 22, 14, 0),
         "ends_at": _dt(2026, 5, 22, 17, 0),
-        "image_url": "https://picsum.photos/seed/event7/800/600",
+        "image_url": demo_media_url("event-07.webp"),
     },
     {
         "title": "Первенство ГУУ по мини-футболу",
@@ -388,7 +445,7 @@ EVENTS_DATA = [
         "event_type": "sports",
         "starts_at": _dt(2026, 5, 30, 10, 0),
         "ends_at": _dt(2026, 5, 30, 18, 0),
-        "image_url": "https://picsum.photos/seed/event8/800/600",
+        "image_url": demo_media_url("event-08.webp"),
     },
     {
         "title": "Защита дипломных проектов — ИИТ 2026",
@@ -397,7 +454,7 @@ EVENTS_DATA = [
         "event_type": "lecture",
         "starts_at": _dt(2026, 6, 10, 9, 0),
         "ends_at": _dt(2026, 6, 10, 18, 0),
-        "image_url": "https://picsum.photos/seed/event9/800/600",
+        "image_url": demo_media_url("event-09.webp"),
     },
     {
         "title": "Выпускной вечер 2026",
@@ -406,7 +463,7 @@ EVENTS_DATA = [
         "event_type": "cultural",
         "starts_at": _dt(2026, 6, 28, 17, 0),
         "ends_at": _dt(2026, 6, 28, 23, 0),
-        "image_url": "https://picsum.photos/seed/event10/800/600",
+        "image_url": demo_media_url("event-10.webp"),
     },
 ]
 
@@ -758,7 +815,6 @@ def _demo_user_profile(user_id) -> UserProfile:
         about="Тестовый студент для демонстрации возможностей платформы ГУУ.",
         telegram="@test_student_guu",
         status="Учусь, программирую, пью кофе ☕",
-        avatar_url="https://picsum.photos/seed/avatar_test/256/256",
     )
 
 
@@ -1597,6 +1653,7 @@ async def main() -> None:
         async with async_session() as db:
             try:
                 await ensure_seed_tenant(db, target_project, tenant_identity)
+                await install_demo_media()
                 group = await seed_group(db)
                 user = await seed_user(db, group)
                 await seed_news(db, user)

@@ -920,8 +920,6 @@ describe("__root.tsx components", () => {
               href: "/manifest.webmanifest",
               crossOrigin: "use-credentials",
             },
-            { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
-            { rel: "dns-prefetch", href: "https://picsum.photos" },
           ],
         })
       }

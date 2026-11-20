@@ -36692,6 +36692,7 @@ def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _nov21_policy_predecessor(policy)
     policy = _baseline_policy_predecessor(policy)
     policy = _visual_readiness_policy_predecessor(policy)
     bound = [
@@ -36963,6 +36964,7 @@ _NOV20_ENVIRONMENT_PREVIOUS = (
 
 
 def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _nov21_source_predecessor(path, actual)
     actual = _baseline_source_predecessor(path, actual)
     actual = _visual_readiness_source_predecessor(path, actual)
     message = f"conditional disposition source file SHA-256 changed: {path}"
@@ -37003,7 +37005,7 @@ def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
 
 def _nov20_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _visual_readiness_policy_predecessor(
-        _baseline_policy_predecessor(policy)
+        _baseline_policy_predecessor(_nov21_policy_predecessor(policy))
     )
     records = restored["records"]
     if len(records) <= 495:
@@ -37035,6 +37037,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _nov21_policy_predecessor(policy)
     policy = _baseline_policy_predecessor(policy)
     policy = _visual_readiness_policy_predecessor(policy)
     live_digest = hashlib.sha256(live).digest()
@@ -37416,7 +37419,7 @@ def test_visual_readiness_companion_remains_exactly_bound() -> None:
 )
 def test_visual_readiness_projection_restores_exact_predecessor(path: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    actual = (root / path).read_bytes()
+    actual = _nov21_source_predecessor(path, (root / path).read_bytes())
     previous, current = _VISUAL_READINESS_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     historical = _visual_readiness_source_predecessor(path, actual)
@@ -37429,7 +37432,7 @@ def test_visual_readiness_policy_projection_preserves_every_other_record() -> No
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    policy = _baseline_policy_predecessor(policy)
+    policy = _baseline_policy_predecessor(_nov21_policy_predecessor(policy))
     previous = _visual_readiness_policy_predecessor(policy)
     assert len(policy["records"]) == len(previous["records"]) == 524
     changed = [
@@ -37767,3 +37770,255 @@ def test_aud380_source_bindings_read_one_fresh_policy_per_invocation(
     ):
         _assert_conditional_owner_source_bindings(root)
     assert policy_calls == 2
+
+
+# 2026-11-21 batch (ADR-047). img-src lists only the Spotify image origin, the
+# authenticated visual audit no longer stubs the retired demo image CDN, and
+# registration releases its tenant lookup before password work. Under the
+# standing one-to-one approval, two Semgrep companion digests and their
+# public-integrity identities are rebound: frontend/scripts/server-csp.mjs
+# (row 14, policy record 443) and app/services/user/compliance_service.py
+# (row 13, policy record 431). This newest layer restores the exact predecessor
+# source, audit, ledger and policy bytes before every older layer runs. No
+# identity is added: the inventory stays at 524 dispositions.
+_NOV21_CSP = "frontend/scripts/server-csp.mjs"
+_NOV21_AUDIT = "frontend/scripts/authenticated-visual-audit.mjs"
+_NOV21_COMPLIANCE = "app/services/user/compliance_service.py"
+_NOV21_LEDGER = "quality/semgrep-dispositions.json"
+# policy record -> companion whose digest it binds
+_NOV21_POLICY_ROWS = {431: _NOV21_COMPLIANCE, 443: _NOV21_CSP}
+# path -> (exact predecessor digest, exact current digest)
+_NOV21_SOURCE_PINS = {
+    _NOV21_CSP: (
+        bytes.fromhex(
+            "e8 95 6f 34 9a ba 0b 03 44 26 44 e0 be 40 92 9c 75 22 45 5c 44 d2 7b bb d0 3f 61 ca 0a 1e 79 ce"
+        ),
+        bytes.fromhex(
+            "31 e8 4e 12 7c 5c dc 74 12 e5 ba c1 45 3e 66 c4 cd 25 4b 4d 3d b1 21 bc f8 52 de 00 0f e6 b2 da"
+        ),
+    ),
+    _NOV21_AUDIT: (
+        bytes.fromhex(
+            "34 27 02 ae a6 05 eb 4d ae 27 fd f0 73 72 a7 f7 6d 0d b4 3a 37 f3 99 10 c2 b9 50 74 e0 07 77 fe"
+        ),
+        bytes.fromhex(
+            "c7 58 ec 32 8e b8 b3 71 26 af 13 bd 3f 77 74 d9 34 55 38 9d fb 7e 66 d8 80 16 19 af 6e a4 1a 81"
+        ),
+    ),
+    _NOV21_COMPLIANCE: (
+        bytes.fromhex(
+            "30 31 a3 d8 91 a4 94 51 8c 26 91 b8 71 ba cf f4 eb ec 45 35 02 18 e0 bb a2 87 e5 65 88 a5 9a 6a"
+        ),
+        bytes.fromhex(
+            "c6 4c c4 01 3e a8 c5 ed a5 2e 96 95 cf 72 79 33 37 ef 2e 11 74 a3 0b 85 27 5e 10 73 62 df ea d1"
+        ),
+    ),
+    _NOV21_LEDGER: (
+        bytes.fromhex(
+            "b0 9c 15 3d 18 bf 24 70 88 70 b6 ab db f7 39 2d 51 83 5f f2 64 d6 df 06 a4 39 bf 99 ba ae 85 b0"
+        ),
+        bytes.fromhex(
+            "af 79 d6 dc ec 8b 17 0e 14 6f 92 b5 39 a8 7b 5d 5e 1b 41 25 7a a9 f1 a7 a5 58 42 b5 c0 21 ab d2"
+        ),
+    ),
+}
+# Canonical predecessor digest of each rebound policy record.
+_NOV21_ROW_BEFORE_SHA256 = {
+    431: bytes.fromhex(
+        "82 2a d0 f2 e8 02 63 99 01 c2 48 14 96 c5 9b 3f e5 15 b8 db 1b 45 02 fa 8b f7 11 1d b3 6a 2f a8"
+    ),
+    443: bytes.fromhex(
+        "d3 30 d4 b8 46 ef 75 2c 8a 2b 49 d7 71 f7 cd df 55 81 ba 7a 21 77 aa 36 59 aa 63 e3 92 d4 63 3e"
+    ),
+}
+_NOV21_COMPLIANCE_REVERSALS = (
+    (
+        b"        tenant_id = await require_mvp_tenant(self.uow.session)\n"
+        b"        # The HIBP lookup and password hashing below are slow, and hashing waits\n"
+        b"        # for a bounded CPU slot. End the tenant lookup transaction first so\n"
+        b"        # queued registrations do not hold pooled connections while they wait;\n"
+        b"        # the login path releases its lookup the same way. Holding them can\n"
+        b"        # exhaust the per-worker pool, and the gateway then answers 502.\n"
+        b"        await self.uow.commit()\n",
+        b"        tenant_id = await require_mvp_tenant(self.uow.session)\n",
+    ),
+)
+_NOV21_CSP_REVERSALS = (
+    (
+        b"    // Spotify album art is the only third-party image (ADR-047, 2026-11-21).\n"
+        b"    \"img-src 'self' data: blob: https://i.scdn.co\",\n",
+        b"    \"img-src 'self' data: https: blob:\",\n",
+    ),
+)
+_NOV21_AUDIT_REVERSALS = (
+    (
+        b'import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"\n',
+        b'import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"\n',
+    ),
+    (
+        b"    run: async ({ context, ownSession }) => {\n"
+        b"      // The dashboard reads current weather straight from the public Open-Meteo API\n",
+        b"    run: async ({ context, ownSession }) => {\n"
+        b"      // Seeded news, event and story covers reference the third-party placeholder CDN\n"
+        b"      // (scripts/seed_demo_data.py). The gate must not depend on that host's uptime, so\n"
+        b"      // exactly this host is answered with a pinned repository fixture (the product's own\n"
+        b"      // missing-image placeholder). Every other external host still reaches the network\n"
+        b"      // and is counted by classifyVisualRequestFailure.\n"
+        b'      const PINNED_EXTERNAL_IMAGE_ROUTE = "https://picsum.photos/**"\n'
+        b"      const PINNED_EXTERNAL_IMAGE_PATH = path.join(\n"
+        b"        PROJECT_ROOT,\n"
+        b'        "public",\n'
+        b'        "fallbacks",\n'
+        b'        "placeholder.png"\n'
+        b"      )\n"
+        b"      const pinnedExternalImage = await readFile(PINNED_EXTERNAL_IMAGE_PATH)\n"
+        b"      await context.route(PINNED_EXTERNAL_IMAGE_ROUTE, (route) =>\n"
+        b"        route.fulfill({\n"
+        b"          status: 200,\n"
+        b'          contentType: "image/png",\n'
+        b"          body: pinnedExternalImage,\n"
+        b"        })\n"
+        b"      )\n"
+        b"      // The dashboard reads current weather straight from the public Open-Meteo API\n",
+    ),
+    (
+        b'              evidenceKind: "real-authenticated-browser-pinned-weather-fixture",\n',
+        b'              evidenceKind: "real-authenticated-browser-pinned-external-image-fixture",\n'
+        b"              externalImageFixture: {\n"
+        b"                route: PINNED_EXTERNAL_IMAGE_ROUTE,\n"
+        b'                source: "frontend/public/fallbacks/placeholder.png",\n'
+        b"              },\n",
+    ),
+)
+
+
+def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _NOV21_SOURCE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    if path == _NOV21_LEDGER and digest != current:
+        # Older ledger layers validate their own exact inputs and negative controls.
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    if path == _NOV21_LEDGER:
+        reversals = tuple(
+            (
+                _NOV21_SOURCE_PINS[companion][1].hex().encode("ascii"),
+                _NOV21_SOURCE_PINS[companion][0].hex().encode("ascii"),
+            )
+            for companion in (_NOV21_CSP, _NOV21_COMPLIANCE)
+        )
+    elif path == _NOV21_CSP:
+        reversals = _NOV21_CSP_REVERSALS
+    elif path == _NOV21_COMPLIANCE:
+        reversals = _NOV21_COMPLIANCE_REVERSALS
+    else:
+        reversals = _NOV21_AUDIT_REVERSALS
+    historical = actual
+    for added, previous_fragment in reversals:
+        assert historical.count(added) == 1, message
+        historical = historical.replace(added, previous_fragment, 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+def _nov21_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    for row_index, companion in _NOV21_POLICY_ROWS.items():
+        if len(records) <= row_index:
+            continue
+        row = records[row_index]
+        identity = row["identity"]
+        previous, current = _NOV21_SOURCE_PINS[companion]
+        if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+            # Older layers reject unrecognized or otherwise changed records.
+            continue
+        assert identity["path"] == _NOV21_LEDGER
+        assert identity["type"] == "Hex High Entropy String"
+        assert row["category"] == "public_integrity_digest"
+        identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+        canonical = json.dumps(
+            row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        assert (
+            hashlib.sha256(canonical).digest() == _NOV21_ROW_BEFORE_SHA256[row_index]
+        ), "2026-11-21 companion disposition approval metadata changed"
+    return restored
+
+
+@pytest.mark.parametrize(
+    ("ledger_row", "policy_row", "path"),
+    [(14, 443, _NOV21_CSP), (13, 431, _NOV21_COMPLIANCE)],
+)
+def test_nov21_companions_are_bound_to_current_sources(
+    ledger_row: int, policy_row: int, path: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / _NOV21_LEDGER).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    pin = hashlib.sha256((root / path).read_bytes()).hexdigest()
+    assert [
+        item["sha256"]
+        for item in ledger["dispositions"][ledger_row]["companions"]
+        if item["path"] == path
+    ] == [pin]
+    row = policy["records"][policy_row]
+    assert row["identity"]["hashed_secret_bytes"] == _nov15_identity(pin)
+    assert row["owner"] == "egorribun"
+    assert row["expires_on"] == "2027-01-10"
+
+
+@pytest.mark.parametrize(
+    "path", [_NOV21_CSP, _NOV21_AUDIT, _NOV21_COMPLIANCE, _NOV21_LEDGER]
+)
+def test_nov21_projection_restores_exact_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    previous, current = _NOV21_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current
+    historical = _nov21_source_predecessor(path, actual)
+    assert hashlib.sha256(historical).digest() == previous
+    assert _nov21_source_predecessor(path, historical) == historical
+
+
+@pytest.mark.parametrize("path", [_NOV21_CSP, _NOV21_AUDIT, _NOV21_COMPLIANCE])
+def test_nov21_projection_rejects_source_drift(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes() + b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov21_source_predecessor(path, actual)
+
+
+def test_nov21_policy_projection_changes_only_the_rebound_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    previous = _nov21_policy_predecessor(policy)
+    changed = [
+        index
+        for index, (current, before) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if current != before
+    ]
+    assert changed == sorted(_NOV21_POLICY_ROWS)
+    assert _nov21_policy_predecessor(previous) == previous
+    tampered = copy.deepcopy(policy)
+    tampered["records"][431]["owner"] = "someone-else"
+    with pytest.raises(AssertionError, match="approval metadata changed"):
+        _nov21_policy_predecessor(tampered)
+
+
+def test_nov21_projection_leaves_unrelated_source_unchanged() -> None:
+    assert _nov21_source_predecessor("unrelated", b"unchanged") == b"unchanged"

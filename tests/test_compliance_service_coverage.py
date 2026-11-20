@@ -299,3 +299,35 @@ async def test_create_user_integrity_error_other_constraint(svc, repo, fast_hash
     with pytest.raises(BusinessRuleViolation):
         await svc.create_user(_user_create(), request=_request(), current_user=_admin())
     svc.uow.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_register_user_releases_the_tenant_lookup_before_password_work(
+    svc, repo, monkeypatch: pytest.MonkeyPatch
+):
+    events: list[str] = []
+
+    async def tenant(_session):
+        events.append("tenant")
+
+    async def record(name: str):
+        events.append(name)
+
+    monkeypatch.setattr("app.core.tenant.require_mvp_tenant", tenant)
+    monkeypatch.setattr(compliance_module.settings, "password_hibp_check_enabled", True)
+    monkeypatch.setattr(
+        compliance_module, "validate_password_hibp", lambda _p: record("hibp")
+    )
+    monkeypatch.setattr(
+        compliance_module, "get_password_hash", lambda _p: record("hash")
+    )
+
+    async def commit():
+        await record("commit")
+
+    svc.uow.commit.side_effect = commit
+    repo.check_email_exists.return_value = False
+
+    await svc.register_user(_user_create())
+
+    assert events[:4] == ["tenant", "commit", "hibp", "hash"]

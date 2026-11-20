@@ -3087,3 +3087,68 @@ cannot install the filter stops the scan, so no report is produced.
 - **Owner and expiry.** `egorribun`, expires 2027-01-10.
 - **Not established.** Neither decision is a passing scan. AUD-381 still needs a
   green hosted ZAP run on `main` with a verified report.
+
+### ZAP CSP wildcard 10055-4 fixed by narrowing img-src
+
+The owner approved fixing the `img-src https:` wildcard rather than excluding
+it. Every served policy now uses `img-src 'self' data: blob: https://i.scdn.co`:
+the backend development and production templates, the Node SSR policy and the
+shared `quality/frontend-csp-defaults.json` contract. An inventory of image
+sources found five that reached other origins. Each now loads from the site
+itself or from the one listed host:
+
+- **Spotify album art.** This is the only third-party image left. The
+  now-playing schema drops any album image outside `https://i.scdn.co`,
+  including stored rows that predate the check, and extraction keeps the first
+  image on that origin.
+- **News article images.** The article sanitizer keeps only relative image
+  sources. Absolute, protocol-relative and backslash-authority URLs are dropped
+  from `<img>` and Markdown images, and links are unchanged.
+- **Story covers.** Create and update accept only a canonical story cover upload
+  (`story_covers/stories_<32 hex>`) as a new cover. Anything else is a localized
+  422 (`validation.stories.cover_not_uploaded`). An unchanged legacy cover may
+  stay or be cleared.
+- **Fallback avatar.** The settings avatar fallback uses the product's own
+  `/fallbacks/default_avatar.png` instead of gravatar.
+- **Demo seed images.** The owner approved a one-off download of the 35
+  picsum.photos images the seed referenced. They are re-encoded as WebP without
+  metadata in `scripts/demo_media/`. `PROVENANCE.json` records the replaced URL,
+  the Unsplash author and source, and the Unsplash License.
+  - The seed stores each image in application storage under a content-addressed
+    `demo_` key in a public image-proxy prefix, and records the URL storage
+    returns.
+  - Those keys match no upload ownership pattern, so ownership-based cleanup
+    never deletes an image that several rows share.
+  - The demo user no longer has an external avatar.
+  - The live E2E and authenticated visual-audit stubs for picsum, and the
+    preconnect hints, are removed because nothing requests that host.
+
+This is a fix, not an exclusion. A deployment that serves media from a separate
+origin (for example a CDN in `STORAGE_S3_BASE_URL`) would need its own reviewed
+`img-src` source, as `connect-src` already does for a separate API origin.
+
+Under the owner's standing one-to-one approval, the Semgrep row 14 companion
+digest of `frontend/scripts/server-csp.mjs` and its public-integrity identity in
+disposition record 443 bind the new policy bytes. The newest projection layer in
+`tests/test_verify_secrets_baseline.py` restores the exact predecessor policy,
+visual audit, ledger and record before older checks run. No identity is added.
+The inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This record does not establish a passing scan;
+AUD-381 still needs a green hosted ZAP run on `main`.
+
+### Registration releases its tenant lookup before password work
+
+Registration resolved the MVP tenant and then ran the HIBP lookup and Argon2
+hashing inside the same transaction. That held a pooled connection while the
+request waited for the bounded hashing slot. The login path had the same defect
+and was fixed on 2026-11-20. Under concurrent sign-ups it can exhaust the
+per-worker pool, and the gateway then answers 502. `register_user` now commits
+the read-only lookup transaction before any password work, and a unit test
+asserts the order: tenant lookup, commit, HIBP, hash.
+
+`app/services/user/compliance_service.py` is a Semgrep row 13 companion. Under
+the owner's standing one-to-one approval, its companion digest and the
+public-integrity identity in disposition record 431 bind the new bytes. The same
+newest projection layer that covers the `img-src` rebind restores both
+predecessors. The path, type, category, owner and 2027-01-10 expiry are
+unchanged, and no identity is added. The inventory remains 524 dispositions.

@@ -3634,8 +3634,8 @@ _HTTP_OPERATION_CASE_LINES = {
     "settings-tabs-keyboard.live.spec.ts": (5,),
     "settings-theme-roundtrip.live.spec.ts": (75,),
     "ssr-hydration-i18n.live.spec.ts": (442, 454, 468),
-    "story-viewer-keyboard.live.spec.ts": (7,),
-    "story-viewer-reduced-motion.live.spec.ts": (15,),
+    "story-viewer-keyboard.live.spec.ts": (6,),
+    "story-viewer-reduced-motion.live.spec.ts": (14,),
     "totp-recovery.live.spec.ts": (325,),
     "zzz-aud174-prehydration-caddy-log.live.spec.ts": (8,),
 }

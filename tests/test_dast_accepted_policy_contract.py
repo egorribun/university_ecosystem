@@ -9,12 +9,13 @@ the exact style-src directive the accepted-risk filter matches.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 import pytest
 
-from app.core.policies.csp import ContentSecurityPolicy
+from app.core.policies.csp import SPOTIFY_IMAGE_ORIGIN, ContentSecurityPolicy
 from scripts.quality.zap_origin_evidence import ACCEPTED_STYLE_SRC_EVIDENCE
 from scripts.quality.zap_runner import _CONTAINER_ENTRY
 
@@ -24,6 +25,10 @@ MARKER_MODULE = FRONTEND_SOURCE / "utils" / "apiSubmittedForm.ts"
 NODE_CSP = ROOT / "frontend" / "scripts" / "server-csp.mjs"
 FORM_TAG = re.compile(r"<form\b(?P<attributes>[^>]*)>", re.DOTALL)
 APPROVED_STYLE_SRC = "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
+SHARED_CSP_CONTRACT = ROOT / "quality" / "frontend-csp-defaults.json"
+# ZAP 10055-4 fix: no wildcard or scheme-only image source; Spotify album art is
+# the only third-party image origin.
+APPROVED_IMG_SRC = "img-src 'self' data: blob: https://i.scdn.co"
 
 
 def _production_sources() -> list[Path]:
@@ -96,3 +101,32 @@ def test_node_policy_keeps_the_accepted_style_src() -> None:
 def test_accepted_filter_does_not_cover_a_wider_style_src(directive: str) -> None:
     header = f"default-src 'self'; {directive}; img-src 'self'"
     assert re.fullmatch(ACCEPTED_STYLE_SRC_EVIDENCE, header) is None
+
+
+def _img_src_directives(header: str) -> list[str]:
+    return [
+        directive.strip()
+        for directive in header.split(";")
+        if directive.strip().startswith("img-src")
+    ]
+
+
+@pytest.mark.parametrize("is_development", [False, True])
+def test_backend_img_src_lists_only_the_spotify_image_origin(
+    is_development: bool,
+) -> None:
+    assert SPOTIFY_IMAGE_ORIGIN == "https://i.scdn.co"
+    header = ContentSecurityPolicy(is_development=is_development).generate(
+        nonce="bm9uY2U="
+    )
+    assert _img_src_directives(header) == [APPROVED_IMG_SRC]
+
+
+def test_node_and_shared_policies_list_only_the_spotify_image_origin() -> None:
+    node = re.findall(r'"(img-src [^"]+)"', NODE_CSP.read_text(encoding="utf-8"))
+    assert node == [APPROVED_IMG_SRC]
+    shared = json.loads(SHARED_CSP_CONTRACT.read_text(encoding="utf-8"))
+    headers = list(shared["headers"].values())
+    assert len(headers) == 2
+    for header in headers:
+        assert _img_src_directives(header) == [APPROVED_IMG_SRC]

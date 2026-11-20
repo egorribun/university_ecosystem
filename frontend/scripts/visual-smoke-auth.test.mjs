@@ -891,34 +891,12 @@ test("authenticated audit fails closed on axe and transport execution errors", a
   assert.match(source, /if \(axeTimeout\) clearTimeout\(axeTimeout\)/u)
 })
 
-test("authenticated audit answers only the seeded placeholder CDN with a pinned fixture", async () => {
+test("authenticated audit pins only the weather host; seeded media is served by the stand", async () => {
   const source = await readFile(new URL("authenticated-visual-audit.mjs", import.meta.url), "utf8")
 
-  assert.match(source, /const PINNED_EXTERNAL_IMAGE_ROUTE = "https:\/\/picsum\.photos\/\*\*"/u)
-  assert.match(
-    source,
-    /const PINNED_EXTERNAL_IMAGE_PATH = path\.join\(\s*PROJECT_ROOT,\s*"public",\s*"fallbacks",\s*"placeholder\.png"\s*\)/u
-  )
-  assert.match(source, /import \{ mkdir, mkdtemp, readFile, realpath, writeFile \}/u)
-
+  assert.doesNotMatch(source, /picsum|PINNED_EXTERNAL_IMAGE/u)
   const routeCalls = [...source.matchAll(/\b(?:context|page|routePage)\.route\s*\(/gu)]
-  assert.equal(routeCalls.length, 2, "the audit installs exactly the image and weather routes")
-  const routeIndex = source.indexOf("await context.route(PINNED_EXTERNAL_IMAGE_ROUTE")
-  const weatherRouteIndex = source.indexOf("await context.route(PINNED_WEATHER_ROUTE")
-  const newPageIndex = source.indexOf("const page = await context.newPage()")
-  assert.ok(routeIndex > 0 && newPageIndex > routeIndex, "route must precede every page")
-  assert.ok(
-    weatherRouteIndex > routeIndex && newPageIndex > weatherRouteIndex,
-    "the weather route must precede every page"
-  )
-  assert.match(
-    source.slice(routeIndex, weatherRouteIndex),
-    /route\.fulfill\(\{\s*status:\s*200,\s*contentType:\s*"image\/png",\s*body:\s*pinnedExternalImage,?\s*\}\)/u
-  )
-
-  const { existsSync } = await import("node:fs")
-  const fixturePath = new URL("../public/fallbacks/placeholder.png", import.meta.url)
-  assert.ok(existsSync(fixturePath), "pinned fixture must exist in the repository")
+  assert.equal(routeCalls.length, 1, "the audit installs exactly the weather route")
 
   const { summarizeAuthenticatedVisualDiagnostics } =
     await import("./authenticated-visual-audit.mjs")

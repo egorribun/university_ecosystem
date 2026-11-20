@@ -9,8 +9,10 @@ import { resolveMediaUrl, addVersionParam } from "@/utils/media"
 import type { SetSnackbar } from "@/pages/settings/types"
 import { useObjectUrlPreview } from "./useObjectUrlPreview"
 import { MAX_IMAGE_UPLOAD_BYTES } from "@/constants/uploads"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
-const DEFAULT_AVATAR = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
+// Served by the app itself: img-src allows no third-party avatar service.
+const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
 const isImage = (file: File) => ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())

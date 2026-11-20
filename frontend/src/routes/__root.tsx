@@ -273,11 +273,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
           href: "/manifest.webmanifest",
           crossOrigin: "use-credentials",
         },
-        // Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos
-        // (placeholder image CDN used by NewsCard + EventCard heroes).
-        // Saves ~150-300ms on mobile 3G LCP.
-        { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
-        { rel: "dns-prefetch", href: "https://picsum.photos" },
       ],
     }
   },

@@ -2,19 +2,11 @@ import { expect, loginAs, ownedSessionOrigin, test } from "./fixtures"
 import { openStoryBackgroundTab, storyVisibilityTest } from "./story-visibility-fixtures"
 
 const SEEDED_STORY_TITLE = /(?:Сессия: советы по подготовке|Exam season: preparation tips)/u
-const SYNTHETIC_STORY_IMAGE = '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3" />'
 
 test("a seeded story traps focus, closes with Escape, restores focus, and releases scroll lock", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.route("https://picsum.photos/**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "image/svg+xml",
-      body: SYNTHETIC_STORY_IMAGE,
-    })
-  )
 
   await loginAs(page, "student")
   await page.goto("/dashboard")
@@ -60,13 +52,6 @@ storyVisibilityTest(
   "a seeded story pauses while hidden and resumes at the preserved progress",
   async ({ page }) => {
     const STORY_HIDDEN_DURATION_MS = 7_000
-    await page.route("https://picsum.photos/**", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "image/svg+xml",
-        body: SYNTHETIC_STORY_IMAGE,
-      })
-    )
 
     await loginAs(page, "student")
     await page.goto(new URL("/dashboard", ownedSessionOrigin()).toString())
@@ -124,13 +109,6 @@ storyVisibilityTest(
     // use the same clock; leave it running until login and hydration finish.
     await page.clock.install()
     try {
-      await page.route("https://picsum.photos/**", (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "image/svg+xml",
-          body: SYNTHETIC_STORY_IMAGE,
-        })
-      )
       await loginAs(page, "student")
       await page.goto(new URL("/dashboard", ownedSessionOrigin()).toString())
 
