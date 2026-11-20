@@ -7,6 +7,8 @@ import { URL } from "node:url"
 import { parse } from "@babel/parser"
 import { chromium } from "playwright"
 
+import { clickWithExpiredCsrf } from "./profile-csrf-click-expiry.ts"
+
 const specUrl = new URL("./profile-csrf.live.spec.ts", import.meta.url)
 const origin = "http://127.0.0.1:41799"
 const csrfToken = "synthetic-csrf-token"
@@ -174,4 +176,110 @@ test("cleanup before first-response observation recreates the false no-cookie re
 test("missing-cookie 403 observation detects a cookie before cleanup", async () => {
   const observation = await observe(callbacks.callbackSource, 2)
   assert.equal(observation.cookieClearedAfterRejectedRequest, false)
+})
+
+const browserWithInterveningCookie = async () => {
+  const context = await browser.newContext()
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url())
+    if (url.origin !== origin) return route.abort()
+    if (url.pathname === "/") {
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<button>Save</button>" })
+    }
+    if (url.pathname === "/api/v1/chats/unread") {
+      return route.fulfill({
+        status: 200,
+        headers: { "set-cookie": "csrf_token=background; Path=/; SameSite=Lax" },
+      })
+    }
+    return route.abort()
+  })
+  const page = await context.newPage()
+  await page.goto(`${origin}/`)
+  await context.addCookies([
+    { name: "csrf_token", value: csrfToken, url: origin },
+    { name: "access_token_v2", value: "synthetic-session", url: origin, httpOnly: true },
+  ])
+  await context.clearCookies({ name: "csrf_token" })
+  // A safe background response can issue a cookie after the initial clear.
+  await page.evaluate(() => globalThis.fetch("/api/v1/chats/unread"))
+  await page.evaluate(() => {
+    globalThis.clickCookies = []
+    globalThis.document.addEventListener("click", () => {
+      globalThis.clickCookies.push(globalThis.document.cookie)
+    })
+  })
+  return { context, page }
+}
+
+test("click-boundary expiry survives an intervening cookie and a replaced button", async () => {
+  const { context, page } = await browserWithInterveningCookie()
+  try {
+    // Negative control: without the boundary, the newly issued cookie reaches the click.
+    await page.getByRole("button", { name: "Save" }).click()
+    await clickWithExpiredCsrf(page, async () => {
+      await page.evaluate(() => {
+        const button = globalThis.document.querySelector("button")
+        button.replaceWith(button.cloneNode(true))
+      })
+      await page.getByRole("button", { name: "Save" }).click()
+    })
+    await context.addCookies([{ name: "csrf_token", value: "later", url: origin }])
+    await page.getByRole("button", { name: "Save" }).click()
+    const observations = await page.evaluate(() => globalThis.clickCookies)
+    assert.match(observations[0], /(?:^|; )csrf_token=background(?:;|$)/u)
+    assert.doesNotMatch(observations[1], /(?:^|; )csrf_token=/u)
+    assert.match(observations[2], /(?:^|; )csrf_token=later(?:;|$)/u)
+    assert.ok((await context.cookies()).some((cookie) => cookie.name === "access_token_v2"))
+  } finally {
+    await context.close()
+  }
+})
+
+test("a failed click removes the listener and preserves its original error", async () => {
+  const { context, page } = await browserWithInterveningCookie()
+  try {
+    const failure = new Error("controlled click failure")
+    const waitAbort = new globalThis.AbortController()
+    const existingListeners = page.listenerCount("response")
+    await assert.rejects(
+      Promise.all([
+        page.waitForResponse("**/csrf-cookie", { signal: waitAbort.signal }),
+        page.waitForResponse("**/users/me", { signal: waitAbort.signal }),
+        clickWithExpiredCsrf(page, async () => {
+          throw failure
+        }),
+      ]).finally(() => waitAbort.abort()),
+      (error) => error === failure
+    )
+    await new Promise((resolve) => globalThis.setImmediate(resolve))
+    assert.equal(waitAbort.signal.aborted, true)
+    assert.equal(page.listenerCount("response"), existingListeners)
+    await page.getByRole("button", { name: "Save" }).click()
+    const observations = await page.evaluate(() => globalThis.clickCookies)
+    assert.match(observations[0], /(?:^|; )csrf_token=background(?:;|$)/u)
+  } finally {
+    await context.close()
+  }
+})
+
+test("cleanup failure cannot replace a click failure", async () => {
+  const clickFailure = new Error("controlled click failure")
+  const cleanupFailure = new Error("controlled cleanup failure")
+  const page = {
+    isClosed: () => false,
+    evaluate: async (_callback, enabled) => {
+      if (!enabled) throw cleanupFailure
+    },
+  }
+  await assert.rejects(
+    clickWithExpiredCsrf(page, async () => {
+      throw clickFailure
+    }),
+    (error) => error === clickFailure
+  )
+  await assert.rejects(
+    clickWithExpiredCsrf(page, async () => {}),
+    (error) => error === cleanupFailure
+  )
 })
