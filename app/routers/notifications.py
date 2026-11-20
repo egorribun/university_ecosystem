@@ -10,9 +10,10 @@ from typing import Annotated
 
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.deps import (
     get_current_admin_user_from_dishka,
@@ -63,6 +64,7 @@ from app.services.push_topics import (
 )
 from app.services.webpush import (
     WebPushResult,
+    _is_postgres_deadlock,
     _validate_public_endpoint_dns,
 )
 
@@ -114,6 +116,59 @@ def _aggregate_results(
     )
 
 
+class _SubscriptionOwnerChanged(Exception):
+    """The endpoint changed owner while owner locks were being acquired."""
+
+
+async def _lock_subscription_owners(db: AsyncSession, user_ids: set[uuid.UUID]) -> None:
+    # All preference writers acquire owner locks before any device rows. A
+    # transfer locks both owners in UUID order to avoid opposing-transfer cycles.
+    await db.execute(
+        select(User.id)
+        .where(User.id.in_(sorted(user_ids)))
+        .order_by(User.id)
+        .with_for_update()
+    )
+
+
+async def _locked_subscription_for_binding(
+    db: AsyncSession, *, endpoint: str, user_id: uuid.UUID
+) -> PushSubscription | None:
+    observed_owner = (
+        await db.execute(
+            select(PushSubscription.user_id).where(
+                PushSubscription.endpoint == endpoint
+            )
+        )
+    ).scalar_one_or_none()
+    owners = {user_id}
+    if observed_owner is not None:
+        owners.add(observed_owner)
+    await _lock_subscription_owners(db, owners)
+    subscription = (
+        await db.execute(
+            select(PushSubscription)
+            .where(PushSubscription.endpoint == endpoint)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if subscription is not None and subscription.user_id not in owners:
+        raise _SubscriptionOwnerChanged
+    return subscription
+
+
+async def _commit_subscription_snapshot(
+    db: AsyncSession, subscription: PushSubscription
+) -> PushSubscriptionOut:
+    # Take the response while the owned row is still locked; a refresh after
+    # commit could instead read another caller's subsequent binding.
+    await db.flush()
+    result = _serialize_subscription(subscription)
+    await db.commit()
+    return result
+
+
 async def _bind_subscription_to_user(
     db: AsyncSession,
     subscription: PushSubscription,
@@ -124,6 +179,7 @@ async def _bind_subscription_to_user(
     user_agent: str,
     now: datetime,
     requested_topics: list[str] | None,
+    is_existing: bool = False,
 ) -> None:
     """Bind an endpoint to the caller and mirror the caller's preference.
 
@@ -138,6 +194,12 @@ async def _bind_subscription_to_user(
                 "subscription_id": subscription.id,
                 "endpoint_fingerprint": _endpoint_fingerprint(subscription.endpoint),
             },
+        )
+    if is_existing:
+        # Assign a SQL expression so concurrent registrations never lose an
+        # increment, even when an ORM identity was loaded before another bind.
+        subscription.binding_version = (
+            func.coalesce(PushSubscription.binding_version, 0) + 1
         )
     subscription.p256dh = p256dh
     subscription.auth = auth
@@ -246,11 +308,12 @@ async def subscribe(
     db: FromDishka[AsyncDatabaseSession],
     user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
+    caller_id = user.id
     locale = resolve_locale(request=request, user=user)
     client_host = resolve_client_ip(request) if request.client else None
     try:
         await enforce_rate_limit(
-            identifier=f"user:{user.id}",
+            identifier=f"user:{caller_id}",
             limit=20,
             window_seconds=60,
             strategy=get_default_strategy("push:subscribe:user"),
@@ -292,20 +355,16 @@ async def subscribe(
         "push.subscribe.start",
         extra={
             "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
-            "user_id": user.id,
+            "user_id": caller_id,
         },
     )
 
+    snapshot: PushSubscriptionOut | None = None
     for attempt in range(max_attempts):
         try:
-            # First, try to find an existing subscription with this endpoint
-            existing = (
-                await db.execute(
-                    select(PushSubscription).where(
-                        PushSubscription.endpoint == endpoint
-                    )
-                )
-            ).scalar_one_or_none()
+            existing = await _locked_subscription_for_binding(
+                db, endpoint=endpoint, user_id=caller_id
+            )
 
             logger.debug(
                 "push.subscribe.attempt",
@@ -327,26 +386,25 @@ async def subscribe(
             await _bind_subscription_to_user(
                 db,
                 subscription,
-                user_id=user.id,
+                user_id=caller_id,
                 p256dh=p256dh,
                 auth=auth,
                 user_agent=user_agent,
                 now=now,
                 requested_topics=payload.topics,
+                is_existing=existing is not None,
             )
-            await db.commit()
-            await db.refresh(subscription)
+            snapshot = await _commit_subscription_snapshot(db, subscription)
             logger.info(
                 "push.subscribe.success",
                 extra={
                     "attempt": attempt + 1,
-                    "subscription_id": subscription.id,
+                    "subscription_id": snapshot.id,
                     "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
                 },
             )
-            break  # Success, exit retry loop
-        except IntegrityError as e:
-            # Race condition: another request created the subscription concurrently
+            break
+        except (IntegrityError, StaleDataError, _SubscriptionOwnerChanged) as e:
             logger.warning(
                 "push.subscribe.integrity_error",
                 extra={
@@ -358,50 +416,56 @@ async def subscribe(
             await db.rollback()
 
             if attempt < max_attempts - 1:
-                # Small delay before retry to let the other transaction complete
                 await asyncio.sleep(0.05 * (attempt + 1))
                 continue
 
-            # Final attempt: try to find and update existing
-            existing = (
-                await db.execute(
-                    select(PushSubscription).where(
-                        PushSubscription.endpoint == endpoint
+            try:
+                existing = await _locked_subscription_for_binding(
+                    db, endpoint=endpoint, user_id=caller_id
+                )
+                if existing:
+                    await _bind_subscription_to_user(
+                        db,
+                        existing,
+                        user_id=caller_id,
+                        p256dh=p256dh,
+                        auth=auth,
+                        user_agent=user_agent,
+                        now=now,
+                        requested_topics=payload.topics,
+                        is_existing=True,
                     )
-                )
-            ).scalar_one_or_none()
-
-            if existing:
-                await _bind_subscription_to_user(
-                    db,
-                    existing,
-                    user_id=user.id,
-                    p256dh=p256dh,
-                    auth=auth,
-                    user_agent=user_agent,
-                    now=now,
-                    requested_topics=payload.topics,
-                )
-                await db.commit()
-                await db.refresh(existing)
-                subscription = existing
-                logger.info(
-                    "push.subscribe.recovered",
-                    extra={
-                        "subscription_id": existing.id,
-                        "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
-                    },
-                )
-            else:
-                # Log warning but return success - subscription likely exists
-                # but we couldn't find it due to transaction isolation
-                logger.warning(
-                    "push.subscribe.not_found_after_error",
-                    extra={
-                        "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
-                        "user_id": user.id,
-                    },
-                )
+                    snapshot = await _commit_subscription_snapshot(db, existing)
+                    logger.info(
+                        "push.subscribe.recovered",
+                        extra={
+                            "subscription_id": snapshot.id,
+                            "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "push.subscribe.not_found_after_error",
+                        extra={
+                            "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+                            "user_id": caller_id,
+                        },
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": "duplicate_endpoint",
+                            "message": translate(
+                                "errors.push.subscription_exists", locale=locale
+                            ),
+                        },
+                    ) from e
+            except (
+                IntegrityError,
+                StaleDataError,
+                _SubscriptionOwnerChanged,
+            ) as final_error:
+                await db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -410,9 +474,28 @@ async def subscribe(
                             "errors.push.subscription_exists", locale=locale
                         ),
                     },
-                ) from e
+                ) from final_error
+            except DBAPIError as final_error:
+                if not _is_postgres_deadlock(final_error):
+                    raise
+                await db.rollback()
+                raise
+        except DBAPIError as error:
+            if not _is_postgres_deadlock(error):
+                raise
+            await db.rollback()
+            logger.warning(
+                "push.subscribe.deadlock",
+                extra={
+                    "attempt": attempt + 1,
+                    "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+                },
+            )
+            if attempt == max_attempts - 1:
+                raise
+            await asyncio.sleep(0.05 * (attempt + 1))
 
-    if subscription is None:
+    if snapshot is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -421,7 +504,7 @@ async def subscribe(
             },
         )
 
-    return _serialize_subscription(subscription)
+    return snapshot
 
 
 @router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
@@ -432,6 +515,7 @@ async def update_subscription_topics(
     db: FromDishka[AsyncDatabaseSession],
     user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
+    caller_id = user.id
     locale = resolve_locale(request=request, user=user)
     endpoint = payload.endpoint.strip()
     if not endpoint:
@@ -445,35 +529,55 @@ async def update_subscription_topics(
             },
         )
 
-    subscription = (
-        await db.execute(
-            select(PushSubscription).where(
-                PushSubscription.endpoint == endpoint,
-                PushSubscription.user_id == user.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not subscription:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "subscription_not_found",
-                "message": translate(
-                    "errors.push.subscription_not_found", locale=locale
-                ),
-            },
-        )
+    attempt = 0
+    while True:
+        try:
+            await _lock_subscription_owners(db, {caller_id})
+            subscription = (
+                await db.execute(
+                    select(PushSubscription)
+                    .where(
+                        PushSubscription.endpoint == endpoint,
+                        PushSubscription.user_id == caller_id,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if not subscription:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "subscription_not_found",
+                        "message": translate(
+                            "errors.push.subscription_not_found", locale=locale
+                        ),
+                    },
+                )
 
-    normalized_topics = await synchronize_user_topics(
-        db,
-        user_id=user.id,
-        topics=payload.topics,
-    )
-    subscription.topics = list(normalized_topics)
-    subscription.last_seen_at = datetime.now(UTC)
-    await db.commit()
-    await db.refresh(subscription)
-    return _serialize_subscription(subscription)
+            normalized_topics = await synchronize_user_topics(
+                db,
+                user_id=caller_id,
+                topics=payload.topics,
+            )
+            subscription.topics = list(normalized_topics)
+            subscription.last_seen_at = datetime.now(UTC)
+            return await _commit_subscription_snapshot(db, subscription)
+        except DBAPIError as error:
+            if not _is_postgres_deadlock(error):
+                raise
+            await db.rollback()
+            attempt += 1
+            logger.warning(
+                "push.topics.deadlock",
+                extra={
+                    "attempt": attempt,
+                    "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+                },
+            )
+            if attempt >= 3:
+                raise
+            await asyncio.sleep(0.05 * attempt)
 
 
 @router.post("/unsubscribe")
@@ -525,19 +629,19 @@ async def unsubscribe(
             },
         ) from None
 
-    existing = (
+    # ADR-041: removing a device never changes the user's canonical topics.
+    removed_id = (
         await db.execute(
-            select(PushSubscription).where(
+            delete(PushSubscription)
+            .where(
                 PushSubscription.endpoint == endpoint,
                 PushSubscription.user_id == user.id,
             )
+            .returning(PushSubscription.id)
         )
     ).scalar_one_or_none()
-    if not existing:
+    if removed_id is None:
         return {"ok": True, "removed": False}
-
-    # ADR-041: removing a device never changes the user's canonical topics.
-    await db.delete(existing)
     await db.commit()
     return {"ok": True, "removed": True}
 
@@ -752,7 +856,7 @@ async def admin_update_user_topics(
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     target = (
-        await db.execute(select(User).where(User.id == user_id))
+        await db.execute(select(User).where(User.id == user_id).with_for_update())
     ).scalar_one_or_none()
     if not target:
         raise HTTPException(
@@ -790,7 +894,7 @@ async def disable_user_push(
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
 
-    target = await db.get(User, payload.user_id)
+    target = await db.get(User, payload.user_id, with_for_update=True)
     if not target:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

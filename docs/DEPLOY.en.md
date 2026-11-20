@@ -149,6 +149,14 @@ reconciliation proof, and an explicit rollout applies the new values.
   named `alembic_version`. The pre-squash revisions were removed; a database
   bound to that chain has no supported upgrade path. Do not stamp an existing
   database to the new baseline. See [ADR-051](adr/ADR-051-mvp-migration-baseline-squash.md).
+- For databases already at `202611020000`, apply `202611200001` before starting
+  the updated application. Pause subscription writes and new Web Push sends
+  during replacement. Drain or stop older API instances, `outbox-worker`, any
+  active `notifications-worker`, and other processes that write bindings or
+  delivery results. Resume writes and sends only when all such processes use
+  the new binding-generation rules and no late result from an older process can
+  still write. Compose's `migrations` service and Helm's enabled migration Job
+  provide the schema step; draining existing processes is an operator step.
 - Run Alembic in the designated migrator environment, not with the application's
   runtime login:
 

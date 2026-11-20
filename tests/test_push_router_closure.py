@@ -143,7 +143,8 @@ async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller(
             RuntimeError("duplicate"),
         )
         for _ in range(3)
-    ] + [None]
+    ] + [None, None]
+    expected_snapshot = SimpleNamespace(id=existing.id)
 
     with (
         patch.object(
@@ -155,11 +156,18 @@ async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller(
         patch.object(notifications.asyncio, "sleep", new=AsyncMock()),
         patch.object(
             notifications,
+            "_locked_subscription_for_binding",
+            new=AsyncMock(side_effect=[None, None, None, existing]),
+        ),
+        patch.object(
+            notifications,
             "resolve_subscription_topics_for_user",
             new=AsyncMock(return_value=["events.published"]),
         ) as resolver,
         patch.object(
-            notifications, "_serialize_subscription", new=MagicMock(return_value="ok")
+            notifications,
+            "_serialize_subscription",
+            new=MagicMock(return_value=expected_snapshot),
         ),
     ):
         result = await call_injected(
@@ -170,12 +178,12 @@ async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller(
             provides={"AsyncDatabaseSession": db},
         )
 
-    assert result == "ok"
+    assert result is expected_snapshot
     assert existing.user_id == caller
     assert existing.topics == ["events.published"]
     resolver.assert_awaited_once_with(db, user_id=caller, requested_topics=None)
     db.commit.assert_awaited_once()
-    db.refresh.assert_awaited_once_with(existing)
+    db.refresh.assert_not_awaited()
     assert endpoint_token not in str(mock_logger.mock_calls)
     assert "synthetic-auth-marker" not in str(mock_logger.mock_calls)
 

@@ -83,6 +83,11 @@ async def test_subscribe_existing_subscription_update():
     with (
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
+        patch.object(
+            push_router,
+            "_locked_subscription_for_binding",
+            AsyncMock(return_value=existing_sub),
+        ),
         patch(
             "app.routers.notifications.resolve_subscription_topics_for_user",
             AsyncMock(return_value=["system.release"]),
@@ -184,6 +189,16 @@ async def test_subscribe_db_integrity_error_recovered_on_final_attempt():
     with (
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
+        patch.object(
+            push_router,
+            "_locked_subscription_for_binding",
+            AsyncMock(return_value=existing_sub),
+        ),
+        patch.object(
+            push_router,
+            "resolve_subscription_topics_for_user",
+            AsyncMock(return_value=["system.release"]),
+        ),
         patch("asyncio.sleep", AsyncMock()),
     ):
         res = await call_injected(

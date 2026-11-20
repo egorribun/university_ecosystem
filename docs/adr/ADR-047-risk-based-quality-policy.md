@@ -2998,3 +2998,19 @@ owner, approval scope, category and 2027-01-10 expiry remain unchanged. The
 inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
 fingerprints and 15 Semgrep rows. This rebind adds no exception, threshold or
 required-check change, and does not establish a passing scan or hosted check.
+
+### Historical baseline-model proof and successor
+
+Revision `202611020000` remains the isolated historical baseline and the
+irreversible rollback boundary. Its schema-equivalence proof uses the complete
+reviewed model tree from the first-parent baseline change, after verifying the
+baseline bytes. The current model is checked separately against the full
+successor head, including a negative control for unrelated schema drift.
+
+Under the owner's standing one-to-one approval, the existing public-integrity
+identity in disposition record index 483 binds the updated historical proof
+source. Its path, detector type, category, owner, evidence and expiry remain
+unchanged. Predecessor projection restores the exact prior proof, AUD-433 test
+and policy record before earlier checks. No identity is added: the inventory
+remains 242 baseline identities, 524 dispositions, 27 Gitleaks fingerprints and
+15 Semgrep rows. This record does not establish a passing scan or hosted checks.

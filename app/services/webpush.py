@@ -10,7 +10,7 @@ import uuid
 from base64 import urlsafe_b64encode
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 from hashlib import sha256
 from threading import Lock
@@ -27,8 +27,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import requests
 from pywebpush import WebPushException, webpush
 from requests.adapters import HTTPAdapter
-from sqlalchemy import and_, create_engine, delete, or_, update
+from sqlalchemy import and_, create_engine, delete, func, or_, update
 from sqlalchemy.engine import URL, Engine, make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
@@ -58,6 +59,7 @@ _WebPushErrorStage = Literal[
 
 logger = get_logger(__name__)
 _URL_IN_ERROR_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_MISSING_BINDING_VERSION = object()
 
 # HIGH-W19: defer URL computation until first use so that importing this module
 # does not immediately read settings or touch the database driver.
@@ -483,6 +485,8 @@ class WebPushResult:
     status: Literal["sent", "gone", "error"]
     status_code: int | None = None
     error: str | None = None
+    # Internal database generation observed before the provider request.
+    _binding_version: int | None = field(default=None, repr=False, compare=False)
 
 
 def _prepare_actions(raw_actions: Any) -> tuple[list[dict[str, str]], dict[str, str]]:
@@ -676,12 +680,24 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     topic = meta.get("topic")
     if topic:
         headers["Topic"] = _webpush_topic_header(str(topic))
-    endpoint = str(sub.endpoint).strip()
+    stored_endpoint = str(sub.endpoint)
+    endpoint = stored_endpoint.strip()
+    # Capture the generation and the exact values submitted to the provider
+    # together.  Never infer a binding from the row after the request returns.
+    subscription_id = sub.id
+    user_id = getattr(sub, "user_id", None)
+    raw_binding_version = getattr(sub, "binding_version", _MISSING_BINDING_VERSION)
+    if raw_binding_version is None:
+        binding_version: int | None = 0
+    elif type(raw_binding_version) is int:
+        binding_version = raw_binding_version
+    else:
+        # A missing or malformed field is not a loaded legacy NULL.
+        binding_version = None
     subscription_info = {
         "endpoint": endpoint,
         "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
     }
-    user_id = getattr(sub, "user_id", None)
     session: _NoRedirectWebPushSession | None = None
     try:
         error_stage: _WebPushErrorStage = "endpoint_url_validation"
@@ -738,12 +754,13 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 error_stage=error_stage,
             )
             return WebPushResult(
-                subscription_id=sub.id,
-                endpoint=str(sub.endpoint),
+                subscription_id=subscription_id,
+                endpoint=stored_endpoint,
                 user_id=uuid.UUID(str(user_id)) if user_id else None,
                 status="gone",
                 status_code=status_code,
                 error=safe_message or None,
+                _binding_version=binding_version,
             )
         _log_event(
             "send",
@@ -754,12 +771,13 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             error_stage=error_stage,
         )
         return WebPushResult(
-            subscription_id=sub.id,
-            endpoint=str(sub.endpoint),
+            subscription_id=subscription_id,
+            endpoint=stored_endpoint,
             user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             status_code=status_code,
             error=safe_message or None,
+            _binding_version=binding_version,
         )
     except (ConnectionError, TimeoutError, OSError, ValueError) as exc:
         # RZ-20-04: Narrowed — WebPush send errors (HTTP/crypto/network).
@@ -784,11 +802,12 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             },
         )
         return WebPushResult(
-            subscription_id=sub.id,
-            endpoint=str(sub.endpoint),
+            subscription_id=subscription_id,
+            endpoint=stored_endpoint,
             user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             error=safe_message,
+            _binding_version=binding_version,
         )
     finally:
         if session is not None:
@@ -809,11 +828,12 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         status_code=status_code,
     )
     return WebPushResult(
-        subscription_id=sub.id,
-        endpoint=str(sub.endpoint),
+        subscription_id=subscription_id,
+        endpoint=stored_endpoint,
         user_id=uuid.UUID(str(user_id)) if user_id else None,
         status="sent",
         status_code=status_code,
+        _binding_version=binding_version,
     )
 
 
@@ -882,6 +902,16 @@ async def _send_push_async(
         raise
 
 
+def _is_postgres_deadlock(error: DBAPIError) -> bool:
+    """Recognize only a live PostgreSQL deadlock, never a lost connection."""
+    if error.connection_invalidated:
+        return False
+    code = getattr(error.orig, "sqlstate", None)
+    if code is None:
+        code = getattr(error.orig, "pgcode", None)
+    return code == "40P01"
+
+
 def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
     """Return one deterministic result per subscription.
 
@@ -926,6 +956,7 @@ def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
                 status="error",
                 status_code=result.status_code,
                 error=result.error or "invalid push result status",
+                _binding_version=result._binding_version,
             )
         elif result.subscription_id != subscription_id:
             result = WebPushResult(
@@ -935,6 +966,7 @@ def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
                 status=result.status,
                 status_code=result.status_code,
                 error=result.error,
+                _binding_version=result._binding_version,
             )
         previous = selected.get(subscription_id)
         if previous is None:
@@ -953,7 +985,28 @@ def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
 
 
 async def process_push_results(results: list[WebPushResult]) -> None:
-    canonical_results = coalesce_push_results(results)
+    # Aggregate reporting remains per subscription ID, but durable changes
+    # must retain separate results for each binding of that ID.
+    bindings: dict[tuple[int, uuid.UUID, str], list[WebPushResult]] = {}
+    for raw_result in cast(Sequence[object], results):
+        if not isinstance(raw_result, WebPushResult):
+            continue
+        result = raw_result
+        version = result._binding_version
+        if (
+            type(version) is not int
+            or version < 0
+            or version > 2**63 - 1
+            or not isinstance(result.user_id, uuid.UUID)
+            or not isinstance(result.endpoint, str)
+        ):
+            # A legacy or malformed result cannot safely change durable state.
+            continue
+        key = (version, result.user_id, result.endpoint)
+        bindings.setdefault(key, []).append(result)
+    canonical_results = [
+        result for group in bindings.values() for result in coalesce_push_results(group)
+    ]
     gone_results = [r for r in canonical_results if r.status == "gone"]
     sent_results = [r for r in canonical_results if r.status == "sent"]
 
@@ -961,11 +1014,26 @@ async def process_push_results(results: list[WebPushResult]) -> None:
         return
 
     await _ensure_async_sessionmaker()
+    # A competing topic update can deadlock with a batch of subscription rows.
+    # Retry only the rolled-back, idempotent database work, never the send.
+    for attempt in range(3):
+        try:
+            await _apply_push_result_side_effects(gone_results, sent_results)
+            return
+        except DBAPIError as exc:
+            if not _is_postgres_deadlock(exc) or attempt == 2:
+                raise
+            await asyncio.sleep(0.05 * (attempt + 1))
+
+
+async def _apply_push_result_side_effects(
+    gone_results: list[WebPushResult], sent_results: list[WebPushResult]
+) -> None:
     async with async_session() as session:
-        if gone_results:
-            # Bind terminal cleanup to the endpoint observed by the provider.
-            # A concurrent re-subscribe may reuse the row id while rotating
-            # credentials; an old 404/410 must not delete that replacement.
+        # Five parameters per row; bounded chunks also work with SQLite's
+        # conservative parameter limit.  All chunks share one transaction.
+        for offset in range(0, len(gone_results), 150):
+            batch = gone_results[offset : offset + 150]
             await session.execute(
                 delete(PushSubscription).where(
                     or_(
@@ -973,15 +1041,17 @@ async def process_push_results(results: list[WebPushResult]) -> None:
                             and_(
                                 PushSubscription.id == result.subscription_id,
                                 PushSubscription.endpoint == result.endpoint,
+                                PushSubscription.user_id == result.user_id,
+                                func.coalesce(PushSubscription.binding_version, 0)
+                                == result._binding_version,
                             )
-                            for result in gone_results
+                            for result in batch
                         )
                     )
                 )
             )
-        if sent_results:
-            # The same binding prevents a late success from touching a row that
-            # now represents a different endpoint after a concurrent update.
+        for offset in range(0, len(sent_results), 150):
+            batch = sent_results[offset : offset + 150]
             await session.execute(
                 update(PushSubscription)
                 .where(
@@ -990,8 +1060,11 @@ async def process_push_results(results: list[WebPushResult]) -> None:
                             and_(
                                 PushSubscription.id == result.subscription_id,
                                 PushSubscription.endpoint == result.endpoint,
+                                PushSubscription.user_id == result.user_id,
+                                func.coalesce(PushSubscription.binding_version, 0)
+                                == result._binding_version,
                             )
-                            for result in sent_results
+                            for result in batch
                         )
                     )
                 )

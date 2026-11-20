@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     UUID,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -303,6 +304,8 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     endpoint: Mapped[str] = mapped_column(Text, nullable=False, index=True, unique=True)
     p256dh: Mapped[str] = mapped_column(String(200), nullable=False)
     auth: Mapped[str] = mapped_column(String(200), nullable=False)
+    # NULL is the initial generation; registrations advance it atomically.
+    binding_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

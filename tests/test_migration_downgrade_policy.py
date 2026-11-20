@@ -436,9 +436,10 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
 
     assert sorted(path.name for path in MIGRATIONS_DIR.glob("*.py")) == [
-        "202611020000_mvp_baseline.py"
+        "202611020000_mvp_baseline.py",
+        "202611200001_push_binding_version.py",
     ]
-    assert plan.head_revision == "202611020000"
+    assert plan.head_revision == "202611200001"
     assert plan.safe_target == "202611020000"
     assert plan.boundary_revision == "202611020000"
     assert plan.boundary_parent == "base"
@@ -597,13 +598,14 @@ def test_baseline_adr_matches_current_plan_without_rewriting_historical_scope() 
     ).read_text(encoding="utf-8")
     normalized = " ".join(baseline_adr.split())
 
-    assert f"one baseline revision, `{plan.head_revision}`" in normalized
+    assert f"one baseline revision, `{plan.boundary_revision}`" in normalized
     assert "`down_revision = None`" in normalized
     assert '`downgrade_policy = "irreversible"`' in normalized
     assert "Its `downgrade()` raises before it changes any schema." in normalized
     assert "There is no upgrade path from a pre-squash database." in normalized
     assert "a downgrade to base is refused." in normalized
-    assert plan.safe_target == plan.head_revision == plan.boundary_revision
+    assert plan.safe_target == plan.boundary_revision == "202611020000"
+    assert plan.head_revision == "202611200001"
     assert plan.boundary_parent == "base"
     assert plan.boundary_reason == BASELINE_BOUNDARY_REASON
     assert (
@@ -676,17 +678,23 @@ def test_adr_rollback_scope_maps_eight_unsupported_historical_findings() -> None
         assert boundary in normalized, boundary
 
 
-def test_baseline_is_the_only_rollback_barrier_in_the_squashed_graph() -> None:
-    """Prove the single-revision graph without migration imports, SQL or DB connections."""
+def test_baseline_is_the_only_rollback_barrier_in_the_current_graph() -> None:
+    """Check both revisions without migration imports, SQL or DB connections."""
     policy = _load_policy_module()
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
     metadata = [
         policy._parse_migration(path) for path in sorted(MIGRATIONS_DIR.glob("*.py"))
     ]
 
-    assert [migration.revision for migration in metadata] == ["202611020000"]
-    baseline = metadata[0]
+    assert [migration.revision for migration in metadata] == [
+        "202611020000",
+        "202611200001",
+    ]
+    baseline, successor = metadata
     assert baseline.parents == ()
     assert baseline.irreversible_reason == BASELINE_BOUNDARY_REASON
-    assert plan.head_revision == plan.boundary_revision == baseline.revision
+    assert successor.parents == (baseline.revision,)
+    assert successor.irreversible_reason is None
+    assert plan.head_revision == successor.revision
+    assert plan.safe_target == plan.boundary_revision == baseline.revision
     assert plan.boundary_parent == "base"

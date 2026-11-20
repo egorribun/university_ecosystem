@@ -820,6 +820,7 @@ async def test_delivery_outbox_concurrent_sessions_send_successful_pair_once(
     provider_calls: list[tuple[uuid.UUID, str]] = []
 
     async def fake_provider(subscription, payload):
+        binding_version = subscription.binding_version
         provider_calls.append((subscription.id, payload["data"]["notificationId"]))
         if len(provider_calls) == 1:
             first_send_started.set()
@@ -830,6 +831,7 @@ async def test_delivery_outbox_concurrent_sessions_send_successful_pair_once(
             user_id=subscription.user_id,
             status="sent",
             status_code=201,
+            _binding_version=0 if binding_version is None else binding_version,
         )
 
     monkeypatch.setattr(webpush_module, "_send_push_async", fake_provider)
@@ -931,6 +933,7 @@ async def test_delivery_outbox_partial_failure_commits_before_recipient_retry(
     provider_calls: list[uuid.UUID] = []
 
     async def fake_provider(subscription, payload):
+        binding_version = subscription.binding_version
         expected_id = identifiers[subscription.user_id]
         assert payload["data"]["notificationId"] == str(expected_id)
         provider_calls.append(subscription.id)
@@ -945,6 +948,7 @@ async def test_delivery_outbox_partial_failure_commits_before_recipient_retry(
             status="error" if failed else "sent",
             status_code=503 if failed else 201,
             error="provider unavailable" if failed else None,
+            _binding_version=0 if binding_version is None else binding_version,
         )
 
     monkeypatch.setattr(webpush_module, "_send_push_async", fake_provider)
@@ -1875,6 +1879,7 @@ def _grade_delivery_harness(
     real_sessions = database.async_session
 
     async def fake_provider(subscription, payload):
+        binding_version = subscription.binding_version
         assert payload["type"] == "grade"
         notification_id = uuid.UUID(payload["data"]["notificationId"])
         provider_calls.append((subscription.id, notification_id))
@@ -1884,6 +1889,7 @@ def _grade_delivery_harness(
             user_id=subscription.user_id,
             status="sent",
             status_code=201,
+            _binding_version=0 if binding_version is None else binding_version,
         )
 
     @asynccontextmanager

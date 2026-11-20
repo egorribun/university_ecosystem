@@ -9,9 +9,9 @@ children of the restored index, the approved ix-to-ux email-index replacement
 the AUD-272 removal of the redundant ``uq_notification_delivery_once`` constraint.
 Statements are compared after collapsing unquoted layout, since ``pg_dump`` wraps
 long statements; quoted values and function bodies remain byte-sensitive. Other catalog facts that ``pg_dump`` omits must be identical, and
-``alembic_version`` is the only other allowed difference. The baseline is then
-checked against the current models and must refuse its downgrade without changing
-the schema.
+``alembic_version`` is the only other allowed difference. The baseline is checked
+against reviewed historical models and must refuse downgrade without schema changes.
+A separate current-head check compares the full successor to current models.
 """
 
 from __future__ import annotations
@@ -592,10 +592,50 @@ def _extract_pre_squash_tree(target: Path) -> None:
 
 
 def _extract_baseline_tree(target: Path) -> None:
-    """Copy the working-tree app and alembic, keeping only the baseline revision."""
-    ignore = shutil.ignore_patterns("__pycache__")
+    """Use the reviewed baseline's model tree and keep its revision isolated."""
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("Git is required for the baseline model snapshot")
+
+    def git_output(*arguments: str) -> bytes:
+        code, output, _ = asyncio.run(_run_fixed_argv([git, *arguments], PROJECT_ROOT))
+        if code:
+            raise RuntimeError("baseline model snapshot requires complete Git history")
+        return output
+
+    if git_output("rev-parse", "--is-shallow-repository").strip() != b"false":
+        raise RuntimeError("baseline model snapshot requires complete Git history")
+    baseline_path = f"alembic/versions/{BASELINE_FILE}"
+    revision = git_output(
+        "log", "--first-parent", "-1", "--format=%H", "--", baseline_path
+    )
+    revision_text = revision.decode("ascii").strip()
+    if re.fullmatch(r"[0-9a-f]{40}", revision_text) is None:
+        raise RuntimeError("baseline model snapshot has ambiguous Git history")
+    parent = f"{revision_text}^"
+    git_output("rev-parse", "--verify", parent)
+    changed = git_output(
+        "diff", "--name-only", parent, revision_text, "--", baseline_path
+    )
+    if changed.decode("utf-8").strip() != baseline_path:
+        raise RuntimeError("baseline model snapshot has ambiguous Git history")
+    historical_baseline = git_output("show", f"{revision_text}:{baseline_path}")
+    if historical_baseline != (PROJECT_ROOT / baseline_path).read_bytes():
+        raise RuntimeError("baseline source does not match the reviewed Git object")
+    models = git_output("archive", "--format=tar", revision_text, "app/models")
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        return {
+            name
+            for name in names
+            if name == "__pycache__"
+            or (Path(directory) == PROJECT_ROOT / "app" and name == "models")
+        }
+
     shutil.copytree(PROJECT_ROOT / "alembic", target / "alembic", ignore=ignore)
     shutil.copytree(PROJECT_ROOT / "app", target / "app", ignore=ignore)
+    with tarfile.open(fileobj=io.BytesIO(models)) as tar:
+        tar.extractall(target, filter="data")
     shutil.copy(PROJECT_ROOT / "alembic.ini", target / "alembic.ini")
     versions = target / "alembic" / "versions"
     for migration in versions.glob("*.py"):
@@ -1018,6 +1058,7 @@ def test_no_permissive_using_true_policy_exists_on_any_rls_table(built: _Built) 
 
 
 def test_baseline_database_matches_the_current_models(built: _Built) -> None:
+    """Compare against the complete reviewed model snapshot in the baseline tree."""
     result = _alembic(built.baseline_tree, built.baseline.url, "check")
 
     assert result.returncode == 0, result.stderr[-4000:]
