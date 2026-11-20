@@ -1,6 +1,40 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Текущий срез — 2026-11-20, 04:52 UTC
+## Текущий срез — 2026-11-20, 09:03 UTC
+
+- PR #1534 вошёл в `main` обычным слиянием `d33d2761abe8d250e7f5e8f8470323c729329bcb` в 08:02:39 UTC.
+  На исходном коммите `20b0a69dc4e629ffbd076927c5706b028ee2dbe8` прошли все 78 обязательных пар
+  context/app, включая Coverage & Quality Policy Gate (job `136162118293`) и CI Success (job `136163000272`).
+  Деревья PR head, проверенного PR merge SHA `02526d03a87012e06b89b724cfde9ddb0e810f1b` и коммита
+  `main` совпадают. GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks`
+  в проверке правил `5251871447`. [PR #1534](https://github.com/egorribun/university_ecosystem/pull/1534) ·
+  [CI run 44695934771](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771)
+- В PR job `136152566727` прошли 18 realtime-сценариев. Артефакт AUD-154 для этого коммита
+  подтверждает четыре проверки отправки кнопкой и клавишей Enter на desktop и mobile. Все четыре
+  прошли с первой попытки. Результаты read-receipt приведены ниже для полного Core на `main`.
+  [Realtime job](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771/job/136152566727) ·
+  [AUD-154 артефакт 14612330420](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771/artifacts/14612330420)
+- Kubernetes NetworkPolicy job `136164190183` на `d33d2761` подтвердил все 40 проб матрицы
+  (15 разрешённых и 25 запрещённых соединений) и 13 прикладных проверок. Для двух реальных реплик
+  file-processor прошли 24 проверки, для ws-hub и Prometheus — 6 ограниченных проверок.
+  Публичный маршрут и реальный ingress controller, а также реальный file-processor в probe B остаются
+  вне этой проверки. Сетевые обращения outbox-worker проверены с подставным клиентом.
+  [NetworkPolicy run 44699509643](https://github.com/egorribun/university_ecosystem/actions/runs/44699509643) ·
+  [Артефакт 14613871575](https://github.com/egorribun/university_ecosystem/actions/runs/44699509643/artifacts/14613871575)
+- Полный Core job `136164176676` на `d33d2761` завершился с результатом 219 passed, 2 failed,
+  8 skipped и 3 flaky из 232 сценариев. Все шесть записей AUD-154 — `aud154-sent-confirmation`,
+  `aud154-enter-sent-confirmation` и `aud154-read-receipt` для каждого из desktop и mobile — прошли
+  с первой попытки. Диагностика охватывает desktop-сценарии notification-topics-delivery, profile-csrf,
+  events-scroll-restoration и schedule-200-equivalent-reflow, а также mobile push-delivery. В журнале
+  указаны суммарные failed и flaky без привязки к отдельным сценариям. Стенд успешно запущен и остановлен.
+  Проверка NATS outage пропущена. Метаданные результата сохранены в артефакте Core.
+  [Полный Core run 44699505018](https://github.com/egorribun/university_ecosystem/actions/runs/44699505018) ·
+  [Core receipt 14614549272](https://github.com/egorribun/university_ecosystem/actions/runs/44699505018/artifacts/14614549272)
+- В `quality/frozen-rc.json` на этом коммите поле `source_sha` равно `null`. Проверка frozen-RC
+  (job `136164176498`) завершилась с ошибкой, full-stack smoke (job `136164963022`) пропущен.
+  Итог всего workflow — failure. Формальный счёт аудита — **510/512**, открыты AUD-154 и AUD-381.
+
+## Предыдущий срез — 2026-11-20, main `85b0b2a08` (история)
 
 - PR #1524 вошёл в `main` обычным слиянием `85b0b2a08d67de0faa16c90ecf7091cb410a3eee`.
   На исходном коммите `3c7f651092de5b00240b1898dfafe859c09b9e07` прошли все 78 обязательных пар context/app,
@@ -138,12 +172,11 @@ source SHA, а не этого среза.
 
 ## Следующие шаги
 
-1. Проверить результаты запущенных на `85b0b2a08` Core и Kubernetes NetworkPolicy runs.
-2. AUD-154: разобраться с четырьмя flaky в Core run на `02c3664ab` и ранее наблюдавшейся
-   недоставкой native Push; получить green hosted Owned Live Acceptance на точном SHA
-   с read-receipt. AUD-381: разобрать пять исторических ZAP warnings и получить
-   проверенные ZAP и Nuclei на `main`. Отдельно подтвердить два последовательных
-   green полных Core run на `main`.
+1. Разобрать два failed и три flaky полного Core на `d33d2761`, сохраняя различие между результатами
+   Core, отдельной проверки frozen-RC и пропущенного full-stack smoke.
+2. AUD-154: получить два последовательных green полных Core run на `main` с реальным read-receipt;
+   следующий полный запуск — не ранее 2026-11-20 10:03:17 UTC. AUD-381: разобрать пять исторических
+   ZAP warnings и получить проверенные ZAP и Nuclei на точном SHA `main`.
 3. Этапы 3 и 4: сверить traceability matrix ТЗ §2–13 с кодом и выполнить live Chromium,
    mocked Firefox/WebKit, idempotent seed и stop/start; согласовать визуальные и
    performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
