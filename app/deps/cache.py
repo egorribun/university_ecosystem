@@ -37,8 +37,23 @@ except ImportError:
 
     orjson = OrJsonCompat()  # type: ignore[assignment]
 from fastapi.encoders import jsonable_encoder
+from nats.errors import (
+    ConnectionClosedError,
+    ConnectionDrainingError,
+    ConnectionReconnectingError,
+    NoRespondersError,
+    NoServersError,
+    OutboundBufferLimitError,
+    StaleConnectionError,
+)
 from nats.errors import Error as NatsError
-from nats.js.errors import KeyNotFoundError, NoKeysError
+from nats.js.errors import (
+    KeyNotFoundError,
+    NoKeysError,
+    NoStreamResponseError,
+    ServerError,
+    ServiceUnavailableError,
+)
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -60,6 +75,22 @@ class CacheBackendUnavailable(RuntimeError):
 
 class StrictCacheInvalidationError(CacheBackendUnavailable):
     """A strict cache invalidation did not complete and must be retried."""
+
+
+_NATS_CACHE_TRANSPORT_ERRORS = (
+    OSError,
+    CacheBackendUnavailable,
+    ConnectionClosedError,
+    ConnectionDrainingError,
+    ConnectionReconnectingError,
+    NoRespondersError,
+    NoServersError,
+    OutboundBufferLimitError,
+    StaleConnectionError,
+    NoStreamResponseError,
+    ServerError,
+    ServiceUnavailableError,
+)
 
 
 def _strict_exact_keys(keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -731,10 +762,7 @@ class NatsKVCache(BaseCache):
         try:
             kv = await self._get_kv()
             await kv.put(_encode_kv_key(key), envelope)
-        except (
-            OSError,
-            ConnectionError,
-        ) as exc:  # RZ-22-01: narrowed — NATS KV write errors
+        except _NATS_CACHE_TRANSPORT_ERRORS as exc:  # RZ-22-01: NATS transport failures
             logger.warning(
                 "NATS KV set failed",
                 cache_key_fingerprint=_cache_key_fingerprint(key),
@@ -766,10 +794,7 @@ class NatsKVCache(BaseCache):
                             await kv.delete(k)
                 else:
                     await kv.delete(_encode_kv_key(key))
-        except (
-            OSError,
-            ConnectionError,
-        ) as exc:  # RZ-22-01: narrowed — NATS KV invalidation errors
+        except _NATS_CACHE_TRANSPORT_ERRORS as exc:  # RZ-22-01: NATS transport failures
             logger.warning("NATS KV invalidate failed", error_type=type(exc).__name__)
 
     async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
