@@ -154,22 +154,37 @@ test("live Web Push acceptance is selected and stays inside native opt-in and su
 
   assert.match(apiRouter, /@router\.post\(["']\/subscribe["']/u)
   assert.match(apiRouter, /@router\.post\(["']\/unsubscribe["']/u)
-  assert.match(apiRouter, /PushSubscription\.endpoint == endpoint/u)
-  assert.match(apiRouter, /PushSubscription\.user_id == user\.id/u)
   const unsubscribeStart = apiRouter.indexOf('@router.post("/unsubscribe")')
-  const topicsStart = apiRouter.indexOf('@router.get("/topics")', unsubscribeStart)
-  const unsubscribeSource = apiRouter.slice(unsubscribeStart, topicsStart)
-  assert.match(
-    unsubscribeSource,
-    /PushSubscription\.endpoint == endpoint,[\s\S]*?PushSubscription\.user_id == user\.id/u,
-    "the unsubscribe lookup requires both the requested endpoint and authenticated owner"
+  const topicsStart = apiRouter.indexOf('@router.get("/topics"', unsubscribeStart)
+  assert.ok(
+    unsubscribeStart >= 0 && topicsStart > unsubscribeStart,
+    "unsubscribe source must be bounded by the topics route"
   )
-  assert.match(
-    unsubscribeSource,
-    /if not existing:[\s\S]*?return \{"ok": True, "removed": False\}/u,
-    "foreign endpoints return a non-mutating not-removed result"
+  const unsubscribeSource = apiRouter
+    .slice(unsubscribeStart, topicsStart)
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  const ownedUnsubscribe = [
+    "    removed_id = (",
+    "        await db.execute(",
+    "            delete(PushSubscription)",
+    "            .where(",
+    "                PushSubscription.endpoint == endpoint,",
+    "                PushSubscription.user_id == user.id,",
+    "            )",
+    "            .returning(PushSubscription.id)",
+    "        )",
+    "    ).scalar_one_or_none()",
+    "    if removed_id is None:",
+    '        return {"ok": True, "removed": False}',
+    "    await db.commit()",
+    '    return {"ok": True, "removed": True}',
+  ].join("\n")
+  assert.ok(
+    unsubscribeSource.includes(ownedUnsubscribe),
+    "unsubscribe atomically deletes only the authenticated owner's endpoint and reports a missing row without committing"
   )
-  assert.match(apiRouter, /return \{"ok": True, "removed": True\}/u)
   assert.match(
     model,
     /endpoint: Mapped\[str\] = mapped_column\(Text, nullable=False, index=True, unique=True\)/u
