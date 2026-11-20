@@ -53,6 +53,15 @@
 		}
 	}
 
+	# AUD-381: TRACE and TRACK echo request headers back through the proxy
+	# chain, and the Fetch API behind Node SSR cannot represent them or CONNECT.
+	# Reject them at the edge, before any route, so every path answers the same.
+	@unsupported_method method TRACE TRACK CONNECT
+	handle @unsupported_method {
+		header Allow "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
+		respond 405
+	}
+
 	# Edge-local liveness endpoint used by start-docker.ps1.
 	handle /healthz {
 		respond "OK" 200
@@ -98,7 +107,10 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		X-XSS-Protection "0"
+		# Do not fingerprint the proxy: drop Server and the Via header that
+		# reverse_proxy adds.
 		-Server
+		-Via
 	}
 
 	# Wave 137 SW4: backend's RFC 8615 well-known endpoints (JWKS, OpenID
@@ -114,7 +126,6 @@
 	handle /api/* {
 		reverse_proxy gateway:8080
 	}
-
 
 	# Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
 	# that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
