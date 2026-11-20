@@ -1,5 +1,7 @@
 import * as v from "valibot"
 
+import { searchText } from "@/utils/searchParams"
+
 /**
  * Settings route search-param schema — Wave 134 SW2 URL-sync.
  *
@@ -51,7 +53,7 @@ const tabField = v.fallback(
 
 export const settingsSearchSchema = v.object({
   tab: tabField,
-  spotify: v.optional(v.string()),
+  spotify: searchText(),
 })
 
 export type SettingsSearch = v.InferOutput<typeof settingsSearchSchema>

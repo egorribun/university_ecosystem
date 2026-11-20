@@ -44,7 +44,8 @@ function createHeadRouter(
   isServer: boolean,
   initialPath: string,
   language: Language,
-  failNestedRoute = false
+  failNestedRoute = false,
+  failLoginSearch = false
 ) {
   const i18n = createI18nInstance(language)
   const DocumentShell = ({ children }: { children: React.ReactNode }) => (
@@ -85,7 +86,16 @@ function createHeadRouter(
     createRoute({
       getParentRoute: () => publicLayout as never,
       path,
-      validateSearch: path === "/login" ? LoginRoute.options.validateSearch : undefined,
+      validateSearch:
+        path !== "/login"
+          ? undefined
+          : failLoginSearch
+            ? // Production login search never rejects a URL; force the failure
+              // path so the fallback head is still exercised.
+              () => {
+                throw new Error("rejected login search")
+              }
+            : LoginRoute.options.validateSearch,
       component: () => <p>Public</p>,
     })
   )
@@ -234,7 +244,7 @@ describe("AUD-147 and AUD-297 rendered head ownership", () => {
 
   it("keeps exactly one fallback metadata set when login search validation fails", async () => {
     import.meta.env.SSR = true
-    const { router, i18n } = createHeadRouter(true, "/login?redirect=%7B%7D", "en")
+    const { router, i18n } = createHeadRouter(true, "/login?redirect=%7B%7D", "en", false, true)
     histories.push(router.history)
     vi.stubGlobal("__ssrLangGetter__", () => "en")
     vi.stubGlobal("__ssrI18nGetter__", () => i18n)

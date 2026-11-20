@@ -1,10 +1,12 @@
 import * as v from "valibot"
 
+import { searchText } from "@/utils/searchParams"
+
 export const eventsSearchSchema = v.object({
-  tab: v.optional(v.string()),
-  q: v.optional(v.string()),
-  dr: v.optional(v.string()),
-  loc: v.optional(v.string()),
-  sort: v.optional(v.string()),
-  cat: v.optional(v.string()),
+  tab: searchText(),
+  q: searchText(),
+  dr: searchText(),
+  loc: searchText(),
+  sort: searchText(),
+  cat: searchText(),
 })

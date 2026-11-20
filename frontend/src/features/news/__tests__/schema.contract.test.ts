@@ -150,8 +150,10 @@ describe("news public schemas", () => {
       })
     })
 
-    it("rejects a sort mode the news route does not support", () => {
-      expect(v.safeParse(newsSearchSchema, { sort: "oldest" }).success).toBe(false)
+    it("drops a sort mode the news route does not support instead of failing the route", () => {
+      const result = v.safeParse(newsSearchSchema, { sort: "oldest" })
+      expect(result.success).toBe(true)
+      expect(result.output).toMatchObject({ sort: undefined })
     })
   })
 })
