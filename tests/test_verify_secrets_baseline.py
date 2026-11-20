@@ -8635,6 +8635,7 @@ def _assert_conditional_owner_source_bindings(
         | set(_AUD380_N5_PENDING_OWNER_IDENTITIES)
         | set(_AUD380_N6_EXPECTED_IDENTITIES)
     )
+    active_records = _aud380_conditional_policy()["records"]
     for row in _AUD380_PENDING_OWNER_RECORDS:
         assert row["approval_status"] == "NOT_APPROVED"
         active_row = copy.deepcopy(row)
@@ -8642,7 +8643,7 @@ def _assert_conditional_owner_source_bindings(
         assert any(
             _aud380_identity_key(candidate) == _aud380_identity_key(row)
             and candidate == active_row
-            for candidate in _aud380_conditional_policy()["records"]
+            for candidate in active_records
         ), "approved N21 metadata changed in the active 490 prefix"
 
     identity_line_keys = {
@@ -8686,8 +8687,7 @@ def _assert_conditional_owner_source_bindings(
         _aud380_identity_key(record): record for record in _AUD380_PENDING_OWNER_RECORDS
     }
     active_records_by_key = {
-        _aud380_identity_key(record): record
-        for record in _aud380_conditional_policy()["records"]
+        _aud380_identity_key(record): record for record in active_records
     }
     n4_records_by_key = {
         _aud380_identity_key(record): record
@@ -37731,3 +37731,39 @@ def _baseline_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
     )
     records[483] = previous
     return restored
+
+
+def test_aud380_source_bindings_read_one_fresh_policy_per_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    live_policy = root / "quality/security-false-positive-dispositions.json"
+    isolated_policy = tmp_path / "policy.json"
+    isolated_policy.write_bytes(live_policy.read_bytes())
+    read_bytes = Path.read_bytes
+    original_policy = _aud380_conditional_policy
+    policy_calls = 0
+
+    def read_with_isolated_policy(path: Path) -> bytes:
+        if path == live_policy:
+            return read_bytes(isolated_policy)
+        return read_bytes(path)
+
+    def count_policy_reconstruction() -> dict[str, Any]:
+        nonlocal policy_calls
+        policy_calls += 1
+        return original_policy()
+
+    monkeypatch.setattr(Path, "read_bytes", read_with_isolated_policy)
+    monkeypatch.setattr(
+        sys.modules[__name__], "_aud380_conditional_policy", count_policy_reconstruction
+    )
+    _assert_conditional_owner_source_bindings(root)
+    assert policy_calls == 1
+
+    isolated_policy.write_bytes(read_bytes(isolated_policy) + b"\n")
+    with pytest.raises(
+        AssertionError, match="live disposition noncanonical bytes changed"
+    ):
+        _assert_conditional_owner_source_bindings(root)
+    assert policy_calls == 2
