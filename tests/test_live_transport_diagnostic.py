@@ -64,6 +64,20 @@ def test_caddy_only_counts_exact_login_transport_errors(logger):
         assert sum(diagnostic.summarize("caddy", line(record | change)).values()) == 0
 
 
+@pytest.mark.parametrize("logger", [[], {}], ids=["array", "object"])
+def test_caddy_skips_nonstring_logger_and_keeps_later_record(logger):
+    valid = {
+        "logger": "http.log.error.log0",
+        "status": 502,
+        "msg": "EOF",
+        "request": {"method": "POST", "uri": "/api/v1/auth/login"},
+    }
+    mixed = line(valid | {"logger": logger, "msg": "i/o timeout"}) + line(valid)
+    result = diagnostic.summarize("caddy", mixed)
+    assert result["eof"] == 1
+    assert sum(result.values()) == 1
+
+
 def test_parser_rejects_foreign_malformed_partial_and_oversized_records():
     records = [
         line(gateway())[:-1],

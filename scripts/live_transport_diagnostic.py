@@ -60,9 +60,11 @@ def summarize(service: str, data: bytes) -> dict[str, int]:
             error = record.get("err")
         else:
             request = record.get("request")
+            logger = record.get("logger")
             if (
+                type(logger) is not str
                 # Caddy names an unnamed site log "log0" (the live :80 listener).
-                record.get("logger") not in {"http.log.error", "http.log.error.log0"}
+                or logger not in {"http.log.error", "http.log.error.log0"}
                 or type(request) is not dict
                 or request.get("method") != "POST"
                 or request.get("uri") != "/api/v1/auth/login"
