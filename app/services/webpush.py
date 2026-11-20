@@ -1016,14 +1016,16 @@ async def process_push_results(results: list[WebPushResult]) -> None:
     await _ensure_async_sessionmaker()
     # A competing topic update can deadlock with a batch of subscription rows.
     # Retry only the rolled-back, idempotent database work, never the send.
-    for attempt in range(3):
+    attempt = 0
+    while True:
         try:
             await _apply_push_result_side_effects(gone_results, sent_results)
             return
         except DBAPIError as exc:
-            if not _is_postgres_deadlock(exc) or attempt == 2:
+            attempt += 1
+            if not _is_postgres_deadlock(exc) or attempt >= 3:
                 raise
-            await asyncio.sleep(0.05 * (attempt + 1))
+            await asyncio.sleep(0.05 * attempt)
 
 
 async def _apply_push_result_side_effects(
