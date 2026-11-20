@@ -1,6 +1,6 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Текущий срез — 2026-11-19, 16:36 UTC
+## Текущий срез — 2026-11-20, 04:52 UTC
 
 - PR #1524 вошёл в `main` обычным слиянием `85b0b2a08d67de0faa16c90ecf7091cb410a3eee`.
   На исходном коммите `3c7f651092de5b00240b1898dfafe859c09b9e07` прошли все 78 обязательных пар context/app,
@@ -16,9 +16,12 @@
   (15 разрешённых соединений и 25 запрещённых), 24 проверки реального file-processor и 6 проверок
   ограниченных соединений для ws-hub и Prometheus. Публичный HTTP-маршрут и реальный ingress controller
   остаются вне этой проверки. [Kubernetes NetworkPolicy run 44561178071](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071) · [Артефакт 14552260459](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071/artifacts/14552260459)
-- Полный Core job `135690685646` на `85b0b2a08` выполняет E2E-проверки. Для закрытия AUD-154 нужны
-  два последовательных успешных полных Core-прогона на `main`. Свежего отчёта DAST для этого SHA пока нет.
-  [Полный Core run 44561200602](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602)
+- Полный Core job `135690685646` на `85b0b2a08` завершился с ошибкой. Прошли 222 теста, 8 пропущены,
+  2 прошли только при повторной попытке. Это desktop-сценарий `admin-stories-rbac` и mobile-сценарий
+  `admin-stories-smoke`. Все шесть проверок AUD-154 (sent, Enter-sent и read-receipt на desktop и mobile)
+  прошли с первой попытки. Стенд успешно остановлен. Для закрытия AUD-154 нужны два последовательных
+  успешных полных Core-прогона на `main`. Свежего отчёта DAST для этого SHA пока нет.
+  [Полный Core run 44561200602](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602) · [Артефакт 14552804821](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602/artifacts/14552804821)
 - Ранее PR #1519 был слит в `main` обычным слиянием `02c3664abff423960fbac9a35d1e3990575517c3`.
   На исходном коммите `18aa310f9f029449f4a250c7e1befbee0bcb8656` прошли все 78 обязательных пар context/app,
   включая Coverage & Quality Policy Gate (job `135602417513`) и CI Success (job `135604664230`).
