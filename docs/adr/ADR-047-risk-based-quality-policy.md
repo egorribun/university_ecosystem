@@ -2980,3 +2980,21 @@ identities. No exception is added. The inventory remains 242 baseline identities
 
 These records and local tests do not establish a passing scan, hosted required
 checks or native push delivery. Final-source validation remains required.
+
+## Decisions recorded on 2026-11-20
+
+### Authenticated Schedule visual-readiness companion rebind
+
+The authenticated visual capture waits for the Schedule section's existing
+loading and identity-pending state to clear before accepting its responsive
+view. The Semgrep `detect-redos` finding in the audit helper retains its exact
+line and reviewed context. Its existing companion is the visual smoke contract;
+the owner's standing one-to-one approval binds that companion's new bytes in
+Semgrep row 2 and the corresponding public-integrity identity in policy row 471.
+
+The source and policy predecessor checks restore the exact pre-change audit,
+contract, ledger and policy records before applying the earlier history. The
+owner, approval scope, category and 2027-01-10 expiry remain unchanged. The
+inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This rebind adds no exception, threshold or
+required-check change, and does not establish a passing scan or hosted check.

@@ -1145,8 +1145,9 @@ function authenticatedScheduleStateInPage(locale) {
         .trim()
     : ""
   const studentHeadingMatches = normalizedStudentHeading === expectedStudentTitle
-  const content = globalThis.document.querySelector('.skeleton-morph-content[data-loaded="true"]')
   const section = globalThis.document.querySelector('section[aria-label="' + expectedTitle + '"]')
+  const content = section?.querySelector('.skeleton-morph-content[data-loaded="true"]')
+  const busyRegion = content?.querySelector("[data-fade][aria-busy]")
   const errorBanner = section?.querySelector('[class*="border-error"]') ?? null
   const desktop = globalThis.innerWidth > 1280
   const grid = globalThis.document.querySelector('[role="grid"][aria-label]')
@@ -1168,6 +1169,7 @@ function authenticatedScheduleStateInPage(locale) {
     mainHeadingVisible: isVisible(mainHeading),
     studentHeadingMatches: isVisible(mainHeading) && studentHeadingMatches,
     loadedContentVisible: isVisible(content),
+    busyCleared: busyRegion?.getAttribute("aria-busy") === "false",
     errorBannerVisible: isVisible(errorBanner),
     desktop,
     viewLabelMatches: desktop
@@ -1192,6 +1194,7 @@ export function isAuthenticatedScheduleCaptureReady(state) {
     state.mainHeadingVisible !== true ||
     state.studentHeadingMatches !== true ||
     state.loadedContentVisible !== true ||
+    state.busyCleared !== true ||
     state.errorBannerVisible !== false ||
     state.viewLabelMatches !== true
   ) {
@@ -1239,6 +1242,7 @@ async function waitForAuthenticatedScheduleReady(page, locale) {
         lastState.mainHeadingVisible,
         lastState.studentHeadingMatches,
         lastState.loadedContentVisible,
+        lastState.busyCleared,
         lastState.errorBannerVisible,
         lastState.desktop,
         lastState.viewLabelMatches,

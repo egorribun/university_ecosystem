@@ -36692,6 +36692,7 @@ def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _visual_readiness_policy_predecessor(policy)
     bound = [
         item["sha256"]
         for item in ledger["dispositions"][6]["companions"]
@@ -36961,6 +36962,7 @@ _NOV20_ENVIRONMENT_PREVIOUS = (
 
 
 def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _visual_readiness_source_predecessor(path, actual)
     message = f"conditional disposition source file SHA-256 changed: {path}"
     if path == "scripts/live_stand.py":
         current, previous = _NOV20_LIVE_SHA256, _AUD154_COMBINED_LIVE_SHA256
@@ -36998,7 +37000,7 @@ def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nov20_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _visual_readiness_policy_predecessor(policy)
     records = restored["records"]
     if len(records) <= 495:
         return restored
@@ -37029,6 +37031,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _visual_readiness_policy_predecessor(policy)
     live_digest = hashlib.sha256(live).digest()
     expected = bytes.fromhex(
         "f3 91 64 0e 0e 05 4f b8 8b 8c c5 22 be 28 31 f6"
@@ -37136,7 +37139,9 @@ def test_nov20_ledger_projection_rejects_missing_pin_with_spoofed_hash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = _NOV17_LEDGER_PATH
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _visual_readiness_source_predecessor(
+        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+    )
     pin = _NOV20_LIVE_SHA256.hex().encode("ascii")
     assert actual.count(pin) == 1
     changed = actual.replace(pin, b"0" * len(pin), 1)
@@ -37208,3 +37213,355 @@ def test_nov20_policy_chain_rejects_identity_and_approval_drift(mutation: str) -
 
 def test_nov20_projection_leaves_unrelated_paths_unchanged() -> None:
     assert _nov20_live_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+# The approved visual-readiness rebind is a one-to-one replacement of the
+# existing companion pin and policy identity. Reconstruct the exact previous
+# source, ledger, and record before running any older historical projection.
+_VISUAL_READINESS_AUDIT = "frontend/scripts/authenticated-visual-audit.mjs"
+_VISUAL_READINESS_CONTRACT = "frontend/scripts/visual-smoke-contract.test.mjs"
+_VISUAL_READINESS_LEDGER = "quality/semgrep-dispositions.json"
+_VISUAL_READINESS_ROW = 471
+_VISUAL_READINESS_SOURCE_PINS = {
+    _VISUAL_READINESS_AUDIT: (
+        bytes.fromhex(
+            "b9 2b 9f 0f d3 bf d6 09 bd 80 ab 58 ba 1c 81 d3 9a fb de 54 a1 65 65 9c 79 8d 77 ca e7 55 5c 15"
+        ),
+        bytes.fromhex(
+            "34 27 02 ae a6 05 eb 4d ae 27 fd f0 73 72 a7 f7 6d 0d b4 3a 37 f3 99 10 c2 b9 50 74 e0 07 77 fe"
+        ),
+    ),
+    _VISUAL_READINESS_CONTRACT: (
+        bytes.fromhex(
+            "74 68 11 ca 97 89 b0 e8 1c 6d 1e 95 d3 09 81 9c ce a5 9e 32 ab 48 28 d8 74 07 e0 af 0b bf 24 a3"
+        ),
+        bytes.fromhex(
+            "48 43 bf 21 91 11 d2 07 95 5d db 5b 44 09 48 24 8f 25 87 7e 14 7f 17 f2 2a c3 67 31 f7 e0 1e 35"
+        ),
+    ),
+    _VISUAL_READINESS_LEDGER: (
+        _NOV20_LEDGER_SHA256,
+        bytes.fromhex(
+            "b0 9c 15 3d 18 bf 24 70 88 70 b6 ab db f7 39 2d 51 83 5f f2 64 d6 df 06 a4 39 bf 99 ba ae 85 b0"
+        ),
+    ),
+}
+_VISUAL_READINESS_BLOCK_SHA256 = bytes.fromhex(
+    "88 65 0a 1c 36 b1 35 79 39 d2 9c f2 43 93 65 8b d7 90 e3 6f 9f 5d 21 73 18 4e bc 5c 3b 9f d6 73"
+)
+_VISUAL_READINESS_ROW_BEFORE_SHA256 = bytes.fromhex(
+    "a6 87 95 f4 cc d6 30 f4 af 80 21 6a 61 be 61 75 13 e1 a2 4d a0 9b 7b 17 fc 4c 5c 48 5c 48 b9 a4"
+)
+_VISUAL_READINESS_POLICY_BEFORE_SHA256 = bytes.fromhex(
+    "26 43 e8 37 06 70 60 a5 0b ab 0d 96 ae 3c e0 98 4a e9 72 a5 53 98 8b 9a 75 6c ba 35 cc dd 83 bc"
+)
+_VISUAL_READINESS_BLOCK_START = b'test("Schedule page observation rejects pending or unowned loaded content", async () => {\n'
+_VISUAL_READINESS_BLOCK_END = b'test("selected Events and Schedule readiness selectors remain source-bound", async () => {\n'
+_VISUAL_READINESS_AUDIT_REVERSALS = (
+    (
+        b"""  const section = globalThis.document.querySelector('section[aria-label="' + expectedTitle + '"]')\n"""
+        b"""  const content = section?.querySelector('.skeleton-morph-content[data-loaded="true"]')\n"""
+        b'  const busyRegion = content?.querySelector("[data-fade][aria-busy]")\n',
+        b"""  const content = globalThis.document.querySelector('.skeleton-morph-content[data-loaded="true"]')\n"""
+        b"""  const section = globalThis.document.querySelector('section[aria-label="' + expectedTitle + '"]')\n""",
+    ),
+    (b'    busyCleared: busyRegion?.getAttribute("aria-busy") === "false",\n', b""),
+    (b"    state.busyCleared !== true ||\n", b""),
+    (
+        b"        lastState.loadedContentVisible,\n"
+        b"        lastState.busyCleared,\n"
+        b"        lastState.errorBannerVisible,\n",
+        b"        lastState.loadedContentVisible,\n"
+        b"        lastState.errorBannerVisible,\n",
+    ),
+)
+_VISUAL_READINESS_CONTRACT_REVERSALS = (
+    (
+        b"    studentHeadingMatches: true,\n"
+        b"    loadedContentVisible: true,\n"
+        b"    busyCleared: true,\n"
+        b"    errorBannerVisible: false,\n",
+        b"    studentHeadingMatches: true,\n"
+        b"    loadedContentVisible: true,\n"
+        b"    errorBannerVisible: false,\n",
+    ),
+    (
+        b"  assert.equal(isAuthenticatedScheduleCaptureReady({ ...desktop, busyCleared: false }), false)\n"
+        b"  assert.equal(isAuthenticatedScheduleCaptureReady({ ...desktop, busyCleared: undefined }), false)\n"
+        b"  assert.equal(isAuthenticatedScheduleCaptureReady({ ...mobileWeekday, busyCleared: false }), false)\n",
+        b"",
+    ),
+    (
+        b"  assert.match(schedule, /<SkeletonMorph\\s+loaded=\\{!isLoading \\|\\| hasDisplayedSchedule\\}/u)\n"
+        b"  assert.match(\n"
+        b"    schedule,\n"
+        b"    /const isSchedulePending = isLoading \\|\\| Boolean\\(isIdentityUnconfirmed\\)/u\n"
+        b"  )\n"
+        b"  assert.match(schedule, /<FadeSection[^>]*aria-busy=\\{isSchedulePending\\}/u)\n",
+        b"  assert.match(schedule, /<SkeletonMorph loaded=\\{!isLoading\\}/u)\n",
+    ),
+)
+
+
+def _visual_readiness_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _VISUAL_READINESS_SOURCE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    if path == _VISUAL_READINESS_LEDGER and digest != current:
+        # Older ledger layers validate their own exact inputs and negative controls.
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    if path == _VISUAL_READINESS_LEDGER:
+        current_pin = _VISUAL_READINESS_SOURCE_PINS[_VISUAL_READINESS_CONTRACT][1]
+        previous_pin = _VISUAL_READINESS_SOURCE_PINS[_VISUAL_READINESS_CONTRACT][0]
+        assert actual.count(current_pin.hex().encode("ascii")) == 1, message
+        historical = actual.replace(
+            current_pin.hex().encode("ascii"), previous_pin.hex().encode("ascii"), 1
+        )
+    else:
+        historical = actual
+        if path == _VISUAL_READINESS_CONTRACT:
+            assert historical.count(_VISUAL_READINESS_BLOCK_START) == 1, message
+            assert historical.count(_VISUAL_READINESS_BLOCK_END) == 1, message
+            start = historical.index(_VISUAL_READINESS_BLOCK_START)
+            end = historical.index(_VISUAL_READINESS_BLOCK_END)
+            assert start < end, message
+            assert hashlib.sha256(historical[start:end]).digest() == (
+                _VISUAL_READINESS_BLOCK_SHA256
+            ), message
+            historical = historical[:start] + historical[end:]
+            reversals = _VISUAL_READINESS_CONTRACT_REVERSALS
+        else:
+            reversals = _VISUAL_READINESS_AUDIT_REVERSALS
+        for added, previous_fragment in reversals:
+            assert historical.count(added) == 1, message
+            historical = historical.replace(added, previous_fragment, 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+def _visual_readiness_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _VISUAL_READINESS_ROW:
+        return restored
+    row = records[_VISUAL_READINESS_ROW]
+    identity = row["identity"]
+    previous, current = _VISUAL_READINESS_SOURCE_PINS[_VISUAL_READINESS_CONTRACT]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Older layers reject unrecognized or otherwise changed policy records.
+        return restored
+    assert identity["path"] == _VISUAL_READINESS_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == (
+        _VISUAL_READINESS_ROW_BEFORE_SHA256
+    ), "visual readiness disposition approval metadata changed"
+    return restored
+
+
+def test_visual_readiness_companion_remains_exactly_bound() -> None:
+    root = Path(__file__).resolve().parents[1]
+    audit_path = "frontend/scripts/authenticated-visual-audit.mjs"
+    contract_path = "frontend/scripts/visual-smoke-contract.test.mjs"
+    ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    entry = ledger["dispositions"][2]
+    assert entry["path"] == audit_path
+    assert (
+        entry["check_id"] == "javascript.lang.security.audit.detect-redos.detect-redos"
+    )
+    lines = (root / audit_path).read_text(encoding="utf-8").splitlines()
+    assert hashlib.sha256(lines[424].encode()).hexdigest() == entry["line_sha256"]
+    context = entry["context"]
+    assert (context["start_line"], context["end_line"]) == (423, 427)
+    assert (
+        hashlib.sha256("\n".join(lines[422:427]).encode()).hexdigest()
+        == context["sha256"]
+    )
+    pin = hashlib.sha256((root / contract_path).read_bytes()).hexdigest()
+    assert entry["companions"] == [{"path": contract_path, "sha256": pin}]
+    row = policy["records"][471]
+    assert row["category"] == "public_integrity_digest"
+    assert row["identity"]["path"] == "quality/semgrep-dispositions.json"
+    assert row["identity"]["type"] == "Hex High Entropy String"
+    assert row["identity"]["hashed_secret_bytes"] == list(
+        hashlib.sha1(pin.encode("ascii"), usedforsecurity=False).digest()
+    )
+    assert row["owner"] == "egorribun"
+    assert row["expires_on"] == "2027-01-10"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [_VISUAL_READINESS_AUDIT, _VISUAL_READINESS_CONTRACT, _VISUAL_READINESS_LEDGER],
+)
+def test_visual_readiness_projection_restores_exact_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    previous, current = _VISUAL_READINESS_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current
+    historical = _visual_readiness_source_predecessor(path, actual)
+    assert hashlib.sha256(historical).digest() == previous
+    assert _visual_readiness_source_predecessor(path, historical) == historical
+
+
+def test_visual_readiness_policy_projection_preserves_every_other_record() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    previous = _visual_readiness_policy_predecessor(policy)
+    assert len(policy["records"]) == len(previous["records"]) == 524
+    changed = [
+        index
+        for index, (current, before) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if current != before
+    ]
+    assert changed == [_VISUAL_READINESS_ROW]
+    canonical = json.dumps(
+        previous, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _VISUAL_READINESS_POLICY_BEFORE_SHA256
+    baseline = json.loads((root / ".secrets.baseline").read_bytes())
+    assert sum(len(items) for items in baseline["results"].values()) == 242
+    assert (
+        len(
+            [
+                line
+                for line in (root / ".gitleaksignore")
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            ]
+        )
+        == 27
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [_VISUAL_READINESS_AUDIT, _VISUAL_READINESS_CONTRACT, _VISUAL_READINESS_LEDGER],
+)
+def test_visual_readiness_projection_rejects_extra_source_bytes(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes() + b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        if path == _VISUAL_READINESS_LEDGER:
+            _aud154_combined_source_predecessor(path, actual)
+        else:
+            _visual_readiness_source_predecessor(path, actual)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [_VISUAL_READINESS_AUDIT, _VISUAL_READINESS_CONTRACT, _VISUAL_READINESS_LEDGER],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_visual_readiness_projection_rejects_drift_with_spoofed_postimage(
+    path: str, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    if path == _VISUAL_READINESS_AUDIT:
+        fragment = _VISUAL_READINESS_AUDIT_REVERSALS[0][0]
+    elif path == _VISUAL_READINESS_CONTRACT:
+        fragment = _VISUAL_READINESS_CONTRACT_REVERSALS[0][0]
+    else:
+        fragment = (
+            _VISUAL_READINESS_SOURCE_PINS[_VISUAL_READINESS_CONTRACT][1]
+            .hex()
+            .encode("ascii")
+        )
+    assert actual.count(fragment) == 1
+    replacement = b"" if mutation == "missing" else fragment + fragment
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _ = _VISUAL_READINESS_SOURCE_PINS[path]
+    monkeypatch.setitem(
+        _VISUAL_READINESS_SOURCE_PINS,
+        path,
+        (previous, hashlib.sha256(changed).digest()),
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _visual_readiness_source_predecessor(path, changed)
+
+
+def test_visual_readiness_projection_checks_added_test_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _VISUAL_READINESS_CONTRACT
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    fragment = b'  let busy = "false"\n'
+    assert actual.count(fragment) == 1
+    changed = actual.replace(fragment, b'  let busy = "true"\n', 1)
+    previous, _ = _VISUAL_READINESS_SOURCE_PINS[path]
+    monkeypatch.setitem(
+        _VISUAL_READINESS_SOURCE_PINS,
+        path,
+        (previous, hashlib.sha256(changed).digest()),
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _visual_readiness_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "path",
+        "type",
+        "category",
+        "owner",
+        "expiry",
+        "evidence",
+        "reviewed",
+        "approved",
+        "other",
+        "extra",
+    ],
+)
+def test_visual_readiness_policy_rejects_scope_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_VISUAL_READINESS_ROW]
+    if mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation in {"path", "type"}:
+        row["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        row[mutation] += " changed"
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "reviewed":
+        row["reviewed_on"] += " changed"
+    elif mutation == "approved":
+        row["approval_status"] = "pending"
+    elif mutation == "other":
+        policy["records"][0]["evidence"] += " changed"
+    else:
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
+
+
+def test_visual_readiness_projection_leaves_unrelated_source_unchanged() -> None:
+    assert (
+        _visual_readiness_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+    )
