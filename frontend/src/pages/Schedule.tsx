@@ -60,6 +60,7 @@ function ScheduleContent() {
   const {
     isLoading,
     isIdentityUnconfirmed,
+    isPrivateIdentityUnavailable,
     error: scheduleError,
     schedule,
     selectedGroup,
@@ -119,7 +120,8 @@ function ScheduleContent() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [interactionGroup, setInteractionGroup] = useState(selectedGroup)
   const groupChanged = interactionGroup !== selectedGroup
-  const suppressScopedActions = Boolean(isIdentityUnconfirmed) || groupChanged
+  const suppressScopedActions =
+    Boolean(isIdentityUnconfirmed) || Boolean(isPrivateIdentityUnavailable) || groupChanged
   const [settingsOpen, setSettingsOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 

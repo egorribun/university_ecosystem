@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -12,7 +12,7 @@ import {
 } from "@/api/hooks/schedule"
 import { scheduleGroupsQueryKey, scheduleQueryKey } from "@/components/schedule/scheduleUtils"
 import { useScheduleData } from "@/hooks/useScheduleData"
-import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 
 const groupId = "00000000-0000-0000-0000-000000000002"
@@ -170,6 +170,112 @@ describe("anonymous schedule-by-group reads", () => {
     })
     expect(new Headers(groupsCall?.[1]?.headers).has("Cookie")).toBe(false)
     expect(new Headers(groupsCall?.[1]?.headers).has("Authorization")).toBe(false)
+    expect(result.current.user).toBeNull()
+    expect(result.current.isPrivateIdentityUnavailable).toBe(true)
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([input]) =>
+            new URL(String(input), window.location.origin).pathname.endsWith(`/schedule/${groupId}`)
+          )
+      ).toBe(true)
+    })
+    const scheduleCall = vi
+      .mocked(fetch)
+      .mock.calls.map(
+        ([input, init]) => [new URL(String(input), window.location.origin), init] as const
+      )
+      .find(([url]) => url.pathname === `/api/v1/schedule/${groupId}`)
+    expect(scheduleCall?.[1]).toMatchObject({ credentials: "omit", cache: "no-store" })
+    expect(new Headers(scheduleCall?.[1]?.headers).has("Cookie")).toBe(false)
+    expect(new Headers(scheduleCall?.[1]?.headers).has("Authorization")).toBe(false)
+    expect(apiGet).not.toHaveBeenCalled()
+  })
+
+  it("discards a pending anonymous response after the local session epoch changes", async () => {
+    const generationKey = "ecosystem.session.generation.v1"
+    window.localStorage.setItem(
+      generationKey,
+      JSON.stringify({ nonce: "generation-a", hash: null })
+    )
+    acceptBrowserSessionGeneration()
+    window.localStorage.setItem(
+      generationKey,
+      JSON.stringify({ nonce: "generation-b", hash: null })
+    )
+    useAuthStore.setState({ user: { id: "account-a", role: "admin" } as never, loading: false })
+    let finish!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => pending)
+    )
+    const apiGet = vi.spyOn(api, "get")
+    const client = makeClient()
+    const view = renderHook(() => useScheduleData(), { wrapper: wrapperFor(client) })
+    try {
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+      await act(async () => {
+        invalidateSessionEpoch()
+        finish(
+          new Response(JSON.stringify([{ id: groupId, name: "Old public response" }]), {
+            status: 200,
+          })
+        )
+        await pending
+      })
+      expect(client.getQueryData(anonymousScheduleGroupsQueryKey)).toBeUndefined()
+      expect(view.result.current.groups).not.toContainEqual({
+        id: groupId,
+        name: "Old public response",
+      })
+      expect(apiGet).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it("does not commit an anonymous response after authentication starts loading", async () => {
+    window.localStorage.clear()
+    acceptBrowserSessionGeneration()
+    useAuthStore.setState({ user: null, loading: false })
+    let finish!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => pending)
+    )
+    const client = makeClient()
+    const view = renderHook(() => useScheduleData(), { wrapper: wrapperFor(client) })
+    try {
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+      const settled = useAuthStore.getState()
+      // Model the interval after auth changes and before React has rerendered.
+      vi.spyOn(useAuthStore, "getState").mockReturnValue({ ...settled, loading: true })
+      await act(async () => {
+        finish(
+          new Response(JSON.stringify([{ id: groupId, name: "Old public response" }]), {
+            status: 200,
+          })
+        )
+        await pending
+      })
+      expect(client.getQueryData(anonymousScheduleGroupsQueryKey)).toBeUndefined()
+      expect(view.result.current.groups).not.toContainEqual({
+        id: groupId,
+        name: "Old public response",
+      })
+    } finally {
+      view.unmount()
+      client.clear()
+    }
   })
 
   it("keeps the existing authenticated query identity and Axios route by default", async () => {

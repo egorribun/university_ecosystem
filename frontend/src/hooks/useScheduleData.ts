@@ -34,7 +34,13 @@ import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import { getQueryCacheIdentity } from "@/app/queryClient"
-import { captureSessionEpoch, isCurrentBrowserSession } from "@/stores/sessionEpoch"
+import {
+  captureSessionEpoch,
+  getSessionEpoch,
+  hasStaleBrowserSessionBinding,
+  isCurrentBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 export type ScheduleUpdateReceipt = {
   schedule: Lesson[]
@@ -51,6 +57,11 @@ type ScheduleQueryScope = {
   isCurrent: (revision: number) => boolean
 }
 
+function isCurrentAnonymousScheduleIdentity(): boolean {
+  const state = useAuthStore.getState()
+  return hasStaleBrowserSessionBinding() || (!state.loading && getConfirmedUserId(state) === null)
+}
+
 function isCurrentScheduleIdentity(
   isHydrated: boolean,
   anonymous: boolean,
@@ -58,8 +69,9 @@ function isCurrentScheduleIdentity(
 ): boolean {
   return (
     !isHydrated ||
-    anonymous ||
-    (owner !== null && isCurrentBrowserSession() && getQueryCacheIdentity() === owner)
+    (anonymous
+      ? isCurrentAnonymousScheduleIdentity()
+      : owner !== null && isCurrentBrowserSession() && getQueryCacheIdentity() === owner)
   )
 }
 
@@ -72,12 +84,14 @@ export function useScheduleData() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [initialGroupSelected, setInitialGroupSelected] = useState(false)
   const confirmedOwner = getConfirmedUserId({ user, loading: Boolean(authLoading) })
+  // Router hydration and anonymous-mode hydration have separate snapshots.
+  // Retire the old selection as soon as a signed-out identity has settled.
   const selectionIdentity =
-    confirmedOwner !== null
-      ? `owner:${confirmedOwner}`
-      : isHydrated && !authLoading && user === null
-        ? "anonymous"
-        : null
+    anonymous || (isHydrated && !authLoading && user === null)
+      ? "anonymous"
+      : confirmedOwner === null
+        ? null
+        : `owner:${confirmedOwner}`
   const [selectionScope, setSelectionScope] = useState(selectionIdentity)
   if (selectionIdentity !== null && selectionIdentity !== selectionScope) {
     setSelectionScope(selectionIdentity)
@@ -86,12 +100,17 @@ export function useScheduleData() {
   }
   const isIdentityUnconfirmed =
     isHydrated &&
+    !anonymous &&
     ((confirmedOwner === null && (Boolean(authLoading) || user !== null)) ||
       (confirmedOwner !== null && getQueryCacheIdentity() !== confirmedOwner))
-  const visibleUser = isHydrated && (confirmedOwner === null || isIdentityUnconfirmed) ? null : user
+  const isPrivateIdentityUnavailable =
+    isHydrated && user !== null && (anonymous || confirmedOwner === null)
+  const visibleUser =
+    isHydrated && (anonymous || confirmedOwner === null || isIdentityUnconfirmed) ? null : user
+  const localEpoch = getSessionEpoch()
   const runScopedQuery = async <T>(fetchData: () => Promise<T>): Promise<T> => {
     if (!isHydrated) return fetchData()
-    const ownsSession = captureSessionEpoch()
+    const ownsSession = anonymous ? () => localEpoch === getSessionEpoch() : captureSessionEpoch()
     const isCurrent = () =>
       ownsSession() && isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner)
     if (!isCurrent()) throw new CancelledError({ silent: true })
@@ -134,12 +153,13 @@ export function useScheduleData() {
     [groupsQuery.data, isIdentityUnconfirmed]
   )
   const defaultGroup = useMemo(() => {
-    if (!visibleUser || groups.length === 0) return null
+    if (groups.length === 0) return null
+    if (!visibleUser) return anonymous && user !== null ? groups[0]!.id : null
     const userGroupId = visibleUser.role === "student" ? visibleUser.group_id : null
     return userGroupId && groups.some((group) => group.id === userGroupId)
       ? userGroupId
       : groups[0]!.id
-  }, [visibleUser, groups])
+  }, [anonymous, user, visibleUser, groups])
 
   if (
     isHydrated &&
@@ -413,6 +433,7 @@ export function useScheduleData() {
     rawSchedule: groupSchedule,
     isLoading: groupsQuery.isLoading || scheduleQuery.isLoading,
     isIdentityUnconfirmed,
+    isPrivateIdentityUnavailable,
     error: groupsQuery.error ?? scheduleQuery.error ?? null,
     refresh,
     applyScheduleUpdate,
