@@ -1,4 +1,6 @@
 import * as v from "valibot"
+
+import { searchChoice, searchText } from "@/utils/searchParams"
 import { MAX_IMAGE_UPLOAD_BYTES } from "@/constants/uploads"
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
@@ -53,7 +55,7 @@ export type NewsFormValues = v.InferInput<typeof newsFormSchema>
  *   sort — "newest" | "popular"
  */
 export const newsSearchSchema = v.object({
-  q: v.optional(v.string()),
-  cat: v.optional(v.string()),
-  sort: v.optional(v.picklist(["newest", "popular"])),
+  q: searchText(),
+  cat: searchText(),
+  sort: searchChoice(["newest", "popular"]),
 })
