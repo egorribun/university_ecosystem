@@ -620,6 +620,7 @@ test("Schedule readiness follows the loaded responsive contract and permits a lo
     mainHeadingVisible: true,
     studentHeadingMatches: true,
     loadedContentVisible: true,
+    busyCleared: true,
     errorBannerVisible: false,
     desktop: true,
     viewLabelMatches: true,
@@ -640,6 +641,9 @@ test("Schedule readiness follows the loaded responsive contract and permits a lo
     selectedDayWeekend: true,
   }
   assert.equal(isAuthenticatedScheduleCaptureReady(desktop), true)
+  assert.equal(isAuthenticatedScheduleCaptureReady({ ...desktop, busyCleared: false }), false)
+  assert.equal(isAuthenticatedScheduleCaptureReady({ ...desktop, busyCleared: undefined }), false)
+  assert.equal(isAuthenticatedScheduleCaptureReady({ ...mobileWeekday, busyCleared: false }), false)
   assert.equal(
     isAuthenticatedScheduleCaptureReady({ ...desktop, studentHeadingMatches: false }),
     false
@@ -687,6 +691,63 @@ test("Schedule readiness follows the loaded responsive contract and permits a lo
   assert.deepEqual(findScheduleReadinessIssues([readyMobile]), [])
 })
 
+test("Schedule page observation rejects pending or unowned loaded content", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("function authenticatedScheduleStateInPage(locale) {")
+  const end = source.indexOf("\nexport function isAuthenticatedScheduleCaptureReady", start)
+  assert.notEqual(start, -1)
+  assert.notEqual(end, -1)
+
+  const visible = () => ({
+    style: { display: "block", visibility: "visible", opacity: "1" },
+    getBoundingClientRect: () => ({ width: 120, height: 80 }),
+  })
+  const heading = { ...visible(), childNodes: [{ nodeType: 3, textContent: "My schedule" }] }
+  const card = visible()
+  const grid = {
+    ...visible(),
+    getAttribute: (name) => (name === "aria-label" ? "Schedule" : null),
+    querySelectorAll: () => [card],
+  }
+  let busy = "false"
+  let sectionHasContent = true
+  const busyRegion = { getAttribute: () => busy }
+  const content = {
+    ...visible(),
+    querySelector: (selector) =>
+      selector === "[data-fade][aria-busy]" && busy !== null ? busyRegion : null,
+  }
+  const section = {
+    querySelector: (selector) =>
+      selector === '.skeleton-morph-content[data-loaded="true"]' && sectionHasContent
+        ? content
+        : null,
+  }
+  const elements = new Map([
+    ["main h1", heading],
+    ['section[aria-label="Schedule"]', section],
+    ['[role="grid"][aria-label]', grid],
+    ['.skeleton-morph-content[data-loaded="true"]', content],
+  ])
+  const stateInPage = vm.runInNewContext("(" + source.slice(start, end).trim() + ")", {
+    window: { getComputedStyle: (element) => element.style },
+    document: { querySelector: (selector) => elements.get(selector) ?? null },
+    location: { pathname: "/schedule" },
+    innerWidth: 1440,
+  })
+  assert.equal(isAuthenticatedScheduleCaptureReady(stateInPage("en")), true)
+  busy = "true"
+  assert.equal(isAuthenticatedScheduleCaptureReady(stateInPage("en")), false)
+  busy = null
+  assert.equal(isAuthenticatedScheduleCaptureReady(stateInPage("en")), false)
+  busy = "false"
+  sectionHasContent = false
+  assert.equal(isAuthenticatedScheduleCaptureReady(stateInPage("en")), false)
+})
+
 test("selected Events and Schedule readiness selectors remain source-bound", async () => {
   const [
     eventsList,
@@ -728,7 +789,12 @@ test("selected Events and Schedule readiness selectors remain source-bound", asy
     /id="events-tabpanel"[\s\S]*?aria-busy=\{isInitialLoading \|\| \(tab === "my" && isFetching\) \|\| undefined\}/u
   )
   assert.match(eventCard, /data-testid="event-card"/u)
-  assert.match(schedule, /<SkeletonMorph loaded=\{!isLoading\}/u)
+  assert.match(schedule, /<SkeletonMorph\s+loaded=\{!isLoading \|\| hasDisplayedSchedule\}/u)
+  assert.match(
+    schedule,
+    /const isSchedulePending = isLoading \|\| Boolean\(isIdentityUnconfirmed\)/u
+  )
+  assert.match(schedule, /<FadeSection[^>]*aria-busy=\{isSchedulePending\}/u)
   assert.match(
     scheduleHeader,
     /user\?\.role === "student" \? t\("schedule:title\.student"\) : t\("schedule:title\.default"\)/u

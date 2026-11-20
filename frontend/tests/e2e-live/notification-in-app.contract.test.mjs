@@ -216,25 +216,45 @@ test("the real notification reader keeps Russian pagination and rejects an Engli
 
 // Requiring a new deletion incorrectly rejects the route's idempotent success.
 const runNativeEndpointCleanup = async ({
+  kind = "topics",
   body = { ok: true, removed: true },
   httpOk = true,
   nativeRevoked = true,
   nativePresent = true,
   knownEndpoint = "https://push.example.test/owned",
+  nativeEndpoint = "https://push.example.test/owned",
+  responseUrl = "https://stand.example.test/api/v1/push/unsubscribe",
+  responseHeaders = {},
+  pending = false,
   cookie = "csrf_token=owned-test-token",
   invalidJson = false,
 } = {}) => {
-  const spec = await readFile(topicsSpecUrl, "utf8")
-  const start = spec.indexOf("const unsubscribeOnlyNativeEndpoint =")
-  const end = spec.indexOf("const findOnlyCreatedAccountId =", start)
+  const name =
+    kind === "chat" ? "unsubscribeOnlyNativeSubscription" : "unsubscribeOnlyNativeEndpoint"
+  const spec = await readFile(
+    kind === "chat" ? new URL("./push-delivery.live.spec.ts", import.meta.url) : topicsSpecUrl,
+    "utf8"
+  )
+  const start = spec.indexOf(`const ${name} =`)
+  const end = spec.indexOf(
+    kind === "chat" ? "const closeContexts =" : "const findOnlyCreatedAccountId =",
+    start
+  )
   assert.ok(start >= 0 && end > start)
   const compiled = typescript.transpileModule(
-    `${spec.slice(start, end)}\nglobalThis.cleanup = unsubscribeOnlyNativeEndpoint`,
+    `${spec.slice(start, end)}\nglobalThis.cleanup = ${name}`,
     { compilerOptions: { target: typescript.ScriptTarget.ES2022 } }
   )
   const calls = []
+  const events = []
+  let cancelled = false
   const context = {
     document: { cookie },
+    location: { origin: "https://stand.example.test" },
+    URL,
+    AbortController: globalThis.AbortController,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
     navigator: {
       serviceWorker: {
         getRegistration: async () => ({
@@ -242,9 +262,10 @@ const runNativeEndpointCleanup = async ({
             getSubscription: async () =>
               nativePresent
                 ? {
-                    endpoint: "https://push.example.test/owned",
+                    endpoint: nativeEndpoint,
                     unsubscribe: async () => {
                       calls.push("native-unsubscribe")
+                      events.push("revoke")
                       return nativeRevoked
                     },
                   }
@@ -254,10 +275,31 @@ const runNativeEndpointCleanup = async ({
       },
     },
     fetch: async (url, options) => {
+      events.push("post")
       calls.push({ url, options: JSON.parse(JSON.stringify(options)) })
       return {
         ok: httpOk,
+        status: httpOk ? 200 : 500,
+        url: responseUrl,
+        headers: {
+          get: (name) =>
+            ({ "content-type": "application/json", "content-length": "30", ...responseHeaders })[
+              name
+            ] ?? null,
+        },
         json: async () => {
+          events.push("read")
+          if (pending)
+            return new Promise((_resolve, reject) => {
+              options.signal.addEventListener(
+                "abort",
+                () => {
+                  cancelled = true
+                  reject(new Error("aborted"))
+                },
+                { once: true }
+              )
+            })
           if (invalidJson) throw new SyntaxError("invalid JSON")
           return body
         },
@@ -269,13 +311,77 @@ const runNativeEndpointCleanup = async ({
   }
   runInNewContext(compiled.outputText, context)
   let error
+  let row
   try {
-    await context.cleanup({ evaluate: (callback, arg) => callback(arg) }, knownEndpoint)
+    row = await context.cleanup({ evaluate: (callback, arg) => callback(arg) }, knownEndpoint)
   } catch (caught) {
     error = caught
   }
-  return { calls, error }
+  return { calls, error, row, events, cancelled }
 }
+
+test("native cleanup reports only the existing exact-endpoint response", async () => {
+  for (const removed of [true, false]) {
+    const { row, error, calls } = await runNativeEndpointCleanup({
+      body: { ok: true, removed, extra: "ignored" },
+    })
+    assert.equal(error, undefined)
+    assert.equal(row, removed)
+    assert.equal(calls.length, 2)
+  }
+  for (const options of [
+    { nativeEndpoint: "https://push.example.test/rotated" },
+    { nativePresent: false },
+    { responseUrl: "https://elsewhere.invalid/api/v1/push/unsubscribe" },
+    { responseUrl: "https://stand.example.test/api/v1/push/unsubscribe?x=1" },
+  ]) {
+    const { row, error } = await runNativeEndpointCleanup(options)
+    assert.equal(error, undefined)
+    assert.equal(row, null)
+  }
+})
+
+test("chat cleanup reads a small bounded response only after native revocation", async () => {
+  for (const removed of [true, false]) {
+    const { row, events } = await runNativeEndpointCleanup({
+      kind: "chat",
+      body: { ok: true, removed, extra: "ignored" },
+    })
+    assert.equal(row.cleaned, true)
+    assert.equal(row.row, removed)
+    assert.deepEqual(events, ["post", "revoke", "read"])
+  }
+  for (const options of [
+    { nativePresent: false },
+    { nativeEndpoint: "https://push.example.test/rotated" },
+    { responseUrl: "https://elsewhere.invalid/api/v1/push/unsubscribe" },
+    { responseUrl: "https://stand.example.test/api/v1/push/unsubscribe?x=1" },
+    { responseHeaders: { "content-length": null } },
+    { responseHeaders: { "content-length": "0" } },
+    { responseHeaders: { "content-length": "129" } },
+    { responseHeaders: { "content-length": "30x" } },
+    { responseHeaders: { "content-type": "text/html" } },
+    { responseHeaders: { "content-encoding": "gzip" } },
+    { body: { ok: true, removed: "false" } },
+    { invalidJson: true },
+  ]) {
+    const { row } = await runNativeEndpointCleanup({ kind: "chat", ...options })
+    assert.equal(row.cleaned, true)
+    assert.equal(row.row, null)
+  }
+  const pending = await runNativeEndpointCleanup({ kind: "chat", pending: true })
+  assert.equal(pending.row.cleaned, true)
+  assert.equal(pending.row.row, null)
+  assert.equal(pending.cancelled, true)
+  const failed = await runNativeEndpointCleanup({ kind: "chat", nativeRevoked: false })
+  assert.equal(failed.row.cleaned, false)
+  assert.equal(failed.row.row, null)
+  assert.deepEqual(failed.events, ["post", "revoke"])
+  const rejected = await runNativeEndpointCleanup({ kind: "chat", httpOk: false })
+  assert.equal(rejected.row.cleaned, false)
+  assert.equal(rejected.row.row, null)
+  assert.deepEqual(rejected.events, ["post", "revoke"])
+})
 
 for (const removed of [true, false]) {
   test(`native endpoint cleanup accepts confirmed server absence (removed=${removed})`, async () => {

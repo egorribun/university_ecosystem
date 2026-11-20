@@ -13,7 +13,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { CancelledError, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useHydrated } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import {
@@ -32,6 +32,15 @@ import { useScheduleTime } from "./useScheduleTime"
 import { useScheduleClock } from "./useScheduleClock"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { getQueryCacheIdentity } from "@/app/queryClient"
+import {
+  captureSessionEpoch,
+  getSessionEpoch,
+  hasStaleBrowserSessionBinding,
+  isCurrentBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 export type ScheduleUpdateReceipt = {
   schedule: Lesson[]
@@ -48,14 +57,67 @@ type ScheduleQueryScope = {
   isCurrent: (revision: number) => boolean
 }
 
+function isCurrentAnonymousScheduleIdentity(): boolean {
+  const state = useAuthStore.getState()
+  return hasStaleBrowserSessionBinding() || (!state.loading && getConfirmedUserId(state) === null)
+}
+
+function isCurrentScheduleIdentity(
+  isHydrated: boolean,
+  anonymous: boolean,
+  owner: string | null
+): boolean {
+  return (
+    !isHydrated ||
+    (anonymous
+      ? isCurrentAnonymousScheduleIdentity()
+      : owner !== null && isCurrentBrowserSession() && getQueryCacheIdentity() === owner)
+  )
+}
+
 export function useScheduleData() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { anonymous } = useAnonymousReadMode()
   const isHydrated = useHydrated()
   const { i18n: translation } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [initialGroupSelected, setInitialGroupSelected] = useState(false)
+  const confirmedOwner = getConfirmedUserId({ user, loading: Boolean(authLoading) })
+  // Router hydration and anonymous-mode hydration have separate snapshots.
+  // Retire the old selection as soon as a signed-out identity has settled.
+  const selectionIdentity =
+    anonymous || (isHydrated && !authLoading && user === null)
+      ? "anonymous"
+      : confirmedOwner === null
+        ? null
+        : `owner:${confirmedOwner}`
+  const [selectionScope, setSelectionScope] = useState(selectionIdentity)
+  if (selectionIdentity !== null && selectionIdentity !== selectionScope) {
+    setSelectionScope(selectionIdentity)
+    setSelectedGroup(null)
+    setInitialGroupSelected(false)
+  }
+  const isIdentityUnconfirmed =
+    isHydrated &&
+    !anonymous &&
+    ((confirmedOwner === null && (Boolean(authLoading) || user !== null)) ||
+      (confirmedOwner !== null && getQueryCacheIdentity() !== confirmedOwner))
+  const isPrivateIdentityUnavailable =
+    isHydrated && user !== null && (anonymous || confirmedOwner === null)
+  const visibleUser =
+    isHydrated && (anonymous || confirmedOwner === null || isIdentityUnconfirmed) ? null : user
+  const localEpoch = getSessionEpoch()
+  const runScopedQuery = async <T>(fetchData: () => Promise<T>): Promise<T> => {
+    if (!isHydrated) return fetchData()
+    const ownsSession = anonymous ? () => localEpoch === getSessionEpoch() : captureSessionEpoch()
+    const isCurrent = () =>
+      ownsSession() && isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner)
+    if (!isCurrent()) throw new CancelledError({ silent: true })
+    const data = await fetchData()
+    if (!isCurrent()) throw new CancelledError({ silent: true })
+    return data
+  }
   const nowTick = useScheduleClock()
   const timeZone = useCampusTimezone()
   const automaticParity = timeZone ? nowParity(nowTick, timeZone) : null
@@ -80,15 +142,35 @@ export function useScheduleData() {
   // Wave 130 SW1 — factory shared with the /schedule SSR loader
   // (frontend/src/api/hooks/schedule.ts). queryKey shape preserved
   // so cache entries hydrate cleanly across SSR → client.
-  const groupsQuery = useQuery(scheduleGroupsQueryOptions(anonymous, translation.language))
-  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
+  const groupsOptions = scheduleGroupsQueryOptions(anonymous, translation.language)
+  const groupsQuery = useQuery({
+    ...groupsOptions,
+    queryFn: (context) => runScopedQuery(() => groupsOptions.queryFn(context)),
+    enabled: !isIdentityUnconfirmed,
+  })
+  const groups = useMemo(
+    () => (isIdentityUnconfirmed ? [] : (groupsQuery.data ?? [])),
+    [groupsQuery.data, isIdentityUnconfirmed]
+  )
   const defaultGroup = useMemo(() => {
-    if (!user || groups.length === 0) return null
-    const userGroupId = user.role === "student" ? user.group_id : null
+    if (groups.length === 0) return null
+    if (!visibleUser) return anonymous && user !== null ? groups[0]!.id : null
+    const userGroupId = visibleUser.role === "student" ? visibleUser.group_id : null
     return userGroupId && groups.some((group) => group.id === userGroupId)
       ? userGroupId
       : groups[0]!.id
-  }, [user, groups])
+  }, [anonymous, user, visibleUser, groups])
+
+  if (
+    isHydrated &&
+    !isIdentityUnconfirmed &&
+    groupsQuery.isSuccess &&
+    selectedGroup !== null &&
+    !groups.some((group) => group.id === selectedGroup)
+  ) {
+    setSelectedGroup(null)
+    setInitialGroupSelected(false)
+  }
 
   // During SSR and its first hydration render, keep the same unselected tree:
   // request-local schedule data is deliberately not dehydrated to the browser.
@@ -99,7 +181,7 @@ export function useScheduleData() {
   }
 
   // ── TanStack Query: Schedule ───────────────────────
-  const activeGroupId = selectedGroup
+  const activeGroupId = isIdentityUnconfirmed ? null : selectedGroup
   const scheduleKey = useMemo(
     () =>
       activeGroupId == null
@@ -109,9 +191,11 @@ export function useScheduleData() {
           : scheduleQueryKey(activeGroupId),
     [activeGroupId, anonymous]
   )
-  const scheduleQuery = useQuery(
-    pageScheduleQueryOptions(activeGroupId, anonymous, translation.language)
-  )
+  const scheduleOptions = pageScheduleQueryOptions(activeGroupId, anonymous, translation.language)
+  const scheduleQuery = useQuery({
+    ...scheduleOptions,
+    queryFn: (context) => runScopedQuery(() => scheduleOptions.queryFn(context)),
+  })
   const scheduleQueryScope = useMemo<ScheduleQueryScope | null>(() => {
     if (!scheduleKey) return null
 
@@ -134,9 +218,12 @@ export function useScheduleData() {
       recordAuthoritativeUpdate: () => {
         revision += 1
       },
-      isCurrent: (expectedRevision: number) => active && revision === expectedRevision,
+      isCurrent: (expectedRevision: number) =>
+        active &&
+        revision === expectedRevision &&
+        isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner),
     }
-  }, [queryClient, scheduleKey])
+  }, [anonymous, confirmedOwner, isHydrated, queryClient, scheduleKey])
 
   useEffect(() => {
     if (!scheduleQueryScope) return
@@ -159,7 +246,10 @@ export function useScheduleData() {
     }
   }, [queryClient, scheduleQueryScope])
 
-  const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
+  const groupScheduleRaw = useMemo(
+    () => (isIdentityUnconfirmed ? [] : (scheduleQuery.data ?? [])),
+    [isIdentityUnconfirmed, scheduleQuery.data]
+  )
   const groupSchedule = useMemo(
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]
@@ -168,8 +258,19 @@ export function useScheduleData() {
   // ── Persist Schedule to RxDB for Offline Access ─────
   useEffect(() => {
     if (!anonymous && activeGroupId && groupScheduleRaw.length > 0) {
+      let active = true
+      const ownsSession = captureSessionEpoch()
+      const scope = scheduleQueryScope
+      const revision = scope?.revision()
       getDatabaseLazily()
         .then((db) => {
+          if (
+            !active ||
+            !ownsSession() ||
+            !isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner) ||
+            (scope && revision !== undefined && !scope.isCurrent(revision))
+          )
+            return
           const docs: ScheduleDoc[] = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
             id: String(lesson.id ?? ""),
             group_id: activeGroupId,
@@ -198,8 +299,11 @@ export function useScheduleData() {
           db.schedule.bulkUpsert(docs).catch(() => {})
         })
         .catch(() => {})
+      return () => {
+        active = false
+      }
     }
-  }, [activeGroupId, anonymous, groupScheduleRaw])
+  }, [activeGroupId, anonymous, confirmedOwner, groupScheduleRaw, isHydrated, scheduleQueryScope])
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {
@@ -281,6 +385,8 @@ export function useScheduleData() {
       if (!scheduleKey || activeGroupId == null) return undefined
       const scope = scheduleQueryScope
       const revision = scope?.revision()
+      if (!isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner)) return undefined
+      if (scope && revision !== undefined && !scope.isCurrent(revision)) return undefined
       const schedule = queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
         const base = Array.isArray(prev) ? [...prev] : []
         return normalizeLessons(updater(base))
@@ -293,26 +399,41 @@ export function useScheduleData() {
         invalidate: () => queryClient.invalidateQueries({ queryKey: scheduleKey, exact: true }),
       }
     },
-    [scheduleKey, activeGroupId, queryClient, normalizeLessons, scheduleQueryScope]
+    [
+      scheduleKey,
+      activeGroupId,
+      queryClient,
+      normalizeLessons,
+      scheduleQueryScope,
+      isHydrated,
+      anonymous,
+      confirmedOwner,
+    ]
   )
 
   const refresh = useCallback(() => {
-    if (scheduleKey) {
+    if (
+      scheduleKey &&
+      isCurrentScheduleIdentity(isHydrated, anonymous, confirmedOwner) &&
+      (!scheduleQueryScope || scheduleQueryScope.isCurrent(scheduleQueryScope.revision()))
+    ) {
       queryClient.invalidateQueries({ queryKey: scheduleKey })
     }
-  }, [queryClient, scheduleKey])
+  }, [queryClient, scheduleKey, scheduleQueryScope, isHydrated, anonymous, confirmedOwner])
 
   // ── Public API (unchanged from pre-refactor) ───────
   return {
-    user,
+    user: visibleUser,
     groups,
-    selectedGroup,
+    selectedGroup: activeGroupId,
     setSelectedGroup,
     currentParity,
     setCurrentParity,
     schedule: filteredSchedule,
     rawSchedule: groupSchedule,
     isLoading: groupsQuery.isLoading || scheduleQuery.isLoading,
+    isIdentityUnconfirmed,
+    isPrivateIdentityUnavailable,
     error: groupsQuery.error ?? scheduleQuery.error ?? null,
     refresh,
     applyScheduleUpdate,

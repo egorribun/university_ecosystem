@@ -399,6 +399,7 @@
   .css-toast-in,
   .css-stagger-item {
     transition-duration: 0.01s !important;
+    transition-delay: 0s !important;
     filter: none !important;
   }
 

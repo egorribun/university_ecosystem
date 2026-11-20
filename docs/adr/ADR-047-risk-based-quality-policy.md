@@ -2959,3 +2959,42 @@ their approved values. The inventory is 524 dispositions and 242 baseline identi
 The predecessor tests restore the previous runner, Semgrep ledger and disposition
 policy byte for byte before applying the historical checks. Acceptance requires
 the scanner and hosted checks on the resulting source commit. AUD-154 remains open.
+
+
+### Owned Core Windows Chrome and push cleanup observations
+
+The owned Core runner can supply Playwright with an optional Windows Program
+Files directory derived from the operating system. The native cleanup diagnostic
+reports only fixed result classes from the existing unsubscribe response; it
+does not establish the original recipient or browser delivery.
+
+Under the owner's standing one-to-one approval, the existing Semgrep row 7
+companion pin for `scripts/live_stand.py` and its corresponding public-integrity
+identity in disposition record index 495 bind the combined runner bytes. The
+new predecessor layer reconstructs the exact previous runner, Semgrep ledger
+and disposition policy before the AUD-154 and earlier historical checks run.
+Only that approved integrity digest changes with the runner. Its path, type,
+category, owner, approval scope and expiry remain unchanged, as do all other
+identities. No exception is added. The inventory remains 242 baseline identities,
+524 dispositions, 27 Gitleaks fingerprints and 15 Semgrep rows.
+
+These records and local tests do not establish a passing scan, hosted required
+checks or native push delivery. Final-source validation remains required.
+
+## Decisions recorded on 2026-11-20
+
+### Authenticated Schedule visual-readiness companion rebind
+
+The authenticated visual capture waits for the Schedule section's existing
+loading and identity-pending state to clear before accepting its responsive
+view. The Semgrep `detect-redos` finding in the audit helper retains its exact
+line and reviewed context. Its existing companion is the visual smoke contract;
+the owner's standing one-to-one approval binds that companion's new bytes in
+Semgrep row 2 and the corresponding public-integrity identity in policy row 471.
+
+The source and policy predecessor checks restore the exact pre-change audit,
+contract, ledger and policy records before applying the earlier history. The
+owner, approval scope, category and 2027-01-10 expiry remain unchanged. The
+inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This rebind adds no exception, threshold or
+required-check change, and does not establish a passing scan or hosted check.

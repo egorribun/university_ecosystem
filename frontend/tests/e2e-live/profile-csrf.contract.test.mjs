@@ -64,9 +64,7 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   const profileSettled = spec.indexOf("const profileSettled = page.waitForResponse(")
   const profileHydrated = spec.indexOf("await expect(nameInput).toHaveValue(initialName)")
   const csrfCookieClear = spec.indexOf('await page.context().clearCookies({ name: "csrf_token" })')
-  const bootstrapRegistered = spec.indexOf(
-    "const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)"
-  )
+  const bootstrapRegistered = spec.indexOf("waitForCsrfCookieBootstrap(page, waitAbort.signal)")
   const bootstrapStatus = spec.search(/expect\(\s*csrfBootstrapResponse\.status\(\)/u)
   const saveClick = spec.indexOf('getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()')
   const saveRequestCheck = spec.indexOf("saveRequest.postDataJSON()")
@@ -100,8 +98,10 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
     spec,
     /expect\(requestOrder, "the CSRF bootstrap completes before the profile save"\)\.toEqual\(\[\s*"csrf-cookie",\s*"save",?\s*\]\)/u
   )
-  assert.match(spec, /const waitForCsrfCookieBootstrap = \(page: Page\) =>/u)
-  assert.match(spec, /response\.request\(\)\.method\(\) === "GET"\s*\)/u)
+  assert.match(spec, /const waitForCsrfCookieBootstrap = \(page: Page, signal: AbortSignal\) =>/u)
+  assert.match(spec, /response\.request\(\)\.method\(\) === "GET",\s*\{ signal \}\s*\)/u)
+  assert.match(spec, /waitForProfileUpdate\(page, waitAbort\.signal\)/u)
+  assert.match(spec, /\.finally\(\(\) => waitAbort\.abort\(\)\)/u)
   assert.match(
     spec,
     /expect\(\s*csrfBootstrapResponse\.status\(\),\s*"the UI reacquires the CSRF cookie before saving"\s*\)\.toBe\(\s*200\s*\)/u

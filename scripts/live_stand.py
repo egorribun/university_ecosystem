@@ -157,6 +157,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_profile_save_diagnostics as _live_playwright_profile_save_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_push_cleanup_observations as _live_playwright_push_cleanup_observations,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_push_observations as _live_playwright_push_observations,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5759,6 +5762,7 @@ def _run_live_playwright(
     http_statuses = _live_playwright_http_statuses(stdout)
     http_operations = _live_playwright_http_operations(stdout)
     push_observations = _live_playwright_push_observations(stdout)
+    push_cleanup_observations = _live_playwright_push_cleanup_observations(stdout)
     push_recipient_observations = _live_playwright_push_recipient_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
     story_memory_cycle_trace_diagnostics = (
@@ -5938,6 +5942,12 @@ def _run_live_playwright(
         print(
             f"live E2E push recipient project={project} retry={retry} "
             f"scenario={scenario} check={check} subscription={subscription}",
+            flush=True,
+        )
+    for project, retry, case, row in push_cleanup_observations:
+        print(
+            f"live E2E push cleanup project={project} retry={retry} "
+            f"case={case} current-user-row={row} original-recipient=unknown",
             flush=True,
         )
     for record in story_setup_diagnostics:
@@ -8118,7 +8128,7 @@ def _e2e_locked(
         container_pin: tuple[str, str] | None = None
         try:
             _ensure_live_e2e_dependencies(frontend, environment)
-            playwright_environment = dict(environment)
+            playwright_environment = _live_playwright_platform_environment(environment)
             probe_enabled = _live_e2e_probe_selected(mode, selected_specs)
             reset_probe_enabled = mode == "full" and (
                 not selected_specs or LIVE_AUD178_RESET_PROBE_SPEC in selected_specs
@@ -8719,6 +8729,82 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"live_stand: {error}", file=sys.stderr)
         return 2
     return 0
+
+
+def _read_windows_program_files() -> str:
+    """Read the system-known Program Files location without trusting caller env."""
+    from uuid import UUID
+
+    folder_id = (ctypes.c_ubyte * 16).from_buffer_copy(
+        UUID("905e63b6-c1bf-494e-b29c-65b732d3d21a").bytes_le
+    )
+    folder = ctypes.c_wchar_p()
+    try:
+        shell = ctypes.windll.shell32
+        get_folder = shell.SHGetKnownFolderPath
+        get_folder.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_wchar_p),
+        ]
+        get_folder.restype = ctypes.c_long
+        status = get_folder(ctypes.byref(folder_id), 0, None, ctypes.byref(folder))
+        if status != 0 or not folder.value:
+            raise StandError("cannot resolve Windows Program Files")
+        return folder.value
+    except (AttributeError, OSError, ValueError) as error:
+        raise StandError("cannot resolve Windows Program Files") from error
+    finally:
+        if folder:
+            release = ctypes.windll.ole32.CoTaskMemFree
+            release.argtypes = [ctypes.c_void_p]
+            release.restype = None
+            release(ctypes.cast(folder, ctypes.c_void_p))
+
+
+def _windows_program_files_root() -> str:
+    """Admit only a local, real Windows Program Files directory."""
+    try:
+        raw = _read_windows_program_files()
+        if not isinstance(raw, str) or not raw.strip():
+            raise StandError("empty Program Files")
+        candidate = Path(raw)
+        if (
+            not candidate.is_absolute()
+            or not candidate.drive
+            or candidate.parent == candidate
+            or candidate.anchor.startswith("\\\\")
+        ):
+            raise StandError("nonlocal Program Files")
+        _assert_no_reparse_ancestors(candidate)
+        resolved = candidate.resolve(strict=True)
+        if (
+            not resolved.is_dir()
+            or ctypes.windll.kernel32.GetDriveTypeW(resolved.anchor) != 3
+        ):
+            raise StandError("invalid Program Files")
+        return str(resolved)
+    except (AttributeError, OSError, RuntimeError, ValueError, StandError) as error:
+        raise StandError("cannot safely resolve Windows Program Files") from error
+
+
+def _live_playwright_platform_environment(
+    environment: Mapping[str, str], *, platform: str | None = None
+) -> dict[str, str]:
+    """Supply Playwright's Windows Chrome search root from the OS only."""
+    child_environment = dict(environment)
+    if (platform or os.name) == "nt":
+        for name in tuple(child_environment):
+            if name.casefold() in {"programfiles", "programfiles(x86)", "homedrive"}:
+                del child_environment[name]
+        try:
+            child_environment["PROGRAMFILES"] = _windows_program_files_root()
+        except StandError:
+            # Keep existing LOCALAPPDATA/Chromium search usable without trusting
+            # a caller-provided replacement for the optional system folder.
+            pass
+    return child_environment
 
 
 if __name__ == "__main__":

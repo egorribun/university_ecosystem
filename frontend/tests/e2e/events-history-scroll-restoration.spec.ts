@@ -1,17 +1,49 @@
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 import { gotoWithTransientRetry } from "./utils/navigation"
+import { isStaggerRowSettled } from "./utils/eventsPosition"
+import { readFile } from "node:fs/promises"
 
-const isStaggerRowSettled = (element: Element): boolean => {
-  const wrapper = element.closest(".css-stagger-item")
-  if (!wrapper) {
-    throw new Error("the selected event must be inside a staggered row")
-  }
+test("event row settling and reduced motion respect the real stagger CSS", async ({ page }) => {
+  const styles = await readFile(
+    new URL("../../src/styles/partials/_modern-css.css", import.meta.url),
+    "utf8"
+  )
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.setContent(
+    `<style>:root { --motion-duration-base: 120ms; --motion-stagger-medium: 100ms; --ease-premium: linear; } ${styles}</style><main></main>`
+  )
+  const insertRow = (pause: boolean) =>
+    page.evaluate((shouldPause) => {
+      document.querySelector("main")!.innerHTML =
+        '<div class="css-stagger-item" style="--stagger-index: 8"><a href="#event">event</a></div>'
+      const row = document.querySelector(".css-stagger-item")!
+      const transform = getComputedStyle(row).transform
+      const animations = row.getAnimations()
+      if (shouldPause) animations.forEach((animation) => animation.pause())
+      return { count: animations.length, transform }
+    }, pause)
+  const started = await insertRow(true)
+  expect(started.count).toBeGreaterThan(0)
+  expect(started.transform).not.toBe("none")
+  const link = page.getByRole("link", { name: "event" })
+  await expect.poll(() => link.evaluate(isStaggerRowSettled)).toBe(false)
+  await link.evaluate((element) => {
+    element
+      .closest(".css-stagger-item")!
+      .getAnimations()
+      .forEach((animation) => animation.finish())
+  })
+  await expect.poll(() => link.evaluate(isStaggerRowSettled)).toBe(true)
 
-  const transform = getComputedStyle(wrapper).transform
-  const translateY = transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42
-  return translateY === 0
-}
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await insertRow(false)
+  const delay = await link.evaluate(
+    (element) => getComputedStyle(element.closest(".css-stagger-item")!).transitionDelay
+  )
+  expect(delay).toBe("0s")
+  await expect.poll(() => link.evaluate(isStaggerRowSettled)).toBe(true)
+})
 
 test("events back navigation restores the feed reading position", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-06-27T10:00:00Z"))

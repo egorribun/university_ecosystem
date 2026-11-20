@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import { syncBuiltinESMExports } from "node:module"
+import { setImmediate as waitForEventLoopTurn } from "node:timers/promises"
 import test from "node:test"
 import {
   cleanupMessengerReconnect,
@@ -410,7 +412,102 @@ test("expired cleanup deadline counts remaining owned messages", async () => {
   )
 })
 
-test("cleanup attempts finish within one shared deadline", async () => {
+function startClockedCleanup(t, events) {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1_000 })
+  t.after(() => {
+    t.mock.timers.reset()
+    syncBuiltinESMExports()
+  })
+  // The cleanup module uses named imports from node:timers.
+  syncBuiltinESMExports()
+
+  const neverSettles = () => new Promise(() => {})
+  let settled = false
+  const result = cleanupMessengerReconnect({
+    hasOwnerLog: true,
+    createdMessages: ["first-private-message", "second-private-message"],
+    deleteMessage: async (content, timeoutMs) => {
+      events.push(["delete", content, timeoutMs, Date.now()])
+      return neverSettles()
+    },
+    contexts: [0, 1].map((index) => ({
+      close() {
+        events.push(["close", index, Date.now()])
+        return neverSettles()
+      },
+    })),
+    timeoutMs: 30,
+  }).then((value) => {
+    settled = true
+    return value
+  })
+  return { result, isSettled: () => settled }
+}
+
+const timedCleanupFailure =
+  "Messenger reconnect cleanup failed within 30 ms: 2 sender-owned messages could not be deleted; 2 isolated browser contexts could not be closed."
+
+test("cleanup attempts finish within one shared deadline", async (t) => {
+  const events = []
+  const cleanup = startClockedCleanup(t, events)
+  await waitForEventLoopTurn()
+  assert.deepEqual(events, [["delete", "first-private-message", 15, 1_000]])
+  assert.equal(Date.now(), 1_000)
+  assert.equal(cleanup.isSettled(), false)
+
+  t.mock.timers.tick(14)
+  await waitForEventLoopTurn()
+  assert.equal(events.length, 1)
+  assert.equal(cleanup.isSettled(), false)
+
+  t.mock.timers.tick(1)
+  await waitForEventLoopTurn()
+  assert.deepEqual(events, [
+    ["delete", "first-private-message", 15, 1_000],
+    ["delete", "second-private-message", 15, 1_015],
+  ])
+
+  t.mock.timers.tick(14)
+  await waitForEventLoopTurn()
+  assert.equal(events.length, 2)
+  assert.equal(cleanup.isSettled(), false)
+
+  t.mock.timers.tick(1)
+  await waitForEventLoopTurn()
+  assert.deepEqual(events, [
+    ["delete", "first-private-message", 15, 1_000],
+    ["delete", "second-private-message", 15, 1_015],
+    ["close", 0, 1_030],
+    ["close", 1, 1_030],
+  ])
+  assert.equal(cleanup.isSettled(), false)
+  t.mock.timers.tick(1)
+  assert.equal(await cleanup.result, timedCleanupFailure)
+  assert.equal(Date.now(), 1_031)
+})
+
+test("a late cleanup timer skips further deletes after the shared deadline", async (t) => {
+  const events = []
+  const cleanup = startClockedCleanup(t, events)
+  await waitForEventLoopTurn()
+  assert.deepEqual(events, [["delete", "first-private-message", 15, 1_000]])
+  assert.equal(Date.now(), 1_000)
+
+  // Advancing past the deadline before delivering the first timer models a stalled event loop.
+  t.mock.timers.tick(31)
+  await waitForEventLoopTurn()
+  assert.deepEqual(events, [
+    ["delete", "first-private-message", 15, 1_000],
+    ["close", 0, 1_031],
+    ["close", 1, 1_031],
+  ])
+  assert.equal(cleanup.isSettled(), false)
+  t.mock.timers.tick(1)
+  assert.equal(await cleanup.result, timedCleanupFailure)
+  assert.equal(Date.now(), 1_032)
+})
+
+test("real cleanup timers finish and report every owned resource", async () => {
   let deleteCalls = 0
   let closeCalls = 0
   const neverSettles = () => new Promise(() => {})
@@ -422,30 +519,20 @@ test("cleanup attempts finish within one shared deadline", async () => {
       deleteCalls += 1
       return neverSettles()
     },
-    contexts: [
-      {
-        close() {
-          closeCalls += 1
-          return neverSettles()
-        },
+    contexts: [0, 1].map(() => ({
+      close() {
+        closeCalls += 1
+        return neverSettles()
       },
-      {
-        close() {
-          closeCalls += 1
-          return neverSettles()
-        },
-      },
-    ],
+    })),
     timeoutMs: 30,
   })
 
-  assert.equal(deleteCalls, 2)
+  // A paused event loop may exhaust the shared budget before another deletion.
+  assert.ok(deleteCalls <= 2)
   assert.equal(closeCalls, 2)
   assert.ok(Date.now() - startedAt < 500)
-  assert.equal(
-    cleanupFailure,
-    "Messenger reconnect cleanup failed within 30 ms: 2 sender-owned messages could not be deleted; 2 isolated browser contexts could not be closed."
-  )
+  assert.equal(cleanupFailure, timedCleanupFailure)
 })
 
 test("cleanup failure is reported without replacing the primary test failure", async () => {

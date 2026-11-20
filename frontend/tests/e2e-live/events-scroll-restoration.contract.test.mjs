@@ -8,6 +8,7 @@ import { URL } from "node:url"
 import { JSDOM } from "jsdom"
 import * as eventsGeometry from "./events-geometry.ts"
 import { collectEventsGeometry } from "./events-geometry.ts"
+import { isStaggerRowSettled } from "../e2e/utils/eventsPosition.ts"
 
 const specUrl = new URL("./events-scroll-restoration.live.spec.ts", import.meta.url)
 const geometryUrl = new URL("./events-geometry.ts", import.meta.url)
@@ -187,6 +188,10 @@ test("live Events history acceptance covers the seeded archive in RU and EN", ()
   assert.match(spec, /selectedUrl\.href/u)
   assert.match(spec, /originalPosition\.scrollY/u)
   assert.match(spec, /originalPosition\.top/u)
+  const baselineStart = spec.indexOf("await selectedEvent.scrollIntoViewIfNeeded()")
+  const settled = spec.indexOf("selectedEvent.evaluate(isStaggerRowSettled)", baselineStart)
+  const capture = spec.indexOf("const originalPosition", baselineStart)
+  assert.ok(baselineStart >= 0 && settled > baselineStart && capture > settled)
   assert.match(
     spec,
     /test\(`browser history restores the Events archive position in \$\{locale\.code\}`/u
@@ -311,6 +316,18 @@ test("Events geometry preserves the card count and height sample limits", () => 
   assert.equal(collectEventsGeometry(link), null)
   assert.equal(collectEventsGeometry(dom.window.document.body), null)
   dom.window.close()
+})
+
+test("Events stagger settling rejects a link without its card wrapper", () => {
+  const dom = new JSDOM("<a>event</a>")
+  try {
+    assert.throws(
+      () => isStaggerRowSettled(dom.window.document.querySelector("a")),
+      /staggered row/u
+    )
+  } finally {
+    dom.window.close()
+  }
 })
 
 test("a stalled or late-rejecting geometry read cannot replace the history failure", async () => {

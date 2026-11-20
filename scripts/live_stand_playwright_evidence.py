@@ -295,6 +295,12 @@ _PLAYWRIGHT_PUSH_RECIPIENT_LINE = re.compile(
 )
 _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
 
+_PLAYWRIGHT_PUSH_CLEANUP_LINE = re.compile(
+    r"UE_LIVE_PUSH_CLEANUP_V1 project=(?P<project>desktop|mobile) "
+    r"retry=(?P<retry>[01]) case=(?P<case>topics|chat|reply) "
+    r"current-user-row=(?P<row>removed|not-found|unknown) "
+    r"original-recipient=unknown"
+)
 _PLAYWRIGHT_STORY_MEMORY_PREFIX = "STORY_MEMORY_DIAG "
 _PLAYWRIGHT_STORY_MEMORY_LINE_BYTES_LIMIT = 8192
 _PLAYWRIGHT_STORY_MEMORY_RECORD_LIMIT = 4
@@ -2556,6 +2562,26 @@ def _live_playwright_push_recipient_observations(
     return records
 
 
+def _live_playwright_push_cleanup_observations(
+    output: str,
+) -> list[tuple[str, int, str, str]]:
+    """Retain only finite cleanup results for the currently authenticated user."""
+    records: dict[tuple[str, int, str], str] = {}
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 180 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PUSH_CLEANUP_LINE.fullmatch(line)
+        if match is None:
+            continue
+        identity = (match["project"], int(match["retry"]), match["case"])
+        if identity not in records:
+            records[identity] = match["row"]
+        elif records[identity] != match["row"]:
+            records[identity] = "unknown"
+    return [(*identity, row) for identity, row in records.items()]
+
+
 def _live_playwright_http_statuses(output: str) -> list[tuple[str, str, int]]:
     """Accept only complete stdout protocol records; discard all other content."""
     statuses: list[tuple[str, str, int]] = []
@@ -3589,11 +3615,11 @@ _HTTP_OPERATION_CASE_LINES = {
     "not-found-i18n.live.spec.ts": (11, 65),
     "notification-in-app.live.spec.ts": (293,),
     "notification-preferences.live.spec.ts": (217,),
-    "notification-topics-delivery.live.spec.ts": (1053,),
+    "notification-topics-delivery.live.spec.ts": (1079,),
     "password-reset.live.spec.ts": (129,),
     "profile-csrf.live.spec.ts": (99,),
     "profile-persistence.live.spec.ts": (102, 302),
-    "push-delivery.live.spec.ts": (440, 538, 826),
+    "push-delivery.live.spec.ts": (492, 590, 892),
     "push-permission-default.live.spec.ts": (17,),
     "push-permission-denied.live.spec.ts": (44,),
     "push-subscription.live.spec.ts": (115,),

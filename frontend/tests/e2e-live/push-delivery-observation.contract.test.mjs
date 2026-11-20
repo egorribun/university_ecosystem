@@ -1119,3 +1119,41 @@ test("push observation rejects out-of-domain notification counts and flags", () 
   )
   assert.equal(output, "")
 })
+
+test("cleanup observation preserves success and failure while emitting only closed classes", async () => {
+  const { observePushCleanup } = await import(`${helper.href}?cleanup-v2`)
+  const records = []
+  const emit = (line) => records.push(line)
+  const context = { project: "desktop", retry: 0, case: "topics", bound: true }
+  await observePushCleanup(context, async () => true, emit)
+  assert.deepEqual(records, [
+    "UE_LIVE_PUSH_CLEANUP_V1 project=desktop retry=0 case=topics current-user-row=removed original-recipient=unknown\n",
+  ])
+  const failure = new Error("private cleanup error")
+  await assert.rejects(
+    observePushCleanup(
+      { project: "mobile", retry: 1, case: "reply", bound: true },
+      async () => {
+        throw failure
+      },
+      emit
+    ),
+    (error) => error === failure
+  )
+  assert.match(records[1], /current-user-row=unknown original-recipient=unknown\n$/u)
+  await observePushCleanup({ ...context, case: "chat" }, async () => false, emit)
+  assert.match(records[2], /current-user-row=not-found original-recipient=unknown\n$/u)
+  await observePushCleanup({ ...context, bound: false }, async () => false, emit)
+  await observePushCleanup({ ...context, case: "private-token" }, async () => false, emit)
+  await assert.doesNotReject(
+    observePushCleanup(
+      { project: "desktop", retry: 1, case: "reply", bound: true },
+      async () => true,
+      () => {
+        throw new Error("private sink error")
+      }
+    )
+  )
+  assert.equal(records.length, 3)
+  assert.doesNotMatch(records.join(""), /private|https|endpoint|token/u)
+})

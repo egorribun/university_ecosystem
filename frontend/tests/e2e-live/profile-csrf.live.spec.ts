@@ -1,4 +1,5 @@
 import { Page, type Response } from "@playwright/test"
+import { clickWithExpiredCsrf } from "./profile-csrf-click-expiry"
 import {
   withLiveRegistrationAdmission,
   expect,
@@ -14,25 +15,25 @@ interface OwnerProfileResponse {
   email: string
   full_name: string | null
 }
-
 interface AdminUserRow {
   id: string
   email: string
   full_name: string | null
 }
 
-const waitForProfileUpdate = (page: Page) =>
+const waitForProfileUpdate = (page: Page, signal: AbortSignal) =>
   page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/v1/users/me" &&
-      response.request().method() === "PUT"
+      response.request().method() === "PUT",
+    { signal }
   )
-
-const waitForCsrfCookieBootstrap = (page: Page) =>
+const waitForCsrfCookieBootstrap = (page: Page, signal: AbortSignal) =>
   page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/v1/auth/csrf-cookie" &&
-      response.request().method() === "GET"
+      response.request().method() === "GET",
+    { signal }
   )
 
 const readOwnerProfile = async (page: Page): Promise<OwnerProfileResponse> => {
@@ -95,7 +96,6 @@ const deleteOnlyCreatedAccount = async (
 }
 
 test.use({ trace: "off", screenshot: "off" })
-
 test("authenticated profile update rejects missing and invalid CSRF proof", async ({
   page,
   browser,
@@ -269,10 +269,8 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
     // Ordering contract: (1) the signed-in profile refresh settles and seeds the editor,
     // (2) the draft is typed, (3) the CSRF cookie is removed, (4) the CSRF bootstrap is
     // registered and observed before the save, (5) the PUT carries the proof and the
-    // edited name. The backend issues a fresh CSRF cookie on any response to a request
-    // sent without one, so a background read (the shell's idle chat-badge fetch) landing
-    // between the removal and the click would restore the cookie and skip the bootstrap
-    // this test proves. Removing it right before the click keeps that window minimal.
+    // edited name. A safe background response can restore the cookie after the first
+    // removal, so expire it again in the capture phase of the actual save click.
     const profileSettled = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === "/api/v1/users/me" &&
@@ -304,13 +302,14 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
       expect(cookiesAfterExpiry, "the authenticated session remains available").toContain(
         "access_token_v2"
       )
-      const csrfBootstrapResponsePromise = waitForCsrfCookieBootstrap(page)
-      const saveResponsePromise = waitForProfileUpdate(page)
-      await page.getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()
+      const waitAbort = new AbortController()
       const [csrfBootstrapResponse, saveResponse] = await Promise.all([
-        csrfBootstrapResponsePromise,
-        saveResponsePromise,
-      ])
+        waitForCsrfCookieBootstrap(page, waitAbort.signal),
+        waitForProfileUpdate(page, waitAbort.signal),
+        clickWithExpiredCsrf(page, () =>
+          page.getByRole("button", { name: "СОХРАНИТЬ", exact: true }).click()
+        ),
+      ]).finally(() => waitAbort.abort())
       expect(
         csrfBootstrapResponse.status(),
         "the UI reacquires the CSRF cookie before saving"

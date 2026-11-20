@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import Schedule from "@/pages/Schedule"
 import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import type { UserState } from "@/types/Auth"
 
 const {
   apiMocks,
@@ -36,7 +39,8 @@ const {
       delete: vi.fn(),
     },
     authState: {
-      user: { role: "student" },
+      user: { role: "student" } as { role: string; id?: string } | null,
+      loading: false,
     },
     scheduleState: {
       isLoading: false,
@@ -374,6 +378,7 @@ describe("Schedule page behavior", () => {
     vi.clearAllMocks()
 
     authState.user = { role: "student" }
+    authState.loading = false
     scheduleState.isLoading = false
     scheduleState.error = null
     scheduleState.schedule = [baseLesson]
@@ -409,6 +414,40 @@ describe("Schedule page behavior", () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it("keeps settings during same-account verification and clears them on sign-out", async () => {
+    acceptBrowserSessionGeneration()
+    const user = { id: "fixture-account", role: "student" }
+    authState.user = user
+    expect(getConfirmedUserId({ user: user as UserState, loading: false })).toBe(user.id)
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+    const rerender = rerenderMountedSchedule
+    if (!rerender) throw new Error("Schedule rerender harness is not mounted")
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+
+    act(() => {
+      authState.loading = true
+      rerender()
+    })
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+    act(() => {
+      authState.loading = false
+      rerender()
+    })
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+
+    act(() => {
+      authState.user = null
+      rerender()
+    })
+    expect(screen.queryByTestId("settings-panel")).not.toBeInTheDocument()
+    act(() => {
+      authState.user = user
+      rerender()
+    })
+    expect(screen.queryByTestId("settings-panel")).not.toBeInTheDocument()
   })
 
   it("moves the mini-calendar lesson dots with the month the calendar shows", async () => {
@@ -641,11 +680,12 @@ describe("Schedule page behavior", () => {
   it("announces positive and negative week offsets", async () => {
     uiState.weekOffset = 2
     const { rerender } = await renderSchedule()
-    expect(screen.getByRole("status")).toHaveTextContent("+2")
+    const weekStatus = screen.getByText(/\+2/u, { selector: '[role="status"]' })
+    expect(weekStatus).toHaveTextContent("+2")
 
     uiState.weekOffset = -2
     rerender(<Schedule />)
-    expect(screen.getByRole("status")).toHaveTextContent("-2")
+    expect(screen.getByText(/-2/u, { selector: '[role="status"]' })).toHaveTextContent("-2")
   })
 
   it("shares the current instant without resetting the calendar's chosen month", async () => {
