@@ -118,7 +118,7 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   )
   assert.match(
     spec,
-    /const endpoint = subscription\?\.endpoint \?\? fallbackEndpoint\s+if \(!endpoint\) return false/u,
+    /const endpoint = subscription\?\.endpoint \?\? fallbackEndpoint\s+if \(!endpoint\) return \{ cleaned: false, row: null \}/u,
     "cleanup must fail closed when an attempted subscription has no deletable endpoint"
   )
   assert.match(

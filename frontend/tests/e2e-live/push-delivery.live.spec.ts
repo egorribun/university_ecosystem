@@ -14,7 +14,10 @@ import {
   test,
 } from "./native-push-profile-fixtures"
 import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
-import { createPushRecipientObservation } from "./push-recipient-observation.mjs"
+import {
+  createPushRecipientObservation,
+  observePushCleanup,
+} from "./push-recipient-observation.mjs"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -403,12 +406,12 @@ const deleteOnlyTestNotification = async (
 const unsubscribeOnlyNativeSubscription = async (
   page: Page,
   knownEndpoint: string | null
-): Promise<boolean> =>
+): Promise<{ cleaned: boolean; row: boolean | null }> =>
   page.evaluate(async (fallbackEndpoint) => {
     const registration = await navigator.serviceWorker.getRegistration()
     const subscription = await registration?.pushManager.getSubscription()
     const endpoint = subscription?.endpoint ?? fallbackEndpoint
-    if (!endpoint) return false
+    if (!endpoint) return { cleaned: false, row: null }
 
     const csrfCookie = document.cookie
       .split(";")
@@ -416,10 +419,11 @@ const unsubscribeOnlyNativeSubscription = async (
       .find((cookiePart) => cookiePart.startsWith("csrf_token="))
     if (!csrfCookie) {
       if (subscription) await subscription.unsubscribe()
-      return false
+      return { cleaned: false, row: null }
     }
 
     const csrfToken = decodeURIComponent(csrfCookie.slice("csrf_token=".length))
+    const controller = new AbortController()
     const response = await fetch("/api/v1/push/unsubscribe", {
       method: "POST",
       credentials: "same-origin",
@@ -428,9 +432,57 @@ const unsubscribeOnlyNativeSubscription = async (
         "X-CSRF-Token": csrfToken,
       },
       body: JSON.stringify({ endpoint }),
+      signal: controller.signal,
     })
     const browserUnsubscribed = subscription ? await subscription.unsubscribe() : true
-    return response.ok && browserUnsubscribed
+    const cleaned = response.ok && browserUnsubscribed
+    let row: boolean | null = null
+    try {
+      const url = new URL(response.url)
+      const length = response.headers.get("content-length")
+      const type = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase()
+      const encoding = response.headers.get("content-encoding")?.trim().toLowerCase()
+      if (
+        cleaned &&
+        response.status === 200 &&
+        url.origin === location.origin &&
+        url.pathname === "/api/v1/push/unsubscribe" &&
+        !url.search &&
+        !url.hash &&
+        subscription?.endpoint === fallbackEndpoint &&
+        typeof fallbackEndpoint === "string" &&
+        fallbackEndpoint.length > 0 &&
+        type === "application/json" &&
+        (!encoding || encoding === "identity") &&
+        length !== null &&
+        /^[1-9][0-9]{0,2}$/u.test(length) &&
+        Number(length) <= 128
+      ) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          const body = await Promise.race([
+            response.json().catch(() => null),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => {
+                try {
+                  controller.abort()
+                } catch {
+                  // Observation cancellation is best effort.
+                } finally {
+                  resolve(null)
+                }
+              }, 250)
+            }),
+          ])
+          if (body?.ok === true && typeof body.removed === "boolean") row = body.removed
+        } finally {
+          if (timer !== undefined) clearTimeout(timer)
+        }
+      }
+    } catch {
+      // Optional observation must not change cleanup's result.
+    }
+    return { cleaned, row }
   }, knownEndpoint)
 
 const closeContexts = async (contexts: BrowserContext[]): Promise<void> => {
@@ -560,6 +612,7 @@ test("chat message reaches Chromium through its real push subscription", async (
   let registrationAttempted = false
   let subscriptionMayExist = false
   let subscriptionEndpoint: string | null = null
+  let subscriptionBound = false
   let chatId: string | null = null
   let notificationId: string | null = null
   const contexts: BrowserContext[] = []
@@ -659,6 +712,7 @@ test("chat message reaches Chromium through its real push subscription", async (
       subscribed.endpoint === subscriptionEndpoint,
       "the persisted server binding belongs to this native browser endpoint"
     ).toBe(true)
+    subscriptionBound = true
     await expect(pushSwitch).toBeChecked()
 
     await senderPage.goto("/messenger")
@@ -789,12 +843,24 @@ test("chat message reaches Chromium through its real push subscription", async (
     }
 
     if (subscriptionMayExist) {
-      await attemptCleanup(async () => {
-        expect(
-          await unsubscribeOnlyNativeSubscription(page, subscriptionEndpoint),
-          "cleanup removes only this context's exact browser endpoint and server binding"
-        ).toBe(true)
-      })
+      await attemptCleanup(() =>
+        observePushCleanup(
+          {
+            project: testInfo.project.name,
+            retry: testInfo.retry,
+            case: "chat",
+            bound: subscriptionBound,
+          },
+          async () => {
+            const result = await unsubscribeOnlyNativeSubscription(page, subscriptionEndpoint)
+            expect(
+              result.cleaned,
+              "cleanup removes only this context's exact browser endpoint and server binding"
+            ).toBe(true)
+            return result.row
+          }
+        )
+      )
     }
     if (chatId) {
       await attemptCleanup(() => deleteOnlyTestNotification(page, chatId!, message, notificationId))
@@ -850,6 +916,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
   let registrationAttempted = false
   let subscriptionMayExist = false
   let subscriptionEndpoint: string | null = null
+  let subscriptionBound = false
   let chatId: string | null = null
   let groupCreationAttempted = false
   let expectedMemberIds: string[] | null = null
@@ -973,6 +1040,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
       true
     )
     expect(subscribed.endpoint === subscriptionEndpoint).toBe(true)
+    subscriptionBound = true
     await expect(pushSwitch).toBeChecked()
 
     await groupOwnerPage.goto("/messenger")
@@ -1255,12 +1323,24 @@ test("quoted group author gets one chat.reply push with group context and no gen
     }
 
     if (subscriptionMayExist) {
-      await attemptCleanup(async () => {
-        expect(
-          await unsubscribeOnlyNativeSubscription(page, subscriptionEndpoint),
-          "cleanup removes only this test's exact push endpoint and server binding"
-        ).toBe(true)
-      })
+      await attemptCleanup(() =>
+        observePushCleanup(
+          {
+            project: testInfo.project.name,
+            retry: testInfo.retry,
+            case: "reply",
+            bound: subscriptionBound,
+          },
+          async () => {
+            const result = await unsubscribeOnlyNativeSubscription(page, subscriptionEndpoint)
+            expect(
+              result.cleaned,
+              "cleanup removes only this test's exact push endpoint and server binding"
+            ).toBe(true)
+            return result.row
+          }
+        )
+      )
     }
 
     const cleanupGroup: { id: string | null } = { id: null }

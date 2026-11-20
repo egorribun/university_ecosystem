@@ -2959,3 +2959,24 @@ their approved values. The inventory is 524 dispositions and 242 baseline identi
 The predecessor tests restore the previous runner, Semgrep ledger and disposition
 policy byte for byte before applying the historical checks. Acceptance requires
 the scanner and hosted checks on the resulting source commit. AUD-154 remains open.
+
+
+### Owned Core Windows Chrome and push cleanup observations
+
+The owned Core runner can supply Playwright with an optional Windows Program
+Files directory derived from the operating system. The native cleanup diagnostic
+reports only fixed result classes from the existing unsubscribe response; it
+does not establish the original recipient or browser delivery.
+
+Under the owner's standing one-to-one approval, the existing Semgrep row 7
+companion pin for `scripts/live_stand.py` and its corresponding public-integrity
+identity in disposition record index 495 bind the combined runner bytes. The
+new predecessor layer reconstructs the exact previous runner, Semgrep ledger
+and disposition policy before the AUD-154 and earlier historical checks run.
+Only that approved integrity digest changes with the runner. Its path, type,
+category, owner, approval scope and expiry remain unchanged, as do all other
+identities. No exception is added. The inventory remains 242 baseline identities,
+524 dispositions, 27 Gitleaks fingerprints and 15 Semgrep rows.
+
+These records and local tests do not establish a passing scan, hosted required
+checks or native push delivery. Final-source validation remains required.

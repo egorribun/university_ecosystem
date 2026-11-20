@@ -11,6 +11,45 @@ const scenarios = new Set(["chat", "reply", "news", "events", "schedule", "relea
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 const MAX_RECORDS = 32
 let emitted = 0
+const cleanupCases = new Set(["topics", "chat", "reply"])
+const emittedCleanup = new Set()
+
+// A cleanup result is scoped to the account authenticated for that request.
+// It never establishes the original recipient, provider acceptance, or arrival.
+export function reportPushCleanupObservation(
+  context,
+  removed,
+  emit = (line) => process.stdout.write(line)
+) {
+  try {
+    if (
+      !context ||
+      (context.project !== "desktop" && context.project !== "mobile") ||
+      (context.retry !== 0 && context.retry !== 1) ||
+      !cleanupCases.has(context.case) ||
+      context.bound !== true
+    )
+      return
+    const identity = `${context.project}:${context.retry}:${context.case}`
+    if (emittedCleanup.has(identity)) return
+    const row = removed === true ? "removed" : removed === false ? "not-found" : "unknown"
+    emittedCleanup.add(identity)
+    emit(
+      `UE_LIVE_PUSH_CLEANUP_V1 project=${context.project} retry=${context.retry} case=${context.case} current-user-row=${row} original-recipient=unknown\n`
+    )
+  } catch {
+    // Diagnostics never alter cleanup or expose their inputs.
+  }
+}
+
+export async function observePushCleanup(context, cleanup, emit) {
+  let removed = null
+  try {
+    removed = await cleanup()
+  } finally {
+    reportPushCleanupObservation(context, removed, emit)
+  }
+}
 
 export function createPushRecipientObservation(
   page,

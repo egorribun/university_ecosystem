@@ -14,7 +14,10 @@ import {
   test,
 } from "./native-push-profile-fixtures"
 import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
-import { createPushRecipientObservation } from "./push-recipient-observation.mjs"
+import {
+  createPushRecipientObservation,
+  observePushCleanup,
+} from "./push-recipient-observation.mjs"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -783,18 +786,18 @@ const closeNativeNotifications = async (
 const unsubscribeOnlyNativeEndpoint = async (
   page: Page,
   knownEndpoint: string | null
-): Promise<void> => {
+): Promise<boolean | null> => {
   const result = await page.evaluate(async (fallbackEndpoint) => {
     const registration = await navigator.serviceWorker.getRegistration()
     const subscription = await registration?.pushManager.getSubscription()
     const endpoint = subscription?.endpoint ?? fallbackEndpoint
-    if (!endpoint) return { serverRemoved: true, browserRevoked: true }
+    if (!endpoint) return { serverRemoved: true, browserRevoked: true, row: null }
 
     const csrfCookie = document.cookie
       .split(";")
       .map((part) => part.trim())
       .find((part) => part.startsWith("csrf_token="))
-    if (!csrfCookie) return { serverRemoved: false, browserRevoked: false }
+    if (!csrfCookie) return { serverRemoved: false, browserRevoked: false, row: null }
     const csrfToken = decodeURIComponent(csrfCookie.slice("csrf_token=".length))
     const response = await fetch("/api/v1/push/unsubscribe", {
       method: "POST",
@@ -810,10 +813,32 @@ const unsubscribeOnlyNativeEndpoint = async (
       removed?: unknown
     } | null
     const browserRevoked = subscription ? await subscription.unsubscribe() : true
+    let sameRoute = false
+    try {
+      const url = new URL(response.url)
+      sameRoute =
+        url.origin === location.origin &&
+        url.pathname === "/api/v1/push/unsubscribe" &&
+        !url.search &&
+        !url.hash
+    } catch {
+      // An unverified response remains unknown without affecting cleanup.
+    }
     return {
       // The server also confirms absence when provider cleanup removed the row first.
       serverRemoved: response.ok && body?.ok === true && typeof body.removed === "boolean",
       browserRevoked,
+      row:
+        response.status === 200 &&
+        sameRoute &&
+        body?.ok === true &&
+        typeof body.removed === "boolean" &&
+        browserRevoked === true &&
+        typeof fallbackEndpoint === "string" &&
+        fallbackEndpoint.length > 0 &&
+        subscription?.endpoint === fallbackEndpoint
+          ? body.removed
+          : null,
     }
   }, knownEndpoint)
   expect(result.serverRemoved, "cleanup removes only the recipient's exact server endpoint").toBe(
@@ -822,6 +847,7 @@ const unsubscribeOnlyNativeEndpoint = async (
   expect(result.browserRevoked, "cleanup revokes only the recipient's native subscription").toBe(
     true
   )
+  return result.row
 }
 
 const findOnlyCreatedAccountId = async (
@@ -1613,7 +1639,19 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     await attemptCleanup(() => closeNativeNotifications(page, nativeMarkers))
 
     if (subscriptionMayExist) {
-      await attemptCleanup(() => unsubscribeOnlyNativeEndpoint(page, subscriptionEndpoint))
+      await attemptCleanup(() =>
+        observePushCleanup(
+          subscriptionEndpoint
+            ? {
+                project: testInfo.project.name,
+                retry: testInfo.retry,
+                case: "topics",
+                bound: true,
+              }
+            : null,
+          () => unsubscribeOnlyNativeEndpoint(page, subscriptionEndpoint)
+        )
+      )
     }
   }
 
