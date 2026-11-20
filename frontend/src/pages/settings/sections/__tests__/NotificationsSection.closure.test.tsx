@@ -181,6 +181,27 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
     expect(screen.getAllByDisplayValue(/:/)[0]).toBeDisabled()
   })
 
+  it("locks quiet-hours controls until the signed-in identity is confirmed", async () => {
+    await renderSection()
+    const dndToggle = screen.getByRole("switch", { name: "Turn on quiet hours" })
+    expect(dndToggle).toBeEnabled()
+    for (const input of screen.getAllByDisplayValue(/:/)) expect(input).toBeEnabled()
+
+    act(() => {
+      useAuthStore.setState({ loading: true })
+    })
+
+    expect(dndToggle).toBeDisabled()
+    for (const input of screen.getAllByDisplayValue(/:/)) expect(input).toBeDisabled()
+
+    act(() => {
+      useAuthStore.setState({ loading: false })
+    })
+
+    expect(dndToggle).toBeEnabled()
+    for (const input of screen.getAllByDisplayValue(/:/)) expect(input).toBeEnabled()
+  })
+
   it("does not start opt-in when auth resumes loading before the switch rerenders", async () => {
     await renderSection()
     const toggle = screen.getByRole("switch", { name: "Turn on notifications" })
