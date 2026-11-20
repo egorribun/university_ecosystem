@@ -647,6 +647,8 @@ also_copy = [
     ".secrets.baseline",
     "charts/university-ecosystem",
     "charts/revocation-store",
+    # Standalone Redis compatibility chart read by the Helm contract tests.
+    "charts/redis-compat",
     "infrastructure",
     "alembic",
     "alembic.ini",
