@@ -84,6 +84,13 @@ class CredentialValidator:
                 duration=duration_text,
             )
 
+        # Password hashing waits for a bounded CPU slot. End the lookup
+        # transaction first, persisting only the stale-attempt prune, so queued
+        # logins do not hold pooled connections or prune row locks while they
+        # wait. Holding them exhausted the per-worker pool under concurrent
+        # logins (QueuePool timeout, then a 502 at the gateway).
+        await self.uow.commit()
+
         if not user:
             # Equalise timing with the known-user path (no account enumeration).
             await verify_dummy_password(password)

@@ -182,7 +182,8 @@ async def test_validate_credentials_success_with_new_hash(
     mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
         "123", expected_hash="old_hash", new_hash="new_hash"
     )
-    mocks["uow"].commit.assert_awaited_once()
+    # Once to release the lookup transaction before hashing, once for the rehash.
+    assert mocks["uow"].commit.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -202,7 +203,8 @@ async def test_validate_credentials_success_no_new_hash(mock_verify, validator, 
 
     assert res_user == user
     mocks["user_repo"].update.assert_not_awaited()
-    mocks["uow"].commit.assert_not_awaited()
+    # Only the release of the lookup transaction before hashing.
+    mocks["uow"].commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -284,5 +286,58 @@ async def test_rehash_compare_and_swap_loser_gets_generic_unauthorized(
     mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
         user.id, expected_hash=old_hash, new_hash=new_hash
     )
-    mocks["uow"].commit.assert_not_awaited()
+    # The lost compare-and-swap never commits; the single commit is the release
+    # of the lookup transaction before hashing.
+    mocks["uow"].commit.assert_awaited_once()
     mocks["lockout_service"].clear_failed_attempts.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known_user", [True, False])
+async def test_lookup_transaction_is_released_before_any_password_hashing(
+    validator: CredentialValidator,
+    mocks: dict[str, AsyncMock | MagicMock],
+    known_user: bool,
+) -> None:
+    """Queued logins must not hold a pooled connection while they wait to hash."""
+    events: list[str] = []
+    user = MagicMock(id="123", hashed_password="hash") if known_user else None
+    mocks["lockout_service"].get_active_lockout.return_value = None
+    mocks["profile_service"].get_auth_user_by_email.return_value = user
+    mocks["lockout_service"].clear_failed_attempts.return_value = 0
+    mocks["lockout_service"].register_failed_attempt.return_value = (None, False, 1)
+    mocks["session_manager"].extract_client_info.return_value = ("127.0.0.1", "ua")
+    mocks["uow"].commit.side_effect = lambda: events.append("commit")
+
+    async def verify(*_args: object) -> tuple[bool, None]:
+        events.append("hash")
+        return True, None
+
+    async def dummy(*_args: object) -> None:
+        events.append("hash")
+
+    with (
+        patch(
+            "app.services.auth.credential_validator.verify_and_update_password",
+            side_effect=verify,
+        ),
+        patch(
+            "app.services.auth.credential_validator.verify_dummy_password",
+            side_effect=dummy,
+        ),
+    ):
+        if known_user:
+            await validator.validate_credentials(
+                "test@example.com", "pass", mocks["request"], "en", mocks["bg_tasks"]
+            )
+        else:
+            with pytest.raises(HTTPException):
+                await validator.validate_credentials(
+                    "test@example.com",
+                    "pass",
+                    mocks["request"],
+                    "en",
+                    mocks["bg_tasks"],
+                )
+
+    assert events[:2] == ["commit", "hash"]
