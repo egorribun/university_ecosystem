@@ -120,17 +120,20 @@ async def test_integrity_failure_logs_fingerprint_without_raw_endpoint_or_keys(
 ) -> None:
     token = "endpoint-secret-marker-" + uuid.uuid4().hex
     endpoint = f"https://push.example.com/{token}"
+    p256dh_marker = "synthetic-p256dh"
     auth_marker = "synthetic-auth-secret-marker"
     payload = PushSubscriptionIn(
         endpoint=endpoint,
-        keys={"p256dh": "synthetic-p256dh", "auth": auth_marker},
+        keys={"p256dh": p256dh_marker, "auth": auth_marker},
     )
     request = MagicMock()
     request.client = None
     request.headers.get.return_value = None
     database = AsyncMock()
     database.add = MagicMock()
-    database.execute.side_effect = [_empty_subscription_result() for _ in range(4)]
+    database.execute.side_effect = (
+        lambda *_args, **_kwargs: _empty_subscription_result()
+    )
     integrity_errors = [
         IntegrityError(
             f"INSERT subscription endpoint={endpoint}",
@@ -149,7 +152,7 @@ async def test_integrity_failure_logs_fingerprint_without_raw_endpoint_or_keys(
         patch.object(
             notifications,
             "_validate_subscription_payload",
-            new=AsyncMock(return_value=(endpoint, "synthetic-p256dh", auth_marker)),
+            new=AsyncMock(return_value=(endpoint, p256dh_marker, auth_marker)),
         ),
         patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
         patch.object(
@@ -170,10 +173,27 @@ async def test_integrity_failure_logs_fingerprint_without_raw_endpoint_or_keys(
     assert exc.value.status_code == 409
     assert endpoint not in logged_calls
     assert token not in logged_calls
+    assert p256dh_marker not in logged_calls
     assert auth_marker not in logged_calls
     assert "endpoint_prefix" not in logged_calls
-    assert sha256(endpoint.encode("utf-8")).hexdigest()[:12] in logged_calls
-    assert endpoint not in str(exc.value.detail)
+    fingerprint = sha256(endpoint.encode("utf-8")).hexdigest()[:12]
+    integrity_warnings = [
+        call.kwargs["extra"]
+        for call in mock_logger.warning.call_args_list
+        if call.args and call.args[0] == "push.subscribe.integrity_error"
+    ]
+    assert [warning["attempt"] for warning in integrity_warnings] == [1, 2, 3]
+    assert all(
+        warning["error_type"] == "IntegrityError" for warning in integrity_warnings
+    )
+    assert all(
+        warning["endpoint_fingerprint"] == fingerprint for warning in integrity_warnings
+    )
+    assert all(
+        marker not in str(exc.value.detail)
+        for marker in (endpoint, token, p256dh_marker, auth_marker)
+    )
+    assert database.flush.await_count == 3
     assert database.rollback.await_count == 3
     database.commit.assert_not_awaited()
 
