@@ -1,14 +1,29 @@
 type _MockedModuleType1 = typeof import("@/api/generated")
 type _MockedModuleType2 = typeof import("@/api/stories")
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { StrictMode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { hydrateRoot, type Root } from "react-dom/client"
+import { renderToString } from "react-dom/server"
 import userEvent from "@testing-library/user-event"
 import enStories from "@/i18n/locales/en/stories.json"
 import ruStories from "@/i18n/locales/ru/stories.json"
+import { evaluateAdminGuard } from "@/routes/guards"
+import {
+  acceptBrowserSessionGeneration,
+  getSessionIdentitySnapshot,
+  invalidateSessionEpoch,
+  rotateBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 import StoriesAdmin from "../StoriesAdmin"
 
 const mocks = vi.hoisted(() => ({
-  user: { id: "admin-1", role: "admin" as "admin" | "student" },
+  user: { id: "admin-1", role: "admin" } as {
+    id: string
+    role: "admin" | "student"
+  } | null,
   getStories: vi.fn(),
   createStory: vi.fn(),
   deleteStory: vi.fn(),
@@ -187,7 +202,9 @@ describe("StoriesAdmin", () => {
     render(<StoriesAdmin />)
 
     expect(await screen.findByText(story.title)).toBeInTheDocument()
-    expect(mocks.getStories).toHaveBeenCalledWith("/stories")
+    expect(mocks.getStories).toHaveBeenCalledWith("/stories", {
+      headers: { "Cache-Control": "no-cache, no-store" },
+    })
 
     fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.unpublish" }))
     await waitFor(() => {
@@ -201,6 +218,271 @@ describe("StoriesAdmin", () => {
     await waitFor(() => {
       expect(mocks.deleteStory).toHaveBeenCalledWith(story.id)
     })
+  })
+
+  it("refreshes from the server after unpublishing a cached story", async () => {
+    const cachedStories = [story]
+    let serverStories = [story]
+    mocks.getStories.mockImplementation(async (_path, options) => {
+      const directives = (options?.headers?.["Cache-Control"] ?? "")
+        .split(",")
+        .map((value: string) => value.trim())
+      return {
+        data:
+          directives.includes("no-cache") && directives.includes("no-store")
+            ? serverStories
+            : cachedStories,
+      }
+    })
+    mocks.updateStory.mockImplementation(async () => {
+      serverStories = []
+    })
+
+    render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.unpublish" }))
+
+    await waitFor(() => expect(screen.queryByText(story.title)).not.toBeInTheDocument())
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(["empty", "error"] as const)(
+    "keeps a newer list when an older request later returns %s",
+    async (olderOutcome) => {
+      const older = deferred<{ data: (typeof story)[] }>()
+      const newer = deferred<{ data: (typeof story)[] }>()
+      mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+
+      render(<StoriesAdmin />)
+      expect(mocks.getStories).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
+      expect(mocks.getStories).toHaveBeenCalledTimes(2)
+
+      await act(async () => newer.resolve({ data: [story] }))
+      expect(screen.getByText(story.title)).toBeInTheDocument()
+      await act(async () => {
+        if (olderOutcome === "empty") older.resolve({ data: [] })
+        else older.reject(new Error("obsolete request failed"))
+      })
+
+      expect(screen.getByText(story.title)).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    }
+  )
+
+  it("keeps loading while a newer list request is still pending", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+
+    render(<StoriesAdmin />)
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
+    await act(async () => older.resolve({ data: [] }))
+    expect(screen.getByLabelText("loading")).toBeInTheDocument()
+    expect(screen.queryByText("stories:list.empty")).not.toBeInTheDocument()
+    await act(async () => newer.resolve({ data: [story] }))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+  })
+
+  it("keeps the newest result when a translation change starts another load", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    const view = render(<StoriesAdmin />)
+    mocks.t = (key: string) => key
+    view.rerender(<StoriesAdmin />)
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
+    await act(async () => newer.resolve({ data: [story] }))
+    await act(async () => older.resolve({ data: [] }))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+  })
+
+  it("retires in-flight results when the same administrator starts a new session", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    render(<StoriesAdmin />)
+
+    await act(async () => {
+      invalidateSessionEpoch()
+      older.resolve({ data: [story] })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(mocks.getStories).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+    await act(async () => newer.resolve({ data: [story] }))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+  })
+
+  it("does not let an old mutation start a refresh in a new session", async () => {
+    const pendingSave = deferred<void>()
+    const nextLoad = deferred<{ data: (typeof story)[] }>()
+    mocks.getStories.mockResolvedValueOnce({ data: [story] }).mockReturnValueOnce(nextLoad.promise)
+    mocks.updateStory.mockReturnValueOnce(pendingSave.promise)
+    render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.unpublish" }))
+    expect(mocks.updateStory).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      invalidateSessionEpoch()
+      pendingSave.resolve()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(mocks.getStories).toHaveBeenCalledTimes(2))
+    await act(async () => nextLoad.resolve({ data: [story] }))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
+  })
+
+  it("loads and refreshes normally under StrictMode", async () => {
+    mocks.getStories.mockResolvedValue({ data: [story] })
+    render(
+      <StrictMode>
+        <StoriesAdmin />
+      </StrictMode>
+    )
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    const initialCalls = mocks.getStories.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
+    await waitFor(() => expect(mocks.getStories).toHaveBeenCalledTimes(initialCalls + 1))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+  })
+
+  it("does not reuse an old list when the administrator logs out and back in", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    const view = render(<StoriesAdmin />)
+    mocks.user = null
+    view.rerender(<StoriesAdmin />)
+    expect(screen.getByText("stories:notAuthorized")).toBeInTheDocument()
+    await act(async () => older.resolve({ data: [story] }))
+
+    mocks.user = { id: "admin-1", role: "admin" }
+    view.rerender(<StoriesAdmin />)
+    expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+    await act(async () => newer.resolve({ data: [story] }))
+    expect(screen.getByText(story.title)).toBeInTheDocument()
+  })
+
+  it("clears the previous administrator's list and ignores its late refresh", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    const nextStory = { ...story, id: "story-2", title: "Next administrator story" }
+    mocks.getStories
+      .mockResolvedValueOnce({ data: [story] })
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise)
+    const view = render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
+
+    mocks.user = { id: "admin-2", role: "admin" }
+    view.rerender(<StoriesAdmin />)
+    expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+    expect(mocks.getStories).toHaveBeenCalledTimes(3)
+    await act(async () => older.resolve({ data: [story] }))
+    expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+    await act(async () => newer.resolve({ data: [nextStory] }))
+    expect(screen.getByText(nextStory.title)).toBeInTheDocument()
+  })
+
+  it("clears the old admin view and skips fetching when another tab changes generation", async () => {
+    const generationKey = "ecosystem.session.generation.v1"
+    const previousAuth = useAuthStore.getState()
+    const oldRefresh = deferred<{ data: (typeof story)[] }>()
+    localStorage.removeItem(generationKey)
+    acceptBrowserSessionGeneration()
+    rotateBrowserSession()
+    mocks.getStories
+      .mockResolvedValueOnce({ data: [story] })
+      .mockReturnValueOnce(oldRefresh.promise)
+    const view = render(<StoriesAdmin />)
+    try {
+      expect(await screen.findByText(story.title)).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText("stories:form.titleRu"), {
+        target: { value: "Private draft" },
+      })
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
+      expect(mocks.getStories).toHaveBeenCalledTimes(2)
+
+      useAuthStore.setState({ user: mocks.user as UserState, loading: false })
+      expect(() => evaluateAdminGuard(useAuthStore.getState())).not.toThrow()
+      await act(async () => {
+        localStorage.setItem(generationKey, JSON.stringify({ nonce: "new-session", hash: null }))
+        window.dispatchEvent(new StorageEvent("storage", { key: generationKey }))
+        await Promise.resolve()
+      })
+      expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+      expect(screen.queryByLabelText("stories:form.titleRu")).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue("Private draft")).not.toBeInTheDocument()
+      expect(mocks.getStories).toHaveBeenCalledTimes(2)
+
+      await act(async () => oldRefresh.resolve({ data: [story] }))
+      expect(screen.queryByText(story.title)).not.toBeInTheDocument()
+      expect(mocks.getStories).toHaveBeenCalledTimes(2)
+    } finally {
+      view.unmount()
+      localStorage.removeItem(generationKey)
+      acceptBrowserSessionGeneration()
+      useAuthStore.setState({ user: previousAuth.user, loading: previousAuth.loading })
+    }
+  })
+
+  it("still loads online when browser storage is unavailable", async () => {
+    const generationKey = "ecosystem.session.generation.v1"
+    localStorage.removeItem(generationKey)
+    acceptBrowserSessionGeneration()
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    let unmount = () => {}
+    try {
+      expect(JSON.parse(getSessionIdentitySnapshot())[2]).toBe(false)
+      mocks.getStories.mockResolvedValueOnce({ data: [story] })
+      unmount = render(<StoriesAdmin />).unmount
+      expect(await screen.findByText(story.title)).toBeInTheDocument()
+      expect(mocks.getStories).toHaveBeenCalledTimes(1)
+    } finally {
+      unmount()
+      getItem.mockRestore()
+      acceptBrowserSessionGeneration()
+    }
+  })
+
+  it("hydrates the admin page before switching to the browser session snapshot", async () => {
+    mocks.getStories.mockResolvedValue({ data: [story] })
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    container.innerHTML = renderToString(<StoriesAdmin />)
+    const recoverableError = vi.fn()
+    let root: Root | undefined
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, <StoriesAdmin />, { onRecoverableError: recoverableError })
+        await Promise.resolve()
+      })
+      expect(await screen.findByText(story.title)).toBeInTheDocument()
+      expect(recoverableError).not.toHaveBeenCalled()
+    } finally {
+      if (root) act(() => root?.unmount())
+      container.remove()
+    }
+  })
+
+  it("does not publish an earlier request after unmount and remount", async () => {
+    const older = deferred<{ data: (typeof story)[] }>()
+    const newer = deferred<{ data: (typeof story)[] }>()
+    const nextStory = { ...story, id: "story-2", title: "Remounted administrator story" }
+    mocks.getStories.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
+    const view = render(<StoriesAdmin />)
+    view.unmount()
+    render(<StoriesAdmin />)
+    await act(async () => newer.resolve({ data: [nextStory] }))
+    await act(async () => older.resolve({ data: [story] }))
+    expect(screen.getByText(nextStory.title)).toBeInTheDocument()
+    expect(screen.queryByText(story.title)).not.toBeInTheDocument()
   })
 
   it("advances story expiry on one shared clock without changing item order or edits", async () => {
@@ -706,7 +988,11 @@ describe("StoriesAdmin", () => {
 
     mocks.getStories.mockClear()
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.refresh" }))
-    await waitFor(() => expect(mocks.getStories).toHaveBeenCalledWith("/stories"))
+    await waitFor(() =>
+      expect(mocks.getStories).toHaveBeenCalledWith("/stories", {
+        headers: { "Cache-Control": "no-cache, no-store" },
+      })
+    )
 
     const publishedInput = screen.getAllByLabelText("stories:form.publishedAt").at(-1)!
     const expiryInput = screen.getAllByLabelText("stories:form.expiresAt").at(-1)!
@@ -907,6 +1193,7 @@ describe("StoriesAdmin", () => {
         cover_url: "https://cdn.example/pending.png",
       })
     )
+    expect(mocks.getStories).toHaveBeenCalledTimes(1)
     vi.restoreAllMocks()
   })
 
@@ -936,6 +1223,7 @@ describe("StoriesAdmin", () => {
       await pendingCreate.promise
     })
     expect(mocks.createStory).toHaveBeenCalledTimes(1)
+    expect(mocks.getStories).toHaveBeenCalledTimes(1)
   })
 
   it("names the item cover reset and restores the saved cover", async () => {

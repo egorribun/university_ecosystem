@@ -14,6 +14,7 @@ import {
   type SetStateAction,
 } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useHydrated } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import {
   anonymousScheduleQueryKey,
@@ -50,9 +51,11 @@ type ScheduleQueryScope = {
 export function useScheduleData() {
   const { user } = useAuth()
   const { anonymous } = useAnonymousReadMode()
+  const isHydrated = useHydrated()
   const { i18n: translation } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [initialGroupSelected, setInitialGroupSelected] = useState(false)
   const nowTick = useScheduleClock()
   const timeZone = useCampusTimezone()
   const automaticParity = timeZone ? nowParity(nowTick, timeZone) : null
@@ -79,6 +82,21 @@ export function useScheduleData() {
   // so cache entries hydrate cleanly across SSR → client.
   const groupsQuery = useQuery(scheduleGroupsQueryOptions(anonymous, translation.language))
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
+  const defaultGroup = useMemo(() => {
+    if (!user || groups.length === 0) return null
+    const userGroupId = user.role === "student" ? user.group_id : null
+    return userGroupId && groups.some((group) => group.id === userGroupId)
+      ? userGroupId
+      : groups[0]!.id
+  }, [user, groups])
+
+  // During SSR and its first hydration render, keep the same unselected tree:
+  // request-local schedule data is deliberately not dehydrated to the browser.
+  // Once hydrated, select before committing an apparently ready uncached view.
+  if (isHydrated && !initialGroupSelected && defaultGroup !== null) {
+    setInitialGroupSelected(true)
+    setSelectedGroup((previous) => previous ?? defaultGroup)
+  }
 
   // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
@@ -185,21 +203,9 @@ export function useScheduleData() {
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {
-    if (!user) return
-    if (groups.length === 0) return
-
-    const userGroupId = user.group_id
-    if (user.role === "student" && userGroupId) {
-      const userGroupExists = groups.some((g) => g.id === userGroupId)
-      if (userGroupExists) {
-        setSelectedGroup((prev) => prev ?? userGroupId)
-      } else {
-        setSelectedGroup((prev) => prev ?? groups[0]!.id)
-      }
-    } else {
-      setSelectedGroup((prev) => prev ?? groups[0]!.id)
-    }
-  }, [user, groups])
+    if (isHydrated && defaultGroup !== null)
+      setSelectedGroup((previous) => previous ?? defaultGroup)
+  }, [isHydrated, user, groups, defaultGroup])
 
   // ── Parity filter ──────────────────────────────────
   // Without the campus zone, automatic parity is unknown; show all weeks until

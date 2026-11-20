@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -17,6 +19,7 @@ from app.deps.cache import (
     TieredCache,
     get_cache,
     get_cache_client,
+    supports_bounded_retention,
 )
 
 logger = get_logger(__name__)
@@ -139,6 +142,50 @@ class CacheVersionManager:
         signature = json.dumps(params, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(signature.encode()).hexdigest()
         return f"{self.prefix}:{version}:{locale}:{digest}"
+
+
+STORIES_GENERATION_KEY = "ue:stories:generation"
+STORIES_GENERATION_TTL_SECONDS = 300
+
+
+class StoriesVersionResolver:
+    """Use a shared, finite-lived generation for the stories list."""
+
+    async def cache_allowed(self, cache: BaseCache) -> bool:
+        return await supports_bounded_retention(cache, STORIES_GENERATION_TTL_SECONDS)
+
+    async def get_version(self, cache: BaseCache) -> str:
+        cache = _shared_version_cache(cache)
+        if not cache.enabled:
+            return "0"
+        entry = await cache.get(STORIES_GENERATION_KEY)
+        if (
+            entry is not None
+            and isinstance(entry.payload, str)
+            and re.fullmatch(r"[0-9a-f]{32}", entry.payload)
+            and 0 <= time.time() - entry.stored_at < STORIES_GENERATION_TTL_SECONDS
+        ):
+            return entry.payload
+
+        # The decorator resolves this version before querying the list or
+        # taking its snapshot. A delayed initializer may
+        # rotate a newer version, but cannot attach an older snapshot to it.
+        version = uuid4().hex
+        await cache.set(
+            STORIES_GENERATION_KEY, version, ttl=STORIES_GENERATION_TTL_SECONDS
+        )
+        return version
+
+    async def increment(self, cache: BaseCache) -> None:
+        if not cache.enabled or not await self.cache_allowed(cache):
+            return
+        cache = _shared_version_cache(cache)
+        if cache.enabled:
+            await cache.set(
+                STORIES_GENERATION_KEY,
+                uuid4().hex,
+                ttl=STORIES_GENERATION_TTL_SECONDS,
+            )
 
 
 # Global instances as recommended in audit

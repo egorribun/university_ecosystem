@@ -8,8 +8,13 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
+import {
+  PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS,
+  livePushObservationBudgetMs,
+  test,
+} from "./native-push-profile-fixtures"
 import { awaitPushSubscribeWithObservation } from "./push-delivery-observation"
+import { createPushRecipientObservation } from "./push-recipient-observation.mjs"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -540,6 +545,12 @@ test("chat message reaches Chromium through its real push subscription", async (
 
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+  const recipientObservation = createPushRecipientObservation(
+    page,
+    liveBaseUrl,
+    testInfo.project.name,
+    testInfo.retry
+  )
 
   const identity = randomUUID()
   const email = `live-push-delivery-${testInfo.project.name}-${identity}@university.dev`
@@ -582,7 +593,7 @@ test("chat message reaches Chromium through its real push subscription", async (
     })
     const identityResponse = await page.request.get("/api/v1/users/me")
     expect(identityResponse.status(), "the push recipient is authenticated as itself").toBe(200)
-    const identityBody = (await identityResponse.json()) as { email?: string }
+    const identityBody = (await identityResponse.json()) as { id?: unknown; email?: string }
     expect(identityBody.email).toBe(email)
 
     const initialPushState = await page.evaluate(async () => {
@@ -645,9 +656,9 @@ test("chat message reaches Chromium through its real push subscription", async (
       "the service worker owns a provider-issued HTTPS subscription"
     ).toBe(true)
     expect(
-      subscribed.endpoint,
+      subscribed.endpoint === subscriptionEndpoint,
       "the persisted server binding belongs to this native browser endpoint"
-    ).toBe(subscriptionEndpoint)
+    ).toBe(true)
     await expect(pushSwitch).toBeChecked()
 
     await senderPage.goto("/messenger")
@@ -677,6 +688,7 @@ test("chat message reaches Chromium through its real push subscription", async (
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
     )
+    recipientObservation.arm("chat", identityBody.id)
     await senderPage.locator("#chat-message-input").fill(message)
     await senderPage.locator("#chat-send-btn").click()
     const messageResponse = await messageResponsePromise
@@ -711,7 +723,9 @@ test("chat message reaches Chromium through its real push subscription", async (
       throw new Error("the persisted test notification did not have an identity")
     }
 
-    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
+    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId, () =>
+      recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
+    )
     await expect
       .poll(
         async () =>
@@ -759,7 +773,9 @@ test("chat message reaches Chromium through its real push subscription", async (
     testFailure = error
     testFailed = true
     await failureObservation?.capture()
+    await recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
   }
+  recipientObservation.dispose()
   {
     const adminContext = contexts[0]
     const adminPage = adminContext?.pages()[0] ?? null
@@ -817,6 +833,12 @@ test("quoted group author gets one chat.reply push with group context and no gen
 
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+  const recipientObservation = createPushRecipientObservation(
+    page,
+    liveBaseUrl,
+    testInfo.project.name,
+    testInfo.retry
+  )
 
   const identity = randomUUID()
   const email = "live-group-push-" + testInfo.project.name + "-" + identity + "@university.dev"
@@ -950,7 +972,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
     expect(subscribed.providerIssued, "Chromium owns a provider-issued HTTPS subscription").toBe(
       true
     )
-    expect(subscribed.endpoint).toBe(subscriptionEndpoint)
+    expect(subscribed.endpoint === subscriptionEndpoint).toBe(true)
     await expect(pushSwitch).toBeChecked()
 
     await groupOwnerPage.goto("/messenger")
@@ -1025,6 +1047,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
         new URL(response.url()).pathname === "/api/v1/chats/" + chatId + "/messages"
       )
     })
+    recipientObservation.arm("reply", quotedAuthor.id)
     await groupOwnerPage.locator("#chat-message-input").fill(replyText)
     await groupOwnerPage.locator("#chat-send-btn").click()
     const replyMessageResponse = await replyMessageResponsePromise
@@ -1151,7 +1174,9 @@ test("quoted group author gets one chat.reply push with group context and no gen
     if (!expectedNotificationId) {
       throw new Error("the persisted group reply notification did not have an identity")
     }
-    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId)
+    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId, () =>
+      recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
+    )
     await expect
       .poll(
         async () =>
@@ -1215,7 +1240,9 @@ test("quoted group author gets one chat.reply push with group context and no gen
     testFailure = error
     testFailed = true
     await failureObservation?.capture()
+    await recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
   }
+  recipientObservation.dispose()
 
   {
     const cleanupErrors: unknown[] = []

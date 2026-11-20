@@ -1,4 +1,6 @@
-from collections.abc import Callable
+import json
+import time
+from collections.abc import Awaitable, Callable
 from functools import wraps
 from typing import Any
 
@@ -6,7 +8,14 @@ from fastapi import Request, Response, status
 
 from app.core.localization import normalize_locale, resolve_locale
 from app.core.tenant import get_current_tenant
-from app.deps.cache import etag_matches, format_etag, get_cache
+from app.deps.cache import (
+    BaseCache,
+    bounded_cache_ttl,
+    cache_payload_etag,
+    etag_matches,
+    format_etag,
+    get_cache,
+)
 
 
 def generate_cache_key(
@@ -79,6 +88,10 @@ def cached_endpoint(
     version_resolver: Any,
     cache_prefix: str,
     cache_control: str = "private, max-age=180",
+    *,
+    respect_request_cache_control: bool = False,
+    max_cache_ttl_seconds: int | None = None,
+    cache_allowed: Callable[[BaseCache], Awaitable[bool]] | None = None,
 ) -> Callable[..., Any]:
     """
     A unified decorator for FastAPI endpoints to handle ETag-based HTTP caching
@@ -89,6 +102,9 @@ def cached_endpoint(
     handles JSON serialization via Pydantic model_dump_json(), ETag hashing,
     and cache setting.
     """
+
+    if max_cache_ttl_seconds is not None and max_cache_ttl_seconds <= 0:
+        raise ValueError("Maximum cache TTL must be positive")
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
@@ -122,8 +138,20 @@ def cached_endpoint(
             cache = get_cache()
             cache_key: str | None = None
 
+            # Opted-in endpoints revalidate against their data source when
+            # the client explicitly asks not to reuse a cached response.
+            bypass_cache = respect_request_cache_control and any(
+                directive.split("=", 1)[0].strip().lower() in ("no-cache", "no-store")
+                for directive in request.headers.get("cache-control", "").split(",")
+            )
+
             # Only apply caching logic for GET requests
-            if cache.enabled and request.method in ("GET", "HEAD"):
+            if (
+                cache.enabled
+                and request.method in ("GET", "HEAD")
+                and not bypass_cache
+                and (cache_allowed is None or await cache_allowed(cache))
+            ):
                 version = await version_resolver.get_version(cache)
 
                 # Reconstruct the cache key based on the dynamic endpoint arguments.
@@ -168,6 +196,14 @@ def cached_endpoint(
                 )
 
                 cached = await cache.get(cache_key)
+                if cached and max_cache_ttl_seconds is not None:
+                    ttl = (
+                        min(max_cache_ttl_seconds, cached.ttl_seconds)
+                        if cached.ttl_seconds > 0
+                        else max_cache_ttl_seconds
+                    )
+                    if not 0 <= time.time() - cached.stored_at < ttl:
+                        cached = None
                 if cached:
                     etag_header = format_etag(cached.etag)
                     if etag_matches(cached.etag, if_none_match):
@@ -222,18 +258,25 @@ def cached_endpoint(
                 encoded = jsonable_encoder(payload)
                 serialized_bytes = orjson.dumps(encoded, option=orjson.OPT_SORT_KEYS)
 
-            digest = hashlib.sha256(serialized_bytes).hexdigest()
+            if respect_request_cache_control:
+                # Match the representation hashed by the cache backends, even
+                # when revalidation or an unavailable cache bypasses storage.
+                digest = cache_payload_etag(json.loads(serialized_bytes))
+            else:
+                digest = hashlib.sha256(serialized_bytes).hexdigest()
             weak_header = f'"{format_etag(digest).strip(chr(34))}"'
 
             # 5. Populate Cache & Headers
             if cache.enabled and cache_key:
-                import json
-
                 # The cache.set expects dict/list for the Redis payload, not raw bytes.
                 # Since we just serialized it to bytes, we parse it back. Fast enough in ujson/orjson,
                 # but cache.set handles the final Redis serialization.
                 parsed_payload = json.loads(serialized_bytes)
-                entry = await cache.set(cache_key, parsed_payload)
+                if max_cache_ttl_seconds is None:
+                    entry = await cache.set(cache_key, parsed_payload)
+                else:
+                    ttl = bounded_cache_ttl(cache, max_cache_ttl_seconds)
+                    entry = await cache.set(cache_key, parsed_payload, ttl=ttl)
                 etag_header = format_etag(entry.etag)
                 if etag_matches(entry.etag, if_none_match):
                     not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)

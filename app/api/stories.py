@@ -22,6 +22,10 @@ from app.api.deps import (
 from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import ensure_exists, raise_http_error
+from app.core.cache_versioning import (
+    STORIES_GENERATION_TTL_SECONDS,
+    StoriesVersionResolver,
+)
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import (
@@ -45,21 +49,7 @@ _STORIES_LIST_CACHE_KEY = "stories:list"
 _CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCALES}))
 
 
-# Removed obsolete cache key helpers
-
-
-class StaticStoriesVersionResolver:
-    """Stories use no version token: invalidation is by key pattern instead.
-
-    Every mutation endpoint below calls ``cache.invalidate("ue:stories:list:*")``,
-    so the cached-endpoint decorator only needs a constant version.
-    """
-
-    async def get_version(self, cache: Any) -> str:
-        return "v1"
-
-
-stories_version_resolver = StaticStoriesVersionResolver()
+stories_version_resolver = StoriesVersionResolver()
 
 
 @router.get("", response_model=list[schemas.StoryOut])
@@ -67,6 +57,9 @@ stories_version_resolver = StaticStoriesVersionResolver()
     version_resolver=stories_version_resolver,
     cache_prefix="ue:stories:list",
     cache_control="public, max-age=180",
+    respect_request_cache_control=True,
+    max_cache_ttl_seconds=STORIES_GENERATION_TTL_SECONDS,
+    cache_allowed=stories_version_resolver.cache_allowed,
 )
 @inject
 async def list_stories(
@@ -108,6 +101,7 @@ async def create_story(
     # Note: Explicitly invalidating wildcard keys because the inline keys generator was removed
     cache = get_cache()
     await cache.invalidate("ue:stories:list:*", _STORIES_LIST_CACHE_KEY)
+    await stories_version_resolver.increment(cache)
     return service.serialize_story(record, locale)
 
 
@@ -141,6 +135,7 @@ async def update_story(
 
     cache = get_cache()
     await cache.invalidate("ue:stories:list:*", _STORIES_LIST_CACHE_KEY)
+    await stories_version_resolver.increment(cache)
     return service.serialize_story(updated, locale)
 
 
@@ -166,6 +161,7 @@ async def delete_story(
 
     cache = get_cache()
     await cache.invalidate("ue:stories:list:*", _STORIES_LIST_CACHE_KEY)
+    await stories_version_resolver.increment(cache)
     return {"ok": True}
 
 

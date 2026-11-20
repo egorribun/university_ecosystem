@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useLayoutEffect, type ReactNode } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { CampusTimezoneProvider, useCampusTimezone } from "@/contexts/CampusTimezoneContext"
-import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
+import {
+  anonymousScheduleGroupsQueryKey,
+  scheduleGroupsQueryOptions,
+  pageScheduleQueryOptions,
+} from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { ScheduleGroup, Lesson } from "@/components/schedule/scheduleUtils"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -148,6 +153,89 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     useAuthStore.setState({ user: null, loading: true })
   })
 
+  it("keeps the schedule loading until the automatically selected group's uncached data arrives", async () => {
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: "group-1", name: "Group 1" }])
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    let resolveSchedule = () => {}
+    const response = new Promise<{ data: never[] }>((resolve) => {
+      resolveSchedule = () => resolve({ data: [] })
+    })
+    apiGetMock.mockReturnValue(response as never)
+
+    const observations: { group: string | null; loading: boolean }[] = []
+    const { result } = renderHook(
+      () => {
+        const value = useScheduleData()
+        useLayoutEffect(() => {
+          observations.push({ group: value.selectedGroup, loading: value.isLoading })
+        }, [value.selectedGroup, value.isLoading])
+        return value
+      },
+      { wrapper: wrapper(client) }
+    )
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-1"))
+    expect(observations[0]).toEqual({ group: "group-1", loading: true })
+    expect(observations).not.toContainEqual({ group: null, loading: false })
+    expect(observations).toContainEqual({ group: "group-1", loading: true })
+    await act(async () => {
+      resolveSchedule()
+      await response
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+  })
+
+  it("stays loading through asynchronous group selection after an early clear", async () => {
+    const client = newClient()
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    let resolveGroups = () => {}
+    let resolveSchedule = () => {}
+    const groupsResponse = new Promise<{ data: ScheduleGroup[] }>((resolve) => {
+      resolveGroups = () => resolve({ data: [{ id: "group-1", name: "Group 1" }] })
+    })
+    const scheduleResponse = new Promise<{ data: never[] }>((resolve) => {
+      resolveSchedule = () => resolve({ data: [] })
+    })
+    apiGetMock.mockImplementation((url) => {
+      if (url === "/groups") return groupsResponse as never
+      if (url === "/schedule/group-1") return scheduleResponse as never
+      throw new Error("unexpected schedule request")
+    })
+
+    const committedLoading: boolean[] = []
+    const { result } = renderHook(
+      () => {
+        const value = useScheduleData()
+        useLayoutEffect(() => {
+          committedLoading.push(value.isLoading)
+        }, [value.isLoading])
+        return value
+      },
+      { wrapper: wrapper(client) }
+    )
+
+    expect(result.current.isLoading).toBe(true)
+    act(() => {
+      result.current.setSelectedGroup("provisional-group")
+      result.current.setSelectedGroup(null)
+    })
+    expect(result.current.selectedGroup).toBeNull()
+    await act(async () => {
+      resolveGroups()
+      await groupsResponse
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-1"))
+    expect(result.current.isLoading).toBe(true)
+    expect(committedLoading).toEqual([true])
+    await act(async () => {
+      resolveSchedule()
+      await scheduleResponse
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(committedLoading).toEqual([true, false])
+  })
+
   it("reads SSR-prefetched groups cache without re-fetching network", async () => {
     const groups: ScheduleGroup[] = [
       { id: "group-1", name: "Group 1" },
@@ -247,6 +335,128 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
 
     await waitFor(() => expect(result.current.groups).toEqual([]))
     expect(result.current.selectedGroup).toBeNull()
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.error).toBeNull()
+  })
+
+  it("keeps an anonymous user's group selection empty when public groups are available", () => {
+    const client = newClient()
+    const groups = [{ id: "group-public", name: "Public" }]
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+      { id: "group-private", name: "Private" },
+    ])
+    client.setQueryData(anonymousScheduleGroupsQueryKey, groups)
+    setAuthFixture(null)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    expect(result.current.groups).toEqual(groups)
+    expect(result.current.selectedGroup).toBeNull()
+    expect(result.current.isLoading).toBe(false)
+    expect(apiGetMock).not.toHaveBeenCalled()
+  })
+
+  it("preserves a schedule query error after initial group selection", async () => {
+    vi.useFakeTimers()
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: "group-1", name: "Group 1" }])
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    const failure = new Error("schedule unavailable")
+    apiGetMock.mockRejectedValue(failure)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    expect(result.current.selectedGroup).toBe("group-1")
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100)
+    })
+    expect(apiGetMock).toHaveBeenCalledTimes(3)
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.error).toBe(failure)
+  })
+
+  it("leaves loading and exposes an error when groups cannot be loaded", async () => {
+    vi.useFakeTimers()
+    const client = newClient()
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    const failure = new Error("groups unavailable")
+    apiGetMock.mockRejectedValue(failure)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    expect(result.current.isLoading).toBe(true)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100)
+    })
+    expect(apiGetMock).toHaveBeenCalledTimes(3)
+    expect(result.current.selectedGroup).toBeNull()
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.error).toBe(failure)
+  })
+
+  it("preserves an explicitly cleared selection until group data changes", async () => {
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: "group-1", name: "Group 1" }])
+    client.setQueryData(pageScheduleQueryOptions("group-1").queryKey, [])
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    expect(result.current.selectedGroup).toBe("group-1")
+    act(() => result.current.setSelectedGroup(null))
+    expect(result.current.selectedGroup).toBeNull()
+    expect(result.current.isLoading).toBe(false)
+    act(() => {
+      client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+        { id: "group-1", name: "Updated group" },
+      ])
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-1"))
+  })
+
+  it("reselects a cleared group when the authenticated user's group changes", async () => {
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+      { id: "group-1", name: "Group 1" },
+      { id: "group-2", name: "Group 2" },
+    ])
+    client.setQueryData(pageScheduleQueryOptions("group-1").queryKey, [])
+    client.setQueryData(pageScheduleQueryOptions("group-2").queryKey, [])
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    const { result, rerender } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    act(() => result.current.setSelectedGroup(null))
+    expect(result.current.selectedGroup).toBeNull()
+    act(() => {
+      setAuthFixture({ id: "u1", role: "student", group_id: "group-2" } as UserState)
+      rerender()
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-2"))
+  })
+
+  it("applies a functional group selection from the first committed view", () => {
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+      { id: "group-1", name: "Group 1" },
+      { id: "group-2", name: "Group 2" },
+    ])
+    client.setQueryData(pageScheduleQueryOptions("group-1").queryKey, [])
+    client.setQueryData(pageScheduleQueryOptions("group-2").queryKey, [])
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-1" } as UserState)
+    const firstSelection: (string | null)[] = []
+
+    const { result } = renderHook(
+      () => {
+        const value = useScheduleData()
+        const { selectedGroup, setSelectedGroup } = value
+        useLayoutEffect(() => {
+          if (firstSelection.length > 0) return
+          firstSelection.push(selectedGroup)
+          setSelectedGroup((previous) => (previous === "group-1" ? "group-2" : null))
+        }, [selectedGroup, setSelectedGroup])
+        return value
+      },
+      { wrapper: wrapper(client) }
+    )
+
+    expect(firstSelection).toEqual(["group-1"])
+    expect(result.current.selectedGroup).toBe("group-2")
   })
 
   it("schedule queryKey matches pageScheduleQueryOptions(groupId) shape", () => {
@@ -304,6 +514,25 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       role: "student",
       group_id: "group-A",
     } as UserState)
+
+    function ServerProbe() {
+      const { selectedGroup, isLoading, rawSchedule } = useScheduleData()
+      return (
+        <div
+          data-group={selectedGroup}
+          data-loading={isLoading}
+          data-lessons={rawSchedule.length}
+        />
+      )
+    }
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ServerProbe />
+      </QueryClientProvider>
+    )
+    expect(html).not.toContain('data-group="group-A"')
+    expect(html).toContain('data-loading="false"')
+    expect(html).toContain('data-lessons="0"')
 
     const { result } = renderHook(() => useScheduleData(), {
       wrapper: wrapper(client),

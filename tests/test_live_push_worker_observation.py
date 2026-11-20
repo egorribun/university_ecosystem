@@ -10,6 +10,7 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 import yaml
@@ -91,6 +92,71 @@ def test_empty_sample_is_a_bounded_tail_not_absence_proof() -> None:
     assert "sample=tail" in observation.render_summary(result)
 
 
+def test_success_http_details_are_saturated_run_level_marginals() -> None:
+    sample = (
+        _event("sent", code=201) * 12
+        + _event("sent", code=200) * 6
+        + _event("sent", code=202) * 6
+        + _event("sent")
+        + _event("gone", code=201)
+        + _event("error", code=200)
+    )
+    summary = observation.project_worker_logs(sample, b"")
+    assert summary is not None
+    assert summary.statuses == (9, 1, 1)
+    assert summary.http_classes == (0, 9, 0, 0, 0, 1)
+    assert summary.success_http == (9, 9)
+    rendered = observation.render_summary(summary)
+    assert "http_2xx=9" in rendered.split()
+    details = observation.render_success_summary(summary)
+    assert "sent_http_201=9" in details.split()
+    assert "sent_http_other_2xx=9" in details.split()
+    assert PRIVATE not in rendered + details
+
+
+def test_legacy_worker_rows_and_summaries_have_no_success_status_details() -> None:
+    summary = observation.project_worker_logs(
+        _event("sent") + _event("gone", code=410), b""
+    )
+    assert summary is not None
+    assert summary.success_http == (0, 0)
+    assert "http_none=1" in observation.render_summary(summary).split()
+    legacy = observation.WorkerSummary((1, 0, 0), (0,) * 7, (0, 0, 0, 0, 0, 1))
+    assert observation.render_summary(legacy) == (
+        "live E2E worker push sample=tail sent=1 gone=0 error=0 "
+        "stage_url=0 stage_host=0 stage_dns=0 stage_address=0 "
+        "stage_session=0 stage_request=0 stage_none=0 "
+        "http_1xx=0 http_2xx=0 http_3xx=0 http_4xx=0 http_5xx=0 http_none=1"
+    )
+    assert "sent_http_201=0" in observation.render_success_summary(legacy).split()
+    assert "sent_http_other_2xx=0" in observation.render_success_summary(legacy).split()
+
+
+def test_success_details_exclude_non_success_and_non_2xx_rows() -> None:
+    sample = (
+        _event("sent", code=199)
+        + _event("sent", code=300)
+        + _event("gone", code=201)
+        + _event("error", code=202)
+        + _event("sent", code=201)
+        + _event("sent", code=202)
+    )
+    summary = observation.project_worker_logs(sample, b"")
+    assert summary is not None
+    assert summary.statuses == (4, 1, 1)
+    assert summary.http_classes == (1, 4, 1, 0, 0, 0)
+    assert summary.success_http == (1, 1)
+
+
+@pytest.mark.parametrize("bad", [(10, 0), (-1, 0), (True, 0), (0,), (PRIVATE, 0)])
+def test_summary_rejects_invalid_success_status_counts(bad: tuple[object, ...]) -> None:
+    summary = observation.WorkerSummary(
+        (0,) * 3, (0,) * 7, (0,) * 6, cast(tuple[int, int], bad)
+    )
+    with pytest.raises(ValueError):
+        observation.render_summary(summary)
+
+
 @pytest.mark.parametrize(
     "stage,field",
     [
@@ -152,6 +218,12 @@ def test_http_codes_map_only_to_classes(code: int | None, field: str) -> None:
         (_event("error", code=True), b""),
         (_event("error", code=600), b""),
         (_event("error", code="500"), b""),
+        (_event("sent", code=201.0), b""),
+        (
+            b'{"logger":"app.services.webpush","message":"webpush.send",'
+            b'"extra":{"event":"send","status":"sent","status_code":null}}\n',
+            b"",
+        ),
     ],
 )
 def test_malformed_or_unbounded_samples_fail_closed(
@@ -358,7 +430,12 @@ def test_cli_emits_only_closed_summary_and_survives_closed_stdout(
     summary = observation.WorkerSummary((1, 0, 0), (0,) * 7, (0,) * 6)
     monkeypatch.setattr(observation, "collect_worker_sample", lambda *args: summary)
     assert observation.main() == 0
-    assert capsys.readouterr().out == observation.render_summary(summary) + "\n"
+    assert capsys.readouterr().out == (
+        observation.render_summary(summary)
+        + "\n"
+        + observation.render_success_summary(summary)
+        + "\n"
+    )
 
     def broken_print(*args, **kwargs):
         raise OSError(PRIVATE)

@@ -133,9 +133,10 @@ test("live Chromium proves post-action permission and real service-worker Web Pu
   )
   assert.match(
     spec,
-    /subscribed\.endpoint[\s\S]*?toBe\(subscriptionEndpoint\)/u,
+    /subscribed\.endpoint\s*===\s*subscriptionEndpoint[\s\S]*?toBe\(true\)/u,
     "the stored server binding must match the native browser endpoint"
   )
+  assert.doesNotMatch(spec, /expect\(\s*subscribed\.endpoint\s*[,)]/u)
   assert.match(spec, /const deleteOnlyTestChat/u)
   assert.match(spec, /const deleteOnlyCreatedAccount/u)
   assert.match(spec, /entry\.email === email && entry\.full_name === fullName/u)

@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+import subprocess
+from itertools import product
+from pathlib import Path
+
+import pytest
+
+from scripts import live_stand_playwright_evidence as evidence
+from tests import test_live_stand as stand_tests
+
+
+def test_push_recipient_records_are_closed_bounded_and_deduplicated() -> None:
+    parse = getattr(evidence, "_live_playwright_push_recipient_observations", None)
+    assert callable(parse)
+    valid = (
+        "UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario=news "
+        "check=session-owner-match subscription=same\n"
+    )
+    assert parse(valid + valid) == [
+        ("mobile", 0, "news", "session-owner-match", "same")
+    ]
+    assert parse(valid.replace("session-owner-match", "session-owner-mismatch")) == [
+        ("mobile", 0, "news", "session-owner-mismatch", "same")
+    ]
+    for row in (
+        valid[:-1],
+        valid[:-1] + " private-token\n",
+        valid.replace("scenario=news", "scenario=private-user"),
+        valid.replace(
+            "check=session-owner-match", "check=https://private.example/token"
+        ),
+        valid.replace("check=session-owner-match", "check=match"),
+        valid.replace("check=session-owner-match", "check=mismatch"),
+        valid.replace("retry=0", "retry=2"),
+        "private " + valid,
+        valid.replace("subscription=same", "subscription=same\x1b"),
+    ):
+        assert parse(row) == []
+
+
+def test_push_recipient_records_have_a_run_wide_cap() -> None:
+    rows = [
+        f"UE_LIVE_PUSH_RECIPIENT_V1 project={project} retry={retry} "
+        f"scenario={scenario} check={check} subscription=same\n"
+        for project, retry, scenario, check in product(
+            ("desktop", "mobile"),
+            (0, 1),
+            ("chat", "reply", "news", "events", "schedule", "release"),
+            ("session-owner-match", "none"),
+        )
+    ]
+    records = evidence._live_playwright_push_recipient_observations("".join(rows))
+    assert len(records) == 32
+
+
+def test_live_runner_relays_only_valid_push_recipient_classes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    row = (
+        "UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario=news "
+        "check=auth subscription=same\n"
+    )
+    private = "private endpoint user payload token"
+    stand = stand_tests.live_stand
+    result = subprocess.CompletedProcess(
+        stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(row + private + "\n" + row.rstrip() + " " + private + "\n").encode(),
+        stderr=(row + private + "\n").encode(),
+    )
+    stand_tests._patch_live_playwright_result(monkeypatch, result)
+    with pytest.raises(stand.StandError, match="exit code 1"):
+        stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert captured.out.count("live E2E push recipient project=mobile") == 1
+    assert "retry=0 scenario=news check=auth subscription=same" in captured.out
+    assert private not in captured.out + captured.err
+    assert captured.err == ""

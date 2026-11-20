@@ -14,7 +14,11 @@ import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import { useScheduleClock } from "@/hooks/useScheduleClock"
+import { useSessionIdentity } from "@/hooks/useSessionIdentity"
+import { getSessionIdentitySnapshot, hasStaleBrowserSessionBinding } from "@/stores/sessionEpoch"
+import type { UserState } from "@/types/Auth"
 import type { StoryItem } from "@/types/Story"
 import {
   createStory,
@@ -413,6 +417,27 @@ function StoryAdminItem({
 
 export default function StoriesAdmin() {
   const { user } = useAuth()
+  const session = useSessionIdentity()
+  const sessionKey = JSON.stringify([user?.id ?? null, user?.role ?? null, ...session])
+  // An unavailable storage snapshot is not proof of a foreign session; a
+  // confirmed generation mismatch is, even before AuthContext catches up.
+  const stale = session[2] === false && hasStaleBrowserSessionBinding()
+  return (
+    <StoriesAdminSession
+      key={sessionKey}
+      user={stale ? null : user}
+      sessionSnapshot={JSON.stringify(session)}
+    />
+  )
+}
+
+function StoriesAdminSession({
+  user,
+  sessionSnapshot,
+}: {
+  user: UserState
+  sessionSnapshot: string
+}) {
   const { t } = useTranslation(["stories", "common"])
   const { formatDate, localeCode } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
@@ -427,6 +452,15 @@ export default function StoriesAdmin() {
   const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [listError, setListError] = useState<string | null>(null)
+  const latestListRequest = useRef(0)
+  const mounted = useRef(false)
+  useIsomorphicLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      latestListRequest.current += 1
+    }
+  }, [])
   useEffect(() => {
     return () => {
       if (coverPreview) URL.revokeObjectURL(coverPreview)
@@ -434,19 +468,30 @@ export default function StoriesAdmin() {
   }, [coverPreview])
 
   const fetchStories = useCallback(async () => {
+    if (!mounted.current || sessionSnapshot !== getSessionIdentitySnapshot()) return
+    const request = ++latestListRequest.current
+    const isCurrent = () =>
+      mounted.current &&
+      request === latestListRequest.current &&
+      sessionSnapshot === getSessionIdentitySnapshot()
     setLoading(true)
     setListError(null)
     try {
-      const response = await apiClient.get<StoryItem[]>("/stories")
+      // Mutations target individual story URLs, so a cached collection can
+      // otherwise hide their changes. Bypass both HTTP and service-worker caches.
+      const response = await apiClient.get<StoryItem[]>("/stories", {
+        headers: { "Cache-Control": "no-cache, no-store" },
+      })
+      if (!isCurrent()) return
       const data = Array.isArray(response.data) ? response.data : []
       setStories(data)
       setListError(null)
     } catch (error: unknown) {
-      setListError(getErrorMessage(error, t("stories:errors.loadFailed")))
+      if (isCurrent()) setListError(getErrorMessage(error, t("stories:errors.loadFailed")))
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [t])
+  }, [t, sessionSnapshot])
 
   useEffect(() => {
     if (!isAdmin) return

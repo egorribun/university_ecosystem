@@ -238,7 +238,7 @@ normalized request parameters.
 | `ue:events:detail:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python event detail endpoint (`app/api/events.py`) | Python events API | Event detail response |
 | `news:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python news list endpoint (`app/api/news.py`) | Python news API | Localized, parameterized news list response |
 | `ue:news:item:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python news item endpoint (`app/api/news.py`) | Python news API | News item response |
-| `ue:stories:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python stories endpoint (`app/api/stories.py`) | Python stories API | Localized stories response |
+| `ue:stories:list:{version}:{locale}:{sha256}` | At most 300s; shorter positive configured default applies, and tiered caching also respects the shorter positive L1 TTL | Python stories endpoint (`app/api/stories.py`) | Python stories API | Localized stories response |
 | `ue:news:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python cache warmup (`app/services/cache_warmup.py`) | Not consumed by the current news-list endpoint | Startup warmup's news-page entry |
 | `ue:events:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python cache warmup (`app/services/cache_warmup.py`) | Not consumed by the current events-list endpoint | Startup warmup's events-page entry |
 
@@ -328,11 +328,19 @@ The Redis key shape is registered under **Versioned Cache Caller Keys** below.
 |-------------|-----|---------------|---------|---------|
 | `events:list:version` | No explicit Redis expiration | Python `app/core/cache_versioning.py` (`events_cache_version`) | Python events-list cache callers | Shared invalidation counter for event-list cache entries |
 | `news:list:version` | No explicit Redis expiration | Python `app/core/cache_versioning.py` (`news_cache_version`) | Python news-list cache callers | Shared invalidation counter for news-list cache entries |
+| `ue:stories:generation` | 300s; written on initialization and after successful story mutations when cache is available | Python stories cache resolver (`app/core/cache_versioning.py`) | Python stories-list cache callers | Shared opaque generation for story-list cache entries |
 
 `CacheVersionManager` forms its Redis counter as `{prefix}:version`; the two
-rows above are the current Redis-backed instances. The same module uses a
+counter rows above are the current Redis-backed instances. The stories
+entry uses a finite-lived opaque generation rather than a counter. The same module uses a
 backend-specific generation entry when the selected cache is not Redis, so that
 entry is not a Redis key.
+
+For stories on NATS KV, the bucket is operator-provided and individual KV
+writes do not enforce their requested TTL. Stories caching is enabled only when
+bucket status reports a positive retention of at most 300 seconds; an unknown,
+unavailable, or longer retention bypasses that cache. A shorter configured
+payload TTL is checked on reads, while physical retention follows the bucket.
 
 **ADR-007 TTL status:** Both current Redis counters are created with `INCR` or
 `SET` and no expiry. Decision 4 requires an explicit expiry for every key and

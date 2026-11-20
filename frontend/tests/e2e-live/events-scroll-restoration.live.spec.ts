@@ -1,5 +1,6 @@
-import { expect, type Page } from "@playwright/test"
-import { loginAs, test } from "./fixtures"
+import { expect, type Locator, type Page } from "@playwright/test"
+import { sampleEventsGeometry } from "./events-geometry"
+import { liveDeadlineBoundedTimeoutMs, liveTestSlotDeadlineAtMs, loginAs, test } from "./fixtures"
 
 const LANGUAGE_KEY = "ue:language"
 
@@ -21,6 +22,54 @@ const EVENT_LOCALES = [
 ] as const
 
 type EventLocale = (typeof EVENT_LOCALES)[number]
+
+async function reportEventsGeometry(
+  eventLink: Locator,
+  language: EventLocale["code"],
+  phase: "before" | "back" | "back-forward"
+): Promise<void> {
+  try {
+    const info = test.info()
+    const project = info.project.name
+    const attempt = info.retry
+    if ((project !== "desktop" && project !== "mobile") || (attempt !== 0 && attempt !== 1)) return
+    const deadlineAtMs = liveTestSlotDeadlineAtMs(info)
+    const budgetMs = deadlineAtMs === null ? null : liveDeadlineBoundedTimeoutMs(deadlineAtMs, 500)
+    if (budgetMs === null) return
+    const geometry = await sampleEventsGeometry(eventLink, budgetMs)
+    if (!geometry) return
+    const values = [
+      geometry.viewportWidth,
+      geometry.viewportHeight,
+      geometry.documentHeight,
+      geometry.scrollY,
+      geometry.gridTop,
+      geometry.linkTop,
+      geometry.linkHeight,
+      ...geometry.heights,
+    ]
+    if (
+      values.some((value) => !Number.isSafeInteger(value) || Math.abs(value) > 999_999) ||
+      geometry.viewportWidth <= 0 ||
+      geometry.viewportHeight <= 0 ||
+      geometry.documentHeight < 0 ||
+      geometry.scrollY < 0 ||
+      geometry.linkHeight < 0 ||
+      geometry.heights.some((height) => height < 0)
+    )
+      return
+    process.stdout.write(
+      `UE_LIVE_EVENTS_GEOMETRY_V1 project=${project} language=${language} attempt=${attempt} ` +
+        `phase=${phase} viewportWidth=${geometry.viewportWidth} viewportHeight=${geometry.viewportHeight} ` +
+        `documentHeight=${geometry.documentHeight} scrollY=${geometry.scrollY} ` +
+        `gridTop=${geometry.gridTop} linkTop=${geometry.linkTop} linkHeight=${geometry.linkHeight} ` +
+        `selectedIndex=${geometry.selectedIndex} cardCount=${geometry.cardCount} ` +
+        `heights=${geometry.heights.join(",")}\n`
+    )
+  } catch {
+    // Diagnostics cannot replace or delay the acceptance assertions.
+  }
+}
 
 async function openLanguageOptions(page: Page) {
   const accordion = page
@@ -115,6 +164,7 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
     scrollY: Math.round(window.scrollY),
     top: Math.round(link.getBoundingClientRect().top),
   }))
+  await reportEventsGeometry(selectedEvent, locale.code, "before")
   expect(
     originalPosition.scrollY,
     `${locale.code} seeded Events archive item must be below the initial viewport`
@@ -139,14 +189,18 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
   await expect(archiveTab).toHaveAttribute("aria-selected", "true")
   const restoredEvent = page.getByRole("link", { name: locale.eventTitle })
   await expect(restoredEvent).toHaveAttribute("href", selectedHref ?? "")
-  await expect
-    .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
-      message: `${locale.code} Back should restore the Events archive scroll position`,
-    })
-    .toBe(originalPosition.scrollY)
-  await expect
-    .poll(() => restoredEvent.evaluate((link) => Math.round(link.getBoundingClientRect().top)))
-    .toBe(originalPosition.top)
+  try {
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
+        message: `${locale.code} Back should restore the Events archive scroll position`,
+      })
+      .toBe(originalPosition.scrollY)
+    await expect
+      .poll(() => restoredEvent.evaluate((link) => Math.round(link.getBoundingClientRect().top)))
+      .toBe(originalPosition.top)
+  } finally {
+    await reportEventsGeometry(restoredEvent, locale.code, "back")
+  }
 
   await page.goForward()
   await expect(page).toHaveURL(selectedUrl.href)
@@ -169,19 +223,23 @@ async function verifyEventsHistoryForLanguage(page: Page, locale: EventLocale) {
   await page.goBack()
   await expect(page).toHaveURL(archiveUrl)
   await expect(archiveTab).toHaveAttribute("aria-selected", "true")
-  await expect
-    .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
-      message: `${locale.code} Back after Forward should restore the Events archive position`,
-    })
-    .toBe(originalPosition.scrollY)
   const restoredEventAfterForward = page.getByRole("link", { name: locale.eventTitle })
-  await expect(restoredEventAfterForward).toBeVisible()
-  await expect(restoredEventAfterForward).toHaveAttribute("href", selectedHref ?? "")
-  await expect
-    .poll(() =>
-      restoredEventAfterForward.evaluate((link) => Math.round(link.getBoundingClientRect().top))
-    )
-    .toBe(originalPosition.top)
+  try {
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)), {
+        message: `${locale.code} Back after Forward should restore the Events archive position`,
+      })
+      .toBe(originalPosition.scrollY)
+    await expect(restoredEventAfterForward).toBeVisible()
+    await expect(restoredEventAfterForward).toHaveAttribute("href", selectedHref ?? "")
+    await expect
+      .poll(() =>
+        restoredEventAfterForward.evaluate((link) => Math.round(link.getBoundingClientRect().top))
+      )
+      .toBe(originalPosition.top)
+  } finally {
+    await reportEventsGeometry(restoredEventAfterForward, locale.code, "back-forward")
+  }
   await expect(page).toHaveURL(archiveUrl)
 }
 

@@ -706,7 +706,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         error_stage = "pinned_session_creation"
         session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
         error_stage = "webpush_request"
-        webpush(
+        response = webpush(
             subscription_info=subscription_info,
             data=json_dumps(normalized_payload),
             vapid_private_key=settings.VAPID_PRIVATE_KEY,
@@ -794,12 +794,26 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         if session is not None:
             session.close()
 
-    _log_event("send", user_id=user_id, endpoint=sub.endpoint, status="sent")
+    status_code = None
+    if isinstance(response, requests.Response):
+        # requests stores this as a plain instance field. Avoid triggering a
+        # descriptor on response-shaped test doubles after provider acceptance.
+        response_code = vars(response).get("status_code")
+        if type(response_code) is int and 100 <= response_code <= 599:
+            status_code = response_code
+    _log_event(
+        "send",
+        user_id=user_id,
+        endpoint=sub.endpoint,
+        status="sent",
+        status_code=status_code,
+    )
     return WebPushResult(
         subscription_id=sub.id,
         endpoint=str(sub.endpoint),
         user_id=uuid.UUID(str(user_id)) if user_id else None,
         status="sent",
+        status_code=status_code,
     )
 
 

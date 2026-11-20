@@ -19,14 +19,24 @@ test("admin can review seeded active stories through the real admin page", async
     }
   })
 
-  // Login lands on the dashboard, which reads the same story list. Arm the wait only
-  // once the admin document has committed: the dashboard's requests are cancelled by
-  // then, so its late response can no longer satisfy the wait and lose its body.
-  await page.goto("/admin/stories", { waitUntil: "commit" })
-  const storyListResponse = page.waitForResponse((response) => {
-    const requestUrl = new URL(response.url())
-    return requestUrl.pathname === STORY_LIST_PATH && response.request().method() === "GET"
-  })
+  // Login lands on the dashboard, which reads the same list without the admin
+  // page's no-cache/no-store header. Select that admin request before navigation
+  // so a late dashboard response cannot win and a fast admin response is not missed.
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => {
+      const requestUrl = new URL(response.url())
+      return (
+        requestUrl.pathname === STORY_LIST_PATH &&
+        requestUrl.origin === new URL(page.url()).origin &&
+        response.request().method() === "GET" &&
+        response.request().serviceWorker() === null &&
+        !response.request().isNavigationRequest() &&
+        response.request().frame() === page.mainFrame() &&
+        response.request().headers()["cache-control"] === "no-cache, no-store"
+      )
+    }),
+    page.goto("/admin/stories", { waitUntil: "commit" }),
+  ])
 
   await expect(page).toHaveURL(/\/admin\/stories$/u)
   await expect(
@@ -36,7 +46,6 @@ test("admin can review seeded active stories through the real admin page", async
     page.getByRole("heading", { level: 2, name: /Текущие сторис|Active stories/u })
   ).toBeVisible()
 
-  const response = await storyListResponse
   expect(response.status(), "the admin page loads the real active-story endpoint").toBe(200)
   const stories = (await response.json()) as StorySummary[]
   expect(stories.some((story) => story.title === SEEDED_STORY_TITLE)).toBe(true)

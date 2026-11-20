@@ -8,8 +8,13 @@ import {
   loginWith,
   stubBreachedPasswordLookup,
 } from "./fixtures"
-import { PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS, test } from "./native-push-profile-fixtures"
+import {
+  PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS,
+  livePushObservationBudgetMs,
+  test,
+} from "./native-push-profile-fixtures"
 import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
+import { createPushRecipientObservation } from "./push-recipient-observation.mjs"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -34,6 +39,7 @@ const RECIPIENT_TOPICS = [...DELIVERY_TOPICS]
 const SCHEDULE_GROUP_NAME = "University Ecosystem live notification delivery"
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const PAGE_SIZE = 200
+const SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS = 45_000
 
 interface UserRow {
   id: string
@@ -633,9 +639,10 @@ const savePushOptInAndTopics = async (
     }
     return subscription.endpoint
   })
-  expect(nativeEndpoint, "the browser owns a real provider HTTPS subscription").toBe(
-    subscriptionReceipt.endpoint
-  )
+  expect(
+    nativeEndpoint === subscriptionReceipt.endpoint,
+    "the browser owns a real provider HTTPS subscription"
+  ).toBe(true)
   if (!nativeEndpoint) throw new Error("the browser endpoint was not provider-issued HTTPS")
 
   const savedPreferences = await readAdminTopicPreferences(adminPage, recipientId)
@@ -1050,6 +1057,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   test.setTimeout(360_000)
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
+  const recipientObservation = createPushRecipientObservation(
+    page,
+    liveBaseUrl,
+    testInfo.project.name,
+    testInfo.retry
+  )
 
   const identity = randomUUID()
   const email = `live-topic-delivery-${testInfo.project.name}-${identity}@university.dev`
@@ -1162,6 +1175,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
 
     // News producer: POST /api/v1/news -> real notification queue/outbox -> persisted row + SW.
     await requireProducerIsolation(adminPage, recipientId)
+    recipientObservation.arm("news", recipientId)
     newsMayExist = true
     const createdNews = assertMutationStatus(
       await mutate(adminPage, "/api/v1/news", "POST", {
@@ -1203,6 +1217,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       ownerId: teacherOwnerId,
     }
     eventMayExist = true
+    recipientObservation.arm("events", recipientId)
     const createdEvent = assertMutationStatus(
       await mutate(teacherPage, "/api/v1/events", "POST", {
         title: eventTitle,
@@ -1280,6 +1295,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     scheduleId = expectUuid(createdSchedule.id, "created schedule resource")
 
     await requireProducerIsolation(adminPage, recipientId)
+    recipientObservation.arm("schedule", recipientId)
     const updatedSchedule = assertMutationStatus(
       await mutate(teacherPage, `/api/v1/schedule/${encodeURIComponent(scheduleId)}`, "PATCH", {
         room: `Updated room ${uniqueMarker}`,
@@ -1310,6 +1326,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     // The only release route used here is the unique-semver announcement API, never broadcast.
     await requireProducerIsolation(adminPage, recipientId)
     const releasePayload = { version: releaseVersion, notes_ru: releaseNotes }
+    recipientObservation.arm("release", recipientId)
     releaseAnnouncementMayExist = true
     const releaseResult = assertMutationStatus(
       await mutate(adminPage, "/api/v1/push/admin/releases", "POST", releasePayload),
@@ -1357,7 +1374,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   } catch (error) {
     testFailure = error
     testFailed = true
+    await recipientObservation.report(
+      subscriptionEndpoint,
+      livePushObservationBudgetMs(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
+    )
   }
+  recipientObservation.dispose()
 
   const adminPage = contexts[0]?.pages()[0] ?? null
   const teacherPage = contexts[1]?.pages()[0] ?? null
@@ -1422,7 +1444,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
             return rows.length
           },
           {
-            timeout: 45_000,
+            timeout: SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS,
             message: "schedule update and exact cancellation rows reach the owned recipient",
           }
         )

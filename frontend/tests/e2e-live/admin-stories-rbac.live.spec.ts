@@ -95,10 +95,19 @@ for (const role of ["student", "teacher"] as const) {
     let testFailed = false
 
     try {
+      const viewport = page.viewportSize()
+      if (!viewport) throw new Error("the active project must define a viewport")
+      const { deviceScaleFactor, hasTouch, isMobile, screen, userAgent } = test.info().project.use
       adminContext = await browser.newContext({
         baseURL: process.env.LIVE_BASE_URL,
         ignoreHTTPSErrors: true,
         locale: "ru-RU",
+        viewport,
+        deviceScaleFactor,
+        hasTouch,
+        isMobile,
+        screen,
+        userAgent,
       })
       adminPage = await adminContext.newPage()
       await loginAs(adminPage, "admin")

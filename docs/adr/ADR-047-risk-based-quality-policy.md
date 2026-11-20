@@ -2947,3 +2947,15 @@ the dedicated exact-predecessor tests and the older layers keep that guarantee,
 and the older mutation tests again report their own layer. No identity, category,
 owner, expiry, threshold or required check changes; the inventory stays at 524
 dispositions. The rebind is not a passing scan or CI run.
+
+### AUD-154 live acceptance diagnostics
+
+The Core runner reports bounded layout measurements and fixed outcome classes
+for browser push diagnostics. The existing one-to-one approval binds the new
+`scripts/live_stand.py` bytes in Semgrep row 7 and the corresponding integrity
+identity in disposition row 495. The path, type, category, owner and expiry retain
+their approved values. The inventory is 524 dispositions and 242 baseline identities.
+
+The predecessor tests restore the previous runner, Semgrep ledger and disposition
+policy byte for byte before applying the historical checks. Acceptance requires
+the scanner and hosted checks on the resulting source commit. AUD-154 remains open.
