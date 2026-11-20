@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useRef } from "react"
+import { useCallback, useEffect, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, m } from "framer-motion"
 import "@/styles/tokens/schedule.css"
@@ -36,6 +36,8 @@ import api from "@/api/client"
 import { buildTable } from "@/components/schedule/scheduleUtils"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
+import { useAuth } from "@/contexts/AuthContext"
+import { getConfirmedUserId } from "@/stores/authIdentity"
 import {
   generateGoogleCalendarUrl,
   selectGoogleCalendarLesson,
@@ -57,6 +59,7 @@ function ScheduleContent() {
   const scheduleData = useScheduleData()
   const {
     isLoading,
+    isIdentityUnconfirmed,
     error: scheduleError,
     schedule,
     selectedGroup,
@@ -81,6 +84,12 @@ function ScheduleContent() {
     todayLessons,
   } = scheduleData
 
+  // Once available, keep the view mounted during later loads so day controls
+  // retain focus when cache restoration or a group change starts a request.
+  const [hasDisplayedSchedule, setHasDisplayedSchedule] = useState(!isLoading)
+  if (!isLoading && !hasDisplayedSchedule) setHasDisplayedSchedule(true)
+  const isSchedulePending = isLoading || Boolean(isIdentityUnconfirmed)
+
   // The mini-calendar navigates months on its own; its lesson dots follow the month it shows.
   const [miniCalendarMonth, setMiniCalendarMonth] = useState(() => new Date())
   const miniCalendarLessonDays = useMemo(
@@ -101,14 +110,25 @@ function ScheduleContent() {
     hideSnackbar,
     showSnackbar,
     openDialog,
+    closeDialog,
     selectedLesson,
     activeDialog,
   } = useSchedulePage()
 
   /* ── Confirm dialog + export state ─────────────────────── */
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [interactionGroup, setInteractionGroup] = useState(selectedGroup)
+  const groupChanged = interactionGroup !== selectedGroup
+  const suppressScopedActions = Boolean(isIdentityUnconfirmed) || groupChanged
   const [settingsOpen, setSettingsOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!groupChanged) return
+    closeDialog()
+    setPendingDeleteId(null)
+    setInteractionGroup(selectedGroup)
+  }, [closeDialog, groupChanged, selectedGroup])
 
   /* ── Past lessons filter ──────────────────────────────── */
   // PERF-70-04: use primitive minutesNow instead of Date object to stabilize dependency
@@ -218,6 +238,7 @@ function ScheduleContent() {
     rowCount: keyboardRows.length,
     todayColIdx: todayVisibleColIdx,
     enabled:
+      !suppressScopedActions &&
       !isMobile &&
       !shortcutsOpen &&
       activeDialog === null &&
@@ -327,8 +348,14 @@ function ScheduleContent() {
             aria-label={t("schedule:title.default")}
             className="min-w-0 flex-1"
           >
-            <SkeletonMorph loaded={!isLoading} skeleton={<ScheduleSkeleton />}>
-              <FadeSection delay="var(--motion-duration-base)">
+            <p role="status" className="sr-only">
+              {isSchedulePending && hasDisplayedSchedule ? t("common:loading") : null}
+            </p>
+            <SkeletonMorph
+              loaded={!isLoading || hasDisplayedSchedule}
+              skeleton={<ScheduleSkeleton />}
+            >
+              <FadeSection delay="var(--motion-duration-base)" aria-busy={isSchedulePending}>
                 {/* ── All lessons filtered out — show reset action (FIX-65-05) ── */}
                 {allFilteredOut && (
                   <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/[calc(var(--opacity-dim)*100%)] bg-amber-500/[calc(var(--opacity-subtle)*100%)] px-4 py-3 text-sm text-text-secondary">
@@ -408,7 +435,9 @@ function ScheduleContent() {
           )}
         </div>
 
-        <ScheduleDialogs {...scheduleData} getLessonTypeLabel={getLessonTypeLabel} />
+        {!suppressScopedActions && (
+          <ScheduleDialogs {...scheduleData} getLessonTypeLabel={getLessonTypeLabel} />
+        )}
         <ScheduleShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
         {/* ── Settings panel ─────────────────────────────── */}
@@ -424,16 +453,18 @@ function ScheduleContent() {
         />
 
         {/* ── Confirm deletion dialog ────────────────────── */}
-        <ConfirmDialog
-          open={pendingDeleteId !== null}
-          title={t("schedule:confirm.deleteTitle")}
-          message={t("schedule:confirm.deleteMessage")}
-          confirmText={t("schedule:confirm.deleteConfirm")}
-          cancelText={t("common:buttons.cancel")}
-          variant="danger"
-          onConfirm={confirmDeleteLesson}
-          onCancel={() => setPendingDeleteId(null)}
-        />
+        {!suppressScopedActions && (
+          <ConfirmDialog
+            open={pendingDeleteId !== null}
+            title={t("schedule:confirm.deleteTitle")}
+            message={t("schedule:confirm.deleteMessage")}
+            confirmText={t("schedule:confirm.deleteConfirm")}
+            cancelText={t("common:buttons.cancel")}
+            variant="danger"
+            onConfirm={confirmDeleteLesson}
+            onCancel={() => setPendingDeleteId(null)}
+          />
+        )}
 
         {/* ── Week/parity announcement (a11y) ── */}
         <div className="sr-only" role="status" aria-live="polite">
@@ -466,8 +497,14 @@ function ScheduleContent() {
 }
 
 export default function Schedule() {
+  const { user, loading } = useAuth()
+  const confirmedOwner = getConfirmedUserId({ user, loading })
+  const [scopeOwner, setScopeOwner] = useState(confirmedOwner)
+  if (confirmedOwner !== null && confirmedOwner !== scopeOwner) setScopeOwner(confirmedOwner)
+  if (!loading && user === null && scopeOwner !== null) setScopeOwner(null)
+
   return (
-    <SchedulePageProvider>
+    <SchedulePageProvider key={scopeOwner === null ? "unowned" : `owner:${scopeOwner}`}>
       <FeatureErrorBoundary featureName="schedule">
         <ScheduleContent />
       </FeatureErrorBoundary>

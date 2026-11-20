@@ -641,11 +641,12 @@ describe("Schedule page behavior", () => {
   it("announces positive and negative week offsets", async () => {
     uiState.weekOffset = 2
     const { rerender } = await renderSchedule()
-    expect(screen.getByRole("status")).toHaveTextContent("+2")
+    const weekStatus = screen.getByText(/\+2/u, { selector: '[role="status"]' })
+    expect(weekStatus).toHaveTextContent("+2")
 
     uiState.weekOffset = -2
     rerender(<Schedule />)
-    expect(screen.getByRole("status")).toHaveTextContent("-2")
+    expect(screen.getByText(/-2/u, { selector: '[role="status"]' })).toHaveTextContent("-2")
   })
 
   it("shares the current instant without resetting the calendar's chosen month", async () => {

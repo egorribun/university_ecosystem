@@ -5,6 +5,7 @@ import { useLayoutEffect, type ReactNode } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import { useScheduleData } from "@/hooks/useScheduleData"
+import { createQueryClient, getQueryCacheIdentity } from "@/app/queryClient"
 import { CampusTimezoneProvider, useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import {
   anonymousScheduleGroupsQueryKey,
@@ -152,6 +153,180 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     cleanup()
     useAuthStore.setState({ user: null, loading: true })
   })
+
+  it("does not let a retired account update or refresh its old group", async () => {
+    const first = { id: "owner-a", role: "student", group_id: "group-a" } as UserState
+    const second = { id: "owner-b", role: "student", group_id: "group-b" } as UserState
+    const client = createQueryClient()
+    setAuthFixture(first)
+    const oldKey = pageScheduleQueryOptions("group-a").queryKey
+    const oldLesson = {
+      id: "old-lesson",
+      group_id: "group-a",
+      weekday: "monday",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Old account lesson",
+      parity: "both",
+    } as Lesson
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: "group-a", name: "A" }])
+    client.setQueryData(oldKey, [oldLesson])
+    apiGetMock.mockImplementation(() => new Promise(() => {}))
+    const view = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    try {
+      await waitFor(() => expect(view.result.current.rawSchedule).toEqual([oldLesson]))
+      const oldUpdate = view.result.current.applyScheduleUpdate
+      const oldRefresh = view.result.current.refresh
+      const invalidate = vi.spyOn(client, "invalidateQueries")
+      act(() => {
+        setAuthFixture(second)
+        expect(getQueryCacheIdentity()).toBe("owner-b")
+        expect(oldUpdate(() => [oldLesson])).toBeUndefined()
+        oldRefresh()
+      })
+      expect(client.getQueryData(oldKey)).toBeUndefined()
+      expect(invalidate).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it("resets the selected group when the confirmed account changes", async () => {
+    const first = { id: "owner-a", role: "student", group_id: "group-a" } as UserState
+    const second = { id: "owner-b", role: "student", group_id: "group-b" } as UserState
+    const groups = [
+      { id: "group-a", name: "A" },
+      { id: "group-b", name: "B" },
+    ]
+    const firstLesson = {
+      id: "lesson-a",
+      group_id: "group-a",
+      weekday: "monday",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "First group",
+      parity: "both",
+    } as Lesson
+    const secondLesson = {
+      ...firstLesson,
+      id: "lesson-b",
+      group_id: "group-b",
+      subject: "Second group",
+    }
+    const client = createQueryClient()
+    setAuthFixture(first)
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-a").queryKey, [firstLesson])
+    apiGetMock.mockImplementation(async (url) => {
+      if (url === "/groups") return { data: groups } as never
+      if (url === "/schedule/group-b") return { data: [secondLesson] } as never
+      throw new Error("unexpected schedule query")
+    })
+    const view = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    try {
+      await waitFor(() => expect(view.result.current.rawSchedule).toEqual([firstLesson]))
+      act(() => setAuthFixture(second))
+      await waitFor(() => expect(view.result.current.selectedGroup).toBe("group-b"))
+      await waitFor(() => expect(view.result.current.rawSchedule).toEqual([secondLesson]))
+      expect(apiGetMock).not.toHaveBeenCalledWith("/schedule/group-a", expect.anything())
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it("drops a selected group removed by a successful groups refresh", async () => {
+    const teacher = { id: "owner-a", role: "teacher" } as UserState
+    const client = createQueryClient()
+    setAuthFixture(teacher)
+    const oldKey = pageScheduleQueryOptions("group-a").queryKey
+    const oldLesson = {
+      id: "old-lesson",
+      group_id: "group-a",
+      weekday: "monday",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Old group lesson",
+      parity: "both",
+    } as Lesson
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+      { id: "group-a", name: "A" },
+      { id: "group-b", name: "B" },
+    ])
+    client.setQueryData(oldKey, [oldLesson])
+    apiGetMock.mockImplementation(() => new Promise(() => {}))
+    const view = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    try {
+      await waitFor(() => expect(view.result.current.selectedGroup).toBe("group-a"))
+      expect(view.result.current.rawSchedule).toEqual([oldLesson])
+      const oldUpdate = view.result.current.applyScheduleUpdate
+      act(() =>
+        client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: "group-b", name: "B" }])
+      )
+      await waitFor(() => expect(view.result.current.selectedGroup).toBe("group-b"))
+      expect(view.result.current.rawSchedule).toEqual([])
+      expect(oldUpdate(() => [oldLesson])).toBeUndefined()
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it.each(["account", "group", "unmount", "unchanged"] as const)(
+    "only writes a delayed offline snapshot while its %s scope is current",
+    async (transition) => {
+      const first = { id: "owner-a", role: "teacher" } as UserState
+      const second = { id: "owner-b", role: "student", group_id: "group-b" } as UserState
+      const client = createQueryClient()
+      setAuthFixture(first)
+      client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+        { id: "group-a", name: "A" },
+        { id: "group-b", name: "B" },
+      ])
+      client.setQueryData(pageScheduleQueryOptions("group-a").queryKey, [
+        {
+          id: "lesson-a",
+          group_id: "group-a",
+          weekday: "monday",
+          start_time: "09:00",
+          end_time: "10:00",
+          subject: "First group",
+          parity: "both",
+        },
+      ])
+      const bulkUpsert = vi.fn().mockResolvedValue(undefined)
+      let resolveDatabase!: (database: { schedule: { bulkUpsert: typeof bulkUpsert } }) => void
+      const database = new Promise<{ schedule: { bulkUpsert: typeof bulkUpsert } }>((resolve) => {
+        resolveDatabase = resolve
+      })
+      getDatabaseMock.mockReturnValue(database as never)
+      apiGetMock.mockImplementation(() => new Promise(() => {}))
+      const view = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+      let mounted = true
+      try {
+        await waitFor(() => expect(getDatabaseMock).toHaveBeenCalledOnce())
+        if (transition === "group") {
+          act(() => view.result.current.setSelectedGroup("group-b"))
+          await waitFor(() => expect(view.result.current.selectedGroup).toBe("group-b"))
+        }
+        await act(async () => {
+          if (transition === "account") setAuthFixture(second)
+          if (transition === "unmount") {
+            view.unmount()
+            mounted = false
+          }
+          resolveDatabase({ schedule: { bulkUpsert } })
+          await database
+        })
+        if (transition === "unchanged") expect(bulkUpsert).toHaveBeenCalledOnce()
+        else expect(bulkUpsert).not.toHaveBeenCalled()
+      } finally {
+        if (mounted) view.unmount()
+        client.clear()
+      }
+    }
+  )
 
   it("keeps the schedule loading until the automatically selected group's uncached data arrives", async () => {
     const client = newClient()
