@@ -2,6 +2,19 @@
 
 ## Текущий срез — 2026-11-20, вечер
 
+- [PR #1539](https://github.com/egorribun/university_ecosystem/pull/1539) вошёл в `main` обычным слиянием
+  `cca6c8cab`; все required checks на `ae0289f7a` прошли, включая realtime E2E без 502.
+- Проверки на `main` `cca6c8cab`:
+  - Kubernetes NetworkPolicy proof (run 44786682314) — success.
+  - Полный Core (run 44786692024) — 223 passed, 0 failed, 1 flaky. Все push-сценарии прошли,
+    выборка worker — `sent=9 gone=0`, все HTTP 201. Шесть записей AUD-154 прошли с первой попытки.
+    Flaky — desktop `map-zoom-longtask`: одна долгая задача 69 мс на шаге 2 на раннере без GPU.
+  - DAST (run 44786686936) — ZAP больше не сообщает 40025 и 10106. Остались 10055, 10202 и 20012
+    (решения владельца) и 30003.
+- 30003 — HTTP 500 на `/login?redirect=<число>`: роутер разбирает значение как JSON, строгая схема
+  поиска бросала ошибку. То же было у вошедших пользователей на `/news?q=12`, `/events?q=12` и
+  `/settings?spotify=12`. Исправление — [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540).
+
 - `main` — `c5cdd403e` (слияние [PR #1538](https://github.com/egorribun/university_ecosystem/pull/1538)).
   Счёт аудита — **510/512**, открыты AUD-154 и AUD-381.
 - Полный Core на `c5cdd403e` (run 44742031470) — 223 passed, 1 failed, 8 skipped: падает
@@ -204,8 +217,8 @@ source SHA, а не этого среза.
 
 ## Следующие шаги
 
-1. PR #1539: дождаться required checks на итоговом SHA, обычный merge; затем запустить на `main`
-   Kubernetes proof, DAST и полный Core.
+1. PR #1540: дождаться required checks, обычный merge; затем DAST и полный Core на `main`
+   (не чаще одного полного Core в 2 часа).
 2. AUD-154: исправить desktop notification-topics (FCM 410 для новой подписки и очистка без
    CSRF-cookie), затем два последовательных green полных Core run на `main`. AUD-381: решения владельца
    по 10055 и 10202, затем проверенные ZAP и Nuclei на точном SHA `main`.
