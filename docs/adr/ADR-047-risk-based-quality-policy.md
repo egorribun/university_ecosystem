@@ -2981,6 +2981,23 @@ identities. No exception is added. The inventory remains 242 baseline identities
 These records and local tests do not establish a passing scan, hosted required
 checks or native push delivery. Final-source validation remains required.
 
+### ZAP rule 10106 excluded for the TLS-less DAST stand
+
+The owner explicitly approved excluding ZAP passive rule 10106 (HTTP Only Site)
+from the scheduled full scan. The scan targets the ephemeral owned Compose stand
+that `scripts/live_stand.py` starts on loopback HTTP inside the job, so the rule
+reports a property of the test stand. Production terminates TLS in Caddy and
+sends HSTS. `.zap/rules.tsv` sets the rule to `IGNORE`.
+
+- **Scope.** Only rule 10106, and only for this CI stand. The other medium
+  alerts from run 44471112462 (10055, 10202 and 40025) are not excluded and
+  must be resolved in code or configuration. Any further exclusion needs the
+  owner.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10, together with the
+  rule 40026 exclusion. Remove it if the DAST stand gains TLS.
+- **Not established.** This exclusion is not a passing scan; AUD-381 still
+  needs a green hosted ZAP run on `main` with a verified report.
+
 ## Decisions recorded on 2026-11-20
 
 ### Authenticated Schedule visual-readiness companion rebind

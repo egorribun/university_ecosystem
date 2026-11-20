@@ -22,6 +22,12 @@
 # Superseded by Permissions-Policy; ZAP still checks deprecated header name
 10063	IGNORE	Permissions-Policy header is set; Feature-Policy deprecated
 
+# 10106: HTTP Only Site
+# Owner-approved 2026-11-19 (ADR-047): the ephemeral CI DAST stand is served
+# over loopback HTTP without TLS, so this rule describes the test stand, not the
+# product. Production terminates TLS in Caddy and sends HSTS.
+10106	IGNORE	CI DAST stand is loopback HTTP; production terminates TLS
+
 # 40012: Cross Site Scripting (Reflected)
 # Trusted Types enforcement (MOD-W4) prevents XSS even without header-level block
 40012	WARN	Review XSS findings manually against Trusted Types policy
