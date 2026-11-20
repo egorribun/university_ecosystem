@@ -6,6 +6,7 @@ import logging
 import subprocess
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -323,6 +324,59 @@ def test_recovery_phase_records_successful_health_probe(
     asyncio.run(orchestrator.phase6_verify_recovery())
 
     assert orchestrator._recovery_probe_confirmed
+
+
+@pytest.mark.parametrize("recovers", [True, False], ids=["recovers", "times-out"])
+def test_recovery_logs_closed_probe_summary_without_changing_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    recovers: bool,
+) -> None:
+    orchestrator = _orchestrator()
+    statuses = [0, 503, -1, 204] if recovers else [0, 503, -1]
+    responses = iter(statuses)
+    clock = iter([0.0, 0.0, 1.0, 2.0, 3.0 if recovers else 15.0])
+    probes: list[tuple[str, float]] = []
+    sleeps: list[float] = []
+    loads: list[tuple[str, float]] = []
+    metrics = _metrics("recovery", requests=10)
+    error_detail = "private probe detail"
+
+    def send(url: str, timeout: float) -> tuple[int, float, str]:
+        probes.append((url, timeout))
+        return next(responses), 0.25, error_detail
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def load(phase: str, duration: float) -> chaos.PhaseMetrics:
+        loads.append((phase, duration))
+        return metrics
+
+    monkeypatch.setattr(chaos, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    monkeypatch.setattr(chaos, "asyncio", SimpleNamespace(sleep=sleep))
+    monkeypatch.setattr(orchestrator, "_send_http_request", send)
+    monkeypatch.setattr(orchestrator, "_run_http_load", load)
+    caplog.set_level(logging.INFO, logger="chaos_loadtest")
+
+    assert asyncio.run(orchestrator.phase6_verify_recovery()) is metrics
+
+    assert probes == [(orchestrator.target_url, 2.0)] * len(statuses)
+    assert sleeps == [1.0, 1.0, 1.0]
+    assert loads == [("Phase 6: Recovery Verification", 3.0)]
+    assert orchestrator._recovery_probe_confirmed is recovers
+    assert error_detail not in caplog.text
+    assert orchestrator.target_url not in caplog.text
+    last = "accepted" if recovers else "invalid"
+    summaries = [
+        entry.message
+        for entry in caplog.records
+        if entry.message.startswith("Recovery health probes:")
+    ]
+    assert summaries == [
+        f"Recovery health probes: accepted={int(recovers)} other_http=1 "
+        f"no_response=1 invalid=1 last={last}"
+    ]
 
 
 @pytest.mark.parametrize(

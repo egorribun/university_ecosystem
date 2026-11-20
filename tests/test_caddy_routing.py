@@ -277,6 +277,55 @@ def test_tls_edge_sets_the_shared_browser_security_headers() -> None:
     ), "TLS Caddy site must retain its HSTS policy"
 
 
+@pytest.mark.parametrize(
+    "relative_path", ["services/caddy/Caddyfile", "infrastructure/Caddyfile"]
+)
+def test_edges_reject_trace_track_and_connect_before_any_route(
+    relative_path: str,
+) -> None:
+    """AUD-381: no route may echo TRACE requests or reach Node SSR with them.
+
+    Fetch cannot represent CONNECT, TRACE or TRACK, so Node SSR answered 500,
+    and a TRACE echo through the proxy chain discloses the proxies (ZAP 40025).
+    """
+    content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    matcher = _line_of(
+        content, r"^\s*@unsupported_method\s+method\s+TRACE\s+TRACK\s+CONNECT\s*$"
+    )
+    handler = _line_of(content, r"^\s*handle\s+@unsupported_method\s*\{\s*$")
+    block = content.splitlines()[handler : handler + 3]
+    assert [line.strip() for line in block] == [
+        'header Allow "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"',
+        "respond 405",
+        "}",
+    ]
+    first_route = _line_of(content, r"^\s*handle(?:_path)?\s+/")
+    assert matcher < handler < first_route, (
+        f"{relative_path} must reject unsupported methods before its first route"
+    )
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "patterns"),
+    [
+        (
+            "services/caddy/Caddyfile",
+            (r"^\s*header\s+-Server\s*$", r"^\s*header\s+-Via\s*$"),
+        ),
+        ("infrastructure/Caddyfile", (r"^\s*-Server\s*$", r"^\s*-Via\s*$")),
+    ],
+)
+def test_edges_do_not_fingerprint_the_proxy(
+    relative_path: str, patterns: tuple[str, str]
+) -> None:
+    """AUD-381: responses carry neither Server nor the Via header Caddy adds."""
+    content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    for pattern in patterns:
+        assert re.search(pattern, content, re.MULTILINE), (
+            f"{relative_path} must remove the header matching {pattern!r}"
+        )
+
+
 def test_ws_ticket_precedes_general_ws_block() -> None:
     """W173 SW1 critical invariant: /ws/ticket exception MUST appear BEFORE /ws/*.
 

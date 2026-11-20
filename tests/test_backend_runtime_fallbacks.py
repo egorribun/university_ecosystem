@@ -250,7 +250,7 @@ async def test_subscribe_integrity_error_retry():
     from app.schemas.notifications import PushSubscriptionIn
 
     payload = PushSubscriptionIn(
-        endpoint="https://updates.push.services.mozilla.com/wpush/v2/gAAAAA",
+        endpoint="https://push.example.test/subscription",
         keys={"p256dh": "BEl62vOgw1...", "auth": "qQX4S..."},
         topics=["general"],
     )
@@ -263,16 +263,16 @@ async def test_subscribe_integrity_error_retry():
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
         patch(
+            "app.routers.notifications._validate_public_endpoint_dns", AsyncMock()
+        ) as validate_dns,
+        patch(
             "app.routers.notifications.resolve_subscription_topics_for_user",
             AsyncMock(return_value=[]),
         ),
     ):
         db = AsyncMock()
-        db.add = MagicMock()
-        nested_mock = MagicMock()
-        nested_mock.__aenter__ = AsyncMock()
-        nested_mock.__aexit__ = AsyncMock()
-        db.begin_nested = MagicMock(return_value=nested_mock)
+        added = []
+        db.add = MagicMock(side_effect=added.append)
 
         user = MagicMock()
         user.id = uuid.uuid4()
@@ -282,23 +282,26 @@ async def test_subscribe_integrity_error_retry():
         mock_result.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_result
 
-        call_count = 0
+        persisted_id = uuid.uuid4()
+        events = []
 
         async def mock_flush():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
+            if not events:
+                events.append("conflict")
                 raise IntegrityError("statement", {}, Exception())
+            if added[-1].id is None:
+                added[-1].id = persisted_id
+                events.append("id assigned")
 
-        db.flush = mock_flush
+        async def mock_rollback():
+            events.append("rollback")
 
-        db.commit = AsyncMock()
-        db.rollback = AsyncMock()
+        async def mock_commit():
+            events.append("commit")
 
-        async def mock_refresh(sub):
-            sub.id = uuid.uuid4()
-
-        db.refresh = mock_refresh
+        db.flush = AsyncMock(side_effect=mock_flush)
+        db.rollback = AsyncMock(side_effect=mock_rollback)
+        db.commit = AsyncMock(side_effect=mock_commit)
 
         with patch("asyncio.sleep", AsyncMock()):
             res = await call_injected(
@@ -308,8 +311,17 @@ async def test_subscribe_integrity_error_retry():
                 user=user,
                 provides={"AsyncDatabaseSession": db},
             )
-            assert res is not None
-            assert call_count >= 2
+            assert res.id == persisted_id
+            assert res.user_id == user.id
+            assert res.endpoint == payload.endpoint
+            assert res.p256dh == payload.keys.p256dh
+            assert res.auth == payload.keys.auth
+            assert len(added) == 2
+            assert events == ["conflict", "rollback", "id assigned", "commit"]
+            db.rollback.assert_awaited_once()
+            db.commit.assert_awaited_once()
+            db.refresh.assert_not_awaited()
+            validate_dns.assert_awaited_once_with(payload.endpoint)
 
 
 @pytest.mark.asyncio

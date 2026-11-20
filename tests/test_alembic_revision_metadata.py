@@ -189,8 +189,9 @@ def test_alembic_history_does_not_require_runtime_secrets() -> None:
     result = _run_alembic_cli(["history", "--verbose"], _alembic_cli_environment())
 
     assert result.returncode == 0, result.stderr
-    assert "Rev: 202611020000 (head)\nParent: <base>\n" in result.stdout
-    assert result.stdout.count("Rev: ") == 1
+    assert "Rev: 202611200001 (head)\nParent: 202611020000\n" in result.stdout
+    assert "Rev: 202611020000\nParent: <base>\n" in result.stdout
+    assert result.stdout.count("Rev: ") == 2
 
 
 @pytest.mark.parametrize("environment_name", ["staging", "development"])
@@ -280,7 +281,10 @@ def test_alembic_upgrade_refuses_the_implicit_development_target() -> None:
 
 def test_baseline_revision_metadata_is_a_fresh_root() -> None:
     assert read_revision_metadata(BASELINE_PATH) == ("202611020000", "base")
-    assert sorted(BASELINE_PATH.parent.glob("*.py")) == [BASELINE_PATH]
+    assert [path.name for path in sorted(BASELINE_PATH.parent.glob("*.py"))] == [
+        "202611020000_mvp_baseline.py",
+        "202611200001_push_binding_version.py",
+    ]
 
 
 def test_baseline_sets_timeouts_before_catalog_inspection(

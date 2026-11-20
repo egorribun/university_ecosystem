@@ -30,7 +30,13 @@ def test_nightly_marker_collects_all_five_resilience_cases(
 ) -> None:
     monkeypatch.setenv("CHAOS_TESTS", "1")
     monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = ROOT / "pyproject.toml"
+    # Mutmut reads configuration from the child working directory, independently
+    # of pytest's checkout-rooted configuration and collection paths.
+    (pytester.path / config.name).write_bytes(config.read_bytes())
     result = pytester.runpytest_subprocess(
+        "-c",
+        str(config),
         "--collect-only",
         "--no-cov",
         "-o",

@@ -8635,6 +8635,7 @@ def _assert_conditional_owner_source_bindings(
         | set(_AUD380_N5_PENDING_OWNER_IDENTITIES)
         | set(_AUD380_N6_EXPECTED_IDENTITIES)
     )
+    active_records = _aud380_conditional_policy()["records"]
     for row in _AUD380_PENDING_OWNER_RECORDS:
         assert row["approval_status"] == "NOT_APPROVED"
         active_row = copy.deepcopy(row)
@@ -8642,7 +8643,7 @@ def _assert_conditional_owner_source_bindings(
         assert any(
             _aud380_identity_key(candidate) == _aud380_identity_key(row)
             and candidate == active_row
-            for candidate in _aud380_conditional_policy()["records"]
+            for candidate in active_records
         ), "approved N21 metadata changed in the active 490 prefix"
 
     identity_line_keys = {
@@ -8686,8 +8687,7 @@ def _assert_conditional_owner_source_bindings(
         _aud380_identity_key(record): record for record in _AUD380_PENDING_OWNER_RECORDS
     }
     active_records_by_key = {
-        _aud380_identity_key(record): record
-        for record in _aud380_conditional_policy()["records"]
+        _aud380_identity_key(record): record for record in active_records
     }
     n4_records_by_key = {
         _aud380_identity_key(record): record
@@ -36692,6 +36692,7 @@ def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _baseline_policy_predecessor(policy)
     policy = _visual_readiness_policy_predecessor(policy)
     bound = [
         item["sha256"]
@@ -36962,6 +36963,7 @@ _NOV20_ENVIRONMENT_PREVIOUS = (
 
 
 def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _baseline_source_predecessor(path, actual)
     actual = _visual_readiness_source_predecessor(path, actual)
     message = f"conditional disposition source file SHA-256 changed: {path}"
     if path == "scripts/live_stand.py":
@@ -37000,7 +37002,9 @@ def _nov20_live_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nov20_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = _visual_readiness_policy_predecessor(policy)
+    restored = _visual_readiness_policy_predecessor(
+        _baseline_policy_predecessor(policy)
+    )
     records = restored["records"]
     if len(records) <= 495:
         return restored
@@ -37031,6 +37035,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _baseline_policy_predecessor(policy)
     policy = _visual_readiness_policy_predecessor(policy)
     live_digest = hashlib.sha256(live).digest()
     expected = bytes.fromhex(
@@ -37424,6 +37429,7 @@ def test_visual_readiness_policy_projection_preserves_every_other_record() -> No
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _baseline_policy_predecessor(policy)
     previous = _visual_readiness_policy_predecessor(policy)
     assert len(policy["records"]) == len(previous["records"]) == 524
     changed = [
@@ -37565,3 +37571,199 @@ def test_visual_readiness_projection_leaves_unrelated_source_unchanged() -> None
     assert (
         _visual_readiness_source_predecessor("unrelated", b"unchanged") == b"unchanged"
     )
+
+
+# Project the one reviewed baseline-proof change before older source/policy guards.
+_BASELINE_PROOF_PATH = "tests/integration/test_mvp_baseline_schema_equivalence.py"
+_BASELINE_AUDIT_PATH = (
+    "tests/integration/test_aud433_notifications_baseline_partition.py"
+)
+_BASELINE_OLD_EXTRACTOR = b'''def _extract_baseline_tree(target: Path) -> None:
+    """Copy the working-tree app and alembic, keeping only the baseline revision."""
+    ignore = shutil.ignore_patterns("__pycache__")
+    shutil.copytree(PROJECT_ROOT / "alembic", target / "alembic", ignore=ignore)
+    shutil.copytree(PROJECT_ROOT / "app", target / "app", ignore=ignore)
+    shutil.copy(PROJECT_ROOT / "alembic.ini", target / "alembic.ini")
+    versions = target / "alembic" / "versions"
+    for migration in versions.glob("*.py"):
+        if migration.name != BASELINE_FILE:
+            migration.unlink()
+'''
+_BASELINE_NEW_EXTRACTOR = b'''def _extract_baseline_tree(target: Path) -> None:
+    """Use the reviewed baseline's model tree and keep its revision isolated."""
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("Git is required for the baseline model snapshot")
+
+    def git_output(*arguments: str) -> bytes:
+        code, output, _ = asyncio.run(_run_fixed_argv([git, *arguments], PROJECT_ROOT))
+        if code:
+            raise RuntimeError("baseline model snapshot requires complete Git history")
+        return output
+
+    if git_output("rev-parse", "--is-shallow-repository").strip() != b"false":
+        raise RuntimeError("baseline model snapshot requires complete Git history")
+    baseline_path = f"alembic/versions/{BASELINE_FILE}"
+    revision = git_output(
+        "log", "--first-parent", "-1", "--format=%H", "--", baseline_path
+    )
+    revision_text = revision.decode("ascii").strip()
+    if re.fullmatch(r"[0-9a-f]{40}", revision_text) is None:
+        raise RuntimeError("baseline model snapshot has ambiguous Git history")
+    parent = f"{revision_text}^"
+    git_output("rev-parse", "--verify", parent)
+    changed = git_output(
+        "diff", "--name-only", parent, revision_text, "--", baseline_path
+    )
+    if changed.decode("utf-8").strip() != baseline_path:
+        raise RuntimeError("baseline model snapshot has ambiguous Git history")
+    historical_baseline = git_output("show", f"{revision_text}:{baseline_path}")
+    if historical_baseline != (PROJECT_ROOT / baseline_path).read_bytes():
+        raise RuntimeError("baseline source does not match the reviewed Git object")
+    models = git_output("archive", "--format=tar", revision_text, "app/models")
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        return {
+            name
+            for name in names
+            if name == "__pycache__"
+            or (Path(directory) == PROJECT_ROOT / "app" and name == "models")
+        }
+
+    shutil.copytree(PROJECT_ROOT / "alembic", target / "alembic", ignore=ignore)
+    shutil.copytree(PROJECT_ROOT / "app", target / "app", ignore=ignore)
+    with tarfile.open(fileobj=io.BytesIO(models)) as tar:
+        tar.extractall(target, filter="data")
+    shutil.copy(PROJECT_ROOT / "alembic.ini", target / "alembic.ini")
+    versions = target / "alembic" / "versions"
+    for migration in versions.glob("*.py"):
+        if migration.name != BASELINE_FILE:
+            migration.unlink()
+'''
+
+
+def _baseline_source_predecessor(path: str, actual: bytes) -> bytes:
+    if path not in {_BASELINE_PROOF_PATH, _BASELINE_AUDIT_PATH}:
+        return actual
+    expected = _AUD380_CURRENT_DELTA_SOURCE_SHA256[path]
+    if hashlib.sha256(actual).digest() == expected:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    historical = actual
+    if path == _BASELINE_PROOF_PATH:
+        assert historical.count(_BASELINE_NEW_EXTRACTOR) == 1, message
+        historical = historical.replace(
+            _BASELINE_NEW_EXTRACTOR, _BASELINE_OLD_EXTRACTOR, 1
+        )
+        current_description = (
+            b"``alembic_version`` is the only other allowed difference. The baseline is checked\n"
+            b"against reviewed historical models and must refuse downgrade without schema changes.\n"
+            b"A separate current-head check compares the full successor to current models.\n"
+        )
+        previous_description = (
+            b"``alembic_version`` is the only other allowed difference. The baseline is then\n"
+            b"checked against the current models and must refuse its downgrade without changing\n"
+            b"the schema.\n"
+        )
+        assert historical.count(current_description) == 1, message
+        historical = historical.replace(current_description, previous_description, 1)
+        added_docstring = b'    """Compare against the complete reviewed model snapshot in the baseline tree."""\n'
+        assert historical.count(added_docstring) == 1, message
+        historical = historical.replace(added_docstring, b"", 1)
+    else:
+        proof = (
+            Path(__file__).resolve().parents[1] / _BASELINE_PROOF_PATH
+        ).read_bytes()
+        _baseline_source_predecessor(_BASELINE_PROOF_PATH, proof)
+        current_pin = hashlib.sha256(proof).hexdigest().encode("ascii")
+        previous_pin = (
+            _AUD380_CURRENT_DELTA_SOURCE_SHA256[_BASELINE_PROOF_PATH]
+            .hex()
+            .encode("ascii")
+        )
+        edits = (
+            (current_pin, previous_pin),
+            (
+                b"def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable(\n    tmp_path: Path,\n) -> None:",
+                b"def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable() -> None:",
+            ),
+            (
+                b'    baseline_tree = tmp_path / "baseline"\n    proof._extract_baseline_tree(baseline_tree)\n',
+                b"",
+            ),
+            (
+                b'(baseline_tree / "alembic" / "versions").glob("*.py")',
+                b'(PROJECT_ROOT / "alembic" / "versions").glob("*.py")',
+            ),
+            (
+                b"proof._assert_owned_url_is_authoritative(baseline_tree, database_url)",
+                b"proof._assert_owned_url_is_authoritative(PROJECT_ROOT, database_url)",
+            ),
+            (
+                b'proof._alembic(baseline_tree, database_url, "upgrade", "head")',
+                b'proof._alembic(PROJECT_ROOT, database_url, "upgrade", "head")',
+            ),
+        )
+        for current, previous in edits:
+            assert historical.count(current) == 1, message
+            historical = historical.replace(current, previous, 1)
+    assert hashlib.sha256(historical).digest() == expected, message
+    return historical
+
+
+def _baseline_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= 483:
+        return restored
+    previous = copy.deepcopy(_AUD380_PENDING_OWNER_RECORDS[14])
+    previous["approval_status"] = "approved"
+    if records[483] == previous:
+        return restored
+    proof = (Path(__file__).resolve().parents[1] / _BASELINE_PROOF_PATH).read_bytes()
+    _baseline_source_predecessor(_BASELINE_PROOF_PATH, proof)
+    current = copy.deepcopy(previous)
+    current["identity"]["hashed_secret_bytes"] = _nov15_identity(
+        hashlib.sha256(proof).hexdigest()
+    )
+    assert records[483] == current, (
+        "baseline proof disposition or approval metadata changed"
+    )
+    records[483] = previous
+    return restored
+
+
+def test_aud380_source_bindings_read_one_fresh_policy_per_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    live_policy = root / "quality/security-false-positive-dispositions.json"
+    isolated_policy = tmp_path / "policy.json"
+    isolated_policy.write_bytes(live_policy.read_bytes())
+    read_bytes = Path.read_bytes
+    original_policy = _aud380_conditional_policy
+    policy_calls = 0
+
+    def read_with_isolated_policy(path: Path) -> bytes:
+        if path == live_policy:
+            return read_bytes(isolated_policy)
+        return read_bytes(path)
+
+    def count_policy_reconstruction() -> dict[str, Any]:
+        nonlocal policy_calls
+        policy_calls += 1
+        return original_policy()
+
+    monkeypatch.setattr(Path, "read_bytes", read_with_isolated_policy)
+    monkeypatch.setattr(
+        sys.modules[__name__], "_aud380_conditional_policy", count_policy_reconstruction
+    )
+    _assert_conditional_owner_source_bindings(root)
+    assert policy_calls == 1
+
+    isolated_policy.write_bytes(read_bytes(isolated_policy) + b"\n")
+    with pytest.raises(
+        AssertionError, match="live disposition noncanonical bytes changed"
+    ):
+        _assert_conditional_owner_source_bindings(root)
+    assert policy_calls == 2

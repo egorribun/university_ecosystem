@@ -102,6 +102,7 @@ def test_process_push_results_cleanup(monkeypatch):
             user_id=uuid.uuid4(),
             status="gone",
             status_code=404,
+            _binding_version=0,
         ),
         WebPushResult(
             subscription_id=u2,
@@ -109,6 +110,7 @@ def test_process_push_results_cleanup(monkeypatch):
             user_id=uuid.uuid4(),
             status="gone",
             status_code=410,
+            _binding_version=0,
         ),
         WebPushResult(
             subscription_id=uuid.uuid4(),
@@ -116,6 +118,7 @@ def test_process_push_results_cleanup(monkeypatch):
             user_id=uuid.uuid4(),
             status="sent",
             status_code=201,
+            _binding_version=0,
         ),
     ]
 

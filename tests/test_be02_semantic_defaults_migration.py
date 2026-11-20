@@ -95,7 +95,7 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
         ).read_text(encoding="utf-8")
     )
     # The source-derived inventory follows migrations after this historical phase.
-    assert policy["expected"]["migration_head"] == "202611020000"
+    assert policy["expected"]["migration_head"] == "202611200001"
     assert policy["expected"]["effective_counts"] == {
         "both": 87,
         "python_only": 42,

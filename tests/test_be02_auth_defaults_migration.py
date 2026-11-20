@@ -85,13 +85,16 @@ def test_baseline_declares_every_auth_boolean_default(
     _assert_auth_defaults(operations.statements)
 
 
-def test_migration_revision_is_current_single_head(
+def test_baseline_revision_remains_the_graph_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migration, _ = capture_baseline(monkeypatch)
     assert migration.revision == "202611020000"
     assert migration.down_revision is None
-    assert sorted(BASELINE_PATH.parent.glob("*.py")) == [BASELINE_PATH]
+    assert [path.name for path in sorted(BASELINE_PATH.parent.glob("*.py"))] == [
+        "202611020000_mvp_baseline.py",
+        "202611200001_push_binding_version.py",
+    ]
 
 
 @pytest.mark.parametrize("qualified", EXPECTED_COLUMNS)

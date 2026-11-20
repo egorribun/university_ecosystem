@@ -69,6 +69,15 @@
 		}
 	}
 
+	# AUD-381: TRACE and TRACK echo request headers back through the proxy
+	# chain, and the Fetch API behind Node SSR cannot represent them or CONNECT.
+	# Reject them at the edge, before any route, so every path answers the same.
+	@unsupported_method method TRACE TRACK CONNECT
+	handle @unsupported_method {
+		header Allow "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
+		respond 405
+	}
+
 	# Edge-local liveness: confirms Caddy can serve requests without depending
 	# on any upstream application container.
 	handle /healthz {
@@ -126,7 +135,6 @@
 			health_timeout 5s
 		}
 	}
-
 
 	# Ticket issuance is an ordinary authenticated HTTP request handled by the
 	# gateway. It must not fall through to the WebSocket server.
@@ -224,8 +232,10 @@
 	# Deferred so it replaces the value the proxied app also sends, not adds to it.
 	header >Referrer-Policy no-referrer
 
-	# Prevent Caddy from leaking its version in the Server header.
+	# Prevent Caddy from leaking its version in the Server header, and drop the
+	# Via header reverse_proxy adds, so responses do not fingerprint the proxy.
 	header -Server
+	header -Via
 
 	# Hashed Vite bundles under /assets/ are public, high-volume static files with no
 	# credential-bearing URI. Skip only their access rows; API, login, WebSocket and

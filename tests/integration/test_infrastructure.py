@@ -349,7 +349,14 @@ async def test_real_core_control_needs_no_jetstream_ack(nats_server, monkeypatch
         assert connection is not None
         subscriber = await nats.connect(f"nats://{host}:{port}")
         subscription = await subscriber.subscribe("ws_hub.control")
-        await subscriber.flush(timeout=2)
+        # Wait for delivery on the same connection that queued the SUB. A
+        # flush PONG alone does not prove the peer publisher can reach it.
+        readiness_payload = b"core-subscription-ready"
+        await subscriber.publish("ws_hub.control", readiness_payload)
+        ready = await subscription.next_msg(timeout=2)
+        assert ready.subject == "ws_hub.control"
+        assert ready.data == readiness_payload
+        assert ready.reply == ""
 
         # Negative control: a real Core subscriber receives a JetStream request
         # but cannot provide its persistence acknowledgement. Shorten only this

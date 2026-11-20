@@ -118,7 +118,11 @@ Cookie: access_token_v2=<cookie value>
 ```
 
 The response is `201 Created` with a short-lived, single-use `ticket` and
-`expires_in`. Connect the WebSocket at `/ws?ticket=<ticket>` before it expires.
+`expires_in`. On the same Caddy origin, connect to
+`/ws/chat?ticket=<ticket>` before the ticket expires. Caddy forwards the
+upgrade to ws-hub at `/ws`. Use `/ws?ticket=<ticket>` only when connecting
+directly to the ws-hub listener.
+
 The ticket is preferred over placing a JWT in a WebSocket query parameter or
 protocol header.
 

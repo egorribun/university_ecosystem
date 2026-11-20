@@ -169,6 +169,7 @@ async def test_send_test_removes_gone_and_marks_sent_subscription(
             user_id=target.id,
             status="gone",
             status_code=404,
+            _binding_version=gone_404.binding_version or 0,
         ),
         WebPushResult(
             subscription_id=gone_410.id,
@@ -176,12 +177,14 @@ async def test_send_test_removes_gone_and_marks_sent_subscription(
             user_id=target.id,
             status="gone",
             status_code=410,
+            _binding_version=gone_410.binding_version or 0,
         ),
         WebPushResult(
             subscription_id=sent.id,
             endpoint=sent.endpoint,
             user_id=target.id,
             status="sent",
+            _binding_version=sent.binding_version or 0,
         ),
     ]
 
@@ -252,12 +255,14 @@ async def test_broadcast_removes_stale_and_marks_successful_subscription(
             user_id=target_id,
             status="gone",
             status_code=410,
+            _binding_version=stale.binding_version or 0,
         ),
         WebPushResult(
             subscription_id=sent_id,
             endpoint=sent.endpoint,
             user_id=target_id,
             status="sent",
+            _binding_version=sent.binding_version or 0,
         ),
     ]
     request = MagicMock()
@@ -352,6 +357,7 @@ async def test_process_push_results_deduplicates_status_updates() -> None:
         endpoint="https://push.example.test/sub",
         user_id=uuid.uuid4(),
         status="sent",
+        _binding_version=0,
     )
     session = AsyncMock()
     factory = MagicMock()
@@ -400,6 +406,7 @@ async def test_process_push_results_binds_cleanup_to_endpoint(
                 user_id=user.id,
                 status="gone",
                 status_code=410,
+                _binding_version=subscription.binding_version or 0,
             )
         ]
     )
@@ -410,6 +417,7 @@ async def test_process_push_results_binds_cleanup_to_endpoint(
                 endpoint=old_endpoint,
                 user_id=user.id,
                 status="sent",
+                _binding_version=subscription.binding_version or 0,
             )
         ]
     )

@@ -12,6 +12,7 @@ import json
 import sys
 import uuid
 from datetime import time
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -67,6 +68,81 @@ class TestSendWebPush:
         sub.auth = "auth"
         sub.user = None
         return sub
+
+    @pytest.mark.parametrize("padded_endpoint", [False, True])
+    @pytest.mark.parametrize("version", [None, 17])
+    @pytest.mark.parametrize("outcome", ["sent", "gone", "error"])
+    def test_result_retains_binding_captured_before_outcome(
+        self, mock_pywebpush, outcome, version, padded_endpoint
+    ):
+        from pywebpush import WebPushException
+
+        sub = PushSubscription(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            endpoint=(
+                " https://push.example.test/synthetic-original "
+                if padded_endpoint
+                else "https://push.example.test/synthetic-original"
+            ),
+            p256dh="synthetic-original-public-key",
+            auth="synthetic-original-auth",
+            binding_version=version,
+        )
+        original_id, original_user, original_endpoint = (
+            sub.id,
+            sub.user_id,
+            sub.endpoint,
+        )
+
+        def observe_snapshot(**kwargs):
+            assert kwargs["subscription_info"] == {
+                "endpoint": original_endpoint.strip(),
+                "keys": {
+                    "p256dh": "synthetic-original-public-key",
+                    "auth": "synthetic-original-auth",
+                },
+            }
+            # Simulate a different in-memory binding after request construction.
+            sub.user_id = uuid.uuid4()
+            sub.endpoint = "https://push.example.test/synthetic-new"
+            sub.p256dh = "synthetic-new-public-key"
+            sub.auth = "synthetic-new-auth"
+            sub.binding_version = 18
+            if outcome != "sent":
+                code = 410 if outcome == "gone" else 429
+                raise WebPushException(
+                    "synthetic result", response=MagicMock(status_code=code)
+                )
+            return MagicMock()
+
+        mock_pywebpush.side_effect = observe_snapshot
+        result = send_web_push(sub, {"title": "Synthetic"})
+        assert result.subscription_id == original_id
+        assert result.user_id == original_user
+        assert result.endpoint == original_endpoint
+        assert result._binding_version == (version if version is not None else 0)
+        assert result.status == outcome
+        assert "synthetic-original-auth" not in repr(result)
+        assert "synthetic-original-public-key" not in repr(result)
+
+    @pytest.mark.parametrize("raw_version", ["missing", "0", False])
+    def test_missing_or_invalid_binding_field_has_no_proof(
+        self, mock_pywebpush, raw_version
+    ):
+        sub = SimpleNamespace(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            endpoint="https://push.example.test/synthetic-original",
+            p256dh="synthetic-original-public-key",
+            auth="synthetic-original-auth",
+            user=None,
+        )
+        if raw_version != "missing":
+            sub.binding_version = raw_version
+        result = send_web_push(sub, {"title": "Synthetic"})
+        assert result.status == "sent"
+        assert result._binding_version is None
 
     @pytest.fixture(autouse=True)
     def _use_hermetic_resolver(self, monkeypatch):
@@ -718,6 +794,7 @@ class TestProcessPushResults:
                 endpoint=sub.endpoint,
                 user_id=user.id,
                 status="gone",
+                _binding_version=sub.binding_version or 0,
             )
         ]
 
@@ -757,6 +834,7 @@ class TestProcessPushResults:
                 endpoint=sub.endpoint,
                 user_id=user.id,
                 status="sent",
+                _binding_version=sub.binding_version or 0,
             )
         ]
 

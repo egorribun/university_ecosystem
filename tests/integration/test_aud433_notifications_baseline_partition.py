@@ -35,7 +35,7 @@ SOURCE_SHA256 = {
         "8f099d2ac946feaa06ce6692b9b9b034487602afe3f8460c5e3598a4722fb84b"
     ),
     "tests/integration/test_mvp_baseline_schema_equivalence.py": (
-        "a5d7e357f7b20c41b120093365b3dc93b47692b169a470b41f41f10b63a2af79"
+        "cadf48170789c0ef0d067920f092277e2e0e15f6857de355f7984464cfb74a96"
     ),
 }
 
@@ -127,7 +127,9 @@ def _expected_notification_children(suffixes: tuple[str, ...]) -> dict[str, str]
     return expected
 
 
-def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable() -> None:
+def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable(
+    tmp_path: Path,
+) -> None:
     """The canonical fresh upgrade installs and uses its own notification children."""
     _assert_source_bindings()
 
@@ -135,8 +137,10 @@ def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable() -> N
 
     assert proof.PROJECT_ROOT.resolve() == PROJECT_ROOT
     assert proof.BASELINE_REVISION == BASELINE_REVISION
+    baseline_tree = tmp_path / "baseline"
+    proof._extract_baseline_tree(baseline_tree)
     revisions = sorted(
-        path.name for path in (PROJECT_ROOT / "alembic" / "versions").glob("*.py")
+        path.name for path in (baseline_tree / "alembic" / "versions").glob("*.py")
     )
     assert revisions == [BASELINE_FILENAME], (
         "AUD433 proof must exercise the canonical baseline as the only revision"
@@ -144,8 +148,8 @@ def test_aud433_fresh_baseline_notifications_are_partitioned_and_writable() -> N
 
     with proof.owned.owned_postgres_server() as server:
         database_url = proof._owned_url(server, "psycopg")
-        proof._assert_owned_url_is_authoritative(PROJECT_ROOT, database_url)
-        upgrade = proof._alembic(PROJECT_ROOT, database_url, "upgrade", "head")
+        proof._assert_owned_url_is_authoritative(baseline_tree, database_url)
+        upgrade = proof._alembic(baseline_tree, database_url, "upgrade", "head")
         assert upgrade.returncode == 0, upgrade.stderr[-4000:]
 
         engine = sa.create_engine(

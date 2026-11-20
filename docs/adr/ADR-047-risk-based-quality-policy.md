@@ -2920,6 +2920,20 @@ migration of `rust_ext` to the `time` crate (`pyo3` provides a `time`
 feature); the exception is removed in that change. No other advisory, licence,
 ban or source rule changes, and the Cargo Deny jobs remain required.
 
+This migration removes `chrono` from both native and fuzz lockfiles,
+switches the PyO3 integration feature to `time`, and removes this one exception
+from `native/rust_ext/deny.toml`. The existing UTC timestamps, partition strings,
+checked date range and fail-closed retention behavior remain the compatibility
+contract; `time` enables large dates to preserve signed historical years. The
+public Rust `parse_weekday` return type is now `time::Weekday`, so direct Rust
+consumers must adapt, while the Python API still exchanges integers and strings.
+
+Removing the obsolete exception does not attest to a passing advisory scan,
+performance gate, or hosted check. Run Cargo Deny for all three configured
+crates, fuzz and native checks, paired native performance measurements, and all
+required checks against the final source SHA. The decision does not alter any
+other disposition or quality threshold.
+
 ### Integrating unexecuted automated pull requests
 
 Draft pull requests produced without local execution are integrated only after
@@ -2981,6 +2995,23 @@ identities. No exception is added. The inventory remains 242 baseline identities
 These records and local tests do not establish a passing scan, hosted required
 checks or native push delivery. Final-source validation remains required.
 
+### ZAP rule 10106 excluded for the TLS-less DAST stand
+
+The owner explicitly approved excluding ZAP passive rule 10106 (HTTP Only Site)
+from the scheduled full scan. The scan targets the ephemeral owned Compose stand
+that `scripts/live_stand.py` starts on loopback HTTP inside the job, so the rule
+reports a property of the test stand. Production terminates TLS in Caddy and
+sends HSTS. `.zap/rules.tsv` sets the rule to `IGNORE`.
+
+- **Scope.** Only rule 10106, and only for this CI stand. The other medium
+  alerts from run 44471112462 (10055, 10202 and 40025) are not excluded and
+  must be resolved in code or configuration. Any further exclusion needs the
+  owner.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10, together with the
+  rule 40026 exclusion. Remove it if the DAST stand gains TLS.
+- **Not established.** This exclusion is not a passing scan; AUD-381 still
+  needs a green hosted ZAP run on `main` with a verified report.
+
 ## Decisions recorded on 2026-11-20
 
 ### Authenticated Schedule visual-readiness companion rebind
@@ -2998,3 +3029,19 @@ owner, approval scope, category and 2027-01-10 expiry remain unchanged. The
 inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
 fingerprints and 15 Semgrep rows. This rebind adds no exception, threshold or
 required-check change, and does not establish a passing scan or hosted check.
+
+### Historical baseline-model proof and successor
+
+Revision `202611020000` remains the isolated historical baseline and the
+irreversible rollback boundary. Its schema-equivalence proof uses the complete
+reviewed model tree from the first-parent baseline change, after verifying the
+baseline bytes. The current model is checked separately against the full
+successor head, including a negative control for unrelated schema drift.
+
+Under the owner's standing one-to-one approval, the existing public-integrity
+identity in disposition record index 483 binds the updated historical proof
+source. Its path, detector type, category, owner, evidence and expiry remain
+unchanged. Predecessor projection restores the exact prior proof, AUD-433 test
+and policy record before earlier checks. No identity is added: the inventory
+remains 242 baseline identities, 524 dispositions, 27 Gitleaks fingerprints and
+15 Semgrep rows. This record does not establish a passing scan or hosted checks.

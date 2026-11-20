@@ -170,7 +170,7 @@ export function NotificationsSection({
               <SwitchControl
                 checked={dndEnabled}
                 onChange={onDndToggle}
-                disabled={dndSaving}
+                disabled={dndSaving || !confirmedUserId}
                 aria-label={t("settings:notifications.toggles.dnd.aria")}
               />
               <span className="font-semibold text-text-soft">
@@ -185,7 +185,7 @@ export function NotificationsSection({
                 value={dndStart}
                 onChange={onDndStartChange}
                 onBlur={onDndStartBlur}
-                disabled={!dndEnabled || dndSaving}
+                disabled={!dndEnabled || dndSaving || !confirmedUserId}
                 size="sm"
               />
               <TextField
@@ -194,7 +194,7 @@ export function NotificationsSection({
                 value={dndEnd}
                 onChange={onDndEndChange}
                 onBlur={onDndEndBlur}
-                disabled={!dndEnabled || dndSaving}
+                disabled={!dndEnabled || dndSaving || !confirmedUserId}
                 size="sm"
               />
             </div>

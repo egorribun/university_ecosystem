@@ -117,8 +117,10 @@ async def _process_canonical_push_results(
 ) -> list[WebPushResult]:
     """Coalesce provider results and await their durable side effects."""
 
+    # Side effects need each binding's result, even when an older binding of
+    # the same subscription also appeared in this batch.
+    await webpush_module.process_push_results(list(results))
     canonical_results = webpush_module.coalesce_push_results(list(results))
-    await webpush_module.process_push_results(canonical_results)
     return canonical_results
 
 

@@ -118,14 +118,15 @@ def test_baseline_scalar_defaults_use_bounded_fresh_schema_ddl(
     ]
 
 
-def test_migration_revision_is_the_single_head(
+def test_baseline_revision_remains_the_graph_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migration, _ = capture_baseline(monkeypatch)
     assert migration.revision == "202611020000"
     assert migration.down_revision is None
     assert sorted(path.name for path in VERSIONS.glob("*.py")) == [
-        "202611020000_mvp_baseline.py"
+        "202611020000_mvp_baseline.py",
+        "202611200001_push_binding_version.py",
     ]
 
 

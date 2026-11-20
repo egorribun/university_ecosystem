@@ -10,14 +10,13 @@ name = "rust_ext"
 crate-type = ["cdylib", "rlib"]  # rlib needed for cargo-fuzz and #[cfg(test)]
 
 [dependencies]
-pyo3 = { version = "0.29", features = ["abi3-py311", "chrono"] }  # RUSTSEC-2026-0176/-0177: patched in >=0.29.0
+pyo3 = { version = "0.29", features = ["abi3-py311", "time"] }  # RUSTSEC-2026-0176/-0177: patched in >=0.29.0
 # TD-22-02 (Wave 22): Pin exact versions for reproducible builds of
 # security-critical FFI code. Renovate will propose updates via Cargo rule.
 rayon = "=1.12.0"
-# RUST-P3-04: no chrono value in this crate is serialized, so the `serde`
-# feature only enlarged the build graph. Verified by grep: zero `serde`,
-# `Serialize` or `Deserialize` references under native/rust_ext/src.
-chrono = "0.4"
+# Keep signed historical partition years supported while retaining the prior
+# date-range guard in the scheduler and retention code.
+time = { version = "=0.3.55", features = ["large-dates"] }
 hmac = "=0.13.0"
 sha2 = "=0.11.0"
 hex = "=0.4.3"
