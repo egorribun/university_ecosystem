@@ -478,11 +478,13 @@
         },
         {
           "path": "frontend/package.json",
-          "sha256": "4b63abcb851f9006283d95b0bc957d9f1a8ce96cf98b3e5d0d97ff47e7eb2c94"
+          "projection": "npm-manifest-sanitizer/v1",
+          "sha256": "66f0aed90e28469ba761fd3273ec09d954568df9834aa335f0742d11e08dd0b1"
         },
         {
           "path": "frontend/package-lock.json",
-          "sha256": "ba7718ef0d0bf9f9633198a18e205903712ee2e52ab6173e1353d377def2e3b2"
+          "projection": "npm-lockfile-sanitizer/v1",
+          "sha256": "b79abef36be7e8c754972916531ad2656321bf94433209f8fc6af2442e43fcea"
         }
       ],
       "context": {

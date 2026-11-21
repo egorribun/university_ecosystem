@@ -8,6 +8,7 @@ import os
 import runpy
 import stat
 import sys
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -2006,3 +2007,498 @@ def test_rule_timeout_remains_fatal_even_without_findings(tmp_path: Path) -> Non
     }
     with pytest.raises(gate.GateError, match="results are not authoritative"):
         gate.load_findings(_results(tmp_path, [], errors=[error]))
+
+
+# npm sanitizer projection (ADR-047 D1/D2) ----------------------------------------
+
+SAFE_HTML = "frontend/src/components/ui/SafeHtml.tsx"
+SAFE_HTML_LINE = (
+    "  return <div className={className} "
+    "dangerouslySetInnerHTML={{ __html: renderable }} />"
+)
+SAFE_HTML_DIGEST = hashlib.sha256(SAFE_HTML_LINE.encode()).hexdigest()
+SAFE_HTML_CONTEXT_DIGEST = hashlib.sha256(
+    f"{SAFE_HTML_LINE}\n{CONTEXT_LINE}".encode()
+).hexdigest()
+MANIFEST = "frontend/package.json"
+LOCKFILE = "frontend/package-lock.json"
+MANIFEST_PROJECTION = "npm-manifest-sanitizer/v1"
+LOCKFILE_PROJECTION = "npm-lockfile-sanitizer/v1"
+SANITIZER_LINK = {"resolved": "wasm-sanitizer/pkg", "link": True}
+
+
+def _npm_manifest() -> dict[str, Any]:
+    return {
+        "name": "frontend",
+        "scripts": {
+            "preinstall": "node scripts/ensure-wasm.mjs",
+            "test:wasm": "node --test scripts/verify-wasm-artifacts.test.mjs",
+            "build": "vite build",
+            "lint": "eslint .",
+        },
+        "dependencies": {
+            "wasm-sanitizer": "file:./wasm-sanitizer/pkg",
+            "react": "^19.2.0",
+        },
+        "devDependencies": {
+            "vite-plugin-wasm": "^3.5.0",
+            "@types/trusted-types": "^2.0.7",
+            "vitest": "^4.1.0",
+        },
+        "overrides": {"dompurify": ">=3.4.17", "glob": "14.0.2"},
+        "allowScripts": {"esbuild@0.28.2": True},
+        "exports": {".": "./index.js"},
+    }
+
+
+def _npm_lockfile() -> dict[str, Any]:
+    return {
+        "name": "frontend",
+        "lockfileVersion": 3,
+        "requires": True,
+        "packages": {
+            "": {
+                "name": "frontend",
+                "hasInstallScript": True,
+                "dependencies": {
+                    "wasm-sanitizer": "file:./wasm-sanitizer/pkg",
+                    "react": "^19.2.0",
+                },
+                "devDependencies": {"vite-plugin-wasm": "^3.5.0", "vitest": "^4.1.0"},
+            },
+            "node_modules/wasm-sanitizer": dict(SANITIZER_LINK),
+            "wasm-sanitizer/pkg": {"name": "wasm-sanitizer", "version": "0.1.0"},
+            "node_modules/dompurify": {"version": "3.4.17", "integrity": "sha512-d"},
+            "node_modules/esbuild": {"version": "0.28.2", "hasInstallScript": True},
+            "node_modules/react": {"version": "19.2.0", "integrity": "sha512-r"},
+        },
+    }
+
+
+def _expected_manifest_selection() -> dict[str, Any]:
+    return {
+        "allowScripts": {"esbuild@0.28.2": True},
+        "declarations": {
+            "dependencies": {"wasm-sanitizer": "file:./wasm-sanitizer/pkg"},
+            "devDependencies": {
+                "vite-plugin-wasm": "^3.5.0",
+                "@types/trusted-types": "^2.0.7",
+            },
+        },
+        "fields": {},
+        "overrides": {"dompurify": ">=3.4.17"},
+        "scripts": {
+            "preinstall": "node scripts/ensure-wasm.mjs",
+            "test:wasm": "node --test scripts/verify-wasm-artifacts.test.mjs",
+        },
+    }
+
+
+def _expected_lockfile_selection() -> dict[str, Any]:
+    packages = _npm_lockfile()["packages"]
+    return {
+        "lockfileVersion": 3,
+        "packages": {
+            key: packages[key]
+            for key in (
+                "node_modules/wasm-sanitizer",
+                "wasm-sanitizer/pkg",
+                "node_modules/dompurify",
+                "node_modules/esbuild",
+            )
+        },
+        "root": {
+            "declarations": {
+                "dependencies": {"wasm-sanitizer": "file:./wasm-sanitizer/pkg"},
+                "devDependencies": {"vite-plugin-wasm": "^3.5.0"},
+            },
+            "hasInstallScript": True,
+        },
+    }
+
+
+def _canonical_projection_digest(projection: str, selection: object) -> str:
+    canonical = json.dumps(
+        {"projection": projection, "selection": selection},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _npm_bytes(document: object) -> bytes:
+    return (json.dumps(document, indent=2) + "\n").encode("utf-8")
+
+
+def _safe_html_repo(
+    tmp_path: Path,
+    manifest: object | None = None,
+    lockfile: object | None = None,
+) -> Path:
+    source = tmp_path / SAFE_HTML
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        SAFE_HTML_LINE + "\n" + CONTEXT_LINE + "\n", encoding="utf-8", newline="\n"
+    )
+    (tmp_path / ".semgrepignore").write_text(
+        "\n".join(REVIEWED_SEMGREP_IGNORE_PATTERNS) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / MANIFEST).write_bytes(
+        _npm_bytes(_npm_manifest() if manifest is None else manifest)
+    )
+    (tmp_path / LOCKFILE).write_bytes(
+        _npm_bytes(_npm_lockfile() if lockfile is None else lockfile)
+    )
+    return tmp_path
+
+
+def _projected_companions() -> tuple[gate.ReviewedCompanion, ...]:
+    return (
+        gate.ReviewedCompanion(
+            MANIFEST,
+            _canonical_projection_digest(
+                MANIFEST_PROJECTION, _expected_manifest_selection()
+            ),
+            MANIFEST_PROJECTION,
+        ),
+        gate.ReviewedCompanion(
+            LOCKFILE,
+            _canonical_projection_digest(
+                LOCKFILE_PROJECTION, _expected_lockfile_selection()
+            ),
+            LOCKFILE_PROJECTION,
+        ),
+    )
+
+
+def _projected_entry(**companion_overrides: Any) -> dict[str, Any]:
+    companions = [
+        {
+            "path": companion.path,
+            "projection": companion.projection,
+            "sha256": companion.sha256,
+        }
+        for companion in _projected_companions()
+    ]
+    companions[0].update(companion_overrides)
+    return _disposition(
+        check_id=REACT_CHECK,
+        path=SAFE_HTML,
+        line_sha256=SAFE_HTML_DIGEST,
+        context={"start_line": 1, "end_line": 2, "sha256": SAFE_HTML_CONTEXT_DIGEST},
+        companions=companions,
+    )
+
+
+def test_npm_projection_digests_are_canonical_json_of_the_exact_selection(
+    tmp_path: Path,
+) -> None:
+    repo = _safe_html_repo(tmp_path)
+    assert gate._companion_problems(repo, SAFE_HTML, _projected_companions()) == []
+    assert gate.projected_companion_digest(
+        MANIFEST_PROJECTION, (repo / MANIFEST).read_bytes()
+    ) == _canonical_projection_digest(
+        MANIFEST_PROJECTION, _expected_manifest_selection()
+    )
+    assert gate.projected_companion_digest(
+        LOCKFILE_PROJECTION, (repo / LOCKFILE).read_bytes()
+    ) == _canonical_projection_digest(
+        LOCKFILE_PROJECTION, _expected_lockfile_selection()
+    )
+
+
+def test_npm_projection_ignores_an_unrelated_dependency_bump(tmp_path: Path) -> None:
+    manifest = _npm_manifest()
+    manifest["dependencies"]["react"] = "^19.3.0"
+    manifest["dependencies"]["zod"] = "^4.2.0"
+    manifest["devDependencies"]["vitest"] = "^4.2.0"
+    manifest["overrides"]["glob"] = "14.0.3"
+    manifest["scripts"]["build"] = "vite build --mode production"
+    manifest["exports"] = {".": "./main.js"}
+    lockfile = _npm_lockfile()
+    packages = lockfile["packages"]
+    packages[""]["dependencies"]["react"] = "^19.3.0"
+    packages["node_modules/react"] = {"version": "19.3.0", "integrity": "sha512-n"}
+    packages["node_modules/zod"] = {"version": "4.2.0", "integrity": "sha512-z"}
+    packages["node_modules/vitest/node_modules/react"] = {"version": "19.3.0"}
+    repo = _safe_html_repo(tmp_path, manifest, lockfile)
+
+    assert gate._companion_problems(repo, SAFE_HTML, _projected_companions()) == []
+
+
+def _set_path(document: dict[str, Any], keys: tuple[str, ...], value: object) -> None:
+    for key in keys[:-1]:
+        document = document[key]
+    document[keys[-1]] = value
+
+
+def _delete_path(document: dict[str, Any], keys: tuple[str, ...]) -> None:
+    for key in keys[:-1]:
+        document = document[key]
+    del document[keys[-1]]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda m: _set_path(m, ("dependencies", "wasm-sanitizer"), "npm:evil@1.0.0"),
+        lambda m: _delete_path(m, ("scripts", "preinstall")),
+        lambda m: _set_path(m, ("scripts", "test:wasm"), "node --test other.mjs"),
+        lambda m: _set_path(m, ("scripts", "postinstall"), "node evil.mjs"),
+        lambda m: _set_path(m, ("scripts", "check"), "node scripts/ensure-wasm.mjs"),
+        lambda m: _set_path(m, ("scripts", "WASM:build"), "node build.mjs"),
+        lambda m: _set_path(m, ("allowScripts", "esbuild@0.28.2"), False),
+        lambda m: _delete_path(m, ("allowScripts",)),
+        lambda m: _set_path(m, ("overrides", "wasm-sanitizer"), "npm:evil@1.0.0"),
+        lambda m: _set_path(
+            m, ("overrides", "some-lib"), {"wasm-sanitizer": "npm:evil@1.0.0"}
+        ),
+        lambda m: _set_path(m, ("overrides", "dompurify"), "3.0.0"),
+        lambda m: _set_path(m, ("devDependencies", "vite-plugin-wasm"), "^4.0.0"),
+        lambda m: _set_path(m, ("optionalDependencies",), {"dompurify": "^3.4.17"}),
+        lambda m: _set_path(m, ("exports",), {".": "./node_modules/dompurify/x.js"}),
+        lambda m: _set_path(m, ("browser",), {"wasm-sanitizer": "./evil.js"}),
+    ],
+)
+def test_npm_manifest_projection_reports_every_bound_edit(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], None]
+) -> None:
+    manifest = _npm_manifest()
+    mutate(manifest)
+    repo = _safe_html_repo(tmp_path, manifest=manifest)
+
+    assert gate._companion_problems(repo, SAFE_HTML, _projected_companions()) == [
+        f"Semgrep companion evidence changed: {MANIFEST}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/x/node_modules/dompurify"), {}
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/sharp"), {"hasInstallScript": True}
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/react", "hasInstallScript"), "yes"
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/dompurify", "version"), "3.0.0"
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "wasm-sanitizer/pkg", "version"), "9"
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/@types/trusted-types"), {"version": "2"}
+        ),
+        lambda lock: _delete_path(lock, ("packages", "", "hasInstallScript")),
+        lambda lock: _set_path(
+            lock, ("packages", "", "devDependencies", "vite-plugin-wasm"), "^4.0.0"
+        ),
+        lambda lock: _set_path(
+            lock, ("packages", "node_modules/a/wasm-sanitizer-shim"), {}
+        ),
+    ],
+)
+def test_npm_lockfile_projection_reports_every_bound_edit(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], None]
+) -> None:
+    lockfile = _npm_lockfile()
+    mutate(lockfile)
+    repo = _safe_html_repo(tmp_path, lockfile=lockfile)
+
+    assert gate._companion_problems(repo, SAFE_HTML, _projected_companions()) == [
+        f"Semgrep companion evidence changed: {LOCKFILE}"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("projection", "payload", "message"),
+    [
+        (MANIFEST_PROJECTION, b"\xff", "cannot parse projected companion"),
+        (MANIFEST_PROJECTION, b"{", "cannot parse projected companion"),
+        (MANIFEST_PROJECTION, b'{"a": 1, "a": 2}', "duplicate JSON key: a"),
+        (MANIFEST_PROJECTION, b"[]", "root must be an object"),
+        (MANIFEST_PROJECTION, b'{"dependencies": []}', "field dependencies"),
+        (MANIFEST_PROJECTION, b"{}", "must declare wasm-sanitizer"),
+        (
+            MANIFEST_PROJECTION,
+            b'{"dependencies": {"wasm-sanitizer": "x"}, "scripts": {"a": 1}}',
+            "script must be a string",
+        ),
+        (
+            MANIFEST_PROJECTION,
+            b'{"dependencies": {"wasm-sanitizer": "x"}, "overrides": []}',
+            "field overrides",
+        ),
+        (LOCKFILE_PROJECTION, b'{"lockfileVersion": 2}', "lockfileVersion 3"),
+        (LOCKFILE_PROJECTION, b'{"lockfileVersion": "3"}', "lockfileVersion 3"),
+        (LOCKFILE_PROJECTION, b'{"lockfileVersion": 3.0}', "lockfileVersion 3"),
+        (LOCKFILE_PROJECTION, b'{"lockfileVersion": true}', "lockfileVersion 3"),
+        (
+            LOCKFILE_PROJECTION,
+            b'{"lockfileVersion": 3, "packages": []}',
+            "field packages",
+        ),
+        (LOCKFILE_PROJECTION, b'{"lockfileVersion": 3}', "root package"),
+    ],
+)
+def test_npm_projection_fails_closed_on_malformed_documents(
+    projection: str, payload: bytes, message: str
+) -> None:
+    with pytest.raises(gate.GateError, match=message):
+        gate.projected_companion_digest(projection, payload)
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+@pytest.mark.parametrize("projection", [MANIFEST_PROJECTION, LOCKFILE_PROJECTION])
+def test_npm_projection_rejects_nonstandard_json_constants(
+    projection: str, constant: bytes
+) -> None:
+    document = _npm_manifest() if projection == MANIFEST_PROJECTION else _npm_lockfile()
+    document["unrelated"] = "NONSTANDARD_JSON_CONSTANT"
+    payload = _npm_bytes(document).replace(b'"NONSTANDARD_JSON_CONSTANT"', constant)
+    with pytest.raises(gate.GateError, match="invalid JSON constant"):
+        gate.projected_companion_digest(projection, payload)
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        None,
+        "wasm-sanitizer/pkg",
+        {"resolved": "evil/pkg", "link": True},
+        {"resolved": "wasm-sanitizer/pkg", "link": 1},
+        {"resolved": "wasm-sanitizer/pkg", "link": False},
+        {"resolved": "wasm-sanitizer/pkg", "link": True, "version": "1"},
+    ],
+)
+def test_npm_lockfile_projection_requires_the_exact_sanitizer_link(
+    link: object,
+) -> None:
+    lockfile = _npm_lockfile()
+    if link is None:
+        del lockfile["packages"]["node_modules/wasm-sanitizer"]
+    else:
+        lockfile["packages"]["node_modules/wasm-sanitizer"] = link
+    with pytest.raises(gate.GateError, match="must link wasm-sanitizer"):
+        gate.projected_companion_digest(LOCKFILE_PROJECTION, _npm_bytes(lockfile))
+
+
+def test_npm_lockfile_projection_rejects_a_non_object_package_record() -> None:
+    lockfile = _npm_lockfile()
+    lockfile["packages"]["node_modules/react"] = "19.2.0"
+    with pytest.raises(gate.GateError, match="package must be an object"):
+        gate.projected_companion_digest(LOCKFILE_PROJECTION, _npm_bytes(lockfile))
+
+
+def test_load_dispositions_accepts_npm_projections_on_the_safe_html_row(
+    tmp_path: Path,
+) -> None:
+    evidence = gate.load_dispositions(
+        _dispositions(tmp_path, [_projected_entry()]), TODAY
+    )
+
+    (loaded,) = evidence.values()
+    assert loaded.companions == _projected_companions()
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        _projected_entry(projection="npm-manifest-sanitizer/v2"),
+        _projected_entry(projection=None),
+        _projected_entry(projection=LOCKFILE_PROJECTION),
+        _projected_entry(projection=["npm-manifest-sanitizer/v1"]),
+        _projected_entry(path="frontend/other.json"),
+        _disposition(
+            check_id=REACT_CHECK,
+            path="frontend/src/components/Other.tsx",
+            companions=_projected_entry()["companions"],
+        ),
+        _disposition(path=SAFE_HTML, companions=_projected_entry()["companions"]),
+        _disposition(
+            path="frontend/src/components/Other.tsx",
+            companions=[_projected_entry(projection=None)["companions"][0]],
+        ),
+    ],
+)
+def test_load_dispositions_rejects_projections_outside_the_safe_html_manifests(
+    tmp_path: Path, entry: dict[str, Any]
+) -> None:
+    with pytest.raises(gate.GateError, match="companion projection is not allowed"):
+        gate.load_dispositions(_dispositions(tmp_path, [entry]), TODAY)
+
+
+def test_load_dispositions_rejects_unknown_companion_fields(tmp_path: Path) -> None:
+    entry = _projected_entry(selection="all")
+    with pytest.raises(gate.GateError, match="optional projection"):
+        gate.load_dispositions(_dispositions(tmp_path, [entry]), TODAY)
+
+
+def test_projected_companion_rejects_a_file_changed_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _safe_html_repo(tmp_path)
+    original = gate._read_projected_companion
+
+    def change_after_read(stream: Any) -> bytes:
+        payload = original(stream)
+        (repo / MANIFEST).write_bytes(payload + b" ")
+        return payload
+
+    monkeypatch.setattr(gate, "_read_projected_companion", change_after_read)
+    with pytest.raises(gate.GateError, match="changed while being read"):
+        gate._companion_problems(repo, SAFE_HTML, _projected_companions())
+
+
+def test_evaluate_accepts_the_safe_html_row_with_npm_projections(
+    tmp_path: Path,
+) -> None:
+    repo = _safe_html_repo(tmp_path)
+    results = _write(
+        tmp_path / "semgrep.json",
+        {
+            "results": [_result(check_id=REACT_CHECK, path=SAFE_HTML)],
+            "errors": [],
+            "skipped_rules": [],
+            "paths": {"scanned": [SAFE_HTML], "skipped": []},
+            "time": {"fixpoint_timeouts": []},
+        },
+    )
+    dispositions = _dispositions(tmp_path, [_projected_entry()])
+    assert gate.evaluate(results, dispositions, repo, TODAY) == []
+
+    manifest = _npm_manifest()
+    manifest["scripts"]["preinstall"] = "node scripts/skip.mjs"
+    (repo / MANIFEST).write_bytes(_npm_bytes(manifest))
+    assert gate.evaluate(results, dispositions, repo, TODAY) == [
+        f"Semgrep companion evidence changed: {MANIFEST}"
+    ]
+
+
+def test_npm_projection_rejects_another_safehtml_finding_row(tmp_path: Path) -> None:
+    entry = _projected_entry()
+    entry["line_sha256"] = "0" * 64
+    with pytest.raises(gate.GateError, match="companion projection is not allowed"):
+        gate.load_dispositions(_dispositions(tmp_path, [entry]), TODAY)
+
+
+def test_other_safehtml_finding_still_accepts_whole_file_companions(
+    tmp_path: Path,
+) -> None:
+    entry = _projected_entry()
+    entry["line_sha256"] = "0" * 64
+    entry["companions"] = [
+        {"path": item["path"], "sha256": item["sha256"]} for item in entry["companions"]
+    ]
+    loaded = gate.load_dispositions(_dispositions(tmp_path, [entry]), TODAY)
+    assert len(loaded) == 1
+    assert all(
+        item.projection is None for item in next(iter(loaded.values())).companions
+    )

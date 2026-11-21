@@ -8713,7 +8713,7 @@ def _assert_conditional_owner_source_bindings(
         current_sha = sha_fields[0]
         assert (
             current_sha.decode("ascii")
-            == hashlib.sha256(source_bytes_by_path[target_path]).hexdigest()
+            == _projected_sha256(source_bytes_by_path[target_path]).hex()
         ), f"current companion target changed at {path}:{line_number}"
         current_digest = hashlib.sha1(current_sha, usedforsecurity=False).digest()
         current_key = (
@@ -26327,7 +26327,7 @@ def test_aud380_safehtml_wasm_provenance_and_license_restore_are_consistent() ->
     assert {companion["path"] for companion in companions} == (expected_companion_paths)
     for companion in companions:
         source = (repository_root / companion["path"]).read_bytes()
-        assert hashlib.sha256(source).hexdigest() == companion["sha256"], (
+        assert _npm_companion_live_digest(companion, source) == companion["sha256"], (
             f"SafeHtml companion digest is stale: {companion['path']}"
         )
 
@@ -33492,6 +33492,9 @@ def _aud154_historical_source_bytes(path: str, actual: bytes) -> bytes:
     if path not in _AUD154_SOURCE_PINS:
         return actual
     previous_sha, current_sha = _AUD154_SOURCE_PINS[path]
+    sealed = _npm_sealed_predecessor(path, actual, current_sha, previous_sha)
+    if sealed is not None:
+        return sealed
     assert hashlib.sha256(actual).digest() == current_sha, (
         f"conditional disposition source file SHA-256 changed: {path}"
     )
@@ -33549,8 +33552,11 @@ def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
     ledger = json.loads((root / "quality/semgrep-dispositions.json").read_bytes())
     for index, path in ((6, "scripts/live_stand.py"), (14, "frontend/package.json")):
         companions = ledger["dispositions"][index]["companions"]
-        bound = [item["sha256"] for item in companions if item["path"] == path]
-        assert bound == [hashlib.sha256((root / path).read_bytes()).hexdigest()]
+        bound = [item for item in companions if item["path"] == path]
+        assert len(bound) == 1
+        assert bound[0]["sha256"] == _npm_companion_live_digest(
+            bound[0], (root / path).read_bytes()
+        )
     for path in _AUD154_SOURCE_PINS:
         _aud154_historical_source_bytes(path, (root / path).read_bytes())
     _aud154_historical_policy(
@@ -33563,8 +33569,14 @@ def test_aud154_companion_rebinds_preserve_exact_predecessor() -> None:
 @pytest.mark.parametrize("path", tuple(_AUD154_SOURCE_PINS))
 def test_aud154_source_projection_rejects_changes(path: str) -> None:
     root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    changed = (
+        _npm_bound_edit(path, actual)
+        if path in _NPM_PROJECTION_PATHS
+        else actual + b"\n"
+    )
     with pytest.raises(AssertionError, match="source file SHA-256 changed"):
-        _aud154_historical_source_bytes(path, (root / path).read_bytes() + b"\n")
+        _aud154_historical_source_bytes(path, changed)
 
 
 @pytest.mark.parametrize("index", [451, 495])
@@ -33618,6 +33630,11 @@ def _aud375_historical_source_bytes(path: str, actual: bytes) -> bytes:
         if path == "frontend/package.json"
         else _AUD375_LEDGER_SHA256
     )
+    sealed = _npm_sealed_predecessor(
+        path, actual, current_sha, _AUD154_SOURCE_PINS[path][1]
+    )
+    if sealed is not None:
+        return sealed
     assert hashlib.sha256(actual).digest() == current_sha, (
         f"conditional disposition source file SHA-256 changed: {path}"
     )
@@ -33664,23 +33681,19 @@ def _aud375_historical_policy(policy: dict[str, Any]) -> dict[str, Any]:
 
 def test_aud375_package_projection_preserves_exact_predecessor() -> None:
     actual = _nov17_disk_bytes("frontend/package.json")
+    # The npm projection seals the manifest (ADR-047 D4). The live test:wasm
+    # prefix stays bound because the projection selects that script.
+    assert isinstance(actual, _ProjectedDigest)
+    assert actual.count(b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX) == 1
     historical = _aud375_historical_source_bytes("frontend/package.json", actual)
-    assert actual.count(_AUD375_PACKAGE_PREFIX) == 1
-    # The NOV-RUST lockfile projection changes the basic-ftp override; forward
-    # project that one-to-one companion edit onto the restored predecessor.
-    expected_live = historical.replace(
-        b'"test:wasm": "node --test',
-        b'"test:wasm": "' + _AUD375_PACKAGE_PREFIX,
-        1,
-    ).replace(b'"basic-ftp": ">=5.3.1",', b'"basic-ftp": ">=6.2.4",', 1)
-    assert actual == expected_live
     assert (
-        hashlib.sha256(historical).digest()
-        == _AUD154_SOURCE_PINS["frontend/package.json"][1]
+        _projected_sha256(historical) == _AUD154_SOURCE_PINS["frontend/package.json"][1]
     )
 
 
-@pytest.mark.parametrize("mutation", ["missing", "duplicate", "reordered", "unrelated"])
+# Unrelated manifest bytes are sealed by the npm projection (ADR-047 D4) and are
+# covered by its stability control; any edit of the bound test:wasm command fails.
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "reordered"])
 def test_aud375_package_projection_rejects_command_drift(mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     actual = (root / "frontend/package.json").read_bytes()
@@ -33689,10 +33702,8 @@ def test_aud375_package_projection_rejects_command_drift(mutation: str) -> None:
         actual = actual.replace(insertion, b"", 1)
     elif mutation == "duplicate":
         actual = actual.replace(insertion, insertion * 2, 1)
-    elif mutation == "reordered":
-        actual = actual.replace(insertion, b" ".join(reversed(insertion.split())), 1)
     else:
-        actual += b"\n"
+        actual = actual.replace(insertion, b" ".join(reversed(insertion.split())), 1)
     with pytest.raises(AssertionError, match="source file SHA-256 changed"):
         _aud375_historical_source_bytes("frontend/package.json", actual)
 
@@ -34339,6 +34350,11 @@ def _rust_lock_source_bytes(path: str, actual: bytes) -> bytes:
         current, previous = next(
             (row[2], row[3]) for row in _RUST_LOCK_REBINDS if row[1] == path
         )
+        sealed = _npm_sealed_predecessor(
+            path, actual, bytes.fromhex(current), bytes.fromhex(previous)
+        )
+        if sealed is not None:
+            return sealed
         assert hashlib.sha256(actual).hexdigest() == current, (
             f"conditional disposition source file SHA-256 changed: {path}"
         )
@@ -34398,7 +34414,7 @@ def test_rust_lock_rebind_preserves_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     for _index, path, current, _previous in _RUST_LOCK_REBINDS:
         restored = _ammonia_source_bytes(path, (root / path).read_bytes())
-        assert hashlib.sha256(restored).hexdigest() == current
+        assert _projected_sha256(restored).hex() == current
     ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
     ledger = json.loads(_ammonia_source_bytes(_RUST_LOCK_LEDGER_PATH, ledger_bytes))
     companions = [
@@ -34443,11 +34459,13 @@ def test_rust_lock_projection_rejects_drift(mutation: str) -> None:
             _rust_lock_historical_policy(policy)
         return
     if mutation == "package_json":
-        actual = (root / _RUST_LOCK_PACKAGE_PATH).read_bytes() + b"\n"
+        actual = _npm_bound_edit(
+            _RUST_LOCK_PACKAGE_PATH, (root / _RUST_LOCK_PACKAGE_PATH).read_bytes()
+        )
         with pytest.raises(AssertionError, match="conditional disposition source"):
             _rust_lock_source_bytes(_RUST_LOCK_PACKAGE_PATH, actual)
         return
-    ledger_bytes = (root / _RUST_LOCK_LEDGER_PATH).read_bytes()
+    ledger_bytes = _npm_projection_disk_bytes(_RUST_LOCK_LEDGER_PATH)
     if mutation == "ledger_extra":
         actual = ledger_bytes + b"\n"
     else:
@@ -36651,6 +36669,9 @@ def _nov17_integration_predecessor(path: str, actual: bytes) -> bytes:
     if path not in _NOV17_SOURCES:
         return actual
     final, predecessor, edits = _NOV17_SOURCES[path]
+    sealed = _npm_sealed_predecessor(path, actual, final, predecessor)
+    if sealed is not None:
+        return sealed
     if hashlib.sha256(actual).digest() != final:
         # Only the exact predecessor may pass (the other chain already ran).
         assert hashlib.sha256(actual).digest() == predecessor, message
@@ -36691,7 +36712,7 @@ def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
     live_digest = hashlib.sha256(live).digest()
     ledger_bytes = _nats_inventory_source_predecessor(
         "quality/semgrep-dispositions.json",
-        (root / "quality/semgrep-dispositions.json").read_bytes(),
+        _npm_projection_disk_bytes("quality/semgrep-dispositions.json"),
     )
     ledger = json.loads(ledger_bytes)
     policy = json.loads(
@@ -36841,10 +36862,10 @@ def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
     }
     for path, (final, predecessor, _) in _NOV17_SOURCES.items():
         actual = _aud154_combined_source_predecessor(path, (root / path).read_bytes())
-        assert hashlib.sha256(actual).digest() == final
+        assert _projected_sha256(actual) == final
         assert bound[path] == final.hex()
         historical = _nov17_integration_predecessor(path, actual)
-        assert hashlib.sha256(historical).digest() == predecessor
+        assert _projected_sha256(historical) == predecessor
         # A second pass (the other source chain) leaves the predecessor intact.
         assert _nov17_integration_predecessor(path, historical) == historical
     restored_ledger = _nov17_integration_predecessor(_NOV17_LEDGER_PATH, ledger_bytes)
@@ -36886,7 +36907,10 @@ def test_nov17_integration_rebind_preserves_exact_predecessors() -> None:
 def test_nov17_integration_chain_rejects_drift(path: str, mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
     actual = _aud154_combined_source_predecessor(path, (root / path).read_bytes())
-    if mutation == "extra":
+    if path in _NPM_PROJECTION_PATHS and mutation != "duplicate_edit":
+        # Unbound manifest bytes are sealed (ADR-047 D4); a bound edit must fail.
+        actual = _npm_bound_edit(path, actual)
+    elif mutation == "extra":
         actual += b"\n"
     elif path == _NOV17_LEDGER_PATH:
         pin = _NOV17_SOURCES["scripts/live_stand.py"][0].hex().encode("ascii")
@@ -37041,7 +37065,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
     )
     ledger_bytes = _nats_inventory_source_predecessor(
         "quality/semgrep-dispositions.json",
-        (root / "quality/semgrep-dispositions.json").read_bytes(),
+        _npm_projection_disk_bytes("quality/semgrep-dispositions.json"),
     )
     ledger = json.loads(ledger_bytes)
     policy = json.loads(
@@ -37095,8 +37119,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
 )
 @pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate"])
 def test_nov20_combined_source_rejects_drift(path: str, mutation: str) -> None:
-    root = Path(__file__).resolve().parents[1]
-    actual = _nats_inventory_source_predecessor(path, (root / path).read_bytes())
+    actual = _nats_inventory_source_predecessor(path, _npm_projection_disk_bytes(path))
     fragment = (
         _NOV20_CLEANUP_INSERTIONS[1]
         if path == "scripts/live_stand.py"
@@ -37161,9 +37184,7 @@ def test_nov20_ledger_projection_rejects_missing_pin_with_spoofed_hash(
     path = _NOV17_LEDGER_PATH
     actual = _visual_readiness_source_predecessor(
         path,
-        _nats_inventory_source_predecessor(
-            path, (Path(__file__).resolve().parents[1] / path).read_bytes()
-        ),
+        _nats_inventory_source_predecessor(path, _npm_projection_disk_bytes(path)),
     )
     pin = _NOV20_LIVE_SHA256.hex().encode("ascii")
     assert actual.count(pin) == 1
@@ -37908,6 +37929,7 @@ _NOV21_AUDIT_REVERSALS = (
 
 
 def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _npm_projection_source_predecessor(path, actual)
     rotation = _AUD154_ROTATION_SOURCE_PINS.get(path)
     if rotation is not None and hashlib.sha256(actual).digest() == rotation[1]:
         actual = _aud154_rotation_source_predecessor(path, actual)
@@ -37949,7 +37971,9 @@ def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nov21_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = _nats_inventory_policy_predecessor(policy)
+    restored = _nats_inventory_policy_predecessor(
+        _npm_projection_policy_predecessor(policy)
+    )
     records = restored["records"]
     for row_index, companion in _NOV21_POLICY_ROWS.items():
         if len(records) <= row_index:
@@ -38003,8 +38027,7 @@ def test_nov21_companions_are_bound_to_current_sources(
     "path", [_NOV21_CSP, _NOV21_AUDIT, _NOV21_COMPLIANCE, _NOV21_LEDGER]
 )
 def test_nov21_projection_restores_exact_predecessor(path: str) -> None:
-    root = Path(__file__).resolve().parents[1]
-    actual = _nats_inventory_source_predecessor(path, (root / path).read_bytes())
+    actual = _nats_inventory_source_predecessor(path, _npm_projection_disk_bytes(path))
     previous, current = _NOV21_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     historical = _nov21_source_predecessor(path, actual)
@@ -38025,7 +38048,9 @@ def test_nov21_policy_projection_changes_only_the_rebound_identities() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
-    policy = _nats_inventory_policy_predecessor(policy)
+    policy = _nats_inventory_policy_predecessor(
+        _npm_projection_policy_predecessor(policy)
+    )
     previous = _nov21_policy_predecessor(policy)
     changed = [
         index
@@ -38188,8 +38213,7 @@ def test_nats_inventory_companion_is_bound_to_current_source() -> None:
 
 @pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
 def test_nats_inventory_source_projection_restores_predecessor(path: str) -> None:
-    root = Path(__file__).resolve().parents[1]
-    actual = _aud154_rotation_source_predecessor(path, (root / path).read_bytes())
+    actual = _aud154_rotation_source_predecessor(path, _npm_projection_disk_bytes(path))
     previous, current = _NATS_INVENTORY_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     historical = _nats_inventory_source_predecessor(path, actual)
@@ -38214,9 +38238,7 @@ def test_nats_inventory_projection_rejects_changed_fragments_even_with_spoofed_h
     mutation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    actual = _aud154_rotation_source_predecessor(
-        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
-    )
+    actual = _aud154_rotation_source_predecessor(path, _npm_projection_disk_bytes(path))
     if fragment_index is not None:
         fragment = _NATS_INVENTORY_LIVE_REVERSALS[fragment_index][0]
     else:
@@ -38244,6 +38266,7 @@ def test_nats_inventory_policy_projection_changes_only_existing_identity() -> No
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _npm_projection_policy_predecessor(policy)
     previous = _nats_inventory_policy_predecessor(policy)
     assert [
         i
@@ -38381,7 +38404,7 @@ def _aud154_rotation_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any
 
 @pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
 def test_aud154_rotation_projection_restores_exact_nats_successor(path: str) -> None:
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _npm_projection_disk_bytes(path)
     previous, current = _AUD154_ROTATION_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     assert previous == _NATS_INVENTORY_SOURCE_PINS[path][1]
@@ -38441,7 +38464,7 @@ def test_aud154_rotation_projection_rejects_spoofed_source(
     mutation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _npm_projection_disk_bytes(path)
     fragment = (
         _AUD154_ROTATION_LIVE_INSERTIONS[fragment_index]
         if fragment_index is not None
@@ -38508,3 +38531,524 @@ def test_aud154_rotation_projection_leaves_unrelated_source_unchanged() -> None:
     assert (
         _aud154_rotation_source_predecessor("unrelated", b"unchanged") == b"unchanged"
     )
+
+
+# npm manifest projection binding (ADR-047 D1-D4) ---------------------------------
+#
+# The SafeHtml row binds the two npm manifests through the gate's versioned
+# sanitizer projections instead of their whole bytes. This newest layer restores
+# the whole-file ledger pins and identities 451/494 exactly. From here on the
+# manifests' historical content proofs are sealed: older layers map their digests
+# and no longer rebuild content (the ammonia WASM layer works the same way).
+
+_NPM_PROJECTION_LEDGER = "quality/semgrep-dispositions.json"
+_NPM_PROJECTION_LEDGER_SHA256 = (
+    bytes.fromhex(
+        "91 1d 97 60 e6 b9 97 9a d7 a8 c7 4a 42 e4 04 d8"
+        " 18 28 cd 38 76 03 36 15 b5 91 6a 4a a9 4d 84 b4"
+    ),
+    bytes.fromhex(
+        "4f db 97 2e a2 9a d7 40 d9 33 f7 5d ec 90 3e b0"
+        " 8e 8e a0 1c 2a 3e 5b 9c 27 74 95 51 08 4b f7 d2"
+    ),
+)
+# (policy record, path, projection, whole-file digest and size at the migration,
+#  projection digest, canonical policy record before the rebind)
+_NPM_PROJECTION_COMPANIONS = (
+    (
+        451,
+        "frontend/package.json",
+        "npm-manifest-sanitizer/v1",
+        bytes.fromhex(
+            "4b 63 ab cb 85 1f 90 06 28 3d 95 b0 bc 95 7d 9f"
+            " 1a 8c e9 6c f9 8b 3e 5d 0d 97 ff 47 e7 eb 2c 94"
+        ),
+        17952,
+        bytes.fromhex(
+            "66 f0 ae d9 0e 28 46 9b a7 61 fd 32 73 ec 09 d9"
+            " 54 56 8d f9 83 4a a3 35 f0 74 2d 11 e0 8d d0 b1"
+        ),
+        bytes.fromhex(
+            "21 62 be 49 c1 e4 45 01 ae 53 da 7e 96 51 ec b3"
+            " 51 26 74 12 9f fc 2c 1d 01 13 76 3a e4 ff 07 7e"
+        ),
+    ),
+    (
+        494,
+        "frontend/package-lock.json",
+        "npm-lockfile-sanitizer/v1",
+        bytes.fromhex(
+            "ba 77 18 ef 0d 0b f9 f9 63 31 98 a1 8e 20 59 03"
+            " 71 2e e2 e5 2a b6 17 3e 13 53 d3 77 de f2 e3 b2"
+        ),
+        1244417,
+        bytes.fromhex(
+            "b7 9a be f3 6b e7 e8 c7 54 97 29 16 53 1a d2 65"
+            " 63 21 bf 94 43 32 09 f8 fc 6a f2 44 2e 43 fc ea"
+        ),
+        bytes.fromhex(
+            "33 82 4c 44 e7 44 8d b5 d8 40 13 1d a0 73 fb 6a"
+            " 9d d8 3d 2d 1a 47 eb a8 06 23 d0 58 6f a6 1d 91"
+        ),
+    ),
+)
+_NPM_PROJECTION_PATHS = frozenset(row[1] for row in _NPM_PROJECTION_COMPANIONS)
+_NPM_REFERENCE_PACKAGES = (
+    "@types/trusted-types",
+    "dompurify",
+    "vite-plugin-wasm",
+    "wasm-sanitizer",
+)
+
+
+def _npm_projection_companion_text(
+    path: str, projection: str | None, digest: bytes
+) -> bytes:
+    lines = [f'          "path": "{path}",']
+    if projection is not None:
+        lines.append(f'          "projection": "{projection}",')
+    lines.append(f'          "sha256": "{digest.hex()}"')
+    return "\n".join(lines).encode("ascii")
+
+
+def _npm_reference_mentions(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return any(package in text for package in _NPM_REFERENCE_PACKAGES)
+
+
+def _npm_reference_declarations(record: dict[str, Any]) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    for section in (
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ):
+        entries = record.get(section, {})
+        assert isinstance(entries, dict)
+        bound = {
+            name: spec
+            for name, spec in entries.items()
+            if name in _NPM_REFERENCE_PACKAGES
+        }
+        if bound:
+            selected[section] = dict(sorted(bound.items(), key=lambda item: item[0]))
+    return selected
+
+
+def _npm_reference_selection(projection: str, payload: bytes) -> dict[str, Any]:
+    """Independent re-implementation of the gate's sanitizer selection (D2)."""
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _value in pairs]
+        assert len(keys) == len(set(keys)), "duplicate npm manifest key"
+        return dict(pairs)
+
+    document = json.loads(payload.decode("utf-8"), object_pairs_hook=unique)
+    if projection == "npm-manifest-sanitizer/v1":
+        declarations = _npm_reference_declarations(document)
+        assert "wasm-sanitizer" in declarations["dependencies"]
+        lifecycle = {
+            "preinstall",
+            "install",
+            "postinstall",
+            "prepare",
+            "prepack",
+            "postpack",
+            "prepublish",
+            "prepublishOnly",
+        }
+        markers = (
+            "wasm-sanitizer",
+            "ensure-wasm",
+            "verify-wasm",
+            "WASM_SOURCE_PROVENANCE",
+        )
+        scripts = {
+            name: body
+            for name, body in document.get("scripts", {}).items()
+            if name in lifecycle
+            or "wasm" in name.lower()
+            or any(marker in body for marker in markers)
+        }
+        return {
+            "allowScripts": document.get("allowScripts"),
+            "declarations": declarations,
+            "fields": {
+                name: document[name]
+                for name in (
+                    "workspaces",
+                    "bundleDependencies",
+                    "bundledDependencies",
+                    "browser",
+                    "imports",
+                    "exports",
+                )
+                if name in document and _npm_reference_mentions(document[name])
+            },
+            "overrides": {
+                key: value
+                for key, value in document.get("overrides", {}).items()
+                if _npm_reference_mentions(key) or _npm_reference_mentions(value)
+            },
+            "scripts": scripts,
+        }
+    assert projection == "npm-lockfile-sanitizer/v1"
+    assert document["lockfileVersion"] == 3 and type(document["lockfileVersion"]) is int
+    packages = document["packages"]
+    assert packages["node_modules/wasm-sanitizer"] == {
+        "resolved": "wasm-sanitizer/pkg",
+        "link": True,
+    }
+    assert packages["node_modules/wasm-sanitizer"]["link"] is True
+    selected = {}
+    for key, record in packages.items():
+        name = key.split("node_modules/")[-1]
+        if key and (
+            name in _NPM_REFERENCE_PACKAGES
+            or "wasm-sanitizer" in key
+            or record.get("hasInstallScript") not in (None, False)
+        ):
+            selected[key] = record
+    root = packages[""]
+    return {
+        "lockfileVersion": 3,
+        "packages": selected,
+        "root": {
+            "declarations": _npm_reference_declarations(root),
+            "hasInstallScript": root.get("hasInstallScript"),
+        },
+    }
+
+
+def _npm_reference_digest(projection: str, payload: bytes) -> bytes:
+    canonical = json.dumps(
+        {
+            "projection": projection,
+            "selection": _npm_reference_selection(projection, payload),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).digest()
+
+
+def _npm_projection_source_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    if path == _NPM_PROJECTION_LEDGER:
+        previous, current = _NPM_PROJECTION_LEDGER_SHA256
+        if hashlib.sha256(actual).digest() != current:
+            # Older ledger layers validate their own exact inputs and negative controls.
+            return actual
+        historical = actual
+        for (
+            _row,
+            companion,
+            projection,
+            whole,
+            _size,
+            projected,
+            _before,
+        ) in _NPM_PROJECTION_COMPANIONS:
+            added = _npm_projection_companion_text(companion, projection, projected)
+            assert historical.count(added) == 1, message
+            historical = historical.replace(
+                added, _npm_projection_companion_text(companion, None, whole), 1
+            )
+        assert hashlib.sha256(historical).digest() == previous, message
+        return historical
+    row = next((row for row in _NPM_PROJECTION_COMPANIONS if row[1] == path), None)
+    if row is None:
+        return actual
+    _row, _path, projection, whole, size, projected, _before = row
+    from scripts.quality import semgrep_dispositions_gate as gate
+
+    try:
+        gate_digest = gate.projected_companion_digest(projection, actual)
+        reference_digest = _npm_reference_digest(projection, actual)
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        raise AssertionError(message) from exc
+    assert gate_digest == projected.hex(), message
+    assert reference_digest == projected, message
+    sealed = _ProjectedDigest(actual)
+    sealed.predecessor_sha256 = whole
+    sealed.predecessor_size = size
+    return sealed
+
+
+def _npm_sealed_predecessor(
+    path: str, actual: bytes, current: bytes, previous: bytes
+) -> bytes | None:
+    """Map a sealed manifest digest one layer back; None for unsealed bytes."""
+
+    if not isinstance(actual, _ProjectedDigest) or path not in _NPM_PROJECTION_PATHS:
+        return None
+    if actual.predecessor_sha256 == previous:
+        return actual
+    assert actual.predecessor_sha256 == current, (
+        f"conditional disposition source file SHA-256 changed: {path}"
+    )
+    sealed = _ProjectedDigest(actual)
+    sealed.predecessor_sha256 = previous
+    sealed.predecessor_size = actual.predecessor_size
+    return sealed
+
+
+def _npm_projection_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    for (
+        row_index,
+        _path,
+        _projection,
+        whole,
+        _size,
+        projected,
+        before,
+    ) in _NPM_PROJECTION_COMPANIONS:
+        if len(records) <= row_index:
+            continue
+        row = records[row_index]
+        identity = row["identity"]
+        if identity["hashed_secret_bytes"] != _nov15_identity(projected.hex()):
+            # Older layers reject unrecognized or otherwise changed records.
+            continue
+        assert identity["path"] == _NPM_PROJECTION_LEDGER
+        assert identity["type"] == "Hex High Entropy String"
+        identity["hashed_secret_bytes"] = _nov15_identity(whole.hex())
+        canonical = json.dumps(
+            row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        assert hashlib.sha256(canonical).digest() == before, (
+            "npm projection disposition approval metadata changed"
+        )
+    return restored
+
+
+def _npm_companion_live_digest(companion: dict[str, str], source: bytes) -> str:
+    """Live digest of a ledger companion: projected for the npm manifests (D1)."""
+
+    projection = companion.get("projection")
+    if projection is None:
+        return hashlib.sha256(source).hexdigest()
+    from scripts.quality import semgrep_dispositions_gate as gate
+
+    return gate.projected_companion_digest(projection, source)
+
+
+def _npm_projection_disk_bytes(path: str) -> bytes:
+    root = Path(__file__).resolve().parents[1]
+    return _npm_projection_source_predecessor(path, (root / path).read_bytes())
+
+
+def test_npm_projection_companions_are_bound_to_current_manifests() -> None:
+    from scripts.quality import semgrep_dispositions_gate as gate
+
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / _NPM_PROJECTION_LEDGER).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    row = ledger["dispositions"][14]
+    assert row["path"] == "frontend/src/components/ui/SafeHtml.tsx"
+    companions = {item["path"]: item for item in row["companions"]}
+    for (
+        record,
+        path,
+        projection,
+        _whole,
+        _size,
+        projected,
+        _before,
+    ) in _NPM_PROJECTION_COMPANIONS:
+        live = (root / path).read_bytes()
+        assert companions[path] == {
+            "path": path,
+            "projection": projection,
+            "sha256": projected.hex(),
+        }
+        assert gate.projected_companion_digest(projection, live) == projected.hex()
+        assert _npm_reference_digest(projection, live) == projected
+        identity = policy["records"][record]["identity"]
+        assert identity["hashed_secret_bytes"] == _nov15_identity(projected.hex())
+        assert policy["records"][record]["expires_on"] == "2027-01-10"
+    whole_file = [item for item in row["companions"] if "projection" not in item]
+    assert len(whole_file) == 11
+
+
+def test_npm_projection_ledger_restores_exact_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / _NPM_PROJECTION_LEDGER).read_bytes()
+    previous, current = _NPM_PROJECTION_LEDGER_SHA256
+    assert hashlib.sha256(actual).digest() == current
+    historical = _npm_projection_source_predecessor(_NPM_PROJECTION_LEDGER, actual)
+    assert hashlib.sha256(historical).digest() == previous
+    assert (
+        _npm_projection_source_predecessor(_NPM_PROJECTION_LEDGER, historical)
+        == historical
+    )
+
+
+@pytest.mark.parametrize("companion_index", [0, 1])
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_npm_projection_ledger_rejects_changed_companions_even_with_spoofed_hash(
+    companion_index: int, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / _NPM_PROJECTION_LEDGER).read_bytes()
+    _row, path, projection, _whole, _size, projected, _before = (
+        _NPM_PROJECTION_COMPANIONS[companion_index]
+    )
+    fragment = _npm_projection_companion_text(path, projection, projected)
+    assert actual.count(fragment) == 1
+    replacement = b"" if mutation == "missing" else fragment + fragment
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _current = _NPM_PROJECTION_LEDGER_SHA256
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_NPM_PROJECTION_LEDGER_SHA256",
+        (previous, hashlib.sha256(changed).digest()),
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _npm_projection_source_predecessor(_NPM_PROJECTION_LEDGER, changed)
+
+
+@pytest.mark.parametrize("companion_index", [0, 1])
+def test_npm_projection_always_seals_the_live_manifests(companion_index: int) -> None:
+    _row, path, _projection, whole, size, _projected, _before = (
+        _NPM_PROJECTION_COMPANIONS[companion_index]
+    )
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    sealed = _npm_projection_source_predecessor(path, actual)
+    assert isinstance(sealed, _ProjectedDigest)
+    assert sealed == actual
+    assert sealed.predecessor_sha256 == whole
+    assert sealed.predecessor_size == size
+
+
+def _npm_unrelated_bump(path: str, actual: bytes) -> bytes:
+    document = json.loads(actual)
+    if path == "frontend/package.json":
+        document["devDependencies"]["npm-projection-stability-probe"] = "^1.0.0"
+    else:
+        document["packages"][""]["devDependencies"][
+            "npm-projection-stability-probe"
+        ] = "^1.0.0"
+        document["packages"]["node_modules/npm-projection-stability-probe"] = {
+            "version": "1.0.0",
+            "dev": True,
+        }
+    return (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+@pytest.mark.parametrize("companion_index", [0, 1])
+def test_npm_projection_seals_an_unrelated_bump_through_the_whole_chain(
+    companion_index: int,
+) -> None:
+    _row, path, _projection, whole, size, _projected, _before = (
+        _NPM_PROJECTION_COMPANIONS[companion_index]
+    )
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    bumped = _npm_unrelated_bump(path, actual)
+    sealed = _npm_projection_source_predecessor(path, bumped)
+    assert isinstance(sealed, _ProjectedDigest)
+    assert sealed.predecessor_sha256 == whole
+    assert sealed.predecessor_size == size
+    oldest_live = _aud154_historical_source_bytes(path, actual)
+    oldest_sealed = _aud154_historical_source_bytes(path, bumped)
+    assert isinstance(oldest_sealed, _ProjectedDigest)
+    assert _projected_sha256(oldest_sealed) == _projected_sha256(oldest_live)
+
+
+def _npm_bound_edit(path: str, actual: bytes) -> bytes:
+    document = json.loads(actual)
+    if path == "frontend/package.json":
+        document["scripts"]["preinstall"] = "node scripts/skip-wasm-check.mjs"
+    else:
+        document["packages"]["node_modules/dompurify"]["version"] = "0.0.0"
+    return (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+@pytest.mark.parametrize("companion_index", [0, 1])
+def test_npm_projection_rejects_a_bound_edit_through_the_whole_chain(
+    companion_index: int,
+) -> None:
+    path = _NPM_PROJECTION_COMPANIONS[companion_index][1]
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov21_source_predecessor(path, _npm_bound_edit(path, actual))
+
+
+def test_npm_sealed_predecessor_maps_only_sealed_manifest_digests() -> None:
+    whole = _NPM_PROJECTION_COMPANIONS[0][3]
+    sealed = _ProjectedDigest(b"{}")
+    sealed.predecessor_sha256 = whole
+    sealed.predecessor_size = 2
+    older = b"\x01" * 32
+    mapped = _npm_sealed_predecessor("frontend/package.json", sealed, whole, older)
+    assert isinstance(mapped, _ProjectedDigest)
+    assert mapped.predecessor_sha256 == older
+    assert _npm_sealed_predecessor("frontend/package.json", mapped, whole, older) is (
+        mapped
+    )
+    assert _npm_sealed_predecessor("frontend/package.json", b"{}", whole, older) is None
+    assert _npm_sealed_predecessor("frontend/other.json", sealed, whole, older) is None
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _npm_sealed_predecessor("frontend/package.json", sealed, b"\x02" * 32, older)
+
+
+def test_npm_projection_policy_changes_only_the_two_manifest_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    previous = _npm_projection_policy_predecessor(policy)
+    assert [
+        index
+        for index, (current, old) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if current != old
+    ] == [451, 494]
+    assert _npm_projection_policy_predecessor(previous) == previous
+
+
+@pytest.mark.parametrize("record", [451, 494])
+@pytest.mark.parametrize(
+    "mutation",
+    ["path", "type", "category", "owner", "expiry", "evidence", "approved", "reviewed"],
+)
+def test_npm_projection_policy_rejects_approval_drift(
+    record: int, mutation: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][record]
+    if mutation in {"path", "type"}:
+        row["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        row[mutation] += " changed"
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "approved":
+        row["approval_status"] = "pending"
+    else:
+        row["reviewed_on"] += " changed"
+    with pytest.raises(AssertionError):
+        _npm_projection_policy_predecessor(policy)
+
+
+@pytest.mark.parametrize("record", [451, 494])
+def test_npm_projection_policy_chain_rejects_identity_drift(record: int) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    policy["records"][record]["identity"]["hashed_secret_bytes"][0] ^= 1
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)

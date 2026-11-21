@@ -3153,7 +3153,7 @@ newest projection layer that covers the `img-src` rebind restores both
 predecessors. The path, type, category, owner and 2027-01-10 expiry are
 unchanged, and no identity is added. The inventory remains 524 dispositions.
 
-### npm manifest projection binding (approved 2026-11-15, not yet implemented)
+### npm manifest projection binding (approved 2026-11-15, implemented 2026-11-21)
 
 The owner approved decisions D1–D4 without changes on 2026-11-15; this section
 records them because they were not yet in the ADR. Semgrep disposition index 14
@@ -3236,6 +3236,27 @@ Rollout is one owner-authored PR:
    records, migration layer and gate tests.
 2. The Dependabot npm update (#1520) with no policy edits, keeping maplibre-gl
    6.15.0, jsdom 30.1.3 and Playwright 1.64.1.
+
+Implementation (2026-11-21):
+
+- The gate hard-codes both projectors and accepts a projection only on the
+  SafeHtml React-sink row, for its matching path. The digest covers canonical
+  JSON of `{"projection", "selection"}`. A parse error, duplicate key, missing
+  `dependencies["wasm-sanitizer"]`, a `lockfileVersion` other than integer 3, or
+  a sanitizer link other than the exact record is a `GateError`.
+- Row 15 binds the manifest as `66f0aed9…` and the lock as `b79abef3…`. Records
+  451 and 494 carry SHA-1 of those values; no other field changed. The inventory
+  stays 242 baseline identities, 524 dispositions, 27 Gitleaks fingerprints and
+  15 Semgrep rows.
+- The newest test layer restores the whole-file pins `4b63abcb…` and `ba7718ef…`
+  in the ledger and maps records 451 and 494 back. It always returns the two
+  manifests sealed, after both the gate projector and an independent
+  re-implementation agree on the pinned digest. The NOV17, rust-lock, AUD-375
+  and AUD-154 layers map the sealed digest; they no longer rebuild manifest
+  content.
+- Both projection digests are unchanged on the #1520 manifests (3,139 added and
+  3,146 removed lock lines). With those manifests applied, the verify-secrets,
+  source-rebind and gate suites pass (2,219 tests), as they do without them.
 
 
 ### NATS inventory diagnostic companion rebind (2026-11-21)
