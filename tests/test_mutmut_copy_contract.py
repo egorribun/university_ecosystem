@@ -185,3 +185,25 @@ def test_mutmut_also_copy_keeps_redis_compat_chart_closed() -> None:
         for name in names:
             path = directory / name
             assert path.is_file() and not path.is_symlink(), path
+
+
+def test_mutmut_also_copy_covers_nightly_stats_inputs() -> None:
+    """Keep the manifest and configuration readers runnable in the isolated tree."""
+
+    with (ROOT / "pyproject.toml").open("rb") as project_file:
+        project = tomllib.load(project_file)
+
+    configured = list(project["tool"]["mutmut"]["also_copy"])
+    required = {
+        ".trivyignore",
+        "README.md",
+        "README.ru.md",
+        "frontend/.npmrc",
+        "gen/go",
+        "k8s/chaos",
+        "tools/oasdiff",
+    }
+    assert sorted(required - set(configured)) == []
+    assert {"frontend", "gen", "k8s", "tools"}.isdisjoint(configured)
+    # Copying frontend/scripts creates the destination parent for .npmrc.
+    assert configured.index("frontend/scripts") < configured.index("frontend/.npmrc")
