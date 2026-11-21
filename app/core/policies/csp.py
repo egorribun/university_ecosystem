@@ -6,6 +6,12 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# The only third-party image origin: Spotify album art on the now-playing card.
+# The Spotify integration drops album images from any other origin, so img-src
+# lists this host instead of every https: source (ADR-047, 2026-11-21).
+SPOTIFY_IMAGE_ORIGIN = "https://i.scdn.co"
+_IMG_SRC = f"img-src 'self' data: blob: {SPOTIFY_IMAGE_ORIGIN}; "
+
 
 class ContentSecurityPolicy:
     """
@@ -23,7 +29,7 @@ class ContentSecurityPolicy:
         "http://localhost:5173 ws://localhost:5173 "
         "https://accounts.google.com 'report-sample'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https: blob:; "
+        f"{_IMG_SRC}"
         "connect-src {connect_src}; "
         "font-src 'self' data: https://fonts.gstatic.com; "
         "object-src 'none'; "
@@ -39,7 +45,7 @@ class ContentSecurityPolicy:
         "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
         "https://accounts.google.com 'report-sample'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https: blob:; "
+        f"{_IMG_SRC}"
         "connect-src {connect_src}; "
         "font-src 'self' data: https://fonts.gstatic.com; "
         "object-src 'none'; "

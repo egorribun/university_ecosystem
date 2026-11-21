@@ -18,6 +18,12 @@
 # Our HttpOnly session cookies include SameSite=Lax; ZAP false-positive on dev
 10054	IGNORE	Session cookies include SameSite attribute
 
+# 10055: CSP, sub-alert 10055-6 (style-src 'unsafe-inline') only
+# Owner-approved 2026-11-21 (ADR-047): accepted risk. rules.tsv matches a rule,
+# not a sub-alert, so the rule stays enabled here. The scan hook
+# (scripts/quality/zap_origin_evidence.py) lowers only 10055-6 to low, and only
+# while the policy keeps the exact approved style-src directive.
+
 # 10063: Feature Policy Header Not Set
 # Superseded by Permissions-Policy; ZAP still checks deprecated header name
 10063	IGNORE	Permissions-Policy header is set; Feature-Policy deprecated
@@ -27,6 +33,12 @@
 # over loopback HTTP without TLS, so this rule describes the test stand, not the
 # product. Production terminates TLS in Caddy and sends HSTS.
 10106	IGNORE	CI DAST stand is loopback HTTP; production terminates TLS
+
+# 10202 and 20012: Absence of Anti-CSRF Tokens / Anti-CSRF Tokens Check
+# Owner-approved 2026-11-21 (ADR-047): forms marked data-csrf="header" are
+# submitted by script with the double-submit token in a header. The scan sets
+# rules.csrf.ignore.attname and attvalue (scripts/quality/zap_runner.py), so
+# ZAP reports those forms as informational. Unmarked forms stay medium.
 
 # 40012: Cross Site Scripting (Reflected)
 # Trusted Types enforcement (MOD-W4) prevents XSS even without header-level block

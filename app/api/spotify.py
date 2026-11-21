@@ -39,6 +39,7 @@ from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.models import SpotifyIntegration, User
+from app.schemas.integrations import is_spotify_image_url
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
 
 logger = get_logger(__name__)
@@ -611,7 +612,14 @@ async def now_playing(
     artists = [a.get("name") for a in item.get("artists", []) if a.get("name")]
     album = item.get("album") or {}
     images = album.get("images") or []
-    img = images[0]["url"] if images else None
+    img = next(
+        (
+            image["url"]
+            for image in images
+            if isinstance(image, dict) and is_spotify_image_url(image.get("url"))
+        ),
+        None,
+    )
     url = item.get("external_urls", {}).get("spotify")
     preview = item.get("preview_url")
     user.spotify.is_playing = bool(j.get("is_playing"))

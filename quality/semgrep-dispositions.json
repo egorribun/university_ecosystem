@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "f391640e0e054fb88b8cc522be2831f606f840f9f7d0bb7df6a887e87638317e"
+          "sha256": "3959d6898029f0d95489f1779d7e30d09bd9cd397a2aea901b70b2475e183b24"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -394,7 +394,7 @@
       "companions": [
         {
           "path": "app/services/user/compliance_service.py",
-          "sha256": "3031a3d891a494518c2691b871bacff4ebec45350218e0bba287e56588a59a6a"
+          "sha256": "c64cc4013ea8c5eda52e9695cf72793337ef2e1174a30b85275e107362dfead1"
         },
         {
           "path": "app/services/auth_service.py",
@@ -446,7 +446,7 @@
         },
         {
           "path": "frontend/scripts/server-csp.mjs",
-          "sha256": "e8956f349aba0b03442644e0be40929c7522455c44d27bbbd03f61ca0a1e79ce"
+          "sha256": "31e84e127c5cdc7412e5bac1453e66c4cd254b4d3db121bcf852de000fe6b2da"
         },
         {
           "path": "frontend/WASM_SOURCE_PROVENANCE.json",

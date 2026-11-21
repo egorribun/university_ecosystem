@@ -248,3 +248,34 @@ def test_history_search_is_bounded_and_cannot_fall_back_to_site_name(
         )
     assert positions == [1, 2]
     assert not proof.exists()
+
+
+def test_start_hook_installs_only_the_accepted_style_src_filter() -> None:
+    calls = []
+
+    def add_global_alert_filter(**kwargs):
+        calls.append(kwargs)
+        return "OK"
+
+    zap = SimpleNamespace(
+        alertFilter=SimpleNamespace(add_global_alert_filter=add_global_alert_filter)
+    )
+    zap_origin_evidence.zap_started(zap, TARGET)
+    assert calls == [
+        {
+            "ruleid": "10055-6",
+            "newlevel": "1",
+            "enabled": "true",
+            "evidence": zap_origin_evidence.ACCEPTED_STYLE_SRC_EVIDENCE,
+            "evidenceisregex": "true",
+        }
+    ]
+
+
+@pytest.mark.parametrize("result", ["", "FAIL", None, {"code": "no_implementor"}])
+def test_start_hook_fails_closed_when_zap_rejects_the_filter(result) -> None:
+    zap = SimpleNamespace(
+        alertFilter=SimpleNamespace(add_global_alert_filter=lambda **_: result)
+    )
+    with pytest.raises(ValueError, match="accepted-risk alert filter"):
+        zap_origin_evidence.zap_started(zap, TARGET)

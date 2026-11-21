@@ -1,4 +1,4 @@
-"""Canonical storage-key validation for newly uploaded news images."""
+"""Canonical storage-key validation for newly uploaded content images."""
 
 from __future__ import annotations
 
@@ -14,6 +14,15 @@ _NEWS_IMAGE_KEY = re.compile(
 
 def canonical_news_image_key(file_url: str) -> str | None:
     """Return a key only when *file_url* is the canonical generated news key."""
+    return canonical_upload_key(file_url, _NEWS_IMAGE_KEY)
+
+
+def canonical_upload_key(file_url: str, key_pattern: re.Pattern[str]) -> str | None:
+    """Return the storage key when *file_url* is a canonical upload URL.
+
+    The URL must be exactly what storage returned for the key, and the key must
+    fully match *key_pattern*. Aliases, external URLs and other keys fail closed.
+    """
     if not isinstance(file_url, str) or not file_url:
         return None
 
@@ -35,6 +44,6 @@ def canonical_news_image_key(file_url: str) -> str | None:
     else:
         return None
 
-    if file_url != canonical_url or _NEWS_IMAGE_KEY.fullmatch(key) is None:
+    if file_url != canonical_url or key_pattern.fullmatch(key) is None:
         return None
     return key

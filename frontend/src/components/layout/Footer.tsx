@@ -51,8 +51,6 @@ export default function Footer() {
                   width={48}
                   height={48}
                   loading="lazy"
-                  sizes="48px"
-                  responsiveWidths={[48, 64, 96]}
                   decoding="async"
                   className="h-12 w-12"
                 />

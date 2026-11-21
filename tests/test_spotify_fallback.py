@@ -48,7 +48,7 @@ def test_fallback_now_playing_returns_last_track_details():
         track_name="Test Song",
         artists="Artist One, Artist Two",
         album="Album",
-        album_image="https://img",
+        album_image="https://i.scdn.co/image/ab67616d0000b273current",
         track_url="https://open.spotify.com/track/track-123",
     )
 
@@ -59,11 +59,30 @@ def test_fallback_now_playing_returns_last_track_details():
     assert out.track_name == "Test Song"
     assert out.artists == ["Artist One", "Artist Two"]
     assert out.album_name == "Album"
-    assert out.album_image_url == "https://img"
+    assert out.album_image_url == "https://i.scdn.co/image/ab67616d0000b273current"
     assert out.track_url == "https://open.spotify.com/track/track-123"
     assert isinstance(out.fetched_at, datetime)
     assert out.fetched_at.tzinfo is not None
     assert out.fetched_at.tzinfo.utcoffset(out.fetched_at) == UTC.utcoffset(None)
+
+
+@pytest.mark.parametrize(
+    "album_image",
+    [
+        "https://img.example/cover.jpg",
+        "http://i.scdn.co/image/cover",
+        "https://i.scdn.co.attacker.invalid/image/cover",
+        "https://user@i.scdn.co/image/cover",
+        "https://i.scdn.co:8443/image/cover",
+        "https://[",
+        "https://i.scdn.co/" + "x" * 2048,
+    ],
+)
+def test_fallback_now_playing_drops_images_outside_the_csp_origin(album_image):
+    out = _fallback_now_playing(_make_user(track_id="track-7", album_image=album_image))
+
+    assert out.track_id == "track-7"
+    assert out.album_image_url is None
 
 
 def test_fallback_now_playing_handles_missing_data():
@@ -83,7 +102,7 @@ def test_legacy_fallback_matches_new_behavior():
         track_name="Legacy Song",
         artists="Solo Artist",
         album="Legacy Album",
-        album_image="https://legacy",
+        album_image="https://i.scdn.co/image/ab67616d0000b273legacy",
         track_url="https://open.spotify.com/track/track-42",
     )
 
@@ -506,7 +525,7 @@ async def _prepare_spotify_transport_user(
     user.spotify.last_artist_name = "Cached Artist" if track_id else None
     user.spotify.last_album_name = "Cached Album" if track_id else None
     user.spotify.last_album_image_url = (
-        "https://img.example/cached" if track_id else None
+        "https://i.scdn.co/image/ab67616d0000b273cached" if track_id else None
     )
     user.spotify.last_track_url = (
         f"https://open.spotify.com/track/{track_id}" if track_id else None

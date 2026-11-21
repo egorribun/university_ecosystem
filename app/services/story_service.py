@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -5,10 +6,27 @@ from app.core.localization import localized_text, normalize_locale
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
+from app.services.news_media import canonical_upload_key
+
+# The key ``POST /stories/upload_cover`` generates (save_upload "story_covers",
+# prefix "stories"). Covers load from the site itself: img-src allows no other
+# image host apart from Spotify album art (ADR-047).
+_STORY_COVER_KEY = re.compile(
+    r"story_covers/stories_[0-9a-f]{32}\.(?:jpg|png|webp)", flags=re.ASCII
+)
 
 
 class InvalidStoryPeriod(ValueError):
     """The effective publication interval is missing or nonpositive."""
+
+
+class StoryCoverNotUploaded(ValueError):
+    """A new cover URL is not a canonical story cover upload."""
+
+
+def _require_uploaded_cover(cover_url: str | None) -> None:
+    if cover_url and canonical_upload_key(cover_url, _STORY_COVER_KEY) is None:
+        raise StoryCoverNotUploaded("story_cover_not_uploaded")
 
 
 def _validate_story_period(
@@ -75,6 +93,7 @@ class StoryService:
         self, data: schemas.StoryCreate, created_by: uuid.UUID
     ) -> StoryDTO:
         payload = data.model_dump(exclude_unset=True)
+        _require_uploaded_cover(payload.get("cover_url"))
         published_at = data.published_at or datetime.now(UTC)
         try:
             expires_at = data.expires_at or published_at + timedelta(hours=24)
@@ -107,6 +126,10 @@ class StoryService:
             )
             if story is None:
                 raise ValueError("story_not_found")
+            if "cover_url" in updates and updates["cover_url"] != story.cover_url:
+                # An unchanged cover may predate this rule; only new ones must
+                # be uploads.
+                _require_uploaded_cover(updates.get("cover_url"))
             if changes_time:
                 _validate_story_period(
                     updates.get("published_at", story.published_at),

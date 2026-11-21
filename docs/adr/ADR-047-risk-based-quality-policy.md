@@ -3045,3 +3045,210 @@ unchanged. Predecessor projection restores the exact prior proof, AUD-433 test
 and policy record before earlier checks. No identity is added: the inventory
 remains 242 baseline identities, 524 dispositions, 27 Gitleaks fingerprints and
 15 Semgrep rows. This record does not establish a passing scan or hosted checks.
+
+## Decisions recorded on 2026-11-21
+
+### ZAP CSRF-token alerts on script-submitted forms
+
+The owner approved reporting ZAP rules 10202 (Absence of Anti-CSRF Tokens) and
+20012 (Anti-CSRF Tokens Check) as informational for the login, registration and
+password-reset forms. Script submits these forms through the API client, which
+echoes the double-submit `csrf_token` cookie in the `X-CSRF-Token` header. The
+backend CSRF middleware rejects unsafe requests without it, so the forms carry no
+hidden token field.
+
+- **Mechanism.** The forms spread `API_SUBMITTED_FORM`
+  (`frontend/src/utils/apiSubmittedForm.ts`), which renders
+  `data-csrf="header"`. The scan passes
+  `rules.csrf.ignore.attname=data-csrf` and `rules.csrf.ignore.attvalue=header`
+  (`scripts/quality/zap_runner.py`). Both rules then raise those forms at
+  informational risk. `tests/test_dast_accepted_policy_contract.py` requires
+  every native POST form in the frontend to carry the marker.
+- **Scope.** Only forms with that exact attribute and value. An unmarked form
+  keeps its medium risk and fails the gate.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10, together with the
+  other DAST decisions in this record.
+
+### ZAP CSP sub-alert 10055-6 accepted at low risk
+
+The owner accepted the risk of `style-src 'unsafe-inline'`. React style props
+and framer-motion write inline styles, and removing them is not MVP scope.
+`.zap/rules.tsv` matches a rule ID, not a sub-alert, so rule 10055 stays enabled.
+At start, the scan hook (`scripts/quality/zap_origin_evidence.py`) installs one
+global ZAP alert filter. The filter lowers alert reference 10055-6 from medium to
+low, and only when the evidence header keeps the exact directive
+`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`. A hook that
+cannot install the filter stops the scan, so no report is produced.
+
+- **Scope.** Only sub-alert 10055-6 with that directive. A wider `style-src`
+  and every other 10055 sub-alert, including the `img-src` wildcard (10055-4),
+  keep ZAP's own risk. The contract test binds the backend and Node SSR policies
+  to the filter's evidence pattern.
+- **Owner and expiry.** `egorribun`, expires 2027-01-10.
+- **Not established.** Neither decision is a passing scan. AUD-381 still needs a
+  green hosted ZAP run on `main` with a verified report.
+
+### ZAP CSP wildcard 10055-4 fixed by narrowing img-src
+
+The owner approved fixing the `img-src https:` wildcard rather than excluding
+it. Every served policy now uses `img-src 'self' data: blob: https://i.scdn.co`:
+the backend development and production templates, the Node SSR policy and the
+shared `quality/frontend-csp-defaults.json` contract. An inventory of image
+sources found five that reached other origins. Each now loads from the site
+itself or from the one listed host:
+
+- **Spotify album art.** This is the only third-party image left. The
+  now-playing schema drops any album image outside `https://i.scdn.co`,
+  including stored rows that predate the check, and extraction keeps the first
+  image on that origin.
+- **News article images.** The article sanitizer keeps only relative image
+  sources. Absolute, protocol-relative and backslash-authority URLs are dropped
+  from `<img>` and Markdown images, and links are unchanged.
+- **Story covers.** Create and update accept only a canonical story cover upload
+  (`story_covers/stories_<32 hex>`) as a new cover. Anything else is a localized
+  422 (`validation.stories.cover_not_uploaded`). An unchanged legacy cover may
+  stay or be cleared.
+- **Fallback avatar.** The settings avatar fallback uses the product's own
+  `/fallbacks/default_avatar.png` instead of gravatar.
+- **Demo seed images.** The owner approved a one-off download of the 35
+  picsum.photos images the seed referenced. They are re-encoded as WebP without
+  metadata in `scripts/demo_media/`. `PROVENANCE.json` records the replaced URL,
+  the Unsplash author and source, and the Unsplash License.
+  - The seed stores each image in application storage under a content-addressed
+    `demo_` key in a public image-proxy prefix, and records the URL storage
+    returns.
+  - Those keys match no upload ownership pattern, so ownership-based cleanup
+    never deletes an image that several rows share.
+  - The demo user no longer has an external avatar.
+  - The live E2E and authenticated visual-audit stubs for picsum, and the
+    preconnect hints, are removed because nothing requests that host.
+
+This is a fix, not an exclusion. A deployment that serves media from a separate
+origin (for example a CDN in `STORAGE_S3_BASE_URL`) would need its own reviewed
+`img-src` source, as `connect-src` already does for a separate API origin.
+
+Under the owner's standing one-to-one approval, the Semgrep row 14 companion
+digest of `frontend/scripts/server-csp.mjs` and its public-integrity identity in
+disposition record 443 bind the new policy bytes. The newest projection layer in
+`tests/test_verify_secrets_baseline.py` restores the exact predecessor policy,
+visual audit, ledger and record before older checks run. No identity is added.
+The inventories remain 524 dispositions, 242 baseline identities, 27 Gitleaks
+fingerprints and 15 Semgrep rows. This record does not establish a passing scan;
+AUD-381 still needs a green hosted ZAP run on `main`.
+
+### Registration releases its tenant lookup before password work
+
+Registration resolved the MVP tenant and then ran the HIBP lookup and Argon2
+hashing inside the same transaction. That held a pooled connection while the
+request waited for the bounded hashing slot. The login path had the same defect
+and was fixed on 2026-11-20. Under concurrent sign-ups it can exhaust the
+per-worker pool, and the gateway then answers 502. `register_user` now commits
+the read-only lookup transaction before any password work, and a unit test
+asserts the order: tenant lookup, commit, HIBP, hash.
+
+`app/services/user/compliance_service.py` is a Semgrep row 13 companion. Under
+the owner's standing one-to-one approval, its companion digest and the
+public-integrity identity in disposition record 431 bind the new bytes. The same
+newest projection layer that covers the `img-src` rebind restores both
+predecessors. The path, type, category, owner and 2027-01-10 expiry are
+unchanged, and no identity is added. The inventory remains 524 dispositions.
+
+### npm manifest projection binding (approved 2026-11-15, not yet implemented)
+
+The owner approved decisions D1–D4 without changes on 2026-11-15; this section
+records them because they were not yet in the ADR. Semgrep disposition index 14
+(the SafeHtml React HTML sink, "row #15") pins `frontend/package.json` and
+`frontend/package-lock.json` as whole files. Their public-integrity identities
+are records 451 and 494. Every routine npm bump therefore needs ledger, identity
+and test-chain rebinds with byte reversals of the whole lock diff.
+
+- **D1.** Only these two companions may be written as
+  `{"path", "projection", "sha256"}`, with projections hard-coded and versioned
+  in `scripts/quality/semgrep_dispositions_gate.py`: `npm-manifest-sanitizer/v1`
+  for the manifest and `npm-lockfile-sanitizer/v1` for the lock. The digest is
+  the SHA-256 of canonical JSON of the projection document (`sort_keys`,
+  separators `(",", ":")`, `ensure_ascii=False`, UTF-8, no trailing newline).
+  The file is read with the existing symlink, TOCTOU and regular-file checks
+  and parsed strictly. An unknown projection, or a projection on another path
+  or row, fails closed. Drift reports the existing "Semgrep companion evidence
+  changed" problem. The other 11 SafeHtml companions stay whole-file pins.
+- **D2, full selection set.**
+  - The manifest projection selects:
+    - the declarations of `wasm-sanitizer`, `vite-plugin-wasm`, `dompurify`
+      and `@types/trusted-types` in all four dependency sections, with
+      `dependencies["wasm-sanitizer"]` required;
+    - the lifecycle scripts (`preinstall`, `install`, `postinstall`, `prepare`,
+      `prepack`, `postpack`, `prepublish`, `prepublishOnly`);
+    - every script whose name contains `wasm`, or whose body references
+      `wasm-sanitizer`, `ensure-wasm`, `verify-wasm` or
+      `WASM_SOURCE_PROVENANCE`;
+    - every override whose key or nested value mentions a bound package;
+    - the whole `allowScripts`;
+    - `workspaces`, `bundle(d)Dependencies`, `browser`, `imports` and
+      `exports` when they mention a bound package.
+  - The lock projection selects:
+    - `lockfileVersion`, which must be 3;
+    - the root record's `hasInstallScript` and its bound declarations;
+    - every `packages` key whose last `node_modules/` segment is a bound
+      package, including nested copies, as full records;
+    - every key containing `wasm-sanitizer`;
+    - every record with `hasInstallScript: true`, as a full record.
+
+    The link record must be exactly
+    `{"resolved": "wasm-sanitizer/pkg", "link": true}`.
+- **D3.** Records 451 and 494 are rebound one-to-one by identity bytes only:
+  SHA-1 of the new projection hex. Path, type, category, owner, review date,
+  evidence and the 2027-01-10 expiry stay unchanged. The inventory is unchanged.
+- **D4.** From the migration commit on, the historical content proofs for the
+  two manifests in `tests/test_verify_secrets_baseline.py` become digest-only
+  (sealed), as the ammonia WASM layer already is. The migration is the newest
+  projection layer. It undoes the two ledger companion objects and maps records
+  451 and 494 back, and older layers accept the projected digest only for these
+  two paths.
+
+Still checked against live content: the `test:wasm` prefix (through the
+projection), SafeHtml companion freshness (through the projector), and an
+independent re-implementation of the selection in the tests.
+
+Negative controls must fail when:
+
+- any bound entry is edited (the `wasm-sanitizer` spec, the link `resolved` or
+  `link`, `preinstall` removed, `test:wasm` changed, `allowScripts` changed);
+- an override redirects `wasm-sanitizer`, at top level or nested;
+- a new nested copy of a bound package appears;
+- a new install-script package appears;
+- JSON keys are duplicated;
+- an unknown projection, path or row is used;
+- the migration layer sees drift in the ledger, policy or projection.
+
+As the stability control, an unrelated dependency bump must leave both
+projection digests unchanged.
+
+Unbound entries stay covered by the protected-path policy, npm audit, OSV,
+dependency review, lockfile SRI and the build and test checks. A bump that
+touches a bound entry still needs a one-to-one 451/494 rebind, reversing only
+the bound bytes.
+
+Rollout is one owner-authored PR:
+
+1. The migration, committed with
+   `UE_DETECT_SECRETS_OWNER_AUTHORED_DISPOSITION_UPDATE=1`: gate, ledger,
+   records, migration layer and gate tests.
+2. The Dependabot npm update (#1520) with no policy edits, keeping maplibre-gl
+   6.15.0, jsdom 30.1.3 and Playwright 1.64.1.
+
+
+### NATS inventory diagnostic companion rebind (2026-11-21)
+
+When the owned NATS preflight rejects the container inventory, the runner can
+report the failed condition and a service name from the Core allowlist. It uses
+`unknown` for any other name.
+
+The owner's standing one-to-one approval of 2026-10-31 covers the new digest
+of `scripts/live_stand.py` in Semgrep row 7 and its public-integrity identity
+in disposition record 495. The projection restores the exact source, ledger
+and policy from the preceding revision before applying the NOV21 chain.
+The record retains its path, type, category, owner, evidence and 2027-01-10
+expiry. The inventory contains 242 baseline identities, 524 dispositions,
+27 Gitleaks fingerprints and 15 Semgrep rows. Scanner, CI and live acceptance
+results are verified separately for each source revision.

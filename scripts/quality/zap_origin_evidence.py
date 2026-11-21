@@ -1,8 +1,10 @@
-"""Standalone ZAP hook and strict private same-origin response validation.
+"""Standalone ZAP hook: accepted-risk alert filter and same-origin evidence.
 
-Mounted read-only into the scanner. Only a 2xx GET response from the exact
-scheme/host/effective-port is accepted, never a report site name or URL prefix.
-This proves one observed response in ZAP history, not full active-scan coverage.
+Mounted read-only into the scanner. At start it installs the one owner-approved
+alert filter. Before shutdown it records origin evidence: only a 2xx GET
+response from the exact scheme/host/effective-port is accepted, never a report
+site name or URL prefix. This proves one observed response in ZAP history, not
+full active-scan coverage.
 """
 
 from __future__ import annotations
@@ -18,6 +20,42 @@ TARGET_PATH = Path("/zap/target.txt")
 PROOF_PATH = Path("/zap/wrk/origin-proof.json")
 MAX_HEADER = 65536
 MAX_MESSAGES = 100
+
+# Owner-approved accepted risk (2026-11-21, ADR-047): React style props and
+# framer-motion write inline styles, so the policy keeps style-src
+# 'unsafe-inline'. Only CSP sub-alert 10055-6 is lowered from medium to low, and
+# only when the alert evidence contains exactly this style-src directive. Any
+# other style-src, and every other 10055 sub-alert, keeps ZAP's own risk.
+ACCEPTED_STYLE_SRC_ALERT = "10055-6"
+# ZAP applies this regex to one alert evidence string. Require the whole string
+# to be a canonical single policy, with exactly the approved style-src directive.
+# The evidence may not contain every other response header.
+_CSP_OTHER_DIRECTIVE = (
+    r"(?!(?i:style-src)(?= |;|(?![\s\S])))"
+    r"[A-Za-z][A-Za-z0-9-]*(?: +[\x21-\x2b\x2d-\x3a\x3c-\x7e]+)*"
+)
+ACCEPTED_STYLE_SRC_EVIDENCE = (
+    r"\A(?:"
+    + _CSP_OTHER_DIRECTIVE
+    + r"; )*style-src 'self' 'unsafe-inline' https://fonts\.googleapis\.com"
+    + r"(?:; "
+    + _CSP_OTHER_DIRECTIVE
+    + r")*(?![\s\S])"
+)
+ACCEPTED_STYLE_SRC_LEVEL = "1"
+
+
+def zap_started(zap: Any, target: str) -> None:
+    """Install the accepted-risk filter before any request is scanned."""
+    result = zap.alertFilter.add_global_alert_filter(
+        ruleid=ACCEPTED_STYLE_SRC_ALERT,
+        newlevel=ACCEPTED_STYLE_SRC_LEVEL,
+        enabled="true",
+        evidence=ACCEPTED_STYLE_SRC_EVIDENCE,
+        evidenceisregex="true",
+    )
+    if result != "OK":
+        raise ValueError("ZAP did not install the accepted-risk alert filter")
 
 
 def origin(value: str) -> tuple[str, str, int]:

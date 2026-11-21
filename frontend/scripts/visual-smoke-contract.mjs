@@ -34,12 +34,132 @@ export function responseRecord(response) {
   }
 }
 
-export function requestFailureRecord(request) {
-  return {
-    method: request.method(),
-    url: request.url(),
-    errorText: request.failure()?.errorText ?? "unknown network failure",
+// The authenticated matrix records request failures without exposing raw destinations.
+// This hook is limited to its own process and cannot change the audit outcome.
+const VISUAL_ERROR_CODES = new Map([
+  ["net::ERR_FAILED", "failed"],
+  ["net::ERR_EMPTY_RESPONSE", "empty_response"],
+  ["net::ERR_HTTP2_PROTOCOL_ERROR", "http2_protocol_error"],
+  ["net::ERR_HTTP2_SERVER_REFUSED_STREAM", "http2_server_refused_stream"],
+  ["net::ERR_HTTP2_PING_FAILED", "http2_ping_failed"],
+  ["net::ERR_CONTENT_LENGTH_MISMATCH", "content_length_mismatch"],
+  ["net::ERR_INCOMPLETE_CHUNKED_ENCODING", "incomplete_chunked_encoding"],
+  ["net::ERR_NETWORK_CHANGED", "network_changed"],
+  ["net::ERR_INTERNET_DISCONNECTED", "internet_disconnected"],
+  ["net::ERR_ADDRESS_UNREACHABLE", "address_unreachable"],
+  ["net::ERR_CONNECTION_RESET", "connection_reset"],
+  ["net::ERR_CONNECTION_CLOSED", "connection_closed"],
+  ["net::ERR_CONNECTION_REFUSED", "connection_refused"],
+  ["net::ERR_BLOCKED_BY_CLIENT", "blocked_by_client"],
+  ["net::ERR_NAME_NOT_RESOLVED", "name_not_resolved"],
+  ["net::ERR_TIMED_OUT", "timed_out"],
+])
+const VISUAL_API_FAMILIES = [
+  "events",
+  "news",
+  "stories",
+  "schedule",
+  "notifications",
+  "campus",
+  "img",
+  "auth",
+  "push",
+  "groups",
+  "users",
+]
+let visualRequestDiagnosticCount = 0
+
+function emitVisualRequestDiagnostic(request, failure, rawErrorText) {
+  try {
+    const script = process.argv[1]?.replaceAll("\\", "/").split("/").at(-1)
+    if (
+      process.env.VISUAL_CAPTURE_MATRIX !== "1" ||
+      script !== "authenticated-visual-audit.mjs" ||
+      // The audit still records aborts; reserve the bounded detail for other failures.
+      rawErrorText === "net::ERR_ABORTED" ||
+      visualRequestDiagnosticCount >= 64
+    )
+      return
+    const expectedOrigin = new URL(process.env.ORIGIN ?? "http://localhost").origin
+    let requestOrigin = "invalid"
+    let apiFamily = "other"
+    try {
+      const parsed = new URL(failure.url)
+      requestOrigin = parsed.origin === expectedOrigin ? "same_origin" : "external"
+      if (requestOrigin === "same_origin") {
+        if (parsed.pathname === "/api/v1/users/me") apiFamily = "profile"
+        else {
+          for (const family of VISUAL_API_FAMILIES) {
+            const prefix = `/api/v1/${family}`
+            if (parsed.pathname === prefix || parsed.pathname.startsWith(`${prefix}/`)) {
+              apiFamily = family
+              break
+            }
+          }
+        }
+      }
+    } catch {
+      // Invalid request URLs stay in the closed invalid/other categories.
+    }
+    let route = "other"
+    let width = 0
+    try {
+      const page = request.frame().page()
+      const current = new URL(page.url())
+      if (
+        current.origin === expectedOrigin &&
+        ["/dashboard", "/events", "/news"].includes(current.pathname)
+      )
+        route = current.pathname
+      const viewportWidth = page.viewportSize()?.width
+      if ([360, 375, 390, 414, 768, 1024, 1280, 1440, 1920].includes(viewportWidth)) {
+        width = viewportWidth
+      }
+    } catch {
+      // Requests without an accessible page stay in the closed fallback categories.
+    }
+    let resourceType = "unknown"
+    try {
+      const type = request.resourceType()
+      resourceType = ["image", "xhr", "fetch"].includes(type) ? type : "other"
+    } catch {
+      // A missing or inaccessible Playwright resource type remains unknown.
+    }
+    const errorCode =
+      typeof rawErrorText !== "string" || rawErrorText === ""
+        ? "unknown"
+        : (VISUAL_ERROR_CODES.get(rawErrorText) ?? "other")
+    const method = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"].includes(
+      failure.method
+    )
+      ? failure.method
+      : "other"
+    visualRequestDiagnosticCount++
+    console.log(
+      "visual-request-diagnostics " +
+        JSON.stringify({
+          schema: 1,
+          route,
+          width,
+          method,
+          requestOrigin,
+          apiFamily,
+          resourceType,
+          errorCode,
+        })
+    )
+  } catch {
+    // Diagnostics must never alter the failure record or acceptance gate.
   }
+}
+
+export function requestFailureRecord(request) {
+  const method = request.method()
+  const url = request.url()
+  const rawErrorText = request.failure()?.errorText
+  const failure = { method, url, errorText: rawErrorText ?? "unknown network failure" }
+  emitVisualRequestDiagnostic(request, failure, rawErrorText)
+  return failure
 }
 
 export function classifySmokeRouteOutcome({

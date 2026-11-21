@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button"
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
+import { API_SUBMITTED_FORM } from "@/utils/apiSubmittedForm"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
 import {
   captureActiveTelemetryContext,
@@ -172,6 +173,7 @@ const Register = () => {
             </p>
           </div>
           <form
+            {...API_SUBMITTED_FORM}
             method="post"
             onSubmit={handleTelemetrySubmit}
             autoComplete="on"

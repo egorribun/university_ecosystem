@@ -22,7 +22,10 @@ function assertControlledVisibilityProof(spec, dashboardStories) {
   assert.ok(controlledStart >= 0, "live acceptance includes clock-controlled visibility coverage")
   const controlled = spec.slice(controlledStart)
 
-  assert.match(controlled, /await page\.emulateMedia\(\{ reducedMotion: ["']no-preference["'] \}\)/u)
+  assert.match(
+    controlled,
+    /await page\.emulateMedia\(\{ reducedMotion: ["']no-preference["'] \}\)/u
+  )
   assert.match(controlled, /await page\.clock\.install\(\)[\s\S]*?await loginAs\(page/u)
   assert.match(controlled, /await page\.clock\.pauseAt\([\s\S]*?await openAtKnownProgress\(\)/u)
   assert.match(controlled, /await page\.clock\.runFor\(VISIBLE_WARMUP_MS\)/u)
@@ -43,11 +46,20 @@ function assertControlledVisibilityProof(spec, dashboardStories) {
   assert.match(controlled, /await page\.clock\.runFor\(VISIBLE_RESUME_MS\)/u)
   assert.match(controlled, /toBeGreaterThan\(pausedProgress \+ MIN_RESUMED_ADVANCE\)/u)
   assert.match(controlled, /toBeLessThan\(pausedProgress \+ MAX_RESUMED_ADVANCE\)/u)
-  assert.match(controlled, /document\.addEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u)
-  assert.match(controlled, /document\.visibilityState === ["']hidden["']\) event\.stopImmediatePropagation\(\)/u)
+  assert.match(
+    controlled,
+    /document\.addEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u
+  )
+  assert.match(
+    controlled,
+    /document\.visibilityState === ["']hidden["']\) event\.stopImmediatePropagation\(\)/u
+  )
   assert.match(controlled, /await page\.clock\.fastForward\(1_000\)/u)
   assert.match(controlled, /toBeGreaterThan\(unpausedProgress \+ 10\)/u)
-  assert.match(controlled, /document\.removeEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u)
+  assert.match(
+    controlled,
+    /document\.removeEventListener\(["']visibilitychange["'], blockHiddenVisibility, true\)/u
+  )
   assert.match(controlled, /finally \{[\s\S]*?removeBlocker\(\), removeVisibilityBlocker\)/u)
   assert.match(controlled, /await removeVisibilityBlocker\.dispose\(\)/u)
   assert.match(controlled, /await page\.clock\.resume\(\)/u)
@@ -116,8 +128,8 @@ test("story viewer live acceptance checks seeded keyboard trap and focus cleanup
   )
   assert.match(spec, /await loginAs\(page,\s*["']student["']\)/u)
   assert.match(spec, /await page\.goto\(["']\/dashboard["']\)/u)
-  assert.match(spec, /page\.route\(["']https:\/\/picsum\.photos\/\*\*["']/u)
-  assert.match(spec, /contentType:\s*["']image\/svg\+xml["']/u)
+  // Seeded covers are served by the stand, so the spec stubs no image host.
+  assert.doesNotMatch(spec, /picsum|page\.route\(/u)
   assert.match(spec, /getByRole\(["']dialog["']\)/u)
   assert.match(spec, /toHaveAccessibleName\(SEEDED_STORY_TITLE\)/u)
   assert.match(spec, /toBeFocused\(\)/u)
@@ -245,7 +257,11 @@ test("clock-controlled visibility contract rejects removed pause and resume orac
   for (const [label, before, after] of mutations) {
     assert.ok(controlled.includes(before), `${label} mutation must change the controlled case`)
     assert.throws(
-      () => assertControlledVisibilityProof(prefix + controlled.replace(before, after), dashboardStories),
+      () =>
+        assertControlledVisibilityProof(
+          prefix + controlled.replace(before, after),
+          dashboardStories
+        ),
       { name: "AssertionError" },
       `${label} mutation must be rejected`
     )

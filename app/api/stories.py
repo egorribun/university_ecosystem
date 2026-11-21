@@ -38,7 +38,11 @@ from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import get_cache
 from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
-from app.services.story_service import InvalidStoryPeriod, StoryService
+from app.services.story_service import (
+    InvalidStoryPeriod,
+    StoryCoverNotUploaded,
+    StoryService,
+)
 
 logger = get_logger(__name__)
 
@@ -98,6 +102,12 @@ async def create_story(
             "validation.stories.expires_after_publish",
             locale,
         )
+    except StoryCoverNotUploaded:
+        raise_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "validation.stories.cover_not_uploaded",
+            locale,
+        )
     # Note: Explicitly invalidating wildcard keys because the inline keys generator was removed
     cache = get_cache()
     await cache.invalidate("ue:stories:list:*", _STORIES_LIST_CACHE_KEY)
@@ -128,6 +138,12 @@ async def update_story(
         raise_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "validation.stories.expires_after_publish",
+            locale,
+        )
+    except StoryCoverNotUploaded:
+        raise_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "validation.stories.cover_not_uploaded",
             locale,
         )
     except ValueError:

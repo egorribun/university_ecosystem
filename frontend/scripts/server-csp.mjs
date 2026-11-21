@@ -67,7 +67,8 @@ export function buildNodeCspHeaders(nonce, { upgradeInsecureRequests = true } = 
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ` +
       "https://accounts.google.com 'report-sample' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: https: blob:",
+    // Spotify album art is the only third-party image (ADR-047, 2026-11-21).
+    "img-src 'self' data: blob: https://i.scdn.co",
     `connect-src ${connectSources}`,
     "font-src 'self' data: https://fonts.gstatic.com",
     "object-src 'none'",

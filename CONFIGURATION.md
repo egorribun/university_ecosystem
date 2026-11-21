@@ -404,7 +404,7 @@ and are not part of this inventory.
 | `RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP` | Email OTP issue, verify or resend actions per client IP within one OTP lifetime; the per-user budget stays 5. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5` |
 | `RATE_LIMIT_NEWS` | Rate limit news. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
 | `RATE_LIMIT_SENSITIVE` | Rate limit sensitive. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
-| `RATE_LIMIT_STATIC` | Rate limit static. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
+| `RATE_LIMIT_STATIC` | Per-client budget for `/api/v1/img`, separate from `RATE_LIMIT_DEFAULT`, and the per-path limit of the image proxy and static file routes. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
 | `RATE_LIMIT_STORIES` | Rate limit stories. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
 | `RATE_LIMIT_UPLOAD` | Rate limit upload. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |
 | `RATE_LIMIT_USERS_AVATAR` | Rate limit users avatar. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |
@@ -492,6 +492,7 @@ and are not part of this inventory.
 | `IMAGE_MAX_WIDTH` | Image max width. Defined in `app/core/config/storage.py`. | `1920` |
 | `IMAGE_PROXY_ALLOWED_WIDTHS` | Image proxy allowed widths. Defined in `app/core/config/storage.py`. | `100,200,400,800,1200,1600` |
 | `IMAGE_PROXY_ENABLED` | Image proxy enabled. Defined in `app/core/config/storage.py`. | `true` |
+| `IMAGE_PROXY_MAX_CONCURRENCY` | Maximum simultaneous image encoders per backend worker process (1–8). Each event loop reserves a slot before fetching an image for encoding. Cache hits and untransformed originals bypass the queue. Defined in `app/core/config/storage.py`. | `1` |
 | `MINIO_BUCKET` | Minio bucket. Defined in `app/core/config/storage.py`. | `uploads` |
 | `MINIO_ENDPOINT` | Minio endpoint. Defined in `app/core/config/storage.py`. | `minio:9000` |
 | `MINIO_SECURE` | Minio secure. Defined in `app/core/config/storage.py`. | `false` |

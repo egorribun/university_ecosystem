@@ -72,7 +72,9 @@ describe("Footer mutation contracts", () => {
 
     expect(useTranslation).toHaveBeenCalledWith(["navigation"])
     expect(screen.getByRole("heading", { level: 2, name: "GUU Ecosystem" })).toBeInTheDocument()
-    expect(screen.getByAltText("GUU logo")).toHaveAttribute("data-responsive-widths", "48,64,96")
+    // The bundled logo has no width variants, so the footer requests none.
+    expect(screen.getByAltText("GUU logo")).not.toHaveAttribute("data-responsive-widths")
+    expect(screen.getByAltText("GUU logo")).not.toHaveAttribute("sizes")
     expect(screen.getByText("Everything you need in one place.")).toBeInTheDocument()
     expect(screen.getByRole("heading", { level: 3, name: "Explore" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { level: 3, name: "Profile" })).toBeInTheDocument()

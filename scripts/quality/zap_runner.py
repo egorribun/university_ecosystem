@@ -23,12 +23,18 @@ from scripts.quality.zap_run_provenance import finish_run, start_run
 from scripts.quality.zap_sarif_producer import read_payload
 
 # Target is read inside the container, never included in host command arguments.
+# The CSRF keys make rules 10202 and 20012 report forms marked
+# data-csrf="header" as informational. Those forms are submitted by script with
+# the double-submit token in a header (frontend/src/utils/apiSubmittedForm.ts;
+# owner-approved 2026-11-21, ADR-047). Unmarked forms keep their medium risk.
 _CONTAINER_ENTRY = (
     "import os;from pathlib import Path;"
     "target=Path('/zap/target.txt').read_text(encoding='utf-8');"
     "os.execvp('zap-full-scan.py',['zap-full-scan.py','-t',target,"
     "'-c','/zap/rules.tsv','-J','report_json.json','-a','-j','--ajax-spider','-m','10',"
-    "'-z','-config ajaxSpider.maxDuration=10 -config scanner.maxScanDurationInMins=30',"
+    "'-z','-config ajaxSpider.maxDuration=10 -config scanner.maxScanDurationInMins=30"
+    " -config rules.csrf.ignore.attname=data-csrf"
+    " -config rules.csrf.ignore.attvalue=header',"
     "'-T','60','--hook=/zap/origin-hook.py'])"
 )
 

@@ -8584,6 +8584,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     RuntimeObservationPhase,
                     SendPhase,
                     valid_backend_diagnostic,
+                    valid_inventory_diagnostic,
                 )
                 from scripts.owned_nats_outage_cli import run_owned_nats_outage
 
@@ -8614,6 +8615,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                         or result.outcome is not OutageOutcome.FAILED
                         or result.stage is not OutageStage.PREFLIGHT
                         or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                    )
+                )
+                or (
+                    result.inventory_diagnostic is not None
+                    and (
+                        not valid_inventory_diagnostic(result.inventory_diagnostic)
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.PREFLIGHT
+                        or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                        or result.runtime_diagnostic
+                        is not RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME
                     )
                 )
                 or (
@@ -8672,6 +8684,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.runtime_diagnostic is None
                     else f" runtime_diagnostic={result.runtime_diagnostic.value}"
                 )
+                inventory_diagnostic = (
+                    ""
+                    if result.inventory_diagnostic is None
+                    else (
+                        f" inventory_invariant={result.inventory_diagnostic.invariant.value}"
+                        f" inventory_service={result.inventory_diagnostic.service}"
+                    )
+                )
                 broker_diagnostic = (
                     ""
                     if result.broker_diagnostic is None
@@ -8701,7 +8721,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}{diagnostic}{broker_diagnostic}{send_phase}"
+                    f"{checkpoint}{diagnostic}{inventory_diagnostic}"
+                    f"{broker_diagnostic}{send_phase}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

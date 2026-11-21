@@ -337,7 +337,7 @@ Inline ---
 
   it("renders rich inline tokens and tight, loose, ordered, and aligned Markdown blocks", () => {
     const content = [
-      '## \\*Accessible\\* **heading** `code` ![Campus &amp; City](https://example.edu/campus.png "Campus photo") [Guide](https://example.edu/guide "Read guide")',
+      '## \\*Accessible\\* **heading** `code` ![Campus &amp; City](/static/news_images/campus.png "Campus photo") [Guide](https://example.edu/guide "Read guide")',
       "",
       "Escaped \\*literal\\*, *italic*, ~~outdated~~, and `inline code`.",
       "Hard break  ",
@@ -592,7 +592,7 @@ Inline ---
     const content =
       "# Heading\n\n**Bold** text\n\n" +
       "| A | B |\n| --- | --- |\n| One | Two |\n\n" +
-      "![Campus](https://example.edu/campus.png)\n\n---"
+      "![Campus](/static/news_images/campus.png)\n\n---"
     const container = document.createElement("div")
     container.innerHTML = renderServerMarkup(content)
     document.body.append(container)
@@ -614,7 +614,7 @@ Inline ---
       expect(container.querySelector("table td")).toHaveTextContent("One")
       expect(container.querySelector("img")).toHaveAttribute(
         "src",
-        "https://example.edu/campus.png"
+        "/static/news_images/campus.png"
       )
       expect(container.querySelector("hr")).toBeInTheDocument()
       await act(async () => root?.unmount())
@@ -632,7 +632,7 @@ Inline ---
           content={
             "# Campus\n\n| A | B |\n| --- | --- |\n| One | Two |\n\n" +
             "---\n\n" +
-            '<img src="https://example.edu/image.png" onerror="alert(1)">' +
+            '<img src="/static/news_images/image.png" onerror="alert(1)">' +
             "<script>alert(2)</script>"
           }
         />
@@ -661,7 +661,7 @@ Inline ---
           content={
             "# Campus\n\n## Background\n\n**Readable** update\n\n- first item\n- [Docs](https://example.edu/docs)\n\n" +
             "| A | B |\n| --- | --- |\n| One | Two |\n\n" +
-            "![Campus](https://example.edu/campus.png)\n\n---\n\n" +
+            "![Campus](/static/news_images/campus.png)\n\n---\n\n" +
             "<strong>Approved raw formatting</strong>"
           }
         />
@@ -675,7 +675,7 @@ Inline ---
       expect(body?.querySelectorAll("li")).toHaveLength(2)
       expect(body?.querySelector("a")).toHaveAttribute("href", "https://example.edu/docs")
       expect(body?.querySelector("table td")).toHaveTextContent("One")
-      expect(body?.querySelector("img")).toHaveAttribute("src", "https://example.edu/campus.png")
+      expect(body?.querySelector("img")).toHaveAttribute("src", "/static/news_images/campus.png")
       expect(body?.querySelector("hr")).toBeInTheDocument()
       expect(
         Array.from(body?.querySelectorAll("strong") ?? []).map((element) => element.textContent)

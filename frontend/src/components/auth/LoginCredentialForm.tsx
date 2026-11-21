@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Checkbox } from "@/components/ui/Checkbox"
 import type { useLoginForm } from "@/hooks/auth/useLoginFlow"
+import { API_SUBMITTED_FORM } from "@/utils/apiSubmittedForm"
 
 type LoginCredentialFormProps = {
   form: ReturnType<typeof useLoginForm>
@@ -47,6 +48,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   return (
     <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
       <form
+        {...API_SUBMITTED_FORM}
         method="post"
         noValidate
         autoComplete="on"

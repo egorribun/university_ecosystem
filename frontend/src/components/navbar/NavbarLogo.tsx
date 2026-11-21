@@ -6,7 +6,6 @@ import { type TFunction } from "i18next"
 import guuLogo from "@/assets/guu_logo.png?url&no-inline"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
-import { breakpoints } from "@/theme/tokens"
 
 interface NavbarLogoProps {
   t: TFunction
@@ -80,8 +79,6 @@ export const NavbarLogo = ({
           className="object-contain w-3/4 h-3/4"
           loading="eager"
           fetchPriority="high"
-          sizes={`(min-width: ${breakpoints.wide}) 2.75rem, (min-width: ${breakpoints.mobile}) 2.25rem, 1.625rem`}
-          responsiveWidths={[28, 48, 64]}
           decoding="async"
         />
       </div>

@@ -305,8 +305,9 @@ describe("NavbarLogo", () => {
     expect(image()).toHaveAttribute("alt", "navigation:brandAlt")
     expect(image()).toHaveAttribute("loading", "eager")
     expect(image()).toHaveAttribute("fetchpriority", "high")
-    expect(image()).toHaveAttribute("sizes", expect.stringContaining("min-width"))
-    expect(image()).toHaveAttribute("srcset")
+    // The bundled logo has no width variants, so it carries no srcset or sizes.
+    expect(image()).not.toHaveAttribute("srcset")
+    expect(image()).not.toHaveAttribute("sizes")
 
     view.unmount()
     view = await renderWithRouter({

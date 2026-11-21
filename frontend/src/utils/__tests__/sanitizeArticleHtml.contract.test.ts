@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { sanitizeArticleHtml } from "../sanitizeArticleHtml"
+import { sanitizeArticleHtml, sanitizeArticleUrl } from "../sanitizeArticleHtml"
 
 /**
  * Exact allowlist contract of the article sanitizer: every approved tag and
@@ -68,7 +68,7 @@ describe("sanitizeArticleHtml attributes", () => {
   })
 
   it("drops attributes that no tag allows", () => {
-    const img = first('<img src="https://a.test/x.png" onerror="alert(1)" style="x">', "img")
+    const img = first('<img src="/static/news_images/x.png" onerror="alert(1)" style="x">', "img")
     expect(img?.getAttributeNames()).toEqual(["src"])
   })
 
@@ -77,7 +77,7 @@ describe("sanitizeArticleHtml attributes", () => {
     expect(link?.getAttribute("title")).toBe("Docs")
     expect(link?.getAttribute("rel")).toBe("author")
     const img = first(
-      '<img src="https://a.test/x.png" alt="A" title="T" width="10" height="20">',
+      '<img src="/static/news_images/x.png" alt="A" title="T" width="10" height="20">',
       "img"
     )
     expect(img?.getAttribute("title")).toBe("T")
@@ -148,7 +148,10 @@ describe("sanitizeArticleHtml attributes", () => {
     ["decoding", "async"],
     ["decoding", "auto"],
   ])("keeps %s=%s regardless of case and padding", (name, value) => {
-    const img = first(`<img src="https://a.test/x.png" ${name}=" ${value.toUpperCase()} ">`, "img")
+    const img = first(
+      `<img src="/static/news_images/x.png" ${name}=" ${value.toUpperCase()} ">`,
+      "img"
+    )
     expect(img?.hasAttribute(name)).toBe(true)
   })
 
@@ -156,7 +159,7 @@ describe("sanitizeArticleHtml attributes", () => {
     ["loading", "soon"],
     ["decoding", "later"],
   ])("drops %s=%s", (name, value) => {
-    const img = first(`<img src="https://a.test/x.png" ${name}="${value}">`, "img")
+    const img = first(`<img src="/static/news_images/x.png" ${name}="${value}">`, "img")
     expect(img?.hasAttribute(name)).toBe(false)
   })
 })
@@ -191,6 +194,26 @@ describe("sanitizeArticleHtml URLs", () => {
     ["a padded webp", " data:image/webp;base64,UklGR g== "],
   ])("keeps an inline image data URL with %s", (_label, src) => {
     expect(first(`<img src="${src}" alt="">`, "img")?.hasAttribute("src")).toBe(true)
+  })
+
+  it.each(["/static/news_images/x.png", "news_images/x.png", "./x.png", "?v=2"])(
+    "keeps the same-site image %s",
+    (src) => {
+      expect(first(`<img src="${src}" alt="">`, "img")?.getAttribute("src")).toBe(src)
+      expect(sanitizeArticleUrl("src", src)).toBe(src)
+    }
+  )
+
+  it.each([
+    ["an https origin", "https://images.example.test/x.png"],
+    ["an http origin", "http://images.example.test/x.png"],
+    ["a protocol-relative origin", "//images.example.test/x.png"],
+    ["a backslash authority", "/\\images.example.test/x.png"],
+    ["the parser base itself", "https://article.invalid/x.png"],
+  ])("drops an image from %s while keeping the same link", (_label, url) => {
+    expect(first(`<img src="${url}" alt="">`, "img")?.hasAttribute("src")).toBe(false)
+    expect(sanitizeArticleUrl("src", url)).toBeNull()
+    expect(sanitizeArticleUrl("href", url)).toBe(url)
   })
 
   it.each([

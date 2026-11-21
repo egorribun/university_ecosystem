@@ -248,7 +248,7 @@ describe("sanitizeArticleHtml", () => {
     const html =
       "<h2>Title</h2><p>Some <b>bold</b> <i>italic</i> <strike>old</strike> text.</p><ul><li>Item</li></ul>" +
       '<a href="https://example.com">Link</a>' +
-      '<img src="https://img.example.com/photo.jpg" alt="Photo">'
+      '<img src="/static/news_images/photo.jpg" alt="Photo">'
     expect(sanitizeArticleHtml(html)).toBe(html)
   })
 

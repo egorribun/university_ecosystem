@@ -142,7 +142,7 @@ describe.each([
           ? result.current.coverSrc
           : ""
     if (kind === "avatar") {
-      expect(src).toEqual(expect.stringContaining("gravatar.com/avatar"))
+      expect(src).toBe("/fallbacks/default_avatar.png")
     } else {
       expect(src).toBe("")
     }
@@ -665,7 +665,7 @@ describe.each([
         result.current.handleError({ currentTarget: image } as never)
       })
 
-      expect(image.src).toContain("gravatar.com/avatar/00000000000000000000000000000000")
+      expect(image.src).toContain("/fallbacks/default_avatar.png")
     })
   }
 

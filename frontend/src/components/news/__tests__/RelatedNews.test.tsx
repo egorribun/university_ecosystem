@@ -16,7 +16,7 @@ const ITEMS = [
     title_en: "New Interdisciplinary Research Lab",
     content: "Lab opens this spring.",
     created_at: "2026-05-20T09:00:00Z",
-    image_url: "https://picsum.photos/seed/related-n1/400/300",
+    image_url: "/api/v1/img/news_images/related-n1.webp",
     image_url_optimized: null,
   },
   {

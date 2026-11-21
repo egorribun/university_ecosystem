@@ -244,7 +244,7 @@ export default function Dashboard() {
         {/* Hero — greeting card + stories inside hero at ≥1220px */}
         {/* Wave 142 SW1 — Path C: suppress DashboardHero (large greeting card
             + ~150-200 nodes including time/date layout, badges, decorative
-            elements) + storiesSlot (8 picsum thumbnails + carousel scroll)
+            elements) + storiesSlot (8 story thumbnails + carousel scroll)
             under VITE_E2E_MODE. Stub div preserves layout slot so the cards
             grid below sits at the correct y-position for the test build. */}
         {!E2E_MODE && (

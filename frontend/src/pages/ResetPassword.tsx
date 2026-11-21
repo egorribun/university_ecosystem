@@ -34,6 +34,7 @@ import {
   clearLegacyResetTokenForMigration,
   type CapturedLegacyResetToken,
 } from "@/features/auth/legacyResetTokenState"
+import { API_SUBMITTED_FORM } from "@/utils/apiSubmittedForm"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
 import {
   captureActiveTelemetryContext,
@@ -514,6 +515,8 @@ export default function ResetPassword() {
   })
 
   const { password, confirmPassword } = watch()
+  // Keep SSR and the first client render inert until form handlers attach.
+  const controlsDisabled = !tokenSourceReady || isSubmitting
 
   // Password analysis effect
   useEffect(() => {
@@ -712,6 +715,7 @@ export default function ResetPassword() {
                   </div>
 
                   <form
+                    {...API_SUBMITTED_FORM}
                     method="post"
                     onSubmit={handleTelemetrySubmit}
                     autoComplete="on"
@@ -732,7 +736,7 @@ export default function ResetPassword() {
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
                           autoComplete="new-password"
-                          disabled={isSubmitting}
+                          disabled={controlsDisabled}
                           className="rounded-lg"
                           error={!!errors.password}
                           helperText={
@@ -742,6 +746,7 @@ export default function ResetPassword() {
                             <button
                               id="reset-password-toggle"
                               type="button"
+                              disabled={controlsDisabled}
                               onClick={() => setShowPass(!showPass)}
                               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/[calc(var(--opacity-subtle)*100%)]"
                               aria-label={t(
@@ -820,7 +825,7 @@ export default function ResetPassword() {
                           }
                           fullWidth
                           autoComplete="new-password"
-                          disabled={isSubmitting}
+                          disabled={controlsDisabled}
                           className="rounded-lg"
                           error={!!errors.confirmPassword}
                           helperText={
@@ -832,6 +837,7 @@ export default function ResetPassword() {
                             <button
                               id="reset-confirm-toggle"
                               type="button"
+                              disabled={controlsDisabled}
                               onClick={() => setShowConfirm(!showConfirm)}
                               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/[calc(var(--opacity-subtle)*100%)]"
                               aria-label={t(
@@ -879,7 +885,7 @@ export default function ResetPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass"
-                        disabled={isSubmitting}
+                        disabled={controlsDisabled}
                         loading={isSubmitting}
                         startIcon={<LockIcon size={20} />}
                       >

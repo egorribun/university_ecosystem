@@ -1,7 +1,6 @@
 import { expect, loginAs, test } from "./fixtures"
 
 const SEEDED_STORY_TITLE = /(?:Сессия: советы по подготовке|Exam season: preparation tips)/u
-const SYNTHETIC_STORY_IMAGE = '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3" />'
 const MAX_REDUCED_MOTION_DURATION_MS = 10
 
 function cssTimesInMilliseconds(value: string): number[] {
@@ -16,13 +15,6 @@ test("StoryViewer stays keyboard-operable without meaningful motion under reduce
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.route("https://picsum.photos/**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "image/svg+xml",
-      body: SYNTHETIC_STORY_IMAGE,
-    })
-  )
 
   await loginAs(page, "student")
   await page.goto("/dashboard")

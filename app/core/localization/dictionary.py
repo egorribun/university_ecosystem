@@ -897,6 +897,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Дата окончания публикации должна быть позже даты публикации",
         "en": "The expiration date must be later than the publish date",
     },
+    "validation.stories.cover_not_uploaded": {
+        "ru": "Загрузите обложку истории через форму загрузки",
+        "en": "Upload the story cover through the cover upload",
+    },
     "errors.events.attendance_registration_failed": {
         "ru": "Не удалось зарегистрироваться на мероприятие",
         "en": "Failed to register for the event",

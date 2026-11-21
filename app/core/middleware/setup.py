@@ -105,6 +105,9 @@ def _configure_rate_limiting(app: FastAPI, settings: Settings) -> None:
         "/api/v1/auth/register": settings.rate_limit_auth_register,
         "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
         "/api/v1/users/me": settings.rate_limit_users_me,
+        # One page loads many proxied images; give them their own budget so
+        # they do not exhaust the default API budget of the same client.
+        "/api/v1/img": settings.rate_limit_static,
         "/ws": settings.rate_limit_websocket,
     }
 

@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "description": "Demo images for scripts/seed_demo_data.py. Each file is a one-off download of the picsum.photos seed URL it replaces (owner-approved 2026-11-21), re-encoded as WebP (quality 80) without metadata. Picsum serves Unsplash photographs; author and source are taken from picsum.photos/id/<id>/info.",
+  "license": "Unsplash License",
+  "license_url": "https://unsplash.com/license",
+  "retrieved_on": "2026-11-21",
+  "images": [
+    {
+      "file": "news-01.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news1/800/600",
+      "picsum_id": 171,
+      "author": "Riley Briggs",
+      "source": "https://unsplash.com/photos/cSe3oKQ03OQ"
+    },
+    {
+      "file": "news-02.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news2/800/600",
+      "picsum_id": 979,
+      "author": "Jean-Marie Grange",
+      "source": "https://unsplash.com/photos/85hdWh8KtR4"
+    },
+    {
+      "file": "news-03.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news3/800/600",
+      "picsum_id": 59,
+      "author": "Art Wave",
+      "source": "https://unsplash.com/photos/algEQavPY4M"
+    },
+    {
+      "file": "news-04.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news4/800/600",
+      "picsum_id": 34,
+      "author": "Aleks Dorohovich",
+      "source": "https://unsplash.com/photos/zZvsEMPxjIA"
+    },
+    {
+      "file": "news-05.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news5/800/600",
+      "picsum_id": 268,
+      "author": "davide ragusa",
+      "source": "https://unsplash.com/photos/vc3ZOCf5BN8"
+    },
+    {
+      "file": "news-06.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news6/800/600",
+      "picsum_id": 590,
+      "author": "Edan Cohen",
+      "source": "https://unsplash.com/photos/ptW67z7Y4-s"
+    },
+    {
+      "file": "news-07.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news7/800/600",
+      "picsum_id": 906,
+      "author": "Andras Toth",
+      "source": "https://unsplash.com/photos/E9CrQou9K0Y"
+    },
+    {
+      "file": "news-08.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news8/800/600",
+      "picsum_id": 1078,
+      "author": "Vladimir Kudinov",
+      "source": "https://unsplash.com/photos/KBX9XHk266s"
+    },
+    {
+      "file": "news-09.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news9/800/600",
+      "picsum_id": 639,
+      "author": "Ilya",
+      "source": "https://unsplash.com/photos/D62hQefhteg"
+    },
+    {
+      "file": "news-10.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/news10/800/600",
+      "picsum_id": 876,
+      "author": "Carmine De Fazio",
+      "source": "https://unsplash.com/photos/3ytjETpQMNY"
+    },
+    {
+      "file": "event-01.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event1/800/600",
+      "picsum_id": 793,
+      "author": "Aaron Burden",
+      "source": "https://unsplash.com/photos/df47UDrfi8I"
+    },
+    {
+      "file": "event-02.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event2/800/600",
+      "picsum_id": 300,
+      "author": "Pavel Voinov",
+      "source": "https://unsplash.com/photos/2f_CnEeZsVg"
+    },
+    {
+      "file": "event-03.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event3/800/600",
+      "picsum_id": 507,
+      "author": "Jeff Sheldon",
+      "source": "https://unsplash.com/photos/oOFrXiz8-0A"
+    },
+    {
+      "file": "event-04.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event4/800/600",
+      "picsum_id": 174,
+      "author": "Linh Nguyen",
+      "source": "https://unsplash.com/photos/YYegjUYIVeg"
+    },
+    {
+      "file": "event-05.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event5/800/600",
+      "picsum_id": 447,
+      "author": "Joshua Earle",
+      "source": "https://unsplash.com/photos/YxJ5AfKFgFE"
+    },
+    {
+      "file": "event-06.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event6/800/600",
+      "picsum_id": 794,
+      "author": "Lauren Coleman",
+      "source": "https://unsplash.com/photos/shy0cEi7h1o"
+    },
+    {
+      "file": "event-07.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event7/800/600",
+      "picsum_id": 466,
+      "author": "Caleb George",
+      "source": "https://unsplash.com/photos/zZzKLzKP24o"
+    },
+    {
+      "file": "event-08.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event8/800/600",
+      "picsum_id": 203,
+      "author": "Diogo Tavares",
+      "source": "https://unsplash.com/photos/PFZTiiJnjag"
+    },
+    {
+      "file": "event-09.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event9/800/600",
+      "picsum_id": 802,
+      "author": "Sergey Zolkin",
+      "source": "https://unsplash.com/photos/m9qMoh-scfE"
+    },
+    {
+      "file": "event-10.webp",
+      "width": 800,
+      "height": 600,
+      "replaces": "https://picsum.photos/seed/event10/800/600",
+      "picsum_id": 670,
+      "author": "Gabriel Garcia Marengo",
+      "source": "https://unsplash.com/photos/a9nu_KeLdm8"
+    },
+    {
+      "file": "story-01.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story1/400/700",
+      "picsum_id": 546,
+      "author": "Hartmut Tobies",
+      "source": "https://unsplash.com/photos/O9TEKuI1Icw"
+    },
+    {
+      "file": "story-02.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story2/400/700",
+      "picsum_id": 369,
+      "author": "Lou Levit",
+      "source": "https://unsplash.com/photos/umcc42T8fD4"
+    },
+    {
+      "file": "story-03.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story3/400/700",
+      "picsum_id": 490,
+      "author": "Todd Quackenbush",
+      "source": "https://unsplash.com/photos/x5SRhkFajrA"
+    },
+    {
+      "file": "story-04.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story4/400/700",
+      "picsum_id": 657,
+      "author": "Justin Leibow",
+      "source": "https://unsplash.com/photos/g8kuMNaxbDE"
+    },
+    {
+      "file": "story-05.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story5/400/700",
+      "picsum_id": 391,
+      "author": "Sarah Holmes",
+      "source": "https://unsplash.com/photos/TlLgCqWEzUQ"
+    },
+    {
+      "file": "story-06.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story6/400/700",
+      "picsum_id": 769,
+      "author": "Blake Richard Verdoorn",
+      "source": "https://unsplash.com/photos/SbcqUQ4iEcI"
+    },
+    {
+      "file": "story-07.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story7/400/700",
+      "picsum_id": 855,
+      "author": "Rodion Kutsaev",
+      "source": "https://unsplash.com/photos/IJ25m7fXqtk"
+    },
+    {
+      "file": "story-08.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story8/400/700",
+      "picsum_id": 401,
+      "author": "Austin Ban",
+      "source": "https://unsplash.com/photos/0fjGQmYCRW8"
+    },
+    {
+      "file": "story-09.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story9/400/700",
+      "picsum_id": 742,
+      "author": "Anthony DELANOIX",
+      "source": "https://unsplash.com/photos/ciJJ57qsQLs"
+    },
+    {
+      "file": "story-10.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story10/400/700",
+      "picsum_id": 515,
+      "author": "Jeff Sheldon",
+      "source": "https://unsplash.com/photos/uWwN03Mg4Wg"
+    },
+    {
+      "file": "story-11.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story11/400/700",
+      "picsum_id": 465,
+      "author": "Paula Vermeulen",
+      "source": "https://unsplash.com/photos/_f2m3mEkaaU"
+    },
+    {
+      "file": "story-12.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story12/400/700",
+      "picsum_id": 797,
+      "author": "Gabriel Santiago",
+      "source": "https://unsplash.com/photos/1vYkQVDWXl0"
+    },
+    {
+      "file": "story-13.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story13/400/700",
+      "picsum_id": 64,
+      "author": "Alexander Shustov",
+      "source": "https://unsplash.com/photos/AHBiSKaENwc"
+    },
+    {
+      "file": "story-14.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story14/400/700",
+      "picsum_id": 373,
+      "author": "Jay Wennington",
+      "source": "https://unsplash.com/photos/i8CYGnoerR0"
+    },
+    {
+      "file": "story-15.webp",
+      "width": 400,
+      "height": 700,
+      "replaces": "https://picsum.photos/seed/story15/400/700",
+      "picsum_id": 361,
+      "author": "Lacey Raper",
+      "source": "https://unsplash.com/photos/ey1Obz7I2fw"
+    }
+  ]
+}

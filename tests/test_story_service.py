@@ -6,7 +6,10 @@ import pytest
 
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
-from app.services.story_service import StoryService
+from app.services.story_service import StoryCoverNotUploaded, StoryService
+
+# What POST /stories/upload_cover returns with the default static storage.
+NEW_COVER_URL = f"/static/story_covers/stories_{'a' * 32}.webp"
 
 
 @pytest.fixture
@@ -145,7 +148,7 @@ async def test_update_story_success_with_cover_change(mock_uow, monkeypatch):
 
     new_story = MagicMock()
     new_story.id = story_id
-    new_story.cover_url = "new_cover.jpg"
+    new_story.cover_url = NEW_COVER_URL
     mock_uow.stories.update.return_value = new_story
     mock_uow.stories._ensure_utc = lambda x: x
 
@@ -153,7 +156,7 @@ async def test_update_story_success_with_cover_change(mock_uow, monkeypatch):
         title="Updated Title",
         published_at=now,
         expires_at=now + datetime.timedelta(days=1),
-        cover_url="new_cover.jpg",
+        cover_url=NEW_COVER_URL,
     )
 
     backend = _install_storage_delete_spy(monkeypatch)
@@ -178,10 +181,10 @@ async def test_update_story_retains_legacy_cover_without_storage_call(
 
     new_story = MagicMock()
     new_story.id = story_id
-    new_story.cover_url = "new_cover.jpg"
+    new_story.cover_url = NEW_COVER_URL
     mock_uow.stories.update.return_value = new_story
 
-    data = schemas.StoryUpdate(cover_url="new_cover.jpg")
+    data = schemas.StoryUpdate(cover_url=NEW_COVER_URL)
     backend = _install_storage_delete_spy(monkeypatch)
     res = await service.update_story(story_id, data)
 
@@ -269,7 +272,7 @@ async def test_update_shared_story_cover_retains_file_for_other_story(
     monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
 
     service = StoryService(uow_from_session(db_session))
-    new_url = "https://images.example.test/replacement.png"
+    new_url = NEW_COVER_URL
     updated = await service.update_story(
         first.id, schemas.StoryUpdate(cover_url=new_url)
     )
@@ -334,9 +337,79 @@ async def test_story_cover_remains_when_update_commit_rolls_back(
     monkeypatch.setattr(uow, "commit", fail_commit)
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.update_story(
-            story.id, schemas.StoryUpdate(cover_url="new-cover.png")
+            story.id, schemas.StoryUpdate(cover_url=NEW_COVER_URL)
         )
 
     await db_session.refresh(story)
     assert story.cover_url == cover_url
     assert cover_path.exists()
+
+
+@pytest.mark.parametrize(
+    "cover_url",
+    [
+        "https://images.example.test/cover.png",
+        "//images.example.test/cover.png",
+        "/static/news_images/news_" + "a" * 32 + ".png",
+        "/static/story_covers/demo_" + "a" * 32 + ".webp",
+        "/static/story_covers/stories_" + "a" * 31 + ".webp",
+        "/static/story_covers/stories_" + "a" * 32 + ".gif",
+        "/static//story_covers/stories_" + "a" * 32 + ".webp",
+    ],
+)
+@pytest.mark.asyncio
+async def test_create_story_rejects_a_cover_that_is_not_a_story_upload(
+    mock_uow, cover_url
+):
+    service = StoryService(mock_uow)
+    data = schemas.StoryCreate(title="T", short_text="S", cover_url=cover_url)
+
+    with pytest.raises(StoryCoverNotUploaded):
+        await service.create_story(data, created_by=uuid.uuid4())
+    mock_uow.stories.create.assert_not_awaited()
+
+
+@pytest.mark.parametrize("cover_url", [None, "", NEW_COVER_URL])
+@pytest.mark.asyncio
+async def test_create_story_accepts_no_cover_or_an_uploaded_cover(mock_uow, cover_url):
+    service = StoryService(mock_uow)
+    data = schemas.StoryCreate(title="T", short_text="S", cover_url=cover_url)
+
+    await service.create_story(data, created_by=uuid.uuid4())
+    mock_uow.stories.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_story_rejects_a_new_external_cover_before_writing(mock_uow):
+    service = StoryService(mock_uow)
+    mock_uow.stories.get.return_value = MagicMock(cover_url=NEW_COVER_URL)
+
+    with pytest.raises(StoryCoverNotUploaded):
+        await service.update_story(
+            uuid.uuid4(),
+            schemas.StoryUpdate(cover_url="https://images.example.test/cover.png"),
+        )
+    mock_uow.stories.update.assert_not_awaited()
+    mock_uow.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("current", "requested"),
+    [
+        (
+            "https://legacy.example.test/cover.png",
+            "https://legacy.example.test/cover.png",
+        ),
+        ("https://legacy.example.test/cover.png", None),
+        ("https://legacy.example.test/cover.png", ""),
+    ],
+)
+@pytest.mark.asyncio
+async def test_update_story_keeps_or_clears_a_legacy_cover(
+    mock_uow, current, requested
+):
+    service = StoryService(mock_uow)
+    mock_uow.stories.get.return_value = MagicMock(cover_url=current)
+
+    await service.update_story(uuid.uuid4(), schemas.StoryUpdate(cover_url=requested))
+    mock_uow.stories.update.assert_awaited_once()

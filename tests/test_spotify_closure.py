@@ -535,6 +535,55 @@ async def test_now_playing_retries_after_unauthorized_and_succeeds() -> None:
 
 
 @pytest.mark.asyncio
+async def test_now_playing_keeps_only_album_images_on_the_csp_origin() -> None:
+    from app.api import spotify
+
+    user = _user()
+    db = AsyncMock()
+    listed = "https://i.scdn.co/image/ab67616d0000b273listed"
+    playing = Response(
+        200,
+        json={
+            "is_playing": True,
+            "item": {
+                "id": "id",
+                "name": "name",
+                "artists": [{"name": "artist"}],
+                "album": {
+                    "name": "album",
+                    "images": [
+                        "not-an-object",
+                        {"height": 640},
+                        {"url": "https://img.example/cover.jpg"},
+                        {"url": listed},
+                        {"url": "https://i.scdn.co/image/second"},
+                    ],
+                },
+                "external_urls": {},
+            },
+        },
+    )
+    with (
+        patch.object(
+            spotify, "_ensure_access_token", new=AsyncMock(return_value="token")
+        ),
+        patch.object(
+            spotify,
+            "_spotify_http_client",
+            SimpleNamespace(get=AsyncMock(return_value=playing)),
+        ),
+    ):
+        result = await call_injected(
+            spotify.now_playing,
+            _request(),
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
+    assert result.album_image_url == listed
+    assert user.spotify.last_album_image_url == listed
+
+
+@pytest.mark.asyncio
 async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
     from app.api import spotify
     from app.core.circuit_breaker import CircuitBreakerOpenError

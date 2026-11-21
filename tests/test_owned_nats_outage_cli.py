@@ -907,6 +907,165 @@ def test_outage_facade_attaches_diagnostic_only_to_runtime_preflight(monkeypatch
     assert result.runtime_diagnostic is None
 
 
+@pytest.mark.parametrize("unknown", [False, True])
+def test_main_reports_synthetic_inventory_failure_through_real_facade(
+    monkeypatch, capsys, unknown
+):
+    from scripts.owned_nats_coordinator import run_owned_outage
+
+    ports = FakePorts()
+    target = "caddy" if unknown else "backend"
+    private = "private-service-name"
+    if unknown:
+        ports.owner = replace(
+            ports.owner,
+            selected_services=tuple(
+                private if service == target else service
+                for service in ports.owner.selected_services
+            ),
+        )
+    ports.records = tuple(
+        replace(row, service=private if unknown else target, exit_code=1)
+        if row.service == target
+        else row
+        for row in ports.records
+    )
+    ports.runtime_diagnostic = None
+    monkeypatch.setattr(cli, "_LazyOwnedNatsPorts", lambda *_a, **_k: ports)
+    monkeypatch.setattr(
+        cli.coordinator,
+        "run_owned_outage",
+        lambda _ports, **_k: run_owned_outage(
+            ports, clock=ports.clock, sleep=ports.sleep
+        ),
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+
+    captured = capsys.readouterr()
+    service = "unknown" if unknown else "backend"
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
+        "checkpoint=observe_runtime runtime_diagnostic=inventory_invalid_runtime "
+        f"inventory_invariant=exit_code_nonzero inventory_service={service}\n"
+    )
+    assert private not in captured.err
+    assert "stop_container" not in [call.name for call in ports.calls]
+    assert "send_message_once" not in [call.name for call in ports.calls]
+
+
+@pytest.mark.parametrize("service", ["backend", "unknown"])
+def test_main_formats_only_valid_inventory_failure_detail(monkeypatch, capsys, service):
+    from scripts.owned_nats_coordinator import (
+        InventoryRuntimeDiagnostic,
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+    from scripts.owned_nats_outage import RuntimeInvariant
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+        runtime_diagnostic=RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME,
+        inventory_diagnostic=InventoryRuntimeDiagnostic(
+            RuntimeInvariant.EXIT_CODE_NONZERO, service
+        ),
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: result)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
+        "checkpoint=observe_runtime runtime_diagnostic=inventory_invalid_runtime "
+        f"inventory_invariant=exit_code_nonzero inventory_service={service}\n"
+    )
+
+
+def test_main_rejects_forged_inventory_details_without_raw_values(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        InventoryRuntimeDiagnostic,
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+    from scripts.owned_nats_outage import RuntimeInvariant
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+        runtime_diagnostic=RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    for invalid in (
+        InventoryRuntimeDiagnostic(
+            RuntimeInvariant.EXIT_CODE_NONZERO, "private-service"
+        ),
+        InventoryRuntimeDiagnostic("private-invariant", "backend"),
+        InventoryRuntimeDiagnostic(RuntimeInvariant.EXIT_CODE_NONZERO, True),
+        {"invariant": "private-invariant", "service": "backend"},
+    ):
+        malformed = replace(result, inventory_diagnostic=invalid)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _result=malformed, **_k: _result
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+    mismatched = replace(
+        result,
+        runtime_diagnostic=RuntimeObservationPhase.CONTAINER_IDS_DECODE,
+        inventory_diagnostic=InventoryRuntimeDiagnostic(
+            RuntimeInvariant.EXIT_CODE_NONZERO, "backend"
+        ),
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: mismatched)
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )
+
+    valid_detail = InventoryRuntimeDiagnostic(
+        RuntimeInvariant.EXIT_CODE_NONZERO, "backend"
+    )
+    for outcome, stage, checkpoint in (
+        (OutageOutcome.ACCEPTED, OutageStage.COMPLETE, None),
+        (OutageOutcome.FAILED, OutageStage.PREFLIGHT, OutageCheckpoint.READ_POLICY),
+        (OutageOutcome.FAILED, OutageStage.SEND, OutageCheckpoint.SEND_MESSAGE),
+    ):
+        misplaced = OutageResult(
+            outcome,
+            stage,
+            checkpoint,
+            inventory_diagnostic=valid_detail,
+        )
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _result=misplaced, **_k: _result
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
 def test_main_formats_only_exact_runtime_diagnostic(monkeypatch, capsys):
     from scripts.owned_nats_coordinator import (
         OutageCheckpoint,
@@ -1122,6 +1281,7 @@ def test_broker_diagnostic_field_is_private_and_not_semantic():
         "checkpoint",
         "runtime_diagnostic",
         "broker_diagnostic",
+        "inventory_diagnostic",
         "send_phase",
         "send_http_status",
         "backend_diagnostic",
@@ -1175,6 +1335,7 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
         "checkpoint",
         "runtime_diagnostic",
         "broker_diagnostic",
+        "inventory_diagnostic",
         "send_phase",
         "send_http_status",
         "backend_diagnostic",
@@ -1185,6 +1346,59 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
     annotated = replace(result, runtime_diagnostic=RuntimeObservationPhase.DAEMON)
     assert annotated == result
     assert repr(annotated) == repr(result)
+
+
+def test_inventory_diagnostic_field_is_append_only_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import (
+        InventoryRuntimeDiagnostic,
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+    from scripts.owned_nats_outage import RuntimeInvariant
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+        runtime_diagnostic=RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME,
+    )
+    schema = fields(result)
+    assert tuple(item.name for item in schema) == (
+        "outcome",
+        "stage",
+        "checkpoint",
+        "send_phase",
+        "send_http_status",
+        "backend_diagnostic",
+        "runtime_diagnostic",
+        "broker_diagnostic",
+        "inventory_diagnostic",
+    )
+    assert result.inventory_diagnostic is None
+    assert schema[-1].compare is False
+    assert schema[-1].repr is False
+    assert result == OutageResult(
+        OutageOutcome.FAILED, OutageStage.PREFLIGHT, OutageCheckpoint.READ_POLICY
+    )
+    assert result != OutageResult(OutageOutcome.ACCEPTED, OutageStage.PREFLIGHT)
+    assert result != OutageResult(OutageOutcome.FAILED, OutageStage.COMPLETE)
+    assert repr(result) == (
+        "OutageResult(outcome=<OutageOutcome.FAILED: 'failed'>, "
+        "stage=<OutageStage.PREFLIGHT: 'preflight'>, "
+        "checkpoint=<OutageCheckpoint.OBSERVE_RUNTIME: 'observe_runtime'>)"
+    )
+
+    for detail in (
+        InventoryRuntimeDiagnostic(RuntimeInvariant.EXIT_CODE_NONZERO, "backend"),
+        InventoryRuntimeDiagnostic("private-invariant", "private-service"),
+    ):
+        annotated = replace(result, inventory_diagnostic=detail)
+        assert annotated == result
+        assert repr(annotated) == repr(result)
+        assert "private-invariant" not in repr(annotated)
+        assert "private-service" not in repr(annotated)
 
 
 @pytest.mark.parametrize(

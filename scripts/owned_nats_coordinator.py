@@ -26,19 +26,70 @@ from scripts.owned_nats_outage import (
     MessageIntent,
     OutboxVerdict,
     RestorationVerdict,
+    RuntimeInvariant,
     StoredEventState,
     StoredMessageEvent,
     WorkerPolicy,
     WorkerPolicyVerdict,
+    _evaluate_inventory,
     classify_broker_error,
     classify_outage_attempt,
     classify_outbox_drain,
     validate_broker_receipt,
-    validate_inventory,
     validate_message_correlation,
     validate_restored_inventory,
     validate_worker_policy,
 )
+
+_DIAGNOSTIC_SERVICES = frozenset(
+    {
+        "backend",
+        "caddy",
+        "flagd",
+        "flagd-healthprobe",
+        "frontend",
+        "gateway",
+        "imgproxy",
+        "mailpit",
+        "migrations",
+        "minio",
+        "minio-init",
+        "nats",
+        "notifications-worker",
+        "outbox-worker",
+        "postgres",
+        "postgres-databases-init",
+        "postgres-roles-init",
+        "redis",
+        "revocation-redis",
+        "spicedb",
+        "spicedb-migrate",
+        "tempo",
+        "tempo-healthprobe",
+        "ws-hub",
+    }
+)
+
+
+def _diagnostic_service(service: object) -> str:
+    if type(service) is str and service in _DIAGNOSTIC_SERVICES:
+        return service
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class InventoryRuntimeDiagnostic:
+    invariant: RuntimeInvariant
+    service: str
+
+
+def valid_inventory_diagnostic(value: object) -> bool:
+    return (
+        type(value) is InventoryRuntimeDiagnostic
+        and type(value.invariant) is RuntimeInvariant
+        and type(value.service) is str
+        and (value.service in _DIAGNOSTIC_SERVICES or value.service == "unknown")
+    )
 
 
 @dataclass(frozen=True)
@@ -447,6 +498,9 @@ class OutageResult:
     broker_diagnostic: BrokerProbePhase | None = field(
         default=None, compare=False, repr=False
     )
+    inventory_diagnostic: InventoryRuntimeDiagnostic | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 class WaitVerdict(StrEnum):
@@ -776,6 +830,7 @@ class _Coordinator:
         self.stage = OutageStage.PREFLIGHT
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
         self.runtime_diagnostic: RuntimeObservationPhase | None = None
+        self.inventory_diagnostic: InventoryRuntimeDiagnostic | None = None
         self.broker_diagnostic: BrokerProbePhase | None = None
         self.send_phase: SendPhase | None = None
         self.send_http_status: int | None = None
@@ -800,7 +855,14 @@ class _Coordinator:
             before.daemon_fingerprint == daemon
             and before.resource_fingerprint == owner.compose_resource_fingerprint
         )
-        verdict = validate_inventory(owner.selected_services, before.containers)
+        verdict, violation = _evaluate_inventory(
+            owner.selected_services, before.containers
+        )
+        if violation is not None:
+            invariant, service = violation
+            self.inventory_diagnostic = InventoryRuntimeDiagnostic(
+                invariant, _diagnostic_service(service)
+            )
         if verdict is not InventoryVerdict.VALID:
             self.runtime_diagnostic = {
                 InventoryVerdict.INVALID_SELECTION: (
@@ -1171,6 +1233,14 @@ class _Coordinator:
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT
                 and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                else None
+            ),
+            inventory_diagnostic=(
+                self.inventory_diagnostic
+                if self.stage is OutageStage.PREFLIGHT
+                and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                and self.runtime_diagnostic
+                is RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME
                 else None
             ),
             broker_diagnostic=(

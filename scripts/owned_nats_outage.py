@@ -35,6 +35,18 @@ class InventoryVerdict(StrEnum):
     UNHEALTHY = "unhealthy"
 
 
+class RuntimeInvariant(StrEnum):
+    RUNNING_TYPE = "running_type"
+    RUNNING_STATE = "running_state"
+    STATUS = "status"
+    RESTART_COUNT_TYPE = "restart_count_type"
+    RESTART_COUNT_NEGATIVE = "restart_count_negative"
+    EXIT_CODE_TYPE = "exit_code_type"
+    EXIT_CODE_NONZERO = "exit_code_nonzero"
+    OOM_KILLED_TYPE = "oom_killed_type"
+    OOM_KILLED = "oom_killed"
+
+
 @dataclass(frozen=True)
 class ContainerSnapshot:
     """Identity digest uses live_stand's existing canonical inspect material."""
@@ -50,18 +62,44 @@ class ContainerSnapshot:
     oom_killed: bool
 
 
-def validate_inventory(
+def _invalid_runtime_invariant(record: ContainerSnapshot) -> RuntimeInvariant | None:
+    """Name the first failed runtime invariant without returning its value."""
+    initializer = record.service in _INITIALIZERS
+    running: object = record.running
+    if type(running) is not bool:
+        return RuntimeInvariant.RUNNING_TYPE
+    if running != (not initializer):
+        return RuntimeInvariant.RUNNING_STATE
+    if record.status != ("exited" if initializer else "running"):
+        return RuntimeInvariant.STATUS
+    if type(record.restart_count) is not int:
+        return RuntimeInvariant.RESTART_COUNT_TYPE
+    if record.restart_count < 0:
+        return RuntimeInvariant.RESTART_COUNT_NEGATIVE
+    if type(record.exit_code) is not int:
+        return RuntimeInvariant.EXIT_CODE_TYPE
+    if record.exit_code != 0:
+        return RuntimeInvariant.EXIT_CODE_NONZERO
+    oom_killed: object = record.oom_killed
+    if type(oom_killed) is not bool:
+        return RuntimeInvariant.OOM_KILLED_TYPE
+    if oom_killed:
+        return RuntimeInvariant.OOM_KILLED
+    return None
+
+
+def _evaluate_inventory(
     selected_services: tuple[str, ...],
     records: tuple[ContainerSnapshot, ...],
-) -> InventoryVerdict:
-    """Validate a complete snapshot against an already authenticated Core selection."""
+) -> tuple[InventoryVerdict, tuple[RuntimeInvariant, str] | None]:
+    """Validate a snapshot and retain only the first runtime violation privately."""
     selected = set(selected_services)
     if (
         not selected
         or len(selected) != len(selected_services)
         or not _REQUIRED_HEALTHY <= selected
     ):
-        return InventoryVerdict.INVALID_SELECTION
+        return InventoryVerdict.INVALID_SELECTION, None
 
     services = {record.service for record in records}
     container_ids = {record.container_id for record in records}
@@ -70,36 +108,33 @@ def validate_inventory(
         or len(services) != len(records)
         or len(container_ids) != len(records)
     ):
-        return InventoryVerdict.INVALID_IDENTITY
+        return InventoryVerdict.INVALID_IDENTITY, None
 
     for record in records:
         if (
             _IDENTITY.fullmatch(record.container_id) is None
             or _IDENTITY.fullmatch(record.identity) is None
         ):
-            return InventoryVerdict.INVALID_IDENTITY
+            return InventoryVerdict.INVALID_IDENTITY, None
 
-        initializer = record.service in _INITIALIZERS
-        expected_running = not initializer
-        if (
-            type(record.running) is not bool
-            or record.running != expected_running
-            or record.status != ("exited" if initializer else "running")
-            or type(record.restart_count) is not int
-            or record.restart_count < 0
-            or type(record.exit_code) is not int
-            or record.exit_code != 0
-            or type(record.oom_killed) is not bool
-            or record.oom_killed
-        ):
-            return InventoryVerdict.INVALID_RUNTIME
+        invariant = _invalid_runtime_invariant(record)
+        if invariant is not None:
+            return InventoryVerdict.INVALID_RUNTIME, (invariant, record.service)
 
         if record.health != "healthy" and (
             record.health is not None or record.service in _REQUIRED_HEALTHY
         ):
-            return InventoryVerdict.UNHEALTHY
+            return InventoryVerdict.UNHEALTHY, None
 
-    return InventoryVerdict.VALID
+    return InventoryVerdict.VALID, None
+
+
+def validate_inventory(
+    selected_services: tuple[str, ...],
+    records: tuple[ContainerSnapshot, ...],
+) -> InventoryVerdict:
+    """Validate a complete snapshot against an already authenticated Core selection."""
+    return _evaluate_inventory(selected_services, records)[0]
 
 
 class CorrelationVerdict(StrEnum):

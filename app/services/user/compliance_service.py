@@ -312,6 +312,12 @@ class UserComplianceService:
         from app.core.tenant import require_mvp_tenant
 
         tenant_id = await require_mvp_tenant(self.uow.session)
+        # The HIBP lookup and password hashing below are slow, and hashing waits
+        # for a bounded CPU slot. End the tenant lookup transaction first so
+        # queued registrations do not hold pooled connections while they wait;
+        # the login path releases its lookup the same way. Holding them can
+        # exhaust the per-worker pool, and the gateway then answers 502.
+        await self.uow.commit()
         raw_role = getattr(user_in, "role", None)
         requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
         if requested_role not in (UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN):

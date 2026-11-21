@@ -52,7 +52,7 @@
  */
 
 import { Buffer } from "node:buffer"
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import process from "node:process"
@@ -2321,26 +2321,6 @@ async function main() {
     origin: ORIGIN,
     onCleanupFailure: () => console.error("Owned session or browser cleanup failed."),
     run: async ({ context, ownSession }) => {
-      // Seeded news, event and story covers reference the third-party placeholder CDN
-      // (scripts/seed_demo_data.py). The gate must not depend on that host's uptime, so
-      // exactly this host is answered with a pinned repository fixture (the product's own
-      // missing-image placeholder). Every other external host still reaches the network
-      // and is counted by classifyVisualRequestFailure.
-      const PINNED_EXTERNAL_IMAGE_ROUTE = "https://picsum.photos/**"
-      const PINNED_EXTERNAL_IMAGE_PATH = path.join(
-        PROJECT_ROOT,
-        "public",
-        "fallbacks",
-        "placeholder.png"
-      )
-      const pinnedExternalImage = await readFile(PINNED_EXTERNAL_IMAGE_PATH)
-      await context.route(PINNED_EXTERNAL_IMAGE_ROUTE, (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          body: pinnedExternalImage,
-        })
-      )
       // The dashboard reads current weather straight from the public Open-Meteo API
       // (src/api/weather.ts). Its free tier limits requests per client IP, and a shared
       // hosted runner can exhaust it mid-matrix (4xx on later routes). Answer exactly its
@@ -2402,11 +2382,7 @@ async function main() {
           path.join(outputDir, "matrix.json"),
           JSON.stringify(
             {
-              evidenceKind: "real-authenticated-browser-pinned-external-image-fixture",
-              externalImageFixture: {
-                route: PINNED_EXTERNAL_IMAGE_ROUTE,
-                source: "frontend/public/fallbacks/placeholder.png",
-              },
+              evidenceKind: "real-authenticated-browser-pinned-weather-fixture",
               externalWeatherFixture: {
                 route: PINNED_WEATHER_ROUTE,
                 source: "inline pinned Open-Meteo forecast",

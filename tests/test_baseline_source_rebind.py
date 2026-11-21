@@ -91,8 +91,11 @@ def test_baseline_policy_projection_rejects_identity_changes(field: str) -> None
 
 
 def test_baseline_then_visual_policy_projection_preserves_both_predecessors() -> None:
-    policy = json.loads(
-        (ROOT / "quality/security-false-positive-dispositions.json").read_bytes()
+    # Newer rebinds are projected first; this test covers the two layers below them.
+    policy = verifier_tests._nov21_policy_predecessor(
+        json.loads(
+            (ROOT / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     baseline_previous = verifier_tests._baseline_policy_predecessor(policy)
     assert baseline_previous["records"][471] == policy["records"][471]
