@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -133,6 +134,42 @@ async def test_s3_storage_build_client_production():
         s3 = S3Storage(bucket="test-bucket")
         async with s3._build_aioboto3_client() as client:
             assert client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_s3_storage_reuses_one_session_within_an_event_loop():
+    with patch("aioboto3.Session") as mock_session_cls:
+        mock_session = MagicMock()
+        mock_session.client.return_value.__aenter__.return_value = AsyncMock()
+        mock_session_cls.return_value = mock_session
+
+        s3 = S3Storage(bucket="test-bucket")
+        for _ in range(3):
+            async with s3._build_aioboto3_client():
+                pass
+
+    mock_session_cls.assert_called_once_with()
+    assert mock_session.client.call_count == 3
+
+
+def test_s3_storage_creates_a_new_session_for_a_new_event_loop():
+    with patch("aioboto3.Session") as mock_session_cls:
+        sessions = [MagicMock(), MagicMock()]
+        for session in sessions:
+            session.client.return_value.__aenter__.return_value = AsyncMock()
+        mock_session_cls.side_effect = sessions
+
+        s3 = S3Storage(bucket="test-bucket")
+
+        async def open_client() -> None:
+            async with s3._build_aioboto3_client():
+                pass
+
+        asyncio.run(open_client())
+        asyncio.run(open_client())
+
+    assert mock_session_cls.call_count == 2
+    assert [session.client.call_count for session in sessions] == [1, 1]
 
 
 @pytest.mark.asyncio

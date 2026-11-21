@@ -130,7 +130,9 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 512M
+          # Two idle gunicorn workers and the master used 455 MiB of the former
+          # 512M limit (2026-11-21); 768M matches the Kubernetes memory request.
+          memory: 768M
     logging:
       driver: "json-file"
       options:

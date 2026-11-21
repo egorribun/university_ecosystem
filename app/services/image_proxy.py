@@ -377,7 +377,11 @@ def _process_image(
             buffer = BytesIO()
             if format_pref == "avif":
                 try:
-                    output_img.save(buffer, format="AVIF", quality=60, max_threads=1)
+                    # Speed 8 encodes 768 px about 3x faster than the default
+                    # (6) for about 5% more bytes, on a 0.5-CPU backend.
+                    output_img.save(
+                        buffer, format="AVIF", quality=60, speed=8, max_threads=1
+                    )
                     return buffer.getvalue(), "image/avif"
                 except (OSError, ValueError):
                     # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
