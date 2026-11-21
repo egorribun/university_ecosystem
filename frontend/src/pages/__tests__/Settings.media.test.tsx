@@ -12,7 +12,7 @@ import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tSettings = (key: string, options?: Record<string, unknown>) =>
-  i18n.t(`settings:${key}`, options)
+  options ? i18n.t(`settings:${key}`, options) : i18n.t(`settings:${key}`)
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),

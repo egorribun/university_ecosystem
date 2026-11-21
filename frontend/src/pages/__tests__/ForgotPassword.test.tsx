@@ -9,7 +9,7 @@ import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { server } from "@/tests/mocks/server"
 
-const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
+const tAuth = (key: string, options: Record<string, unknown> = {}) => i18n.t(`auth:${key}`, options)
 
 const startsWithText = (text: string) => (content: string) => content.startsWith(text)
 

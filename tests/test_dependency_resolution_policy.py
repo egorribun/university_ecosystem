@@ -428,13 +428,13 @@ def test_sqlalchemy_20_uses_inline_typing_without_removed_mypy_plugin() -> None:
     assert "sqlalchemy.ext.mypy.plugin" not in plugins
 
 
-# Newest experimental releases that still depend on the 2.12 SDK generation.
+# Exact manifest ranges and resolved releases reviewed for the 2.12 SDK generation.
 OPENTELEMETRY_EXPERIMENTAL_VERSIONS = {
-    "exporter-trace-otlp-http": "0.223.0",
-    "instrumentation": "0.223.0",
-    "instrumentation-fetch": "0.223.0",
-    "instrumentation-user-interaction": "0.67.0",
-    "instrumentation-xml-http-request": "0.223.0",
+    "exporter-trace-otlp-http": ("^0.223.1", "0.223.2"),
+    "instrumentation": ("^0.223.0", "0.223.2"),
+    "instrumentation-fetch": ("^0.223.1", "0.223.2"),
+    "instrumentation-user-interaction": ("^0.67.0", "0.67.0"),
+    "instrumentation-xml-http-request": ("^0.223.1", "0.223.2"),
 }
 
 
@@ -460,7 +460,7 @@ def _opentelemetry_lock_problems(lock_text: str) -> list[str]:
             problems.append(f"{path} {version} exceeds the 2.12 SDK api peer")
         if _version_tuple(version)[0] >= 3:
             problems.append(f"{path} {version} is a newer SDK generation")
-    for name, expected in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
+    for name, (_, expected) in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
         record = packages.get(f"node_modules/@opentelemetry/{name}")
         if record is None or record["version"] != expected:
             problems.append(f"{name} must be {expected} with the 2.12 SDK")
@@ -497,9 +497,9 @@ def test_opentelemetry_manifest_and_dependabot_preserve_reviewed_generation() ->
     for section in ("dependencies", "devDependencies"):
         assert lock["packages"][""][section] == manifest[section]
     assert manifest["dependencies"]["@opentelemetry/api"] == "~1.9.1"
-    for name, version in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
+    for name, (manifest_range, _) in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
         section = "devDependencies" if name == "instrumentation" else "dependencies"
-        assert manifest[section][f"@opentelemetry/{name}"] == f"^{version}"
+        assert manifest[section][f"@opentelemetry/{name}"] == manifest_range
 
     dependabot = yaml.safe_load(_read_text(".github/dependabot.yml"))
     npm_updates = [

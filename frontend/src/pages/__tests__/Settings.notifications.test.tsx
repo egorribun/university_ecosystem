@@ -19,7 +19,7 @@ vi.mock("framer-motion", async () =>
 )
 
 const tNotifications = (key: string, options?: Record<string, unknown>) =>
-  i18n.t(`notifications:${key}`, options)
+  options ? i18n.t(`notifications:${key}`, options) : i18n.t(`notifications:${key}`)
 
 const AUTH_USER_ID = "123"
 

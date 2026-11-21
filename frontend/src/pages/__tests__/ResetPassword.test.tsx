@@ -19,7 +19,7 @@ import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
-const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
+const tAuth = (key: string, options: Record<string, unknown> = {}) => i18n.t(`auth:${key}`, options)
 const tCommon = (key: string) => i18n.t(`common:${key}`)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 

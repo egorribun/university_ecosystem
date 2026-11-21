@@ -27,7 +27,7 @@ interface NewsCommentsProps {
   addComment: (content: string) => void | Promise<unknown>
   updateComment: (id: string, content: string) => void | Promise<unknown>
   deleteComment: (id: string) => void | Promise<unknown>
-  t: (key: string, options?: Record<string, unknown>) => string
+  t: (key: string) => string
   getMoscowDate: (date: string) => string
 }
 

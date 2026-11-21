@@ -14,19 +14,21 @@ vi.mock("react-i18next", async () => {
   const actual = await vi.importActual<typeof import("react-i18next")>("react-i18next")
   return {
     ...actual,
-    useTranslation: (namespace?: unknown, options?: unknown) => {
-      const result = actual.useTranslation(namespace as any, options as any)
+    useTranslation: (...args: Parameters<typeof actual.useTranslation>) => {
+      const result = actual.useTranslation(...args)
       return {
         ...result,
-        t: ((key: string, values?: unknown) => {
+        t: (key: string, values?: string | Record<string, unknown>) => {
           if (translationOverrides.topicLabel && key.endsWith("topics.experimental")) {
             return "Experimental topic"
           }
           if (translationOverrides.values.has(key)) {
             return translationOverrides.values.get(key)
           }
-          return result.t(key, values as any)
-        }) as typeof result.t,
+          if (values === undefined) return result.t(key)
+          if (typeof values === "string") return result.t(key, values)
+          return result.t(key, values)
+        },
       }
     },
   }
