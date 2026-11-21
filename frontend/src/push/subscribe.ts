@@ -6,8 +6,10 @@ import {
 } from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
 import { getConfirmedUserId, waitForConfirmedUserId } from "@/stores/authIdentity"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { StorageItem, pushConsentStorage } from "@/utils/storage"
+import { installPushSubscriptionChangeListener } from "./subscriptionChange"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 3
@@ -192,7 +194,8 @@ function httpStatus(error: unknown): unknown {
 async function persistSubscriptionWithBackoff(
   payload: Parameters<typeof saveSubscription>[0],
   owner: string,
-  topics?: string[]
+  topics: string[] | undefined,
+  stillAuthorized: () => boolean
 ): Promise<void> {
   // Add jitter to reduce the probability of thundering herd
   const jitter = () => Math.random() * PERSIST_BASE_DELAY_MS
@@ -203,10 +206,12 @@ async function persistSubscriptionWithBackoff(
   for (const attempt of attempts) {
     // Queued or retried writes may start after the account changed.
     if (readActiveUserId() !== owner) throw pushIdentityError()
+    if (!stillAuthorized()) return
     let response: Awaited<ReturnType<typeof saveSubscription>>
     try {
       response = await saveSubscription(payload, topics)
     } catch (error) {
+      if (!stillAuthorized()) return
       const status = httpStatus(error)
       if (status === 409) {
         // The API returns 409 only after its own recovery attempts fail.
@@ -229,6 +234,7 @@ async function persistSubscriptionWithBackoff(
     }
     // The response is only meaningful for the account that sent it.
     if (readActiveUserId() !== owner) throw pushIdentityError()
+    if (!stillAuthorized()) return
     pushSubStorage.set(payload)
     pushOwnerStorage.set(owner)
     // Implicit writes follow the server-side canonical preference and must
@@ -397,17 +403,20 @@ type EnsurePushSubscriptionOptions = {
   requestPermission?: boolean
   /** Abort unless this account is still the confirmed one. */
   owner?: string
+  /** A worker notice must re-read the browser and must not restore consent. */
+  subscriptionChange?: boolean
+  isCurrentSession?: () => boolean
 }
 
 type EnsureTask = {
   owner: string
-  explicit: boolean
+  exclusive: boolean
   promise: Promise<PushSubscription | null>
 }
 
 // Tail of the serialized sync queue. Only implicit syncs for the same owner
-// may share one run; explicit topic updates and other accounts always wait for
-// the previous run to settle and then perform their own.
+// may share one run; explicit topic updates, subscription changes and other
+// accounts always wait for the previous run and then perform their own read.
 let ensureTail: EnsureTask | null = null
 
 export async function ensurePushSubscription(
@@ -420,15 +429,15 @@ export async function ensurePushSubscription(
   const owner = readActiveUserId()
   if (!owner || (options?.owner !== undefined && options.owner !== owner)) return null
 
-  const explicit = options?.topics !== undefined
+  const exclusive = options?.topics !== undefined || options?.subscriptionChange === true
   const previous = ensureTail
-  if (previous?.owner === owner && !previous.explicit && !explicit) {
+  if (previous?.owner === owner && !previous.exclusive && !exclusive) {
     return previous.promise
   }
 
   const task: EnsureTask = {
     owner,
-    explicit,
+    exclusive,
     // Wait for the previous run to settle, whatever its outcome.
     promise: Promise.allSettled([previous?.promise]).then(() =>
       runEnsurePushSubscription(owner, options)
@@ -447,7 +456,15 @@ async function runEnsurePushSubscription(
   options?: EnsurePushSubscriptionOptions
 ): Promise<PushSubscription | null> {
   const topics = options?.topics
+  const stillAuthorized = () =>
+    !options?.subscriptionChange ||
+    (options.isCurrentSession?.() === true &&
+      readActiveUserId() === owner &&
+      pushOwnerStorage.get() === owner &&
+      hasPushConsent())
+  if (!stillAuthorized()) return null
   const reg = await resolveServiceWorkerRegistration(options?.registration)
+  if (!stillAuthorized()) return null
 
   if (!reg) {
     logWarning("Cannot ensure push subscription without service worker registration")
@@ -469,6 +486,7 @@ async function runEnsurePushSubscription(
   }
 
   const resolvedKey = options?.vapidPublicKey ?? (await resolveVapidPublicKey())
+  if (!stillAuthorized()) return null
   const key = (resolvedKey ?? "").trim()
   if (!key) {
     return null
@@ -477,6 +495,7 @@ async function runEnsurePushSubscription(
   const desiredKey = urlBase64ToUint8Array(key)
 
   let sub = await reg.pushManager.getSubscription()
+  if (!stillAuthorized()) return null
   if (sub) {
     const existingKey = sub.options?.applicationServerKey
     const existingBytes = existingKey ? new Uint8Array(existingKey) : null
@@ -503,11 +522,14 @@ async function runEnsurePushSubscription(
   }
 
   if (!sub) {
+    if (!stillAuthorized()) return null
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: desiredKey,
     })
   }
+
+  if (!stillAuthorized()) return null
 
   type Payload = Parameters<typeof saveSubscription>[0]
   const payload = sub.toJSON() as Payload
@@ -521,7 +543,8 @@ async function runEnsurePushSubscription(
 
   if (shouldPersist) {
     try {
-      await persistSubscriptionWithBackoff(payload, owner, topics)
+      await persistSubscriptionWithBackoff(payload, owner, topics, stillAuthorized)
+      if (!stillAuthorized()) return null
     } catch (error) {
       logError("Failed to persist push subscription", error)
       throw error
@@ -627,6 +650,8 @@ type SoftSyncOptions = {
   vapidPublicKey?: string
   topics?: string[]
   owner?: string
+  subscriptionChange?: boolean
+  isCurrentSession?: () => boolean
 }
 
 export async function softSyncPushSubscription(
@@ -648,6 +673,7 @@ type ConfirmedIdentitySyncOptions = {
   registration?: ServiceWorkerRegistration
   expectedUserId?: string
   timeoutMs?: number
+  subscriptionChange?: boolean
 }
 
 /**
@@ -663,12 +689,23 @@ export async function syncPushForConfirmedIdentity({
   registration,
   expectedUserId,
   timeoutMs,
+  subscriptionChange,
 }: ConfirmedIdentitySyncOptions = {}): Promise<PushSubscription | null> {
+  if (registration && typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    installPushSubscriptionChangeListener(
+      navigator.serviceWorker,
+      registration,
+      syncPushForConfirmedIdentity
+    )
+  }
+  const isCurrentSession = subscriptionChange ? captureSessionEpoch() : undefined
   const owner = await waitForConfirmedUserId({ expectedUserId, timeoutMs })
-  if (!owner) return null
+  if (!owner || (isCurrentSession && !isCurrentSession())) return null
   const browserOwner = pushOwnerStorage.get()
   if (browserOwner !== owner) {
-    if (browserOwner !== null) await retireForeignSubscription(registration)
+    // Only a normal boot/login sync may retire a foreign account's binding;
+    // a worker notice is not an authorization to alter it.
+    if (browserOwner !== null && !subscriptionChange) await retireForeignSubscription(registration)
     return null
   }
   // A cached profile does not prove which account the session cookie
@@ -680,9 +717,13 @@ export async function syncPushForConfirmedIdentity({
     })
     if (sessionOwner !== owner) return null
   }
+  if (isCurrentSession && !isCurrentSession()) return null
+  // A change notice is not a user opt-in. In particular, do not recover a
+  // missing consent flag merely because a browser subscription still exists.
+  if (subscriptionChange && !hasPushConsent()) return null
   await recoverPushConsentFromBrowser(registration, owner)
   if (!hasPushConsent()) return null
-  return softSyncPushSubscription({ registration, owner })
+  return softSyncPushSubscription({ registration, owner, subscriptionChange, isCurrentSession })
 }
 
 /**

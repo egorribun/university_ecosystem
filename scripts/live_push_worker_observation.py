@@ -6,6 +6,8 @@ Each count saturates at nine; nine means at least nine. ``http_none`` means no
 numeric status was recorded, not that no provider request occurred.
 The separate success summary distinguishes HTTP 201 from other 2xx responses
 only for rows classified as sent; it is not proof of browser delivery.
+The separate 410 prefixes are candidate correlation hints from the bounded tail;
+they do not establish browser identity, timing, or notification attribution.
 """
 
 from __future__ import annotations
@@ -41,6 +43,9 @@ _STAGES = (
 _HTTP_CLASSES = ("1xx", "2xx", "3xx", "4xx", "5xx", "none")
 _CONTAINER_ID = re.compile(r"[0-9a-f]{64}\Z")
 _SOURCE_SHA = re.compile(r"[0-9a-f]{40}\Z")
+_MASKED_ENDPOINT = re.compile(r"(?:https?://[A-Za-z0-9.\-\[\]:]+/…|…)#([0-9a-f]{10})\Z")
+_FINGERPRINT = re.compile(r"[0-9a-f]{10}\Z")
+_410_PREFIX_LIMIT = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,10 @@ class WorkerSummary:
     stages: tuple[int, ...]
     http_classes: tuple[int, ...]
     success_http: tuple[int, int] = (0, 0)
+    gone_410_prefixes: tuple[str, ...] = ()
+    gone_410_seen: bool = False
+    gone_410_incomplete: bool = False
+    gone_410_truncated: bool = False
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -91,6 +100,10 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
     stage_counts = [0] * len(_STAGES)
     http_counts = [0] * len(_HTTP_CLASSES)
     success_http = [0, 0]
+    gone_410_prefixes: list[str] = []
+    gone_410_seen = False
+    gone_410_incomplete = False
+    gone_410_truncated = False
     for line in lines:
         if len(line) > MAX_LINE_BYTES:
             return None
@@ -139,6 +152,21 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
             if type(code) is not int or not 100 <= code <= 599:
                 return None
             http_class = f"{code // 100}xx"
+        if status == "gone" and code == 410:
+            gone_410_seen = True
+            endpoint = extra.get("endpoint")
+            masked = (
+                _MASKED_ENDPOINT.fullmatch(endpoint) if type(endpoint) is str else None
+            )
+            if stage != "webpush_request" or masked is None:
+                gone_410_incomplete = True
+            else:
+                prefix = masked.group(1)
+                if prefix not in gone_410_prefixes:
+                    if len(gone_410_prefixes) == _410_PREFIX_LIMIT:
+                        gone_410_truncated = True
+                    else:
+                        gone_410_prefixes.append(prefix)
         if status == "sent" and code is not None and 200 <= code <= 299:
             success_index = 0 if code == 201 else 1
             success_http[success_index] = min(
@@ -155,6 +183,10 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
         tuple(stage_counts),
         tuple(http_counts),
         (success_http[0], success_http[1]),
+        tuple(gone_410_prefixes),
+        gone_410_seen,
+        gone_410_incomplete,
+        gone_410_truncated,
     )
 
 
@@ -208,6 +240,44 @@ def render_success_summary(summary: WorkerSummary) -> str:
         "live E2E worker push success_http sample=tail "
         f"sent_http_201={count_201} sent_http_other_2xx={count_other_2xx}"
     )
+
+
+def render_410_prefixes(summary: WorkerSummary) -> list[str]:
+    """Output only validated prefixes, never the masked URL or other log data."""
+    render_summary(summary)
+    prefixes = summary.gone_410_prefixes
+    flags = (
+        summary.gone_410_seen,
+        summary.gone_410_incomplete,
+        summary.gone_410_truncated,
+    )
+    if (
+        type(prefixes) is not tuple
+        or len(prefixes) > _410_PREFIX_LIMIT
+        or any(
+            type(value) is not str or not _FINGERPRINT.fullmatch(value)
+            for value in prefixes
+        )
+        or len(set(prefixes)) != len(prefixes)
+        or any(type(flag) is not bool for flag in flags)
+        or (
+            not summary.gone_410_seen
+            and (prefixes or summary.gone_410_incomplete or summary.gone_410_truncated)
+        )
+    ):
+        raise ValueError
+    if not summary.gone_410_seen:
+        return []
+    result = [
+        "live E2E worker push 410 sample=tail "
+        f"incomplete={str(summary.gone_410_incomplete).lower()} "
+        f"truncated={str(summary.gone_410_truncated).lower()}"
+    ]
+    result.extend(
+        "live E2E worker push 410 sample=tail endpoint_sha256=" + value
+        for value in prefixes
+    )
+    return result
 
 
 def _snapshot(
@@ -291,13 +361,17 @@ def main() -> int:
         )
         output = render_summary(summary)
         success_output = render_success_summary(summary)
+        gone_outputs = render_410_prefixes(summary)
     except Exception:
         output = "live E2E worker push sample=unavailable"
         success_output = None
+        gone_outputs = []
     try:
         print(output, flush=True)
         if success_output is not None:
             print(success_output, flush=True)
+        for line in gone_outputs:
+            print(line, flush=True)
     except OSError:
         pass
     return 0

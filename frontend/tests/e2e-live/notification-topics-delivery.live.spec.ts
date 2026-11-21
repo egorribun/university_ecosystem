@@ -10,10 +10,14 @@ import {
 } from "./fixtures"
 import {
   PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS,
+  type NativePushProfileRegistry,
   livePushObservationBudgetMs,
   test,
 } from "./native-push-profile-fixtures"
-import { reportLivePushDeliveryObservation } from "./push-delivery-observation"
+import {
+  createPushRotationObservation,
+  type PushRotationObservation,
+} from "./push-rotation-observation.mjs"
 import {
   createPushRecipientObservation,
   observePushCleanup,
@@ -522,8 +526,27 @@ const inspectNativeNotification = async (
 const waitForNativeNotification = async (
   page: Page,
   notificationId: string,
-  entityKey: string
+  entityKey: string,
+  rotation: PushRotationObservation,
+  nativePushProfiles: NativePushProfileRegistry
 ): Promise<NativeNotification> => {
+  const scenario =
+    entityKey === "newsId"
+      ? "news"
+      : entityKey === "eventId"
+        ? "events"
+        : entityKey === "lessonId"
+          ? "schedule"
+          : "release"
+  await rotation.beforeWait(
+    scenario,
+    livePushObservationBudgetMs(test.info(), SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
+  )
+  const failureObservation = nativePushProfiles.armFailureObservation(notificationId, () =>
+    rotation.reportFailure(
+      livePushObservationBudgetMs(test.info(), SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
+    )
+  )
   try {
     await expect
       .poll(async () => (await inspectNativeNotification(page, notificationId, entityKey)).count, {
@@ -532,8 +555,9 @@ const waitForNativeNotification = async (
           "the native Chromium service worker receives a push tagged with the persisted notification id",
       })
       .toBe(1)
+    failureObservation.disarm()
   } catch (error) {
-    await reportLivePushDeliveryObservation(page, test.info().project.name, notificationId)
+    await failureObservation.capture()
     throw error
   }
   return inspectNativeNotification(page, notificationId, entityKey)
@@ -548,14 +572,22 @@ const assertActualDelivery = async (
     url: string
     entityKey: string
     entityId: string
-  }
+  },
+  rotation: PushRotationObservation,
+  nativePushProfiles: NativePushProfileRegistry
 ): Promise<void> => {
   expect(notificationRow.topic).toBe(expected.topic)
   expect(notificationRow.type).toBe(expected.type)
   expect(notificationRow.url).toBe(expected.url)
   expect(notificationRow.read, "new in-app notifications remain unread").toBe(false)
 
-  const native = await waitForNativeNotification(page, notificationRow.id, expected.entityKey)
+  const native = await waitForNativeNotification(
+    page,
+    notificationRow.id,
+    expected.entityKey,
+    rotation,
+    nativePushProfiles
+  )
   expect(native.count, "a persisted identity owns one native notification tag").toBe(1)
   expect(native.tag).toBe(notificationRow.id)
   expect(native.notificationId).toBe(notificationRow.id)
@@ -1079,6 +1111,7 @@ const assertMutationStatus = (
 test("news, events, schedule changes and system releases reach the opted-in Chromium recipient", async ({
   page,
   browser,
+  nativePushProfiles,
 }, testInfo) => {
   test.setTimeout(360_000)
   const liveBaseUrl = process.env.LIVE_BASE_URL
@@ -1086,6 +1119,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   const recipientObservation = createPushRecipientObservation(
     page,
     liveBaseUrl,
+    testInfo.project.name,
+    testInfo.retry
+  )
+
+  const rotationObservation = createPushRotationObservation(
+    page,
     testInfo.project.name,
     testInfo.retry
   )
@@ -1163,6 +1202,9 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     const optIn = await savePushOptInAndTopics(page, adminPage, email)
     recipientId = optIn.recipientId
     subscriptionEndpoint = optIn.subscriptionEndpoint
+    await rotationObservation.optIn(
+      livePushObservationBudgetMs(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
+    )
     await requireProducerIsolation(adminPage, recipientId)
 
     const exactRecipientQuery = new URLSearchParams({ search: fullName, limit: String(PAGE_SIZE) })
@@ -1202,6 +1244,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     // News producer: POST /api/v1/news -> real notification queue/outbox -> persisted row + SW.
     await requireProducerIsolation(adminPage, recipientId)
     recipientObservation.arm("news", recipientId)
+    rotationObservation.arm("news")
     newsMayExist = true
     const createdNews = assertMutationStatus(
       await mutate(adminPage, "/api/v1/news", "POST", {
@@ -1219,13 +1262,19 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       "real news publication persists one recipient notification"
     )
     ownedNotificationIds.add(newsNotification.id)
-    await assertActualDelivery(page, newsNotification, {
-      topic: "news.published",
-      type: "news.new",
-      url: `/news/${newsId}`,
-      entityKey: "newsId",
-      entityId: newsId,
-    })
+    await assertActualDelivery(
+      page,
+      newsNotification,
+      {
+        topic: "news.published",
+        type: "news.new",
+        url: `/news/${newsId}`,
+        entityKey: "newsId",
+        entityId: newsId,
+      },
+      rotationObservation,
+      nativePushProfiles
+    )
 
     // Events producer: POST /api/v1/events -> real notification queue/outbox.
     await requireProducerIsolation(adminPage, recipientId)
@@ -1244,6 +1293,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     }
     eventMayExist = true
     recipientObservation.arm("events", recipientId)
+    rotationObservation.arm("events")
     const createdEvent = assertMutationStatus(
       await mutate(teacherPage, "/api/v1/events", "POST", {
         title: eventTitle,
@@ -1266,13 +1316,19 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       "real event publication persists one recipient notification"
     )
     ownedNotificationIds.add(eventNotification.id)
-    await assertActualDelivery(page, eventNotification, {
-      topic: "events.published",
-      type: "events.new",
-      url: `/events/${eventId}`,
-      entityKey: "eventId",
-      entityId: eventId,
-    })
+    await assertActualDelivery(
+      page,
+      eventNotification,
+      {
+        topic: "events.published",
+        type: "events.new",
+        url: `/events/${eventId}`,
+        entityKey: "eventId",
+        entityId: eventId,
+      },
+      rotationObservation,
+      nativePushProfiles
+    )
 
     // Schedule creation is audit-only; the following real room change emits the topic.
     await requireProducerIsolation(adminPage, recipientId)
@@ -1322,6 +1378,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
 
     await requireProducerIsolation(adminPage, recipientId)
     recipientObservation.arm("schedule", recipientId)
+    rotationObservation.arm("schedule")
     const updatedSchedule = assertMutationStatus(
       await mutate(teacherPage, `/api/v1/schedule/${encodeURIComponent(scheduleId)}`, "PATCH", {
         room: `Updated room ${uniqueMarker}`,
@@ -1341,18 +1398,25 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       "the changed lesson creates one recipient notification"
     )
     ownedNotificationIds.add(scheduleNotification.id)
-    await assertActualDelivery(page, scheduleNotification, {
-      topic: "schedule.changed",
-      type: "schedule.change",
-      url: "/schedule",
-      entityKey: "lessonId",
-      entityId: scheduleId,
-    })
+    await assertActualDelivery(
+      page,
+      scheduleNotification,
+      {
+        topic: "schedule.changed",
+        type: "schedule.change",
+        url: "/schedule",
+        entityKey: "lessonId",
+        entityId: scheduleId,
+      },
+      rotationObservation,
+      nativePushProfiles
+    )
 
     // The only release route used here is the unique-semver announcement API, never broadcast.
     await requireProducerIsolation(adminPage, recipientId)
     const releasePayload = { version: releaseVersion, notes_ru: releaseNotes }
     recipientObservation.arm("release", recipientId)
+    rotationObservation.arm("release")
     releaseAnnouncementMayExist = true
     const releaseResult = assertMutationStatus(
       await mutate(adminPage, "/api/v1/push/admin/releases", "POST", releasePayload),
@@ -1372,13 +1436,19 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       "the release creates one persisted in-app notification for the opted-in recipient"
     )
     ownedNotificationIds.add(releaseNotification.id)
-    await assertActualDelivery(page, releaseNotification, {
-      topic: "system.release",
-      type: "system.message",
-      url: "/",
-      entityKey: "version",
-      entityId: releaseVersion,
-    })
+    await assertActualDelivery(
+      page,
+      releaseNotification,
+      {
+        topic: "system.release",
+        type: "system.message",
+        url: "/",
+        entityKey: "version",
+        entityId: releaseVersion,
+      },
+      rotationObservation,
+      nativePushProfiles
+    )
 
     await requireProducerIsolation(adminPage, recipientId)
     const repeatedRelease = assertMutationStatus(
@@ -1400,6 +1470,9 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   } catch (error) {
     testFailure = error
     testFailed = true
+    await rotationObservation.reportFailure(
+      livePushObservationBudgetMs(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
+    )
     await recipientObservation.report(
       subscriptionEndpoint,
       livePushObservationBudgetMs(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
@@ -1478,7 +1551,13 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
       for (const row of rows) {
         ownedNotificationIds.add(row.id)
         expect(row.read, "schedule notifications remain unread before cleanup").toBe(false)
-        const native = await waitForNativeNotification(page, row.id, "lessonId")
+        const native = await waitForNativeNotification(
+          page,
+          row.id,
+          "lessonId",
+          rotationObservation,
+          nativePushProfiles
+        )
         expect(native.notificationId).toBe(row.id)
         expect(native.topic).toBe("schedule.changed")
         expect(native.type).toBe("schedule.change")

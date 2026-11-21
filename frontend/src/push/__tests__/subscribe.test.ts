@@ -2403,6 +2403,370 @@ describe("subscribe", () => {
       const markOwner = (owner: string) =>
         localStorage.setItem("push:last_owner", JSON.stringify(owner))
 
+      it("installs the boot listener once and routes a real worker notice through recovery", async () => {
+        const original = makeSub()
+        const rotated = makeSub("https://push.example.com/rotated")
+        const registration = Object.assign(installBrowserSubscription(original), { active: {} })
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        await mod.syncPushForConfirmedIdentity({ registration })
+        await mod.syncPushForConfirmedIdentity({ registration })
+        const messages = mockSWContainer.addEventListener.mock.calls.filter(
+          ([type]: [string]) => type === "message"
+        )
+        expect(messages).toHaveLength(1)
+        registration.pushManager.getSubscription.mockResolvedValue(rotated)
+        messages[0][1]({
+          source: registration.active,
+          data: { type: "PUSH_SUBSCRIPTION_CHANGED" },
+        })
+        await flushMicrotasks()
+
+        expect(saveSubscription).toHaveBeenCalledTimes(2)
+        expect(saveSubscription).toHaveBeenLastCalledWith(rotated.toJSON(), undefined)
+      })
+
+      it("re-reads a rotated subscription after an earlier sync completes", async () => {
+        const original = makeSub()
+        const rotated = makeSub("https://push.example.com/rotated")
+        const registration = installBrowserSubscription(original)
+        const firstWrite = deferred<unknown>()
+        vi.mocked(saveSubscription).mockImplementationOnce(() => firstWrite.promise as any)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const boot = mod.syncPushForConfirmedIdentity({ registration })
+        await flushMicrotasks()
+        expect(saveSubscription).toHaveBeenCalledOnce()
+        registration.pushManager.getSubscription.mockResolvedValue(rotated)
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(registration.pushManager.getSubscription).toHaveBeenCalledOnce()
+
+        firstWrite.resolve({})
+        await expect(boot).resolves.toBe(original)
+        await expect(recovery).resolves.toBe(rotated)
+        expect(saveSubscription).toHaveBeenCalledTimes(2)
+        expect(saveSubscription).toHaveBeenLastCalledWith(rotated.toJSON(), undefined)
+      })
+
+      it("does not restore absent consent for a subscription-change notice", async () => {
+        const registration = installBrowserSubscription()
+        markOwner("owner-a")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+        expect(mod.hasPushConsent()).toBe(false)
+      })
+
+      it("does not create a replacement after consent is withdrawn during a recovery", async () => {
+        const registration = installBrowserSubscription(null)
+        const lookup = deferred<unknown>()
+        registration.pushManager.getSubscription.mockReturnValueOnce(lookup.promise)
+        registration.pushManager.subscribe.mockResolvedValue(makeSub())
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(registration.pushManager.getSubscription).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        lookup.resolve(null)
+
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("re-subscribes without a prompt when the browser has no replacement", async () => {
+        const replacement = makeSub("https://push.example.com/replacement")
+        const registration = installBrowserSubscription(null)
+        registration.pushManager.subscribe.mockResolvedValue(replacement)
+        const requestPermission = vi.fn()
+        vi.stubGlobal("Notification", { permission: "granted", requestPermission })
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBe(replacement)
+        expect(requestPermission).not.toHaveBeenCalled()
+        expect(saveSubscription).toHaveBeenCalledExactlyOnceWith(replacement.toJSON(), undefined)
+      })
+
+      it("does not retry a recovery write after consent is withdrawn", async () => {
+        const registration = installBrowserSubscription()
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+        vi.mocked(saveSubscription).mockRejectedValueOnce(new Error("temporary failure"))
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(saveSubscription).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        await vi.runAllTimersAsync()
+
+        await expect(recovery).resolves.toBeNull()
+        expect(saveSubscription).toHaveBeenCalledOnce()
+        expect(localStorage.getItem("push:last_payload")).toBeNull()
+      })
+
+      it("does not cache a recovery write after consent is withdrawn during the request", async () => {
+        const registration = installBrowserSubscription()
+        const write = deferred<unknown>()
+        vi.mocked(saveSubscription).mockImplementationOnce(() => write.promise as any)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(saveSubscription).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        write.resolve({})
+
+        await expect(recovery).resolves.toBeNull()
+        expect(localStorage.getItem("push:last_payload")).toBeNull()
+      })
+
+      it("does not rebind when the checked session no longer belongs to the stored owner", async () => {
+        const registration = installBrowserSubscription()
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+        vi.mocked(fetchSessionUserId).mockResolvedValue("owner-b")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not revoke another account's subscription from a change notice", async () => {
+        const foreign = { ...makeSub(), unsubscribe: vi.fn().mockResolvedValue(true) }
+        const registration = installBrowserSubscription(foreign)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+        setIdentity("owner-b")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBeNull()
+        expect(foreign.unsubscribe).not.toHaveBeenCalled()
+        expect(storedOwner()).toBe(JSON.stringify("owner-a"))
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not carry recovery into a successor browser session for the same user", async () => {
+        const registration = installBrowserSubscription()
+        const verifiedIdentity = deferred<string>()
+        vi.mocked(fetchSessionUserId).mockReturnValueOnce(verifiedIdentity.promise)
+        const { invalidateSessionEpoch } = await import("@/stores/sessionEpoch")
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        invalidateSessionEpoch()
+        verifiedIdentity.resolve("owner-a")
+
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not read the push manager after consent changes while resolving registration", async () => {
+        const registration = makeReg()
+        const ready = deferred<typeof registration>()
+        mockSWContainer.getRegistration.mockReturnValueOnce(ready.promise)
+        vi.stubEnv("VITE_VAPID_PUBLIC_KEY", KEY)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({ subscriptionChange: true })
+        await flushMicrotasks()
+        expect(mockSWContainer.getRegistration).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        ready.resolve(registration)
+
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not read the push manager after consent changes while fetching the VAPID key", async () => {
+        const registration = installBrowserSubscription()
+        const key = deferred<string>()
+        vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "")
+        vi.mocked(getVapidPublicKey).mockReturnValueOnce(key.promise)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(getVapidPublicKey).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        key.resolve(KEY)
+
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not schedule a retry after a failed request returns to a withdrawn consent", async () => {
+        const registration = installBrowserSubscription()
+        const write = deferred<unknown>()
+        vi.mocked(saveSubscription).mockImplementationOnce(() => write.promise as any)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        mod.setPushConsent(false)
+        write.reject(new Error("temporary failure"))
+
+        await expect(recovery).resolves.toBeNull()
+        expect(vi.getTimerCount()).toBe(0)
+        expect(saveSubscription).toHaveBeenCalledOnce()
+      })
+
+      it("skips a queued recovery if consent is withdrawn before its browser read", async () => {
+        const registration = installBrowserSubscription()
+        const write = deferred<unknown>()
+        vi.mocked(saveSubscription).mockImplementationOnce(() => write.promise as any)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const boot = mod.syncPushForConfirmedIdentity({ registration })
+        await flushMicrotasks()
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        mod.setPushConsent(false)
+        write.resolve({})
+
+        await boot
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.getSubscription).toHaveBeenCalledOnce()
+        expect(saveSubscription).toHaveBeenCalledOnce()
+      })
+
+      it("does not replace a stale subscription if consent is withdrawn while it is removed", async () => {
+        const removal = deferred<boolean>()
+        const stale = {
+          ...makeSub(),
+          options: { applicationServerKey: new Uint8Array([0]).buffer },
+          unsubscribe: vi.fn(() => removal.promise),
+        }
+        const registration = installBrowserSubscription(stale)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(stale.unsubscribe).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        removal.resolve(true)
+
+        await expect(recovery).resolves.toBeNull()
+        expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not start the server write if consent is withdrawn while serializing", async () => {
+        const subscription = {
+          ...makeSub(),
+          toJSON: () => {
+            mod.setPushConsent(false)
+            return makeSub().toJSON()
+          },
+        }
+        const registration = installBrowserSubscription(subscription)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBeNull()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not persist a replacement if consent is withdrawn while subscribe is pending", async () => {
+        const replacement = deferred<unknown>()
+        const registration = installBrowserSubscription(null)
+        registration.pushManager.subscribe.mockReturnValueOnce(replacement.promise)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        const recovery = mod.syncPushForConfirmedIdentity({
+          registration,
+          subscriptionChange: true,
+        })
+        await flushMicrotasks()
+        expect(registration.pushManager.subscribe).toHaveBeenCalledOnce()
+        mod.setPushConsent(false)
+        replacement.resolve(makeSub())
+
+        await expect(recovery).resolves.toBeNull()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("does not write an unchanged subscription again for a notice", async () => {
+        const subscription = makeSub()
+        const registration = installBrowserSubscription(subscription)
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        await mod.syncPushForConfirmedIdentity({ registration })
+        await mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        expect(registration.pushManager.getSubscription).toHaveBeenCalledTimes(2)
+        expect(saveSubscription).toHaveBeenCalledOnce()
+      })
+
+      it("does not prompt or subscribe when browser permission was revoked", async () => {
+        const registration = installBrowserSubscription(null)
+        const requestPermission = vi.fn()
+        vi.stubGlobal("Notification", { permission: "denied", requestPermission })
+        mod.setPushConsent(true)
+        markOwner("owner-a")
+
+        await expect(
+          mod.syncPushForConfirmedIdentity({ registration, subscriptionChange: true })
+        ).resolves.toBeNull()
+        expect(requestPermission).not.toHaveBeenCalled()
+        expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
       it("waits for a confirmed identity before touching the browser or the server", async () => {
         const subscription = makeSub()
         installBrowserSubscription(subscription)

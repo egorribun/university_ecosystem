@@ -13,6 +13,9 @@ export const SERVICE_WORKER_MESSAGE_TYPES = {
  */
 export const OFFLINE_DEAD_LETTER_MESSAGE_TYPE = "offline-dead-letter"
 
+/** A payload-free signal; the window reads the current subscription itself. */
+export const PUSH_SUBSCRIPTION_CHANGED_MESSAGE_TYPE = "PUSH_SUBSCRIPTION_CHANGED"
+
 export type ApiCacheControlMessage =
   | {
       type: typeof SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY

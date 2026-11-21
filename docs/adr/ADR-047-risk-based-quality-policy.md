@@ -3252,3 +3252,15 @@ The record retains its path, type, category, owner, evidence and 2027-01-10
 expiry. The inventory contains 242 baseline identities, 524 dispositions,
 27 Gitleaks fingerprints and 15 Semgrep rows. Scanner, CI and live acceptance
 results are verified separately for each source revision.
+
+### AUD-154 push rotation diagnostic companion rebind (2026-11-21)
+
+The bounded push rotation diagnostic adds browser endpoint fingerprint
+observations to the Core runner. The standing one-to-one approval binds the
+updated `scripts/live_stand.py` bytes in Semgrep row 7 and the existing
+public-integrity identity in disposition record 495. Path, detector type,
+category, owner, evidence and expiry remain unchanged. The exact predecessor
+projection restores the NATS diagnostic source, ledger and policy before the
+earlier layers. The inventory remains 242 baseline identities, 524 dispositions
+and 15 Semgrep rows. This record is not scanner, hosted-check or live-acceptance
+evidence; AUD-154 remains open.

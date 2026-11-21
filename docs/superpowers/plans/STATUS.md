@@ -19,8 +19,10 @@
       статусы отдельных попыток не записаны. Связь с конкретным тестом и ответ FCM 410 не доказаны.
       У каждого теста свой временный профиль Chrome.
     - Flaky — mobile push-delivery и footer-bottom-navigation.
-- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) открыт (`egorribun` → `main`,
-  актуальная голова и её проверки — по ссылке); он несёт решения владельца 2026-11-21 (ADR-047):
+- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) слит обычным merge после
+  78 обязательных проверок и CodeQL на `3156d797a`. Текущий `main` — `149814844`.
+  [Полный Core](https://github.com/egorribun/university_ecosystem/actions/runs/44925413925) запущен на
+  этом SHA, результат ожидается. PR реализует решения владельца 2026-11-21 (ADR-047):
   - **10202 и 20012.** Формы входа, регистрации и сброса пароля помечены `data-csrf="header"`. ZAP
     запускается с `rules.csrf.ignore.attname/attvalue` для информационной классификации этих форм.
   - **10055-6.** `style-src 'unsafe-inline'` — принятый риск. Hook ZAP понижает до low только этот
@@ -53,6 +55,7 @@
   | `753c2c572` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44910470846/job/136864997618) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44910471073/job/136864999567). Повторился сетевой сбой Dashboard. |
   | `bba42fa82` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44914673591/job/136881639122) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44914673817/job/136877707232). Сбой воспроизвёлся на изображении из API. |
   | `762478ff6` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44918659401/job/136889652977) | [Realtime и visual 24/24 прошли](https://github.com/egorribun/university_ecosystem/actions/runs/44918659599/job/136889655183). Shard 2 упал на числе регистраций маршрута API в AUD-400. |
+  | `3156d797a` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44921979319/job/136899801171) | [Realtime и visual 24/24 прошли](https://github.com/egorribun/university_ecosystem/actions/runs/44921979509/job/136899802964). Все 78 обязательных проверок прошли. |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
@@ -150,12 +153,12 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Получить для #1541 required checks на итоговом SHA, включая независимые live и realtime/visual,
-   перед обычным merge.
-2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
-   Nuclei с проверенным отчётом закрывают AUD-381.
-3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два
-   последовательных green полных Core на `main`.
-4. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
+1. Проверить полный Core на `149814844` и свежий отчёт DAST на `main`. Зелёные ZAP и Nuclei
+   с проверенным отчётом закрывают AUD-381.
+2. Получить обязательные проверки на пакете восстановления Web Push и тесте DST из #1523.
+   Для AUD-154 нужны два последовательных зелёных полных Core на `main` с read-receipt,
+   не чаще одного запуска в два часа. Диагностика префиксов хешей помогает сопоставить
+   сбои доставки, а причину конкретной попытки подтверждают её отдельные доказательства.
+3. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
    обновления с удержанием maplibre 6.15.0, jsdom 30.1.3, Playwright 1.64.1.
-5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+4. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
