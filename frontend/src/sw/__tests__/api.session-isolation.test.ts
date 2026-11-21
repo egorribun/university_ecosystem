@@ -116,6 +116,294 @@ afterEach(() => {
 })
 
 describe("private API session isolation", () => {
+  it("keeps a proxied dashboard image available during a same-session bootstrap", async () => {
+    localStorage.clear()
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const controller = {
+      postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
+          void api.clearSessionCaches()
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          api.setSessionHash(message.sessionHash, message.sessionScope)
+      },
+    }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const previousPage = renderHook(() => useSessionCrypto())
+    await act(() => previousPage.result.current.updateSessionSigningKey("same-session-key"))
+    const priorScope = api.getSessionCacheScope()
+    expect(priorScope).not.toBeNull()
+    previousPage.unmount()
+
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const freshPage = renderHook(() => useSessionCrypto())
+    const findClient = vi.fn(async () => ({
+      type: "window",
+      postMessage: (data: unknown, ports: MessagePort[]) =>
+        listeners.get("message")!({ source: controller, data, ports } as unknown as MessageEvent),
+    }))
+    vi.stubGlobal("self", {
+      caches: storage,
+      location: new URL("https://app.test/"),
+      __WB_DISABLE_DEV_LOGS: true,
+      clients: { get: findClient },
+    })
+    const pendingNetwork = deferred<Response>()
+    const enteredNetwork = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      enteredNetwork.resolve()
+      return pendingNetwork.promise
+    })
+    const req = new Request("https://app.test/api/v1/img/static/story_covers/example.webp?w=400", {
+      credentials: "include",
+      headers: { Accept: "image/avif,image/webp" },
+    })
+    Object.defineProperty(req, "destination", { value: "image" })
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+      waitUntil: () => undefined,
+    }) as unknown as ExtendableEvent
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+    expect(route).toBe(routes[0])
+    const pending = route!.handle({ request: req, event })
+    await enteredNetwork.promise
+    await act(() => freshPage.result.current.updateSessionSigningKey("same-session-key"))
+    expect(api.getSessionCacheScope()).toBe(priorScope)
+    const networkResponse = new Response("publicly reachable image", {
+      status: 200,
+      headers: {
+        "Content-Type": "image/webp",
+        "Cache-Control": "private, no-cache, must-revalidate",
+      },
+    })
+    pendingNetwork.resolve(networkResponse)
+
+    expect(await pending).toBe(networkResponse)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+    expect(findClient).not.toHaveBeenCalled()
+    expect([...entries.values()].every((cache) => cache.size === 0)).toBe(true)
+    freshPage.unmount()
+  })
+
+  it("matches only same-origin GETs on the image-proxy prefix before the media routes", async () => {
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const first = routes[0]!
+    const matches = (url: string, init?: RequestInit) => {
+      const req = new Request(url, init)
+      return first.match({ url: new URL(req.url), request: req })
+    }
+    expect(matches("https://app.test/api/v1/img/static/story_covers/cover.webp?w=400&_v=2")).toBe(
+      true
+    )
+    expect(matches("https://app.test/api/v1/img/media/public/avatar.webp")).toBe(true)
+    expect(matches("https://other.test/api/v1/img/static/story_covers/cover.webp")).toBe(false)
+    expect(matches("https://app.test.evil/api/v1/img/static/story_covers/cover.webp")).toBe(false)
+    expect(matches("https://app.test/api/v1/img")).toBe(false)
+    expect(matches("https://app.test/api/v1/img-extra/cover.webp")).toBe(false)
+    expect(matches("https://app.test/imgproxy/signed-image")).toBe(false)
+    expect(matches("https://app.test/api/v1/chats/1/attachments/2")).toBe(false)
+    expect(matches("https://app.test/api/v1/events/1/files/2")).toBe(false)
+    expect(matches("https://app.test/api/v1/img/static/cover.webp", { method: "POST" })).toBe(false)
+    expect(matches("https://app.test/api/v1/img/static/cover.webp", { method: "HEAD" })).toBe(false)
+  })
+
+  it.each([200, 304, 401, 403, 404, 429, 500, 503])(
+    "passes the original image Request and HTTP %i response through without SW caching",
+    async (status) => {
+      const { initMediaCaching } = await import("../media")
+      initMediaCaching()
+      api.setSessionHash("account-a", "account-a:live")
+      const req = new Request("https://app.test/api/v1/img/media/public/image.webp?w=400&_v=2", {
+        credentials: "include",
+        cache: "no-cache",
+        headers: { Accept: "image/avif,image/webp", "If-None-Match": '"old-etag"' },
+      })
+      Object.defineProperty(req, "destination", { value: "image" })
+      await (await storage.open("image-cache")).put(req, new Response("stale image"))
+      const networkResponse = new Response(status === 304 ? null : "network body", {
+        status,
+        headers: {
+          "Cache-Control": "private, no-cache, must-revalidate",
+          ETag: '"network-etag"',
+          Vary: "Accept",
+        },
+      })
+      fetchMock.mockResolvedValueOnce(networkResponse)
+      const event = Object.assign(new Event("fetch"), {
+        clientId: "client-a",
+        waitUntil: () => undefined,
+      }) as unknown as ExtendableEvent
+      const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+      expect(route).toBe(routes[0])
+
+      const actual = await route!.handle({ request: req, event })
+
+      expect(actual).toBe(networkResponse)
+      expect(actual.status).toBe(status)
+      expect(actual.headers.get("Cache-Control")).toBe("private, no-cache, must-revalidate")
+      expect(actual.headers.get("ETag")).toBe('"network-etag"')
+      expect(actual.headers.get("Vary")).toBe("Accept")
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+      expect(req.credentials).toBe("include")
+      expect(req.cache).toBe("no-cache")
+      expect(req.headers.get("If-None-Match")).toBe('"old-etag"')
+      expect(api.getSessionCacheScope()).toBe("account-a:live")
+      expect(await (await (await storage.open("image-cache")).match(req))!.text()).toBe(
+        "stale image"
+      )
+      expect([...entries.keys()]).toEqual(["image-cache"])
+    }
+  )
+
+  it.each(["default", "no-store"] as const)(
+    "forwards an image-element no-cors request with its original %s cache mode",
+    async (cache) => {
+      const { initMediaCaching } = await import("../media")
+      initMediaCaching()
+      const req = new Request(
+        "https://app.test/api/v1/img/static/story_covers/example.webp?w=400",
+        {
+          mode: "no-cors",
+          credentials: "same-origin",
+          cache,
+        }
+      )
+      Object.defineProperty(req, "destination", { value: "image" })
+      const networkResponse = new Response("image", {
+        status: 200,
+        headers: { "Cache-Control": "private, no-cache, must-revalidate" },
+      })
+      fetchMock.mockResolvedValueOnce(networkResponse)
+      const event = Object.assign(new Event("fetch"), {
+        clientId: "client-a",
+      }) as unknown as ExtendableEvent
+      const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+
+      expect(await route!.handle({ request: req, event })).toBe(networkResponse)
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+      expect(req.mode).toBe("no-cors")
+      expect(req.credentials).toBe("same-origin")
+      expect(req.cache).toBe(cache)
+      expect(entries.size).toBe(0)
+    }
+  )
+
+  it("propagates an image network failure instead of serving stale cached data", async () => {
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const req = new Request("https://app.test/api/v1/img/static/public/image.webp")
+    Object.defineProperty(req, "destination", { value: "image" })
+    await (await storage.open("image-cache")).put(req, new Response("stale image"))
+    const failure = new TypeError("offline")
+    fetchMock.mockRejectedValueOnce(failure)
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+    }) as unknown as ExtendableEvent
+
+    expect(route).toBe(routes[0])
+    await expect(route!.handle({ request: req, event })).rejects.toBe(failure)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+    expect(await (await (await storage.open("image-cache")).match(req))!.text()).toBe("stale image")
+  })
+
+  it("does not reuse old API or private-media cache entries for proxy images", async () => {
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const req = new Request("https://app.test/api/v1/img/static/story_covers/example.webp?w=400")
+    Object.defineProperty(req, "destination", { value: "image" })
+    await (await storage.open("api-cache:account-a:live")).put(req, new Response("old API image"))
+    await (
+      await storage.open("media-private:account-a:live")
+    ).put(req, new Response("old private image"))
+    api.setSessionHash("account-a", "account-a:live")
+    const networkResponse = new Response("missing", { status: 404 })
+    fetchMock.mockResolvedValueOnce(networkResponse)
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+    }) as unknown as ExtendableEvent
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+
+    expect(route).toBe(routes[0])
+    expect(await route!.handle({ request: req, event })).toBe(networkResponse)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+    expect(await (await (await storage.open("api-cache:account-a:live")).match(req))!.text()).toBe(
+      "old API image"
+    )
+    expect(
+      await (await (await storage.open("media-private:account-a:live")).match(req))!.text()
+    ).toBe("old private image")
+    expect(entries.size).toBe(2)
+  })
+
+  it.each(["/api/v1/chats/1/attachments/2", "/api/v1/events/1/files/2"])(
+    "continues to fence a private attachment image across an account change: %s",
+    async (path) => {
+      const { initMediaCaching } = await import("../media")
+      initMediaCaching()
+      api.setSessionHash("account-a", "account-a:live")
+      const req = new Request(`https://app.test${path}`, { cache: "no-store" })
+      Object.defineProperty(req, "destination", { value: "image" })
+      const delayed = deferred<Response>()
+      const entered = deferred<void>()
+      fetchMock.mockImplementationOnce(() => {
+        entered.resolve()
+        return delayed.promise
+      })
+      const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+      const event = Object.assign(new Event("fetch"), {
+        clientId: "client-a",
+      }) as unknown as ExtendableEvent
+      expect(route).toBe(routes[1])
+
+      const pending = route!.handle({ request: req, event })
+      await entered.promise
+      api.setSessionHash("account-b", "account-b:new")
+      delayed.resolve(new Response("old private image"))
+
+      expect((await pending).type).toBe("error")
+      expect(entries.size).toBe(0)
+    }
+  )
+
+  it("does not replace a slow image response with the private API timeout", async () => {
+    vi.useFakeTimers()
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const req = new Request("https://app.test/api/v1/img/static/story_covers/slow.webp")
+    Object.defineProperty(req, "destination", { value: "image" })
+    const delayed = deferred<Response>()
+    fetchMock.mockReturnValueOnce(delayed.promise)
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+    }) as unknown as ExtendableEvent
+    let settled = false
+    const pending = route!.handle({ request: req, event }).then((response) => {
+      settled = true
+      return response
+    })
+
+    await vi.advanceTimersByTimeAsync(7_001)
+    expect(settled).toBe(false)
+    const networkResponse = new Response("slow image", { status: 200 })
+    delayed.resolve(networkResponse)
+    expect(await pending).toBe(networkResponse)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+  })
+
   it("keeps the public no-store campus lookup available during same-session page bootstrap", async () => {
     localStorage.clear()
     const listeners = new Map<string, (event: MessageEvent) => void>()
@@ -208,7 +496,7 @@ describe("private API session isolation", () => {
   it("excludes only the exact same-origin campus config GET from private API routing", () => {
     const matches = (url: string, init?: RequestInit) => {
       const req = new Request(url, init)
-      return routes[0]!.match({ url: new URL(req.url), request: req })
+      return routes.at(-1)!.match({ url: new URL(req.url), request: req })
     }
     expect(matches("https://app.test/api/v1/campus/config")).toBe(false)
     expect(matches("https://app.test/api/v1/campus/config?version=1")).toBe(false)
@@ -402,7 +690,7 @@ describe("private API session isolation", () => {
         ...(clientId === undefined ? {} : { clientId }),
         waitUntil: () => undefined,
       }) as unknown as ExtendableEvent
-      await expect(routes[0]!.handle({ request: req, event })).rejects.toThrow("offline")
+      await expect(routes.at(-1)!.handle({ request: req, event })).rejects.toThrow("offline")
     }
   )
 

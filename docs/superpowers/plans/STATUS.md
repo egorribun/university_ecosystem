@@ -51,6 +51,7 @@
   | `28afad9c5` | **прошёл** | realtime и visual **прошли** (24/24); упал только Contract Tests (gitleaks, состояние процесса `X`) |
   | `01a434839` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44906878207/job/136854251753) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44906878502/job/136854254040). CI Success не прошёл из-за visual. |
   | `753c2c572` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44910470846/job/136864997618) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44910471073/job/136864999567). Повторился сетевой сбой Dashboard. |
+  | `bba42fa82` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44914673591/job/136881639122) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44914673817/job/136877707232). Сбой воспроизвёлся на изображении из API. |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
@@ -64,6 +65,12 @@
   Изолированный тест воспроизвёл обрыв публичного `GET /api/v1/campus/config` в service worker
   при инициализации страницы в прежней сессии. Публичный GET теперь идёт напрямую с исходным
   `cache: "no-store"`. Соседние защищённые маршруты сохраняют проверку принадлежности ответа сессии.
+  На `bba42fa82` уточнён тип hosted-сбоя. Это `net::ERR_FAILED` без HTTP-статуса для изображения
+  из собственного семейства `/api/v1/img`. Повторился тот же сценарий Dashboard.
+  В изолированном тесте инициализация прежней сессии превратила успешный ответ этого семейства
+  в `Response.error()`. Same-origin GET к image proxy теперь сохраняет исходные запрос и ответ
+  до приватного API-кеша и общего кеша изображений. Серверная ревалидация и границы доступа
+  к защищённым вложениям сохраняются. Точный механизм hosted-сбоя ещё не установлен.
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,

@@ -125,6 +125,17 @@ function sessionCachePlugin(scope: string, cacheName: string): WorkboxPlugin {
 }
 
 export function initApiCaching() {
+  // The image proxy is a public endpoint that rejects private attachments on
+  // the server. Forward it without a worker cache so user images retain their
+  // no-cache revalidation and do not enter the generic image CacheFirst route.
+  registerRoute(
+    ({ url, request }) =>
+      url.pathname.startsWith("/api/v1/img/") &&
+      url.origin === self.location.origin &&
+      request.method === "GET",
+    ({ request }) => fetch(request)
+  )
+
   registerRoute(
     ({ url, request }) =>
       url.pathname.startsWith("/api/") &&
