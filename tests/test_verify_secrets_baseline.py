@@ -36685,9 +36685,14 @@ def _nov17_disk_bytes(path: str) -> bytes:
 
 def test_aud154_combined_live_companion_has_exact_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
-    live = (root / "scripts/live_stand.py").read_bytes()
+    live = _nats_inventory_source_predecessor(
+        "scripts/live_stand.py", (root / "scripts/live_stand.py").read_bytes()
+    )
     live_digest = hashlib.sha256(live).digest()
-    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    ledger_bytes = _nats_inventory_source_predecessor(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
     ledger = json.loads(ledger_bytes)
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
@@ -37031,8 +37036,13 @@ def _nov20_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
 
 def test_nov20_combined_companion_has_exact_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
-    live = (root / "scripts/live_stand.py").read_bytes()
-    ledger_bytes = (root / "quality/semgrep-dispositions.json").read_bytes()
+    live = _nats_inventory_source_predecessor(
+        "scripts/live_stand.py", (root / "scripts/live_stand.py").read_bytes()
+    )
+    ledger_bytes = _nats_inventory_source_predecessor(
+        "quality/semgrep-dispositions.json",
+        (root / "quality/semgrep-dispositions.json").read_bytes(),
+    )
     ledger = json.loads(ledger_bytes)
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
@@ -37086,7 +37096,7 @@ def test_nov20_combined_companion_has_exact_predecessors() -> None:
 @pytest.mark.parametrize("mutation", ["extra", "missing", "duplicate"])
 def test_nov20_combined_source_rejects_drift(path: str, mutation: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    actual = (root / path).read_bytes()
+    actual = _nats_inventory_source_predecessor(path, (root / path).read_bytes())
     fragment = (
         _NOV20_CLEANUP_INSERTIONS[1]
         if path == "scripts/live_stand.py"
@@ -37119,7 +37129,9 @@ def test_nov20_live_projection_rejects_drift_even_if_postimage_hash_is_spoofed(
     mutation: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = "scripts/live_stand.py"
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _nats_inventory_source_predecessor(
+        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+    )
     if mutation.startswith("cleanup_"):
         fragment = _NOV20_CLEANUP_INSERTIONS[1]
     elif mutation == "windows_changed":
@@ -37148,7 +37160,10 @@ def test_nov20_ledger_projection_rejects_missing_pin_with_spoofed_hash(
 ) -> None:
     path = _NOV17_LEDGER_PATH
     actual = _visual_readiness_source_predecessor(
-        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+        path,
+        _nats_inventory_source_predecessor(
+            path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+        ),
     )
     pin = _NOV20_LIVE_SHA256.hex().encode("ascii")
     assert actual.count(pin) == 1
@@ -37893,6 +37908,9 @@ _NOV21_AUDIT_REVERSALS = (
 
 
 def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    newest = _NATS_INVENTORY_SOURCE_PINS.get(path)
+    if newest is not None and hashlib.sha256(actual).digest() == newest[1]:
+        actual = _nats_inventory_source_predecessor(path, actual)
     pins = _NOV21_SOURCE_PINS.get(path)
     if pins is None:
         return actual
@@ -37928,7 +37946,7 @@ def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nov21_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _nats_inventory_policy_predecessor(policy)
     records = restored["records"]
     for row_index, companion in _NOV21_POLICY_ROWS.items():
         if len(records) <= row_index:
@@ -37983,7 +38001,7 @@ def test_nov21_companions_are_bound_to_current_sources(
 )
 def test_nov21_projection_restores_exact_predecessor(path: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    actual = (root / path).read_bytes()
+    actual = _nats_inventory_source_predecessor(path, (root / path).read_bytes())
     previous, current = _NOV21_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     historical = _nov21_source_predecessor(path, actual)
@@ -38004,6 +38022,7 @@ def test_nov21_policy_projection_changes_only_the_rebound_identities() -> None:
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_bytes()
     )
+    policy = _nats_inventory_policy_predecessor(policy)
     previous = _nov21_policy_predecessor(policy)
     changed = [
         index
@@ -38022,3 +38041,245 @@ def test_nov21_policy_projection_changes_only_the_rebound_identities() -> None:
 
 def test_nov21_projection_leaves_unrelated_source_unchanged() -> None:
     assert _nov21_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+# NATS inventory diagnostic (2026-11-21). Standing owner approval permits
+# rebinding only the existing live_stand Semgrep companion and the matching
+# public-integrity identity. Restore these predecessors before the NOV21 layer.
+_NATS_INVENTORY_LIVE = "scripts/live_stand.py"
+_NATS_INVENTORY_LEDGER = "quality/semgrep-dispositions.json"
+_NATS_INVENTORY_ROW = 495
+_NATS_INVENTORY_SOURCE_PINS = {
+    _NATS_INVENTORY_LIVE: (
+        bytes.fromhex(
+            "f3 91 64 0e 0e 05 4f b8 8b 8c c5 22 be 28 31 f6"
+            " 06 f8 40 f9 f7 d0 bb 7d f6 a8 87 e8 76 38 31 7e"
+        ),
+        bytes.fromhex(
+            "39 59 d6 89 80 29 f0 d9 54 89 f1 77 9d 7e 30 d0"
+            " 9b d9 cd 39 7a 2a ea 90 1b 70 b2 47 5e 18 3b 24"
+        ),
+    ),
+    _NATS_INVENTORY_LEDGER: (
+        bytes.fromhex(
+            "af 79 d6 dc ec 8b 17 0e 14 6f 92 b5 39 a8 7b 5d"
+            " 5e 1b 41 25 7a a9 f1 a7 a5 58 42 b5 c0 21 ab d2"
+        ),
+        bytes.fromhex(
+            "83 7c 3f 00 00 ab 9e fa 8b 5c 3d 6e a9 30 18 c0"
+            " b3 f0 93 2d ef dd 36 59 15 e8 a0 b1 0d 94 06 4a"
+        ),
+    ),
+}
+_NATS_INVENTORY_ROW_BEFORE_SHA256 = bytes.fromhex(
+    "42 49 63 b9 b6 5c 79 d9 40 5d 45 f9 a1 f2 51 63"
+    " 9c a0 dd 68 f4 bc 64 bb 27 03 94 b8 93 71 ef 2e"
+)
+_NATS_INVENTORY_LIVE_REVERSALS = (
+    (
+        b"                    valid_inventory_diagnostic,\n",
+        b"",
+    ),
+    (
+        b"                or (\n"
+        b"                    result.inventory_diagnostic is not None\n"
+        b"                    and (\n"
+        b"                        not valid_inventory_diagnostic(result.inventory_diagnostic)\n"
+        b"                        or result.outcome is not OutageOutcome.FAILED\n"
+        b"                        or result.stage is not OutageStage.PREFLIGHT\n"
+        b"                        or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME\n"
+        b"                        or result.runtime_diagnostic\n"
+        b"                        is not RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME\n"
+        b"                    )\n"
+        b"                )\n",
+        b"",
+    ),
+    (
+        b"                inventory_diagnostic = (\n"
+        b'                    ""\n'
+        b"                    if result.inventory_diagnostic is None\n"
+        b"                    else (\n"
+        b'                        f" inventory_invariant={result.inventory_diagnostic.invariant.value}"\n'
+        b'                        f" inventory_service={result.inventory_diagnostic.service}"\n'
+        b"                    )\n"
+        b"                )\n",
+        b"",
+    ),
+    (
+        b'                    f"{checkpoint}{diagnostic}{inventory_diagnostic}"\n'
+        b'                    f"{broker_diagnostic}{send_phase}"\n',
+        b'                    f"{checkpoint}{diagnostic}{broker_diagnostic}{send_phase}"\n',
+    ),
+)
+
+
+def _nats_inventory_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _NATS_INVENTORY_SOURCE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    if path == _NATS_INVENTORY_LEDGER:
+        live_previous, live_current = _NATS_INVENTORY_SOURCE_PINS[_NATS_INVENTORY_LIVE]
+        reversals = ((live_current.hex().encode(), live_previous.hex().encode()),)
+    else:
+        reversals = _NATS_INVENTORY_LIVE_REVERSALS
+    historical = actual
+    for added, old in reversals:
+        assert historical.count(added) == 1, message
+        historical = historical.replace(added, old, 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+def _nats_inventory_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _NATS_INVENTORY_ROW:
+        return restored
+    row = records[_NATS_INVENTORY_ROW]
+    identity = row["identity"]
+    previous, current = _NATS_INVENTORY_SOURCE_PINS[_NATS_INVENTORY_LIVE]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Older layers reject any unrecognized or otherwise changed record.
+        return restored
+    assert identity["path"] == _NATS_INVENTORY_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _NATS_INVENTORY_ROW_BEFORE_SHA256, (
+        "NATS inventory disposition approval metadata changed"
+    )
+    return restored
+
+
+def test_nats_inventory_companion_is_bound_to_current_source() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / _NATS_INVENTORY_LEDGER).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    pin = hashlib.sha256((root / _NATS_INVENTORY_LIVE).read_bytes()).hexdigest()
+    assert [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _NATS_INVENTORY_LIVE
+    ] == [pin]
+    row = policy["records"][_NATS_INVENTORY_ROW]
+    assert row["identity"]["hashed_secret_bytes"] == _nov15_identity(pin)
+    assert row["owner"] == "egorribun"
+    assert row["expires_on"] == "2027-01-10"
+
+
+@pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
+def test_nats_inventory_source_projection_restores_predecessor(path: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    actual = (root / path).read_bytes()
+    previous, current = _NATS_INVENTORY_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current
+    historical = _nats_inventory_source_predecessor(path, actual)
+    assert hashlib.sha256(historical).digest() == previous
+    assert _nats_inventory_source_predecessor(path, historical) == historical
+
+
+@pytest.mark.parametrize(
+    ("path", "fragment_index"),
+    [
+        (_NATS_INVENTORY_LIVE, 0),
+        (_NATS_INVENTORY_LIVE, 1),
+        (_NATS_INVENTORY_LIVE, 2),
+        (_NATS_INVENTORY_LIVE, 3),
+        (_NATS_INVENTORY_LEDGER, None),
+    ],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_nats_inventory_projection_rejects_changed_fragments_even_with_spoofed_hash(
+    path: str,
+    fragment_index: int | None,
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    if fragment_index is not None:
+        fragment = _NATS_INVENTORY_LIVE_REVERSALS[fragment_index][0]
+    else:
+        fragment = _NATS_INVENTORY_SOURCE_PINS[_NATS_INVENTORY_LIVE][1].hex().encode()
+    assert actual.count(fragment) == 1
+    replacement = b"" if mutation == "missing" else fragment + fragment
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _ = _NATS_INVENTORY_SOURCE_PINS[path]
+    monkeypatch.setitem(
+        _NATS_INVENTORY_SOURCE_PINS, path, (previous, hashlib.sha256(changed).digest())
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nats_inventory_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
+def test_nats_inventory_full_source_chain_rejects_drift(path: str) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes() + b"\n"
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _aud154_combined_source_predecessor(path, actual)
+
+
+def test_nats_inventory_policy_projection_changes_only_existing_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    previous = _nats_inventory_policy_predecessor(policy)
+    assert [
+        i
+        for i, (current, old) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if current != old
+    ] == [_NATS_INVENTORY_ROW]
+    assert _nats_inventory_policy_predecessor(previous) == previous
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "path",
+        "type",
+        "category",
+        "owner",
+        "expiry",
+        "evidence",
+        "approved",
+        "reviewed",
+    ],
+)
+def test_nats_inventory_policy_chain_rejects_identity_and_approval_drift(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_NATS_INVENTORY_ROW]
+    if mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation in {"path", "type"}:
+        row["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        row[mutation] += " changed"
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "approved":
+        row["approval_status"] = "pending"
+    else:
+        row["reviewed_on"] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)

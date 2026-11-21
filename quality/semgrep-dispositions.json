@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "f391640e0e054fb88b8cc522be2831f606f840f9f7d0bb7df6a887e87638317e"
+          "sha256": "3959d6898029f0d95489f1779d7e30d09bd9cd397a2aea901b70b2475e183b24"
         },
         {
           "path": "tests/test_owned_nats_process.py",

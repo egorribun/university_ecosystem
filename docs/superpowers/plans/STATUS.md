@@ -19,8 +19,8 @@
       статусы отдельных попыток не записаны. Связь с конкретным тестом и ответ FCM 410 не доказаны.
       У каждого теста свой временный профиль Chrome.
     - Flaky — mobile push-delivery и footer-bottom-navigation.
-- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) (`egorribun` → `main`,
-  актуальная голова и её проверки — по ссылке) несёт решения владельца 2026-11-21 (ADR-047):
+- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) открыт (`egorribun` → `main`,
+  актуальная голова и её проверки — по ссылке); он несёт решения владельца 2026-11-21 (ADR-047):
   - **10202 и 20012.** Формы входа, регистрации и сброса пароля помечены `data-csrf="header"`. ZAP
     запускается с `rules.csrf.ignore.attname/attvalue` для информационной классификации этих форм.
   - **10055-6.** `style-src 'unsafe-inline'` — принятый риск. Hook ZAP понижает до low только этот
@@ -48,20 +48,35 @@
   [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44836750319)
   (49 passed, 3 flaky; затем NATS preflight `inventory_invalid_runtime`) и
   [live-realtime-visual](https://github.com/egorribun/university_ecosystem/actions/runs/44836750657).
-  На более позднем source `f0ee138d5` [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034)
+  На source `f0ee138d5` [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034)
   завершился с 47 passed, 2 failed, 2 skipped, 3 flaky и ошибкой NATS preflight
   `inventory_invalid_runtime`. В [CI Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340)
   realtime job завершился с 17 passed, 1 failed (desktop messenger-unread-read). Эти результаты не
   доказывают OOM как причину hosted-сбоев.
 - `live-realtime-visual` на первой голове #1541 (`1881aa596`) тоже упал: вход отвечал 502. Повтор
   без доказательства инфраструктурного сбоя не запускался.
-- **Кандидат в рабочем дереве:** ограничены преобразования изображений на процесс и число потоков AVIF;
+- **Hosted на source `3c65c9e60`, synthetic merge `52a1d673c`:**
+  - [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44848242946/job/136673165875):
+    E2E — 52 passed, 2 skipped; стенд остановлен успешно. NATS preflight завершился
+    `inventory_invalid_runtime`, без имени службы и причины; job упал.
+  - [Realtime и visual](https://github.com/egorribun/university_ecosystem/actions/runs/44848243079/job/136673168806):
+    realtime — 17 passed, 1 flaky; четыре именных случая прошли на retry 0, но агрегат не принят.
+    Все 24 страницы визуальной матрицы ответили HTTP 200. В одном варианте News
+    (английский язык, тёмная тема, ширина 390 px) проверка не подтвердила стабильный
+    непустой список с фильтром по умолчанию.
+  - Десять анализов CodeQL/Checkov чисты, оба PostgreSQL gate прошли. Renovate сначала получил
+    `ETARGET` для пакета, опубликованного после запуска job; точечный повтор прошёл. Общий итог source
+    остаётся не green.
+- **Изменения в `3c65c9e60`:** ограничены преобразования изображений на процесс и число потоков AVIF;
   повторный seed обновляет узнаваемые старые URL демо-медиа в совпадающих записях; элементы формы
   сброса пароля в SSR заблокированы до гидратации. CSP-фильтр понижает уровень только для однозначного
   канонического evidence с единственной разрешённой `style-src`; неоднозначное evidence не понижается.
   Это относится к одной строке evidence, а не ко всем заголовкам ответа.
 - В WSL прошли 233 теста; `app/services/image_proxy.py` и `app/core/config/storage.py` — 100% строк и
-  ветвей. Кандидат ожидает required checks для следующего SHA PR #1541.
+  ветвей. Локальный обычный smoke dashboard/news декодировал три AVIF и запросил один URL для пяти
+  ширин; OOM и рестартов не было, после очистки контейнеров, сетей и томов осталось 0/0/0.
+- При отказе NATS с `inventory_invalid_runtime` новая диагностика выводит нарушенное условие
+  и имя службы из списка Core. Для неизвестного имени используется `unknown`.
 
 ## Аудит: текущий итог — 510/512
 
@@ -108,8 +123,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. PR #1541: завершить проверку кандидата и дождаться required checks для следующего SHA, затем
-   сделать обычный merge.
+1. PR #1541: завершить диагностику hosted-сбоев и получить required checks для итогового SHA перед
+   обычным merge.
 2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
    Nuclei с проверенным отчётом закрывают AUD-381.
 3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два

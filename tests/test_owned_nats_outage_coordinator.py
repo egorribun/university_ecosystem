@@ -31,6 +31,7 @@ from scripts.owned_nats_outage import (
     StoredEventState,
     WorkerPolicy,
 )
+from tests.helpers.owned_nats_acceptance import CORE_SERVICES
 from tests.helpers.owned_nats_coordinator import (
     ADMIN,
     CHAT,
@@ -53,6 +54,129 @@ def run(ports: FakePorts):
 
 def names(ports: FakePorts) -> list[str]:
     return [call.name for call in ports.calls]
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    [
+        ({"running": "private-value"}, "running_type"),
+        ({"running": False, "status": "exited"}, "running_state"),
+        ({"status": "private-value"}, "status"),
+        ({"restart_count": True}, "restart_count_type"),
+        ({"restart_count": -1}, "restart_count_negative"),
+        ({"exit_code": True}, "exit_code_type"),
+        ({"exit_code": 1}, "exit_code_nonzero"),
+        ({"oom_killed": "private-value"}, "oom_killed_type"),
+        ({"oom_killed": True}, "oom_killed"),
+    ],
+)
+def test_runtime_failure_retains_only_closed_first_invariant(changes, reason, capsys):
+    ports = FakePorts()
+    ports.records = tuple(
+        replace(row, **changes) if row.service == "backend" else row
+        for row in ports.records
+    )
+
+    result = run(ports)
+
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.PREFLIGHT
+    assert result.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+    assert result.runtime_diagnostic.value == "inventory_invalid_runtime"
+    diagnostic = getattr(result, "inventory_diagnostic", None)
+    assert diagnostic is not None
+    assert diagnostic.invariant.value == reason
+    assert diagnostic.service == "backend"
+    assert "stop_container" not in names(ports)
+    assert "send_message_once" not in names(ports)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+    assert "private-value" not in repr(result)
+
+
+def test_runtime_failure_uses_closed_unknown_service_fallback(capsys) -> None:
+    ports = FakePorts()
+    private = "private-service-name"
+    ports.owner = replace(
+        ports.owner,
+        selected_services=tuple(
+            private if service == "caddy" else service
+            for service in ports.owner.selected_services
+        ),
+    )
+    ports.records = tuple(
+        replace(row, service=private, exit_code=1) if row.service == "caddy" else row
+        for row in ports.records
+    )
+
+    result = run(ports)
+
+    assert result.outcome is OutageOutcome.FAILED
+    diagnostic = getattr(result, "inventory_diagnostic", None)
+    assert diagnostic is not None
+    assert diagnostic.invariant.value == "exit_code_nonzero"
+    assert diagnostic.service == "unknown"
+    assert "stop_container" not in names(ports)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+    assert private not in repr(result)
+
+
+@pytest.mark.parametrize("service", CORE_SERVICES)
+def test_runtime_failure_uses_only_allowlisted_service(service, capsys) -> None:
+    ports = FakePorts()
+    ports.records = tuple(
+        replace(row, exit_code=1) if row.service == service else row
+        for row in ports.records
+    )
+    if service == "nats":
+        ports.nats = replace(ports.nats, exit_code=1)
+
+    result = run(ports)
+
+    assert result.runtime_diagnostic.value == "inventory_invalid_runtime"
+    assert result.inventory_diagnostic.service == service
+    assert result.inventory_diagnostic.invariant.value == "exit_code_nonzero"
+    assert "stop_container" not in names(ports)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+def test_runtime_detail_reflects_first_service_and_invariant(capsys) -> None:
+    ports = FakePorts()
+    ports.records = tuple(
+        replace(row, status="exited", exit_code=1)
+        if row.service in {"backend", "frontend"}
+        else row
+        for row in ports.records
+    )
+
+    result = run(ports)
+
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.inventory_diagnostic.invariant.value == "status"
+    assert result.inventory_diagnostic.service == "backend"
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+def test_runtime_detail_is_discarded_after_cleanup_failure(capsys) -> None:
+    ports = FakePorts()
+    ports.records = tuple(
+        replace(row, exit_code=1) if row.service == "backend" else row
+        for row in ports.records
+    )
+    ports.script["release_lock"] = [RuntimeError("private-cleanup")]
+
+    result = run(ports)
+
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.CLEANUP
+    assert result.runtime_diagnostic is None
+    assert getattr(result, "inventory_diagnostic", None) is None
+    assert "stop_container" not in names(ports)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
 
 
 def assert_failed(
@@ -328,6 +452,7 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
         "stage",
         "checkpoint",
         "runtime_diagnostic",
+        "inventory_diagnostic",
         "broker_diagnostic",
         "send_phase",
         "send_http_status",

@@ -3236,3 +3236,19 @@ Rollout is one owner-authored PR:
    records, migration layer and gate tests.
 2. The Dependabot npm update (#1520) with no policy edits, keeping maplibre-gl
    6.15.0, jsdom 30.1.3 and Playwright 1.64.1.
+
+
+### NATS inventory diagnostic companion rebind (2026-11-21)
+
+When the owned NATS preflight rejects the container inventory, the runner can
+report the failed condition and a service name from the Core allowlist. It uses
+`unknown` for any other name.
+
+The owner's standing one-to-one approval of 2026-10-31 covers the new digest
+of `scripts/live_stand.py` in Semgrep row 7 and its public-integrity identity
+in disposition record 495. The projection restores the exact source, ledger
+and policy from the preceding revision before applying the NOV21 chain.
+The record retains its path, type, category, owner, evidence and 2027-01-10
+expiry. The inventory contains 242 baseline identities, 524 dispositions,
+27 Gitleaks fingerprints and 15 Semgrep rows. Scanner, CI and live acceptance
+results are verified separately for each source revision.
