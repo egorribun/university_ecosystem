@@ -196,7 +196,7 @@ describe("private API session isolation", () => {
     freshPage.unmount()
   })
 
-  it("matches only same-origin GETs on the image-proxy prefix before the media routes", async () => {
+  it("matches image-proxy GETs and keeps the existing private API routing", async () => {
     const { initMediaCaching } = await import("../media")
     initMediaCaching()
     const first = routes[0]!
@@ -208,15 +208,46 @@ describe("private API session isolation", () => {
       true
     )
     expect(matches("https://app.test/api/v1/img/media/public/avatar.webp")).toBe(true)
-    expect(matches("https://other.test/api/v1/img/static/story_covers/cover.webp")).toBe(false)
-    expect(matches("https://app.test.evil/api/v1/img/static/story_covers/cover.webp")).toBe(false)
-    expect(matches("https://app.test/api/v1/img")).toBe(false)
-    expect(matches("https://app.test/api/v1/img-extra/cover.webp")).toBe(false)
+    expect(matches("https://other.test/api/v1/img/static/story_covers/cover.webp")).toBe(true)
+    expect(matches("https://app.test.evil/api/v1/img/static/story_covers/cover.webp")).toBe(true)
+    expect(matches("https://app.test/api/v1/img")).toBe(true)
+    expect(matches("https://app.test/api/v1/img-extra/cover.webp")).toBe(true)
     expect(matches("https://app.test/imgproxy/signed-image")).toBe(false)
-    expect(matches("https://app.test/api/v1/chats/1/attachments/2")).toBe(false)
-    expect(matches("https://app.test/api/v1/events/1/files/2")).toBe(false)
+    expect(matches("https://app.test/api/v1/chats/1/attachments/2")).toBe(true)
+    expect(matches("https://app.test/api/v1/events/1/files/2")).toBe(true)
     expect(matches("https://app.test/api/v1/img/static/cover.webp", { method: "POST" })).toBe(false)
     expect(matches("https://app.test/api/v1/img/static/cover.webp", { method: "HEAD" })).toBe(false)
+  })
+
+  it.each([
+    "/api/v1/img/static/public/avatar.webp",
+    "/api/v1/img/static/auth/avatar.webp",
+    "/api/v1/img/static/users/me/avatar.webp",
+    "/api/v1/img/static/csrf/avatar.webp",
+  ])("forwards an image despite private-route exclusion substrings: %s", async (path) => {
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    const findClient = vi.fn()
+    vi.stubGlobal("self", {
+      caches: storage,
+      location: new URL("https://app.test/"),
+      __WB_DISABLE_DEV_LOGS: true,
+      clients: { get: findClient },
+    })
+    const req = new Request(`https://app.test${path}?w=400`)
+    Object.defineProperty(req, "destination", { value: "image" })
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+    }) as unknown as ExtendableEvent
+    const response = new Response("network image", { status: 200 })
+    fetchMock.mockResolvedValueOnce(response)
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+
+    expect(route).toBe(routes[0])
+    expect(await route!.handle({ request: req, event })).toBe(response)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(req)
+    expect(findClient).not.toHaveBeenCalled()
+    expect(entries.size).toBe(0)
   })
 
   it.each([200, 304, 401, 403, 404, 429, 500, 503])(
@@ -348,35 +379,39 @@ describe("private API session isolation", () => {
     expect(entries.size).toBe(2)
   })
 
-  it.each(["/api/v1/chats/1/attachments/2", "/api/v1/events/1/files/2"])(
-    "continues to fence a private attachment image across an account change: %s",
-    async (path) => {
-      const { initMediaCaching } = await import("../media")
-      initMediaCaching()
-      api.setSessionHash("account-a", "account-a:live")
-      const req = new Request(`https://app.test${path}`, { cache: "no-store" })
-      Object.defineProperty(req, "destination", { value: "image" })
-      const delayed = deferred<Response>()
-      const entered = deferred<void>()
-      fetchMock.mockImplementationOnce(() => {
-        entered.resolve()
-        return delayed.promise
-      })
-      const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
-      const event = Object.assign(new Event("fetch"), {
-        clientId: "client-a",
-      }) as unknown as ExtendableEvent
-      expect(route).toBe(routes[1])
+  it.each([
+    "https://app.test/api/v1/chats/1/attachments/2",
+    "https://app.test/api/v1/events/1/files/2",
+    "https://other.test/api/v1/img/static/cover.webp",
+    "https://app.test.evil/api/v1/img/static/cover.webp",
+    "https://app.test/api/v1/img",
+    "https://app.test/api/v1/img-extra/cover.webp",
+  ])("keeps other API image requests fenced across an account change: %s", async (url) => {
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+    api.setSessionHash("account-a", "account-a:live")
+    const req = new Request(url, { cache: "no-store" })
+    Object.defineProperty(req, "destination", { value: "image" })
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+    const event = Object.assign(new Event("fetch"), {
+      clientId: "client-a",
+    }) as unknown as ExtendableEvent
+    expect(route).toBe(routes[0])
 
-      const pending = route!.handle({ request: req, event })
-      await entered.promise
-      api.setSessionHash("account-b", "account-b:new")
-      delayed.resolve(new Response("old private image"))
+    const pending = route!.handle({ request: req, event })
+    await entered.promise
+    api.setSessionHash("account-b", "account-b:new")
+    delayed.resolve(new Response("old private image"))
 
-      expect((await pending).type).toBe("error")
-      expect(entries.size).toBe(0)
-    }
-  )
+    expect((await pending).type).toBe("error")
+    expect(entries.size).toBe(0)
+  })
 
   it("does not replace a slow image response with the private API timeout", async () => {
     vi.useFakeTimers()

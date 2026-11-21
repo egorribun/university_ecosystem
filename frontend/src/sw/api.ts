@@ -124,31 +124,32 @@ function sessionCachePlugin(scope: string, cacheName: string): WorkboxPlugin {
   }
 }
 
-export function initApiCaching() {
-  // The image proxy is a public endpoint that rejects private attachments on
-  // the server. Forward it without a worker cache so user images retain their
-  // no-cache revalidation and do not enter the generic image CacheFirst route.
-  registerRoute(
-    ({ url, request }) =>
-      url.pathname.startsWith("/api/v1/img/") &&
-      url.origin === self.location.origin &&
-      request.method === "GET",
-    ({ request }) => fetch(request)
+// The public image proxy rejects private attachments on the server. Keep its
+// no-cache revalidation and bypass the generic image CacheFirst route.
+function isPublicImageProxy(url: URL, request: Request): boolean {
+  return (
+    request.method === "GET" &&
+    url.pathname.startsWith("/api/v1/img/") &&
+    url.origin === self.location.origin
   )
+}
 
+export function initApiCaching() {
   registerRoute(
     ({ url, request }) =>
-      url.pathname.startsWith("/api/") &&
-      !url.pathname.includes("/public/") &&
-      // The app fetches this public bootstrap config with no-store; a
-      // re-established private session must not fence that request.
-      !(url.pathname === "/api/v1/campus/config" && url.origin === self.location.origin) &&
-      // Authentication probes must reach the server without SW interception.
-      !url.pathname.includes("/users/me") &&
-      !url.pathname.includes("/auth/") &&
-      !url.pathname.includes("/csrf") &&
-      request.method === "GET",
+      isPublicImageProxy(url, request) ||
+      (url.pathname.startsWith("/api/") &&
+        !url.pathname.includes("/public/") &&
+        // The app fetches this public bootstrap config with no-store; a
+        // re-established private session must not fence that request.
+        !(url.pathname === "/api/v1/campus/config" && url.origin === self.location.origin) &&
+        // Authentication probes must reach the server without SW interception.
+        !url.pathname.includes("/users/me") &&
+        !url.pathname.includes("/auth/") &&
+        !url.pathname.includes("/csrf") &&
+        request.method === "GET"),
     async ({ request, event }) => {
+      if (isPublicImageProxy(new URL(request.url), request)) return fetch(request)
       const confirmed = await ensureSessionIdentity(event)
       const epoch = sessionEpoch
       const scope = currentSessionScope

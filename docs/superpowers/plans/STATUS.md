@@ -52,6 +52,7 @@
   | `01a434839` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44906878207/job/136854251753) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44906878502/job/136854254040). CI Success не прошёл из-за visual. |
   | `753c2c572` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44910470846/job/136864997618) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44910471073/job/136864999567). Повторился сетевой сбой Dashboard. |
   | `bba42fa82` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44914673591/job/136881639122) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44914673817/job/136877707232). Сбой воспроизвёлся на изображении из API. |
+  | `762478ff6` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44918659401/job/136889652977) | [Realtime и visual 24/24 прошли](https://github.com/egorribun/university_ecosystem/actions/runs/44918659599/job/136889655183). Shard 2 упал на числе регистраций маршрута API в AUD-400. |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
@@ -71,6 +72,9 @@
   в `Response.error()`. Same-origin GET к image proxy теперь сохраняет исходные запрос и ответ
   до приватного API-кеша и общего кеша изображений. Серверная ревалидация и границы доступа
   к защищённым вложениям сохраняются. Точный механизм hosted-сбоя ещё не установлен.
+  В hosted-матрице `762478ff6` все 24 захвата завершились без ошибок сети и браузера. Артефакт
+  снимков — `14713602601`. Прямой запрос image proxy выполняется в единственном обработчике API
+  до проверки сессии. Неизменённый AUD-400 и полный локальный Vitest прошли (11 555 тестов).
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,
