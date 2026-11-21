@@ -950,3 +950,241 @@ test("authenticated audit answers only the Open-Meteo forecast endpoint with a p
 
 // Include authenticated capture diagnostics in the existing hosted visual contract lane.
 import "./authenticated-visual-runtime-diagnostic.test.mjs"
+
+async function withVisualRequestDiagnostics(run) {
+  const previousArg = process.argv[1]
+  const previousOrigin = process.env.ORIGIN
+  const previousMatrix = process.env.VISUAL_CAPTURE_MATRIX
+  const previousLog = console.log
+  const lines = []
+  process.argv[1] = "frontend/scripts/authenticated-visual-audit.mjs"
+  process.env.ORIGIN = "https://stand.invalid"
+  process.env.VISUAL_CAPTURE_MATRIX = "1"
+  console.log = (line) => lines.push(line)
+  try {
+    const module = await import(`./visual-smoke-contract.mjs?diagnostics=${randomUUID()}`)
+    await run(module, lines)
+  } finally {
+    process.argv[1] = previousArg
+    if (previousOrigin === undefined) delete process.env.ORIGIN
+    else process.env.ORIGIN = previousOrigin
+    if (previousMatrix === undefined) delete process.env.VISUAL_CAPTURE_MATRIX
+    else process.env.VISUAL_CAPTURE_MATRIX = previousMatrix
+    console.log = previousLog
+  }
+}
+
+function visualFailure(url, errorText, route = "/dashboard", width = 1440) {
+  return {
+    method: () => "GET",
+    url: () => url,
+    failure: () => ({ errorText }),
+    frame: () => ({
+      page: () => ({
+        url: () => `https://stand.invalid${route}`,
+        viewportSize: () => ({ width, height: 900 }),
+      }),
+    }),
+  }
+}
+
+test("visual request diagnostics project closed browser errors and same-origin API families", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const cases = [
+      [
+        "https://stand.invalid/api/v1/events?token=private-marker",
+        "net::ERR_HTTP2_PROTOCOL_ERROR",
+        "events",
+        "http2_protocol_error",
+      ],
+      [
+        "https://stand.invalid/api/v1/news?token=private-marker",
+        "net::ERR_EMPTY_RESPONSE",
+        "news",
+        "empty_response",
+      ],
+      [
+        "https://stand.invalid/api/v1/stories?token=private-marker",
+        "net::ERR_CONNECTION_RESET",
+        "stories",
+        "connection_reset",
+      ],
+      [
+        "https://stand.invalid/api/v1/schedule/private-marker",
+        "net::ERR_FAILED",
+        "schedule",
+        "failed",
+      ],
+      [
+        "https://stand.invalid/api/v1/users/me",
+        "net::ERR_NETWORK_CHANGED",
+        "profile",
+        "network_changed",
+      ],
+      [
+        "https://stand.invalid/api/v1/notifications",
+        "net::ERR_INTERNET_DISCONNECTED",
+        "notifications",
+        "internet_disconnected",
+      ],
+      [
+        "https://third.invalid/api/v1/events?token=private-marker",
+        "net::ERR_FAILED private-marker",
+        "other",
+        "other",
+      ],
+      [
+        "https://stand.invalid/api/v1/events-private-marker",
+        "private-marker net::ERR_EMPTY_RESPONSE",
+        "other",
+        "other",
+      ],
+    ]
+    for (const [url, errorText] of cases) {
+      const record = requestFailureRecord(visualFailure(url, errorText))
+      assert.equal(record.errorText, errorText)
+    }
+    assert.equal(lines.length, cases.length)
+    for (let index = 0; index < lines.length; index++) {
+      assert.ok(lines[index].startsWith("visual-request-diagnostics "))
+      const record = JSON.parse(lines[index].slice("visual-request-diagnostics ".length))
+      assert.equal(record.apiFamily, cases[index][2])
+      assert.equal(record.errorCode, cases[index][3])
+      assert.equal(record.route, "/dashboard")
+      assert.equal(record.width, 1440)
+      assert.doesNotMatch(
+        lines[index],
+        /private-marker|stand\.invalid|third\.invalid|token=|\/api\/v1\//u
+      )
+    }
+  })
+})
+
+test("visual request diagnostics are bounded, optional and cannot change failure records", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const req = visualFailure("https://stand.invalid/api/v1/events", "net::ERR_FAILED")
+    process.env.VISUAL_CAPTURE_MATRIX = "0"
+    assert.equal(requestFailureRecord(req).errorText, "net::ERR_FAILED")
+    assert.equal(lines.length, 0)
+    process.env.VISUAL_CAPTURE_MATRIX = "1"
+    for (let count = 0; count < 70; count++) requestFailureRecord(req)
+    assert.equal(lines.length, 64)
+  })
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }) => {
+    console.log = () => {
+      throw new Error("private-marker")
+    }
+    const req = visualFailure("https://stand.invalid/api/v1/events", "net::ERR_FAILED")
+    assert.equal(requestFailureRecord(req).errorText, "net::ERR_FAILED")
+  })
+})
+
+test("visual request diagnostics safely classify invalid inputs without exposing them", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const req = visualFailure("not a url private-marker", "private-marker", "/other", 999)
+    assert.equal(requestFailureRecord(req).errorText, "private-marker")
+    assert.equal(lines.length, 1)
+    const record = JSON.parse(lines[0].slice("visual-request-diagnostics ".length))
+    assert.equal(record.apiFamily, "other")
+    assert.equal(record.errorCode, "other")
+    assert.equal(record.requestOrigin, "invalid")
+    assert.equal(record.route, "other")
+    assert.equal(record.width, 0)
+    assert.doesNotMatch(lines[0], /private-marker|stand\.invalid/u)
+  })
+})
+
+test("visual request diagnostics recognize the complete closed browser error inventory", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const symbols = [
+      ["ERR_FAILED", "failed"],
+      ["ERR_EMPTY_RESPONSE", "empty_response"],
+      ["ERR_HTTP2_PROTOCOL_ERROR", "http2_protocol_error"],
+      ["ERR_HTTP2_SERVER_REFUSED_STREAM", "http2_server_refused_stream"],
+      ["ERR_HTTP2_PING_FAILED", "http2_ping_failed"],
+      ["ERR_CONTENT_LENGTH_MISMATCH", "content_length_mismatch"],
+      ["ERR_INCOMPLETE_CHUNKED_ENCODING", "incomplete_chunked_encoding"],
+      ["ERR_NETWORK_CHANGED", "network_changed"],
+      ["ERR_INTERNET_DISCONNECTED", "internet_disconnected"],
+      ["ERR_ADDRESS_UNREACHABLE", "address_unreachable"],
+      ["ERR_CONNECTION_RESET", "connection_reset"],
+      ["ERR_CONNECTION_CLOSED", "connection_closed"],
+      ["ERR_CONNECTION_REFUSED", "connection_refused"],
+      ["ERR_BLOCKED_BY_CLIENT", "blocked_by_client"],
+      ["ERR_NAME_NOT_RESOLVED", "name_not_resolved"],
+      ["ERR_TIMED_OUT", "timed_out"],
+    ]
+    for (const [symbol] of symbols) {
+      requestFailureRecord(visualFailure("https://stand.invalid/api/v1/events", `net::${symbol}`))
+    }
+    assert.equal(lines.length, symbols.length)
+    for (const [index, line] of lines.entries()) {
+      assert.equal(
+        JSON.parse(line.slice("visual-request-diagnostics ".length)).errorCode,
+        symbols[index][1]
+      )
+    }
+  })
+})
+
+test("visual request diagnostics fail closed for missing page data and inactive audit processes", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const req = visualFailure("https://stand.invalid/api/v1/events/private-marker", "")
+    req.method = () => "private-marker"
+    req.frame = () => {
+      throw new Error("private-marker")
+    }
+    assert.equal(requestFailureRecord(req).errorText, "")
+    assert.equal(lines.length, 1)
+    const record = JSON.parse(lines[0].slice("visual-request-diagnostics ".length))
+    assert.equal(record.route, "other")
+    assert.equal(record.width, 0)
+    assert.equal(record.method, "other")
+    assert.equal(record.apiFamily, "events")
+    assert.equal(record.errorCode, "unknown")
+    assert.doesNotMatch(lines[0], /private-marker|stand\.invalid/u)
+
+    process.env.ORIGIN = "not a valid origin private-marker"
+    assert.equal(requestFailureRecord(req).errorText, "")
+    assert.equal(lines.length, 1)
+    process.env.ORIGIN = "https://stand.invalid"
+    process.argv[1] = "unrelated-script.mjs"
+    assert.equal(requestFailureRecord(req).errorText, "")
+    assert.equal(lines.length, 1)
+  })
+})
+
+test("visual request diagnostics classify missing browser error text as unknown without changing records", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    for (const failure of [null, {}, { errorText: undefined }, { errorText: null }]) {
+      const request = visualFailure("https://stand.invalid/api/v1/events", "unused")
+      request.failure = () => failure
+      assert.equal(requestFailureRecord(request).errorText, "unknown network failure")
+    }
+    const empty = visualFailure("https://stand.invalid/api/v1/events", "")
+    assert.equal(requestFailureRecord(empty).errorText, "")
+    assert.equal(lines.length, 5)
+    for (const line of lines) {
+      assert.equal(
+        JSON.parse(line.slice("visual-request-diagnostics ".length)).errorCode,
+        "unknown"
+      )
+    }
+  })
+})
+
+test("visual request diagnostics exclude ordinary aborts from their cap without altering the records", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    for (let index = 0; index < 70; index++) {
+      const request = visualFailure("https://stand.invalid/api/v1/events", "net::ERR_ABORTED")
+      assert.equal(requestFailureRecord(request).errorText, "net::ERR_ABORTED")
+    }
+    assert.equal(lines.length, 0)
+    requestFailureRecord(visualFailure("https://stand.invalid/api/v1/events", "net::ERR_FAILED"))
+    assert.equal(lines.length, 1)
+    assert.equal(
+      JSON.parse(lines[0].slice("visual-request-diagnostics ".length)).errorCode,
+      "failed"
+    )
+  })
+})
