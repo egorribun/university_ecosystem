@@ -142,3 +142,37 @@ test("mobile navigation preserves native rapid input, final content, and history
     /waitForTimeout|setTimeout|dispatchEvent\(|\.route\(|test\.skip|setDefaultTimeout|test\.setTimeout/u
   )
 })
+
+test("mobile drawer checks focused layout and stable physical targets without weakening them", () => {
+  const start = spec.indexOf('test("mobile drawer traps keyboard focus')
+  const end = spec.indexOf("test(", start + 5)
+  const drawer = spec.slice(start, end < 0 ? undefined : end)
+  const focusAndTrial = drawer.indexOf("await assertDrawerCloseReady(closeButton, width)")
+  const physical = drawer.indexOf("const closeSize")
+  assert.ok(start >= 0 && focusAndTrial >= 0 && focusAndTrial < physical)
+  const helper = spec.slice(spec.indexOf("async function assertDrawerCloseReady("))
+  const focus = helper.indexOf("await expect(closeButton).toBeFocused()")
+  const layout = helper.indexOf("const layout")
+  const trial = helper.indexOf("await closeButton.click({ trial: true })")
+  assert.ok(focus >= 0 && focus < layout && layout < trial)
+  assert.match(helper, /style\.boxSizing\s*===\s*["']content-box["']/u)
+  for (const side of ["Left", "Right", "Top", "Bottom"]) {
+    assert.match(helper, new RegExp(`style\\.padding${side}`, "u"))
+    assert.match(helper, new RegExp(`style\\.border${side}Width`, "u"))
+  }
+  for (const dimension of ["width", "height"]) {
+    assert.match(
+      helper,
+      new RegExp(`layout\\.${dimension}[^\\n]*\\.toBeGreaterThanOrEqual\\(44\\)`, "u")
+    )
+    assert.match(
+      drawer,
+      new RegExp(`closeSize\\.${dimension}[^\\n]*\\.toBeGreaterThanOrEqual\\(44\\)`, "u")
+    )
+  }
+  assert.match(drawer, /page\.keyboard\.press\(["']Shift\+Tab["']\)/u)
+  assert.match(drawer, /page\.keyboard\.press\(["']Tab["']\)/u)
+  assert.match(drawer, /page\.keyboard\.press\(["']Escape["']\)/u)
+  assert.match(drawer, /previousBodyOverflow/u)
+  assert.doesNotMatch(drawer + helper, /waitForTimeout|setTimeout|Math\.round|toBeCloseTo/u)
+})

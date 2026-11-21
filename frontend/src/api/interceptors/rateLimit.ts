@@ -171,10 +171,12 @@ const waitForClientQueueWaiter = (config: QueueConfig): Promise<void> => {
   // waiter was granted just before abort, and a block mutation cannot leave
   // the queue promise pending behind a timeout.
   const onAbort = () =>
-    void (removeQueuedWaiter(),
-    pruneClientQueueTimestamps(),
-    deferred.reject(abortError(config.signal)),
-    notifyClientQueue())
+    void (
+      removeQueuedWaiter(),
+      pruneClientQueueTimestamps(),
+      deferred.reject(abortError(config.signal)),
+      notifyClientQueue()
+    )
   const removeAbortListener = signal
     ? () => signal.removeEventListener("abort", onAbort)
     : undefined

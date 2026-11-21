@@ -23,9 +23,9 @@ import {
 } from "./browser-dependency-smoke.mjs"
 
 const versions = {
-  "@lhci/cli": "0.16.1",
-  "@lhci/utils": "0.16.1",
-  lighthouse: "13.6.0",
+  "@lhci/cli": "0.15.1",
+  "@lhci/utils": "0.15.1",
+  lighthouse: "13.5.0",
   "puppeteer-core": "25.17.0",
   "chromium-bidi": "157.0.8090-0",
   zod: "4.6.7",
@@ -79,14 +79,14 @@ test("browser smoke pins match the adoption lock's root package records", () => 
   assert.deepEqual(locked, versions)
 })
 
-test("rejects the superseded browser consumer versions", () => {
+test("rejects unreviewed browser consumer versions", () => {
   const { root, put } = dependencyFixture()
   try {
     inspectBrowserDependencies(root)
     for (const [name, previous] of Object.entries({
-      "@lhci/cli": "0.15.1",
-      "@lhci/utils": "0.15.1",
-      lighthouse: "13.5.0",
+      "@lhci/cli": "0.16.1",
+      "@lhci/utils": "0.16.1",
+      lighthouse: "13.6.0",
       "puppeteer-core": "25.13.0",
     })) {
       put("node_modules/" + name + "/package.json", packageFixture(name, previous))
@@ -391,7 +391,7 @@ test("Lighthouse runtime errors or mismatched results fail closed with cleanup",
   for (const lhr of [
     { runtimeError: { code: "SYNTHETIC_ERROR" } },
     { lighthouseVersion: "12.6.1" },
-    { lighthouseVersion: "13.5.0" },
+    { lighthouseVersion: "13.6.0" },
     { requestedUrl: "http://example.test/" },
     { finalDisplayedUrl: "http://example.test/" },
     { audits: { "document-title": { score: 0 } } },

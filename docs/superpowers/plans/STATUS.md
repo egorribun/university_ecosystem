@@ -94,7 +94,17 @@
   - Realtime и visual прошли. В артефакте все 24 снимка. [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44940349526/job/136955960512)
     [Артефакт 14722575291](https://github.com/egorribun/university_ecosystem/actions/runs/44940349526/artifacts/14722575291)
   - Nilaway прошёл. [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44940349338/job/136955958334)
-  - Полный Core на `main` запущен. Итог и receipt ещё не подтверждены. [Прогон](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243)
+  - Полный Core на `main` `c506c637c` завершился ошибкой. Итог — 223 passed, 8 skipped, 1 flaky.
+    Фрейм сбоя указывает на проверку порога 44 px для кнопки закрытия мобильного меню.
+    Измеренная ширина не записана. Все шесть именных случаев AUD-154 прошли с первой попытки,
+    включая read-receipt на desktop и mobile.
+    [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/job/136964397867)
+    [Receipt 14723557616](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/artifacts/14723557616)
+    Локальная браузерная проверка с зависимостями npm-пакета воспроизвела дробное округление DOMRect
+    во время выезда меню при номинальной ширине 44 px. Тест проверяет рамку кнопки сразу после
+    фокуса, затем измеряет стабильную область нажатия. Оба измерения требуют не менее 44 px.
+  - Проверка frozen-RC отклонила манифест как недействительный или незамороженный.
+    [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/job/136964397629)
 
   PR содержит восстановление Web Push, диагностику префиксов хешей и изоляцию DST-теста #1523.
   На `45f4f42ba` realtime и именные случаи
