@@ -1,7 +1,13 @@
 import asyncio
 import base64
+import contextvars
 import hashlib
 import json
+import os
+import threading
+import weakref
+from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -43,6 +49,63 @@ def _cache_decode(payload: bytes) -> tuple[bytes, str]:
 _CACHE_TTL = 24 * 60 * 60
 
 
+class _ImageTransformRuntime:
+    """Bound physical encoders per process and admission per event loop."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.executor = ThreadPoolExecutor(
+            max_workers=limit, thread_name_prefix="image_transform"
+        )
+        self._lock = threading.Lock()
+        self._slots: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, weakref.ReferenceType[asyncio.Semaphore]
+        ] = weakref.WeakKeyDictionary()
+
+    def slots_for_running_loop(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            reference = self._slots.get(loop)
+            slots = reference() if reference is not None else None
+            if slots is None:
+                slots = asyncio.Semaphore(self.limit)
+                # A strong semaphore value can retain its bound loop through
+                # asyncio internals. Weak references allow closed loops to die.
+                self._slots[loop] = weakref.ref(slots)
+            return slots
+
+
+_image_transform_runtime = _ImageTransformRuntime(
+    settings.storage.image_proxy_max_concurrency
+)
+
+
+def _reset_image_transform_capacity_after_fork() -> None:
+    """Discard inherited locks, loop primitives and pool in a forked worker."""
+    global _image_transform_runtime
+    _image_transform_runtime = _ImageTransformRuntime(
+        settings.storage.image_proxy_max_concurrency
+    )
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_image_transform_capacity_after_fork)
+
+
+def _release_image_slot(
+    loop: asyncio.AbstractEventLoop,
+    slots: asyncio.Semaphore,
+    future: Future[tuple[bytes, str]],
+) -> None:
+    try:
+        # The concurrent future completes only once the function has finished,
+        # or when the executor cancels it before it starts.
+        loop.call_soon_threadsafe(slots.release)
+    except RuntimeError:
+        # A closed loop has no live waiters to wake and owns no future requests.
+        pass
+
+
 def _configured_image_max_pixels() -> int:
     """Return the bounded image pixel budget used by proxy transformations."""
     from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
@@ -81,7 +144,7 @@ async def get_transformed_image(
 ) -> tuple[bytes, str]:
     """
     Fetch image from backend, transform it (resize, re-encode), and return bytes + mime.
-    Utilizes disk caching for efficiency.
+    Transformed images are cached in Redis when available.
     """
 
     # Construct a cache key based on path, width, and format
@@ -117,42 +180,52 @@ async def get_transformed_image(
     except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
         logger.warning("Redis cache read failed for %s: %s", path, exc)
-    # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes'
-    # method in the protocol,
-    # but the implementations (StaticFSStorage, S3Storage) effectively work
-    # with paths.
-    # However, save_file returns a URL. We might need to fetch the file
-    # bytes differently.
+    needs_transform = format_preference != "original" or width is not None
+    runtime = _image_transform_runtime
+    if needs_transform:
+        # Wait before reading: queued requests must not retain image bytes.
+        slots = runtime.slots_for_running_loop()
+        await slots.acquire()
 
-    # We need a way to get file bytes from the backend or direct from disk/S3
-    # Let's add a helper or look for one.
-    # Since we can't easily modify the StorageBackend protocol right now,
-    # we'll implement a dedicated fetcher here based on backend type.
-
+    handed_to_worker = False
     try:
-        source_bytes = await _fetch_source_bytes(backend, path)
-    except (FileNotFoundError, OSError, ConnectionError) as exc:
-        # RZ-20-04: Narrowed — storage backend I/O errors.
-        logger.error("Failed to fetch source image %s: %s", path, exc)
-        raise ValueError(f"Could not load image: {path}") from exc
+        try:
+            source_bytes = await _fetch_source_bytes(backend, path)
+        except (FileNotFoundError, OSError, ConnectionError) as exc:
+            # RZ-20-04: Narrowed — storage backend I/O errors.
+            logger.error("Failed to fetch source image %s: %s", path, exc)
+            raise ValueError(f"Could not load image: {path}") from exc
 
-    if format_preference == "original" and width is None:
-        # No transformation is needed, but original mode still cannot bypass
-        # the application-level decompression/resource boundary.
-        _validate_image_payload(
-            source_bytes,
-            max_pixels=_configured_image_max_pixels(),
-        )
-        return source_bytes, _guess_mime(path)
+        if not needs_transform:
+            # No transformation is needed, but original mode still cannot
+            # bypass the application-level decompression/resource boundary.
+            _validate_image_payload(
+                source_bytes,
+                max_pixels=_configured_image_max_pixels(),
+            )
+            return source_bytes, _guess_mime(path)
 
-    try:
-        transformed_data, mime = await asyncio.to_thread(
+        # Submit synchronously before yielding so cancellation cannot remove a
+        # job without transferring its permit. Preserve to_thread's context.
+        context = contextvars.copy_context()
+        worker = runtime.executor.submit(
+            context.run,
             _process_image,
             source_bytes,
             width,
             format_preference,
             _configured_image_max_pixels(),
         )
+        handed_to_worker = True
+        worker.add_done_callback(
+            partial(_release_image_slot, asyncio.get_running_loop(), slots)
+        )
+    finally:
+        if needs_transform and not handed_to_worker:
+            slots.release()
+
+    try:
+        transformed_data, mime = await asyncio.wrap_future(worker)
 
         try:
             # Cache the result via Redis
@@ -304,7 +377,7 @@ def _process_image(
             buffer = BytesIO()
             if format_pref == "avif":
                 try:
-                    output_img.save(buffer, format="AVIF", quality=60)
+                    output_img.save(buffer, format="AVIF", quality=60, max_threads=1)
                     return buffer.getvalue(), "image/avif"
                 except (OSError, ValueError):
                     # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.

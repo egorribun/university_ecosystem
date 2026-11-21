@@ -12,6 +12,7 @@ fails closed.
 import asyncio
 import functools
 import hashlib
+import json
 import secrets
 import sys
 from datetime import UTC, datetime, timedelta
@@ -146,6 +147,24 @@ def demo_media_url(file_name: str) -> str:
 
 def _demo_media_files() -> list[str]:
     return sorted(path.name for path in DEMO_MEDIA_DIR.glob("*.webp"))
+
+
+@functools.cache
+def _legacy_demo_media_urls() -> dict[str, str]:
+    provenance = json.loads(
+        (DEMO_MEDIA_DIR / "PROVENANCE.json").read_text(encoding="utf-8")
+    )
+    return {
+        demo_media_url(entry["file"]): entry["replaces"]
+        for entry in provenance["images"]
+    }
+
+
+def _backfill_legacy_demo_media(record: object, item: dict, field: str) -> None:
+    new_url = item[field]
+    old_url = _legacy_demo_media_urls().get(new_url)
+    if old_url is not None and getattr(record, field, None) == old_url:
+        setattr(record, field, new_url)
 
 
 async def install_demo_media() -> None:
@@ -1177,6 +1196,7 @@ async def seed_news(db, user: User) -> None:
         )
         if existing_seed is not None:
             if existing_seed.content == item["content"]:
+                _backfill_legacy_demo_media(existing_seed, item, "image_url")
                 if not existing_seed.title_en:
                     existing_seed.title_en = item["title_en"]
                 if not existing_seed.content_en:
@@ -1214,6 +1234,11 @@ async def seed_stories(db, user: User) -> None:
             # Backfill only a seed row whose source-language content is intact.
             # Preserve every populated translation; lifecycle changes require
             # the populated translations to be canonical as well.
+            if (
+                existing_seed.short_text == item["short_text"]
+                and getattr(existing_seed, "cta_url", None) is None
+            ):
+                _backfill_legacy_demo_media(existing_seed, item, "cover_url")
             canonical_content_matches = (
                 all(
                     getattr(existing_seed, field) == item[field]
@@ -1318,6 +1343,7 @@ def _backfill_event_translations(existing: Event, item: dict) -> None:
 async def _find_reusable_event_anchor(
     db: AsyncSession, user: User, now: datetime
 ) -> datetime | None:
+    """Find a reusable batch and repair media on matching historical batches."""
     source_anchor = _event_datetime_utc(EVENTS_DATA[0]["starts_at"])
     latest_event_end_offset = max(
         _event_datetime_utc(item["ends_at"]) - source_anchor for item in EVENTS_DATA
@@ -1338,8 +1364,6 @@ async def _find_reusable_event_anchor(
     }
     anchors: set[datetime] = set()
     for existing in seeded_rows:
-        if not getattr(existing, "is_active", True):
-            continue
         item = source_by_title.get(existing.title)
         if item is None or not _event_source_matches(existing, item):
             continue
@@ -1347,6 +1371,15 @@ async def _find_reusable_event_anchor(
         anchor = _event_datetime_utc(existing.starts_at) - item_offset
         expected_end = anchor + (_event_datetime_utc(item["ends_at"]) - source_anchor)
         if _event_datetime_utc(existing.ends_at) != expected_end:
+            continue
+        # A scheduled seed batch always uses the original weekday and time.
+        # Repair its exact old image even when that batch is now historical.
+        if (
+            anchor.weekday() == source_anchor.weekday()
+            and anchor.time() == source_anchor.time()
+        ):
+            _backfill_legacy_demo_media(existing, item, "image_url")
+        if not getattr(existing, "is_active", True):
             continue
         if anchor + latest_event_end_offset <= normalized_now:
             continue
@@ -1448,8 +1481,9 @@ async def seed_archived_events(db: AsyncSession, user: User) -> None:
             if (
                 _event_source_matches(existing_seed, item)
                 and _event_datetime_utc(existing_seed.ends_at) == ends_at
-                and existing_seed.image_url == item["image_url"]
-                and all(
+            ):
+                _backfill_legacy_demo_media(existing_seed, item, "image_url")
+                if existing_seed.image_url == item["image_url"] and all(
                     getattr(existing_seed, field) in (None, "", item[field])
                     for field in (
                         "title_en",
@@ -1457,9 +1491,8 @@ async def seed_archived_events(db: AsyncSession, user: User) -> None:
                         "location_en",
                         "event_type_en",
                     )
-                )
-            ):
-                existing_seed.is_active = True
+                ):
+                    existing_seed.is_active = True
             _backfill_event_translations(existing_seed, item)
             continue
 

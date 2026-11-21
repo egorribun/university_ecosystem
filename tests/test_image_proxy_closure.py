@@ -139,9 +139,10 @@ def test_process_image_returns_avif_when_encoding_succeeds():
     image.format = "PNG"
     image.__enter__.return_value = image
 
-    def save(buffer, *, format, quality):
+    def save(buffer, *, format, quality, max_threads):
         assert format == "AVIF"
         assert quality == 60
+        assert max_threads == 1
         buffer.write(b"avif-data")
 
     image.save.side_effect = save
@@ -151,7 +152,11 @@ def test_process_image_returns_avif_when_encoding_succeeds():
 
     assert data == b"avif-data"
     assert mime == "image/avif"
-    assert image.save.call_args.kwargs == {"format": "AVIF", "quality": 60}
+    assert image.save.call_args.kwargs == {
+        "format": "AVIF",
+        "quality": 60,
+        "max_threads": 1,
+    }
 
 
 @pytest.mark.parametrize("mode", ["RGB", "RGBA"])

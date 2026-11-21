@@ -3,23 +3,26 @@
 Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
 в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
 
-## Текущий срез — 2026-11-21, контрольная точка перед перерывом
+## Текущий срез — 2026-11-21
 
-- `main` — `7c0af5d42`: слияние [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540),
-  все required checks на `572343ad4` прошли.
+- [PR #1539](https://github.com/egorribun/university_ecosystem/pull/1539) с source `ae0289f7a` слит в
+  `main` как `cca6c8cab`; [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540) с source
+  `572343ad4` — как `7c0af5d42`. Все required checks #1540 на `572343ad4` прошли.
 - Проверки на `main` `7c0af5d42`:
-  - **DAST** (run 44818619531). 30003 больше не сообщается. Остались 4 medium: 10055 (`img-src` и
-    `style-src`), 10202 и 20012.
-  - **Полный Core** (run 44818624328). 221 passed, 1 failed, 8 skipped, 2 flaky.
+  - **DAST** ([run 44818619531](https://github.com/egorribun/university_ecosystem/actions/runs/44818619531)).
+    30003 больше не сообщается. Остались 4 medium: 10055 (`img-src` и `style-src`), 10202 и 20012.
+  - **Полный Core** ([run 44818624328](https://github.com/egorribun/university_ecosystem/actions/runs/44818624328)).
+    221 passed, 1 failed, 8 skipped, 2 flaky.
     - Шесть записей AUD-154 прошли с первой попытки.
-    - Падает mobile notification-topics-delivery. Выборка worker — `sent=9 gone=3`: FCM ответил 410
-      на свежие подписки, и строка подписки исчезла до очистки. Удаление при 410 точное (id, endpoint,
-      пользователь, версия привязки), а у каждого теста свой временный профиль Chrome.
+    - Mobile notification-topics-delivery упал на обеих попытках; при очистке каждой указано
+      `current-user-row=not-found`. Общая выборка worker — `sent=9 gone=3`, три ответа в группе 4xx;
+      статусы отдельных попыток не записаны. Связь с конкретным тестом и ответ FCM 410 не доказаны.
+      У каждого теста свой временный профиль Chrome.
     - Flaky — mobile push-delivery и footer-bottom-navigation.
-- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) (`egorribun` → `main`, голова
-  `715010904`, Auto-fix включён) несёт решения владельца 2026-11-21 (ADR-047):
+- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) (`egorribun` → `main`,
+  актуальная голова и её проверки — по ссылке) несёт решения владельца 2026-11-21 (ADR-047):
   - **10202 и 20012.** Формы входа, регистрации и сброса пароля помечены `data-csrf="header"`. ZAP
-    запускается с `rules.csrf.ignore.attname/attvalue` и сообщает о них как об информационных.
+    запускается с `rules.csrf.ignore.attname/attvalue` для информационной классификации этих форм.
   - **10055-6.** `style-src 'unsafe-inline'` — принятый риск. Hook ZAP понижает до low только этот
     подпункт и только для точной директивы.
   - **10055-4.** Исправление: `img-src 'self' data: blob: https://i.scdn.co`.
@@ -36,22 +39,29 @@
 - Локальная проверка на стенде `715010904` с закреплённым образом ZAP (пассивный baseline с тем же
   hook и ключами CSRF): 10055-6 — low, 10202 — informational, 10055-4 нет, medium нет. Демо-изображения
   отдаются через `/api/v1/img` (AVIF), CSP сужен, форма входа содержит `data-csrf="header"`.
-- **Блокер #1541: OOM backend на холодных изображениях.** На `715010904` упали `Owned live Core
-  acceptance (pull_request)` (49 passed, 3 flaky; затем NATS preflight `inventory_invalid_runtime`) и
-  `live-realtime-visual`.
-  - Причина воспроизведена локально. До изменения демо-картинки шли на picsum и в тестах
-    подменялись заглушкой. Теперь страницы запрашивают их у backend, и `/api/v1/img` кодирует AVIF
-    без ограничения параллельности.
-  - Воспроизведение: 175 холодных запросов (35 изображений × ширины `srcset`, по 16 параллельно)
-    с параллельными входами.
-  - Результат: память backend упирается в лимит 512 MiB, gunicorn-воркеры получают SIGKILL
-    (`Perhaps out of memory?`), `OOMKilled=true`. Изображения: 149 ответов 200, 15 — 502, 11 — 404.
-    Входы: 8 ответов 200, 7 — 502.
-  - Это и уязвимость: холодные запросы к изображениям могут уронить API.
-  - Нужное исправление до слияния #1541: ограничить параллельное преобразование изображений на
-    воркер (как семафор Argon2) и проверить память.
+  Активное правило 20012 требует полного сканирования.
+- **Локальный OOM на source `715010904`.** При запросах холодных изображений память backend дошла до
+  лимита 512 MiB, gunicorn-воркеры получили SIGKILL, `OOMKilled=true`. Изображения: 149 ответов 200,
+  15 — 502, 11 — 404; входы: 8 ответов 200, 7 — 502. На этом source `/api/v1/img` кодировал AVIF
+  без ограничения параллельности.
+- **Hosted #1541 отдельно:** на source `715010904` упали
+  [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44836750319)
+  (49 passed, 3 flaky; затем NATS preflight `inventory_invalid_runtime`) и
+  [live-realtime-visual](https://github.com/egorribun/university_ecosystem/actions/runs/44836750657).
+  На более позднем source `f0ee138d5` [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034)
+  завершился с 47 passed, 2 failed, 2 skipped, 3 flaky и ошибкой NATS preflight
+  `inventory_invalid_runtime`. В [CI Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340)
+  realtime job завершился с 17 passed, 1 failed (desktop messenger-unread-read). Эти результаты не
+  доказывают OOM как причину hosted-сбоев.
 - `live-realtime-visual` на первой голове #1541 (`1881aa596`) тоже упал: вход отвечал 502. Повтор
   без доказательства инфраструктурного сбоя не запускался.
+- **Кандидат в рабочем дереве:** ограничены преобразования изображений на процесс и число потоков AVIF;
+  повторный seed обновляет узнаваемые старые URL демо-медиа в совпадающих записях; элементы формы
+  сброса пароля в SSR заблокированы до гидратации. CSP-фильтр понижает уровень только для однозначного
+  канонического evidence с единственной разрешённой `style-src`; неоднозначное evidence не понижается.
+  Это относится к одной строке evidence, а не ко всем заголовкам ответа.
+- В WSL прошли 233 теста; `app/services/image_proxy.py` и `app/core/config/storage.py` — 100% строк и
+  ветвей. Кандидат ожидает required checks для следующего SHA PR #1541.
 
 ## Аудит: текущий итог — 510/512
 
@@ -70,8 +80,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Мешает mobile/desktop notification-topics (FCM 410). |
-| AUD-381 | P | Успешные отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний отчёт ZAP на `7c0af5d42` — 4 medium; их закрывает #1541 после исправления OOM. |
+| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Наблюдались сбои mobile/desktop notification-topics; причина не установлена. |
+| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний отчёт ZAP на `7c0af5d42` — 4 medium; #1541 вносит изменения против этих предупреждений, но не закрывает аудит без новых подтверждённых отчётов на `main`. |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -98,12 +108,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. PR #1541: ограничить параллельное преобразование изображений в `app/services/image_proxy.py`
-   (семафор на воркер), повторить холодную нагрузку на локальном стенде без OOM и 502, затем
-   дождаться required checks и сделать обычный merge.
+1. PR #1541: завершить проверку кандидата и дождаться required checks для следующего SHA, затем
+   сделать обычный merge.
 2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
    Nuclei с проверенным отчётом закрывают AUD-381.
-3. AUD-154: найти причину FCM 410 для свежих подписок (mobile/desktop topics), затем два
+3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два
    последовательных green полных Core на `main`.
 4. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
    обновления с удержанием maplibre 6.15.0, jsdom 30.1.3, Playwright 1.64.1.

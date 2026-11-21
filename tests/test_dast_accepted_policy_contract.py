@@ -103,6 +103,53 @@ def test_accepted_filter_does_not_cover_a_wider_style_src(directive: str) -> Non
     assert re.fullmatch(ACCEPTED_STYLE_SRC_EVIDENCE, header) is None
 
 
+@pytest.mark.parametrize(
+    "header",
+    [
+        APPROVED_STYLE_SRC,
+        f"default-src 'self'; {APPROVED_STYLE_SRC}; img-src 'self'",
+        f"{APPROVED_STYLE_SRC}; style-src-elem 'self'",
+        f"default-src https://example.invalid/style-src; {APPROVED_STYLE_SRC}",
+        f"default-src 'self'; DEFAULT-SRC *; {APPROVED_STYLE_SRC}",
+    ],
+)
+def test_accepted_filter_matches_one_complete_policy(header: str) -> None:
+    assert re.fullmatch(ACCEPTED_STYLE_SRC_EVIDENCE, header)
+    assert re.search(ACCEPTED_STYLE_SRC_EVIDENCE, header)
+
+
+def test_accepted_filter_matches_shared_policy_headers() -> None:
+    shared = json.loads(SHARED_CSP_CONTRACT.read_text(encoding="utf-8"))
+    for header in shared["headers"].values():
+        assert re.fullmatch(ACCEPTED_STYLE_SRC_EVIDENCE, header)
+        assert re.search(ACCEPTED_STYLE_SRC_EVIDENCE, header)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "style-src-elem 'unsafe-inline'",
+        f"style-src 'self' 'unsafe-inline' *; {APPROVED_STYLE_SRC}",
+        f"Style-Src 'self' 'unsafe-inline' *; {APPROVED_STYLE_SRC}",
+        f"{APPROVED_STYLE_SRC}; STYLE-SRC 'self' 'unsafe-inline' *",
+        f"{APPROVED_STYLE_SRC}; {APPROVED_STYLE_SRC}",
+        f"{APPROVED_STYLE_SRC}; default-src 'self', style-src *",
+        f"default-src 'self', style-src *; {APPROVED_STYLE_SRC}",
+        f"style-src *\r\n{APPROVED_STYLE_SRC}",
+        f"{APPROVED_STYLE_SRC}\nstyle-src *",
+        f"{APPROVED_STYLE_SRC}\r",
+        f"prefix-{APPROVED_STYLE_SRC}",
+        f"{APPROVED_STYLE_SRC} suffix",
+        f"{APPROVED_STYLE_SRC}; =malformed",
+        f"{APPROVED_STYLE_SRC}; ; img-src 'self'",
+        f"{APPROVED_STYLE_SRC}; img-src 'self'\x00",
+    ],
+)
+def test_accepted_filter_rejects_ambiguous_policy_evidence(header: str) -> None:
+    assert re.fullmatch(ACCEPTED_STYLE_SRC_EVIDENCE, header) is None
+    assert re.search(ACCEPTED_STYLE_SRC_EVIDENCE, header) is None
+
+
 def _img_src_directives(header: str) -> list[str]:
     return [
         directive.strip()

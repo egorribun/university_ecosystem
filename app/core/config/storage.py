@@ -64,6 +64,7 @@ class StorageSettings(BaseAppSettings):
 
     image_proxy_enabled: bool = True
     image_proxy_allowed_widths: str | list[int] = "100,200,400,800,1200,1600"
+    image_proxy_max_concurrency: int = Field(default=1, ge=1, le=8)
 
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"

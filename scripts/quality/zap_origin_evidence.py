@@ -24,11 +24,23 @@ MAX_MESSAGES = 100
 # Owner-approved accepted risk (2026-11-21, ADR-047): React style props and
 # framer-motion write inline styles, so the policy keeps style-src
 # 'unsafe-inline'. Only CSP sub-alert 10055-6 is lowered from medium to low, and
-# only while every evidence header keeps this exact style-src directive. Any
+# only when the alert evidence contains exactly this style-src directive. Any
 # other style-src, and every other 10055 sub-alert, keeps ZAP's own risk.
 ACCEPTED_STYLE_SRC_ALERT = "10055-6"
+# ZAP applies this regex to one alert evidence string. Require the whole string
+# to be a canonical single policy, with exactly the approved style-src directive.
+# The evidence may not contain every other response header.
+_CSP_OTHER_DIRECTIVE = (
+    r"(?!(?i:style-src)(?= |;|(?![\s\S])))"
+    r"[A-Za-z][A-Za-z0-9-]*(?: +[\x21-\x2b\x2d-\x3a\x3c-\x7e]+)*"
+)
 ACCEPTED_STYLE_SRC_EVIDENCE = (
-    r"(?:.*; )?style-src 'self' 'unsafe-inline' https://fonts\.googleapis\.com(?:; .*)?"
+    r"\A(?:"
+    + _CSP_OTHER_DIRECTIVE
+    + r"; )*style-src 'self' 'unsafe-inline' https://fonts\.googleapis\.com"
+    + r"(?:; "
+    + _CSP_OTHER_DIRECTIVE
+    + r")*(?![\s\S])"
 )
 ACCEPTED_STYLE_SRC_LEVEL = "1"
 
