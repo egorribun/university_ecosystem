@@ -5426,6 +5426,35 @@
           }
         }
       }
+    },
+    {
+      "path": ".github/workflows/valkey-ttl-characterization.yml",
+      "name": "Valkey TTL characterization",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"egorribun\"],\"paths\":[\".github/workflows/valkey-ttl-characterization.yml\",\"scripts/quality/owned_valkey_ttl_characterization.py\",\"tests/test_owned_valkey_ttl_characterization.py\",\"scripts/quality/owned_redis_session_characterization.py\",\"tests/test_owned_redis_session_characterization.py\",\"app/**\",\"pyproject.toml\",\"uv.lock\",\"docker-compose.yml\"]}"
+        }
+      ],
+      "jobs": {
+        "characterize": {
+          "profile": "advisory",
+          "check_name_template": "characterize",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "docker-service-startup-health-probes",
+            "review_required": true,
+            "notes": "The owned service uses Docker startup health probes with a ten-consecutive-failure threshold. This is not a retry of the characterization command or assertions. Docker health history is bounded and does not guarantee retention of the first failed probe; an unhealthy service fails job setup. No transient-only claim."
+          }
+        }
+      }
     }
   ]
 }
