@@ -36,53 +36,37 @@
   - **Регистрация** фиксирует транзакцию поиска арендатора до HIBP и хеширования, как вход.
   - **Переподвязка один к одному.** `server-csp.mjs` (Semgrep row 14, запись 443) и
     `compliance_service.py` (row 13, запись 431). Инвентарь остаётся 524.
-- Локальная проверка на стенде `715010904` с закреплённым образом ZAP (пассивный baseline с тем же
-  hook и ключами CSRF): 10055-6 — low, 10202 — informational, 10055-4 нет, medium нет. Демо-изображения
-  отдаются через `/api/v1/img` (AVIF), CSP сужен, форма входа содержит `data-csrf="header"`.
-  Активное правило 20012 требует полного сканирования.
-- **Локальный OOM на source `715010904`.** При запросах холодных изображений память backend дошла до
-  лимита 512 MiB, gunicorn-воркеры получили SIGKILL, `OOMKilled=true`. Изображения: 149 ответов 200,
-  15 — 502, 11 — 404; входы: 8 ответов 200, 7 — 502. На этом source `/api/v1/img` кодировал AVIF
-  без ограничения параллельности.
-- **Hosted #1541 отдельно:** на source `715010904` упали
-  [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44836750319)
-  (49 passed, 3 flaky; затем NATS preflight `inventory_invalid_runtime`) и
-  [live-realtime-visual](https://github.com/egorribun/university_ecosystem/actions/runs/44836750657).
-  На source `f0ee138d5` [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034)
-  завершился с 47 passed, 2 failed, 2 skipped, 3 flaky и ошибкой NATS preflight
-  `inventory_invalid_runtime`. В [CI Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340)
-  realtime job завершился с 17 passed, 1 failed (desktop messenger-unread-read). Эти результаты не
-  доказывают OOM как причину hosted-сбоев.
-- `live-realtime-visual` на первой голове #1541 (`1881aa596`) тоже упал: вход отвечал 502. Повтор
-  без доказательства инфраструктурного сбоя не запускался.
-- **Hosted на source `3c65c9e60`, synthetic merge `52a1d673c`:**
-  - [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/44848242946/job/136673165875):
-    E2E — 52 passed, 2 skipped; стенд остановлен успешно. NATS preflight завершился
-    `inventory_invalid_runtime`, без имени службы и причины; job упал.
-  - [Realtime и visual](https://github.com/egorribun/university_ecosystem/actions/runs/44848243079/job/136673168806):
-    realtime — 17 passed, 1 flaky; четыре именных случая прошли на retry 0, но агрегат не принят.
-    Все 24 страницы визуальной матрицы ответили HTTP 200. В одном варианте News
-    (английский язык, тёмная тема, ширина 390 px) проверка не подтвердила стабильный
-    непустой список с фильтром по умолчанию.
-  - Прошли 77 из 78 обязательных проверок. `CI Success` сохранил отказ realtime/visual.
-    Все десять анализов CodeQL/Checkov завершились без находок. После публикации недостающей
-    зависимости Renovate точечный повтор прошёл, включая оба PostgreSQL gate и Quality & Coverage.
-- **Изменения в `3c65c9e60`:** ограничены преобразования изображений на процесс и число потоков AVIF;
-  повторный seed обновляет узнаваемые старые URL демо-медиа в совпадающих записях; элементы формы
-  сброса пароля в SSR заблокированы до гидратации. CSP-фильтр понижает уровень только для однозначного
-  канонического evidence с единственной разрешённой `style-src`; неоднозначное evidence не понижается.
-  Это относится к одной строке evidence, а не ко всем заголовкам ответа.
-- В WSL прошли 233 теста; `app/services/image_proxy.py` и `app/core/config/storage.py` — 100% строк и
-  ветвей. Локальный обычный smoke dashboard/news декодировал три AVIF и запросил один URL для пяти
-  ширин; OOM и рестартов не было, после очистки контейнеров, сетей и томов осталось 0/0/0.
-- При отказе NATS с `inventory_invalid_runtime` новая диагностика выводит нарушенное условие
-  и имя службы из списка Core. Для неизвестного имени используется `unknown`.
-- `SmartImage` указывает ширины в `srcset` только для путей, которым image proxy может передать
-  параметр `w`. Для абсолютного URL карточка использует исходное изображение через `src`.
-- На локальном Core с тем же `3c65c9e60` обе выборочные проверки готовности прошли.
-  В News (en, тёмная тема, 390 px) отобразились десять статей с фильтром All,
-  в Events (ru, светлая тема, 1440 px) — десять карточек. Обе страницы ответили HTTP 200.
-  Браузер работал с отключёнными service workers и закрытым внешним доступом.
+- Локальный пассивный ZAP baseline на стенде `715010904` с закреплённым образом, тем же hook и ключами
+  CSRF: 10055-6 — low, 10202 — informational, 10055-4 и medium нет. Активное правило 20012 требует
+  полного сканирования.
+- **Hosted-результаты #1541** (остальные обязательные проверки на каждом source прошли):
+
+  | Source | Owned Live Core | Realtime и visual |
+  | --- | --- | --- |
+  | `1881aa596` | — | вход отвечал 502 |
+  | [`715010904`](https://github.com/egorribun/university_ecosystem/actions/runs/44836750319) | 49 passed, 3 flaky; NATS preflight `inventory_invalid_runtime` | [упал](https://github.com/egorribun/university_ecosystem/actions/runs/44836750657) |
+  | [`f0ee138d5`](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034) | 47 passed, 2 failed, 3 flaky; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340): 17 passed, 1 failed |
+  | [`3c65c9e60`](https://github.com/egorribun/university_ecosystem/actions/runs/44848242946) | 52 passed, 2 skipped; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44848243079) 17 passed, 1 flaky; visual 22/24 |
+
+  На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
+  подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли).
+- **Нагрузка на backend (измерено локально 2026-11-21).**
+  - В простое backend занимал 455 MiB из лимита 512M: два воркера gunicorn по ~254 MB RSS и мастер
+    68 MB.
+  - Холодная серия из 175 запросов демо-изображений держала cgroup на лимите (более 20 000 событий
+    `memory.max`). Чтения хранилища истекали через 21–25 с и возвращались как 404, Caddy отвечал 502
+    через 30 с.
+  - Каждая операция S3 создавала новую сессию aioboto3: около 0,3 с CPU и 12 MiB.
+  - NATS preflight проверяет `OOMKilled` и `ExitCode` каждого контейнера. Связь с hosted-сбоем покажет
+    диагностика из `09e9d1161`.
+- **Исправления после `3c65c9e60`:**
+  - `09e9d1161` — NATS preflight называет нарушенное условие и службу из списка Core (`unknown` для
+    прочих). Переподвязка один к одному: Semgrep row 7, запись 495.
+  - `a17ef41f3` — `SmartImage` задаёт ширины в `srcset` только для путей image proxy.
+  - `9bc0b3776` — одна сессия aioboto3 на экземпляр `S3Storage` и event loop; AVIF со speed 8;
+    лимит памяти backend в Compose 768M, как request в Kubernetes.
+  - Та же серия на стенде из `9bc0b3776`: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, вся серия
+    38,5 с вместо 131 с, пик памяти 616 MiB из 768M, событий `memory.max` и OOM нет.
 
 ## Аудит: текущий итог — 510/512
 
@@ -129,8 +113,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. PR #1541: завершить диагностику hosted-сбоев и получить required checks для итогового SHA перед
-   обычным merge.
+1. PR #1541: получить required checks на итоговом SHA (включая независимые live и realtime/visual)
+   перед обычным merge.
 2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
    Nuclei с проверенным отчётом закрывают AUD-381.
 3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два
