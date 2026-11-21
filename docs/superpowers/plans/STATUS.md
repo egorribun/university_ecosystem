@@ -1,231 +1,77 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
-## Текущий срез — 2026-11-21, ночь
+Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
+в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
 
-- [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540) вошёл в `main` обычным
-  слиянием `7c0af5d42`; все required checks на `572343ad4` прошли.
+## Текущий срез — 2026-11-21, контрольная точка перед перерывом
+
+- `main` — `7c0af5d42`: слияние [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540),
+  все required checks на `572343ad4` прошли.
 - Проверки на `main` `7c0af5d42`:
-  - DAST (run 44818619531) — 30003 больше не сообщается. Остались 4 medium: 10055 (`img-src` и
+  - **DAST** (run 44818619531). 30003 больше не сообщается. Остались 4 medium: 10055 (`img-src` и
     `style-src`), 10202 и 20012.
-  - Полный Core (run 44818624328) — 221 passed, 1 failed, 8 skipped, 2 flaky. Шесть записей AUD-154
-    прошли с первой попытки. Падает mobile notification-topics-delivery: выборка worker
-    `sent=9 gone=3`, FCM ответил 410 на свежие подписки, и строка подписки исчезла до очистки.
-    Каждый тест получает свой временный профиль Chrome, общий профиль причиной не является.
-    Flaky — mobile push-delivery и footer-bottom-navigation. AUD-154 по-прежнему требует двух
-    подряд зелёных полных прогонов.
-- Решения владельца 2026-11-21 (ADR-047):
-  - 10202 и 20012: формы входа, регистрации и сброса пароля помечены `data-csrf="header"`, ZAP
-    запускается с `rules.csrf.ignore.attname/attvalue` и сообщает о них как об информационных;
-  - 10055-6 (`style-src 'unsafe-inline'`): принятый риск, hook ZAP понижает до low только этот
-    подпункт и только для точной директивы;
-  - 10055-4 (`img-src https:`): исправление, а не исключение. `img-src` сужен до
-    `'self' data: blob: https://i.scdn.co`;
-  - демо-изображения хранятся в репозитории: 35 файлов picsum скачаны один раз с разрешения
-    владельца, перекодированы в WebP, источник и лицензия Unsplash записаны в
-    `scripts/demo_media/PROVENANCE.json`.
-- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) (`egorribun` → `main`) несёт
-  правки CSRF и `style-src`. В него же входит пакет `img-src`:
-  - обложки Spotify только с `i.scdn.co`, изображения статей только относительные;
-  - обложки историй только из загрузки (иначе 422), запасной аватар локальный;
-  - сид сохраняет демо-изображения в хранилище;
-  - заглушки picsum в live E2E и визуальном аудите удалены.
-- Регистрация фиксирует транзакцию поиска арендатора до HIBP и хеширования, как вход.
-  Companion Semgrep `server-csp.mjs` (строка 14, запись 443) и `compliance_service.py` (строка 13,
-  запись 431) переподвязаны один к одному, инвентарь остаётся 524.
-- `live-realtime-visual` на первой голове #1541 упал: 7 passed, 2 failed, 9 flaky, вход отвечал 502.
-  На #1540 тот же job прошёл. Доказательства инфраструктурного сбоя нет, повтор не запускался.
-  Исправление регистрации устраняет известную причину 502 при параллельной авторизации.
+  - **Полный Core** (run 44818624328). 221 passed, 1 failed, 8 skipped, 2 flaky.
+    - Шесть записей AUD-154 прошли с первой попытки.
+    - Падает mobile notification-topics-delivery. Выборка worker — `sent=9 gone=3`: FCM ответил 410
+      на свежие подписки, и строка подписки исчезла до очистки. Удаление при 410 точное (id, endpoint,
+      пользователь, версия привязки), а у каждого теста свой временный профиль Chrome.
+    - Flaky — mobile push-delivery и footer-bottom-navigation.
+- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) (`egorribun` → `main`, голова
+  `715010904`, Auto-fix включён) несёт решения владельца 2026-11-21 (ADR-047):
+  - **10202 и 20012.** Формы входа, регистрации и сброса пароля помечены `data-csrf="header"`. ZAP
+    запускается с `rules.csrf.ignore.attname/attvalue` и сообщает о них как об информационных.
+  - **10055-6.** `style-src 'unsafe-inline'` — принятый риск. Hook ZAP понижает до low только этот
+    подпункт и только для точной директивы.
+  - **10055-4.** Исправление: `img-src 'self' data: blob: https://i.scdn.co`.
+    - Обложки Spotify — только с `i.scdn.co`.
+    - Изображения статей — только относительные.
+    - Обложка истории — только из загрузки, иначе 422.
+    - Запасной аватар — локальный.
+    - 35 демо-изображений picsum (разовое скачивание с разрешения владельца) хранятся в
+      `scripts/demo_media/` с источником и лицензией Unsplash. Сид кладёт их в хранилище.
+    - Заглушки picsum в live E2E и визуальном аудите удалены.
+  - **Регистрация** фиксирует транзакцию поиска арендатора до HIBP и хеширования, как вход.
+  - **Переподвязка один к одному.** `server-csp.mjs` (Semgrep row 14, запись 443) и
+    `compliance_service.py` (row 13, запись 431). Инвентарь остаётся 524.
+- Локальная проверка на стенде `715010904` с закреплённым образом ZAP (пассивный baseline с тем же
+  hook и ключами CSRF): 10055-6 — low, 10202 — informational, 10055-4 нет, medium нет. Демо-изображения
+  отдаются через `/api/v1/img` (AVIF), CSP сужен, форма входа содержит `data-csrf="header"`.
+- **Блокер #1541: OOM backend на холодных изображениях.** На `715010904` упали `Owned live Core
+  acceptance (pull_request)` (49 passed, 3 flaky; затем NATS preflight `inventory_invalid_runtime`) и
+  `live-realtime-visual`.
+  - Причина воспроизведена локально. До изменения демо-картинки шли на picsum и в тестах
+    подменялись заглушкой. Теперь страницы запрашивают их у backend, и `/api/v1/img` кодирует AVIF
+    без ограничения параллельности.
+  - Воспроизведение: 175 холодных запросов (35 изображений × ширины `srcset`, по 16 параллельно)
+    с параллельными входами.
+  - Результат: память backend упирается в лимит 512 MiB, gunicorn-воркеры получают SIGKILL
+    (`Perhaps out of memory?`), `OOMKilled=true`. Изображения: 149 ответов 200, 15 — 502, 11 — 404.
+    Входы: 8 ответов 200, 7 — 502.
+  - Это и уязвимость: холодные запросы к изображениям могут уронить API.
+  - Нужное исправление до слияния #1541: ограничить параллельное преобразование изображений на
+    воркер (как семафор Argon2) и проверить память.
+- `live-realtime-visual` на первой голове #1541 (`1881aa596`) тоже упал: вход отвечал 502. Повтор
+  без доказательства инфраструктурного сбоя не запускался.
 
-## Предыдущий срез — 2026-11-20, вечер (история)
-
-- [PR #1539](https://github.com/egorribun/university_ecosystem/pull/1539) вошёл в `main` обычным слиянием
-  `cca6c8cab`; все required checks на `ae0289f7a` прошли, включая realtime E2E без 502.
-- Проверки на `main` `cca6c8cab`:
-  - Kubernetes NetworkPolicy proof (run 44786682314) — success.
-  - Полный Core (run 44786692024) — 223 passed, 0 failed, 1 flaky. Все push-сценарии прошли,
-    выборка worker — `sent=9 gone=0`, все HTTP 201. Шесть записей AUD-154 прошли с первой попытки.
-    Flaky — desktop `map-zoom-longtask`: одна долгая задача 69 мс на шаге 2 на раннере без GPU.
-  - DAST (run 44786686936) — ZAP больше не сообщает 40025 и 10106. Остались 10055, 10202 и 20012
-    (решения владельца) и 30003.
-- 30003 — HTTP 500 на `/login?redirect=<число>`: роутер разбирает значение как JSON, строгая схема
-  поиска бросала ошибку. То же было у вошедших пользователей на `/news?q=12`, `/events?q=12` и
-  `/settings?spotify=12`. Исправление — [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540).
-
-- `main` — `c5cdd403e` (слияние [PR #1538](https://github.com/egorribun/university_ecosystem/pull/1538)).
-  Счёт аудита — **510/512**, открыты AUD-154 и AUD-381.
-- Полный Core на `c5cdd403e` (run 44742031470) — 223 passed, 1 failed, 8 skipped: падает
-  desktop notification-topics-delivery. Kubernetes NetworkPolicy proof на том же SHA
-  (run 44742036252) — success.
-- [PR #1539](https://github.com/egorribun/university_ecosystem/pull/1539) (`egorribun` → `main`) связывает
-  результаты доставки push с поколениями подписки. Покрытие `app/services/webpush.py`
-  восстановлено до 100%: у цикла повтора при deadlock был недостижимый выход. В тот же PR вошли:
-  - 12 PR облачного агента после локальной проверки: #1521, #1522, #1526, #1527, #1529–#1533,
-    #1535–#1537. #1523 и #1528 не взяты;
-  - миграция `native/rust_ext` с `chrono` на `time`, исключение RUSTSEC-2026-0543 снято;
-  - исключение ZAP 10106 только для стенда DAST без TLS (решение владельца 2026-11-19, ADR-047);
-  - оба Caddy отвечают 405 на TRACE, TRACK и CONNECT и не отправляют `Via` (ZAP 40025); раньше
-    TRACE доходил до Node SSR и получал 500;
-  - вход фиксирует транзакцию поиска до Argon2 и не держит соединение пула в очереди хеширования.
-    На локальном стенде 30 параллельных входов давали 11 ответов 502 через 30 с (QueuePool timeout),
-    после исправления — 30 из 30 успешны;
-  - переключатель тихих часов и поля времени заблокированы до подтверждения личности.
-- Локальный ZAP на `73b5c5274` с образом и правилами CI: из medium остались 10055
-  (`img-src` разрешает любой `https:`, `style-src` содержит `'unsafe-inline'`) и 10202 (формы входа
-  и регистрации без поля токена; CSRF закрыт заголовком double-submit). Нужны решения владельца.
-- Регистрация держит соединение пула во время проверки HIBP и хеширования. Файл
-  `app/services/user/compliance_service.py` — companion Semgrep, исправление требует переподвязки.
-
-## Предыдущий срез — 2026-11-20, 09:03 UTC (история)
-
-- PR #1534 вошёл в `main` обычным слиянием `d33d2761abe8d250e7f5e8f8470323c729329bcb` в 08:02:39 UTC.
-  На исходном коммите `20b0a69dc4e629ffbd076927c5706b028ee2dbe8` прошли все 78 обязательных пар
-  context/app, включая Coverage & Quality Policy Gate (job `136162118293`) и CI Success (job `136163000272`).
-  Деревья PR head, проверенного PR merge SHA `02526d03a87012e06b89b724cfde9ddb0e810f1b` и коммита
-  `main` совпадают. GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks`
-  в проверке правил `5251871447`. [PR #1534](https://github.com/egorribun/university_ecosystem/pull/1534) ·
-  [CI run 44695934771](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771)
-- В PR job `136152566727` прошли 18 realtime-сценариев. Артефакт AUD-154 для этого коммита
-  подтверждает четыре проверки отправки кнопкой и клавишей Enter на desktop и mobile. Все четыре
-  прошли с первой попытки. Результаты read-receipt приведены ниже для полного Core на `main`.
-  [Realtime job](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771/job/136152566727) ·
-  [AUD-154 артефакт 14612330420](https://github.com/egorribun/university_ecosystem/actions/runs/44695934771/artifacts/14612330420)
-- Kubernetes NetworkPolicy job `136164190183` на `d33d2761` подтвердил все 40 проб матрицы
-  (15 разрешённых и 25 запрещённых соединений) и 13 прикладных проверок. Для двух реальных реплик
-  file-processor прошли 24 проверки, для ws-hub и Prometheus — 6 ограниченных проверок.
-  Публичный маршрут и реальный ingress controller, а также реальный file-processor в probe B остаются
-  вне этой проверки. Сетевые обращения outbox-worker проверены с подставным клиентом.
-  [NetworkPolicy run 44699509643](https://github.com/egorribun/university_ecosystem/actions/runs/44699509643) ·
-  [Артефакт 14613871575](https://github.com/egorribun/university_ecosystem/actions/runs/44699509643/artifacts/14613871575)
-- Полный Core job `136164176676` на `d33d2761` завершился с результатом 219 passed, 2 failed,
-  8 skipped и 3 flaky из 232 сценариев. Все шесть записей AUD-154 — `aud154-sent-confirmation`,
-  `aud154-enter-sent-confirmation` и `aud154-read-receipt` для каждого из desktop и mobile — прошли
-  с первой попытки. Диагностика охватывает desktop-сценарии notification-topics-delivery, profile-csrf,
-  events-scroll-restoration и schedule-200-equivalent-reflow, а также mobile push-delivery. В журнале
-  указаны суммарные failed и flaky без привязки к отдельным сценариям. Стенд успешно запущен и остановлен.
-  Проверка NATS outage пропущена. Метаданные результата сохранены в артефакте Core.
-  [Полный Core run 44699505018](https://github.com/egorribun/university_ecosystem/actions/runs/44699505018) ·
-  [Core receipt 14614549272](https://github.com/egorribun/university_ecosystem/actions/runs/44699505018/artifacts/14614549272)
-- В `quality/frozen-rc.json` на этом коммите поле `source_sha` равно `null`. Проверка frozen-RC
-  (job `136164176498`) завершилась с ошибкой, full-stack smoke (job `136164963022`) пропущен.
-  Итог всего workflow — failure. Формальный счёт аудита — **510/512**, открыты AUD-154 и AUD-381.
-
-## Предыдущий срез — 2026-11-20, main `85b0b2a08` (история)
-
-- PR #1524 вошёл в `main` обычным слиянием `85b0b2a08d67de0faa16c90ecf7091cb410a3eee`.
-  На исходном коммите `3c7f651092de5b00240b1898dfafe859c09b9e07` прошли все 78 обязательных пар context/app,
-  включая Coverage & Quality Policy Gate (job `135681305145`) и CI Success (job `135687551066`).
-  В PostgreSQL job `135658513142` прошли 436 тестов, 14 пропущены. Все 86 сценариев обязательной когорты прошли.
-  [PR #1524](https://github.com/egorribun/university_ecosystem/pull/1524) · [CI run 44551542543](https://github.com/egorribun/university_ecosystem/actions/runs/44551542543)
-- На PR merge SHA `4e73285723492326b8ab00de2a2ade4df655607b` пять анализов CodeQL
-  и пять отчётов Checkov завершились без находок. Дерево этого коммита совпадает с деревом `85b0b2a08`.
-  GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks` в проверке правил `5235140478`.
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/44551542238) ·
-  [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/44551541576).
-- На `85b0b2a08` Kubernetes NetworkPolicy job `135690589182` подтвердил все 40 проб матрицы
-  (15 разрешённых соединений и 25 запрещённых), 24 проверки реального file-processor и 6 проверок
-  ограниченных соединений для ws-hub и Prometheus. Публичный HTTP-маршрут и реальный ingress controller
-  остаются вне этой проверки. [Kubernetes NetworkPolicy run 44561178071](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071) · [Артефакт 14552260459](https://github.com/egorribun/university_ecosystem/actions/runs/44561178071/artifacts/14552260459)
-- Полный Core job `135690685646` на `85b0b2a08` завершился с ошибкой. Прошли 222 теста, 8 пропущены,
-  2 прошли только при повторной попытке. Это desktop-сценарий `admin-stories-rbac` и mobile-сценарий
-  `admin-stories-smoke`. Все шесть проверок AUD-154 (sent, Enter-sent и read-receipt на desktop и mobile)
-  прошли с первой попытки. Стенд успешно остановлен. Для закрытия AUD-154 нужны два последовательных
-  успешных полных Core-прогона на `main`. Свежего отчёта DAST для этого SHA пока нет.
-  [Полный Core run 44561200602](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602) · [Артефакт 14552804821](https://github.com/egorribun/university_ecosystem/actions/runs/44561200602/artifacts/14552804821)
-- Ранее PR #1519 был слит в `main` обычным слиянием `02c3664abff423960fbac9a35d1e3990575517c3`.
-  На исходном коммите `18aa310f9f029449f4a250c7e1befbee0bcb8656` прошли все 78 обязательных пар context/app,
-  включая Coverage & Quality Policy Gate (job `135602417513`) и CI Success (job `135604664230`).
-  [PR #1519](https://github.com/egorribun/university_ecosystem/pull/1519) · [CI run 44525616113](https://github.com/egorribun/university_ecosystem/actions/runs/44525616113)
-- Для PR #1519 пять анализов CodeQL на PR merge SHA `5fe7775e821214beab6f48aa495d2b45617f4dc0`
-  завершились без находок. Дерево этого коммита совпадает с деревом `02c3664ab`.
-  GitHub зафиксировал `pass` для `code_scanning` и `required_status_checks` в проверке правил `5231970851`.
-  Checkov опубликовал пять отчётов без находок, включая отчёт под историческим идентификатором.
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/44525615911) · [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/44525615909)
-- На предыдущем `02c3664ab` прошли 40 из 40 проб NetworkPolicy в kind и Calico. Проверка охватывала
-  внутрикластерные маршруты. Реальный ingress controller и публичный HTTP-маршрут остаются непроверенными.
-  [Kubernetes NetworkPolicy run 44537388732](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732) · [Артефакт 14538737204](https://github.com/egorribun/university_ecosystem/actions/runs/44537388732/artifacts/14538737204)
-- На `02c3664ab` полный Core завершился с ошибкой. Результат — 220 passed, 8 skipped, 4 flaky.
-  В отчёте указаны три desktop-сценария — `admin-stories-rbac`, `email-otp-mfa-login` и
-  `schedule-200-equivalent-reflow`. Все шесть проверок AUD-154 (sent, Enter-sent и read-receipt
-  на desktop и mobile) прошли с первой попытки. Отдельный full-stack smoke был пропущен после ошибки
-  проверки frozen-RC. Поле `source_sha` в `quality/frozen-rc.json` равно `null`.
-  [Полный Core run 44537394864](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864) · [Артефакт 14541137444](https://github.com/egorribun/university_ecosystem/actions/runs/44537394864/artifacts/14541137444)
-- Последний опубликованный отчёт DAST относится к `64f7fd514` и содержит пять предупреждений ZAP уровня medium.
-  [DAST run 44471112462](https://github.com/egorribun/university_ecosystem/actions/runs/44471112462)
-- Формальный итог аудита — **510/512 (99.6%)**. Открыты AUD-154 (S) и AUD-381 (P).
-- Коммит `140145bdb` в `egorribun` удаляет серверный кэш расписания, его прогрев и инвалидацию.
-  Расписание и список групп читаются из базы в транзакции текущего арендатора. Сервер вычисляет HTTP ETag
-  по локализованному ответу. Изменение вошло в `main` с PR #1524.
-- Cargo Deny: исключение RUSTSEC-2026-0543 (`chrono`) действует до 2026-12-17; затем
-  переход `rust_ext` на `time`
-  ([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#time-boxed-cargo-deny-exception-for-rustsec-2026-0543)).
-- `frontend.Dockerfile` на `node:24.21.0-alpine` устанавливает подписанный
-  `zlib-1.3.2-r1` из release-ISO Alpine 3.24.3 с проверкой SHA-256. Для той же версии `services/caddy/Dockerfile`
-  обращается к изменяемому репозиторию `v3.23/main` и проверяет контрольную сумму и подпись. Существующий
-  контракт упаковки react-compiler/zod compat закрепляет Node v24.21.0 и npm 11.17.0
-  и проверяет совпадение двух архивов.
-
-## Предыдущий срез — 2026-11-19, main `64f7fd514` (история)
-
-- `64f7fd5148e8c6668b401e755be9459172f99ec8` — слияние
-  [PR #1422](https://github.com/egorribun/university_ecosystem/pull/1422). Перед слиянием
-  перезапускались упавшие Security Audit jobs: advisory GHSA-fc5q-39xc-vjpf (picomatch)
-  отозвана GitHub 2026-11-18.
-- Kind + Calico NetworkPolicy прошёл в [run 44471108615](https://github.com/egorribun/university_ecosystem/actions/runs/44471108615).
-  В последнем DAST [run 44471112462](https://github.com/egorribun/university_ecosystem/actions/runs/44471112462)
-  Nuclei прошёл, ZAP сообщил о пяти medium (10055 ×2, 10106, 10202, 40025).
-  В SARIF нет URL; AUD-381 остаётся открытым, свежего результата на `02c3664ab` нет.
-- Последний полный Core на этом старом SHA — [run 44512654784](https://github.com/egorribun/university_ecosystem/actions/runs/44512654784):
-  219 passed, 1 failed, 8 skipped, 4 flaky. Диагностика двух native Push случаев
-  (desktop notification-topics и mobile push-delivery) показала `subscription=true`,
-  `matches=0`. Более ранний [run 44471116074](https://github.com/egorribun/university_ecosystem/actions/runs/44471116074)
-  дал 217 passed, 8 skipped, 7 flaky и ошибки уведомлений и мобильных admin-stories/events;
-  выборка его воркера — `sent=9 gone=3`, три ответа провайдера 4xx.
-- В `egorribun` была интегрирована вторая волна PR облачного агента: #1431, #1443,
-  #1446, #1447, #1453, #1456, #1464, #1481, #1489–#1498, #1508–#1517 и Dependabot Go
-  (#1445, #1448, #1450). Найденные дефекты исправлены; четыре companion-записи
-  перепривязаны один к одному (ADR-047, 2026-11-19), retention под RLS описан в
-  [ADR-055](../../adr/ADR-055-retention-cleanup-under-tenant-rls.md). #1501 закрыт
-  как дубликат; #1426 и диагностические #1506, #1507, #1518 оставлены открытыми.
-
-## Предыдущий срез — 2026-11-17 (superseded)
-
-- `main` указывал на
-  [`b571261a0805a426febd8b16b942810417f32ce8`](https://github.com/egorribun/university_ecosystem/commit/b571261a0805a426febd8b16b942810417f32ce8).
-- Kind + Calico proof на
-  [`057ccd2cb`](https://github.com/egorribun/university_ecosystem/commit/057ccd2cb835f82d97144e97413b185cf8bd7a03):
-  [run 43969553490](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490),
-  [receipt 14279491890](https://github.com/egorribun/university_ecosystem/actions/runs/43969553490/artifacts/14279491890);
-  матрица 40/40, приняты AUD-169, AUD-188, AUD-189 и AUD-438 в пределах
-  [зафиксированных доказательств](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
-- Полные Core [run 43997541022](https://github.com/egorribun/university_ecosystem/actions/runs/43997541022)
-  и [run 44011702649](https://github.com/egorribun/university_ecosystem/actions/runs/44011702649)
-  на `b571261a0` упали на push- и notification-спеках.
-- История более ранних срезов: `git log -- docs/superpowers/plans/STATUS.md`.
-
-## Аудит: текущий итог 2026-11-17 — 510/512
+## Аудит: текущий итог — 510/512
 
 Формальный итог: **510/512 (99.6%) accepted or resolved, 2 open**, **1S / 1P / 0U / 0N**.
-Приняты AUD-169, AUD-188, AUD-189 и AUD-438 в пределах проверки на kind + Calico.
-Предыдущие срезы 506/512 и 502/512 сохранены как история. Границы решений:
-[Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+Границы решений: [Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
 
-Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment,
-reconciliation, `AUDIT-2026-10.md`, этот файл и `docs/README.md`.
+Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment, reconciliation,
+`AUDIT-2026-10.md`, этот файл и `docs/README.md`. `docs/audits/*` меняются только по hosted-доказательствам
+на точном SHA.
 
 The current policy-file inventory is **524 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
 
-### Открытые находки и текущий план
+### Открытые находки
 
-Состав открытых находок — из
-[current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
+Состав — из [current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Green hosted Owned Live Acceptance run на точном SHA (эквивалентность принята владельцем), включая существующий read-receipt live spec. |
-| AUD-381 | P | Нужен успешный отчёт ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний опубликованный отчёт ZAP содержит пять предупреждений medium. |
-
-Остальные требования каждой находки не изменены. Закрытие требует проверки конкретного
-source SHA, а не этого среза.
+| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Мешает mobile/desktop notification-topics (FCM 410). |
+| AUD-381 | P | Успешные отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний отчёт ZAP на `7c0af5d42` — 4 medium; их закрывает #1541 после исправления OOM. |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -238,34 +84,27 @@ source SHA, а не этого среза.
 | 5. Security, ledger, данные | Восстановление DB/S3 backup никогда не запускалось. |
 | 6. Выпуск | Не начат. |
 
-## Открытые решения владельца
+## Решения владельца (действующие)
 
-- AUD-484: решено владельцем 2026-11-12, alerts 2995–3002 dismissed, analyses сохранены.
-- Для AUD-381 владелец выбрал эфемерный Compose-стенд в CI (2026-11-12).
-- AUD-169, AUD-188, AUD-189, AUD-438: kind + Calico принят владельцем как среда доказательств
-  (2026-11-12); решения и ограничения записаны в supplement от 2026-11-17. AUD-251 принят на этой среде.
-- 2026-11-19: правило ZAP 10106 исключено только для CI-стенда без TLS (ADR-047); остальные исключения —
-  только с согласия владельца. Новые PR облачного агента интегрируются пачкой, без экспериментов
-  с новыми workflow. Dependabot npm (#1520, преемник #1404) берётся в работу последним.
-- Открыто (AUD-381): `img-src https:` — сузить до прокси изображений `/api/v1/img` или принять;
-  `style-src 'unsafe-inline'` — около 246 inline-стилей и framer-motion; 10202 — ложное срабатывание
-  или поле токена в формах.
+- AUD-381 — эфемерный Compose-стенд в CI (2026-11-12). AUD-484 — alerts 2995–3002 dismissed (2026-11-12).
+- AUD-169, AUD-188, AUD-189, AUD-438, AUD-251 — kind + Calico как среда доказательств (2026-11-12).
+- ZAP: 10106 исключено только для CI-стенда без TLS (2026-11-19). 10202/20012 — информационные для
+  форм с `data-csrf="header"`, 10055-6 — принятый риск low, 10055-4 — исправление (2026-11-21). Любое
+  другое исключение — только с согласия владельца.
+- Демо-изображения хранятся в репозитории (2026-11-21).
+- Новые PR облачного агента интегрируются пачкой, без экспериментов с новыми workflow. Dependabot npm
+  (#1520, преемник #1404) — последним, после реализации привязки проекцией D1–D4 (одобрено 2026-11-15).
+- Мутационные линии вне объёма MVP (2026-11-13).
 
 ## Следующие шаги
 
-1. PR #1540: дождаться required checks, обычный merge; затем DAST и полный Core на `main`
-   (не чаще одного полного Core в 2 часа).
-2. AUD-154: исправить desktop notification-topics (FCM 410 для новой подписки и очистка без
-   CSRF-cookie), затем два последовательных green полных Core run на `main`. AUD-381: решения владельца
-   по 10055 и 10202, затем проверенные ZAP и Nuclei на точном SHA `main`.
-3. Этапы 3 и 4: сверить traceability matrix ТЗ §2–13 с кодом и выполнить live Chromium,
-   mocked Firefox/WebKit, idempotent seed и stop/start; согласовать визуальные и
-   performance-пакеты RU/EN, light/dark, desktop/mobile за пределами Home12.
-4. Этап 5: один DB/S3 backup и restore в изолированную цель; затем этап 6 — frozen RC,
-   full smoke, required checks и обычный выпуск по мастер-плану.
-
-## History
-
-Предыдущие датированные разделы, checkpoints, hosted-run журналы и доказательства до
-2026-11-12 не удалены из истории: см. `git log -- docs/superpowers/plans/STATUS.md`
-и `git show d8891684f:docs/superpowers/plans/STATUS.md`.
+1. PR #1541: ограничить параллельное преобразование изображений в `app/services/image_proxy.py`
+   (семафор на воркер), повторить холодную нагрузку на локальном стенде без OOM и 502, затем
+   дождаться required checks и сделать обычный merge.
+2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
+   Nuclei с проверенным отчётом закрывают AUD-381.
+3. AUD-154: найти причину FCM 410 для свежих подписок (mobile/desktop topics), затем два
+   последовательных green полных Core на `main`.
+4. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
+   обновления с удержанием maplibre 6.15.0, jsdom 30.1.3, Playwright 1.64.1.
+5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.

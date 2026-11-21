@@ -3152,3 +3152,87 @@ public-integrity identity in disposition record 431 bind the new bytes. The same
 newest projection layer that covers the `img-src` rebind restores both
 predecessors. The path, type, category, owner and 2027-01-10 expiry are
 unchanged, and no identity is added. The inventory remains 524 dispositions.
+
+### npm manifest projection binding (approved 2026-11-15, not yet implemented)
+
+The owner approved decisions D1–D4 without changes on 2026-11-15; this section
+records them because they were not yet in the ADR. Semgrep disposition index 14
+(the SafeHtml React HTML sink, "row #15") pins `frontend/package.json` and
+`frontend/package-lock.json` as whole files. Their public-integrity identities
+are records 451 and 494. Every routine npm bump therefore needs ledger, identity
+and test-chain rebinds with byte reversals of the whole lock diff.
+
+- **D1.** Only these two companions may be written as
+  `{"path", "projection", "sha256"}`, with projections hard-coded and versioned
+  in `scripts/quality/semgrep_dispositions_gate.py`: `npm-manifest-sanitizer/v1`
+  for the manifest and `npm-lockfile-sanitizer/v1` for the lock. The digest is
+  the SHA-256 of canonical JSON of the projection document (`sort_keys`,
+  separators `(",", ":")`, `ensure_ascii=False`, UTF-8, no trailing newline).
+  The file is read with the existing symlink, TOCTOU and regular-file checks
+  and parsed strictly. An unknown projection, or a projection on another path
+  or row, fails closed. Drift reports the existing "Semgrep companion evidence
+  changed" problem. The other 11 SafeHtml companions stay whole-file pins.
+- **D2, full selection set.**
+  - The manifest projection selects:
+    - the declarations of `wasm-sanitizer`, `vite-plugin-wasm`, `dompurify`
+      and `@types/trusted-types` in all four dependency sections, with
+      `dependencies["wasm-sanitizer"]` required;
+    - the lifecycle scripts (`preinstall`, `install`, `postinstall`, `prepare`,
+      `prepack`, `postpack`, `prepublish`, `prepublishOnly`);
+    - every script whose name contains `wasm`, or whose body references
+      `wasm-sanitizer`, `ensure-wasm`, `verify-wasm` or
+      `WASM_SOURCE_PROVENANCE`;
+    - every override whose key or nested value mentions a bound package;
+    - the whole `allowScripts`;
+    - `workspaces`, `bundle(d)Dependencies`, `browser`, `imports` and
+      `exports` when they mention a bound package.
+  - The lock projection selects:
+    - `lockfileVersion`, which must be 3;
+    - the root record's `hasInstallScript` and its bound declarations;
+    - every `packages` key whose last `node_modules/` segment is a bound
+      package, including nested copies, as full records;
+    - every key containing `wasm-sanitizer`;
+    - every record with `hasInstallScript: true`, as a full record.
+
+    The link record must be exactly
+    `{"resolved": "wasm-sanitizer/pkg", "link": true}`.
+- **D3.** Records 451 and 494 are rebound one-to-one by identity bytes only:
+  SHA-1 of the new projection hex. Path, type, category, owner, review date,
+  evidence and the 2027-01-10 expiry stay unchanged. The inventory is unchanged.
+- **D4.** From the migration commit on, the historical content proofs for the
+  two manifests in `tests/test_verify_secrets_baseline.py` become digest-only
+  (sealed), as the ammonia WASM layer already is. The migration is the newest
+  projection layer. It undoes the two ledger companion objects and maps records
+  451 and 494 back, and older layers accept the projected digest only for these
+  two paths.
+
+Still checked against live content: the `test:wasm` prefix (through the
+projection), SafeHtml companion freshness (through the projector), and an
+independent re-implementation of the selection in the tests.
+
+Negative controls must fail when:
+
+- any bound entry is edited (the `wasm-sanitizer` spec, the link `resolved` or
+  `link`, `preinstall` removed, `test:wasm` changed, `allowScripts` changed);
+- an override redirects `wasm-sanitizer`, at top level or nested;
+- a new nested copy of a bound package appears;
+- a new install-script package appears;
+- JSON keys are duplicated;
+- an unknown projection, path or row is used;
+- the migration layer sees drift in the ledger, policy or projection.
+
+As the stability control, an unrelated dependency bump must leave both
+projection digests unchanged.
+
+Unbound entries stay covered by the protected-path policy, npm audit, OSV,
+dependency review, lockfile SRI and the build and test checks. A bump that
+touches a bound entry still needs a one-to-one 451/494 rebind, reversing only
+the bound bytes.
+
+Rollout is one owner-authored PR:
+
+1. The migration, committed with
+   `UE_DETECT_SECRETS_OWNER_AUTHORED_DISPOSITION_UPDATE=1`: gate, ledger,
+   records, migration layer and gate tests.
+2. The Dependabot npm update (#1520) with no policy edits, keeping maplibre-gl
+   6.15.0, jsdom 30.1.3 and Playwright 1.64.1.
