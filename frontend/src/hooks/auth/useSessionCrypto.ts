@@ -23,6 +23,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import api from "@/api/client"
 import {
   invalidateSessionEpoch,
+  getSessionEpoch,
+  isCurrentBrowserSession,
   rotateBrowserSession,
   getBrowserSessionGeneration,
   establishBrowserSession,
@@ -237,12 +239,62 @@ const SIGNING_KEY_BACKOFF_BASE_MS = 5_000
  *   ``sendSessionCacheUpdate`` (force-sync the SW cache key without
  *   changing local state).
  */
+type SessionCacheAcknowledgement = {
+  pending: Promise<string | null>
+  controller: ServiceWorker
+  port: MessagePort
+  result: Promise<boolean>
+  active: boolean
+  finish: (applied: boolean) => void
+}
+
+const createSessionCacheAcknowledgement = (
+  pending: Promise<string | null>,
+  controller: ServiceWorker
+): SessionCacheAcknowledgement => {
+  const channel = new MessageChannel()
+  let resolveResult!: (applied: boolean) => void
+  const result = new Promise<boolean>((resolve) => {
+    resolveResult = resolve
+  })
+  const acknowledgement: SessionCacheAcknowledgement = {
+    pending,
+    controller,
+    port: channel.port2,
+    result,
+    active: true,
+    finish(applied) {
+      if (!acknowledgement.active) return
+      acknowledgement.active = false
+      clearTimeout(timer)
+      try {
+        channel.port1.close()
+      } catch {
+        // A worker timeout or transition may have already closed the port.
+      }
+      try {
+        channel.port2.close()
+      } catch {
+        // The transferred port may already be detached.
+      }
+      resolveResult(applied)
+    },
+  }
+  // Match the worker's existing identity-query deadline.
+  const timer = setTimeout(() => acknowledgement.finish(false), 1000)
+  channel.port1.onmessage = ({ data }) => acknowledgement.finish(data === true)
+  return acknowledgement
+}
+
 export const useSessionCrypto = () => {
   // Always initialise to null — key lives in memory only, never in Web Storage.
   // ensureSessionSigningKey() will fetch from /auth/session/signing-key on first use.
   const [sessionSigningKey, setSessionSigningKeyState] = useState<string | null>(null)
   const sessionSigningKeyRef = useRef<string | null>(sessionSigningKey)
   const sessionSigningKeyPromiseRef = useRef<Promise<string | null> | null>(null)
+  // Keep the server-key acquisition visible through its cache-key derivation.
+  const sessionKeyReadinessRef = useRef<Promise<string | null> | null>(null)
+  const sessionCacheAckRef = useRef<SessionCacheAcknowledgement | null>(null)
   /** Consecutive failure counter — reset to 0 on success or after backoff expires. */
   const signingKeyRetryCountRef = useRef(0)
   /**
@@ -261,47 +313,75 @@ export const useSessionCrypto = () => {
   const sessionRevisionRef = useRef(0)
   const cacheRevisionRef = useRef(0)
 
-  const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
-    const container: ServiceWorkerContainer | undefined = globalThis.navigator?.serviceWorker
-    if (!container) {
-      return
-    }
+  const sendServiceWorkerMessage = useCallback(
+    (message: ApiCacheControlMessage, acknowledgement?: SessionCacheAcknowledgement) => {
+      const container: ServiceWorkerContainer | undefined = globalThis.navigator?.serviceWorker
+      if (!container) {
+        acknowledgement?.finish(false)
+        return
+      }
 
-    const revision = cacheRevisionRef.current
-    const postTo = (target: ServiceWorker | null | undefined) => {
-      if (!target || revision !== cacheRevisionRef.current) return
-      try {
-        target.postMessage(message)
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          logWarning("Failed to post message to service worker", { error })
+      const revision = cacheRevisionRef.current
+      const postTo = (target: ServiceWorker | null | undefined) => {
+        if (!target || revision !== cacheRevisionRef.current) {
+          acknowledgement?.finish(false)
+          return
+        }
+        try {
+          if (
+            acknowledgement?.active &&
+            target === acknowledgement.controller &&
+            container.controller === acknowledgement.controller
+          ) {
+            target.postMessage(message, [acknowledgement.port])
+          } else {
+            acknowledgement?.finish(false)
+            target.postMessage(message)
+          }
+        } catch (error) {
+          acknowledgement?.finish(false)
+          if (import.meta.env.DEV) {
+            logWarning("Failed to post message to service worker", { error })
+          }
         }
       }
-    }
 
-    if (container.controller) {
-      postTo(container.controller)
-      return
-    }
+      if (container.controller) {
+        postTo(container.controller)
+        return
+      }
 
-    const ready = container.ready
-    if (ready && typeof ready.then === "function") {
-      ready
-        .then((registration) => {
-          postTo(registration?.active ?? null)
-        })
-        .catch((error) => {
-          if (import.meta.env.DEV) {
-            logWarning("Failed to deliver message to service worker", { error })
-          }
-        })
-    }
-  }, [])
+      const ready = container.ready
+      if (ready && typeof ready.then === "function") {
+        ready
+          .then((registration) => {
+            postTo(registration?.active ?? null)
+          })
+          .catch((error) => {
+            acknowledgement?.finish(false)
+            if (import.meta.env.DEV) {
+              logWarning("Failed to deliver message to service worker", { error })
+            }
+          })
+      } else {
+        acknowledgement?.finish(false)
+      }
+    },
+    []
+  )
 
   const sendSessionCacheUpdate = useCallback(
     async (
       signingKey: string | null,
-      { purge = false, force = false }: { purge?: boolean; force?: boolean } = {}
+      {
+        purge = false,
+        force = false,
+        confirmReadiness = false,
+      }: {
+        purge?: boolean
+        force?: boolean
+        confirmReadiness?: boolean
+      } = {}
     ) => {
       const revision = ++cacheRevisionRef.current
       const generation = getBrowserSessionGeneration()
@@ -324,11 +404,15 @@ export const useSessionCrypto = () => {
       if (!force && !purge && sessionCacheHashRef.current === nextHash) return
       sessionCacheHashRef.current = nextHash
 
-      sendServiceWorkerMessage({
-        type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
-        sessionHash: nextHash ?? undefined,
-        ...(nextHash ? { sessionScope: `${nextHash}:${sessionCacheNonceRef.current}` } : {}),
-      })
+      const acknowledgement = confirmReadiness ? sessionCacheAckRef.current : null
+      sendServiceWorkerMessage(
+        {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: nextHash ?? undefined,
+          ...(nextHash ? { sessionScope: `${nextHash}:${sessionCacheNonceRef.current}` } : {}),
+        },
+        acknowledgement?.pending === sessionKeyReadinessRef.current ? acknowledgement : undefined
+      )
     },
     [sendServiceWorkerMessage]
   )
@@ -350,6 +434,11 @@ export const useSessionCrypto = () => {
       }
       sessionRevisionRef.current += 1
       sessionSigningKeyPromiseRef.current = null
+      if (!onInstall) {
+        sessionKeyReadinessRef.current = null
+        sessionCacheAckRef.current?.finish(false)
+        sessionCacheAckRef.current = null
+      }
       sessionSigningKeyRef.current = value
       signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
       signingKeyBackoffMsRef.current = SIGNING_KEY_BACKOFF_BASE_MS
@@ -360,7 +449,7 @@ export const useSessionCrypto = () => {
       // Hand off this installation before cache delivery or hashing can yield.
       onInstall?.(sessionRevisionRef.current, getBrowserSessionGeneration())
       setSessionSigningKeyState(value)
-      await sendSessionCacheUpdate(value, { purge: true })
+      await sendSessionCacheUpdate(value, { purge: true, confirmReadiness: !!onInstall })
     },
     [sendSessionCacheUpdate]
   )
@@ -383,6 +472,10 @@ export const useSessionCrypto = () => {
       // a settled promise indefinitely, regardless of fulfillment or rejection.
       if (sessionSigningKeyPromiseRef.current === promise)
         sessionSigningKeyPromiseRef.current = null
+      if (sessionKeyReadinessRef.current === promise) sessionKeyReadinessRef.current = null
+      const acknowledgement = sessionCacheAckRef.current
+      if (acknowledgement?.pending === promise && !acknowledgement.active)
+        sessionCacheAckRef.current = null
     }
     const promise = (async (): Promise<string | null> => {
       let failureRevision = revision
@@ -440,6 +533,7 @@ export const useSessionCrypto = () => {
     // A synchronous failure event may already have started a replacement request.
     if (revision === sessionRevisionRef.current && generation === getBrowserSessionGeneration()) {
       sessionSigningKeyPromiseRef.current = promise
+      sessionKeyReadinessRef.current = promise
     }
     // Register both settlement handlers before returning the promise. This
     // preserves the old finally semantics without a synthetic uncovered branch.
@@ -469,12 +563,74 @@ export const useSessionCrypto = () => {
         event.data?.type !== SERVICE_WORKER_MESSAGE_TYPES.REQUEST_API_SESSION_CACHE_KEY
       )
         return
-      const nonce = sessionCacheNonceRef.current
-      const candidate = sessionSigningKeyRef.current ? sessionCacheHashRef.current : null
-      const hash = candidate && nonce && matchesBrowserSession(candidate, nonce) ? candidate : null
-      event.ports[0]?.postMessage({
-        sessionHash: hash,
-        sessionScope: hash && nonce ? `${hash}:${nonce}` : null,
+      const port = event.ports[0]
+      if (!port) return
+      const reply = (owned = true) => {
+        const nonce = sessionCacheNonceRef.current
+        const candidate = sessionSigningKeyRef.current ? sessionCacheHashRef.current : null
+        const hash =
+          owned && candidate && nonce && matchesBrowserSession(candidate, nonce) ? candidate : null
+        try {
+          port.postMessage({
+            sessionHash: hash,
+            sessionScope: hash && nonce ? `${hash}:${nonce}` : null,
+          })
+        } catch {
+          // The worker may have timed out and closed its reply channel.
+        }
+      }
+      // Do not start a new key fetch in response to a worker query. If the
+      // regular bootstrap is already in flight, wait for its owned result.
+      const previousAcknowledgement = sessionCacheAckRef.current
+      const pending =
+        sessionKeyReadinessRef.current ??
+        (previousAcknowledgement?.active ? previousAcknowledgement.pending : null)
+      if (!pending) {
+        reply()
+        return
+      }
+      const generation = getBrowserSessionGeneration()
+      if (!generation || !isCurrentBrowserSession() || !container?.controller) {
+        reply(false)
+        return
+      }
+      const startingKey = sessionSigningKeyRef.current
+      const revision = sessionRevisionRef.current
+      const epoch = getSessionEpoch()
+      const install = startingKey ? 0 : 1
+      let acknowledgement = previousAcknowledgement
+      if (!acknowledgement || acknowledgement.pending !== pending) {
+        try {
+          acknowledgement = createSessionCacheAcknowledgement(pending, container!.controller!)
+        } catch {
+          reply(false)
+          return
+        }
+        sessionCacheAckRef.current = acknowledgement
+        const created = acknowledgement
+        void pending.then(
+          (key) => {
+            if (!key || !isCurrentBrowserSession() || generation !== getBrowserSessionGeneration())
+              created.finish(false)
+          },
+          () => created.finish(false)
+        )
+        void created.result.then(() => {
+          if (sessionKeyReadinessRef.current !== pending && sessionCacheAckRef.current === created)
+            sessionCacheAckRef.current = null
+        })
+      }
+      void acknowledgement.result.then(async (applied) => {
+        const key = applied ? await pending.catch(() => null) : null
+        reply(
+          !!key &&
+            sessionSigningKeyRef.current === key &&
+            sessionRevisionRef.current === revision + install &&
+            getSessionEpoch() === epoch + install &&
+            getBrowserSessionGeneration() === generation &&
+            isCurrentBrowserSession() &&
+            event.source === container?.controller
+        )
       })
     }
     container?.addEventListener?.("controllerchange", sync)
@@ -492,6 +648,9 @@ export const useSessionCrypto = () => {
     return () => {
       sessionRevisionRef.current += 1
       cacheRevisionRef.current += 1
+      sessionKeyReadinessRef.current = null
+      sessionCacheAckRef.current?.finish(false)
+      sessionCacheAckRef.current = null
       if (signingKeyBackoffTimerRef.current !== null) {
         clearTimeout(signingKeyBackoffTimerRef.current)
         signingKeyBackoffTimerRef.current = null

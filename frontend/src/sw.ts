@@ -121,6 +121,11 @@ self.addEventListener("message", (event) => {
         const scope =
           typeof event.data.sessionScope === "string" ? event.data.sessionScope : undefined
         setSessionHash(hash, scope)
+        try {
+          event.ports?.[0]?.postMessage(true)
+        } catch {
+          // Delivery of the optional receipt cannot undo the applied SET.
+        }
       }
       break
     }

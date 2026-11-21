@@ -822,3 +822,47 @@ func TestStartSessionRevocationListenerContainsBootstrapRegistrationError(t *tes
 	err := h.StartSessionRevocationListener(context.Background())
 	assert.ErrorContains(t, err, "synthetic registration failure")
 }
+
+func TestRevocationEventReservesCloseBeforeSessionGate(t *testing.T) {
+	h := setupTestHub()
+	h.Unregister = make(chan *Client, 2)
+	client, session := newRevocationTestClient(h, "session-close-order", "user", validSessionJTI, "websocket")
+	h.Clients[client.ID] = client
+
+	client.sessionGate.Lock()
+	locked := true
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.disconnectSessionContext(context.Background(), validSessionJTI, 4401, "Session revoked")
+	}()
+	defer func() {
+		if locked {
+			client.sessionGate.Unlock()
+		}
+		<-done
+		client.cancel()
+	}()
+
+	require.Eventually(t, func() bool {
+		client.transportCloseStateMu.Lock()
+		defer client.transportCloseStateMu.Unlock()
+		return client.controlCloseRequested && client.controlCloseCode == 4401
+	}, time.Second, time.Millisecond)
+
+	fallbackDone := make(chan struct{})
+	go func() {
+		defer close(fallbackDone)
+		client.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
+	}()
+	client.sessionGate.Unlock()
+	locked = false
+	<-done
+	<-fallbackDone
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	require.Len(t, session.writes, 1)
+	assert.Equal(t, websocket.CloseMessage, session.writes[0].messageType)
+	assert.Equal(t, websocket.FormatCloseMessage(4401, "Session revoked"), session.writes[0].data)
+}

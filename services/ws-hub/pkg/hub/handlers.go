@@ -399,7 +399,7 @@ func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
 		return fmt.Errorf("session revocation check failed: %w", err)
 	}
 	if revoked > 0 {
-		return fmt.Errorf("ticket session is revoked")
+		return errSessionRevoked
 	}
 	return nil
 }
