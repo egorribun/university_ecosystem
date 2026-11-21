@@ -46,6 +46,7 @@ def _make_settings(**overrides: Any) -> MagicMock:
         "rate_limit_auth_register": "",
         "rate_limit_auth_password_reset": "",
         "rate_limit_users_me": "",
+        "rate_limit_static": "",
         "rate_limit_graphql": "",
         "rate_limit_websocket": "",
         "cookie_secure": True,
@@ -203,6 +204,49 @@ class TestConfigureRateLimiting:
         assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
         assert blocked.headers["X-RateLimit-Limit"] == "2"
         assert blocked.headers.get("Retry-After") is not None
+
+    @pytest.mark.asyncio
+    async def test_image_proxy_has_a_budget_separate_from_the_default(self):
+        """Images neither spend nor inherit the default API budget of a client."""
+        app = FastAPI()
+        settings = _make_settings(
+            rate_limit_enabled=True,
+            rate_limit_default_list=["2/minute"],
+            rate_limit_static="3/minute",
+            rate_limit_storage_backend="memory",
+        )
+
+        @app.get("/api/v1/news")
+        async def _news():
+            return {"ok": True}
+
+        @app.get("/api/v1/img/{path:path}")
+        async def _image(path: str):
+            return {"path": path}
+
+        _configure_rate_limiting(app, settings)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            api = [(await client.get("/api/v1/news")).status_code for _ in range(3)]
+            images = [
+                await client.get(f"/api/v1/img/news_images/{index}.webp")
+                for index in range(4)
+            ]
+
+        assert api == [
+            status.HTTP_200_OK,
+            status.HTTP_200_OK,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        ]
+        assert [response.status_code for response in images] == [
+            status.HTTP_200_OK,
+            status.HTTP_200_OK,
+            status.HTTP_200_OK,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        ]
+        assert images[-1].headers["X-RateLimit-Limit"] == "3"
 
 
 # ---------------------------------------------------------------------------

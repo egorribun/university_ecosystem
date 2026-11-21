@@ -404,7 +404,7 @@ and are not part of this inventory.
 | `RATE_LIMIT_MFA_EMAIL_OTP_CLIENT_IP` | Email OTP issue, verify or resend actions per client IP within one OTP lifetime; the per-user budget stays 5. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5` |
 | `RATE_LIMIT_NEWS` | Rate limit news. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
 | `RATE_LIMIT_SENSITIVE` | Rate limit sensitive. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
-| `RATE_LIMIT_STATIC` | Rate limit static. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
+| `RATE_LIMIT_STATIC` | Per-client budget for `/api/v1/img`, separate from `RATE_LIMIT_DEFAULT`, and the per-path limit of the image proxy and static file routes. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
 | `RATE_LIMIT_STORIES` | Rate limit stories. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
 | `RATE_LIMIT_UPLOAD` | Rate limit upload. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |
 | `RATE_LIMIT_USERS_AVATAR` | Rate limit users avatar. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |

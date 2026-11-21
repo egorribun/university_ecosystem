@@ -27,6 +27,7 @@ def _rate_settings(**overrides: object) -> SimpleNamespace:
         "rate_limit_auth_register": "",
         "rate_limit_auth_password_reset": "",
         "rate_limit_users_me": "",
+        "rate_limit_static": "",
         "rate_limit_graphql": "",
         "rate_limit_websocket": "",
     }
@@ -130,6 +131,7 @@ def test_rate_limiting_contract_uses_fallbacks_and_endpoint_limits():
         app,
         _rate_settings(
             rate_limit_events="12/minute",
+            rate_limit_static="300/minute",
             rate_limit_graphql="7/minute",
         ),
     )
@@ -146,6 +148,7 @@ def test_rate_limiting_contract_uses_fallbacks_and_endpoint_limits():
         EndpointRateLimit("/api/v1/news", 10, 60),
         EndpointRateLimit("/api/v1/events", 12, 60),
         EndpointRateLimit("/api/v1/chat", 5, 1),
+        EndpointRateLimit("/api/v1/img", 300, 60),
     )
 
     app.reset_mock()
