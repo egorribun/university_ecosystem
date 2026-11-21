@@ -19,6 +19,9 @@ const (
 	// sessionRevocationsChannel is the backend's canonical durable-store event.
 	// The backend writes revoked:jti before publishing this message.
 	sessionRevocationsChannel = "session:revocations"
+	// Confirmed revoked sessions use the same close contract regardless of delivery path.
+	sessionRevocationCloseCode   = 4401
+	sessionRevocationCloseReason = "Session revoked"
 	// sessionActionRevocationTimeout bounds the security-store lookup before an
 	// already-upgraded socket may dispatch a user action. A timeout rejects the
 	// action rather than allowing a stale session through.
@@ -35,6 +38,7 @@ const (
 )
 
 var errSessionInactive = errors.New("session is inactive")
+var errSessionRevoked = errors.New("ticket session is revoked")
 
 // authorizeSession requires sessionGate to be held by the caller through the
 // authorized action/write. Inbound actions always refresh; outbound traffic
@@ -63,7 +67,7 @@ func (c *Client) authorizeSession(ctx context.Context, now time.Time, allowCache
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
 	defer cancel()
-	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
+	if err := c.checkDurableSessionRevocation(checkCtx); err != nil {
 		return errSessionInactive
 	}
 	if checkCtx.Err() != nil || c.sessionRevoked.Load() || !time.Now().Before(c.SessionExpiresAt) {
@@ -72,6 +76,15 @@ func (c *Client) authorizeSession(ctx context.Context, now time.Time, allowCache
 	// Anchor the bound before the lookup, so slow Redis does not extend it.
 	c.sessionCheckedUntil = now.Add(sessionDeliveryRecheckInterval)
 	return nil
+}
+
+func (c *Client) checkDurableSessionRevocation(ctx context.Context) error {
+	err := c.Hub.sessionRevocationCheck(ctx, c.SessionJTI)
+	if errors.Is(err, errSessionRevoked) {
+		// Reserve before sessionRevoked becomes visible to concurrent pumps.
+		c.reserveControlFrameClose(sessionRevocationCloseCode, sessionRevocationCloseReason)
+	}
+	return err
 }
 
 var closeSessionRevocationPubSubFunc = func(pubsub *goredis.PubSub) error {
@@ -406,7 +419,7 @@ func (h *Hub) consumeSessionRevocationMessages(ctx context.Context, messages <-c
 				}
 				continue
 			}
-			h.disconnectSessionContext(ctx, message.Payload, 4401, "Session revoked")
+			h.disconnectSessionContext(ctx, message.Payload, sessionRevocationCloseCode, sessionRevocationCloseReason)
 		}
 	}
 }

@@ -166,6 +166,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_push_recipient_observations as _live_playwright_push_recipient_observations,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_push_rotation_observations as _live_playwright_push_rotation_observations,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_pwa_bundle_route_diagnostics as _live_playwright_pwa_bundle_route_diagnostics,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5764,6 +5767,7 @@ def _run_live_playwright(
     push_observations = _live_playwright_push_observations(stdout)
     push_cleanup_observations = _live_playwright_push_cleanup_observations(stdout)
     push_recipient_observations = _live_playwright_push_recipient_observations(stdout)
+    push_rotation_observations = _live_playwright_push_rotation_observations(stdout)
     story_memory_records = _live_playwright_story_memory_records(stdout)
     story_memory_cycle_trace_diagnostics = (
         _live_playwright_story_memory_cycle_trace_diagnostics(stdout)
@@ -5942,6 +5946,12 @@ def _run_live_playwright(
         print(
             f"live E2E push recipient project={project} retry={retry} "
             f"scenario={scenario} check={check} subscription={subscription}",
+            flush=True,
+        )
+    for project, retry, scenario, phase, ordinal, prefix in push_rotation_observations:
+        print(
+            f"live E2E push rotation project={project} retry={retry} scenario={scenario} "
+            f"phase={phase} ordinal={ordinal} endpoint_sha256={prefix}",
             flush=True,
         )
     for project, retry, case, row in push_cleanup_observations:

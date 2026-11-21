@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -255,11 +256,33 @@ describe("useMapWeather — persisted freshness", () => {
 })
 
 describe("useMapWeather — provider wall-clock forecast hours", () => {
-  it("preserves a valid hour that falls inside the client's DST spring gap", async () => {
-    const previousTimezone = process.env.TZ
+  it("confirms New York spring-gap normalization in a process started in that zone", () => {
+    // A worker's runtime TZ assignment does not update its native Date behavior.
+    const script = [
+      "const hours = [1, 2, 3].map((hour) =>",
+      "  new Date(`2026-03-08T0${hour}:00`).getHours())",
+      'process.stdout.write(hours.join(","))',
+    ].join("\n")
+    const result = spawnSync(process.execPath, ["-e", script], {
+      encoding: "utf8",
+      env: { ...process.env, TZ: "America/New_York" },
+      shell: false,
+      timeout: 10_000,
+    })
+    expect(result.error).toBeUndefined()
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe("1,3,3")
+  })
 
+  it("preserves a valid hour that falls inside the client's DST spring gap", async () => {
+    // Model only the gap in this worker so Stryker still instruments the hook.
+    const gapInstant = new Date("2026-03-08T02:00").getTime()
+    const nativeGetHours = Date.prototype.getHours
+    const getHoursSpy = vi.spyOn(Date.prototype, "getHours")
     try {
-      process.env.TZ = "America/New_York"
+      getHoursSpy.mockImplementation(function (this: Date) {
+        return this.getTime() === gapInstant ? 3 : nativeGetHours.call(this)
+      })
       expect(new Date("2026-03-08T02:00").getHours()).toBe(3)
 
       fetchMock.mockResolvedValueOnce({
@@ -281,8 +304,7 @@ describe("useMapWeather — provider wall-clock forecast hours", () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.data?.hourlyForecast.map((point) => point.hour)).toEqual([1, 2, 3])
     } finally {
-      if (previousTimezone === undefined) delete process.env.TZ
-      else process.env.TZ = previousTimezone
+      getHoursSpy.mockRestore()
     }
   })
 

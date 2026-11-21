@@ -62,6 +62,9 @@ func TestWritePumpFailsClosedWhenDeliveryLookupFails(t *testing.T) {
 		assert.NotEqual(t, websocket.TextMessage, write.messageType)
 	}
 	assert.True(t, client.sessionRevoked.Load())
+	require.Len(t, session.writes, 1)
+	assert.Equal(t, websocket.CloseMessage, session.writes[0].messageType)
+	assert.Equal(t, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Session revoked"), session.writes[0].data)
 }
 
 func TestPassivePongOnlySessionClosesAfterMissedRevocationNotice(t *testing.T) {
@@ -90,7 +93,13 @@ func TestPassivePongOnlySessionClosesAfterMissedRevocationNotice(t *testing.T) {
 	require.NoError(t, store.Set(revokedJTIKeyPrefix+validSessionJTI, "1"))
 	// Deliberately do not publish: the durable tombstone alone must suffice.
 	_, _, err = peer.ReadMessage()
-	require.True(t, websocket.IsCloseError(err, websocket.ClosePolicyViolation), "expected session close after missed notice, got %v", err)
+	var closeErr *websocket.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	if closeErr == nil {
+		t.Fatal("expected a non-nil WebSocket close error")
+	}
+	require.Equal(t, 4401, closeErr.Code)
+	require.Equal(t, "Session revoked", closeErr.Text)
 	pumps.Wait()
 	assert.True(t, client.sessionRevoked.Load())
 }

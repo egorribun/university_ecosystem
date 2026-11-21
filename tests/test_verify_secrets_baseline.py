@@ -37908,6 +37908,9 @@ _NOV21_AUDIT_REVERSALS = (
 
 
 def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    rotation = _AUD154_ROTATION_SOURCE_PINS.get(path)
+    if rotation is not None and hashlib.sha256(actual).digest() == rotation[1]:
+        actual = _aud154_rotation_source_predecessor(path, actual)
     newest = _NATS_INVENTORY_SOURCE_PINS.get(path)
     if newest is not None and hashlib.sha256(actual).digest() == newest[1]:
         actual = _nats_inventory_source_predecessor(path, actual)
@@ -38114,6 +38117,9 @@ _NATS_INVENTORY_LIVE_REVERSALS = (
 
 
 def _nats_inventory_source_predecessor(path: str, actual: bytes) -> bytes:
+    rotation = _AUD154_ROTATION_SOURCE_PINS.get(path)
+    if rotation is not None and hashlib.sha256(actual).digest() == rotation[1]:
+        actual = _aud154_rotation_source_predecessor(path, actual)
     pins = _NATS_INVENTORY_SOURCE_PINS.get(path)
     if pins is None:
         return actual
@@ -38137,7 +38143,7 @@ def _nats_inventory_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _nats_inventory_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _aud154_rotation_policy_predecessor(policy)
     records = restored["records"]
     if len(records) <= _NATS_INVENTORY_ROW:
         return restored
@@ -38183,7 +38189,7 @@ def test_nats_inventory_companion_is_bound_to_current_source() -> None:
 @pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
 def test_nats_inventory_source_projection_restores_predecessor(path: str) -> None:
     root = Path(__file__).resolve().parents[1]
-    actual = (root / path).read_bytes()
+    actual = _aud154_rotation_source_predecessor(path, (root / path).read_bytes())
     previous, current = _NATS_INVENTORY_SOURCE_PINS[path]
     assert hashlib.sha256(actual).digest() == current
     historical = _nats_inventory_source_predecessor(path, actual)
@@ -38208,7 +38214,9 @@ def test_nats_inventory_projection_rejects_changed_fragments_even_with_spoofed_h
     mutation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _aud154_rotation_source_predecessor(
+        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+    )
     if fragment_index is not None:
         fragment = _NATS_INVENTORY_LIVE_REVERSALS[fragment_index][0]
     else:
@@ -38283,3 +38291,220 @@ def test_nats_inventory_policy_chain_rejects_identity_and_approval_drift(
         row["reviewed_on"] += " changed"
     with pytest.raises(AssertionError):
         _aud154_historical_policy(policy)
+
+
+# The AUD-154 rotation diagnostic rebinds only the existing live-stand
+# companion. Restore its exact NATS predecessor before the earlier layers.
+_AUD154_ROTATION_SOURCE_PINS = {
+    _NATS_INVENTORY_LIVE: (
+        _NATS_INVENTORY_SOURCE_PINS[_NATS_INVENTORY_LIVE][1],
+        bytes.fromhex(
+            "e2 ec 7d e9 61 e3 87 34 4d 58 fe c6 6a ab cd 5c"
+            " 12 03 a8 9e 09 4d 9d 2f e0 eb 0a f8 7f c2 57 af"
+        ),
+    ),
+    _NATS_INVENTORY_LEDGER: (
+        _NATS_INVENTORY_SOURCE_PINS[_NATS_INVENTORY_LEDGER][1],
+        bytes.fromhex(
+            "91 1d 97 60 e6 b9 97 9a d7 a8 c7 4a 42 e4 04 d8"
+            " 18 28 cd 38 76 03 36 15 b5 91 6a 4a a9 4d 84 b4"
+        ),
+    ),
+}
+_AUD154_ROTATION_ROW_BEFORE_SHA256 = bytes.fromhex(
+    "fd d8 df d6 46 4b 48 81 a6 b9 ea a3 4c c6 0b 5a"
+    " d5 43 10 6b b0 ef d6 6b 32 b7 31 41 e0 76 83 7d"
+)
+_AUD154_ROTATION_LIVE_INSERTIONS = (
+    b"from scripts.live_stand_playwright_evidence import (\n"
+    b"    _live_playwright_push_rotation_observations as "
+    b"_live_playwright_push_rotation_observations,\n"
+    b")\n",
+    b"    push_rotation_observations = "
+    b"_live_playwright_push_rotation_observations(stdout)\n",
+    b"    for project, retry, scenario, phase, ordinal, prefix in push_rotation_observations:\n"
+    b"        print(\n"
+    b'            f"live E2E push rotation project={project} retry={retry} scenario={scenario} "\n'
+    b'            f"phase={phase} ordinal={ordinal} endpoint_sha256={prefix}",\n'
+    b"            flush=True,\n"
+    b"        )\n",
+)
+
+
+def _aud154_rotation_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _AUD154_ROTATION_SOURCE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    historical = actual
+    if path == _NATS_INVENTORY_LEDGER:
+        old_live, new_live = _AUD154_ROTATION_SOURCE_PINS[_NATS_INVENTORY_LIVE]
+        current_pin, previous_pin = new_live.hex().encode(), old_live.hex().encode()
+        assert historical.count(current_pin) == 1, message
+        historical = historical.replace(current_pin, previous_pin, 1)
+    else:
+        for insertion in _AUD154_ROTATION_LIVE_INSERTIONS:
+            assert historical.count(insertion) == 1, message
+            historical = historical.replace(insertion, b"", 1)
+    assert hashlib.sha256(historical).digest() == previous, message
+    return historical
+
+
+def _aud154_rotation_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _NATS_INVENTORY_ROW:
+        return restored
+    row = records[_NATS_INVENTORY_ROW]
+    identity = row["identity"]
+    previous, current = _AUD154_ROTATION_SOURCE_PINS[_NATS_INVENTORY_LIVE]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Earlier layers reject any unrecognized or otherwise changed record.
+        return restored
+    assert identity["path"] == _NATS_INVENTORY_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _AUD154_ROTATION_ROW_BEFORE_SHA256, (
+        "AUD-154 rotation disposition approval metadata changed"
+    )
+    return restored
+
+
+@pytest.mark.parametrize("path", [_NATS_INVENTORY_LIVE, _NATS_INVENTORY_LEDGER])
+def test_aud154_rotation_projection_restores_exact_nats_successor(path: str) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    previous, current = _AUD154_ROTATION_SOURCE_PINS[path]
+    assert hashlib.sha256(actual).digest() == current
+    assert previous == _NATS_INVENTORY_SOURCE_PINS[path][1]
+    restored = _aud154_rotation_source_predecessor(path, actual)
+    assert hashlib.sha256(restored).digest() == previous
+    assert _aud154_rotation_source_predecessor(path, restored) == restored
+    assert _nats_inventory_source_predecessor(path, actual) == (
+        _nats_inventory_source_predecessor(path, restored)
+    )
+
+
+def test_aud154_rotation_rebind_preserves_inventory_and_approval() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / _NATS_INVENTORY_LEDGER).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    baseline = json.loads((root / ".secrets.baseline").read_bytes())
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    assert sum(len(items) for items in baseline["results"].values()) == 242
+    live_pin = hashlib.sha256((root / _NATS_INVENTORY_LIVE).read_bytes()).hexdigest()
+    assert [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _NATS_INVENTORY_LIVE
+    ] == [live_pin]
+    previous = _aud154_rotation_policy_predecessor(policy)
+    assert [
+        i
+        for i, (current, old) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if current != old
+    ] == [_NATS_INVENTORY_ROW]
+    current_row = policy["records"][_NATS_INVENTORY_ROW]
+    expected_row = copy.deepcopy(previous["records"][_NATS_INVENTORY_ROW])
+    expected_row["identity"]["hashed_secret_bytes"] = _nov15_identity(live_pin)
+    assert current_row == expected_row
+    assert _aud154_rotation_policy_predecessor(previous) == previous
+    _aud154_historical_policy(policy)
+
+
+@pytest.mark.parametrize(
+    ("path", "fragment_index"),
+    [
+        (_NATS_INVENTORY_LIVE, 0),
+        (_NATS_INVENTORY_LIVE, 1),
+        (_NATS_INVENTORY_LIVE, 2),
+        (_NATS_INVENTORY_LEDGER, None),
+    ],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "changed"])
+def test_aud154_rotation_projection_rejects_spoofed_source(
+    path: str,
+    fragment_index: int | None,
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    fragment = (
+        _AUD154_ROTATION_LIVE_INSERTIONS[fragment_index]
+        if fragment_index is not None
+        else _AUD154_ROTATION_SOURCE_PINS[_NATS_INVENTORY_LIVE][1].hex().encode()
+    )
+    assert actual.count(fragment) == 1
+    replacement = {
+        "missing": b"",
+        "duplicate": fragment + fragment,
+        "changed": fragment + b"x",
+    }[mutation]
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _ = _AUD154_ROTATION_SOURCE_PINS[path]
+    monkeypatch.setitem(
+        _AUD154_ROTATION_SOURCE_PINS,
+        path,
+        (previous, hashlib.sha256(changed).digest()),
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _aud154_rotation_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "path",
+        "type",
+        "category",
+        "owner",
+        "expiry",
+        "evidence",
+        "approved",
+        "reviewed",
+    ],
+)
+def test_aud154_rotation_policy_chain_rejects_identity_and_approval_drift(
+    mutation: str,
+) -> None:
+    policy = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "quality/security-false-positive-dispositions.json"
+        ).read_bytes()
+    )
+    row = policy["records"][_NATS_INVENTORY_ROW]
+    if mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation in {"path", "type"}:
+        row["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        row[mutation] += " changed"
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "approved":
+        row["approval_status"] = "pending"
+    else:
+        row["reviewed_on"] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)
+
+
+def test_aud154_rotation_projection_leaves_unrelated_source_unchanged() -> None:
+    assert (
+        _aud154_rotation_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+    )

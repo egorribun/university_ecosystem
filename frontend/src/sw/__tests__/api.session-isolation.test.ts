@@ -1,6 +1,8 @@
 import { MessageChannel } from "node:worker_threads"
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
+import http from "@/api/client"
+import { cryptoWorker } from "@/utils/cryptoWorker"
 import { fetchCampusTimezone } from "@/api/hooks/campusConfig"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -116,6 +118,290 @@ afterEach(() => {
 })
 
 describe("private API session isolation", () => {
+  it("reproduces two protected requests fenced by same-session page bootstrap", async () => {
+    localStorage.clear()
+    vi.spyOn(cryptoWorker, "pbkdf2").mockImplementation(async ({ value }) => `hash-${value}`)
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const posted: string[] = []
+    const controller = {
+      postMessage: (
+        message: { type: string; sessionHash?: string; sessionScope?: string },
+        ports?: MessagePort[]
+      ) => {
+        posted.push(message.type)
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
+          void api.clearSessionCaches()
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          api.setSessionHash(message.sessionHash, message.sessionScope)
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          ports?.[0]?.postMessage(true)
+      },
+    }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const previousPage = renderHook(() => useSessionCrypto())
+    await act(() => previousPage.result.current.updateSessionSigningKey("same-session-key"))
+    const priorScope = api.getSessionCacheScope()
+    previousPage.unmount()
+    posted.length = 0
+    const freshPage = renderHook(() => useSessionCrypto())
+    vi.stubGlobal("self", {
+      caches: storage,
+      location: new URL("https://app.test/"),
+      __WB_DISABLE_DEV_LOGS: true,
+      clients: {
+        get: async () => ({
+          type: "window",
+          postMessage: (data: unknown, ports: MessagePort[]) =>
+            listeners.get("message")!({
+              source: controller,
+              data,
+              ports,
+            } as unknown as MessageEvent),
+        }),
+      },
+    })
+    const notificationsResponse = deferred<Response>()
+    const eventsResponse = deferred<Response>()
+    const entered = deferred<void>()
+    let enteredCount = 0
+    fetchMock.mockImplementation((request) => {
+      enteredCount += 1
+      if (enteredCount === 2) entered.resolve()
+      return String((request as Request).url).includes("notifications")
+        ? notificationsResponse.promise
+        : eventsResponse.promise
+    })
+    const notifications = request("/api/v1/notifications", { cache: "no-store" })
+    const events = request("/api/v1/events", { cache: "no-store" })
+    await entered.promise
+    vi.spyOn(http, "get").mockResolvedValueOnce({ data: { signing_key: "same-session-key" } })
+    await act(async () => {
+      expect(await freshPage.result.current.ensureSessionSigningKey()).toBe("same-session-key")
+    })
+    expect(posted).toEqual([
+      SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+      SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+    ])
+    expect(api.getSessionCacheScope()).toBe(priorScope)
+    notificationsResponse.resolve(new Response("private notifications"))
+    eventsResponse.resolve(new Response("private events"))
+    expect((await notifications).type).toBe("error")
+    expect((await events).type).toBe("error")
+    freshPage.unmount()
+  })
+
+  it("retires old protected responses before a newly fetched key finishes hashing", async () => {
+    localStorage.clear()
+    const hashing = deferred<string>()
+    const hashingStarted = deferred<void>()
+    vi.spyOn(cryptoWorker, "pbkdf2").mockImplementation(({ value }) => {
+      if (value === "new-session-key") {
+        hashingStarted.resolve()
+        return hashing.promise
+      }
+      return Promise.resolve(`hash-${value}`)
+    })
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const controller = {
+      postMessage: (
+        message: { type: string; sessionHash?: string; sessionScope?: string },
+        ports?: MessagePort[]
+      ) => {
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
+          void api.clearSessionCaches()
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          api.setSessionHash(message.sessionHash, message.sessionScope)
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          ports?.[0]?.postMessage(true)
+      },
+    }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const previousPage = renderHook(() => useSessionCrypto())
+    await act(() => previousPage.result.current.updateSessionSigningKey("old-session-key"))
+    const priorScope = api.getSessionCacheScope()
+    previousPage.unmount()
+    const freshPage = renderHook(() => useSessionCrypto())
+    vi.stubGlobal("self", {
+      caches: storage,
+      location: new URL("https://app.test/"),
+      __WB_DISABLE_DEV_LOGS: true,
+      clients: {
+        get: async () => ({
+          type: "window",
+          postMessage: (data: unknown, ports: MessagePort[]) =>
+            listeners.get("message")!({
+              source: controller,
+              data,
+              ports,
+            } as unknown as MessageEvent),
+        }),
+      },
+    })
+    const privateResponse = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return privateResponse.promise
+    })
+    const pending = request("/api/v1/events", { cache: "no-store" })
+    await entered.promise
+    vi.spyOn(http, "get").mockResolvedValueOnce({ data: { signing_key: "new-session-key" } })
+    await act(async () => {
+      const installation = freshPage.result.current.ensureSessionSigningKey()
+      await hashingStarted.promise
+      expect(api.getSessionCacheScope()).toBeNull()
+      privateResponse.resolve(new Response("private old session"))
+      expect((await pending).type).toBe("error")
+      hashing.resolve("hash-new-session-key")
+      await installation
+    })
+    expect(api.getSessionCacheScope()).not.toBe(priorScope)
+    freshPage.unmount()
+  })
+
+  it.each(["worker messages delivered first", "readiness reply delivered first"])(
+    "sequences in-flight bootstrap with protected reads: %s",
+    async (ordering) => {
+      localStorage.clear()
+      vi.spyOn(cryptoWorker, "pbkdf2").mockImplementation(async ({ value }) => `hash-${value}`)
+      const listeners = new Map<string, (event: MessageEvent) => void>()
+      const queued: Array<{
+        message: { type: string; sessionHash?: string; sessionScope?: string }
+        ports?: MessagePort[]
+      }> = []
+      let queueWorkerMessages = false
+      const deliver = (
+        message: { type: string; sessionHash?: string; sessionScope?: string },
+        ports?: MessagePort[]
+      ) => {
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
+          void api.clearSessionCaches()
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          api.setSessionHash(message.sessionHash, message.sessionScope)
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          ports?.[0]?.postMessage(true)
+      }
+      const controller = {
+        postMessage: (
+          message: { type: string; sessionHash?: string; sessionScope?: string },
+          ports?: MessagePort[]
+        ) => {
+          if (queueWorkerMessages) queued.push({ message, ports })
+          else deliver(message, ports)
+        },
+      }
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: {
+          controller,
+          addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+            listeners.set(type, callback),
+          removeEventListener: (type: string) => listeners.delete(type),
+        },
+      })
+      const previous = renderHook(() => useSessionCrypto())
+      await act(() => previous.result.current.updateSessionSigningKey("same-key"))
+      previous.unmount()
+      const page = renderHook(() => useSessionCrypto())
+      const keyResponse = deferred<{ data: { signing_key: string } }>()
+      vi.spyOn(http, "get").mockReturnValueOnce(keyResponse.promise as never)
+      let initialization!: Promise<string | null>
+      act(() => {
+        initialization = page.result.current.ensureSessionSigningKey()
+      })
+      const witnessed = deferred<void>()
+      let witnessCount = 0
+      vi.stubGlobal("self", {
+        caches: storage,
+        location: new URL("https://app.test/"),
+        __WB_DISABLE_DEV_LOGS: true,
+        clients: {
+          get: async () => ({
+            type: "window",
+            postMessage: (data: unknown, ports: MessagePort[]) => {
+              listeners.get("message")!({
+                source: controller,
+                data,
+                ports,
+              } as unknown as MessageEvent)
+              if (++witnessCount === 2) witnessed.resolve()
+            },
+          }),
+        },
+      })
+      const firstResponse = deferred<Response>()
+      const secondResponse = deferred<Response>()
+      const entered = deferred<void>()
+      let enteredCount = 0
+      fetchMock.mockImplementation((request) => {
+        if (++enteredCount === 2) entered.resolve()
+        return String((request as Request).url).includes("notifications")
+          ? firstResponse.promise
+          : secondResponse.promise
+      })
+      const notifications = request("/api/v1/notifications", { cache: "no-store" })
+      const events = request("/api/v1/events", { cache: "no-store" })
+      await witnessed.promise
+      expect(fetchMock).not.toHaveBeenCalled()
+      queueWorkerMessages = ordering === "readiness reply delivered first"
+      await act(async () => {
+        keyResponse.resolve({ data: { signing_key: "same-key" } })
+      })
+      if (queueWorkerMessages) {
+        await waitFor(() => expect(queued).toHaveLength(2))
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(queued.map(({ message }) => message.type)).toEqual([
+          SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+          SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+        ])
+        queued.forEach(({ message, ports }) => deliver(message, ports))
+      }
+      await act(async () => {
+        expect(await initialization).toBe("same-key")
+      })
+      await entered.promise
+      firstResponse.resolve(new Response("notifications"))
+      secondResponse.resolve(new Response("events"))
+      expect((await notifications).type).toBe("default")
+      expect((await events).type).toBe("default")
+      page.unmount()
+    }
+  )
+
   it("keeps a proxied dashboard image available during a same-session bootstrap", async () => {
     localStorage.clear()
     const listeners = new Map<string, (event: MessageEvent) => void>()

@@ -495,3 +495,125 @@ def test_core_workflow_runs_diagnostic_after_failure_before_stop() -> None:
         step["run"]
         == "uv run --frozen --no-sync python -m scripts.live_push_worker_observation"
     )
+
+
+def _gone_row(
+    endpoint: object, *, code: object = 410, stage: str = "webpush_request"
+) -> bytes:
+    return (
+        json.dumps(
+            {
+                "logger": "app.services.webpush",
+                "message": "webpush.send",
+                "extra": {
+                    "event": "send",
+                    "status": "gone",
+                    "status_code": code,
+                    "error_stage": stage,
+                    "endpoint": endpoint,
+                    "user_id": PRIVATE,
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+
+def test_410_projection_uses_the_real_masked_worker_event_without_exposing_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from hashlib import sha256
+
+    from app.core.logging import _redact_pii
+    from app.services.webpush import _log_event
+
+    endpoint = "https://push.example.invalid/private-token"
+    with caplog.at_level(logging.INFO, logger="app.services.webpush"):
+        _log_event(
+            "send",
+            status="gone",
+            status_code=410,
+            error_stage="webpush_request",
+            endpoint=endpoint,
+        )
+    rows = [
+        r.msg
+        for r in caplog.records
+        if r.name == "app.services.webpush" and isinstance(r.msg, dict)
+    ]
+    assert len(rows) == 1
+    redacted = _redact_pii(None, None, rows[0])
+    result = observation.project_worker_logs(
+        (json.dumps(redacted) + "\n").encode(), b""
+    )
+    assert result is not None
+    prefix = sha256(endpoint.encode()).hexdigest()[:10]
+    assert result.gone_410_prefixes == (prefix,)
+    assert observation.render_410_prefixes(result) == [
+        "live E2E worker push 410 sample=tail incomplete=false truncated=false",
+        "live E2E worker push 410 sample=tail endpoint_sha256=" + prefix,
+    ]
+    assert "private" not in repr(result) + "".join(
+        observation.render_410_prefixes(result)
+    )
+    assert "example" not in repr(result) + "".join(
+        observation.render_410_prefixes(result)
+    )
+
+
+def test_410_projection_rejects_invalid_masks_and_does_not_attribute_other_statuses() -> (
+    None
+):
+    result = observation.project_worker_logs(
+        _gone_row("https://provider.invalid/…#0123456789") * 2
+        + _gone_row("https://provider.invalid/…#aaaaaaaaaa", code=404)
+        + _gone_row("https://provider.invalid/…#bbbbbbbbbb", stage="dns_resolution")
+        + _gone_row("https://provider.invalid/raw-private#cccccccccc")
+        + _gone_row(None),
+        b"",
+    )
+    assert result is not None
+    assert result.gone_410_prefixes == ("0123456789",)
+    assert result.gone_410_incomplete is True
+    output = "\n".join(observation.render_410_prefixes(result))
+    assert "incomplete=true" in output
+    assert "aaaaaaaaaa" not in output and "bbbbbbbbbb" not in output
+    assert "raw-private" not in output and "provider.invalid" not in output
+
+
+def test_410_projection_caps_distinct_prefixes_and_rejects_renderer_spoofing() -> None:
+    sample = b"".join(_gone_row("…#" + format(i, "010x")) for i in range(17))
+    result = observation.project_worker_logs(sample, b"")
+    assert result is not None
+    assert len(result.gone_410_prefixes) == 16
+    assert result.gone_410_truncated is True
+    assert "truncated=true" in observation.render_410_prefixes(result)[0]
+    for prefixes, seen, incomplete, truncated in [
+        ((PRIVATE,), True, False, False),
+        (("aaaaaaaaaa", "aaaaaaaaaa"), True, False, False),
+        (("aaaaaaaaaa",), False, False, False),
+        ((), True, "private", False),
+        (tuple(format(i, "010x") for i in range(17)), True, False, False),
+    ]:
+        invalid = observation.WorkerSummary(
+            (0,) * 3, (0,) * 7, (0,) * 6, (0, 0), prefixes, seen, incomplete, truncated
+        )
+        with pytest.raises(ValueError):
+            observation.render_410_prefixes(invalid)
+
+
+def test_cli_emits_bounded_410_prefixes_after_existing_summaries(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    summary = observation.project_worker_logs(_gone_row("…#0123456789"), b"")
+    assert summary is not None
+    monkeypatch.setattr(observation, "collect_worker_sample", lambda *args: summary)
+    assert observation.main() == 0
+    output = capsys.readouterr().out
+    assert output.splitlines() == [
+        observation.render_summary(summary),
+        observation.render_success_summary(summary),
+        *observation.render_410_prefixes(summary),
+    ]
+    assert PRIVATE not in output

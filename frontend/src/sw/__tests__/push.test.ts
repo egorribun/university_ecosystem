@@ -113,6 +113,46 @@ describe("Service Worker - Push Notifications", () => {
     vi.unstubAllGlobals()
   })
 
+  it("notifies every window of subscription changes without sending subscription data", async () => {
+    const clients = [{ postMessage: vi.fn() }, { postMessage: vi.fn() }]
+    ;((self as any).clients.matchAll as any).mockResolvedValue(clients)
+    const event = {
+      oldSubscription: { endpoint: "private-old" },
+      newSubscription: { endpoint: "private-new", keys: { auth: "private-key" } },
+      waitUntil: vi.fn<(promise: Promise<void>) => void>(),
+    }
+
+    expect(eventListeners.pushsubscriptionchange).toEqual(expect.any(Function))
+    eventListeners.pushsubscriptionchange?.(event)
+    expect(event.waitUntil).toHaveBeenCalledExactlyOnceWith(expect.any(Promise))
+    await event.waitUntil.mock.calls[0]?.[0]
+
+    expect((self as any).clients.matchAll).toHaveBeenCalledExactlyOnceWith({
+      type: "window",
+      includeUncontrolled: true,
+    })
+    for (const client of clients) {
+      expect(client.postMessage).toHaveBeenCalledExactlyOnceWith({
+        type: "PUSH_SUBSCRIPTION_CHANGED",
+      })
+    }
+  })
+
+  it("still notifies other windows if a window closes during delivery", async () => {
+    const gone = {
+      postMessage: vi.fn(() => {
+        throw new Error("closed")
+      }),
+    }
+    const live = { postMessage: vi.fn() }
+    ;((self as any).clients.matchAll as any).mockResolvedValue([gone, live])
+    const event = { waitUntil: vi.fn<(promise: Promise<void>) => void>() }
+
+    eventListeners.pushsubscriptionchange?.(event)
+    await expect(event.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined()
+    expect(live.postMessage).toHaveBeenCalledExactlyOnceWith({ type: "PUSH_SUBSCRIPTION_CHANGED" })
+  })
+
   describe("Push Event Handler", () => {
     it("registers push event listener", () => {
       expect(self.addEventListener).toHaveBeenCalledWith("push", expect.any(Function))

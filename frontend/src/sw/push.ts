@@ -11,6 +11,7 @@ import {
 import { resolveNotificationDeepLink, resolveOptionalSameOriginUrl } from "@/notifications/contract"
 import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "./offline"
 import { requestReplayCredentials } from "./replayCredentials"
+import { PUSH_SUBSCRIPTION_CHANGED_MESSAGE_TYPE } from "@/constants/serviceWorkerMessages"
 
 const USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RECIPIENT_CHECK_TIMEOUT_MS = 2_000
@@ -99,6 +100,18 @@ async function postReport(
  * Initialize Push Notification handlers.
  */
 export function initPushHandlers() {
+  self.addEventListener("pushsubscriptionchange", (event: Event) => {
+    const notifyWindows = async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      await Promise.allSettled(
+        windows.map(async (client) => {
+          client.postMessage({ type: PUSH_SUBSCRIPTION_CHANGED_MESSAGE_TYPE })
+        })
+      )
+    }
+    ;(event as ExtendableEvent).waitUntil(notifyWindows())
+  })
+
   self.addEventListener("push", (event: PushEvent) => {
     const payload = parsePushEventData(event.data)
     const { title, options, data: notificationData } = buildNotificationDetails(payload)

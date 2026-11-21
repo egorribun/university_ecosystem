@@ -295,6 +295,14 @@ _PLAYWRIGHT_PUSH_RECIPIENT_LINE = re.compile(
 )
 _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
 
+_PLAYWRIGHT_PUSH_ROTATION_LINE = re.compile(
+    r"UE_LIVE_PUSH_ROTATION_V1 project=(?P<project>desktop|mobile) "
+    r"retry=(?P<retry>[01]) scenario=(?P<scenario>setup|news|events|schedule|release|unknown) "
+    r"phase=(?P<phase>opt-in|before-wait|failure) ordinal=(?P<ordinal>[1-8]) "
+    r"endpoint_sha256=(?P<prefix>[0-9a-f]{12}|missing|unavailable)"
+)
+_PLAYWRIGHT_PUSH_ROTATION_LIMIT = 32
+
 _PLAYWRIGHT_PUSH_CLEANUP_LINE = re.compile(
     r"UE_LIVE_PUSH_CLEANUP_V1 project=(?P<project>desktop|mobile) "
     r"retry=(?P<retry>[01]) case=(?P<case>topics|chat|reply) "
@@ -2562,6 +2570,48 @@ def _live_playwright_push_recipient_observations(
     return records
 
 
+def _live_playwright_push_rotation_observations(
+    output: str,
+) -> list[tuple[str, int, str, str, int, str]]:
+    """Accept bounded hash prefixes only; conflicting ordinal records fail closed."""
+    records: dict[tuple[str, int, int], tuple[str, int, str, str, int, str]] = {}
+    conflicts: set[tuple[str, int, int]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 180 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_PUSH_ROTATION_LINE.fullmatch(line)
+        if match is None or (
+            (match["phase"] == "opt-in") != (match["scenario"] == "setup")
+        ):
+            continue
+        project, retry, ordinal = (
+            match["project"],
+            int(match["retry"]),
+            int(match["ordinal"]),
+        )
+        identity = (project, retry, ordinal)
+        record = (
+            project,
+            retry,
+            match["scenario"],
+            match["phase"],
+            ordinal,
+            match["prefix"],
+        )
+        if identity in conflicts:
+            continue
+        if identity in records and records[identity] != record:
+            del records[identity]
+            conflicts.add(identity)
+        elif (
+            identity not in records
+            and len(records) + len(conflicts) < _PLAYWRIGHT_PUSH_ROTATION_LIMIT
+        ):
+            records[identity] = record
+    return list(records.values())
+
+
 def _live_playwright_push_cleanup_observations(
     output: str,
 ) -> list[tuple[str, int, str, str]]:
@@ -3615,7 +3665,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "not-found-i18n.live.spec.ts": (11, 65),
     "notification-in-app.live.spec.ts": (293,),
     "notification-preferences.live.spec.ts": (217,),
-    "notification-topics-delivery.live.spec.ts": (1079,),
+    "notification-topics-delivery.live.spec.ts": (1111,),
     "password-reset.live.spec.ts": (129,),
     "profile-csrf.live.spec.ts": (99,),
     "profile-persistence.live.spec.ts": (102, 302),

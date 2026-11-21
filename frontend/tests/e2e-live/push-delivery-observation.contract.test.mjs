@@ -391,10 +391,7 @@ test("both live specs preserve cleanup time while keeping the existing browser d
     topics,
     /recipientObservation\.report\(\s*subscriptionEndpoint,\s*livePushObservationBudgetMs\(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS\)\s*\)/u
   )
-  assert.match(
-    topics,
-    /await reportLivePushDeliveryObservation\(page, test\.info\(\)\.project\.name, notificationId\)/u
-  )
+  assert.match(topics, /nativePushProfiles\.armFailureObservation\(notificationId/u)
   assert.match(topics, /timeout: SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS/u)
   assert.match(
     fixture,
@@ -1156,4 +1153,249 @@ test("cleanup observation preserves success and failure while emitting only clos
   )
   assert.equal(records.length, 3)
   assert.doesNotMatch(records.join(""), /private|https|endpoint|token/u)
+})
+
+const rotationHelper = new URL("./push-rotation-observation.mjs", import.meta.url)
+
+test("rotation capture hashes subscription at opt-in, waits and failure", async () => {
+  const { createHash } = await import("node:crypto")
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  let endpoint = privateEndpoint
+  const page = {
+    evaluate: async (fn) => {
+      const prior = Object.getOwnPropertyDescriptor(globalThis, "navigator")
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: {
+          serviceWorker: {
+            getRegistration: async () => ({
+              pushManager: {
+                getSubscription: async () => (endpoint === null ? null : { endpoint }),
+              },
+            }),
+          },
+        },
+      })
+      try {
+        return await fn()
+      } finally {
+        if (prior === undefined) delete globalThis.navigator
+        else Object.defineProperty(globalThis, "navigator", prior)
+      }
+    },
+  }
+  const lines = []
+  const diagnostic = createPushRotationObservation(page, "mobile", 0, (line) => lines.push(line))
+  const prefix = (value) => createHash("sha256").update(value).digest("hex").slice(0, 12)
+  await diagnostic.optIn(100)
+  diagnostic.arm("news")
+  await diagnostic.beforeWait("news", 100)
+  assert.deepEqual(lines, [])
+  endpoint = "https://push.example.invalid/rotated-private-token"
+  await diagnostic.beforeWait("events", 100)
+  await diagnostic.reportFailure(100)
+  await diagnostic.reportFailure(100)
+  const base = "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario="
+  assert.deepEqual(lines, [
+    base + "setup phase=opt-in ordinal=1 endpoint_sha256=" + prefix(privateEndpoint) + "\n",
+    base + "news phase=before-wait ordinal=2 endpoint_sha256=" + prefix(privateEndpoint) + "\n",
+    base + "events phase=before-wait ordinal=3 endpoint_sha256=" + prefix(endpoint) + "\n",
+    base + "events phase=failure ordinal=4 endpoint_sha256=" + prefix(endpoint) + "\n",
+  ])
+  assert.doesNotMatch(lines.join(""), /private|example|https/u)
+})
+
+test("rotation capture bounds failures, input classes, output and the failure slot", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const page = { evaluate: async () => "https://private.example/token" }
+  const diagnostic = createPushRotationObservation(page, "desktop", 1, (line) => lines.push(line))
+  diagnostic.arm("private")
+  await diagnostic.optIn(1)
+  for (let i = 0; i < 12; i++) await diagnostic.beforeWait("schedule", 1)
+  await diagnostic.reportFailure(1)
+  assert.equal(lines.length, 8)
+  assert.match(
+    lines.at(-1),
+    /scenario=schedule phase=failure ordinal=8 endpoint_sha256=unavailable\n$/u
+  )
+  assert.doesNotMatch(lines.join(""), /private|example|https/u)
+  const missing = []
+  const withoutSubscription = createPushRotationObservation(
+    { evaluate: async () => "missing" },
+    "mobile",
+    1,
+    (line) => missing.push(line)
+  )
+  await withoutSubscription.optIn(1)
+  await withoutSubscription.reportFailure(0)
+  assert.match(missing[0], /endpoint_sha256=missing\n$/u)
+  assert.match(
+    missing[1],
+    /scenario=unknown phase=failure ordinal=2 endpoint_sha256=unavailable\n$/u
+  )
+  const timed = []
+  const hanging = createPushRotationObservation(
+    { evaluate: () => new Promise(() => {}) },
+    "mobile",
+    0,
+    (line) => timed.push(line)
+  )
+  await hanging.optIn(1)
+  await hanging.reportFailure(NaN)
+  assert.equal(timed.length, 2)
+  assert.ok(timed.every((line) => line.includes("endpoint_sha256=unavailable")))
+  const throwing = createPushRotationObservation(
+    {
+      evaluate: async () => {
+        throw new Error("private")
+      },
+    },
+    "desktop",
+    0,
+    () => {
+      throw new Error("private")
+    }
+  )
+  await assert.doesNotReject(throwing.reportFailure(1))
+  for (const [project, retry] of [
+    ["private", 0],
+    ["mobile", 2],
+  ]) {
+    const invalid = createPushRotationObservation(page, project, retry, () =>
+      assert.fail("invalid scope")
+    )
+    await invalid.optIn(1)
+    await invalid.reportFailure(1)
+  }
+})
+
+test("concurrent abort and test failure share one rotation capture", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  let calls = 0
+  const diagnostic = createPushRotationObservation(
+    {
+      evaluate: async () => {
+        calls += 1
+        await new Promise((resolve) => setImmediate(resolve))
+        return "missing"
+      },
+    },
+    "desktop",
+    0,
+    (line) => lines.push(line)
+  )
+  diagnostic.arm("news")
+  await Promise.all([diagnostic.reportFailure(100), diagnostic.reportFailure(100)])
+  assert.equal(calls, 1)
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], /phase=failure ordinal=1 endpoint_sha256=missing\n$/u)
+})
+
+test("browser registration failures and missing subscriptions produce closed classes", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  for (const [getRegistration, expected] of [
+    [async () => null, "unavailable"],
+    [
+      async () => {
+        throw new Error("private")
+      },
+      "unavailable",
+    ],
+    [async () => ({ pushManager: { getSubscription: async () => null } }), "missing"],
+  ]) {
+    const page = {
+      evaluate: async (fn) => {
+        const prior = Object.getOwnPropertyDescriptor(globalThis, "navigator")
+        Object.defineProperty(globalThis, "navigator", {
+          configurable: true,
+          value: { serviceWorker: { getRegistration } },
+        })
+        try {
+          return await fn()
+        } finally {
+          if (prior === undefined) delete globalThis.navigator
+          else Object.defineProperty(globalThis, "navigator", prior)
+        }
+      },
+    }
+    const lines = []
+    const diagnostic = createPushRotationObservation(page, "desktop", 0, (line) => lines.push(line))
+    await diagnostic.beforeWait("unknown", 100)
+    await diagnostic.reportFailure(0)
+    await diagnostic.beforeWait("news", 100)
+    assert.equal(lines.length, 2)
+    assert.match(
+      lines[0],
+      new RegExp(
+        "scenario=unknown phase=before-wait ordinal=1 endpoint_sha256=" + expected + "\\n$",
+        "u"
+      )
+    )
+    assert.doesNotMatch(lines.join(""), /private/u)
+  }
+})
+
+test("rotation default writer emits only the closed fingerprint record", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const original = process.stdout.write
+  process.stdout.write = (line) => {
+    lines.push(line)
+    return true
+  }
+  try {
+    const diagnostic = createPushRotationObservation(
+      { evaluate: async () => "missing" },
+      "desktop",
+      0
+    )
+    await diagnostic.reportFailure(100)
+  } finally {
+    process.stdout.write = original
+  }
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], /phase=failure ordinal=1 endpoint_sha256=missing\n$/u)
+})
+
+test("rotation capture contains unexpected host observation failures", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const diagnostic = createPushRotationObservation(
+    { evaluate: async () => "missing" },
+    "desktop",
+    0,
+    (line) => lines.push(line)
+  )
+  const originalRace = Promise.race
+  Promise.race = () => {
+    throw new Error("private")
+  }
+  try {
+    await assert.doesNotReject(diagnostic.reportFailure(1))
+  } finally {
+    Promise.race = originalRace
+  }
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], /endpoint_sha256=unavailable\n$/u)
+  assert.doesNotMatch(lines[0], /private/u)
+})
+
+test("topic waits retain assertions and capture the subscription before waiting", async () => {
+  const source = await readFile(
+    new URL("./notification-topics-delivery.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("const waitForNativeNotification = async")
+  const end = source.indexOf("const assertActualDelivery = async", start)
+  const wait = source.slice(start, end)
+  assert.match(wait, /await rotation\.beforeWait\([\s\S]*?await expect[\s\S]*?\.toBe\(1\)/u)
+  assert.match(wait, /rotation\.reportFailure\([\s\S]*?throw error/u)
+  assert.match(wait, /failureObservation\.disarm\(\)[\s\S]*?failureObservation\.capture\(\)/u)
+  assert.match(source, /await rotationObservation\.optIn\(/u)
+  for (const scenario of ["news", "events", "schedule", "release"])
+    assert.ok(source.includes('rotationObservation.arm("' + scenario + '")'))
+  assert.match(source, /expect\(native\.tag\)\.toBe\(notificationRow\.id\)/u)
+  assert.match(source, /expect\(native\.entityId\)\.toBe\(expected\.entityId\)/u)
 })

@@ -2771,9 +2771,10 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 		h.Logger.InfoContext(ctx, "Disconnecting revoked WebSocket sessions",
 			"count", len(targets), "code", closeCode, "reason", reason)
 	}
-	// Close the action gate for every matching client before transport teardown
-	// can block on any one client's write mutex.
+	// Reserve the event close before publishing revocation to concurrent pumps.
+	// Close each action gate before transport teardown can block on a write mutex.
 	for _, client := range targets {
+		client.reserveControlFrameClose(closeCode, reason)
 		client.sessionGate.Lock()
 		client.sessionRevoked.Store(true)
 		client.sessionGate.Unlock()

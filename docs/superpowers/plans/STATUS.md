@@ -19,8 +19,17 @@
       статусы отдельных попыток не записаны. Связь с конкретным тестом и ответ FCM 410 не доказаны.
       У каждого теста свой временный профиль Chrome.
     - Flaky — mobile push-delivery и footer-bottom-navigation.
-- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) открыт (`egorribun` → `main`,
-  актуальная голова и её проверки — по ссылке); он несёт решения владельца 2026-11-21 (ADR-047):
+- [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) слит обычным merge после
+  78 обязательных проверок и CodeQL на `3156d797a`. Текущий `main` — `149814844`.
+  [Полный Core](https://github.com/egorribun/university_ecosystem/actions/runs/44925413925) на этом SHA
+  дал 223 passed, 8 skipped и 1 flaky. Проверенный артефакт `14717545206` привязан к заданию
+  `136910292817`. Все шесть именных случаев AUD-154 прошли с первой попытки, включая read-receipt
+  на desktop и mobile. Сбой первого прохождения mobile-сценария Email OTP зарегистрирован
+  после HTTP 200 при проверке отзыва соседнего WebSocket. Полный Core остаётся красным.
+  Изолированная проверка подтвердила, что durable tombstone мог дать `1008` вместо ожидаемого
+  `4401`. В пакете исправления подтверждённый отзыв закрывает соединение с `4401`, а при ошибке
+  хранилища остаётся `1008`. Hosted-прогон не зафиксировал фактический close code сбоя.
+  PR реализует решения владельца 2026-11-21 (ADR-047):
   - **10202 и 20012.** Формы входа, регистрации и сброса пароля помечены `data-csrf="header"`. ZAP
     запускается с `rules.csrf.ignore.attname/attvalue` для информационной классификации этих форм.
   - **10055-6.** `style-src 'unsafe-inline'` — принятый риск. Hook ZAP понижает до low только этот
@@ -53,6 +62,7 @@
   | `753c2c572` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44910470846/job/136864997618) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44910471073/job/136864999567). Повторился сетевой сбой Dashboard. |
   | `bba42fa82` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44914673591/job/136881639122) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44914673817/job/136877707232). Сбой воспроизвёлся на изображении из API. |
   | `762478ff6` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44918659401/job/136889652977) | [Realtime и visual 24/24 прошли](https://github.com/egorribun/university_ecosystem/actions/runs/44918659599/job/136889655183). Shard 2 упал на числе регистраций маршрута API в AUD-400. |
+  | `3156d797a` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44921979319/job/136899801171) | [Realtime и visual 24/24 прошли](https://github.com/egorribun/university_ecosystem/actions/runs/44921979509/job/136899802964). Все 78 обязательных проверок прошли. |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
@@ -75,6 +85,27 @@
   В hosted-матрице `762478ff6` все 24 захвата завершились без ошибок сети и браузера. Артефакт
   снимков — `14713602601`. Прямой запрос image proxy выполняется в единственном обработчике API
   до проверки сессии. Неизменённый AUD-400 и полный локальный Vitest прошли (11 555 тестов).
+- [PR #1544](https://github.com/egorribun/university_ecosystem/pull/1544) содержит восстановление Web Push,
+  диагностику префиксов хешей и изоляцию DST-теста #1523. На `45f4f42ba` realtime и именные случаи
+  AUD-154 прошли. [Visual-прогон](https://github.com/egorribun/university_ecosystem/actions/runs/44926043369/job/136912238208)
+  зарегистрировал на Events (en, светлая тема, 390 px) два `net::ERR_FAILED` без HTTP-статуса в
+  защищённых XHR GET семейств events и notifications.
+  На `73db7bd17` [realtime и visual](https://github.com/egorribun/university_ecosystem/actions/runs/44932304600/job/136931377195)
+  прошли (24/24; [артефакт 14719725628](https://github.com/egorribun/university_ecosystem/actions/runs/44932304600/artifacts/14719725628)).
+  [Go lint ws-hub](https://github.com/egorribun/university_ecosystem/actions/runs/44932304600/job/136935008996) упал на сложности функции проверки отзыва сессии.
+  На `930813a53` [Go lint ws-hub](https://github.com/egorribun/university_ecosystem/actions/runs/44935112740/job/136942741471)
+  прошёл. В [visual](https://github.com/egorribun/university_ecosystem/actions/runs/44935112740/job/136939933430)
+  повторился сбой Events (23/24; [артефакт 14720190570](https://github.com/egorribun/university_ecosystem/actions/runs/44935112740/artifacts/14720190570)).
+  CI Success завершился ошибкой из-за `go-tests` на `73db7bd17` и `live-realtime-visual` на `930813a53`.
+  Изолированный тест service worker воспроизвёл обрыв двух GET при установке того же серверного ключа.
+  Отдельный тест запуска браузерного приложения воспроизвёл ранний запрос уведомлений до начала
+  получения ключа. Источник сетевых ошибок в GitHub Actions ещё предстоит подтвердить.
+  Список уведомлений ждёт завершения первого запуска авторизации, если подтверждённого владельца ещё нет.
+  При обычном запуске с активным service worker установка ключа ждёт подтверждения обработки SET до
+  одной секунды. При таймауте, отсутствии поддержки подтверждения или смене контроллера действует
+  прежний путь синхронизации. Проверки владения запросом при выходе и смене сессии сохраняются.
+  Дополнительная проверка Nilaway выявила два обращения к потенциально пустому указателю в тесте
+  кода закрытия WebSocket. Тест явно проверяет указатель перед проверкой кода `4401` и причины закрытия.
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,
@@ -150,12 +181,12 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Получить для #1541 required checks на итоговом SHA, включая независимые live и realtime/visual,
-   перед обычным merge.
-2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
-   Nuclei с проверенным отчётом закрывают AUD-381.
-3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два
-   последовательных green полных Core на `main`.
-4. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
+1. Разобрать mobile-проверку отзыва соседнего WebSocket после Email OTP и получить свежий отчёт DAST
+   на `main`. Зелёные ZAP и Nuclei с проверенным отчётом закрывают AUD-381.
+2. Получить обязательные проверки на пакете восстановления Web Push и тесте DST из #1523.
+   Для AUD-154 нужны два последовательных зелёных полных Core на `main` с read-receipt,
+   не чаще одного запуска в два часа. Диагностика префиксов хешей помогает сопоставить
+   сбои доставки, а причину конкретной попытки подтверждают её отдельные доказательства.
+3. npm #1520: отдельный PR с привязкой проекцией D1–D4 (ADR-047, раздел «npm manifest projection binding»), затем
    обновления с удержанием maplibre 6.15.0, jsdom 30.1.3, Playwright 1.64.1.
-5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+4. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.

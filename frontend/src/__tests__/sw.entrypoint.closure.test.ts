@@ -286,6 +286,79 @@ describe("service-worker entrypoint", () => {
     expect(waitUntil).toHaveBeenCalledWith(expect.any(Promise))
   })
 
+  it("acknowledges a valid session key only after applying it", async () => {
+    await loadServiceWorker()
+    const calls: string[] = []
+    mocks.setSessionHash.mockImplementationOnce(() => calls.push("set"))
+    const reply = vi.fn(() => calls.push("ack"))
+
+    listeners.get("message")?.(
+      message({
+        data: {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: "account-a",
+          sessionScope: "account-a:live-page-nonce",
+        },
+        ports: [{ postMessage: reply }],
+      })
+    )
+
+    expect(mocks.setSessionHash).toHaveBeenCalledExactlyOnceWith(
+      "account-a",
+      "account-a:live-page-nonce"
+    )
+    expect(reply).toHaveBeenCalledExactlyOnceWith(true)
+    expect(calls).toEqual(["set", "ack"])
+    expect(mocks.clearSessionCaches).not.toHaveBeenCalled()
+  })
+
+  it("does not acknowledge rejected messages or cache clearing", async () => {
+    await loadServiceWorker()
+    const listener = listeners.get("message")
+    const reply = vi.fn()
+    const ports = [{ postMessage: reply }]
+    const key = { type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY }
+
+    for (const sessionHash of [42, "", " ", "x".repeat(129)]) {
+      listener?.(message({ data: { ...key, sessionHash }, ports }))
+    }
+    listener?.(message({ data: { ...key, sessionHash: "account-a" }, origin: "", ports }))
+    listener?.(
+      message({
+        data: { ...key, sessionHash: "account-a" },
+        origin: "https://foreign.example",
+        ports,
+      })
+    )
+    listener?.(message({ data: { ...key, sessionHash: "account-a" }, source: null, ports }))
+    listener?.(message({ data: { ...key, sessionHash: null }, ports }))
+    listener?.(message({ data: { ...key }, ports }))
+    listener?.(message({ data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }, ports }))
+
+    expect(mocks.setSessionHash).not.toHaveBeenCalled()
+    expect(mocks.clearSessionCaches).toHaveBeenCalledTimes(3)
+    expect(reply).not.toHaveBeenCalled()
+  })
+
+  it("keeps an applied session key when acknowledgement delivery fails", async () => {
+    await loadServiceWorker()
+    const reply = vi.fn(() => {
+      throw new Error("port closed")
+    })
+
+    expect(() =>
+      listeners.get("message")?.(
+        message({
+          data: { type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY, sessionHash: "a" },
+          ports: [{ postMessage: reply }],
+        })
+      )
+    ).not.toThrow()
+    expect(mocks.setSessionHash).toHaveBeenCalledExactlyOnceWith("a", undefined)
+    expect(reply).toHaveBeenCalledExactlyOnceWith(true)
+    expect(mocks.clearSessionCaches).not.toHaveBeenCalled()
+  })
+
   it.each([null, undefined])(
     "clears the session when a trusted client sends a nullish hash: %s",
     async (sessionHash) => {

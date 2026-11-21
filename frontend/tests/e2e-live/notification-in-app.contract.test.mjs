@@ -157,8 +157,23 @@ test("native delivery failures report bounded redacted observations before clean
   )
   assert.match(
     wait,
-    /catch \(error\) \{\s*await reportLivePushDeliveryObservation\(page, test\.info\(\)\.project\.name, notificationId\)\s*throw error/u
+    /nativePushProfiles\.armFailureObservation\(notificationId, \(\) =>\s*rotation\.reportFailure\(/u
   )
+  assert.match(wait, /catch \(error\) \{\s*await failureObservation\.capture\(\)\s*throw error/u)
+  assert.match(wait, /failureObservation\.disarm\(\)/u)
+  const fixture = await readFile(
+    new URL("./native-push-profile-fixtures.ts", import.meta.url),
+    "utf8"
+  )
+  const start = fixture.indexOf("const observation = createLivePushFailureObservation(")
+  const end = fixture.indexOf("pendingFailureObservation = observation", start)
+  assert.ok(start >= 0 && end > start)
+  const observation = fixture.slice(start, end)
+  assert.match(
+    observation,
+    /await Promise\.all\(\[\s*reportLivePushDeliveryObservation\(primary\.page, testInfo\.project\.name, expectedTag\),\s*onCapture\?\.\(\),?\s*\]\)/u
+  )
+  assert.equal((observation.match(/reportLivePushDeliveryObservation\(/gu) ?? []).length, 1)
   assert.match(wait, /timeout: 60_000/u)
   assert.match(wait, /\.toBe\(1\)/u)
   assert.doesNotMatch(wait, /probeSubscribe|console\.|JSON\.stringify/u)

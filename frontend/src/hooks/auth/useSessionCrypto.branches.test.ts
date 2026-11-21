@@ -572,6 +572,7 @@ describe("sendServiceWorkerMessage", () => {
   })
 
   it("deduplicates concurrent requests when the backoff window expires", async () => {
+    vi.stubGlobal("navigator", { serviceWorker: undefined })
     vi.useFakeTimers()
     vi.stubEnv("DEV", false)
     mocks.apiGet.mockRejectedValue(new Error("503"))
@@ -884,6 +885,7 @@ describe("signing key handoff ownership", () => {
   })
 
   it("blocks failure-event reentry before a synchronous request assigns its promise", async () => {
+    vi.stubGlobal("navigator", { serviceWorker: undefined })
     vi.useFakeTimers()
     vi.stubEnv("DEV", false)
     mocks.apiGet.mockImplementation(() => {

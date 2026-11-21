@@ -333,7 +333,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "not-found-i18n.live.spec.ts": [11, 65],
   "notification-in-app.live.spec.ts": [293],
   "notification-preferences.live.spec.ts": [217],
-  "notification-topics-delivery.live.spec.ts": [1079],
+  "notification-topics-delivery.live.spec.ts": [1111],
   "password-reset.live.spec.ts": [129],
   "profile-csrf.live.spec.ts": [99],
   "profile-persistence.live.spec.ts": [102, 302],
