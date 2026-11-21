@@ -825,8 +825,9 @@ def _process_is_missing_or_same_zombie(
 ) -> bool:
     # Termination keeps the birth check, not mutable process-group metadata.
     # Live ownership is checked separately before any fixture rescue signal.
+    # Linux briefly reports a process being reaped as "X" (dead), after "Z".
     return identity is None or (
-        identity[0] == "Z" and identity[2] == expected_start_time
+        identity[0] in {"Z", "X"} and identity[2] == expected_start_time
     )
 
 
@@ -839,6 +840,8 @@ def _process_is_missing_or_same_zombie(
         (("Z", 9999, 28868), True),
         (("Z", 8758, 28869), False),
         (("Z", -1, 28869), False),
+        (("X", -1, 28868), True),
+        (("X", 8758, 28869), False),
         (("S", 8758, 28868), False),
         (("S", -1, 28868), False),
         (("R", 8758, 28868), False),
