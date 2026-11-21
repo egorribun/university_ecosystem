@@ -23,6 +23,11 @@ ARCHIVE_SHA256 = {
     },
 }
 
+_CADDY_ARCHIVES = {
+    "x86_64": ("16177152-16233356", 56205, 71303168),
+    "aarch64": ("16326656-16380986", 54331, 94756864),
+}
+
 _STUB_LOG_GUARD = (
     "count=0\n"
     'if [ -f "$COMMAND_COUNT" ]; then IFS= read -r count < "$COMMAND_COUNT"; fi\n'
@@ -48,11 +53,30 @@ def _archive_prefix(branch: str) -> str:
             " done"
         )
     else:
-        url = (
-            f"https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/"
-            "${zlib_arch}/zlib-1.3.2-r1.apk"
+        fetch = (
+            ' && case "$zlib_arch" in'
+            ' x86_64) zlib_range="16177152-16233356"; zlib_size=56205; zlib_iso_size=71303168 ;;'
+            ' aarch64) zlib_range="16326656-16380986"; zlib_size=54331; zlib_iso_size=94756864 ;;'
+            " esac"
+            ' && zlib_expected="206|bytes ${zlib_range}/${zlib_iso_size}|${zlib_size}|"'
+            " && attempt=1"
+            " && while :; do"
+            " rm -f /tmp/zlib.apk || exit 1;"
+            " if zlib_response=\"$(curl --fail --silent --show-error --proto '=https'"
+            ' --connect-timeout 5 --max-time 20 --max-filesize "$zlib_size"'
+            " --range \"$zlib_range\" --header 'Accept-Encoding: identity'"
+            " --output /tmp/zlib.apk"
+            " --write-out '%{http_code}|%header{content-range}|%header{content-length}|%header{content-encoding}'"
+            ' "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/${zlib_arch}/alpine-virt-3.23.8-${zlib_arch}.iso")"'
+            ' && { [ "$zlib_response" = "$zlib_expected" ] || [ "$zlib_response" = "${zlib_expected}identity" ]; }'
+            ' && [ "$(wc -c < /tmp/zlib.apk)" -eq "$zlib_size" ]; then'
+            " break;"
+            " fi;"
+            ' if [ "$attempt" -ge 3 ]; then echo "Unable to fetch the pinned Alpine archive" >&2; exit 1; fi;'
+            " attempt=$((attempt + 1));"
+            " sleep 2 || exit 1;"
+            " done"
         )
-        fetch = f' && wget -q -O /tmp/zlib.apk "{url}"'
     return (
         'RUN zlib_arch="$(apk --print-arch)"'
         ' && case "$zlib_arch" in'
@@ -180,6 +204,11 @@ def _assert_runtime_zlib_pin(source: str, archive_branch: str | None = None) -> 
     assert [package for package in installs[0] if package.startswith("zlib=")] == [
         ZLIB_PIN
     ], "do not introduce a second zlib package selection"
+    if archive_branch == "3.23":
+        for package in ("libapk", "apk-tools"):
+            assert [pin for pin in installs[0] if pin.startswith(f"{package}=")] == [
+                f"{package}=3.0.9-r0"
+            ], f"install the reviewed Caddy {package} version exactly once"
 
 
 @pytest.mark.parametrize(
@@ -190,6 +219,24 @@ def test_final_production_image_installs_fixed_zlib(dockerfile: Path) -> None:
         dockerfile.read_text(encoding="utf-8"),
         ARCHIVE_BRANCHES[dockerfile.relative_to(ROOT).as_posix()],
     )
+
+
+@pytest.mark.parametrize("package", ["libapk", "apk-tools"])
+@pytest.mark.parametrize("replacement", ["3.0.8-r0", "3.0.10-r0", "", None])
+def test_caddy_runtime_rejects_changed_apk_tools_pins(
+    package: str, replacement: str | None
+) -> None:
+    source = (ROOT / "services/caddy/Dockerfile").read_text(encoding="utf-8")
+    pin = f"{package}=3.0.9-r0"
+    assert source.count(pin) == 1
+    if replacement is None:
+        altered_pin = ""
+    elif replacement:
+        altered_pin = f"{package}={replacement}"
+    else:
+        altered_pin = package
+    with pytest.raises(AssertionError):
+        _assert_runtime_zlib_pin(source.replace(pin, altered_pin), "3.23")
 
 
 @pytest.mark.parametrize(
@@ -306,10 +353,18 @@ def test_runtime_archive_contract_rejects_unsafe_changes(
     [
         ("https://dl-cdn.alpinelinux.org", "http://dl-cdn.alpinelinux.org"),
         ("dl-cdn.alpinelinux.org", "untrusted.example"),
-        ("/main/", "/community/"),
-        ("zlib-1.3.2-r1.apk", "zlib-1.3.2-r0.apk"),
-        ("wget -q -O", "wget -q --no-check-certificate -O"),
-        ("wget -q -O", "wget -O"),
+        ("/releases/", "/main/"),
+        ("alpine-virt-3.23.8-", "alpine-virt-3.23.7-"),
+        ("--proto '=https'", "--insecure"),
+        ("--connect-timeout 5", "--connect-timeout 0"),
+        ("--max-time 20", "--max-time 0"),
+        ('--max-filesize "$zlib_size"', "--max-filesize 0"),
+        ('--range "$zlib_range"', "--range 0-1"),
+        ("16177152-16233356", "16177152-16233357"),
+        ("16326656-16380986", "16326656-16380987"),
+        ('[ "$attempt" -ge 3 ]', '[ "$attempt" -ge 4 ]'),
+        ("rm -f /tmp/zlib.apk || exit 1", "rm -f /tmp/zlib.apk || true"),
+        ("sleep 2 || exit 1", "sleep 2 || true"),
     ],
 )
 def test_caddy_archive_contract_rejects_unsafe_changes(old: str, new: str) -> None:
@@ -319,14 +374,12 @@ def test_caddy_archive_contract_rejects_unsafe_changes(old: str, new: str) -> No
         _assert_runtime_zlib_pin(source.replace(old, new), "3.23")
 
 
-@pytest.mark.parametrize(
-    "dockerfile", DOCKERFILES, ids=lambda path: path.relative_to(ROOT).as_posix()
-)
 @pytest.mark.parametrize("failure", ["", "fetch", "sha256sum", "install"])
 @pytest.mark.parametrize("arch", ["x86_64", "aarch64", "unsupported"])
-def test_runtime_archive_shell_fails_closed(
-    dockerfile: Path, failure: str, arch: str, tmp_path: Path
+def test_frontend_archive_shell_fails_closed(
+    failure: str, arch: str, tmp_path: Path
 ) -> None:
+    dockerfile = ROOT / "frontend.Dockerfile"
     source = dockerfile.read_text(encoding="utf-8")
     branch = ARCHIVE_BRANCHES[dockerfile.relative_to(ROOT).as_posix()]
     run = _archive_shell(
@@ -388,32 +441,216 @@ def test_runtime_archive_shell_fails_closed(
             assert not any(command.startswith("apk add ") for command in commands)
     else:
         assert result.returncode == 0, result.stderr
-        if branch == "3.24":
-            fetch = f"node /tmp/fetch-alpine-zlib-archive.mjs {arch}"
-            assert [command for command in commands if command.startswith("node ")] == [
-                fetch
-            ]
-            assert commands[1] == f"timeout -s KILL 20 {fetch}"
-        else:
-            fetch = (
-                "wget -q -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
-                f"v{branch}/main/{arch}/zlib-1.3.2-r1.apk"
-            )
-            assert [command for command in commands if command.startswith("wget ")] == [
-                fetch
-            ]
-            assert commands[1] == fetch
+        fetch = f"node /tmp/fetch-alpine-zlib-archive.mjs {arch}"
+        assert [command for command in commands if command.startswith("node ")] == [
+            fetch
+        ]
+        assert commands[1] == f"timeout -s KILL 20 {fetch}"
         install = next(
             command for command in commands if command.startswith("apk add ")
         )
         assert "zlib=1.3.2-r1 /tmp/zlib.apk" in install
         assert commands.index("sha256sum -c -") < commands.index(install)
-        cleanup = (
-            "rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs"
-            if branch == "3.24"
-            else "rm /tmp/zlib.apk"
-        )
+        cleanup = "rm /tmp/zlib.apk /tmp/fetch-alpine-zlib-archive.mjs"
         assert commands.index(install) < commands.index(cleanup)
+
+
+def _run_caddy_archive_case(
+    tmp_path: Path,
+    arch: str,
+    *,
+    response: str = "valid",
+    failed_downloads: int = 0,
+    fail_digest: bool = False,
+    fail_install: bool = False,
+    fail_sleep: bool = False,
+    fail_remove: bool = False,
+    check_real_digest: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], list[str], Path]:
+    source = (ROOT / "services/caddy/Dockerfile").read_text(encoding="utf-8")
+    _assert_runtime_zlib_pin(source, "3.23")
+    archive = tmp_path / "zlib.apk"
+    run = _archive_shell(
+        next(
+            line
+            for line in _runtime_runs(source)
+            if line.startswith(_archive_prefix("3.23"))
+        ),
+        "3.23",
+    ).replace(" /tmp/zlib.apk", f" {shlex.quote(str(archive))}")
+    zlib_range, size, iso_size = _CADDY_ARCHIVES.get(arch, ("", 0, 0))
+    status = "200" if response == "status" else "206"
+    content_range = (
+        "bytes 0-1/2" if response == "range" else f"bytes {zlib_range}/{iso_size}"
+    )
+    length = "1" if response == "length" else str(size)
+    encoding = {"identity": "identity", "encoding": "gzip"}.get(response, "")
+    body_size = size + {"short": -1, "overlong": 1}.get(response, 0)
+    if response == "missing-body":
+        # The pre-existing file must be removed before every attempt.
+        archive.write_bytes(b"x" * size)
+    log = tmp_path / "commands.log"
+    for command in (
+        "apk",
+        "curl",
+        "sha256sum",
+        "sleep",
+        "rm",
+        "addgroup",
+        "adduser",
+        "chown",
+    ):
+        script = tmp_path / command
+        script.write_text(
+            "#!/bin/sh\n" + _STUB_LOG_GUARD + f"command={command}\n"
+            'printf "%s %s\\n" "$command" "$*" >> "$COMMAND_LOG"\n'
+            'if [ "$command $*" = "apk --print-arch" ]; then printf "%s\\n" "$TEST_ARCH"; exit 0; fi\n'
+            'if [ "$command" = rm ]; then\n'
+            '  [ "$FAIL_REMOVE" != 1 ] || exit 1\n'
+            '  exec /bin/rm "$@"\n'
+            "fi\n"
+            'if [ "$command" = curl ]; then\n'
+            "  attempt=0\n"
+            '  if [ -f "$ATTEMPT_FILE" ]; then read -r attempt < "$ATTEMPT_FILE"; fi\n'
+            "  attempt=$((attempt + 1))\n"
+            '  printf "%s\\n" "$attempt" > "$ATTEMPT_FILE"\n'
+            '  if [ "$MISSING_BODY" != 1 ]; then dd if=/dev/zero of="$ARCHIVE_FILE" bs="$BODY_SIZE" count=1 2>/dev/null || exit 1; fi\n'
+            '  [ "$attempt" -gt "$FAILED_DOWNLOADS" ] || exit 28\n'
+            '  printf "%s" "$RESPONSE"\n'
+            "fi\n"
+            'if [ "$command" = sha256sum ]; then\n'
+            "  IFS= read -r checksum\n"
+            '  [ "$checksum" = "$EXPECTED_SHA256  $ARCHIVE_FILE" ] || exit 1\n'
+            '  if [ "$REAL_DIGEST" = 1 ]; then printf "%s\\n" "$checksum" | /usr/bin/sha256sum -c -; exit $?; fi\n'
+            '  [ "$FAIL_DIGEST" != 1 ] || exit 1\n'
+            "fi\n"
+            'if [ "$command" = sleep ] && [ "$FAIL_SLEEP" = 1 ]; then exit 1; fi\n'
+            'if [ "$command" = apk ] && [ "$1" = add ] && [ "$FAIL_INSTALL" = 1 ]; then exit 1; fi\n'
+        )
+        script.chmod(0o755)
+    result = _run_archive_shell(
+        run,
+        {
+            "PATH": f"{tmp_path}:/usr/bin:/bin",
+            "COMMAND_LOG": str(log),
+            "COMMAND_COUNT": str(tmp_path / "commands.count"),
+            "ATTEMPT_FILE": str(tmp_path / "attempts"),
+            "ARCHIVE_FILE": str(archive),
+            "TEST_ARCH": arch,
+            "EXPECTED_SHA256": ARCHIVE_SHA256["3.23"].get(arch, ""),
+            "RESPONSE": f"{status}|{content_range}|{length}|{encoding}",
+            "BODY_SIZE": str(body_size),
+            "MISSING_BODY": str(int(response == "missing-body")),
+            "FAILED_DOWNLOADS": str(failed_downloads),
+            "FAIL_DIGEST": str(int(fail_digest)),
+            "FAIL_INSTALL": str(int(fail_install)),
+            "FAIL_SLEEP": str(int(fail_sleep)),
+            "FAIL_REMOVE": str(int(fail_remove)),
+            "REAL_DIGEST": str(int(check_real_digest)),
+        },
+    )
+    return result, log.read_text(encoding="utf-8").splitlines(), archive
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+@pytest.mark.parametrize("response", ["valid", "identity"])
+def test_caddy_archive_fetches_exact_range_before_signed_install(
+    tmp_path: Path, arch: str, response: str
+) -> None:
+    result, commands, archive = _run_caddy_archive_case(
+        tmp_path, arch, response=response
+    )
+    zlib_range, size, _ = _CADDY_ARCHIVES[arch]
+    assert result.returncode == 0, result.stderr
+    fetch = next(command for command in commands if command.startswith("curl "))
+    assert fetch == (
+        "curl --fail --silent --show-error --proto =https --connect-timeout 5 --max-time 20 "
+        f"--max-filesize {size} --range {zlib_range} --header Accept-Encoding: identity "
+        f"--output {archive} --write-out "
+        "%{http_code}|%header{content-range}|%header{content-length}|%header{content-encoding} "
+        f"https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/{arch}/alpine-virt-3.23.8-{arch}.iso"
+    )
+    install = next(command for command in commands if command.startswith("apk add "))
+    assert f"zlib=1.3.2-r1 {archive}" in install
+    assert commands.index(f"rm -f {archive}") < commands.index(fetch)
+    assert (
+        commands.index(fetch)
+        < commands.index("sha256sum -c -")
+        < commands.index(install)
+    )
+    assert commands.index(install) < commands.index(f"rm {archive}")
+    assert not archive.exists()
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+@pytest.mark.parametrize(
+    "response",
+    ["status", "range", "length", "encoding", "short", "overlong", "missing-body"],
+)
+def test_caddy_archive_rejects_invalid_responses_before_digest_or_install(
+    tmp_path: Path, arch: str, response: str
+) -> None:
+    result, commands, archive = _run_caddy_archive_case(
+        tmp_path, arch, response=response
+    )
+    assert result.returncode != 0
+    assert sum(command.startswith("curl ") for command in commands) == 3
+    assert commands.count(f"rm -f {archive}") == 3
+    assert commands.count("sleep 2") == 2
+    assert "sha256sum -c -" not in commands
+    assert not any(command.startswith("apk add ") for command in commands)
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+@pytest.mark.parametrize("failed_downloads", [1, 2, 3])
+def test_caddy_archive_retries_are_bounded(
+    tmp_path: Path, arch: str, failed_downloads: int
+) -> None:
+    result, commands, archive = _run_caddy_archive_case(
+        tmp_path, arch, failed_downloads=failed_downloads
+    )
+    attempts = min(failed_downloads + 1, 3)
+    assert sum(command.startswith("curl ") for command in commands) == attempts
+    assert commands.count(f"rm -f {archive}") == attempts
+    assert commands.count("sleep 2") == min(failed_downloads, 2)
+    assert (result.returncode == 0) is (failed_downloads < 3)
+    assert ("sha256sum -c -" in commands) is (failed_downloads < 3)
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+@pytest.mark.parametrize(
+    "failure", ["digest", "real-digest", "install", "sleep", "remove"]
+)
+def test_caddy_archive_failures_stop_before_later_steps(
+    tmp_path: Path, arch: str, failure: str
+) -> None:
+    result, commands, archive = _run_caddy_archive_case(
+        tmp_path,
+        arch,
+        failed_downloads=int(failure == "sleep"),
+        fail_digest=failure == "digest",
+        check_real_digest=failure == "real-digest",
+        fail_install=failure == "install",
+        fail_sleep=failure == "sleep",
+        fail_remove=failure == "remove",
+    )
+    assert result.returncode != 0
+    assert sum(command.startswith("curl ") for command in commands) == (
+        failure != "remove"
+    )
+    assert f"rm {archive}" not in commands
+    assert any(command.startswith("apk add ") for command in commands) is (
+        failure == "install"
+    )
+    assert ("sha256sum -c -" in commands) is (
+        failure in {"digest", "real-digest", "install"}
+    )
+
+
+def test_caddy_archive_rejects_unsupported_architecture(tmp_path: Path) -> None:
+    result, commands, _ = _run_caddy_archive_case(tmp_path, "unsupported")
+    assert result.returncode != 0
+    assert commands == ["apk --print-arch"]
 
 
 @pytest.mark.parametrize(

@@ -43,21 +43,43 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 # packages so repeated builds cannot silently resolve different inputs, then
 # create the account used by Docker Compose and Kubernetes deployments.
 # Keep the mature zlib backport available after the moving APKINDEX replaces it.
-# The checksum and Alpine's APK signature independently bind the downloaded bytes.
+# Fetch only its byte range from the official Alpine 3.23.8 release ISO. The
+# checksum and Alpine's APK signature independently bind the downloaded bytes.
 RUN zlib_arch="$(apk --print-arch)" \
     && case "$zlib_arch" in \
       x86_64) zlib_sha256="ee62e1864c235901e2aa4d1868c7ae8f7cc5d0740a98c48a2525332eb4bfda73" ;; \
       aarch64) zlib_sha256="82d52fa82a46c73aae8b9f95d7f31a196137f3ce4a000980cdbbfc05c245e7bf" ;; \
       *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;; \
     esac \
-    && wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/${zlib_arch}/zlib-1.3.2-r1.apk" \
+    && case "$zlib_arch" in \
+      x86_64) zlib_range="16177152-16233356"; zlib_size=56205; zlib_iso_size=71303168 ;; \
+      aarch64) zlib_range="16326656-16380986"; zlib_size=54331; zlib_iso_size=94756864 ;; \
+    esac \
+    && zlib_expected="206|bytes ${zlib_range}/${zlib_iso_size}|${zlib_size}|" \
+    && attempt=1 \
+    && while :; do \
+      rm -f /tmp/zlib.apk || exit 1; \
+      if zlib_response="$(curl --fail --silent --show-error --proto '=https' \
+          --connect-timeout 5 --max-time 20 --max-filesize "$zlib_size" \
+          --range "$zlib_range" --header 'Accept-Encoding: identity' \
+          --output /tmp/zlib.apk \
+          --write-out '%{http_code}|%header{content-range}|%header{content-length}|%header{content-encoding}' \
+          "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/${zlib_arch}/alpine-virt-3.23.8-${zlib_arch}.iso")" \
+        && { [ "$zlib_response" = "$zlib_expected" ] || [ "$zlib_response" = "${zlib_expected}identity" ]; } \
+        && [ "$(wc -c < /tmp/zlib.apk)" -eq "$zlib_size" ]; then \
+        break; \
+      fi; \
+      if [ "$attempt" -ge 3 ]; then echo "Unable to fetch the pinned Alpine archive" >&2; exit 1; fi; \
+      attempt=$((attempt + 1)); \
+      sleep 2 || exit 1; \
+    done \
     && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
     && apk update \
     && apk add --no-cache \
       musl=1.2.5-r24 \
       musl-utils=1.2.5-r24 \
-      libapk=3.0.8-r0 \
-      apk-tools=3.0.8-r0 \
+      libapk=3.0.9-r0 \
+      apk-tools=3.0.9-r0 \
       libcrypto3=3.5.9-r0 \
       libssl3=3.5.9-r0 \
       c-ares=1.34.9-r0 \

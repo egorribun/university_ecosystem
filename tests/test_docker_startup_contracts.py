@@ -3133,8 +3133,8 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "-mod=readonly" in dockerfile
     assert re.search(r"&& apk update \\\s+&& apk add --no-cache", runtime_stage)
     for package in (
-        "libapk=3.0.8-r0",
-        "apk-tools=3.0.8-r0",
+        "libapk=3.0.9-r0",
+        "apk-tools=3.0.9-r0",
         "libcrypto3=3.5.9-r0",
         "libssl3=3.5.9-r0",
         "c-ares=1.34.9-r0",
