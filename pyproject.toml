@@ -616,6 +616,8 @@ also_copy = [
     "CLAUDE.md",
     "TESTING.md",
     "SECURITY.md",
+    "README.md",
+    "README.ru.md",
     ".github",
     ".husky",
     # The stop-quality-gate contract lives below tests/contracts and imports
@@ -631,6 +633,7 @@ also_copy = [
     ".gitleaks.toml",
     ".dockerignore",
     ".lighthouserc.js",
+    ".trivyignore",
     ".trivyignore.yaml",
     ".semgrep.yml",
     "quality",
@@ -685,6 +688,8 @@ also_copy = [
     "Makefile",
     "docs",
     "containers/quality",
+    # The Chaos manifest contracts enumerate authored manifests and fixtures.
+    "k8s/chaos",
     "k8s/kyverno",
     # Singleton alert-rule directory; copying it creates its destination.
     "k8s/monitoring",
@@ -711,6 +716,9 @@ also_copy = [
     # copy their common parent because mutmut's sandbox copier needs the
     # parent directory present for nested repository inputs.
     "services",
+    # Go module pins and oasdiff lockfile integrity are repository contracts.
+    "gen/go",
+    "tools/oasdiff",
     # Rust fuzz contract tests enumerate every checked-in target and inspect
     # each workspace manifest. Use the small fuzz_targets directories as
     # parent providers so the exact Cargo files can be copied without
@@ -726,6 +734,8 @@ also_copy = [
     "frontend/rust-crypto/fuzz/fuzz_targets",
     "frontend/rust-crypto/fuzz/Cargo.toml",
     "frontend/scripts",
+    # The npm contract reads this file; copy it after the parent exists.
+    "frontend/.npmrc",
     # Singleton compiler adapter archive, without build or dependency trees.
     "frontend/vendor",
     "frontend/knip.json",
