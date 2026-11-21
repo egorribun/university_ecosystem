@@ -211,3 +211,53 @@ def test_pwa_update_lifecycle_diagnostics_deduplicate_and_cap_records() -> None:
     parsed = evidence._live_playwright_pwa_update_lifecycle_diagnostics(output)
     assert parsed == records[:4]
     assert len(parsed) == 4
+
+
+def test_drawer_geometry_accepts_only_bounded_failed_close_button_samples() -> None:
+    row = (
+        "UE_LIVE_DRAWER_CLOSE_GEOMETRY_V1 project=mobile viewport=390 attempt=0 "
+        "rect_width_milli=43999 rect_height_milli=44000 "
+        "layout_width=44 layout_height=44\n"
+    )
+    alias = row.replace("rect_width_milli=43999", "rect_width_milli=43000")
+    height_only = (
+        row.replace(
+            "project=mobile viewport=390 attempt=0",
+            "project=desktop viewport=360 attempt=1",
+        )
+        .replace(
+            "rect_width_milli=43999 rect_height_milli=44000",
+            "rect_width_milli=44000 rect_height_milli=43999",
+        )
+        .replace("\n", "\r\n")
+    )
+    records = evidence._live_playwright_drawer_close_geometries(row + alias + height_only)
+    assert records == [
+        ("mobile", 390, 0, 43999, 44000, 44, 44),
+        ("desktop", 360, 1, 44000, 43999, 44, 44),
+    ]
+
+
+def test_drawer_geometry_rejects_success_malformed_and_unterminated_records() -> None:
+    row = (
+        "UE_LIVE_DRAWER_CLOSE_GEOMETRY_V1 project=mobile viewport=390 attempt=0 "
+        "rect_width_milli=43999 rect_height_milli=44000 "
+        "layout_width=44 layout_height=44\n"
+    )
+    malformed = (
+        row.replace("43999", "44000"),
+        row.replace("viewport=390", "viewport=391"),
+        row.replace("attempt=0", "attempt=3"),
+        row.replace("project=mobile", "project=other"),
+        row.replace("43999", "NaN"),
+        row.replace("44000", "1000001"),
+        row.replace("layout_width=44", "layout_width=1001"),
+        row.replace("\n", " private=synthetic-marker\n"),
+        row.replace("layout_width=44", "layout_width=44\x00"),
+        "prefix " + row,
+        row.rstrip("\n"),
+    )
+    assert all(
+        evidence._live_playwright_drawer_close_geometries(record) == []
+        for record in malformed
+    )
