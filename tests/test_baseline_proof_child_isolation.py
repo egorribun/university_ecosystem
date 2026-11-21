@@ -411,6 +411,10 @@ def test_proof_real_autouse_graph_isolated_before_conftest_import(
     hostile_aliases: bool,
 ) -> None:
     pytester.makepyfile(owned_early_guard=_EARLY_GUARD_PLUGIN)
+    pytest_config = _ROOT / "pyproject.toml"
+    # Mutmut reads config from the child working directory at import time;
+    # pytest still uses the canonical checkout configuration via -c below.
+    (pytester.path / pytest_config.name).write_bytes(pytest_config.read_bytes())
     # Pytester's supported launcher copies os.environ. Limit our overrides to
     # this synchronous child invocation and restore them before checking results.
     parent_fingerprint = hashlib.sha256(
@@ -491,7 +495,7 @@ def test_proof_real_autouse_graph_isolated_before_conftest_import(
             result = pytester.runpytest_subprocess(
                 f"{_PROOF}::test_proof_owned_fixture_never_uses_default_database",
                 "-c",
-                str(_ROOT / "pyproject.toml"),
+                str(pytest_config),
                 "--rootdir",
                 str(_ROOT),
                 "-o",
