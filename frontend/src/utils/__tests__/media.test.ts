@@ -137,6 +137,23 @@ describe("addVersionParam", () => {
 })
 
 describe("resolveMediaUrl security and proxy helpers", () => {
+  it.each([
+    { source: "/media/photo.webp", expected: true },
+    { source: "media/photo.webp", expected: true },
+    { source: "/static/logo.png", expected: true },
+    { source: "/api/v1/img/story_covers/demo.webp?w=400", expected: true },
+    { source: "  /media/photo.webp  ", expected: true },
+    { source: "http://localhost/api/v1/img/story_covers/demo.webp", expected: false },
+    { source: "https://images.example.test/photo.webp", expected: false },
+    { source: "//images.example.test/photo.webp", expected: false },
+    { source: "/assets/logo.png", expected: false },
+    { source: "blob:http://localhost/preview", expected: false },
+    { source: "", expected: false },
+  ])("reports image proxy width support for $source", async ({ source, expected }) => {
+    const { supportsImageProxyWidth } = await import("@/utils/media")
+    expect(supportsImageProxyWidth(source)).toBe(expected)
+  })
+
   it.each(["javascript:alert(1)", "vbscript:msgbox(1)", "data:text/html,<p>x</p>"])(
     "rejects dangerous protocol %s",
     async (value) => {

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/utils/media")
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -8,12 +9,16 @@ const { addVersionMock, resolveMediaMock, resolveProxyMock, sanitizeMock } = vi.
   sanitizeMock: vi.fn((value: string) => (value.startsWith("unsafe") ? null : value)),
 }))
 
-vi.mock("@/utils/media", () => ({
-  addVersionParam: addVersionMock,
-  resolveMediaUrl: resolveMediaMock,
-  resolveProxyImageUrl: resolveProxyMock,
-  sanitizeUrl: sanitizeMock,
-}))
+vi.mock("@/utils/media", async (importOriginal) => {
+  const actual = await importOriginal<_MockedModuleType1>()
+  return {
+    addVersionParam: addVersionMock,
+    resolveMediaUrl: resolveMediaMock,
+    resolveProxyImageUrl: resolveProxyMock,
+    sanitizeUrl: sanitizeMock,
+    supportsImageProxyWidth: actual.supportsImageProxyWidth,
+  }
+})
 
 import SmartImage from "@/components/media/SmartImage"
 

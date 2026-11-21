@@ -44,6 +44,11 @@ function toImageProxyPath(raw: string): string | null {
   return null
 }
 
+/** Whether the existing proxy resolver can apply a width to this source. */
+export function supportsImageProxyWidth(raw: string): boolean {
+  return toImageProxyPath(raw) !== null
+}
+
 export function resolveProxyImageUrl(
   raw?: string,
   width?: number,
