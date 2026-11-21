@@ -48,11 +48,18 @@
   | [`f0ee138d5`](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034) | 47 passed, 2 failed, 3 flaky; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340): 17 passed, 1 failed |
   | [`3c65c9e60`](https://github.com/egorribun/university_ecosystem/actions/runs/44848242946) | 52 passed, 2 skipped; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44848243079) 17 passed, 1 flaky; visual 22/24 |
   | [`3a452a8a8`](https://github.com/egorribun/university_ecosystem/actions/runs/44860700541) | **прошёл**, включая NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44860700884) 18 passed; visual 18/24 |
+  | `28afad9c5` | **прошёл** | realtime и visual **прошли** (24/24); упал только Contract Tests (gitleaks, состояние процесса `X`) |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
   второй половины матрицы (ru) получили ответы API 4xx на ресурсы. Там же два frontend unit-теста
   ожидали `srcset` и `sizes` для логотипа и внешнего URL после `a17ef41f3`.
+- **Внешний блокер с 2026-11-21 ~07:30 (затрагивает и `main`).** Сборка `services/caddy/Dockerfile`
+  падает: Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404), в индексе теперь zlib 1.4-r0;
+  `libapk` и `apk-tools` сдвинулись с 3.0.8-r0 на 3.0.9-r0. Первое проявление — Unauthenticated routes
+  smoke на `113299b4b`. Решение владельца 2026-11-21: тот же `zlib-1.3.2-r1.apk` с теми же SHA-256
+  брать из официального ISO Alpine 3.23.8 по диапазону байт (как `frontend.Dockerfile` из ISO 3.24.3),
+  `libapk`/`apk-tools` — 3.0.9-r0 из подписанного индекса. Policy и инвентарь 524 не меняются.
 - **Нагрузка на backend (измерено локально 2026-11-21).**
   - В простое backend занимал 455 MiB из лимита 512M: два воркера gunicorn по ~254 MB RSS и мастер
     68 MB.
@@ -121,8 +128,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. PR #1541: получить required checks на итоговом SHA (включая независимые live и realtime/visual)
-   перед обычным merge.
+1. Исправить сборку Caddy (решение выше), затем получить для #1541 required checks на итоговом SHA,
+   включая независимые live и realtime/visual, перед обычным merge.
 2. После merge: DAST и полный Core на `main` (полный Core не чаще одного раза в 2 часа). Зелёный ZAP и
    Nuclei с проверенным отчётом закрывают AUD-381.
 3. AUD-154: найти причину сбоев mobile/desktop topics и установить ответы для конкретных попыток, затем два
