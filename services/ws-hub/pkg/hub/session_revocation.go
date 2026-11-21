@@ -67,11 +67,7 @@ func (c *Client) authorizeSession(ctx context.Context, now time.Time, allowCache
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
 	defer cancel()
-	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
-		if errors.Is(err, errSessionRevoked) {
-			// Reserve before sessionRevoked becomes visible to concurrent pumps.
-			c.reserveControlFrameClose(sessionRevocationCloseCode, sessionRevocationCloseReason)
-		}
+	if err := c.checkDurableSessionRevocation(checkCtx); err != nil {
 		return errSessionInactive
 	}
 	if checkCtx.Err() != nil || c.sessionRevoked.Load() || !time.Now().Before(c.SessionExpiresAt) {
@@ -80,6 +76,15 @@ func (c *Client) authorizeSession(ctx context.Context, now time.Time, allowCache
 	// Anchor the bound before the lookup, so slow Redis does not extend it.
 	c.sessionCheckedUntil = now.Add(sessionDeliveryRecheckInterval)
 	return nil
+}
+
+func (c *Client) checkDurableSessionRevocation(ctx context.Context) error {
+	err := c.Hub.sessionRevocationCheck(ctx, c.SessionJTI)
+	if errors.Is(err, errSessionRevoked) {
+		// Reserve before sessionRevoked becomes visible to concurrent pumps.
+		c.reserveControlFrameClose(sessionRevocationCloseCode, sessionRevocationCloseReason)
+	}
+	return err
 }
 
 var closeSessionRevocationPubSubFunc = func(pubsub *goredis.PubSub) error {
