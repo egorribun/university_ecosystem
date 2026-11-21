@@ -54,7 +54,19 @@ const VISUAL_ERROR_CODES = new Map([
   ["net::ERR_NAME_NOT_RESOLVED", "name_not_resolved"],
   ["net::ERR_TIMED_OUT", "timed_out"],
 ])
-const VISUAL_API_FAMILIES = ["events", "news", "stories", "schedule", "notifications"]
+const VISUAL_API_FAMILIES = [
+  "events",
+  "news",
+  "stories",
+  "schedule",
+  "notifications",
+  "campus",
+  "img",
+  "auth",
+  "push",
+  "groups",
+  "users",
+]
 let visualRequestDiagnosticCount = 0
 
 function emitVisualRequestDiagnostic(request, failure, rawErrorText) {
@@ -106,6 +118,13 @@ function emitVisualRequestDiagnostic(request, failure, rawErrorText) {
     } catch {
       // Requests without an accessible page stay in the closed fallback categories.
     }
+    let resourceType = "unknown"
+    try {
+      const type = request.resourceType()
+      resourceType = ["image", "xhr", "fetch"].includes(type) ? type : "other"
+    } catch {
+      // A missing or inaccessible Playwright resource type remains unknown.
+    }
     const errorCode =
       typeof rawErrorText !== "string" || rawErrorText === ""
         ? "unknown"
@@ -125,6 +144,7 @@ function emitVisualRequestDiagnostic(request, failure, rawErrorText) {
           method,
           requestOrigin,
           apiFamily,
+          resourceType,
           errorCode,
         })
     )

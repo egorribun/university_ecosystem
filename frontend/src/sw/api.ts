@@ -129,6 +129,9 @@ export function initApiCaching() {
     ({ url, request }) =>
       url.pathname.startsWith("/api/") &&
       !url.pathname.includes("/public/") &&
+      // The app fetches this public bootstrap config with no-store; a
+      // re-established private session must not fence that request.
+      !(url.pathname === "/api/v1/campus/config" && url.origin === self.location.origin) &&
       // Authentication probes must reach the server without SW interception.
       !url.pathname.includes("/users/me") &&
       !url.pathname.includes("/auth/") &&

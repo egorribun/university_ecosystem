@@ -1,6 +1,7 @@
 import { MessageChannel } from "node:worker_threads"
 import { act, renderHook } from "@testing-library/react"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
+import { fetchCampusTimezone } from "@/api/hooks/campusConfig"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -115,6 +116,131 @@ afterEach(() => {
 })
 
 describe("private API session isolation", () => {
+  it("keeps the public no-store campus lookup available during same-session page bootstrap", async () => {
+    localStorage.clear()
+    const listeners = new Map<string, (event: MessageEvent) => void>()
+    const controller = {
+      postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
+          void api.clearSessionCaches()
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          api.setSessionHash(message.sessionHash, message.sessionScope)
+      },
+    }
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        controller,
+        addEventListener: (type: string, callback: (event: MessageEvent) => void) =>
+          listeners.set(type, callback),
+        removeEventListener: (type: string) => listeners.delete(type),
+      },
+    })
+    const previousPage = renderHook(() => useSessionCrypto())
+    await act(() => previousPage.result.current.updateSessionSigningKey("same-session-key"))
+    const priorScope = api.getSessionCacheScope()
+    expect(priorScope).not.toBeNull()
+    previousPage.unmount()
+
+    // The actual image/media routes also must not claim this fetch.
+    const { initMediaCaching } = await import("../media")
+    initMediaCaching()
+
+    const freshPage = renderHook(() => useSessionCrypto())
+    vi.stubGlobal("self", {
+      caches: storage,
+      location: new URL("https://app.test/"),
+      __WB_DISABLE_DEV_LOGS: true,
+      clients: {
+        get: async () => ({
+          type: "window",
+          postMessage: (data: unknown, ports: MessagePort[]) =>
+            listeners.get("message")!({
+              source: controller,
+              data,
+              ports,
+            } as unknown as MessageEvent),
+        }),
+      },
+    })
+    const pendingNetwork = deferred<Response>()
+    const enteredNetwork = deferred<void>()
+    fetchMock.mockImplementationOnce((request) => {
+      expect((request as Request).cache).toBe("no-store")
+      enteredNetwork.resolve()
+      return pendingNetwork.promise
+    })
+    // Model browser dispatch: a matching worker route handles the page request;
+    // otherwise the browser sends the original no-store request to the network.
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input instanceof Request) return fetchMock(input)
+      const req = new Request(new URL(String(input), "https://app.test"), init)
+      expect(req.mode).not.toBe("navigate")
+      expect(req.destination).toBe("")
+      const route = routes.find((item) => item.match({ url: new URL(req.url), request: req }))
+      if (!route) return fetchMock(req)
+      const event = Object.assign(new Event("fetch"), {
+        clientId: "client-a",
+        waitUntil: () => undefined,
+      }) as unknown as ExtendableEvent
+      return route.handle({ request: req, event })
+    })
+    const pending = fetchCampusTimezone()
+    await enteredNetwork.promise
+    await act(() => freshPage.result.current.updateSessionSigningKey("same-session-key"))
+    expect(api.getSessionCacheScope()).toBe(priorScope)
+    pendingNetwork.resolve(Response.json({ campus_timezone: "Europe/Istanbul" }))
+
+    expect(await pending).toBe("Europe/Istanbul")
+    fetchMock.mockImplementationOnce(async (req) => {
+      expect((req as Request).cache).toBe("no-store")
+      return Response.json({ campus_timezone: "Europe/Istanbul" })
+    })
+    expect(await fetchCampusTimezone()).toBe("Europe/Istanbul")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect([...entries.values()].every((cache) => cache.size === 0)).toBe(true)
+    freshPage.unmount()
+  })
+
+  it("excludes only the exact same-origin campus config GET from private API routing", () => {
+    const matches = (url: string, init?: RequestInit) => {
+      const req = new Request(url, init)
+      return routes[0]!.match({ url: new URL(req.url), request: req })
+    }
+    expect(matches("https://app.test/api/v1/campus/config")).toBe(false)
+    expect(matches("https://app.test/api/v1/campus/config?version=1")).toBe(false)
+    expect(matches("https://other.test/api/v1/campus/config")).toBe(true)
+    expect(matches("https://app.test/api/v1/campus/config/private")).toBe(true)
+    expect(matches("https://app.test/api/v1/campus/config-extra")).toBe(true)
+    expect(matches("https://app.test/api/v1/campus/config/")).toBe(true)
+    expect(matches("https://app.test/api/v1/campus/private")).toBe(true)
+    expect(matches("https://app.test/api/v1/campus/config", { method: "POST" })).toBe(false)
+  })
+
+  it("keeps nearby private campus responses fenced across a same-account new session", async () => {
+    const privatePath = "/api/v1/campus/config/private"
+    api.setSessionHash("account-a", "account-a:live")
+    expect(await (await request(privatePath)).text()).toBe("private A")
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const pending = request(privatePath)
+    await entered.promise
+    await api.clearSessionCaches()
+    api.setSessionHash("account-a", "account-a:new-session")
+    delayed.resolve(new Response("old private payload"))
+
+    expect((await pending).type).toBe("error")
+    expect(entries.has("api-cache:account-a:live")).toBe(false)
+    expect(api.getSessionCacheScope()).toBe("account-a:new-session")
+  })
+
   it.each([undefined, { type: "sharedworker", postMessage: vi.fn() }])(
     "rejects an absent or non-window requesting client: %j",
     async (client) => {

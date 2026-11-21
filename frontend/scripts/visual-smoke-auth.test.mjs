@@ -1188,3 +1188,54 @@ test("visual request diagnostics exclude ordinary aborts from their cap without 
     )
   })
 })
+
+test("visual request diagnostics distinguish fixed candidate API families and resource types", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const cases = [
+      [
+        "https://stand.invalid/api/v1/campus/config?private=private-marker",
+        "fetch",
+        "campus",
+        "fetch",
+      ],
+      ["https://stand.invalid/api/v1/img/media/private-marker", "image", "img", "image"],
+      ["https://stand.invalid/api/v1/auth/session/signing-key", "xhr", "auth", "xhr"],
+      ["https://stand.invalid/api/v1/push/topics", "fetch", "push", "fetch"],
+      ["https://stand.invalid/api/v1/groups", "xhr", "groups", "xhr"],
+      ["https://stand.invalid/api/v1/users/private-marker", "image", "users", "image"],
+      ["https://stand.invalid/api/v1/campus-private-marker", "private-marker", "other", "other"],
+      ["https://third.invalid/api/v1/campus/config", "fetch", "other", "fetch"],
+    ]
+    for (const [url, resourceType] of cases) {
+      const request = visualFailure(url, "net::ERR_FAILED")
+      request.resourceType = () => resourceType
+      assert.equal(requestFailureRecord(request).errorText, "net::ERR_FAILED")
+    }
+    assert.equal(lines.length, cases.length)
+    for (const [index, line] of lines.entries()) {
+      const record = JSON.parse(line.slice("visual-request-diagnostics ".length))
+      assert.equal(record.apiFamily, cases[index][2])
+      assert.equal(record.resourceType, cases[index][3])
+      assert.doesNotMatch(line, /private-marker|stand\.invalid|third\.invalid|\/api\/v1\//u)
+    }
+  })
+})
+
+test("visual request diagnostics bound missing or throwing resource types without changing the failure record", async () => {
+  await withVisualRequestDiagnostics(async ({ requestFailureRecord }, lines) => {
+    const request = visualFailure("https://stand.invalid/api/v1/campus/config", "net::ERR_FAILED")
+    assert.equal(requestFailureRecord(request).errorText, "net::ERR_FAILED")
+    request.resourceType = () => {
+      throw new Error("private-marker")
+    }
+    assert.equal(requestFailureRecord(request).errorText, "net::ERR_FAILED")
+    assert.equal(lines.length, 2)
+    for (const line of lines) {
+      assert.equal(
+        JSON.parse(line.slice("visual-request-diagnostics ".length)).resourceType,
+        "unknown"
+      )
+      assert.doesNotMatch(line, /private-marker|stand\.invalid/u)
+    }
+  })
+})

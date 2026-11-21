@@ -50,6 +50,7 @@
   | [`3a452a8a8`](https://github.com/egorribun/university_ecosystem/actions/runs/44860700541) | **прошёл**, включая NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44860700884) 18 passed; visual 18/24 |
   | `28afad9c5` | **прошёл** | realtime и visual **прошли** (24/24); упал только Contract Tests (gitleaks, состояние процесса `X`) |
   | `01a434839` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44906878207/job/136854251753) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44906878502/job/136854254040). CI Success не прошёл из-за visual. |
+  | `753c2c572` | [прошёл](https://github.com/egorribun/university_ecosystem/actions/runs/44910470846/job/136864997618) | Realtime прошёл; [visual 23/24](https://github.com/egorribun/university_ecosystem/actions/runs/44910471073/job/136864999567). Повторился сетевой сбой Dashboard. |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
   подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
@@ -57,8 +58,12 @@
   ожидали `srcset` и `sizes` для логотипа и внешнего URL после `a17ef41f3`.
   На `01a434839` Dashboard (en, светлая тема, 1440 px) записал один сетевой сбой GET к API без
   HTTP-статуса. Локальный полный стенд из того же дерева прошёл 24/24 без ошибок браузера, HTTP и сети.
-  Причина hosted-сбоя пока не установлена. Отчёт теперь добавляет фиксированные категории Chrome
-  и API для сетевых ошибок с ограничением числа записей.
+  На `753c2c572` для той же комбинации Chromium записал `net::ERR_FAILED` без HTTP-статуса.
+  Точный маршрут запроса в hosted-прогоне пока не установлен. Отчёт добавляет фиксированные
+  семейства API и типы ресурса Chrome для сетевых ошибок с ограничением числа записей.
+  Изолированный тест воспроизвёл обрыв публичного `GET /api/v1/campus/config` в service worker
+  при инициализации страницы в прежней сессии. Публичный GET теперь идёт напрямую с исходным
+  `cache: "no-store"`. Соседние защищённые маршруты сохраняют проверку принадлежности ответа сессии.
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,
