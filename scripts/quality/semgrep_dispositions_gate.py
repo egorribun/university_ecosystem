@@ -6,8 +6,10 @@ digest. Multi-line matches also bind every line in the reported span; single-lin
 matches require an explicitly reviewed, wider source context. Range digests use
 UTF-8 lines joined by LF, with no final line ending. Each disposition explicitly
 declares companion source files and their byte-exact SHA-256 digests; the React
-HTML sink rule requires at least one. The gate also refuses stale, expired,
-ambiguous or malformed records and incomplete scanner evidence.
+HTML sink rule requires at least one. Only that rule's SafeHtml record may bind
+the two npm manifests through a versioned sanitizer projection instead of their
+whole bytes (ADR-047, npm manifest projection binding). The gate also refuses
+stale, expired, ambiguous or malformed records and incomplete scanner evidence.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, BinaryIO
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DISPOSITIONS = REPOSITORY_ROOT / "quality" / "semgrep-dispositions.json"
@@ -45,6 +47,58 @@ _REACT_HTML_SINK_CHECK_ID = (
     "typescript.react.security.audit.react-dangerouslysetinnerhtml."
     "react-dangerouslysetinnerhtml"
 )
+_SAFE_HTML_SOURCE = "frontend/src/components/ui/SafeHtml.tsx"
+# D1 binds the projection to the approved SafeHtml finding fingerprint.
+_SAFE_HTML_FINDING_LINE_SHA256 = hashlib.sha256(
+    b"  return <div className={className} "
+    b"dangerouslySetInnerHTML={{ __html: renderable }} />"
+).hexdigest()
+_NPM_MANIFEST_PROJECTION = "npm-manifest-sanitizer/v1"
+_NPM_LOCKFILE_PROJECTION = "npm-lockfile-sanitizer/v1"
+# Each projection is allowed for exactly one companion path of the SafeHtml row.
+_COMPANION_PROJECTIONS = {
+    _NPM_MANIFEST_PROJECTION: "frontend/package.json",
+    _NPM_LOCKFILE_PROJECTION: "frontend/package-lock.json",
+}
+_NPM_BOUND_PACKAGES = (
+    "wasm-sanitizer",
+    "vite-plugin-wasm",
+    "dompurify",
+    "@types/trusted-types",
+)
+_NPM_DEPENDENCY_SECTIONS = (
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+)
+_NPM_LIFECYCLE_SCRIPTS = frozenset(
+    {
+        "preinstall",
+        "install",
+        "postinstall",
+        "prepare",
+        "prepack",
+        "postpack",
+        "prepublish",
+        "prepublishOnly",
+    }
+)
+_NPM_SCRIPT_MARKERS = (
+    "wasm-sanitizer",
+    "ensure-wasm",
+    "verify-wasm",
+    "WASM_SOURCE_PROVENANCE",
+)
+_NPM_MENTION_FIELDS = (
+    "workspaces",
+    "bundleDependencies",
+    "bundledDependencies",
+    "browser",
+    "imports",
+    "exports",
+)
+_NPM_SANITIZER_LINK_KEY = "node_modules/wasm-sanitizer"
 _REVIEWED_SEMGREP_IGNORE_PATTERNS = (
     "alembic/versions/",
     "tests/",
@@ -74,6 +128,7 @@ class ReviewedContext:
 class ReviewedCompanion:
     path: str
     sha256: str
+    projection: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +157,10 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise GateError(f"duplicate JSON key: {key}")
         result[key] = value
     return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise GateError(f"invalid JSON constant: {value}")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -168,8 +227,14 @@ def _companions(
     seen: set[str] = set()
     companions = []
     for item in raw:
-        if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
-            raise GateError("each companion must contain exactly path and sha256")
+        if not isinstance(item, dict) or set(item) not in (
+            {"path", "sha256"},
+            {"path", "projection", "sha256"},
+        ):
+            raise GateError(
+                "each companion must contain exactly path and sha256, "
+                "with an optional projection"
+            )
         path = normalize_path(item["path"])
         if path != item["path"] or path == source:
             raise GateError(
@@ -178,7 +243,18 @@ def _companions(
         if path in seen:
             raise GateError(f"duplicate companion path: {path}")
         seen.add(path)
-        companions.append(ReviewedCompanion(path, _digest_field(item, "sha256")))
+        projection = item.get("projection")
+        if "projection" in item and (
+            not isinstance(projection, str)
+            or _COMPANION_PROJECTIONS.get(projection) != path
+            or check_id != _REACT_HTML_SINK_CHECK_ID
+            or source != _SAFE_HTML_SOURCE
+            or entry["line_sha256"] != _SAFE_HTML_FINDING_LINE_SHA256
+        ):
+            raise GateError(f"companion projection is not allowed: {path}")
+        companions.append(
+            ReviewedCompanion(path, _digest_field(item, "sha256"), projection)
+        )
     return tuple(companions)
 
 
@@ -635,7 +711,10 @@ def _companion_digest(
                 raise GateError(
                     f"cannot read companion as a regular file: {companion.path}"
                 )
-            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            if companion.projection is None:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            else:
+                payload = _read_projected_companion(stream)
             after = os.fstat(stream.fileno())
             if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
                 after.st_size,
@@ -645,7 +724,139 @@ def _companion_digest(
                 raise GateError(f"companion changed while being read: {companion.path}")
     except OSError as exc:
         raise GateError(f"cannot read companion {companion.path}: {exc}") from exc
+    if companion.projection is not None:
+        digest = projected_companion_digest(companion.projection, payload)
     return digest, (before.st_dev, before.st_ino)
+
+
+def _read_projected_companion(stream: BinaryIO) -> bytes:
+    return stream.read()
+
+
+def projected_companion_digest(projection: str, payload: bytes) -> str:
+    """Return the SHA-256 of the canonical JSON projection of an npm manifest."""
+
+    path = _COMPANION_PROJECTIONS[projection]
+    try:
+        document = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise GateError(f"cannot parse projected companion {path}: {exc}") from exc
+    if not isinstance(document, dict):
+        raise GateError(f"projected companion root must be an object: {path}")
+    if projection == _NPM_MANIFEST_PROJECTION:
+        selection = _project_npm_manifest(document, path)
+    else:
+        selection = _project_npm_lockfile(document, path)
+    canonical = json.dumps(
+        {"projection": projection, "selection": selection},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _object_member(document: dict[str, Any], field: str, path: str) -> dict[str, Any]:
+    value = document.get(field, {})
+    if not isinstance(value, dict):
+        raise GateError(f"projected companion field {field} must be an object: {path}")
+    return value
+
+
+def _mentions_bound_package(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return any(package in text for package in _NPM_BOUND_PACKAGES)
+
+
+def _bound_declarations(record: dict[str, Any], path: str) -> dict[str, Any]:
+    declarations = {}
+    for section in _NPM_DEPENDENCY_SECTIONS:
+        entries = _object_member(record, section, path)
+        bound = {
+            package: entries[package]
+            for package in _NPM_BOUND_PACKAGES
+            if package in entries
+        }
+        if bound:
+            declarations[section] = bound
+    return declarations
+
+
+def _project_npm_manifest(document: dict[str, Any], path: str) -> dict[str, Any]:
+    declarations = _bound_declarations(document, path)
+    if "wasm-sanitizer" not in declarations.get("dependencies", {}):
+        raise GateError(f"projected manifest must declare wasm-sanitizer: {path}")
+    scripts = {}
+    for name, body in _object_member(document, "scripts", path).items():
+        if not isinstance(body, str):
+            raise GateError(f"projected manifest script must be a string: {path}")
+        if (
+            name in _NPM_LIFECYCLE_SCRIPTS
+            or "wasm" in name.lower()
+            or any(marker in body for marker in _NPM_SCRIPT_MARKERS)
+        ):
+            scripts[name] = body
+    overrides = {
+        key: value
+        for key, value in _object_member(document, "overrides", path).items()
+        if _mentions_bound_package(key) or _mentions_bound_package(value)
+    }
+    fields = {
+        field: document[field]
+        for field in _NPM_MENTION_FIELDS
+        if field in document and _mentions_bound_package(document[field])
+    }
+    return {
+        "allowScripts": document.get("allowScripts"),
+        "declarations": declarations,
+        "fields": fields,
+        "overrides": overrides,
+        "scripts": scripts,
+    }
+
+
+def _project_npm_lockfile(document: dict[str, Any], path: str) -> dict[str, Any]:
+    version = document.get("lockfileVersion")
+    if type(version) is not int or version != 3:
+        raise GateError(f"projected lockfile must use lockfileVersion 3: {path}")
+    packages = _object_member(document, "packages", path)
+    root = packages.get("")
+    if not isinstance(root, dict):
+        raise GateError(f"projected lockfile must contain the root package: {path}")
+    link = packages.get(_NPM_SANITIZER_LINK_KEY)
+    if not (
+        isinstance(link, dict)
+        and set(link) == {"resolved", "link"}
+        and link["resolved"] == "wasm-sanitizer/pkg"
+        and link["link"] is True
+    ):
+        raise GateError(
+            f"projected lockfile must link wasm-sanitizer to its package: {path}"
+        )
+    records = {}
+    for key, record in packages.items():
+        if key == "":
+            continue
+        if not isinstance(record, dict):
+            raise GateError(f"projected lockfile package must be an object: {path}")
+        if (
+            key.rsplit("node_modules/", 1)[-1] in _NPM_BOUND_PACKAGES
+            or "wasm-sanitizer" in key
+            or record.get("hasInstallScript", False) is not False
+        ):
+            records[key] = record
+    return {
+        "lockfileVersion": version,
+        "packages": records,
+        "root": {
+            "declarations": _bound_declarations(root, path),
+            "hasInstallScript": root.get("hasInstallScript"),
+        },
+    }
 
 
 def _companion_problems(

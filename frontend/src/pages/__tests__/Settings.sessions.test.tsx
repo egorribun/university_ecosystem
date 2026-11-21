@@ -88,7 +88,7 @@ const renderSettings = async () => {
 }
 
 const tSettings = (key: string, options?: Record<string, unknown>) =>
-  i18n.t(`settings:${key}`, options)
+  options ? i18n.t(`settings:${key}`, options) : i18n.t(`settings:${key}`)
 
 describe("Settings sessions panel", () => {
   beforeEach(() => {

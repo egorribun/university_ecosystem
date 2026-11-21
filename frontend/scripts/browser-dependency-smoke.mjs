@@ -20,7 +20,7 @@ const VERSIONS = Object.freeze({
   "@lhci/cli": "0.15.1",
   "@lhci/utils": "0.15.1",
   lighthouse: "13.5.0",
-  "puppeteer-core": "25.13.0",
+  "puppeteer-core": "25.17.0",
   "chromium-bidi": "157.0.8090-0",
   zod: "4.6.7",
   playwright: "1.64.1",

@@ -20,12 +20,12 @@
       У каждого теста свой временный профиль Chrome.
     - Flaky — mobile push-delivery и footer-bottom-navigation.
 - [PR #1541](https://github.com/egorribun/university_ecosystem/pull/1541) слит обычным merge после
-  78 обязательных проверок и CodeQL на `3156d797a`. Текущий `main` — `149814844`.
+  78 обязательных проверок и CodeQL на `3156d797a`. Тогдашний `main` — `149814844`.
   [Полный Core](https://github.com/egorribun/university_ecosystem/actions/runs/44925413925) на этом SHA
   дал 223 passed, 8 skipped и 1 flaky. Проверенный артефакт `14717545206` привязан к заданию
   `136910292817`. Все шесть именных случаев AUD-154 прошли с первой попытки, включая read-receipt
   на desktop и mobile. Сбой первого прохождения mobile-сценария Email OTP зарегистрирован
-  после HTTP 200 при проверке отзыва соседнего WebSocket. Полный Core остаётся красным.
+  после HTTP 200 при проверке отзыва соседнего WebSocket. Этот полный Core остался красным.
   Изолированная проверка подтвердила, что durable tombstone мог дать `1008` вместо ожидаемого
   `4401`. В пакете исправления подтверждённый отзыв закрывает соединение с `4401`, а при ошибке
   хранилища остаётся `1008`. Hosted-прогон не зафиксировал фактический close code сбоя.
@@ -85,8 +85,29 @@
   В hosted-матрице `762478ff6` все 24 захвата завершились без ошибок сети и браузера. Артефакт
   снимков — `14713602601`. Прямой запрос image proxy выполняется в единственном обработчике API
   до проверки сессии. Неизменённый AUD-400 и полный локальный Vitest прошли (11 555 тестов).
-- [PR #1544](https://github.com/egorribun/university_ecosystem/pull/1544) содержит восстановление Web Push,
-  диагностику префиксов хешей и изоляцию DST-теста #1523. На `45f4f42ba` realtime и именные случаи
+- [PR #1544](https://github.com/egorribun/university_ecosystem/pull/1544) с source `5d402215f` слит в
+  защищённый `main` как `c506c637c`. На source прошли все 78 обязательных проверок и CodeQL.
+  Проверочный merge `cffa7910a`, source и итоговый `main` имеют одинаковое дерево.
+
+  - Core smoke прошёл. [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44940349344/job/136955958577)
+    [Receipt 14721518600](https://github.com/egorribun/university_ecosystem/actions/runs/44940349344/artifacts/14721518600)
+  - Realtime и visual прошли. В артефакте все 24 снимка. [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44940349526/job/136955960512)
+    [Артефакт 14722575291](https://github.com/egorribun/university_ecosystem/actions/runs/44940349526/artifacts/14722575291)
+  - Nilaway прошёл. [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44940349338/job/136955958334)
+  - Полный Core на `main` `c506c637c` завершился ошибкой. Итог — 223 passed, 8 skipped, 1 flaky.
+    Фрейм сбоя указывает на проверку порога 44 px для кнопки закрытия мобильного меню.
+    Измеренная ширина не записана. Все шесть именных случаев AUD-154 прошли с первой попытки,
+    включая read-receipt на desktop и mobile.
+    [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/job/136964397867)
+    [Receipt 14723557616](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/artifacts/14723557616)
+    Локальная браузерная проверка с зависимостями npm-пакета воспроизвела дробное округление DOMRect
+    во время выезда меню при номинальной ширине 44 px. Тест проверяет рамку кнопки сразу после
+    фокуса, затем измеряет стабильную область нажатия. Оба измерения требуют не менее 44 px.
+  - Проверка frozen-RC отклонила манифест как недействительный или незамороженный.
+    [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44943098243/job/136964397629)
+
+  PR содержит восстановление Web Push, диагностику префиксов хешей и изоляцию DST-теста #1523.
+  На `45f4f42ba` realtime и именные случаи
   AUD-154 прошли. [Visual-прогон](https://github.com/egorribun/university_ecosystem/actions/runs/44926043369/job/136912238208)
   зарегистрировал на Events (en, светлая тема, 390 px) два `net::ERR_FAILED` без HTTP-статуса в
   защищённых XHR GET семейств events и notifications.
@@ -104,8 +125,9 @@
   При обычном запуске с активным service worker установка ключа ждёт подтверждения обработки SET до
   одной секунды. При таймауте, отсутствии поддержки подтверждения или смене контроллера действует
   прежний путь синхронизации. Проверки владения запросом при выходе и смене сессии сохраняются.
-  Дополнительная проверка Nilaway выявила два обращения к потенциально пустому указателю в тесте
-  кода закрытия WebSocket. Тест явно проверяет указатель перед проверкой кода `4401` и причины закрытия.
+  На `73db7bd17` и `930813a53` Nilaway выявил два обращения к потенциально пустому указателю в тесте
+  кода закрытия WebSocket. На итоговом source тест явно проверяет указатель перед проверкой кода `4401`
+  и причины закрытия.
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,

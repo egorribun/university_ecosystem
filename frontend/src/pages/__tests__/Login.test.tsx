@@ -31,7 +31,7 @@ vi.mock("@/api/hooks/events", () => ({
   prefetchEventsListQuery: vi.fn().mockResolvedValue(undefined),
 }))
 
-const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
+const tAuth = (key: string, options: Record<string, unknown> = {}) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 const clients: QueryClient[] = []

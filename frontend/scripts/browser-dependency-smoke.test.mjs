@@ -1,6 +1,14 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 import test from "node:test"
@@ -18,7 +26,7 @@ const versions = {
   "@lhci/cli": "0.15.1",
   "@lhci/utils": "0.15.1",
   lighthouse: "13.5.0",
-  "puppeteer-core": "25.13.0",
+  "puppeteer-core": "25.17.0",
   "chromium-bidi": "157.0.8090-0",
   zod: "4.6.7",
   playwright: "1.64.1",
@@ -62,6 +70,33 @@ function dependencyFixture() {
   })
   return { root, put }
 }
+
+test("browser smoke pins match the adoption lock's root package records", () => {
+  const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"))
+  const locked = Object.fromEntries(
+    Object.keys(versions).map((name) => [name, lock.packages["node_modules/" + name]?.version])
+  )
+  assert.deepEqual(locked, versions)
+})
+
+test("rejects unreviewed browser consumer versions", () => {
+  const { root, put } = dependencyFixture()
+  try {
+    inspectBrowserDependencies(root)
+    for (const [name, previous] of Object.entries({
+      "@lhci/cli": "0.16.1",
+      "@lhci/utils": "0.16.1",
+      lighthouse: "13.6.0",
+      "puppeteer-core": "25.13.0",
+    })) {
+      put("node_modules/" + name + "/package.json", packageFixture(name, previous))
+      assert.throws(() => inspectBrowserDependencies(root))
+      put("node_modules/" + name + "/package.json", packageFixture(name))
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test("inspects the exact installed consumer chain without executing package code", () => {
   const { root } = dependencyFixture()
@@ -278,7 +313,7 @@ function libraryFixture(change = {}) {
     calls.push(["lighthouse", ...args])
     return {
       lhr: {
-        lighthouseVersion: "13.5.0",
+        lighthouseVersion: versions.lighthouse,
         requestedUrl: fixtureUrl,
         finalDisplayedUrl: fixtureUrl,
         audits: { "document-title": { score: 1 } },
@@ -356,6 +391,7 @@ test("Lighthouse runtime errors or mismatched results fail closed with cleanup",
   for (const lhr of [
     { runtimeError: { code: "SYNTHETIC_ERROR" } },
     { lighthouseVersion: "12.6.1" },
+    { lighthouseVersion: "13.6.0" },
     { requestedUrl: "http://example.test/" },
     { finalDisplayedUrl: "http://example.test/" },
     { audits: { "document-title": { score: 0 } } },
@@ -432,6 +468,7 @@ test("report rejects malformed provenance and failed checks instead of recording
     { chromiumRevision: "../outside" },
     { chromiumRevision: "1".repeat(33) },
     { versions: { ...versions, "puppeteer-core": "25.11.0" } },
+    { versions: { ...versions, "puppeteer-core": "25.13.0" } },
     { results: { browserVersion, lighthouseDocumentTitle: false, bidiDomValue: fixtureValue } },
     { results: { browserVersion, lighthouseDocumentTitle: true, bidiDomValue: "wrong" } },
     {

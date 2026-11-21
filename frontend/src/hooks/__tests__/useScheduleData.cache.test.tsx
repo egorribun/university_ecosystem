@@ -226,7 +226,11 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const view = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
     try {
       await waitFor(() => expect(view.result.current.rawSchedule).toEqual([firstLesson]))
-      act(() => setAuthFixture(second))
+      act(() => {
+        setAuthFixture(second)
+        // The mocked useAuth does not subscribe to store changes like the real hook.
+        view.rerender()
+      })
       await waitFor(() => expect(view.result.current.selectedGroup).toBe("group-b"))
       await waitFor(() => expect(view.result.current.rawSchedule).toEqual([secondLesson]))
       expect(apiGetMock).not.toHaveBeenCalledWith("/schedule/group-a", expect.anything())

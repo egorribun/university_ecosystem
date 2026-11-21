@@ -87,10 +87,10 @@ def test_bundle_parser_is_an_exact_locked_direct_runtime_dependency() -> None:
     lock = json.loads(
         (ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
     )
-    assert manifest["dependencies"]["parse5"] == "8.0.1"
-    assert lock["packages"][""]["dependencies"]["parse5"] == "8.0.1"
+    assert manifest["dependencies"]["parse5"] == "8.1.1"
+    assert lock["packages"][""]["dependencies"]["parse5"] == "8.1.1"
     installed = lock["packages"]["node_modules/parse5"]
-    assert installed["version"] == "8.0.1"
+    assert installed["version"] == "8.1.1"
     assert installed.get("dev", False) is False
 
 

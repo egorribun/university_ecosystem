@@ -266,10 +266,6 @@ export const ContactList = memo(function ContactList({
     const titleKey = showSearchEmpty
       ? "messenger:noChats.searchEmpty.title"
       : "messenger:noChats.title"
-    const descriptionKey = showSearchEmpty
-      ? "messenger:noChats.searchEmpty.description"
-      : "messenger:noChats.description"
-    const descriptionInterp = showSearchEmpty ? { query: searchQuery } : undefined
 
     return (
       <div
@@ -298,7 +294,9 @@ export const ContactList = memo(function ContactList({
             {t(titleKey)}
           </h3>
           <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
-            {t(descriptionKey, descriptionInterp)}
+            {showSearchEmpty
+              ? t("messenger:noChats.searchEmpty.description", { query: searchQuery })
+              : t("messenger:noChats.description")}
           </p>
           {showSearchEmpty
             ? onClearSearch && (

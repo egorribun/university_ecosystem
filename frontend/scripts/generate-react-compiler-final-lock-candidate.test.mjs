@@ -389,6 +389,7 @@ function installedFixture(root, mode = "full") {
   return {
     compilerBundleSha256: createHash("sha256").update(compilerEntry).digest("hex"),
     compilerDependencies: lock.packages[COMPILER].dependencies,
+    eslintVersion: lock.packages["node_modules/eslint"].version,
   }
 }
 
@@ -507,8 +508,8 @@ test("committed final graph and strict fixture use the same current ESLint artif
   const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
   const committedLock = JSON.parse(readFileSync(join(TEST_FRONTEND, "package-lock.json"), "utf8"))
   const snapshot = structuredClone({ committedManifest, committedLock })
-  assert.equal(committedManifest.devDependencies.eslint, "^10.13.0")
-  assert.equal(committedLock.packages["node_modules/eslint"].version, "10.13.0")
+  assert.equal(committedManifest.devDependencies.eslint, "^10.14.0")
+  assert.equal(committedLock.packages["node_modules/eslint"].version, "10.15.0")
   assert.equal(
     classifyFinalSourcePhase(committedManifest, committedLock),
     SOURCE_PHASE.ALREADY_FINAL
@@ -528,6 +529,34 @@ test("committed final graph and strict fixture use the same current ESLint artif
     true
   )
   assert.deepEqual({ committedManifest, committedLock }, snapshot)
+})
+
+test("current source profile rejects mixed or unreviewed package versions", () => {
+  const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
+  const committedLock = JSON.parse(readFileSync(join(TEST_FRONTEND, "package-lock.json"), "utf8"))
+  for (const [name, oldVersion] of [
+    ["eslint", "10.13.0"],
+    ["@puppeteer/browsers", "3.2.4"],
+    ["puppeteer-core", "25.13.0"],
+    ["puppeteer-core/node_modules/devtools-protocol", "0.0.1696802"],
+    ["webdriver-bidi-protocol", "1.0.1"],
+  ]) {
+    const changed = structuredClone(committedLock)
+    changed.packages["node_modules/" + name].version = oldVersion
+    assert.throws(() => classifyFinalSourcePhase(committedManifest, changed), {
+      name: "AssertionError",
+    })
+  }
+  const oldManifest = structuredClone(committedManifest)
+  const oldLock = structuredClone(committedLock)
+  oldManifest.devDependencies.eslint = "^10.13.0"
+  oldLock.packages[""].devDependencies.eslint = "^10.13.0"
+  assert.throws(() => classifyFinalSourcePhase(oldManifest, oldLock), { name: "AssertionError" })
+  for (const range of ["^10.15.0", ">=10.14.0", "*"]) {
+    const changed = structuredClone(committedManifest)
+    changed.devDependencies.eslint = range
+    assert.throws(() => prepareStrictManifest(changed), { name: "AssertionError" })
+  }
 })
 
 test("local input preflight accepts every committed local dependency without widening its scope", () => {
@@ -1123,6 +1152,34 @@ test("strict graph binds the exact target artifacts and original ESLint peer dec
   const project = expectedFinalLock()
   const strict = strictLock()
   assert.equal(assertStrictLock(strict, project), true)
+})
+
+test("current strict graph and physical install bind the newly resolved ESLint artifact", () => {
+  const project = expectedFinalLock()
+  const strict = strictLock()
+  project.packages[""].devDependencies.eslint = "^10.14.0"
+  project.packages["node_modules/eslint"] = packageRecord("eslint", "10.15.0")
+  strict.packages[""].devDependencies.eslint = "10.15.0"
+  strict.packages["node_modules/eslint"] = packageRecord("eslint", "10.15.0")
+  assert.equal(assertStrictLock(strict, project), true)
+  const changed = structuredClone(strict)
+  changed.packages["node_modules/eslint"] = packageRecord("eslint", "10.13.0")
+  assert.throws(() => assertStrictLock(changed, project), { name: "AssertionError" })
+
+  withDirectory((root) => {
+    const controls = installedFixture(root)
+    writePackage(root, "node_modules/eslint", {
+      name: "eslint",
+      version: "10.15.0",
+      main: "index.cjs",
+    })
+    controls.eslintVersion = "10.15.0"
+    assert.equal(assertFinalInstalledGraph(root, "full", controls), true)
+    controls.eslintVersion = "10.13.0"
+    assert.throws(() => assertFinalInstalledGraph(root, "full", controls), {
+      name: "AssertionError",
+    })
+  })
 })
 
 test("strict proof rejects changed peers, selected versions and artifact replacements", () => {

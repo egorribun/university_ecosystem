@@ -1,5 +1,5 @@
 import { expect, loginAs, test } from "./fixtures"
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 
 declare global {
   interface Window {
@@ -402,7 +402,7 @@ test("mobile drawer traps keyboard focus, closes with Escape, and releases scrol
     await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden")
 
     const closeButton = drawer.getByRole("button").first()
-    await expect(closeButton).toBeFocused()
+    await assertDrawerCloseReady(closeButton, width)
     const closeSize = await closeButton.evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return { width: rect.width, height: rect.height }
@@ -591,4 +591,37 @@ async function assertProfileNameGeometry(
     expect(rect.width, label + " visible username width").toBeGreaterThan(0)
   }
   return rect
+}
+
+/** Check the focused layout box, then measure the physical target when stable. */
+async function assertDrawerCloseReady(closeButton: Locator, viewportWidth: number): Promise<void> {
+  await expect(closeButton).toBeFocused()
+  const layout = await closeButton.evaluate((element) => {
+    const style = getComputedStyle(element)
+    const size = (value: string) => Number.parseFloat(value)
+    const contentBox = style.boxSizing === "content-box"
+    return {
+      width:
+        size(style.width) +
+        (contentBox
+          ? size(style.paddingLeft) +
+            size(style.paddingRight) +
+            size(style.borderLeftWidth) +
+            size(style.borderRightWidth)
+          : 0),
+      height:
+        size(style.height) +
+        (contentBox
+          ? size(style.paddingTop) +
+            size(style.paddingBottom) +
+            size(style.borderTopWidth) +
+            size(style.borderBottomWidth)
+          : 0),
+    }
+  })
+  expect(layout.width, `${viewportWidth}px drawer close layout width`).toBeGreaterThanOrEqual(44)
+  expect(layout.height, `${viewportWidth}px drawer close layout height`).toBeGreaterThanOrEqual(44)
+  // The drawer's translate spring can transiently produce a fractional DOMRect.
+  await closeButton.click({ trial: true })
+  await expect(closeButton).toBeFocused()
 }
