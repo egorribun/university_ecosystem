@@ -231,13 +231,14 @@ describe("session crypto browser lifecycle", () => {
     const first = requestScope(container.controller!)
     await act(async () => {
       response.resolve({ data: { signing_key: "fetched-key" } })
-      await pending
     })
+    await waitFor(() => expect(ackPort).toBeDefined())
     const second = requestScope(container.controller!)
     expect(first).not.toHaveBeenCalled()
     expect(second).not.toHaveBeenCalled()
     await act(async () => {
       ackPort!.postMessage(true)
+      await pending
     })
     const expected = {
       sessionHash: "hash-fetched-key",
@@ -249,14 +250,14 @@ describe("session crypto browser lifecycle", () => {
     })
   })
 
-  it("does not transfer an acknowledgement port without a waiting readiness query", async () => {
+  it("requests SET acknowledgement even without a waiting worker query", async () => {
     const previous = renderHook(useSessionCrypto)
     await act(() => owned(previous.result.current.updateSessionSigningKey("fetched-key")))
     previous.unmount()
     const page = renderHook(useSessionCrypto)
     container.controller!.postMessage.mockClear()
     await act(() => owned(page.result.current.ensureSessionSigningKey()))
-    expect(container.controller!.postMessage.mock.calls.map((call) => call.length)).toEqual([1, 1])
+    expect(container.controller!.postMessage.mock.calls.map((call) => call.length)).toEqual([1, 2])
   })
 
   it.each([false, "true", null])(
@@ -303,10 +304,12 @@ describe("session crypto browser lifecycle", () => {
       const reply = requestScope(container.controller!)
       await act(async () => {
         response.resolve({ data: { signing_key: "fetched-key" } })
-        await pending
       })
       expect(reply).not.toHaveBeenCalled()
-      await act(() => vi.advanceTimersByTimeAsync(1000))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        await pending
+      })
       expect(reply).toHaveBeenCalledExactlyOnceWith({ sessionHash: null, sessionScope: null })
     } finally {
       vi.useRealTimers()
@@ -333,8 +336,8 @@ describe("session crypto browser lifecycle", () => {
       const reply = requestScope(container.controller!)
       await act(async () => {
         response.resolve({ data: { signing_key: "fetched-key" } })
-        await pending
       })
+      await waitFor(() => expect(ackPort).toBeDefined())
       expect(ackPort).toBeDefined()
       expect(reply).not.toHaveBeenCalled()
       if (transition === "logout")
@@ -344,6 +347,7 @@ describe("session crypto browser lifecycle", () => {
       if (transition === "unmount") page.unmount()
       await act(async () => {
         ackPort!.postMessage(true)
+        expect(await pending).toBe(transition === "controller change" ? "fetched-key" : null)
       })
       await waitFor(() =>
         expect(reply).toHaveBeenCalledExactlyOnceWith({ sessionHash: null, sessionScope: null })

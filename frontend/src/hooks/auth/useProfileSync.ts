@@ -1096,6 +1096,7 @@ export const useProfileSync = (
   const profileRequestRevisionRef = useRef(0)
   const userState = profileSyncState.user
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
+  const [bootstrapPending, setBootstrapPending] = useState(true)
   // The resolved initial user already captures the SSR hint, LHCI identity
   // and cache state. A null snapshot is the only state that needs the
   // browser bootstrap; authenticated SSR/LHCI/cache snapshots are ready.
@@ -1615,6 +1616,7 @@ export const useProfileSync = (
     // sees isAuth=true. Tree-shakes in prod (CI builds without the flag).
     if (import.meta.env.VITE_LHCI === "true") {
       if (userStateRef.current?.id !== "lhci-mock-user") setUser(buildLhciMockUser())
+      setBootstrapPending(false)
       setInitializing(false)
       return
     }
@@ -1805,6 +1807,7 @@ export const useProfileSync = (
             exact: true,
           })
         }
+        setBootstrapPending(false)
         setInitializing(false)
       }
     })()
@@ -1826,6 +1829,7 @@ export const useProfileSync = (
     user: userState,
     committedUser: committedUserState,
     setUser,
+    bootstrapPending,
     loading: resolveAuthLoading(initializing, authOperation),
     pendingMfa: pendingMfaState,
     updatePendingMfa,

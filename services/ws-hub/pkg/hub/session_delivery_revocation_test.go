@@ -95,6 +95,9 @@ func TestPassivePongOnlySessionClosesAfterMissedRevocationNotice(t *testing.T) {
 	_, _, err = peer.ReadMessage()
 	var closeErr *websocket.CloseError
 	require.ErrorAs(t, err, &closeErr)
+	if closeErr == nil {
+		t.Fatal("expected a non-nil WebSocket close error")
+	}
 	require.Equal(t, 4401, closeErr.Code)
 	require.Equal(t, "Session revoked", closeErr.Text)
 	pumps.Wait()

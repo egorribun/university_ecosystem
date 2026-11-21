@@ -404,15 +404,39 @@ export const useSessionCrypto = () => {
       if (!force && !purge && sessionCacheHashRef.current === nextHash) return
       sessionCacheHashRef.current = nextHash
 
-      const acknowledgement = confirmReadiness ? sessionCacheAckRef.current : null
+      const pending = sessionKeyReadinessRef.current
+      let acknowledgement = confirmReadiness ? sessionCacheAckRef.current : null
+      const controller = globalThis.navigator?.serviceWorker?.controller
+      if (
+        confirmReadiness &&
+        nextHash &&
+        pending &&
+        controller &&
+        (!acknowledgement ||
+          !acknowledgement.active ||
+          acknowledgement.pending !== pending ||
+          acknowledgement.controller !== controller)
+      ) {
+        acknowledgement?.finish(false)
+        try {
+          acknowledgement = createSessionCacheAcknowledgement(pending, controller)
+          sessionCacheAckRef.current = acknowledgement
+        } catch {
+          acknowledgement = null
+          sessionCacheAckRef.current = null
+          // Continue with the existing unacknowledged worker path.
+        }
+      }
+      const matchingAcknowledgement = acknowledgement?.pending === pending ? acknowledgement : null
       sendServiceWorkerMessage(
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
           sessionHash: nextHash ?? undefined,
           ...(nextHash ? { sessionScope: `${nextHash}:${sessionCacheNonceRef.current}` } : {}),
         },
-        acknowledgement?.pending === sessionKeyReadinessRef.current ? acknowledgement : undefined
+        matchingAcknowledgement ?? undefined
       )
+      if (matchingAcknowledgement?.active) await matchingAcknowledgement.result
     },
     [sendServiceWorkerMessage]
   )
@@ -455,13 +479,11 @@ export const useSessionCrypto = () => {
   )
 
   const ensureSessionSigningKey = useCallback(async (): Promise<string | null> => {
-    if (sessionSigningKeyRef.current) {
-      return sessionSigningKeyRef.current
-    }
-    // Return the in-flight promise to deduplicate concurrent callers
-    if (sessionSigningKeyPromiseRef.current) {
-      return sessionSigningKeyPromiseRef.current
-    }
+    // The key ref may be installed before its cache scope reaches the worker.
+    // All callers of this same acquisition must await its completion.
+    if (sessionSigningKeyPromiseRef.current) return sessionSigningKeyPromiseRef.current
+    if (sessionKeyReadinessRef.current) return sessionKeyReadinessRef.current
+    if (sessionSigningKeyRef.current) return sessionSigningKeyRef.current
     if (signingKeyBackoffTimerRef.current !== null) {
       return null
     }
@@ -493,7 +515,16 @@ export const useSessionCrypto = () => {
           failureRevision = installedRevision
           failureGeneration = installedGeneration
         })
-        return sessionRevisionRef.current === revision + 1 ? key : null
+        const hash = sessionCacheHashRef.current
+        const nonce = sessionCacheNonceRef.current
+        const currentGeneration = getBrowserSessionGeneration()
+        const acknowledgement = sessionCacheAckRef.current
+        const currentScope = !!hash && !!nonce && matchesBrowserSession(hash, nonce)
+        const ownsAcknowledgedInstall =
+          acknowledgement?.pending === sessionKeyReadinessRef.current
+            ? currentScope && isCurrentBrowserSession()
+            : generation === currentGeneration || currentScope
+        return sessionRevisionRef.current === revision + 1 && ownsAcknowledgedInstall ? key : null
       } catch (err) {
         if (
           failureRevision !== sessionRevisionRef.current ||
@@ -554,9 +585,14 @@ export const useSessionCrypto = () => {
 
   useEffect(() => {
     if (!isSessionCryptoBrowserRuntime()) return
-    const sync = () => void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
-    sync()
     const container = globalThis.navigator?.serviceWorker
+    const sync = () => {
+      const acknowledgement = sessionCacheAckRef.current
+      if (acknowledgement && acknowledgement.controller !== container?.controller)
+        acknowledgement.finish(false)
+      void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
+    }
+    sync()
     const onMessage = (event: MessageEvent) => {
       if (
         event.source !== container?.controller ||

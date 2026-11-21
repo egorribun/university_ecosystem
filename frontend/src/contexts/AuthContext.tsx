@@ -11,6 +11,7 @@ import { notifyManager, useQueryClient } from "@tanstack/react-query"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
 import { readSsrAuthHint } from "@/hooks/auth/ssrAuthHint"
+import { AuthBootstrapContext } from "@/contexts/AuthBootstrapContext"
 import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType, PendingMfaState, UserState } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
@@ -127,6 +128,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const {
     user,
     committedUser,
+    bootstrapPending,
     loading: profileLoading,
     pendingMfa,
     setUser,
@@ -234,6 +236,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   )
 
   return (
-    <AuthContext.Provider value={value}>{cacheOwnerReady ? children : null}</AuthContext.Provider>
+    <AuthBootstrapContext.Provider value={bootstrapPending}>
+      <AuthContext.Provider value={value}>{cacheOwnerReady ? children : null}</AuthContext.Provider>
+    </AuthBootstrapContext.Provider>
   )
 }

@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query"
 
 import { logWarning } from "@/app/logger"
+import { useAuthBootstrapPending } from "@/contexts/AuthBootstrapContext"
 import { resolveNotificationAppPath } from "@/notifications/contract"
 import {
   getCurrentPushUserId,
@@ -133,6 +134,7 @@ function flattenNotificationPages(data: NotificationPages): NormalizedNotificati
 
 export function useNotifications() {
   const qc = useQueryClient()
+  const bootstrapPending = useAuthBootstrapPending()
   const identity = useSyncExternalStore(
     subscribeToPushIdentity,
     getCurrentPushIdentitySnapshot,
@@ -293,6 +295,7 @@ export function useNotifications() {
   // history that was paged in stays visible and its read state stays current.
   const list = useInfiniteQuery({
     queryKey: NOTIFICATIONS_QUERY_KEY,
+    enabled: !bootstrapPending || ownerId !== null,
     queryFn: async ({ pageParam }) => {
       const data = pageParam
         ? await fetchNotificationsList({ cursor: pageParam })

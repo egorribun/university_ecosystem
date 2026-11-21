@@ -1,5 +1,5 @@
 import { MessageChannel } from "node:worker_threads"
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import http from "@/api/client"
 import { cryptoWorker } from "@/utils/cryptoWorker"
@@ -124,7 +124,10 @@ describe("private API session isolation", () => {
     const listeners = new Map<string, (event: MessageEvent) => void>()
     const posted: string[] = []
     const controller = {
-      postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
+      postMessage: (
+        message: { type: string; sessionHash?: string; sessionScope?: string },
+        ports?: MessagePort[]
+      ) => {
         posted.push(message.type)
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
@@ -133,6 +136,11 @@ describe("private API session isolation", () => {
           message.sessionHash
         )
           api.setSessionHash(message.sessionHash, message.sessionScope)
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          ports?.[0]?.postMessage(true)
       },
     }
     Object.defineProperty(navigator, "serviceWorker", {
@@ -209,7 +217,10 @@ describe("private API session isolation", () => {
     })
     const listeners = new Map<string, (event: MessageEvent) => void>()
     const controller = {
-      postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
+      postMessage: (
+        message: { type: string; sessionHash?: string; sessionScope?: string },
+        ports?: MessagePort[]
+      ) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
         if (
@@ -217,6 +228,11 @@ describe("private API session isolation", () => {
           message.sessionHash
         )
           api.setSessionHash(message.sessionHash, message.sessionScope)
+        if (
+          message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
+          message.sessionHash
+        )
+          ports?.[0]?.postMessage(true)
       },
     }
     Object.defineProperty(navigator, "serviceWorker", {
@@ -364,9 +380,9 @@ describe("private API session isolation", () => {
       queueWorkerMessages = ordering === "readiness reply delivered first"
       await act(async () => {
         keyResponse.resolve({ data: { signing_key: "same-key" } })
-        expect(await initialization).toBe("same-key")
       })
       if (queueWorkerMessages) {
+        await waitFor(() => expect(queued).toHaveLength(2))
         expect(fetchMock).not.toHaveBeenCalled()
         expect(queued.map(({ message }) => message.type)).toEqual([
           SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
@@ -374,6 +390,9 @@ describe("private API session isolation", () => {
         ])
         queued.forEach(({ message, ports }) => deliver(message, ports))
       }
+      await act(async () => {
+        expect(await initialization).toBe("same-key")
+      })
       await entered.promise
       firstResponse.resolve(new Response("notifications"))
       secondResponse.resolve(new Response("events"))
