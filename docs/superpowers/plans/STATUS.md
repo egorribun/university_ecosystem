@@ -47,9 +47,12 @@
   | [`715010904`](https://github.com/egorribun/university_ecosystem/actions/runs/44836750319) | 49 passed, 3 flaky; NATS preflight `inventory_invalid_runtime` | [упал](https://github.com/egorribun/university_ecosystem/actions/runs/44836750657) |
   | [`f0ee138d5`](https://github.com/egorribun/university_ecosystem/actions/runs/44843030034) | 47 passed, 2 failed, 3 flaky; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44843030340): 17 passed, 1 failed |
   | [`3c65c9e60`](https://github.com/egorribun/university_ecosystem/actions/runs/44848242946) | 52 passed, 2 skipped; NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44848243079) 17 passed, 1 flaky; visual 22/24 |
+  | [`3a452a8a8`](https://github.com/egorribun/university_ecosystem/actions/runs/44860700541) | **прошёл**, включая NATS preflight | [realtime](https://github.com/egorribun/university_ecosystem/actions/runs/44860700884) 18 passed; visual 18/24 |
 
   На `3c65c9e60` в visual не прошли News (en, тёмная тема, 390 px: два ответа API 4xx, список не
-  подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли).
+  подтверждён) и Events (ru, светлая тема, 1440 px: ошибка консоли). На `3a452a8a8` шесть маршрутов
+  второй половины матрицы (ru) получили ответы API 4xx на ресурсы. Там же два frontend unit-теста
+  ожидали `srcset` и `sizes` для логотипа и внешнего URL после `a17ef41f3`.
 - **Нагрузка на backend (измерено локально 2026-11-21).**
   - В простое backend занимал 455 MiB из лимита 512M: два воркера gunicorn по ~254 MB RSS и мастер
     68 MB.
@@ -65,6 +68,11 @@
   - `a17ef41f3` — `SmartImage` задаёт ширины в `srcset` только для путей image proxy.
   - `9bc0b3776` — одна сессия aioboto3 на экземпляр `S3Storage` и event loop; AVIF со speed 8;
     лимит памяти backend в Compose 768M, как request в Kubernetes.
+  - `ebd645e68` — у встроенного логотипа нет вариантов ширины: убраны `sizes` и `responsiveWidths`,
+    тесты приведены к новому контракту; фикстура RelatedNews использует путь прокси вместо picsum.
+  - `73a3bef60` — `/api/v1/img` получил отдельный бюджет `RATE_LIMIT_STATIC` (300/minute) в глобальном
+    ограничителе. Раньше изображения расходовали общий бюджет клиента 200/minute: страница добавляет
+    15–20 запросов изображений, и визуальная матрица одного пользователя исчерпывала его к середине.
   - Та же серия на стенде из `9bc0b3776`: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, вся серия
     38,5 с вместо 131 с, пик памяти 616 MiB из 768M, событий `memory.max` и OOM нет.
 
