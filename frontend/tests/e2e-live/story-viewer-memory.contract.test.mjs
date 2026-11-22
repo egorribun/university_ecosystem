@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import { runInNewContext } from "node:vm"
 import test from "node:test"
+import { JSDOM } from "jsdom"
+import ts from "typescript"
 
 const specUrl = new URL("./story-viewer-memory.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -348,6 +350,7 @@ function storyMemoryEmitter(spec, lines) {
       STORY_MEMORY_CYCLE_TRACE_PREFIX: "STORY_MEMORY_CYCLE_TRACE_DIAG ",
       MEASURED_CYCLES: 20,
       process: { stdout: { write: (line) => lines.push(line) } },
+      ...storyRegionHelpers(spec),
     }
   )
 }
@@ -470,6 +473,52 @@ test("cycle trace emits bounded counters only for a captured mismatch", async ()
   for (const record of records.slice(2)) assert.equal("mismatch" in record, false)
 })
 
+test("a mismatch trace emits only projected numeric regions in schema 2", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const lines = []
+  const { emitStoryMemoryCycleTraceDiagnostic: emit } = storyMemoryEmitter(spec, lines)
+  const warm = { documents: 2, nodes: 788, jsEventListeners: 458 }
+  const actual = { ...warm, nodes: 852 }
+  const regionCounts = {
+    connectedDocumentNodes: 100,
+    mainNodes: 80,
+    scheduleNodes: 10,
+    newsNodes: 11,
+    eventsNodes: 12,
+    navNodes: 13,
+    dialogNodes: 0,
+    statusNodes: 2,
+  }
+  const trace = {
+    baseline: warm,
+    dialogOpen: null,
+    hiddenResumed: null,
+    afterCloseSettled: warm,
+    mismatch: {
+      cycle: 17,
+      warmDOM: warm,
+      actualDOM: actual,
+      regions: {
+        baseline: { ...regionCounts, private: "PRIVATE" },
+        afterMismatch: null,
+        private: "PRIVATE",
+      },
+    },
+  }
+  emit("mobile", trace)
+  const record = JSON.parse(lines[0].slice("STORY_MEMORY_CYCLE_TRACE_DIAG ".length))
+  assert.equal(record.schema, 2)
+  assert.deepEqual(record.mismatch.regions, { baseline: regionCounts, afterMismatch: null })
+  assert.ok(!lines[0].includes("PRIVATE"))
+
+  trace.mismatch.regions.baseline.mainNodes = "PRIVATE"
+  emit("mobile", trace)
+  const rejected = JSON.parse(lines[1].slice("STORY_MEMORY_CYCLE_TRACE_DIAG ".length))
+  assert.equal(rejected.schema, 1)
+  assert.equal("regions" in rejected.mismatch, false)
+  assert.ok(!lines[1].includes("PRIVATE"))
+})
+
 test("a trace failure cannot replace the original acceptance error", async () => {
   const spec = await readFile(specUrl, "utf8")
   const heapAssertion = spec.indexOf("expect(lateHeapMean)")
@@ -489,7 +538,117 @@ test("a trace failure cannot replace the original acceptance error", async () =>
       throw new Error("diagnostic failure")
     },
   }
-  runInNewContext(spec.slice(start, end), context)
+  await runInNewContext(`(async () => {${spec.slice(start, end)}})()`, context)
   assert.equal(context.bodyFailed, true)
   assert.equal(context.bodyError, original)
+
+  const failedCapture = {
+    ...context,
+    cycle0Trace: { mismatch: {} },
+    warmRegions: null,
+    bodyFailed: false,
+    bodyError: undefined,
+    async captureStoryMemoryRegions() {
+      throw new Error("diagnostic failure")
+    },
+  }
+  await runInNewContext(`(async () => {${spec.slice(start, end)}})()`, failedCapture)
+  assert.equal(failedCapture.bodyFailed, true)
+  assert.equal(failedCapture.bodyError, original)
+})
+
+function storyRegionHelpers(spec, extraContext = {}) {
+  const start = spec.indexOf("function projectStoryMemoryRegionCounts(")
+  assert.ok(start >= 0)
+  const javascript = ts.transpile(spec.slice(start), { target: ts.ScriptTarget.ES2022 })
+  return runInNewContext(
+    `${javascript}\n({ projectStoryMemoryRegionCounts, projectStoryMemoryRegionComparison, projectStoryMemoryMismatch, captureStoryMemoryRegions })`,
+    { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, ...extraContext }
+  )
+}
+
+test("story memory regions count fixed connected DOM surfaces without exposing page content", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const dom = new JSDOM(
+    '<!doctype html><html><head></head><body><main><section class="dash-panel-schedule"><p>PRIVATE</p></section><section class="dash-panel-news">PRIVATE</section><section class="dash-panel-events"><span>PRIVATE</span></section></main><nav><a>PRIVATE</a></nav><div role="dialog"><button>PRIVATE</button></div><div role="status"><span>PRIVATE</span></div></body></html>'
+  )
+  try {
+    const { captureStoryMemoryRegions } = storyRegionHelpers(spec, {
+      document: dom.window.document,
+      NodeFilter: dom.window.NodeFilter,
+    })
+    const actual = await captureStoryMemoryRegions({ evaluate: async (callback) => callback() })
+    assert.deepEqual(JSON.parse(JSON.stringify(actual)), {
+      connectedDocumentNodes: 23,
+      mainNodes: 9,
+      scheduleNodes: 3,
+      newsNodes: 2,
+      eventsNodes: 3,
+      navNodes: 3,
+      dialogNodes: 3,
+      statusNodes: 3,
+    })
+    assert.ok(!JSON.stringify(actual).includes("PRIVATE"))
+  } finally {
+    dom.window.close()
+  }
+})
+
+test("story memory region projections reject invalid counts and discard extra fields", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const { projectStoryMemoryRegionCounts, projectStoryMemoryRegionComparison } =
+    storyRegionHelpers(spec)
+  const valid = {
+    connectedDocumentNodes: 23,
+    mainNodes: 9,
+    scheduleNodes: 3,
+    newsNodes: 2,
+    eventsNodes: 3,
+    navNodes: 3,
+    dialogNodes: 3,
+    statusNodes: 3,
+  }
+  const projected = projectStoryMemoryRegionCounts({ ...valid, private: "PRIVATE" })
+  assert.deepEqual(JSON.parse(JSON.stringify(projected)), valid)
+  for (const invalid of [
+    null,
+    {},
+    { ...valid, mainNodes: -1 },
+    { ...valid, navNodes: "PRIVATE" },
+  ]) {
+    assert.equal(projectStoryMemoryRegionCounts(invalid), null)
+  }
+  assert.equal(projectStoryMemoryRegionComparison({ baseline: valid }), null)
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        projectStoryMemoryRegionComparison({
+          baseline: valid,
+          afterMismatch: null,
+          private: "PRIVATE",
+        })
+      )
+    ),
+    { baseline: valid, afterMismatch: null }
+  )
+})
+
+test("story memory region capture fails closed on errors and its bounded deadline", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const { captureStoryMemoryRegions } = storyRegionHelpers(spec, {
+    setTimeout: (callback) => {
+      callback()
+      return 1
+    },
+    clearTimeout: () => {},
+  })
+  assert.equal(await captureStoryMemoryRegions({ evaluate: () => new Promise(() => {}) }), null)
+  assert.equal(
+    await captureStoryMemoryRegions({
+      evaluate: () => {
+        throw new Error("PRIVATE")
+      },
+    }),
+    null
+  )
 })

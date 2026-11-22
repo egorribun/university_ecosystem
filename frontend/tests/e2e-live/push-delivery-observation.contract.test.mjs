@@ -1205,6 +1205,72 @@ test("rotation capture hashes subscription at opt-in, waits and failure", async 
   assert.doesNotMatch(lines.join(""), /private|example|https/u)
 })
 
+test("reply rotation retains its own bounded phases only after a failure", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const page = { evaluate: async () => "0123456789ab" }
+  const observation = createPushRotationObservation(
+    page,
+    "mobile",
+    0,
+    (line) => lines.push(line),
+    "reply"
+  )
+
+  await observation.optIn(100)
+  observation.arm("reply")
+  await observation.beforeWait("reply", 100)
+  assert.deepEqual(lines, [])
+  await observation.reportFailure(100)
+  await observation.reportFailure(100)
+  assert.deepEqual(lines, [
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=reply phase=opt-in ordinal=1 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=reply phase=before-wait ordinal=2 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=reply phase=failure ordinal=3 endpoint_sha256=0123456789ab\n",
+  ])
+})
+
+test("reply rotation rejects other scenarios and never emits raw observation data", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const page = { evaluate: async () => privateEndpoint }
+  const observation = createPushRotationObservation(
+    page,
+    "mobile",
+    1,
+    (line) => lines.push(line),
+    "reply"
+  )
+
+  observation.arm("news")
+  await observation.beforeWait("news", 100)
+  await observation.reportFailure(100)
+  assert.deepEqual(lines, [
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=1 scenario=reply phase=failure ordinal=1 endpoint_sha256=unavailable\n",
+  ])
+  assert.doesNotMatch(lines.join(""), /private|example|https/u)
+
+  const invalid = createPushRotationObservation(
+    page,
+    "mobile",
+    0,
+    (line) => lines.push(line),
+    "other"
+  )
+  await invalid.optIn(100)
+  await invalid.reportFailure(100)
+  const desktop = createPushRotationObservation(
+    page,
+    "desktop",
+    0,
+    (line) => lines.push(line),
+    "reply"
+  )
+  await desktop.optIn(100)
+  await desktop.reportFailure(100)
+  assert.equal(lines.length, 1)
+})
+
 test("rotation capture bounds failures, input classes, output and the failure slot", async () => {
   const { createPushRotationObservation } = await import(rotationHelper.href)
   const lines = []
@@ -1398,4 +1464,18 @@ test("topic waits retain assertions and capture the subscription before waiting"
     assert.ok(source.includes('rotationObservation.arm("' + scenario + '")'))
   assert.match(source, /expect\(native\.tag\)\.toBe\(notificationRow\.id\)/u)
   assert.match(source, /expect\(native\.entityId\)\.toBe\(expected\.entityId\)/u)
+})
+
+test("reply delivery observes the bound endpoint without changing native acceptance", async () => {
+  const source = await readFile(new URL("./push-delivery.live.spec.ts", import.meta.url), "utf8")
+  const reply = source.slice(source.indexOf('test("quoted group author gets one chat.reply'))
+  assert.match(reply, /createPushRotationObservation\([\s\S]*?"reply"/u)
+  assert.match(reply, /subscriptionBound = true[\s\S]*?rotationObservation\?\.optIn\(/u)
+  assert.match(reply, /rotationObservation\?\.beforeWait\("reply"[\s\S]*?await expect/u)
+  assert.match(
+    reply,
+    /const reportReplyFailure = async[\s\S]*?rotationObservation\?\.reportFailure\([\s\S]*?armFailureObservation\(expectedNotificationId, \(\) =>\s*reportReplyFailure\(\)/u
+  )
+  assert.match(reply, /failureObservation\.disarm\(\)/u)
+  assert.match(reply, /native reply push is tagged with the persisted notification identity/u)
 })
