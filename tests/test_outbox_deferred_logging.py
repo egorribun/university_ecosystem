@@ -89,6 +89,9 @@ def test_module_entrypoint_keeps_canonical_diagnostic_logger(
 
 def test_cold_worker_startup_initializes_closed_json_logging(pytester, monkeypatch):
     source = Path(__file__).resolve().parents[1] / "app/workers/outbox.py"
+    config = source.parents[2] / "pyproject.toml"
+    # Mutmut resolves its source paths from the child working directory.
+    (pytester.path / config.name).write_bytes(config.read_bytes())
     probe = r"""
 import contextlib
 import io
