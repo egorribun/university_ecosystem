@@ -115,6 +115,51 @@ def test_story_memory_cycle_deduplicates_before_applying_its_record_cap() -> Non
     assert len(parsed) == 4
 
 
+def test_story_memory_cycle_reports_first_counter_mismatch() -> None:
+    legacy = contracts._story_memory_cycle_trace_record()
+    trace = {
+        **legacy,
+        "schema": 2,
+        "attempt": 1,
+        "firstMismatch": {
+            "cycle": 19,
+            "observed": {"documents": 2, "nodes": 900, "jsEventListeners": 72},
+        },
+    }
+    rows = contracts._story_memory_cycle_trace_row(trace)
+    rows += contracts._story_memory_cycle_trace_row(legacy)
+    assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(rows) == [
+        trace,
+        legacy,
+    ]
+
+
+def test_story_memory_cycle_rejects_out_of_contract_mismatches() -> None:
+    legacy = contracts._story_memory_cycle_trace_record()
+    baseline = legacy["samples"]["baseline"]
+    observed = {"documents": 2, "nodes": 900, "jsEventListeners": 72}
+    trace = {
+        **legacy,
+        "schema": 2,
+        "attempt": 0,
+        "firstMismatch": {"cycle": 0, "observed": observed},
+    }
+    invalid = (
+        {**trace, "attempt": True},
+        {**trace, "attempt": 2},
+        {**trace, "extra": "not retained"},
+        {**trace, "firstMismatch": {"cycle": 20, "observed": observed}},
+        {**trace, "firstMismatch": {"cycle": True, "observed": observed}},
+        {**trace, "firstMismatch": {"cycle": 0, "observed": baseline}},
+        {**trace, "firstMismatch": {"cycle": 1, "observed": {**observed, "nodes": -1}}},
+        {**trace, "firstMismatch": {"cycle": 1, "observed": {**observed, "extra": 1}}},
+    )
+    rows = "".join(
+        contracts._story_memory_cycle_trace_row(record) for record in invalid
+    )
+    assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(rows) == []
+
+
 def test_password_forgot_stats_reject_impossible_request_outcomes() -> None:
     base = contracts._password_forgot_record()["forgot"]
     no_request_with_response = {
