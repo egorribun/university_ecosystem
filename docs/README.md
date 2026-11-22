@@ -1,6 +1,17 @@
 # University Ecosystem documentation
 
-## Current reconciliation — 2026-11-17
+## Current reconciliation — 2026-11-22
+
+The formal total is **511/512 (99.8%) accepted or resolved, 1 open**:
+**1S / 0P / 0U / 0N**. AUD-381 is resolved for the
+[exact-main ephemeral Compose DAST criterion](audits/AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22).
+The [remaining finding](audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22)
+is AUD-154. Full scan coverage, general CI and release acceptance are
+not implied.
+
+<a id="current-reconciliation--2026-11-17"></a>
+
+## Dated reconciliation — 2026-11-17 (510/2; superseded)
 
 The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
 **1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
@@ -148,7 +159,7 @@ handoffs are intentionally not part of the canonical index.
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [MVP Block 4 traceability matrix (ТЗ §2–13)](testing/mvp-traceability-matrix.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-17 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — 510 / 512 accepted or resolved (99.6%), 2 open; 57 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated full audit reassessment, 2026-11-17 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — 510 / 512 accepted or resolved (99.6%), 2 open; 57 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
 - [Dated 506 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 6 open (4S / 2P / 0U / 0N), retained as history.
 - [Dated 502 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 10 open (4S / 6P / 0U / 0N), retained as history.
 - [Dated 494 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.

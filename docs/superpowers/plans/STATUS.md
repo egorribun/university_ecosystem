@@ -5,16 +5,17 @@
 
 ## Текущий срез — 2026-11-22
 
-### `main` и открытый PR
+### Текущий `main`
 
-- `main` = `fc92e1835ac985eb151ed5564f4a7bbc4ede1db1`. Слиты обычным merge после всех 78
+- Предыдущий `main` — `fc92e1835ac985eb151ed5564f4a7bbc4ede1db1`. Слиты обычным merge после всех 78
   обязательных проверок и CodeQL на source:
   [#1541](https://github.com/egorribun/university_ecosystem/pull/1541) → `149814844`,
   [#1544](https://github.com/egorribun/university_ecosystem/pull/1544) → `c506c637c`,
   [#1545](https://github.com/egorribun/university_ecosystem/pull/1545) → `d8a010b4`,
   [#1549](https://github.com/egorribun/university_ecosystem/pull/1549) → `fc92e183`.
   Подробности по каждому — в описании PR и в истории этого файла.
-- [PR #1554](https://github.com/egorribun/university_ecosystem/pull/1554) открыт, ещё не слит.
+- [PR #1554](https://github.com/egorribun/university_ecosystem/pull/1554) слит: текущий `main` —
+  `4e9246c99b4d2f6cb31a6511ad7208783a509337`.
   - **RUSTSEC-2026-0592.** `b77621408` упал на Cargo Deny и Rust vulnerability gate из-за
     переполнения стека в `Url::origin()` в `url` 2.5.8. Это транзитивная зависимость `ammonia`
     в `wasm-sanitizer`.
@@ -30,7 +31,7 @@
   - **Story memory.** Добавлена диагностика `firstMismatch`. Она записывает первый цикл, в котором
     счётчики DOM разошлись с прогретым снимком.
 
-### Полный Core на `main` `fc92e183`
+### Последний полный Core: прежний `main` `fc92e183`
 
 | Запуск | Итог | Сбои первой попытки | Receipt (SHA-256) |
 | --- | --- | --- | --- |
@@ -49,11 +50,19 @@
     Лимита или вытеснения подписок нет.
   - Почему FCM отозвал подписку, не установлено.
 - **Story memory.** Счётчики DOM цикла 0 совпали с прогретым снимком, расхождение — в одном из
-  следующих циклов. Его цикл и значения запишет `firstMismatch` после слияния #1554.
+  следующих циклов. Его цикл и значения запишет диагностика из #1554 в следующем полном прогоне.
 - Предыдущие полные Core на `main` (`149814844`, `c506c637c`, `d8a010b4`) тоже были красными.
   Каждый раз из-за одного-восьми flaky, при зелёных именных случаях AUD-154.
 
-### DAST на `main` `fc92e183`
+### DAST на текущем `main` `4e9246c9`
+
+- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123) прошёл на точном SHA. Источник проверен.
+- [ZAP](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/job/137312840507) не сообщил о средних или высоких находках;
+  [отчёт](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952) верифицирован, полного покрытия скан не подтверждает.
+- [Nuclei](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/job/137312840552) не сообщил о средних, высоких или критических находках;
+  [отчёт](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299) опубликован.
+
+### Предыдущий DAST: `fc92e183`
 
 - [Run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918):
   проверка доверенного source прошла.
@@ -81,10 +90,10 @@
   изображений: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, событий OOM нет.
   `/api/v1/img` имеет отдельный бюджет `RATE_LIMIT_STATIC`.
 
-## Аудит: текущий итог — 510/512
+## Аудит: текущий итог — 511/512
 
-Формальный итог: **510/512 (99.6%) accepted or resolved, 2 open**, **1S / 1P / 0U / 0N**.
-Границы решений: [Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+Формальный итог: **511/512 (99.8%) accepted or resolved, 1 open**, **1S / 0P / 0U / 0N**.
+Границы решений: [Scoped AUD-381 acceptance — 2026-11-22](../../audits/AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22).
 
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment, reconciliation,
 `AUDIT-2026-10.md`, этот файл и `docs/README.md`. `docs/audits/*` меняются только по hosted-доказательствам
@@ -94,12 +103,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ### Открытые находки
 
-Состав — из [current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
+Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Notification-topics падает, когда FCM отвечает 410 на первую доставку в свежую подписку, которую браузер продолжает держать; причина отзыва не установлена. |
-| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. На `fc92e183` Nuclei прошёл с пустым отчётом; ZAP не прошёл severity gate (1 high, `coverage_complete=false`). |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -128,13 +136,10 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Получить все обязательные проверки на #1554 и слить его обычным merge.
-2. Запустить DAST на новом `main`. Если ZAP снова сообщит 40024, установить его место, не публикуя
-   приватный отчёт. Зелёные ZAP и Nuclei с проверенным отчётом закрывают AUD-381.
-3. AUD-154: установить, почему FCM отвечает 410 на свежую подписку. Для этого отдельная
-   ограниченная диагностика: возраст подписки и прежние успешные отправки на момент 410. По
-   `firstMismatch` из следующего полного Core исправить story memory. Затем два последовательных
+1. AUD-154: установить, почему FCM отвечает 410 на свежую подписку. Для этого отдельная
+   ограниченная диагностика [#1556](https://github.com/egorribun/university_ecosystem/pull/1556). По
+   первому расхождению из следующего полного Core определить причину сбоя Story Viewer. Затем два последовательных
    зелёных полных Core на `main` с read-receipt, не чаще одного запуска в два часа.
-4. Dependabot #1548: принять девять неудерживаемых обновлений коммитом владельца. glob закреплён в
+2. Dependabot #1548: принять девять неудерживаемых обновлений коммитом владельца. glob закреплён в
    `security/audit-allowlist.yaml`; @lhci/cli 0.16 меняет зависимые закрепления Lighthouse.
-5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+3. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
