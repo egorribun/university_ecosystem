@@ -3,7 +3,26 @@
 Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
 в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
 
-## Текущий срез — 2026-11-21
+## Текущий срез — 2026-11-22
+
+- [PR #1545](https://github.com/egorribun/university_ecosystem/pull/1545) с source `9690f2c0`
+  слит обычным merge в защищённый `main` как `d8a010b4`. На source прошли 78 обязательных проверок и CodeQL.
+  Проверочный merge `ee3a6b619`, source и итоговый `main` имеют одинаковое дерево.
+
+  - `npm audit --audit-level=info` сообщил о нуле уязвимостей в frontend lockfile.
+    [Node.js Dependency Audit](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/job/136984366141)
+  - Сборка и контракты WASM прошли. SHA-256 артефакта — `1310ff61338bcb24c03fc7026c63797ac1cc268d85d482661eeb76546d44463c`.
+    [Сборка](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/job/136984238245)
+    [Контракты](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/job/136984768444)
+    [Артефакт 14724414910](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/artifacts/14724414910)
+  - Статический анализ MapLibre 6.15.0 прошёл на `ee3a6b619`. Размер чанка — 292 660 gzip-байт при лимите 292 864.
+    SHA-256 отчёта — `7282b66289c86a9d3499e94ec1caf6f870910ced15a78eba7053b0cdb3cdb9bc`.
+    [Bundle report 14724877946](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/artifacts/14724877946)
+  - PR Core smoke, realtime и все 24 visual-снимка прошли.
+    [PR Core smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44949553489/job/136984235828)
+    [Receipt 14725970905](https://github.com/egorribun/university_ecosystem/actions/runs/44949553489/artifacts/14725970905)
+    [Realtime и visual](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/job/136984238221)
+    [Артефакт 14725967293](https://github.com/egorribun/university_ecosystem/actions/runs/44949553699/artifacts/14725967293)
 
 - [PR #1539](https://github.com/egorribun/university_ecosystem/pull/1539) с source `ae0289f7a` слит в
   `main` как `cca6c8cab`; [PR #1540](https://github.com/egorribun/university_ecosystem/pull/1540) с source
@@ -128,6 +147,24 @@
   На `73db7bd17` и `930813a53` Nilaway выявил два обращения к потенциально пустому указателю в тесте
   кода закрытия WebSocket. На итоговом source тест явно проверяет указатель перед проверкой кода `4401`
   и причины закрытия.
+- Полный Core на `main` `d8a010b4` завершился ошибкой. Итог — 216 passed, 8 skipped, 8 flaky.
+  Пять из шести случаев AUD-154 прошли с первой попытки. Desktop read-receipt прошёл с повтора.
+  Состояние прочтения уже сохранилось, когда проверка ожидала WebSocket-событие второй беседы.
+  Точечный desktop-сценарий на отдельном локальном Core того же SHA прошёл с первой попытки.
+  [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44963874897/job/137028426752)
+  [Receipt 14732273374](https://github.com/egorribun/university_ecosystem/actions/runs/44963874897/artifacts/14732273374)
+
+  Остальные первые попытки упали на измерении зума карты, доставке уведомлений, прокрутке вкладки
+  расписания, заголовке News после SSR-навигации и сравнении счётчиков памяти Story Viewer.
+  Оба сценария notification-topics нашли сохранённое in-app уведомление и дошли до ожидания нативного.
+  Наблюдаемая браузерная подписка совпала с исходной. Запись текущего пользователя при очистке
+  отсутствовала на первой попытке и была удалена на повторе. Одна запись Web Push 410 из хвоста
+  worker совпала с мобильным наблюдением по усечённому хеш-префиксу. Из этого хвоста невозможно
+  привязать ответ к конкретной попытке доставки.
+
+- В рамках подготовки этапа 3 локальный R29 на `d8a010b4` прошёл через браузер. Участник группы
+  переименовал её и добавил четвёртого участника. Владелец подтвердил итоговое имя и состав группы.
+
 - **Восстановление сборки Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main` (HTTP 404).
   Непосредственный сбой подтверждён в [Unauthenticated routes smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44867129509/job/136733196460)
   на `113299b4b`. Исправление получает нужный диапазон байт из официального ISO Alpine 3.23.8,

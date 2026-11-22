@@ -9,7 +9,7 @@ import {
   stubBreachedPasswordLookup,
   test,
 } from "./fixtures"
-
+import { reportReadReceiptFailure } from "./messenger-read-receipt-diagnostic"
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
   throw new Error("LIVE_BASE_URL must be set to the endpoint printed by scripts/live_stand.py")
@@ -24,8 +24,8 @@ type SyntheticAccount = {
   registrationAttempted: boolean
 }
 type ReadFrame = { chatId: string; userId: string; readAt: string | null }
-type SocketSession = { roomJoins: string[]; readFrames: ReadFrame[] }
-type SocketObservation = { sessions: SocketSession[] }
+type SocketState = { roomJoins: string[]; readFrames: ReadFrame[]; closed: () => boolean }
+type SocketObservation = { sessions: SocketState[] }
 type CreatedLiveMessage = { id: string; content: string }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -68,7 +68,7 @@ function findReadFrames(value: unknown): ReadFrame[] {
 function observeSocket(page: Page): SocketObservation {
   const observation: SocketObservation = { sessions: [] }
   page.on("websocket", (socket) => {
-    const session: SocketSession = { roomJoins: [], readFrames: [] }
+    const session: SocketState = { roomJoins: [], readFrames: [], closed: () => socket.isClosed() }
     observation.sessions.push(session)
     socket.on("framesent", (frame) => session.roomJoins.push(...findRoomJoins(parseFrame(frame))))
     socket.on("framereceived", (frame) =>
@@ -709,9 +709,14 @@ test("a real DM read receipt clears only that chat's unread state", async ({
           null
       )
       .toBe(true)
-    await expect
-      .poll(() => readFramesForChat(peerSocket, activeSecondChatId))
-      .toContainEqual(expect.objectContaining({ userId: receiver.id }))
+    try {
+      await expect
+        .poll(() => readFramesForChat(peerSocket, activeSecondChatId))
+        .toContainEqual(expect.objectContaining({ userId: receiver.id }))
+    } catch (error) {
+      reportReadReceiptFailure(peerSocket.sessions, activeSecondChatId, receiver.id, testInfo)
+      throw error
+    }
     await expect
       .poll(() =>
         peerMessageLog.getByRole("img", { name: "Прочитано получателем", exact: true }).count()

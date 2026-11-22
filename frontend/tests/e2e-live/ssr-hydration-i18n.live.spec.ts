@@ -331,7 +331,6 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
       true
     )
 
-    expect(normalizeMetadataText(await page.title())).toBe(expectedDocumentTitle(language, "news"))
     await assertSingleClientHead(
       page,
       language,
@@ -339,6 +338,7 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
       expectedDocumentTitle(language, "news"),
       PAGE_DESCRIPTION_CATALOGS.news[language]
     )
+    expect(normalizeMetadataText(await page.title())).toBe(expectedDocumentTitle(language, "news"))
     const spaTranslationKeys = await inspectRawTranslationKeys(page, null)
     expect(spaTranslationKeys.client).toBe(false)
     expect(hydrationDiagnostics).toBe(0)
