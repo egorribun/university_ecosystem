@@ -60,23 +60,20 @@
 - Предыдущие полные Core на `main` (`149814844`, `c506c637c`, `d8a010b4`) тоже были красными.
   Каждый раз из-за одного-восьми flaky, при зелёных именных случаях AUD-154.
 
-### DAST на `main` `fc92e183`
+### DAST на `main` `4e9246c99`: критерий AUD-381 выполнен
 
-- [Run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918):
-  проверка доверенного source прошла.
-- **Nuclei** прошёл, санитизированный отчёт пуст.
-  [Артефакт 14748396373](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14748396373)
-  имеет SHA-256 `e88643c475a19cddb70bbe0cf420c43dc9336ddfe916615646cba9a8eda0b402`.
-- **ZAP** не прошёл severity gate: 17 informational, 7 low, 0 medium, 1 high (40024, «SQL
-  Injection — SQLite»), `coverage_complete=false`.
-  [Артефакт 14747819065](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14747819065)
-  имеет SHA-256 `628574e9a608342faaa499203d5b2bf08d5e3fd6e3a8c4dba23a64323c0a053e`.
-  Место срабатывания не публикуется по дизайну приватного отчёта.
-- Локально 40024 не воспроизвёлся на Core-стенде того же дерева с тем же закреплённым образом.
-  Проверены два варианта: только это правило, и полный активный скан с AJAX spider и лимитами
-  hosted-запуска. В обоих 0 FAIL.
-- Прежний DAST на `7c0af5d42` (до #1541) давал 4 medium (10055, 10202, 20012). Их закрыли решения
-  владельца от 2026-11-21 (см. ниже).
+- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
+  (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
+- **ZAP.** Gate «medium or high» прошёл: 0 high, 0 medium, 6 low, 18 informational. 40024 не
+  повторился. Provenance привязывает отчёт к `source_sha` `4e9246c99`, этому запуску и
+  закреплённому образу ZAP; `origin_response_verified=true`. `coverage_complete=false` записывается
+  всегда, по дизайну. [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
+  имеет SHA-256 `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`.
+- **Nuclei** прошёл, отчёт пуст.
+  [Артефакт 14768600299](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299)
+  имеет SHA-256 `2a2cdadbe68f11f8092ba731dbf26c6707593323d654ecc6e8e85e72fac5be4f`.
+- Прежний DAST на `fc92e183` ([run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918))
+  давал 1 high (40024). Локально он не воспроизвёлся, ни на одном правиле, ни на полном скане.
 
 ### Справочно
 
@@ -106,7 +103,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Notification-topics падает, когда FCM отвечает 410 на первую доставку в свежую подписку, которую браузер продолжает держать; причина отзыва не установлена. |
-| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. На `fc92e183` Nuclei прошёл с пустым отчётом; ZAP не прошёл severity gate (1 high, `coverage_complete=false`). |
+| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Выполнено на `4e9246c99` (run 45056164123, см. выше); в `docs/audits/*` переносится одним проходом вместе с AUD-154. |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -139,8 +136,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 ## Следующие шаги
 
 1. Получить все обязательные проверки на #1556 и слить его обычным merge.
-2. DAST на `main` `4e9246c99` запущен (run 45056164123). Если ZAP снова сообщит 40024, установить его
-   место, не публикуя приватный отчёт. Зелёные ZAP и Nuclei с проверенным отчётом закрывают AUD-381.
+2. AUD-381: DAST на `4e9246c99` зелёный. Повторить DAST, только если после этого изменится стенд
+   или код, который проверяет ZAP.
 3. AUD-154: после слияния #1556 запустить полный Core на новом `main`. Его журнал покажет класс
    возраста подписки при каждом 410 и `firstMismatch` для story memory. По ним исправить обе причины.
    Затем два последовательных зелёных полных Core на `main` с read-receipt, не чаще одного запуска в
