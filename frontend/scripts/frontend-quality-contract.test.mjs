@@ -738,8 +738,8 @@ test("the transitive glob override is the supported non-deprecated release", asy
     .filter(([packagePath]) => packagePath.endsWith("node_modules/glob"))
     .map(([packagePath, metadata]) => ({ packagePath, version: metadata.version }))
 
-  assert.equal(packageJson.overrides.glob, "14.0.2")
-  assert.deepEqual(installedGlobEntries, [{ packagePath: "node_modules/glob", version: "14.0.2" }])
+  assert.equal(packageJson.overrides.glob, "14.0.6")
+  assert.deepEqual(installedGlobEntries, [{ packagePath: "node_modules/glob", version: "14.0.6" }])
   assert.equal(packageJson.overrides["chrome-launcher"], "1.2.1")
   assert.equal(
     Object.keys(packageLock.packages).some((packagePath) =>
