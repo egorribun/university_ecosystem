@@ -256,7 +256,9 @@ egress policy for the actual service labels and port. The backend's
 the validated `/api/v1/img` route, not the internal S3 API. Moving existing
 staging objects follows the same inventory, copy and `verify` gates against
 the two HTTPS endpoints (without `--allow-http-local`). Do not substitute a
-placeholder endpoint in `values-staging.yaml` and declare staging migrated.
+placeholder endpoint in `charts/university-ecosystem/values-staging.yaml`
+(`storageS3EndpointURL: https://REQUIRED_MINIO_ENDPOINT`) and declare staging
+migrated.
 Release evidence must include current-SHA CI storage integration tests,
 staging upload/read/delete and private-access checks, a verified object
 inventory, and a backup restore.

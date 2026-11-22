@@ -1,4 +1,4 @@
-# MVP Block 4 traceability matrix (ТЗ §2–13)
+# MVP traceability matrix (ТЗ §2–13)
 
 Date: 2026-11-14. Verified against source. Local-only checks are identified
 in individual evidence cells; they are not hosted acceptance. Results are
@@ -10,15 +10,15 @@ empty by design.
 This matrix maps each applicable item of the MVP technical specification
 (`docs/superpowers/plans/University_Ecosystem_MVP.md`, sections 2–13) to the
 automated scenario that confirms it, the lane and browser matrix the scenario
-actually runs, and the gaps that remain. It is the Block 4 evidence index for
-the MVP stage-3 acceptance in `docs/superpowers/plans/MVP_MASTER_PLAN.md`
-("Traceability ТЗ 2–13; реальный Chromium, mocked Firefox/WebKit").
+actually runs, and the gaps that remain. It is the evidence index for the
+MVP stage-3 acceptance in `docs/superpowers/plans/MVP_MASTER_PLAN.md` (§5).
+Real Chromium runs in the live lane; Firefox and WebKit are mocked.
 
 Sources:
 
 - ТЗ: `docs/superpowers/plans/University_Ecosystem_MVP.md`, sections 2–13.
-- Plan: `docs/superpowers/plans/MVP_MASTER_PLAN.md`, stage 3 and Block 4
-  (RU/EN and viewport policy, area bullets, acceptance).
+- Plan: `docs/superpowers/plans/MVP_MASTER_PLAN.md`, §2 (RU/EN and viewport
+  policy) and §5 (stage-3 acceptance and gap order).
 
 How this was verified: every cited test title was matched by text search
 against the cited spec file on 2026-11-14, and each title was checked to
@@ -369,6 +369,6 @@ failure, not a mock-supplied error page. Then address remaining geometry and
 interaction gaps; no FULL upgrade follows from source presence alone.
 
 R21 remains an unmeasured first-load scenario, but the
-[master plan, Block 5](../superpowers/plans/MVP_MASTER_PLAN.md) defers the full
+[master plan, §6.3](../superpowers/plans/MVP_MASTER_PLAN.md) defers the full
 map ≥50 ms lab protocol to v1.1. Preserve existing measurements and assertions;
 do not treat that deferred certification as a primary MVP sign-off blocker.

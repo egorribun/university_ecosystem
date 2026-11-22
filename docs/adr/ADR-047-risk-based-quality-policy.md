@@ -99,7 +99,7 @@ the gate competes directly with product work.
 This decision supersedes, for the MVP release, the rule "do not weaken the
 quality contract" and the "100 % viable mutation score" release criterion in
 [the previous master-plan revision](../superpowers/plans/MVP_MASTER_PLAN.md), the mutation
-part of section 4 of `AGENTS.md`, and the release-gate role of the aggregate
+part of the Quality & Zero-Warning Contract in `AGENTS.md`, and the release-gate role of the aggregate
 Stryker threshold described in ADR-040. ADR-040's presentation ignorer itself
 stays.
 

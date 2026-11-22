@@ -17,7 +17,7 @@ rotation before reintroduction. We preserve all three requirements. The
 client chaining to its CA; this does not provide workload URI authorization or
 continuous Workload API rotation. We must replace that transport, not rename it.
 
-## Proposed decision
+## Decision
 
 We use the real `spiffe==0.3.2` SDK in each Gunicorn worker, created after fork.
 A bounded initial Workload API fetch must succeed before accepting HTTP. We read
