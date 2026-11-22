@@ -658,6 +658,28 @@ def _resolve_ttl(meta: Mapping[str, Any]) -> int:
     return _DEFAULT_TTL_SECONDS
 
 
+_SUBSCRIPTION_AGE_LIMITS = ((10, "lt_10s"), (60, "lt_60s"), (600, "lt_600s"))
+
+
+def _subscription_age_class(created_at: object, now: datetime) -> str:
+    """Bucket a subscription's age at a provider response; never log the time.
+
+    Live acceptance uses the bucket to tell a provider that revokes a fresh
+    registration from one that expires an old one.
+    """
+    if not isinstance(created_at, datetime):
+        return "unknown"
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    age = (now - created_at).total_seconds()
+    if age < 0:
+        return "unknown"
+    for limit, name in _SUBSCRIPTION_AGE_LIMITS:
+        if age < limit:
+            return name
+    return "ge_600s"
+
+
 def _webpush_topic_header(topic: str) -> str:
     """Encode a replacement key without changing the application topic."""
     # Reserve the underscore prefix for hashed values so a literal valid
@@ -685,6 +707,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     # Capture the generation and the exact values submitted to the provider
     # together.  Never infer a binding from the row after the request returns.
     subscription_id = sub.id
+    created_at = getattr(sub, "created_at", None)
     user_id = getattr(sub, "user_id", None)
     raw_binding_version = getattr(sub, "binding_version", _MISSING_BINDING_VERSION)
     if raw_binding_version is None:
@@ -752,6 +775,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 status="gone",
                 status_code=status_code,
                 error_stage=error_stage,
+                subscription_age=_subscription_age_class(created_at, datetime.now(UTC)),
             )
             return WebPushResult(
                 subscription_id=subscription_id,
