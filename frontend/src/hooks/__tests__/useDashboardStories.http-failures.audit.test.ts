@@ -1,8 +1,8 @@
-import { QueryClient } from "@tanstack/react-query"
+import { isCancelledError, QueryClient } from "@tanstack/react-query"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { resetEtagCache } from "@/api/client"
+import api, { resetEtagCache } from "@/api/client"
 import { fetchStories } from "@/api/stories"
 import {
   createDashboardStoriesQueryOptions,
@@ -124,7 +124,51 @@ async function verifyNotModified() {
   expect(state?.data).toEqual([cachedStory])
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+async function verifyTransportCancellation() {
+  const requestStarted = deferred<boolean>()
+  const releaseResponse = deferred<void>()
+  let transportSignal: { readonly aborted: boolean } | undefined
+  const observer = api.interceptors.request.use((config) => {
+    if (config.method === "get" && config.url?.endsWith("/stories")) {
+      transportSignal = config.signal
+    }
+    return config
+  })
+
+  server.use(
+    http.get("*/api/v1/stories", async () => {
+      requestStarted.resolve(true)
+      await releaseResponse.promise
+      return HttpResponse.json([])
+    })
+  )
+  const client = createClient()
+  const result = client
+    .fetchQuery(createDashboardStoriesQueryOptions(client))
+    .catch((error: unknown) => error)
+
+  try {
+    expect(await Promise.race([requestStarted.promise, result])).toBe(true)
+    await client.cancelQueries({ queryKey: dashboardStoriesQueryKey })
+    expect(isCancelledError(await result)).toBe(true)
+    expect(transportSignal?.aborted).toBe(true)
+  } finally {
+    releaseResponse.resolve()
+    api.interceptors.request.eject(observer)
+    await result
+  }
+}
+
 describe("dashboard stories generated-client results", () => {
+  it("aborts the Story feed HTTP request when its query is cancelled", verifyTransportCancellation)
   it("records HTTP 422 as a query error, not an empty successful feed", verifyQueryError)
   it("accepts a real-client 304 and retains the cached story", verifyNotModified)
 })
