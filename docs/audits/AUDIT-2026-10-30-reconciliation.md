@@ -1,6 +1,20 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Current reconciliation — 2026-11-17
+## Current 1-finding reconciliation — 2026-11-22
+
+The formal total is **511/512 (99.8%) accepted or resolved, 1 open**:
+**1S / 0P / 0U / 0N**. AUD-381 is resolved for the
+[exact-main ephemeral Compose DAST criterion](AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22);
+earlier decisions retain their limits. No full coverage, production,
+overall CI, or release acceptance is implied.
+
+- **S (1):** AUD-154 needs two consecutive green full Core Owned Live Acceptance
+  runs on `main`, each source-bound and including the read-receipt live spec.
+- **P (0), U (0), N (0):** none.
+
+<a id="current-reconciliation--2026-11-17"></a>
+
+## Dated reconciliation — 2026-11-17 (510/2; superseded)
 
 The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
 **1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
@@ -79,7 +93,7 @@ quality floors unchanged. The current policy inventory is 524 dispositions.
 
 <a id="current-2-finding-reconciliation--2026-11-17"></a>
 
-### Current 2-finding complement
+### Dated 2-finding complement (510/2; superseded)
 
 - **S (1):** AUD-154 needs two consecutive green full Core Owned Live Acceptance
   runs on `main`, each bound to its exact source and including the existing

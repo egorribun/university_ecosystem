@@ -5,22 +5,24 @@
 
 ## Текущий срез — 2026-11-22
 
-### `main` и открытый PR
+### `main` и пакет PR
 
-- `main` = `4e9246c99b4d2f6cb31a6511ad7208783a509337`. Слиты обычным merge после всех
+- `main` = `71ea9616ccb7d950b3baee3855f38f5a64c62c62`. Слиты обычным merge после всех
   обязательных проверок:
   [#1541](https://github.com/egorribun/university_ecosystem/pull/1541) → `149814844`,
   [#1544](https://github.com/egorribun/university_ecosystem/pull/1544) → `c506c637c`,
   [#1545](https://github.com/egorribun/university_ecosystem/pull/1545) → `d8a010b4`,
   [#1549](https://github.com/egorribun/university_ecosystem/pull/1549) → `fc92e183`,
-  [#1554](https://github.com/egorribun/university_ecosystem/pull/1554) → `4e9246c99`.
+  [#1554](https://github.com/egorribun/university_ecosystem/pull/1554) → `4e9246c99`,
+  [#1556](https://github.com/egorribun/university_ecosystem/pull/1556) → `71ea9616c`.
   Подробности по каждому — в описании PR и в истории этого файла.
-- [PR #1556](https://github.com/egorribun/university_ecosystem/pull/1556) открыт. При каждом ответе
-  провайдера 404 или 410 он записывает закрытый класс возраста подписки (`lt_10s`, `lt_60s`,
-  `lt_600s`, `ge_600s` или `unknown`), без самого времени. Класс видно и в строках `push 410`
-  наблюдения worker.
+- #1556 при каждом ответе провайдера 404 или 410 записывает закрытый класс возраста подписки
+  (`lt_10s` … `ge_600s`, `unknown`) без самого времени, и в строках `push 410` наблюдения worker.
+  Полный Core на `71ea9616c` запущен: [run 45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734).
 - Закрыты черновики облачного агента: устаревшие или перенесённые #1523, #1547, #1550, #1553,
   #1555 и мутационные #1542, #1543, #1551, #1552. Для доработки открыты #1426, #1506, #1507.
+  Перенесены #1557 (R14), #1558 и #1559 (Stories), #1560 (AUD-381), #1561 (тест PATCH) вместе с
+  исправлением API.
 - Состав #1554:
   - **RUSTSEC-2026-0592.** `b77621408` упал на Cargo Deny и Rust vulnerability gate из-за
     переполнения стека в `Url::origin()` в `url` 2.5.8. Это транзитивная зависимость `ammonia`
@@ -60,7 +62,7 @@
 - Предыдущие полные Core на `main` (`149814844`, `c506c637c`, `d8a010b4`) тоже были красными.
   Каждый раз из-за одного-восьми flaky, при зелёных именных случаях AUD-154.
 
-### DAST на `main` `4e9246c99`: критерий AUD-381 выполнен
+### DAST на `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
 
 - [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
   (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
@@ -85,10 +87,10 @@
   изображений: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, событий OOM нет.
   `/api/v1/img` имеет отдельный бюджет `RATE_LIMIT_STATIC`.
 
-## Аудит: текущий итог — 510/512
+## Аудит: текущий итог — 511/512
 
-Формальный итог: **510/512 (99.6%) accepted or resolved, 2 open**, **1S / 1P / 0U / 0N**.
-Границы решений: [Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+Формальный итог: **511/512 (99.8%) accepted or resolved, 1 open**, **1S / 0P / 0U / 0N**.
+Границы решений: [Scoped AUD-381 acceptance — 2026-11-22](../../audits/AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22).
 
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment, reconciliation,
 `AUDIT-2026-10.md`, этот файл и `docs/README.md`. `docs/audits/*` меняются только по hosted-доказательствам
@@ -98,12 +100,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ### Открытые находки
 
-Состав — из [current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
+Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Notification-topics падает, когда FCM отвечает 410 на первую доставку в свежую подписку, которую браузер продолжает держать; причина отзыва не установлена. |
-| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Выполнено на `4e9246c99` (run 45056164123, см. выше); в `docs/audits/*` переносится одним проходом вместе с AUD-154. |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -135,13 +136,12 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Получить все обязательные проверки на #1556 и слить его обычным merge.
-2. AUD-381: DAST на `4e9246c99` зелёный. Повторить DAST, только если после этого изменится стенд
-   или код, который проверяет ZAP.
-3. AUD-154: после слияния #1556 запустить полный Core на новом `main`. Его журнал покажет класс
-   возраста подписки при каждом 410 и `firstMismatch` для story memory. По ним исправить обе причины.
-   Затем два последовательных зелёных полных Core на `main` с read-receipt, не чаще одного запуска в
-   два часа.
-4. Dependabot #1548: восемь обновлений, Playwright 1.65.1 и maplibre-gl 6.18.0 приняты коммитами
-   владельца. Отправить их после слияния #1556, затем закрыть #1548. Перенести 54 теста на jsdom 31.
-5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+1. Отправить пакет PR: обновления из #1548 (восемь, Playwright 1.65.1, maplibre-gl 6.18.0),
+   перенесённые черновики облачного агента и STATUS. Затем закрыть #1548 и перенесённые черновики.
+2. AUD-381 закрыт по DAST на `4e9246c99`. Повторить DAST, только если изменится стенд или код,
+   который проверяет ZAP.
+3. AUD-154: по run 45064476734 разобрать класс возраста подписки при каждом 410 и `firstMismatch`
+   story memory и исправить обе причины. Затем два последовательных зелёных полных Core на `main` с
+   read-receipt, не чаще одного запуска в два часа.
+4. Перенести 54 теста `toHaveStyle` на jsdom 31 и принять его.
+5. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.

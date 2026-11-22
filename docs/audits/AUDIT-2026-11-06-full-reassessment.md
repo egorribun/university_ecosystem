@@ -1,6 +1,32 @@
 # Full audit reassessment — 2026-11-17 UTC
 
-## Current scoped supplement — 2026-11-17
+## Scoped AUD-381 acceptance — 2026-11-22
+
+The formal total is **511/512 (99.8%) accepted or resolved, 1 open**:
+**1S / 0P / 0U / 0N**. This update resolves only AUD-381 within its
+existing ephemeral Compose criterion. AUD-154 remains open; see the
+[current complement](AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
+
+The owner-dispatched [DAST run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123) passed on
+protected `main` at `4e9246c99b4d2f6cb31a6511ad7208783a509337`. The
+[trusted-source job](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/job/137311756808) passed; ZAP and Nuclei
+checked out that commit.
+
+- [ZAP job](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/job/137312840507) passed evidence verification
+  and the severity gate with no medium or high alerts. The sanitized
+  [ZAP report](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952) was uploaded.
+- [Nuclei job](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/job/137312840552) passed with no medium,
+  high or critical findings and uploaded its
+  [report](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299).
+
+ZAP explicitly did not assert full scan coverage. The earlier blocker on
+`fc92e183` remains historical evidence, not a finding waived by this run.
+This decision does not establish full scanning coverage, production or
+general security acceptance, a clean full Core run, or release readiness.
+
+<a id="current-scoped-supplement--2026-11-17"></a>
+
+## Dated scoped supplement — 2026-11-17 (510/2; superseded)
 
 The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
 **1S / 1P / 0U / 0N**. This update accepts AUD-169, AUD-188, AUD-189 and
@@ -1028,7 +1054,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. The Curre
 | AUD-375 | Service-worker queue replay can omit the CSRF header, retain a record after HTTP 403, and run without mutual exclusion across replay passes. | P | fixed / partial | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `frontend/src/sw/offline.ts:432` (snapshot, blob `13205676d3ee`); `frontend/src/sw/offline.ts:782` (snapshot, blob `13205676d3ee`) | Historical 494/512 remaining action: Execute both cases in the snapshot's frontend/tests/e2e/audit375-service-worker.spec.ts in Chromium and archive a receipt bound to this source tree and test blob; this is the smallest discriminating check for actual cookie/header forwarding, 403 removal, worker contention, and takeover recovery. Current evidence and its scope limits are in the supplement above. |
 | AUD-378 | The SLSA Provenance Dry-Run included in CI Success checked only whether ci.yml existed; it must verify provenance rather than accept file presence. | U | partial / partial | Scoped acceptance at 502/512 (was Open (S) at 494/512) | `docs/audits/AUDIT-2026-10.md:597` (snapshot, blob `ce20147fdbee`); `.github/workflows/ci.yml:1019` (snapshot, blob `f6ecac56cbf6`) | Historical 494/512 remaining action: Make the verifier handle multiple gh verification results by selecting the unique result matching the exact current run invocation and artifact claims; add a two-valid-result regression and an ambiguity negative control. Obtain one passing hosted push run from the final reviewed source showing the exact frontend-dist archive digest and verified certificate/run claims, with provenance-check and CI Success passing. Current evidence and its scope limits are in the supplement above. |
 | AUD-380 | The October audit says .semgrep.yml claims Semgrep runs in CI, but no Semgrep scanner job exists (.semgrep.yml:20-21). | U | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:599` (snapshot, blob `ce20147fdbee`); `.semgrep.yml:1` (snapshot, blob `94a21ff83822`) | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-381 | AUD-381: DAST, Scorecard и sqlmap не блокируют и не публикуют находки (scorecard.yml:77). | P | partial / missing | Open (P) | `.github/workflows/dast.yml:188` (snapshot, blob `cf8f833a6be2`); `scripts/quality/nuclei_findings_gate.py:42` (snapshot, blob `5921cf6c4f57`) | Add a real ZAP SARIF producer from the JSON report (or use a pinned producer that emits SARIF) and apply an owner-approved alert threshold; the current pinned action neither emits the expected SARIF file nor fails on alerts by default. *Superseded 2026-11-12: the ZAP job now uses scripts/quality/zap_workflow.py and scripts/quality/zap_sarif_producer.py.* Obtain an owner decision on the Scorecard Vulnerabilities floor; value 0 currently allows every valid vulnerability score. After source changes, run the current-source Nuclei, Scorecard, ZAP, and SQLMap flows with clean and known-finding controls, then retain named job outcomes, uploaded reports, and source/workflow SHA bindings. |
+| AUD-381 | AUD-381: DAST, Scorecard и sqlmap не блокируют и не публикуют находки (scorecard.yml:77). | P | partial / missing | Scoped acceptance at 511/512 (was Open (P) at 510/512) | `.github/workflows/dast.yml:188` (snapshot, blob `cf8f833a6be2`); `scripts/quality/nuclei_findings_gate.py:42` (snapshot, blob `5921cf6c4f57`) | Add a real ZAP SARIF producer from the JSON report (or use a pinned producer that emits SARIF) and apply an owner-approved alert threshold; the current pinned action neither emits the expected SARIF file nor fails on alerts by default. *Superseded 2026-11-12: the ZAP job now uses scripts/quality/zap_workflow.py and scripts/quality/zap_sarif_producer.py.* Obtain an owner decision on the Scorecard Vulnerabilities floor; value 0 currently allows every valid vulnerability score. After source changes, run the current-source Nuclei, Scorecard, ZAP, and SQLMap flows with clean and known-finding controls, then retain named job outcomes, uploaded reports, and source/workflow SHA bindings. |
 | AUD-384 | AUDIT-2026-10.md says the nightly Slack notification is not sent because the send step reads its own step-level env in if (.github/workflows/nightly-full-gate.yml:1066-1074). | S | fixed / sufficient | Original causal finding retracted as false positive | `docs/audits/AUDIT-2026-10.md:603` (snapshot, blob `ce20147fdbee`); `.github/workflows/nightly-full-gate.yml:1078` (snapshot, blob `d4a5c83ea53d`) | Keep the current output-gate rewrite and any live delivery claim distinct. |
 | AUD-392 | The original AUD-392 entry says HIBP leaked-password screening is off by default and not required in production (docs/audits/AUDIT-2026-10.md:611). Its merged companion says password-policy defaults are weaker than a reasonable minimum and are not overridden in production (line 734). The fix scope is deployed-default HIBP screening with explicit production disable rejected, plus stronger password defaults; it does not require live HIBP service availability. | S | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:611` (snapshot, blob `ce20147fdbee`); `docs/audits/AUDIT-2026-10.md:734` (snapshot, blob `ce20147fdbee`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-393 | The specific migration alembic/versions/202602010004_drop_legacy_columns.py (originally cited at lines 117-140) swallows DDL errors and mutates module state. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:612` (snapshot, blob `ce20147fdbee`); `docs/adr/ADR-051-mvp-migration-baseline-squash.md:39` (snapshot, blob `905f99cd4ff5`) | No additional action for this finding-specific scope; limitations below remain. |
