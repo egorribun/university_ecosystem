@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted. Partly superseded on 2026-11-09 by
+[ADR-052](ADR-052-backend-spiffe-transport.md), which reintroduces backend SPIFFE identity at the
+HTTP transport boundary.
 
 ## Date
 

@@ -93,7 +93,7 @@ chat_type: Mapped[str] = mapped_column(
 
 ### 3.2. Rule TD-33-08: NotificationService Exclusivity
 - **Rule**: `NotificationService` is provided **ONLY** by `ContentProvider` (`app/core/di/content.py`).
-- **AST Linter Enforcement**: `scripts/custom_ast_linter.py` validates all AST import nodes. Importing `NotificationService` from `app.deps.user`, or defining a duplicate provider in `users.py`, will immediately fail the CI build.
+- **AST Linter Enforcement**: `scripts/custom_ast_linter.py` validates all AST import nodes. Run it with `uv run --frozen python scripts/custom_ast_linter.py`. It is not wired into CI or pre-commit, so run it whenever you change notification DI wiring. Importing `NotificationService` from `app.deps.user`, or defining a duplicate provider in `users.py`, makes it fail.
 
 ```python
 # CORRECT

@@ -549,29 +549,56 @@ describe("ForgotPassword behaviour details", () => {
   })
 
   it("starts every view hidden and offset when motion is allowed", async () => {
-    const user = userEvent.setup()
-    await renderForgot()
-
-    const formView = motionView(sendButton())
-    expect(formView).toHaveStyle({ opacity: "0" })
-    expect(motionView(formView!.parentElement)).toHaveStyle({
-      opacity: "0",
-      transform: "translateY(20px)",
+    // Capture each element's style as its insertion is delivered, before a
+    // later animation frame can advance it during async router or user work.
+    const initialStyles = new Map<Element, { opacity: string; transform: string }>()
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue
+          for (const element of [node, ...node.querySelectorAll<HTMLElement>("*")]) {
+            if (!initialStyles.has(element)) {
+              initialStyles.set(element, {
+                opacity: element.style.opacity,
+                transform: element.style.transform,
+              })
+            }
+          }
+        }
+      }
     })
+    observer.observe(document.body, { childList: true, subtree: true })
 
-    await user.type(emailInput(), "user@gmial.com")
-    await user.tab()
-    expect(screen.getByTestId("email-suggestion-motion")).toHaveStyle({
-      opacity: "0",
-      transform: "translateX(-10px)",
-    })
+    try {
+      const user = userEvent.setup()
+      await renderForgot()
 
-    await user.clear(emailInput())
-    await user.type(emailInput(), "user@example.com")
-    await user.click(sendButton())
+      const formView = motionView(sendButton())
+      expect(initialStyles.get(formView!)).toMatchObject({ opacity: "0" })
+      expect(initialStyles.get(motionView(formView!.parentElement)!)).toMatchObject({
+        opacity: "0",
+        transform: "translateY(20px)",
+      })
 
-    const successView = motionView(await screen.findByText(tAuth("forgot.successHint")))
-    expect(successView).toHaveStyle({ opacity: "0", transform: "scale(0.95)" })
+      await user.type(emailInput(), "user@gmial.com")
+      await user.tab()
+      expect(initialStyles.get(screen.getByTestId("email-suggestion-motion"))).toMatchObject({
+        opacity: "0",
+        transform: "translateX(-10px)",
+      })
+
+      await user.clear(emailInput())
+      await user.type(emailInput(), "user@example.com")
+      await user.click(sendButton())
+
+      const successView = motionView(await screen.findByText(tAuth("forgot.successHint")))
+      expect(initialStyles.get(successView!)).toMatchObject({
+        opacity: "0",
+        transform: "scale(0.95)",
+      })
+    } finally {
+      observer.disconnect()
+    }
   })
 
   it("renders every view in its final state under reduced motion", async () => {
