@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
@@ -198,7 +199,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const alert = screen.getByRole("alert", { name: "messenger:aria.messageList" })
     const icon = alert.querySelector(".messenger-card-matte svg")!
     expect(icon).toHaveClass("size-8", "text-(--color-violet-500)")
-    expect(icon).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(icon, { opacity: "var(--opacity-strong)" })
     expect(icon).toHaveAttribute("aria-hidden", "true")
 
     const retry = screen.getByRole("button", { name: "messenger:error.retry" })
@@ -311,7 +312,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const emptyAnimated = emptyCard.parentElement!
     expect(emptyAnimated).toHaveClass("flex", "w-full", "max-w-[24rem]", "flex-col", "items-center")
     expect(emptyAnimated.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
-    expect(emptyAnimated.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(emptyAnimated.querySelector("svg"), { opacity: "var(--opacity-strong)" })
     expect(emptyAnimated.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
     expect(emptyCard).toHaveClass("mb-5", "flex", "size-16", "items-center", "justify-center")
     expectInlineBackground(emptyCard, "var(--messenger-card-bg)")
@@ -344,7 +345,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const searchCard = search.container.querySelector(".messenger-card-matte")!
     const searchAnimated = searchCard.parentElement!
     expect(searchAnimated.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
-    expect(searchAnimated.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(searchAnimated.querySelector("svg"), { opacity: "var(--opacity-strong)" })
     expect(searchCard).toHaveClass("mb-5", "flex", "size-16", "items-center", "justify-center")
     const clear = screen.getByRole("button", {
       name: "messenger:noMessages.searchEmpty.clearSearch",
@@ -980,23 +981,29 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const receivedEdited = receivedRow.querySelector("span.text-micro")!
     expect(ownEdited).toHaveTextContent("messenger:edited")
     expect(ownEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:00"}')
-    expect(ownEdited).toHaveStyle({ color: "var(--text-inverse)" })
+    expectInlineStyle(ownEdited, { color: "var(--text-inverse)" })
     expect(opacityClasses(ownEdited.parentElement!)).toEqual([])
     expect(opacityClasses(receivedEdited.parentElement!)).toEqual(["opacity-hover"])
     expect(receivedEdited).toHaveTextContent("messenger:edited")
     expect(receivedEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:02"}')
-    expect(receivedEdited).toHaveStyle({ color: "var(--text-secondary)" })
+    expectInlineStyle(receivedEdited, { color: "var(--text-secondary)" })
 
     const ownTimestamps = ownRow.querySelectorAll("span.text-micro")
     const receivedTimestamps = receivedRow.querySelectorAll("span.text-micro")
     expect([...ownTimestamps].some((element) => element.textContent === "15:01")).toBe(true)
     expect([...receivedTimestamps].some((element) => element.textContent === "15:03")).toBe(true)
-    expect([...ownTimestamps].find((element) => element.textContent === "15:01")).toHaveStyle({
-      color: "var(--text-inverse)",
-    })
-    expect([...receivedTimestamps].find((element) => element.textContent === "15:03")).toHaveStyle({
-      color: "var(--text-secondary)",
-    })
+    expectInlineStyle(
+      [...ownTimestamps].find((element) => element.textContent === "15:01"),
+      {
+        color: "var(--text-inverse)",
+      }
+    )
+    expectInlineStyle(
+      [...receivedTimestamps].find((element) => element.textContent === "15:03"),
+      {
+        color: "var(--text-secondary)",
+      }
+    )
   })
 
   it("applies seen-marker precedence for group counts, partial data and tombstones", () => {

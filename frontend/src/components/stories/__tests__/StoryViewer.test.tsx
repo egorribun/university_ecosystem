@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -524,7 +525,7 @@ describe("StoryViewer", () => {
     const imageStage = screen.getByRole("dialog").querySelector('[class*="aspect-9/16"]')!
     const imageOverlay = imageStage.querySelector('[class*="absolute bottom-0"]')!
     expect(imageOverlay).toHaveClass("gap-4", "p-(--fluid-card-p)", "pt-12", "sm:pt-16")
-    expect(imageOverlay).toHaveStyle({ backdropFilter: "blur(var(--blur-glass))" })
+    expectInlineStyle(imageOverlay, { backdropFilter: "blur(var(--blur-glass))" })
     expect(screen.getAllByRole("progressbar")[0]!.firstElementChild).toHaveClass(
       "bg-white",
       "transition-all",
@@ -567,7 +568,7 @@ describe("StoryViewer", () => {
     const imageStage = imageDialog.querySelector('[class*="aspect-9/16"]')!
     expect(imageStage).toHaveClass("bg-page", "rounded-none")
     const imageOverlay = imageStage.querySelector('[class*="absolute bottom-0"]')!
-    expect(imageOverlay).toHaveStyle({
+    expectInlineStyle(imageOverlay, {
       backgroundImage:
         "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)",
       backdropFilter: "blur(var(--blur-glass))",
@@ -583,7 +584,7 @@ describe("StoryViewer", () => {
     const textStage = textDialog.querySelector('[class*="aspect-9/16"]')!
     expect(textStage).toHaveClass("bg-brand", "rounded-md")
     const textOverlay = textStage.querySelector('[class*="absolute bottom-0"]')!
-    expect(textOverlay).toHaveStyle({ backgroundImage: "var(--grad-story-fade)" })
+    expectInlineStyle(textOverlay, { backgroundImage: "var(--grad-story-fade)" })
     expect(screen.getByText("FA")).toBeInTheDocument()
   })
 

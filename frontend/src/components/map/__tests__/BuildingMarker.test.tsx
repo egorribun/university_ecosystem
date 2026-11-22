@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -288,7 +289,7 @@ describe("BuildingMarker", () => {
       "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)",
       "background-color"
     )
-    expect(status).toHaveStyle({
+    expectInlineStyle(status, {
       color: "var(--color-emerald-500)",
     })
     expect(document.querySelectorAll(".map-popup-chip")).toHaveLength(4)
@@ -324,7 +325,7 @@ describe("BuildingMarker", () => {
       "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
       "background-color"
     )
-    expect(status).toHaveStyle({
+    expectInlineStyle(status, {
       color: "var(--color-rose-500)",
     })
     screen.getByRole("button", { name: "close-popup" }).click()

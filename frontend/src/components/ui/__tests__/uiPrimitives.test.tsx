@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { createHash } from "node:crypto"
 
 import { LazyMotion, domAnimation } from "framer-motion"
@@ -272,7 +273,7 @@ describe("Checkbox", () => {
 
     expect(ref.current).toBe(screen.getByRole("checkbox"))
     expect(ref.current).toBeDisabled()
-    expect(container.querySelector(".custom-checkbox")).toHaveStyle({
+    expectInlineStyle(container.querySelector(".custom-checkbox"), {
       opacity: "var(--opacity-medium)",
     })
     fireEvent.click(ref.current!)

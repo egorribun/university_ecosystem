@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
@@ -27,9 +28,9 @@ describe("EventCategoryBadge", () => {
     expect(screen.getByText("events:categories.conference")).toBeInTheDocument()
     const badge = badgeElement()
     expect(badge).toHaveClass("px-2.5", "py-0.5", "text-[10px]")
-    expect(badge).toHaveStyle({ "--_badge-accent": "var(--cat-amber-text)" })
+    expectInlineStyle(badge, { "--_badge-accent": "var(--cat-amber-text)" })
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
-    expect(badge.querySelector("span[aria-hidden='true']")).toHaveStyle({
+    expectInlineStyle(badge.querySelector("span[aria-hidden='true']"), {
       backgroundColor: "var(--cat-amber-text)",
     })
   })
@@ -39,7 +40,7 @@ describe("EventCategoryBadge", () => {
 
     expect(screen.getByText("events:categories.workshop")).toBeInTheDocument()
     expect(badgeElement()).toHaveClass("px-3", "py-1", "text-xs")
-    expect(badgeElement().querySelector("span[aria-hidden='true']")).toHaveStyle({
+    expectInlineStyle(badgeElement().querySelector("span[aria-hidden='true']"), {
       backgroundColor: "var(--cat-emerald-text)",
     })
   })

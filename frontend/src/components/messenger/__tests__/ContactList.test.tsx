@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { createEvent, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
@@ -206,7 +207,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
 
     const iconContainer = container.querySelector(".messenger-card-matte")
     expectInlineBackground(iconContainer, "var(--messenger-card-bg)")
-    expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(iconContainer?.querySelector("svg"), { opacity: "var(--opacity-strong)" })
     expect(entrance).toHaveAttribute(
       "data-motion-animate",
       JSON.stringify({ scale: 1, opacity: 1, y: 0 })
@@ -433,7 +434,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
 
     const iconContainer = container.querySelector(".messenger-card-matte")
     expectInlineBackground(iconContainer, "var(--messenger-card-bg)")
-    expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(iconContainer?.querySelector("svg"), { opacity: "var(--opacity-strong)" })
 
     const retry = screen.getByRole("button", { name: /messenger:error.retry/ })
     expect(retry).toHaveAttribute("data-motion-while-hover", JSON.stringify({ scale: 1.04 }))

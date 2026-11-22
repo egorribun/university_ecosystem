@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -154,7 +155,7 @@ describe("Checkbox survivor contract", () => {
     expect(input).toBeChecked()
     expect(input).toBeDisabled()
     expect(input.parentElement?.querySelector("div")).toHaveClass("cursor-not-allowed", "grayscale")
-    expect(input.parentElement?.querySelector("div")).toHaveStyle({
+    expectInlineStyle(input.parentElement?.querySelector("div"), {
       opacity: "var(--opacity-medium)",
     })
     expect(input.parentElement?.querySelector("svg path")).toHaveAttribute("d", "M20 6 9 17l-5-5")

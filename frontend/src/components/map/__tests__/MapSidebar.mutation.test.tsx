@@ -1,3 +1,4 @@
+import { expectInlineStyle, expectInlineStyleAbsent } from "@/tests/helpers/expectInlineStyle"
 import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -197,7 +198,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(sidebar).toBeInTheDocument()
     expect(sidebar.style.backgroundColor).toBe("var(--map-sidebar-bg)")
     expect(sidebar.style.boxShadow).toBe("var(--map-sidebar-shadow)")
-    expect(sidebar.style.maxHeight).toBe("calc(100vh - 200px)")
+    expectInlineStyle(sidebar, { maxHeight: "calc(100vh - 200px)" })
   })
 
   it("keeps mobile overlay state untouched unless an open mobile sheet exists", () => {
@@ -474,10 +475,10 @@ describe("MapSidebar mutation contracts", () => {
 
     expect(activeRoom).toHaveClass("map-accent-tint-light", "flex", "items-center")
     expect(activeRoom.querySelector(".truncate")).toHaveTextContent("Большая аудитория")
-    expect(activeRoom.querySelector(".font-bold")).toHaveStyle({ color: "var(--_bldg-color)" })
+    expectInlineStyle(activeRoom.querySelector(".font-bold"), { color: "var(--_bldg-color)" })
     expect(plainRoom).not.toHaveClass("map-accent-tint-light")
     expect(plainRoom.querySelector(".truncate")).not.toBeInTheDocument()
-    expect(plainRoom.querySelector(".font-bold")).not.toHaveStyle({ color: "var(--_bldg-color)" })
+    expectInlineStyleAbsent(plainRoom.querySelector(".font-bold"), { color: "var(--_bldg-color)" })
 
     await user.click(plainRoom)
     expect(onRoomClick).toHaveBeenCalledWith("ГУК-102")
@@ -500,7 +501,7 @@ describe("MapSidebar mutation contracts", () => {
       <MapSidebar {...baseProps} todayLessons={[{ room: "ГУК-101", start_time: "10:00" }]} />
     )
     const free = screen.getAllByText("sidebar.roomFree")[0]!
-    expect(free).toHaveStyle({
+    expectInlineStyle(free, {
       backgroundColor: "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)",
       color: "var(--color-emerald-500)",
     })
@@ -510,7 +511,7 @@ describe("MapSidebar mutation contracts", () => {
       <MapSidebar {...baseProps} todayLessons={[{ room: "ГУК-101", start_time: "10:00" }]} />
     )
     const busy = screen.getAllByText('sidebar.roomBusy:{"time":"11:30"}')[0]!
-    expect(busy).toHaveStyle({
+    expectInlineStyle(busy, {
       backgroundColor: "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
       color: "var(--color-rose-500)",
     })
@@ -576,7 +577,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(screen.getByRole("radiogroup", { name: "floorPlan.selectFloor" })).toBeInTheDocument()
 
     const open = screen.getByText("hours.openNow")
-    expect(open).toHaveStyle({
+    expectInlineStyle(open, {
       backgroundColor: "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)",
       color: "var(--color-emerald-500)",
     })
@@ -584,7 +585,7 @@ describe("MapSidebar mutation contracts", () => {
     state.open = false
     rerender(<MapSidebar {...baseProps} />)
     const closed = screen.getByText("hours.closedNow")
-    expect(closed).toHaveStyle({
+    expectInlineStyle(closed, {
       backgroundColor: "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
       color: "var(--color-rose-500)",
     })
@@ -600,7 +601,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(floorOne.className).toBe(
       "min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
     )
-    expect(floorOne).toHaveStyle({
+    expectInlineStyle(floorOne, {
       backgroundColor: "var(--bg-surface-hover)",
       color: "var(--text-secondary)",
     })
@@ -610,7 +611,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(floorTwo.className).toBe(
       "min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors map-accent-tint-medium"
     )
-    expect(floorTwo).toHaveStyle({ color: "var(--_bldg-color)" })
+    expectInlineStyle(floorTwo, { color: "var(--_bldg-color)" })
   })
 
   it("keeps the mobile sheet scroll area dimensions and classes stable", () => {

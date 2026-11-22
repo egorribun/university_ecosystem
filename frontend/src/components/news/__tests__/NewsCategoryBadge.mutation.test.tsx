@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -47,12 +48,12 @@ describe("NewsCategoryBadge mutation contracts", () => {
       "uppercase",
       "tracking-wider"
     )
-    expect(badge).toHaveStyle("--_badge-accent: var(--cat-sky-text)")
+    expectInlineStyle(badge, { "--_badge-accent": "var(--cat-sky-text)" })
 
     const dot = badge?.querySelector('span[aria-hidden="true"]')
     expect(dot).toHaveClass("mr-1", "inline-block", "h-1.5", "w-1.5", "rounded-full")
     expect(dot).toHaveAttribute("aria-hidden", "true")
-    expect(dot).toHaveStyle("background-color: var(--cat-sky-text)")
+    expectInlineStyle(dot, { backgroundColor: "var(--cat-sky-text)" })
   })
 
   it("supports the larger badge size without changing its localized label", () => {

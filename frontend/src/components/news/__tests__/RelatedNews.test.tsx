@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
@@ -72,7 +73,7 @@ describe("RelatedNews", () => {
     await renderWithRouter({ ui: () => <RelatedNews items={[mixedKeywordItem]} />, extraRoutes })
 
     const card = screen.getByRole("link", { name: /GUU ranks among/i })
-    expect(card.querySelector(".news-badge-matte")).toHaveStyle({
+    expectInlineStyle(card.querySelector(".news-badge-matte"), {
       "--_badge-accent": "var(--cat-purple-text)",
     })
   })

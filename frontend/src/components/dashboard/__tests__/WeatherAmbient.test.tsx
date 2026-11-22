@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { render } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
@@ -102,7 +103,7 @@ describe("WeatherAmbient", () => {
       const [left, delay, duration, opacity, height] = expectedRain[expectedIndex]!
       expect(rainParticles[index]?.style.left).toBe(left)
       expect(rainParticles[index]?.style.animationDelay).toBe(delay)
-      expect(rainParticles[index]?.style.animationDuration).toBe(duration)
+      expectInlineStyle(rainParticles[index], { animationDuration: duration })
       expect(rainParticles[index]?.style.height).toBe(height)
       expect(rainParticles[index]?.style.getPropertyValue("--_particle-opacity")).toBe(opacity)
       expect(rainParticles[index]?.style.width).toBe("1px")

@@ -84,6 +84,15 @@ function DashboardUnderMotionProviders() {
 const cardSelectors = [".vt-dash-schedule", ".vt-dash-news", ".vt-dash-events"]
 const hydratedRoots: Root[] = []
 
+/** Serialize through the CSSOM so equivalent spellings such as `0` and `0px` match. */
+function canonicalCssText(cssText: string): string {
+  const probe = document.createElement("div")
+  probe.style.cssText = cssText
+  return probe.style.cssText
+}
+
+const SETTLED_CARD_STYLE = canonicalCssText("opacity: 1; transform: translateY(0);")
+
 function cardMotionStyles(markup: string): Array<string | null> {
   const parsed = new DOMParser().parseFromString(markup, "text/html")
   return cardSelectors.map((selector) => {
@@ -187,9 +196,9 @@ describe("Dashboard first-session cascade hydration", () => {
 
     expect(recoverableErrors).toEqual([])
     expect(cardMotionStyles(container.innerHTML)).toEqual([
-      "opacity: 1; transform: translateY(0);",
-      "opacity: 1; transform: translateY(0);",
-      "opacity: 1; transform: translateY(0);",
+      SETTLED_CARD_STYLE,
+      SETTLED_CARD_STYLE,
+      SETTLED_CARD_STYLE,
     ])
     expect(browserSessionStorage.getItem("dash-cascade-done")).toBeNull()
   })
@@ -253,9 +262,9 @@ describe("Dashboard first-session cascade hydration", () => {
       serverCardNodes
     )
     expect(cardMotionStyles(container.innerHTML)).toEqual([
-      "opacity: 1; transform: translateY(0);",
-      "opacity: 1; transform: translateY(0);",
-      "opacity: 1; transform: translateY(0);",
+      SETTLED_CARD_STYLE,
+      SETTLED_CARD_STYLE,
+      SETTLED_CARD_STYLE,
     ])
     expect(browserSessionStorage.getItem("dash-cascade-done")).toBeNull()
   })

@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { TimelineEntry } from "../../types"
@@ -89,8 +90,8 @@ describe("ActivityTimelineItem closure paths", () => {
     const statusDot = article.querySelector<HTMLElement>(".activity-timeline-dot")
     const iconIndicator = article.querySelector<HTMLElement>(".text-text-secondary")
 
-    expect(statusDot).toHaveStyle({ backgroundColor: "var(--text-tertiary)" })
-    expect(iconIndicator).toHaveStyle({ color: "var(--text-tertiary)" })
+    expectInlineStyle(statusDot, { backgroundColor: "var(--text-tertiary)" })
+    expectInlineStyle(iconIndicator, { color: "var(--text-tertiary)" })
     expect(screen.getByText("status:unknown")).toHaveClass("sr-only")
   })
 })

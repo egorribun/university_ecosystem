@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
@@ -116,20 +117,20 @@ describe("MapSidebar", () => {
 
     try {
       const closedBeforeOpening = screen.getByText("hours.closedNow")
-      expect(closedBeforeOpening).toHaveStyle({ color: "var(--color-rose-500)" })
+      expectInlineStyle(closedBeforeOpening, { color: "var(--color-rose-500)" })
 
       // Let the panel's unrelated entrance timer finish before testing the clock.
       act(() => vi.advanceTimersByTime(260))
       act(() => vi.advanceTimersByTime(59_740))
 
       const openDuringHours = screen.getByText("hours.openNow")
-      expect(openDuringHours).toHaveStyle({ color: "var(--color-emerald-500)" })
+      expectInlineStyle(openDuringHours, { color: "var(--color-emerald-500)" })
 
       vi.setSystemTime(new Date(Date.UTC(2026, 6, 6, 18, 59)))
       act(() => vi.advanceTimersByTime(60_000))
 
       const closedAtClosingTime = screen.getByText("hours.closedNow")
-      expect(closedAtClosingTime).toHaveStyle({ color: "var(--color-rose-500)" })
+      expectInlineStyle(closedAtClosingTime, { color: "var(--color-rose-500)" })
     } finally {
       view.unmount()
     }

@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { CSSProperties, ReactEventHandler } from "react"
@@ -151,7 +152,7 @@ describe("NewsDetailHero mutation contracts", () => {
     loadDimensions(image, 1, 2)
     expect(frame()).toHaveClass("aspect-3/4", "bg-black/[calc(var(--opacity-soft)*100%)]")
     expect(image).toHaveClass("object-contain", "object-center")
-    expect(image).toHaveStyle({ objectPosition: "center" })
+    expectInlineStyle(image, { objectPosition: "center" })
 
     loadDimensions(image, 82, 100)
     expect(frame()).toHaveClass("aspect-5/4", "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]")

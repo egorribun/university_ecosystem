@@ -1,3 +1,4 @@
+import { expectInlineStyle, expectInlineStyleAbsent } from "@/tests/helpers/expectInlineStyle"
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
@@ -744,14 +745,14 @@ describe("MapSearchBar", () => {
     const options = screen.getAllByRole("option")
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(options[0]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
-    expect(options[1]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyle(options[0], { backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyleAbsent(options[1], { backgroundColor: "var(--bg-surface-hover)" })
     expect(options[0]).toHaveAttribute("aria-selected", "true")
     expect(options[1]).toHaveAttribute("aria-selected", "false")
 
     fireEvent.pointerEnter(options[1]!)
-    expect(options[0]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
-    expect(options[1]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyleAbsent(options[0], { backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyle(options[1], { backgroundColor: "var(--bg-surface-hover)" })
     expect(options[0]).toHaveAttribute("aria-selected", "false")
     expect(options[1]).toHaveAttribute("aria-selected", "true")
   })
@@ -765,14 +766,14 @@ describe("MapSearchBar", () => {
     expect(roomOptions).toHaveLength(2)
 
     fireEvent.pointerEnter(roomOptions[0]!)
-    expect(roomOptions[0]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
-    expect(roomOptions[1]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyle(roomOptions[0], { backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyleAbsent(roomOptions[1], { backgroundColor: "var(--bg-surface-hover)" })
     expect(roomOptions[0]).toHaveAttribute("aria-selected", "true")
     expect(roomOptions[1]).toHaveAttribute("aria-selected", "false")
 
     fireEvent.pointerEnter(roomOptions[1]!)
-    expect(roomOptions[0]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
-    expect(roomOptions[1]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyleAbsent(roomOptions[0], { backgroundColor: "var(--bg-surface-hover)" })
+    expectInlineStyle(roomOptions[1], { backgroundColor: "var(--bg-surface-hover)" })
     expect(roomOptions[0]).toHaveAttribute("aria-selected", "false")
     expect(roomOptions[1]).toHaveAttribute("aria-selected", "true")
   })

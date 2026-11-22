@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 /**
  * Session 11 coverage: src/components/schedule/ScheduleDesktopTable.tsx
  *
@@ -167,7 +168,7 @@ describe("ScheduleDesktopTable", () => {
 
     // canEdit=false (user:null) → no delete affordances anywhere.
     expect(within(grid).queryByRole("button", { name: "Delete lesson" })).toBeNull()
-    expect(grid).toHaveStyle({
+    expectInlineStyle(grid, {
       gridTemplateColumns:
         "var(--sched-grid-header-w) repeat(6, minmax(var(--sched-grid-col-min), 1fr))",
       minWidth: "calc(var(--sched-grid-header-w) + 6 * var(--sched-grid-col-min))",

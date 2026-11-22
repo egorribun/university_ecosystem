@@ -745,14 +745,14 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
     requireInput(
       exactKeys(report.toolchain, ["babelParser", "jsdom"]) &&
         report.toolchain.babelParser === "8.1.2" &&
-        report.toolchain.jsdom === "30.1.3"
+        report.toolchain.jsdom === "31.0.1"
     )
     stage = "toolchain-resolver"
     const require = createRequire(path.join(workspace, "frontend/package.json"))
     stage = "lock-json"
     const lock = parseJson(sources.get("frontend/package-lock.json"))
     for (const [name, version] of [
-      ["jsdom", "30.1.3"],
+      ["jsdom", "31.0.1"],
       ["@babel/parser", "8.1.2"],
     ]) {
       stage = "toolchain-manifest-read"

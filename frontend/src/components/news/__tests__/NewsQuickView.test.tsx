@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -149,8 +150,8 @@ describe("NewsQuickView", () => {
     const label = screen.getByText("news:categories.science")
     const badge = label.closest("span")
     expect(badge).toHaveClass("px-2.5", "text-[10px]")
-    expect(badge).toHaveStyle({ "--_badge-accent": "var(--cat-purple-text)" })
-    expect(badge?.querySelector('[aria-hidden="true"]')).toHaveStyle({
+    expectInlineStyle(badge, { "--_badge-accent": "var(--cat-purple-text)" })
+    expectInlineStyle(badge?.querySelector('[aria-hidden="true"]'), {
       backgroundColor: "var(--cat-purple-text)",
     })
     expect(translation.useTranslation).toHaveBeenCalledWith(["news"])

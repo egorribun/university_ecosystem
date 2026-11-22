@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
@@ -293,13 +294,13 @@ describe("MapSidebar branches", () => {
     const { rerender } = render(
       <MapSidebar {...baseProps} todayLessons={[{ room: "101", start_time: "10:00" }]} />
     )
-    expect(screen.getByText("sidebar.roomFree")).toHaveStyle({
+    expectInlineStyle(screen.getByText("sidebar.roomFree"), {
       color: "var(--color-emerald-500)",
     })
 
     hooks.roomStatus = { status: "busy", busyUntil: "11:30" }
     rerender(<MapSidebar {...baseProps} todayLessons={[{ room: "101", start_time: "10:00" }]} />)
-    expect(screen.getByText(/sidebar\.roomBusy/)).toHaveStyle({ color: "var(--color-rose-500)" })
+    expectInlineStyle(screen.getByText(/sidebar\.roomBusy/), { color: "var(--color-rose-500)" })
   })
 
   it("renders the building photo as an img when building.photo is present", () => {

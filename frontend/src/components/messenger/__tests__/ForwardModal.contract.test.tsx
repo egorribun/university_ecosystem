@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
@@ -139,7 +140,7 @@ describe("ForwardModal contracts", () => {
     const icon = screen.getByText("messenger:forwardNoChats").previousElementSibling!
     expectInlineBackground(icon, "var(--messenger-card-bg)")
     expect(icon.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
-    expect(icon.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(icon.querySelector("svg"), { opacity: "var(--opacity-strong)" })
   })
 
   it("uses an explicit zero-duration dialog transition under reduced motion", () => {

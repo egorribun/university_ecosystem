@@ -1386,7 +1386,7 @@ jobs:
             const require = createRequire(path.join(frontend, "package.json"))
             const toolchain = {}
             for (const [name, label, version] of [
-              ["jsdom", "jsdom", "30.1.3"],
+              ["jsdom", "jsdom", "31.0.1"],
               ["@babel/parser", "babelParser", "8.1.2"],
             ]) {
               const packageFile = require.resolve(name + "/package.json")
