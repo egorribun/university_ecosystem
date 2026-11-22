@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import runpy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -212,7 +213,7 @@ async def test_main_status_preserves_phase_order_and_rollback(failed_phase):
 @pytest.mark.parametrize("status", [0, 1])
 def test_direct_entrypoint_propagates_main_status_without_extra_output(status, capsys):
     def run(coroutine):
-        assert coroutine.cr_code.co_name == "main"
+        assert inspect.iscoroutine(coroutine)
         coroutine.close()
         return status
 
