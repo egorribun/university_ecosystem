@@ -1,4 +1,5 @@
 import { act, createEvent, fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { StoryList } from "../StoryList"
 import type { StoryItem } from "@/types/Story"
@@ -300,6 +301,23 @@ describe("StoryList branches", () => {
     // hasDragged was reset to false → a FOLLOWING click opens the story normally
     fireEvent.click(storyBtn)
     expect(handleOpen).toHaveBeenCalledWith(storiesWithCover[0]!, 0)
+  })
+
+  it("opens a story with Enter after a drag that did not click a story", async () => {
+    const user = userEvent.setup()
+    const handleOpen = vi.fn()
+    render(<StoryList stories={storiesWithCover} onOpenStory={handleOpen} />)
+    const ul = getList()
+    const storyButton = screen.getByRole("button", { name: "Story: Cover Story" })
+
+    fireEvent.pointerDown(ul, { pointerType: "mouse", button: 0, clientX: 100 })
+    fireEvent.pointerMove(ul, { pointerType: "mouse", clientX: 30, pointerId: 1 })
+    fireEvent.pointerUp(ul, { pointerType: "mouse", pointerId: 1 })
+    expect(handleOpen).not.toHaveBeenCalled()
+
+    storyButton.focus()
+    await user.keyboard("{Enter}")
+    expect(handleOpen).toHaveBeenCalledExactlyOnceWith(storiesWithCover[0]!, 0)
   })
 
   it("fires onPrefetch from focus-capture on the wrapper (lines around 190-191)", () => {
