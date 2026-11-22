@@ -25,15 +25,15 @@ async function fixture() {
   await mkdir(packageDir, { recursive: true })
   await writeFile(
     path.join(root, "package.json"),
-    JSON.stringify({ dependencies: { "maplibre-gl": "^6.15.0" } })
+    JSON.stringify({ dependencies: { "maplibre-gl": "^6.18.0" } })
   )
   await writeFile(
     path.join(root, "package-lock.json"),
-    JSON.stringify({ packages: { "node_modules/maplibre-gl": { version: "6.15.0" } } })
+    JSON.stringify({ packages: { "node_modules/maplibre-gl": { version: "6.18.0" } } })
   )
   await writeFile(
     path.join(packageDir, "package.json"),
-    JSON.stringify({ name: "maplibre-gl", version: "6.15.0" })
+    JSON.stringify({ name: "maplibre-gl", version: "6.18.0" })
   )
   await writeFile(path.join(root, "vite.config.mts"), "fixture-config")
   const files = {

@@ -102,7 +102,7 @@
     "jose": "^6.2.17",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.73.0",
-    "maplibre-gl": "6.15.0",
+    "maplibre-gl": "6.18.0",
     "marked": "^18.2.0",
     "parse5": "8.1.1",
     "qrcode.react": "^4.2.0",
