@@ -15,6 +15,8 @@ from app.core.localization import translate
 from app.schemas.common import BaseModel, OrmModel
 from app.schemas.validators import SanitizedInput
 
+_REQUIRED_UPDATE_FIELDS = ("title", "short_text", "is_active")
+
 
 class _StoryInput(BaseModel):
     @field_validator("published_at", "expires_at", check_fields=False)
@@ -63,6 +65,17 @@ class StoryUpdate(_StoryInput):
     published_at: datetime | None = None
     expires_at: datetime | None = None
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> StoryUpdate:
+        # Omitted fields stay unchanged; an explicit null would clear a NOT NULL column.
+        provided = self.model_fields_set
+        if any(
+            field in provided and getattr(self, field) is None
+            for field in _REQUIRED_UPDATE_FIELDS
+        ):
+            raise ValueError(translate("validation.stories.required_field"))
+        return self
 
     @model_validator(mode="after")
     def _validate_expiration(self) -> StoryUpdate:

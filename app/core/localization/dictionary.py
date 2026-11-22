@@ -901,6 +901,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Загрузите обложку истории через форму загрузки",
         "en": "Upload the story cover through the cover upload",
     },
+    "validation.stories.required_field": {
+        "ru": "Заголовок, текст и статус истории не могут быть пустыми",
+        "en": "A story's title, text and status cannot be empty",
+    },
     "errors.events.attendance_registration_failed": {
         "ru": "Не удалось зарегистрироваться на мероприятие",
         "en": "Failed to register for the event",
