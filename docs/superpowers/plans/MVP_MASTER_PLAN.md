@@ -57,9 +57,9 @@
   - backend GraphQL.
 
   Новая учебная модель оформляется отдельным ADR после MVP.
-- Оси приёмки: RU/EN и светлая/тёмная темы, обязательные ширины 390, 768 и 1440 px. На 360 и 1024 px
-  проверяются только меню, таблицы и найденные адаптивные дефекты. Физические устройства, внешние
-  SMTP/push-провайдеры и field CWV остаются ручными проверками (§5.4).
+- Оси приёмки: RU/EN и ширины 390/768/1440 px обязательны; 360/1024 px
+  проверять для меню, таблиц и рисковых адаптивных сценариев. Светлая и тёмная темы обязательны.
+  Физические устройства, внешние SMTP/push-провайдеры и field CWV остаются ручными проверками (§5.4).
 - Язык документов: ТЗ, план и STATUS пишутся по-русски, ADR, runbooks и код — по-английски.
 
 ## 3. Состояние на 2026-11-23
@@ -120,6 +120,13 @@
   - Чужие env, тома и backups не затрагиваются.
 - **Синхронизация мероприятий и групп** (product gap в матрице). Нужен hosted live-evidence для
   create/edit/delete от преподавателя, на 390 и 1440 px в RU.
+- **News/events/map:** сохранение scroll, back/forward, центрирование tabs,
+  wheel/touch/pinch isolation и отсутствие page scroll jumps.
+- **Home/stories/activity:** пустые состояния, stories открываются по avatar, keyboard/swipe,
+  пауза в hidden state, memory plateau; индикатор периода
+  Activity совпадает с выбранной radio-кнопкой по геометрии bounding box (x, y,
+  width и height с допуском 1 px); только текущие heatmap/trends/grades/comparison,
+  без новых учебных целей/attendance.
 
 ### 5.2 Порядок закрытия строк матрицы
 
@@ -202,9 +209,11 @@
   и настройки, мессенджер. Сохранить конфигурацию, маршруты, отчёт и SHA через существующий collector.
   Действующие LHCI assertions не отключать.
 - **Stories.** 20 последовательных циклов открытия и закрытия, память выходит на plateau (R45).
-- **Доступность.** Нет serious и critical находок axe на принятых экранах, reduced motion проверен.
-- **Мимо MVP (v1.1):** CLS навбара < 0,1, long tasks карты ≥ 50 ms, INP ≤ 200 ms, Lighthouse ≥ 0,95.
-  Готовые измерители сохранить.
+- **Доступность.** Focus trap, Escape, scroll lock, быстрые тапы, hit-target geometry, keyboard,
+  200% zoom, reduced motion и отсутствие serious/critical axe findings.
+- В v1.1: полный lab protocol navbar CLS <0.1, отсутствие map long tasks ≥50 ms,
+  INP ≤200 ms при CPU4×/Slow4G и сертификация Lighthouse ≥0.95. Готовые измерители
+  и исправления сохранить; field CWV остаётся вне локальной MVP-приёмки.
 
 ## 7. Этап 5: безопасность, ledger, данные
 
