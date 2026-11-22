@@ -295,7 +295,7 @@ describe("StoryList branches", () => {
     fireEvent.pointerMove(ul, { pointerType: "mouse", clientX: 30, pointerId: 1 })
     fireEvent.pointerUp(ul, { pointerType: "mouse", pointerId: 1 })
 
-    fireEvent.click(storyBtn)
+    fireEvent.click(storyBtn, { detail: 1 })
     expect(handleOpen).not.toHaveBeenCalled()
 
     // hasDragged was reset to false → a FOLLOWING click opens the story normally

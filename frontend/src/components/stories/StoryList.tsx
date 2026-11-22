@@ -144,10 +144,11 @@ export const StoryList = memo(function StoryList({
   }, [])
 
   const handleStoryClick = useCallback(
-    (story: DashboardStory, index: number) => {
+    (story: DashboardStory, index: number, clickCount: number) => {
       if (hasDragged.current) {
         hasDragged.current = false
-        return
+        // Keyboard activation has no pointer click count.
+        if (clickCount > 0) return
       }
       onOpenStory(story, index)
     },
@@ -253,7 +254,7 @@ export const StoryList = memo(function StoryList({
                   type="button"
                   size="md"
                   borderWidth={BORDER_WIDTH}
-                  onClick={() => handleStoryClick(story, index)}
+                  onClick={(event) => handleStoryClick(story, index, event.detail)}
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
                   aria-label={label}
