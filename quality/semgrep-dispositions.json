@@ -450,7 +450,7 @@
         },
         {
           "path": "frontend/WASM_SOURCE_PROVENANCE.json",
-          "sha256": "929d03b685e2be82fd8dcd9c7f7053e325ba15acb49276a8fc7e42a12144950f"
+          "sha256": "2ff284c35deb60069bed12cc51e99fa1803b4bde8583ddae784ca559a163a8a7"
         },
         {
           "path": "frontend/wasm-sanitizer/src/lib.rs",
@@ -462,7 +462,7 @@
         },
         {
           "path": "frontend/wasm-sanitizer/Cargo.lock",
-          "sha256": "5e532e0523f2b5e6dbf431d2fe1649f2543e0c1e74ef8a8755434a5cfb0e3efc"
+          "sha256": "d0fc3bc866689802ea09949b8e7ba88cba2bb76f7d48986e025c7d29e9a39a6f"
         },
         {
           "path": "frontend/wasm-sanitizer/pkg/package.json",
@@ -474,7 +474,7 @@
         },
         {
           "path": "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm",
-          "sha256": "9fc95b06d64225d2679c7428cb59e09d17cd6f2761858cc73541dcf812a4f950"
+          "sha256": "4746d43226ab01ec8b78997531014325ee8a881a87336ced1a770e0139e680e7"
         },
         {
           "path": "frontend/package.json",
