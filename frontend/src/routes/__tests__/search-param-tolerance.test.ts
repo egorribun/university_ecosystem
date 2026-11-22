@@ -25,12 +25,21 @@ describe("route search validation tolerates JSON-parsed URL values", () => {
     expect(validate({ q: "exam", sort: "popular" })).toMatchObject({ q: "exam", sort: "popular" })
   })
 
-  it("keeps numeric event filters as text", () => {
-    expect(validatorOf(EventsRoute)({ q: 12, tab: 3, dr: null })).toMatchObject({
+  it("drops unsupported Events choices while preserving free-text filters", () => {
+    const validate = validatorOf(EventsRoute)
+    expect(validate({ q: 12, loc: false, tab: 3, dr: "year", sort: "bad", cat: "bad" })).toEqual({
       q: "12",
-      tab: "3",
+      loc: "false",
+      tab: undefined,
       dr: undefined,
+      sort: undefined,
+      cat: undefined,
     })
+  })
+
+  it("preserves supported Events choices in shared links", () => {
+    const search = { q: "exam", loc: "Main", tab: "my", dr: "week", sort: "upcoming", cat: "sport" }
+    expect(validatorOf(EventsRoute)(search)).toEqual(search)
   })
 
   it("keeps the settings tab and tolerates a numeric Spotify marker", () => {
