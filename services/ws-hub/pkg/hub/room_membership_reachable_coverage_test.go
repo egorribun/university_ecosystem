@@ -62,6 +62,10 @@ func TestQueuedRoomWriteStopsWaitingWhenClientContextCancels(t *testing.T) {
 	h := newNatsTestHub(auth, "", 10)
 	client, session := newRevocationTestClient(h, "queued-canceled", userID, "11111111-1111-4111-8111-111111111111", "websocket")
 	client.JoinRoom(roomID)
+	// A fresh durable session check derives a timeout context, which also
+	// calls Done. Keep the check cached so the first Done call is the permit
+	// wait itself, and cancellation always lands on that wait.
+	client.sessionCheckedUntil = time.Now().Add(time.Minute)
 	observedCtx := &observedDoneContext{Context: client.ctx, observed: make(chan struct{})}
 	client.ctx = observedCtx
 
