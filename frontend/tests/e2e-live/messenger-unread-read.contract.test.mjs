@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import process from "node:process"
 import test from "node:test"
 import { URL } from "node:url"
+import { reportReadReceiptFailure } from "./messenger-read-receipt-diagnostic.ts"
 
 const specUrl = new URL("./messenger-unread-read.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -172,4 +174,127 @@ test("Messenger live unread-to-read acceptance uses owned users, REST state, and
     "the contact list exposes an accessible unread badge",
     contactList
   )
+})
+
+test("read receipt failure reports only bounded socket and scoped frame counts", () => {
+  const output = []
+  const identity = { project: { name: "desktop" }, retry: 0 }
+  const makeSession = (closed, roomJoins, readFrames) => ({
+    closed: () => closed,
+    roomJoins,
+    readFrames,
+  })
+  const chat = "private-chat-id"
+  const user = "private-reader-id"
+  const sessions = [
+    makeSession(true, [chat], [{ chatId: chat, userId: "other-reader" }]),
+    makeSession(
+      false,
+      [chat],
+      [
+        { chatId: chat, userId: user },
+        { chatId: "other-chat", userId: user },
+      ]
+    ),
+    makeSession(true, [], [{ chatId: chat, userId: user }]),
+  ]
+  reportReadReceiptFailure(sessions, chat, user, identity, (line) => output.push(line))
+  assert.equal(output.length, 1)
+  assert.doesNotMatch(output[0], /private|other-chat|other-reader/u)
+  assert.deepEqual(JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length)), {
+    schema: 3,
+    scenario: "read-receipt-peer",
+    project: "desktop",
+    attempt: 0,
+    sockets: 3,
+    closedSockets: 2,
+    latestUnclosedJoinSent: true,
+    chatFrames: 3,
+    matchingFrames: 2,
+    socketsCapped: false,
+    framesCapped: false,
+  })
+
+  output.length = 0
+  reportReadReceiptFailure([], chat, user, { project: { name: "mobile" }, retry: 1 }, (line) =>
+    output.push(line)
+  )
+  const empty = JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length))
+  assert.equal(empty.sockets, 0)
+  assert.equal(empty.latestUnclosedJoinSent, false)
+
+  output.length = 0
+  const cappedSessions = Array.from({ length: 33 }, () =>
+    makeSession(
+      false,
+      [],
+      Array.from({ length: 34 }, () => ({ chatId: chat, userId: user }))
+    )
+  )
+  reportReadReceiptFailure(cappedSessions, chat, user, identity, (line) => output.push(line))
+  const capped = JSON.parse(output[0].slice("UE_LIVE_RECONNECT_V1 ".length))
+  assert.equal(capped.sockets, 32)
+  assert.equal(capped.chatFrames, 32)
+  assert.equal(capped.matchingFrames, 32)
+  assert.equal(capped.socketsCapped, true)
+  assert.equal(capped.framesCapped, true)
+  assert.equal(capped.latestUnclosedJoinSent, false)
+})
+
+test("read receipt diagnostics preserve failures and discard unrecognized inputs", async () => {
+  const output = []
+  const identity = { project: { name: "desktop" }, retry: 0 }
+  const write = (line) => output.push(line)
+  reportReadReceiptFailure([], "chat", "reader", { project: { name: "private" }, retry: 0 }, write)
+  reportReadReceiptFailure([], "chat", "reader", { project: { name: "desktop" }, retry: 2 }, write)
+  assert.deepEqual(output, [])
+  const original = new Error("original failure")
+  const throwingSession = [
+    {
+      closed: () => {
+        throw new Error("private")
+      },
+    },
+  ]
+  assert.throws(
+    () => {
+      try {
+        throw original
+      } catch (error) {
+        reportReadReceiptFailure(throwingSession, "chat", "reader", identity, write)
+        reportReadReceiptFailure([], "chat", "reader", identity, () => {
+          throw new Error("private")
+        })
+        throw error
+      }
+    },
+    (error) => error === original
+  )
+  assert.deepEqual(output, [])
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec, /closed: \(\) => socket\.isClosed\(\)/u)
+  assert.match(
+    spec,
+    /reportReadReceiptFailure\(peerSocket\.sessions, activeSecondChatId, receiver\.id, testInfo\)\s*throw error/u
+  )
+})
+
+test("read receipt diagnostics use the existing output channel by default", () => {
+  const output = []
+  const originalWrite = process.stdout.write
+  try {
+    process.stdout.write = (line) => {
+      output.push(line)
+      return true
+    }
+    reportReadReceiptFailure([], "private-chat", "private-reader", {
+      project: { name: "desktop" },
+      retry: 0,
+    })
+  } finally {
+    process.stdout.write = originalWrite
+  }
+  assert.equal(output.length, 1)
+  assert.match(output[0], /^UE_LIVE_RECONNECT_V1 /u)
+  assert.doesNotMatch(output[0], /private/u)
 })

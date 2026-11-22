@@ -3587,14 +3587,66 @@ def _validated_forwarding_diagnostic(value: object) -> dict[str, object] | None:
     return {key: record[key] for key in _FORWARDING_KEYS}
 
 
+_READ_RECEIPT_KEYS = (
+    "schema",
+    "scenario",
+    "project",
+    "attempt",
+    "sockets",
+    "closedSockets",
+    "latestUnclosedJoinSent",
+    "chatFrames",
+    "matchingFrames",
+    "socketsCapped",
+    "framesCapped",
+)
+
+
+def _validated_read_receipt_diagnostic(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _READ_RECEIPT_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 3:
+        return None
+    if record["scenario"] != "read-receipt-peer" or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not _reconnect_integer(record["attempt"], 1):
+        return None
+    if any(
+        not _reconnect_integer(record[key], 32)
+        for key in ("sockets", "closedSockets", "chatFrames", "matchingFrames")
+    ):
+        return None
+    if any(
+        type(record[key]) is not bool
+        for key in ("latestUnclosedJoinSent", "socketsCapped", "framesCapped")
+    ):
+        return None
+    if (
+        record["closedSockets"] > record["sockets"]
+        or record["matchingFrames"] > record["chatFrames"]
+        or (record["sockets"] == 0 and record["chatFrames"] != 0)
+        or (record["socketsCapped"] and record["sockets"] != 32)
+        or (record["framesCapped"] and record["chatFrames"] != 32)
+        or (
+            record["latestUnclosedJoinSent"]
+            and record["closedSockets"] == record["sockets"]
+        )
+    ):
+        return None
+    return {key: record[key] for key in _READ_RECEIPT_KEYS}
+
+
 def _live_playwright_reconnect_diagnostics(
     output: str,
     *,
     retained: bool = False,
 ) -> list[dict[str, object]]:
-    """Accept complete records under the legacy transport label, not a reconnect claim.
+    """Accept complete records under the shared transport label.
 
-    Schema 1 remains reconnect evidence; schema 2 names initial forwarding receipt.
+    Schema 1 records reconnects. Schema 2 records initial forwarding receipt.
+    Schema 3 records a peer read-receipt observation.
     """
     prefix = "live E2E reconnect " if retained else "UE_LIVE_RECONNECT_V1 "
     records: list[dict[str, object]] = []
@@ -3611,9 +3663,11 @@ def _live_playwright_reconnect_diagnostics(
                 object_pairs_hook=_auth_diag_json_object,
                 parse_constant=_reject_auth_diag_json_constant,
             )
-            record = _validated_reconnect_diagnostic(
-                value
-            ) or _validated_forwarding_diagnostic(value)
+            record = (
+                _validated_reconnect_diagnostic(value)
+                or _validated_forwarding_diagnostic(value)
+                or _validated_read_receipt_diagnostic(value)
+            )
         except (ValueError, RecursionError):
             continue
         if record is None:
