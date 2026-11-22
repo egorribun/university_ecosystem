@@ -101,6 +101,7 @@ type StoryMemoryCycle0Trace = {
   dialogOpen: DOMCounters | null
   hiddenResumed: DOMCounters | null
   afterCloseSettled: DOMCounters | null
+  mismatch?: { cycle: number; warmDOM: DOMCounters; actualDOM: DOMCounters }
 }
 type StoryMemoryRemoteObject = { objectId?: string }
 type StoryMemoryEventListener = {
@@ -271,12 +272,29 @@ function emitStoryMemoryCycleTraceDiagnostic(
       trace.afterCloseSettled === null ? null : safeStoryMemoryDOM(trace.afterCloseSettled),
   }
   const availableCount = Object.values(samples).filter((sample) => sample !== null).length
+  const mismatch = trace.mismatch
+  const warmDOM =
+    mismatch && typeof mismatch.warmDOM === "object" && mismatch.warmDOM !== null
+      ? safeStoryMemoryDOM(mismatch.warmDOM)
+      : null
+  const actualDOM =
+    mismatch && typeof mismatch.actualDOM === "object" && mismatch.actualDOM !== null
+      ? safeStoryMemoryDOM(mismatch.actualDOM)
+      : null
   const record = {
     schema: 1,
     project,
     diagnosticStatus:
       availableCount === 0 ? "unavailable" : availableCount === 4 ? "available" : "partial",
     samples,
+    ...(mismatch &&
+    Number.isInteger(mismatch.cycle) &&
+    mismatch.cycle >= 0 &&
+    mismatch.cycle < MEASURED_CYCLES &&
+    warmDOM !== null &&
+    actualDOM !== null
+      ? { mismatch: { cycle: mismatch.cycle, warmDOM, actualDOM } }
+      : {}),
   }
   try {
     process.stdout.write(`${STORY_MEMORY_CYCLE_TRACE_PREFIX}${JSON.stringify(record)}\n`)
@@ -519,7 +537,18 @@ storyVisibilityTest(
             )
           }
           markStorySetupStage(page, "acceptance")
-          expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)
+          try {
+            expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)
+          } catch (error) {
+            if (cycle0Trace !== undefined) {
+              cycle0Trace.mismatch = {
+                cycle,
+                warmDOM: warmSnapshot.domCounters,
+                actualDOM: snapshot.domCounters,
+              }
+            }
+            throw error
+          }
           measuredHeapSamples.push(snapshot.jsHeapUsedBytes)
         }
         markStorySetupStage(page, "acceptance")
@@ -533,7 +562,11 @@ storyVisibilityTest(
       } catch (error) {
         recordStorySetupFailure(page, error)
         if (cycle0Trace !== undefined) {
-          emitStoryMemoryCycleTraceDiagnostic(testInfo.project.name, cycle0Trace)
+          try {
+            emitStoryMemoryCycleTraceDiagnostic(testInfo.project.name, cycle0Trace)
+          } catch {
+            // A diagnostic failure must not replace the original acceptance error.
+          }
         }
         bodyFailed = true
         bodyError = error

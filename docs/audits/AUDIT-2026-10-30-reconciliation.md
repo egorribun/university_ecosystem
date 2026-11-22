@@ -81,8 +81,9 @@ quality floors unchanged. The current policy inventory is 524 dispositions.
 
 ### Current 2-finding complement
 
-- **S (1):** AUD-154 needs a green hosted Owned Live Acceptance run on the exact
-  accepted source, including the existing read-receipt live specification.
+- **S (1):** AUD-154 needs two consecutive green full Core Owned Live Acceptance
+  runs on `main`, each bound to its exact source and including the existing
+  read-receipt live specification.
 - **P (1):** AUD-381 needs ZAP and Nuclei to pass on the ephemeral Compose stand
   on main, with a verified ZAP report.
 - **U (0):** none.

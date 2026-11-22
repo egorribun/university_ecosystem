@@ -5,6 +5,53 @@
 
 ## Текущий срез — 2026-11-22
 
+- [PR #1549](https://github.com/egorribun/university_ecosystem/pull/1549) с source `09a2a727`
+  слит обычным merge в защищённый `main` как `fc92e1835ac985eb151ed5564f4a7bbc4ede1db1`.
+  На source прошли все 78 обязательных пар context/app и отдельная проверка CodeQL. Проверочный
+  merge `f240694a`, source и итоговый `main` имеют одинаковое дерево. Проверка SSR-заголовка ждёт
+  готовности клиентского head; для сбоя read-receipt добавлена ограниченная диагностика без изменения
+  самой проверки. [PR Core smoke](https://github.com/egorribun/university_ecosystem/actions/runs/44971081790/job/137050784038)
+  прошёл с [receipt 14733839451](https://github.com/egorribun/university_ecosystem/actions/runs/44971081790/artifacts/14733839451);
+  [realtime и visual](https://github.com/egorribun/university_ecosystem/actions/runs/44971081868/job/137050785456)
+  прошли (24/24; [артефакт 14734825914](https://github.com/egorribun/university_ecosystem/actions/runs/44971081868/artifacts/14734825914)).
+
+  - Полный Core на `main` `fc92e1835ac985eb151ed5564f4a7bbc4ede1db1` завершился ошибкой в live E2E:
+    220 passed, 1 failed, 8 skipped, 3 flaky. Desktop notification-topics не прошёл на обеих попытках.
+    Flaky: desktop reflow расписания, mobile MapLibre phase 2 и mobile начальная доставка события
+    авторизованной группы Messenger до удаления участника. Повторы прошли.
+    Все шесть именных случаев AUD-154 прошли с первой попытки, включая desktop и mobile read-receipt.
+    Проверка checkout, запуск и остановка стенда прошли; live E2E завершился ошибкой.
+    [Задание](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922)
+    [Receipt 14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230)
+    имеет SHA-256 `46bcd88bee53b6345815ea67ea266f716718a7ac1f23f35ee504078a4d2f9611`.
+    Эти результаты не устанавливают причину сбоев или соответствие отдельной попытки и ответа
+    push-провайдера. Для AUD-154 по-прежнему нужны два последовательных зелёных полных Core на
+    `main` с read-receipt; этот красный запуск их не заменяет.
+
+  - Следующий [полный Core](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658)
+    на том же SHA запущен по расписанию, попытка 1; задание началось в 10:47:11 UTC и завершилось
+    ошибкой в live E2E: 220 passed, 2 failed, 8 skipped, 2 flaky. На desktop и mobile упала проверка
+    Story memory при строгом сравнении счётчиков DOM (`story-viewer-memory.live.spec.ts:522`).
+    Flaky: desktop фокус в расписании (`schedule-200-equivalent-reflow.live.spec.ts:56`) и mobile
+    доставка notification-topics при ожидании нативного уведомления
+    (`notification-topics-delivery.live.spec.ts:557`, `:584`, `:1265`); повторы прошли.
+    Все шесть именных случаев AUD-154 прошли с первой попытки, включая desktop и mobile read-receipt.
+    Проверка checkout, запуск и остановка стенда прошли; live E2E завершился ошибкой.
+    [Receipt 14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011)
+    имеет проверенный SHA-256 `7773d74ee0e27ac1b8147d03d5fa408efbb3f6678a8f0742679c3457ae1e991e`.
+    Эти результаты не устанавливают причину сбоев или связь отдельной попытки с ответом push-провайдера.
+
+  - [DAST](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918), попытка 1,
+    выполнен по расписанию на том же `main` SHA. [Проверка доверенного source](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/job/137158586332)
+    прошла. [Nuclei](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/job/137158603498)
+    прошёл; проверенный санитизированный отчёт пуст. [Артефакт 14748396373](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14748396373)
+    имеет SHA-256 `e88643c475a19cddb70bbe0cf420c43dc9336ddfe916615646cba9a8eda0b402`.
+    [ZAP](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/job/137158603525)
+    не прошёл severity gate: 17 informational, 7 low, 0 medium, 1 high; `coverage_complete=false`.
+    Происхождение и SHA-256 [артефакта 14747819065](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14747819065)
+    проверены: `628574e9a608342faaa499203d5b2bf08d5e3fd6e3a8c4dba23a64323c0a053e`.
+    Эти категории не устанавливают причину, расположение или затронутость high; AUD-381 остаётся открытым.
+
 - [PR #1545](https://github.com/egorribun/university_ecosystem/pull/1545) с source `9690f2c0`
   слит обычным merge в защищённый `main` как `d8a010b4`. На source прошли 78 обязательных проверок и CodeQL.
   Проверочный merge `ee3a6b619`, source и итоговый `main` имеют одинаковое дерево.
@@ -213,7 +260,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Наблюдались сбои mobile/desktop notification-topics; причина не установлена. |
-| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. Последний отчёт ZAP на `7c0af5d42` — 4 medium; #1541 вносит изменения против этих предупреждений, но не закрывает аудит без новых подтверждённых отчётов на `main`. |
+| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. На `fc92e183` Nuclei прошёл с пустым отчётом; ZAP не прошёл severity gate (1 high, `coverage_complete=false`). |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 

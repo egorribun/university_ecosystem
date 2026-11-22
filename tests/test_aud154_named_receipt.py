@@ -153,7 +153,7 @@ def _repo(tmp_path):
     for name in module.SOURCE_PATHS:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("source-bound fixture\n")
+        path.write_bytes(b"source-bound fixture\n")
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "test fixture")
     sha = _git(root, "rev-parse", "HEAD")
