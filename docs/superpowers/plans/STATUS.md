@@ -128,10 +128,10 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 - Новые PR облачного агента интегрируются пачкой, без экспериментов с новыми workflow.
 - Dependabot npm принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
   привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят: его чанк весит 289,41 KiB, и
-  ADR-049 поднят до 290 KiB для этой версии (2026-11-22). Удерживаются:
-  - jsdom 30.1.3: jsdom 31 вычисляет `var()` в `getComputedStyle`, это ломает 54 теста `toHaveStyle`;
-  - @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией FSL-1.1-Apache-2.0, которой нет в
-    `allow-licenses` в `.github/dependency-review-config.yml`.
+  ADR-049 поднят до 290 KiB для этой версии (2026-11-22). jsdom 31 принят: проверки inline-стилей
+  читают объявление через `expectInlineStyle`, а не вычисленный стиль, который теперь раскрывает
+  `var()`. Удерживается @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией
+  FSL-1.1-Apache-2.0, которой нет в `allow-licenses` в `.github/dependency-review-config.yml`.
 - Мутационные линии вне объёма MVP (2026-11-13).
 
 ## Следующие шаги
@@ -143,5 +143,5 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 3. AUD-154: по run 45064476734 разобрать класс возраста подписки при каждом 410 и `firstMismatch`
    story memory и исправить обе причины. Затем два последовательных зелёных полных Core на `main` с
    read-receipt, не чаще одного запуска в два часа.
-4. Перенести 54 теста `toHaveStyle` на jsdom 31 и принять его.
+4. jsdom 31 отправить следующим PR после #1562.
 5. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
