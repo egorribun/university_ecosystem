@@ -76,7 +76,9 @@ test("admin story smoke exercises the real read-only story list and seeded conte
 
   assert.match(route, /createFileRoute\("\/_admin\/admin\/stories"\)/u)
   assertAdminStoryFetch(page)
-  const dashboardFetch = storiesApi.match(/export function fetchStories\(\) \{[\s\S]*?\n\}/u)?.[0]
+  const dashboardFetch = storiesApi.match(
+    /export function fetchStories\(\s*signal\?:\s*AbortSignal\s*\) \{[\s\S]*?\n\}/u
+  )?.[0]
   assert.ok(dashboardFetch, "the dashboard story list request must remain identifiable")
   assert.match(dashboardFetch, /listStoriesApiV1StoriesGet\(options\)/u)
   assert.doesNotMatch(dashboardFetch, /cache-control|no-cache|no-store/iu)
