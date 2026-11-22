@@ -39,28 +39,21 @@
   - **Story memory.** Добавлена диагностика `firstMismatch`. Она записывает первый цикл, в котором
     счётчики DOM разошлись с прогретым снимком.
 
-### Полный Core на `main` `fc92e183`
+### Полный Core на `main`
 
-| Запуск | Итог | Сбои первой попытки | Receipt (SHA-256) |
-| --- | --- | --- | --- |
-| [44993593499](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922) | 220 passed, 1 failed, 8 skipped, 3 flaky | desktop notification-topics (обе попытки); flaky: reflow расписания, MapLibre phase 2, группа Messenger | [14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230) `46bcd88b…f9611` |
-| [45014106658](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658) | 220 passed, 2 failed, 8 skipped, 2 flaky | Story memory desktop и mobile (обе попытки); flaky: фокус в расписании, mobile notification-topics | [14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011) `7773d74e…e991e` |
+| Запуск | SHA | Итог | Сбои первой попытки | Receipt (SHA-256) |
+| --- | --- | --- | --- | --- |
+| [45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/job/137337440218) | `71ea9616c` | **224 passed, 0 failed, 8 skipped, 0 flaky** | нет | [14772751398](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/artifacts/14772751398) `1499f38b…4a816` |
+| [45014106658](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658) | `fc92e183` | 220 passed, 2 failed, 8 skipped, 2 flaky | Story memory desktop и mobile | [14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011) `7773d74e…e991e` |
+| [44993593499](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922) | `fc92e183` | 220 passed, 1 failed, 8 skipped, 3 flaky | desktop notification-topics | [14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230) `46bcd88b…f9611` |
 
-- В обоих запусках все шесть именных случаев AUD-154 прошли с первой попытки, включая desktop и
-  mobile read-receipt. Красный запуск не заменяет требуемые два зелёных подряд.
-- **Push.** Во всех трёх сбоях notification-topics worker записал `push 410` ровно для того
-  endpoint, который браузер получил при подписке. Это видно по префиксам SHA-256: `eff98e4577`,
-  `2d318bab88` и `39be2760a4`.
-  - Перед ожиданием и при сбое браузер держал ту же подписку (`subscription=same`). Ротации не было.
-  - 410 приходил на первую доставку (`scenario=news`) в свежую подписку. Остальные отправки в том
-    же хвосте получили 2xx.
-  - Строку подписки удаляет только ответ провайдера 404 или 410 (`app/services/webpush.py`).
-    Лимита или вытеснения подписок нет.
-  - Почему FCM отозвал подписку, не установлено.
-- **Story memory.** Счётчики DOM цикла 0 совпали с прогретым снимком, расхождение — в одном из
-  следующих циклов. Его цикл и значения запишет `firstMismatch` после слияния #1554.
-- Предыдущие полные Core на `main` (`149814844`, `c506c637c`, `d8a010b4`) тоже были красными.
-  Каждый раз из-за одного-восьми flaky, при зелёных именных случаях AUD-154.
+- **`71ea9616c` — первый зелёный полный Core для AUD-154.** Все шесть именных случаев AUD-154,
+  включая desktop и mobile read-receipt, прошли с первой попытки; `push 410` в журнале нет. Job
+  «Validate frozen-RC full-smoke request» красный при каждом dispatch: `quality/frozen-rc.json` ещё не
+  называет RC (этап 6). Нужен второй зелёный запуск подряд на `main`.
+- **Push на `fc92e183`.** Worker получал `push 410` на первую доставку в свежую подписку, которую
+  браузер продолжал держать. Причина отзыва FCM не установлена; при повторе её покажет класс
+  возраста из #1556.
 
 ### DAST на `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
 
@@ -136,12 +129,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Отправить пакет PR: обновления из #1548 (восемь, Playwright 1.65.1, maplibre-gl 6.18.0),
+1. Слить #1562: обновления из #1548 (восемь, Playwright 1.65.1, maplibre-gl 6.18.0, jsdom 31),
    перенесённые черновики облачного агента и STATUS. Затем закрыть #1548 и перенесённые черновики.
 2. AUD-381 закрыт по DAST на `4e9246c99`. Повторить DAST, только если изменится стенд или код,
    который проверяет ZAP.
-3. AUD-154: по run 45064476734 разобрать класс возраста подписки при каждом 410 и `firstMismatch`
-   story memory и исправить обе причины. Затем два последовательных зелёных полных Core на `main` с
-   read-receipt, не чаще одного запуска в два часа.
-4. jsdom 31 отправить следующим PR после #1562.
-5. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+3. AUD-154: первый зелёный полный Core на `main` есть (run 45064476734). Нужен второй подряд, не
+   раньше чем через два часа после первого. При красном запуске разобрать класс возраста подписки
+   при 410 и `firstMismatch` story memory.
+4. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
