@@ -29,8 +29,8 @@ const versions = {
   "puppeteer-core": "25.17.0",
   "chromium-bidi": "157.0.8090-0",
   zod: "4.6.7",
-  playwright: "1.64.1",
-  "playwright-core": "1.64.1",
+  playwright: "1.65.1",
+  "playwright-core": "1.65.1",
 }
 const fixtureValue = "browser-dependency-smoke"
 const browserVersion = "Chrome/155.0.0.0"

@@ -29,12 +29,12 @@ if ($Update) {
 }
 
 Write-Warning "The selected snapshot suite currently skips Linux; this command does not complete visual acceptance."
-Write-Host "Starting Playwright container (v1.64.1-noble) to run visual E2E tests..." -ForegroundColor Cyan
+Write-Host "Starting Playwright container (v1.65.1-noble) to run visual E2E tests..." -ForegroundColor Cyan
 
 docker run --rm -it `
   -v "${root}:/work" `
   -w /work/frontend `
-  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf `
+  mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579 `
   $playwrightCmd
 
 $dockerExitCode = $LASTEXITCODE
