@@ -62,6 +62,9 @@ func TestQueuedRoomWriteStopsWaitingWhenClientContextCancels(t *testing.T) {
 	h := newNatsTestHub(auth, "", 10)
 	client, session := newRevocationTestClient(h, "queued-canceled", userID, "11111111-1111-4111-8111-111111111111", "websocket")
 	client.JoinRoom(roomID)
+	// A cold session lookup can call Done before the writer reaches the room wait.
+	// Keep the fixture warm so the observation belongs to the permit wait only.
+	client.sessionCheckedUntil = time.Now().Add(time.Minute)
 	observedCtx := &observedDoneContext{Context: client.ctx, observed: make(chan struct{})}
 	client.ctx = observedCtx
 
