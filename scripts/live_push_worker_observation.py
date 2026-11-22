@@ -8,6 +8,8 @@ The separate success summary distinguishes HTTP 201 from other 2xx responses
 only for rows classified as sent; it is not proof of browser delivery.
 The separate 410 prefixes are candidate correlation hints from the bounded tail;
 they do not establish browser identity, timing, or notification attribution.
+Each prefix carries the closed age class of its subscription at the first 410
+in the tail (``unknown`` when the worker did not record one).
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ _SOURCE_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _MASKED_ENDPOINT = re.compile(r"(?:https?://[A-Za-z0-9.\-\[\]:]+/…|…)#([0-9a-f]{10})\Z")
 _FINGERPRINT = re.compile(r"[0-9a-f]{10}\Z")
 _410_PREFIX_LIMIT = 16
+_SUBSCRIPTION_AGES = ("lt_10s", "lt_60s", "lt_600s", "ge_600s", "unknown")
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +61,7 @@ class WorkerSummary:
     gone_410_seen: bool = False
     gone_410_incomplete: bool = False
     gone_410_truncated: bool = False
+    gone_410_ages: tuple[str, ...] = ()
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -101,6 +105,7 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
     http_counts = [0] * len(_HTTP_CLASSES)
     success_http = [0, 0]
     gone_410_prefixes: list[str] = []
+    gone_410_ages: list[str] = []
     gone_410_seen = False
     gone_410_incomplete = False
     gone_410_truncated = False
@@ -162,11 +167,15 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
                 gone_410_incomplete = True
             else:
                 prefix = masked.group(1)
+                age = extra.get("subscription_age", "unknown")
+                if type(age) is not str or age not in _SUBSCRIPTION_AGES:
+                    return None
                 if prefix not in gone_410_prefixes:
                     if len(gone_410_prefixes) == _410_PREFIX_LIMIT:
                         gone_410_truncated = True
                     else:
                         gone_410_prefixes.append(prefix)
+                        gone_410_ages.append(age)
         if status == "sent" and code is not None and 200 <= code <= 299:
             success_index = 0 if code == 201 else 1
             success_http[success_index] = min(
@@ -187,6 +196,7 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
         gone_410_seen,
         gone_410_incomplete,
         gone_410_truncated,
+        tuple(gone_410_ages),
     )
 
 
@@ -246,6 +256,7 @@ def render_410_prefixes(summary: WorkerSummary) -> list[str]:
     """Output only validated prefixes, never the masked URL or other log data."""
     render_summary(summary)
     prefixes = summary.gone_410_prefixes
+    ages = summary.gone_410_ages
     flags = (
         summary.gone_410_seen,
         summary.gone_410_incomplete,
@@ -259,6 +270,9 @@ def render_410_prefixes(summary: WorkerSummary) -> list[str]:
             for value in prefixes
         )
         or len(set(prefixes)) != len(prefixes)
+        or type(ages) is not tuple
+        or len(ages) != len(prefixes)
+        or any(type(age) is not str or age not in _SUBSCRIPTION_AGES for age in ages)
         or any(type(flag) is not bool for flag in flags)
         or (
             not summary.gone_410_seen
@@ -274,8 +288,9 @@ def render_410_prefixes(summary: WorkerSummary) -> list[str]:
         f"truncated={str(summary.gone_410_truncated).lower()}"
     ]
     result.extend(
-        "live E2E worker push 410 sample=tail endpoint_sha256=" + value
-        for value in prefixes
+        f"live E2E worker push 410 sample=tail endpoint_sha256={value} "
+        f"subscription_age={age}"
+        for value, age in zip(prefixes, ages, strict=True)
     )
     return result
 

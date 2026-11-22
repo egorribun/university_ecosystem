@@ -497,22 +497,32 @@ def test_core_workflow_runs_diagnostic_after_failure_before_stop() -> None:
     )
 
 
+_NO_AGE = object()
+
+
 def _gone_row(
-    endpoint: object, *, code: object = 410, stage: str = "webpush_request"
+    endpoint: object,
+    *,
+    code: object = 410,
+    stage: str = "webpush_request",
+    age: object = _NO_AGE,
 ) -> bytes:
+    extra: dict[str, object] = {
+        "event": "send",
+        "status": "gone",
+        "status_code": code,
+        "error_stage": stage,
+        "endpoint": endpoint,
+        "user_id": PRIVATE,
+    }
+    if age is not _NO_AGE:
+        extra["subscription_age"] = age
     return (
         json.dumps(
             {
                 "logger": "app.services.webpush",
                 "message": "webpush.send",
-                "extra": {
-                    "event": "send",
-                    "status": "gone",
-                    "status_code": code,
-                    "error_stage": stage,
-                    "endpoint": endpoint,
-                    "user_id": PRIVATE,
-                },
+                "extra": extra,
             }
         )
         + "\n"
@@ -535,6 +545,7 @@ def test_410_projection_uses_the_real_masked_worker_event_without_exposing_it(
             status_code=410,
             error_stage="webpush_request",
             endpoint=endpoint,
+            subscription_age="lt_10s",
         )
     rows = [
         r.msg
@@ -549,9 +560,12 @@ def test_410_projection_uses_the_real_masked_worker_event_without_exposing_it(
     assert result is not None
     prefix = sha256(endpoint.encode()).hexdigest()[:10]
     assert result.gone_410_prefixes == (prefix,)
+    assert result.gone_410_ages == ("lt_10s",)
     assert observation.render_410_prefixes(result) == [
         "live E2E worker push 410 sample=tail incomplete=false truncated=false",
-        "live E2E worker push 410 sample=tail endpoint_sha256=" + prefix,
+        "live E2E worker push 410 sample=tail endpoint_sha256="
+        + prefix
+        + " subscription_age=lt_10s",
     ]
     assert "private" not in repr(result) + "".join(
         observation.render_410_prefixes(result)
@@ -588,18 +602,62 @@ def test_410_projection_caps_distinct_prefixes_and_rejects_renderer_spoofing() -
     assert len(result.gone_410_prefixes) == 16
     assert result.gone_410_truncated is True
     assert "truncated=true" in observation.render_410_prefixes(result)[0]
-    for prefixes, seen, incomplete, truncated in [
-        ((PRIVATE,), True, False, False),
-        (("aaaaaaaaaa", "aaaaaaaaaa"), True, False, False),
-        (("aaaaaaaaaa",), False, False, False),
-        ((), True, "private", False),
-        (tuple(format(i, "010x") for i in range(17)), True, False, False),
+    for prefixes, seen, incomplete, truncated, ages in [
+        ((PRIVATE,), True, False, False, ("unknown",)),
+        (("aaaaaaaaaa", "aaaaaaaaaa"), True, False, False, ("unknown",) * 2),
+        (("aaaaaaaaaa",), False, False, False, ("unknown",)),
+        ((), True, "private", False, ()),
+        (
+            tuple(format(i, "010x") for i in range(17)),
+            True,
+            False,
+            False,
+            ("unknown",) * 17,
+        ),
+        (("aaaaaaaaaa",), True, False, False, ()),
+        (("aaaaaaaaaa",), True, False, False, ["unknown"]),
+        (("aaaaaaaaaa",), True, False, False, (PRIVATE,)),
+        (("aaaaaaaaaa",), True, False, False, (10,)),
     ]:
         invalid = observation.WorkerSummary(
-            (0,) * 3, (0,) * 7, (0,) * 6, (0, 0), prefixes, seen, incomplete, truncated
+            (0,) * 3,
+            (0,) * 7,
+            (0,) * 6,
+            (0, 0),
+            prefixes,
+            seen,
+            incomplete,
+            truncated,
+            cast(tuple[str, ...], ages),
         )
         with pytest.raises(ValueError):
             observation.render_410_prefixes(invalid)
+
+
+def test_410_projection_keeps_the_first_closed_age_of_each_prefix() -> None:
+    result = observation.project_worker_logs(
+        _gone_row("…#0123456789", age="lt_60s")
+        + _gone_row("…#0123456789", age="ge_600s")
+        + _gone_row("…#aaaaaaaaaa")
+        + _gone_row("…#bbbbbbbbbb", code=404, age=PRIVATE),
+        b"",
+    )
+    assert result is not None
+    assert result.gone_410_prefixes == ("0123456789", "aaaaaaaaaa")
+    assert result.gone_410_ages == ("lt_60s", "unknown")
+    assert observation.render_410_prefixes(result)[1:] == [
+        "live E2E worker push 410 sample=tail endpoint_sha256=0123456789"
+        " subscription_age=lt_60s",
+        "live E2E worker push 410 sample=tail endpoint_sha256=aaaaaaaaaa"
+        " subscription_age=unknown",
+    ]
+
+
+@pytest.mark.parametrize("age", [PRIVATE, "", "lt_5s", 10, None, True])
+def test_410_projection_rejects_an_open_age_value(age: object) -> None:
+    assert (
+        observation.project_worker_logs(_gone_row("…#0123456789", age=age), b"") is None
+    )
 
 
 def test_cli_emits_bounded_410_prefixes_after_existing_summaries(

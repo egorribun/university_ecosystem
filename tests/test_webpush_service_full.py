@@ -624,6 +624,33 @@ class TestSendWebPush:
         result = send_web_push(self._make_sub(), {"title": "Gone"})
         assert result.status == "gone"
 
+    def test_gone_logs_only_the_closed_subscription_age(
+        self, mock_pywebpush, monkeypatch
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from pywebpush import WebPushException
+
+        import app.services.webpush as webpush_module
+
+        events: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            webpush_module,
+            "_log_event",
+            lambda event, **fields: events.append({"event": event, **fields}),
+        )
+        mock_pywebpush.side_effect = WebPushException(
+            "Gone", response=MagicMock(status_code=410)
+        )
+        sub = self._make_sub()
+        sub.created_at = datetime.now(UTC) - timedelta(seconds=3)
+        result = send_web_push(sub, {"title": "Gone"})
+        assert result.status == "gone"
+        gone = [row for row in events if row.get("status") == "gone"]
+        assert len(gone) == 1
+        assert gone[0]["subscription_age"] == "lt_10s"
+        assert str(sub.created_at) not in repr(events)
+
     def test_error_429(self, mock_pywebpush):
         from types import SimpleNamespace
 
