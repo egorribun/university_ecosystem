@@ -93,7 +93,7 @@ const createStoriesQueryFn = (
 ): QueryFunction<DashboardStory[], DashboardStoriesQueryKey> => {
   return async ({ signal }) => {
     try {
-      const response = await fetchStories()
+      const response = await fetchStories(signal)
 
       if (response.status === 304) {
         return projectDashboardStories(queryClient.getQueryData(dashboardStoriesQueryKey)) ?? []

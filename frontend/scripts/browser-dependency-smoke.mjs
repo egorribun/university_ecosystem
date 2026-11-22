@@ -23,8 +23,8 @@ const VERSIONS = Object.freeze({
   "puppeteer-core": "25.17.0",
   "chromium-bidi": "157.0.8090-0",
   zod: "4.6.7",
-  playwright: "1.64.1",
-  "playwright-core": "1.64.1",
+  playwright: "1.65.1",
+  "playwright-core": "1.65.1",
 })
 const FIXTURE_VALUE = "browser-dependency-smoke"
 

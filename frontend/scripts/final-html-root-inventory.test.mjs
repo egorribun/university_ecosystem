@@ -923,7 +923,7 @@ async function capturedReport(program, item) {
   assert.equal(report.relationship, isPr ? "merge-parents-match-event-context" : "checkout-only")
   assert.deepEqual(report.runContext, { runId: "1234", runAttempt: "1" })
   assert.deepEqual(report.checkedSourceFiles, item.checkedSourceFiles)
-  assert.deepEqual(report.toolchain, { jsdom: "30.1.3", babelParser: "8.1.2" })
+  assert.deepEqual(report.toolchain, { jsdom: "31.0.1", babelParser: "8.1.2" })
   const inventory = receipt(report.inventory)
   assert.ok(Buffer.byteLength(JSON.stringify(report.inventory)) <= 32_767)
   assert.equal(inventory.documentsMatch, item.html === item.indexHtml)

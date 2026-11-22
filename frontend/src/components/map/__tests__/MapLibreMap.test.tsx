@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import { createElement, type ReactNode } from "react"
@@ -362,7 +363,7 @@ describe("MapLibreMap", () => {
     expect(attribution).toHaveAttribute("href", "https://www.openstreetmap.org/copyright")
     expect(attribution).toHaveAttribute("target", "_blank")
     expect(attribution).toHaveAttribute("rel", "noopener noreferrer")
-    expect(attribution).toHaveStyle({ color: "var(--text-tertiary)" })
+    expectInlineStyle(attribution, { color: "var(--text-tertiary)" })
   })
 
   it("uses the dark map style without changing the MapLibre interaction contract", () => {

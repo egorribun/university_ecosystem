@@ -131,6 +131,9 @@ describe("scrollUtils", () => {
         if (selector === "[data-scroll-root]") return mockEl
         return null
       })
+      // Computed overflow is only defined for a connected element.
+      document.body.appendChild(mockEl)
+      expect(getScrollRoot()).toBe(mockEl)
 
       markIfFromBottom()
       expect(sessionStorage.getItem("__scrollTopNext")).toBe("1")
@@ -149,6 +152,9 @@ describe("scrollUtils", () => {
         if (selector === "[data-scroll-root]") return mockEl
         return null
       })
+      // Computed overflow is only defined for a connected element.
+      document.body.appendChild(mockEl)
+      expect(getScrollRoot()).toBe(mockEl)
 
       markIfFromBottom()
       expect(sessionStorage.getItem("__scrollTopNext")).toBeNull()

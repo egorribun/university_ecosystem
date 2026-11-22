@@ -1,6 +1,17 @@
 # Audit trail
 
-## Current reconciliation — 2026-11-17
+## Current reconciliation — 2026-11-22
+
+The formal total is **511/512 (99.8%) accepted or resolved, 1 open**:
+**1S / 0P / 0U / 0N**. AUD-381 is resolved for the
+[exact-main ephemeral Compose DAST criterion](AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22).
+The [remaining finding](AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22)
+is AUD-154. Full scan coverage, general CI and release acceptance are
+not implied.
+
+<a id="current-reconciliation--2026-11-17"></a>
+
+## Dated reconciliation — 2026-11-17 (510/2; superseded)
 
 The formal total is **510/512 (99.6%) accepted or resolved, 2 open**:
 **1S / 1P / 0U / 0N**. The scoped decisions accept AUD-169, AUD-188, AUD-189
@@ -111,7 +122,7 @@ files or authorize routine backup, copying, publication, or distribution. AUD-42
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 510 / 512 (99.6%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — preserves the prior 452 decisions, adds 57 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 2-ID complement](AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17): 1S / 1P / 0U / 0N.
+- [Dated accepted audit lower bound: 510 / 512 (99.6%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17) — preserves the prior 452 decisions, adds 57 scoped acceptances and retains the AUD-384 false-positive retraction. [Dated 2-ID complement](AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17): 1S / 1P / 0U / 0N.
 - [Dated accepted audit checkpoint: 506 / 512 (98.8%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-13) — 6 open (4S / 2P / 0U / 0N), retained as history.
 - [Dated accepted audit checkpoint: 502 / 512 (98.0%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-12) — 10 open (4S / 6P / 0U / 0N), retained as history. Evidence is bound to its source snapshots, not the later current index; overall CI and release readiness are not accepted.
 - [Dated accepted audit checkpoint: 494 / 512 (96.5%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-09) — 18 open (9S / 9P / 0U / 0N), retained as history.
@@ -447,8 +458,8 @@ link-check result does not establish the current documentation state.
 
 The `zap` job in `.github/workflows/dast.yml` records runner memory around the
 ZAP scan with `scripts/quality/dast_memory_sampler.py`. It is observation only:
-scan coverage, rules, thresholds and pass/fail are unchanged, and AUD-381 stays
-open until a verified ZAP report exists.
+scan coverage, rules, thresholds and pass/fail are unchanged. The
+[scoped 2026-11-22 decision](AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22) records the verified hosted reports.
 
 - The `dast-memory-telemetry-<run>-attempt-<n>` artifact (7-day retention)
   holds `dast-memory.jsonl`, one record per 5 seconds: MemAvailable, MemTotal,

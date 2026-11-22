@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 type _MockedModuleType1 = typeof import("@/api/client")
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
@@ -535,7 +536,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(alert.querySelector("h4")).toHaveTextContent("messenger:error.failedToLoadUsers")
     expect(alert).toHaveTextContent("messenger:error.failedToLoadUsersHint")
     expectInlineBackground(alert.querySelector(".messenger-card-matte"), "var(--messenger-card-bg)")
-    expect(alert.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(alert.querySelector("svg"), { opacity: "var(--opacity-strong)" })
     const retry = screen.getByRole("button", { name: "messenger:error.retry" })
     expect(attr(retry, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.04 }))
     expect(attr(retry, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.96 }))

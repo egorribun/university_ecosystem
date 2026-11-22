@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -79,7 +80,7 @@ describe("DraggableLessonCard", () => {
     expect(sortableState.pointerDown).toHaveBeenCalledOnce()
     const wrapper = container.querySelector(".relative")
     expect(wrapper).not.toHaveClass("sched-dragging")
-    expect(wrapper).toHaveStyle({ transition: "transform 200ms ease" })
+    expectInlineStyle(wrapper, { transition: "transform 200ms ease" })
     expect(sortableState.setNodeRef).toHaveBeenCalledWith(expect.any(HTMLDivElement))
     expect(sortableState.useSortable).toHaveBeenCalledWith({ id: "lesson-1", disabled: false })
   })

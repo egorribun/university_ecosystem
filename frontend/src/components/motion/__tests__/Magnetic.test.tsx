@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
@@ -11,7 +12,7 @@ describe("Magnetic", () => {
       </Magnetic>
     )
     const target = screen.getByText("Magnetic child")
-    expect(target).toHaveStyle({
+    expectInlineStyle(target, {
       transform: "translate3d(0px, 0px, 0)",
       transition: "transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       willChange: "transform",

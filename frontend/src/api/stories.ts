@@ -18,8 +18,9 @@ export class StoryCoverUploadError extends Error {
   }
 }
 
-export function fetchStories() {
+export function fetchStories(signal?: AbortSignal) {
   const options = {
+    ...(signal ? { signal } : {}),
     etagCacheKey: "dashboard:stories",
     throwOnError: true as const,
     validateStatus: (status: number) => (status >= 200 && status < 300) || status === 304,

@@ -494,8 +494,8 @@ function validatePackage(metadata, sources, installedBytes) {
   const entry = lock.packages?.["node_modules/maplibre-gl"]
   requireInput(
     installed.name === "maplibre-gl" &&
-      installed.version === "6.15.0" &&
-      entry?.version === "6.15.0" &&
+      installed.version === "6.18.0" &&
+      entry?.version === "6.18.0" &&
       typeof entry.integrity === "string" &&
       /^sha512-[A-Za-z0-9+/=]+$/u.test(entry.integrity)
   )
@@ -745,14 +745,14 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
     requireInput(
       exactKeys(report.toolchain, ["babelParser", "jsdom"]) &&
         report.toolchain.babelParser === "8.1.2" &&
-        report.toolchain.jsdom === "30.1.3"
+        report.toolchain.jsdom === "31.0.1"
     )
     stage = "toolchain-resolver"
     const require = createRequire(path.join(workspace, "frontend/package.json"))
     stage = "lock-json"
     const lock = parseJson(sources.get("frontend/package-lock.json"))
     for (const [name, version] of [
-      ["jsdom", "30.1.3"],
+      ["jsdom", "31.0.1"],
       ["@babel/parser", "8.1.2"],
     ]) {
       stage = "toolchain-manifest-read"
@@ -857,7 +857,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
       rawBytes: candidate.rawBytes,
       gzipBytes: candidate.gzipBytes,
       sha256: candidate.sha256,
-      packageVersion: "6.15.0",
+      packageVersion: "6.18.0",
       staticInitialReachable: false,
       runtimeClosure: "unproved",
     }

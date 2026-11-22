@@ -5,16 +5,25 @@
 
 ## Текущий срез — 2026-11-22
 
-### `main` и открытый PR
+### `main` и пакет PR
 
-- `main` = `fc92e1835ac985eb151ed5564f4a7bbc4ede1db1`. Слиты обычным merge после всех 78
-  обязательных проверок и CodeQL на source:
+- `main` = `71ea9616ccb7d950b3baee3855f38f5a64c62c62`. Слиты обычным merge после всех
+  обязательных проверок:
   [#1541](https://github.com/egorribun/university_ecosystem/pull/1541) → `149814844`,
   [#1544](https://github.com/egorribun/university_ecosystem/pull/1544) → `c506c637c`,
   [#1545](https://github.com/egorribun/university_ecosystem/pull/1545) → `d8a010b4`,
-  [#1549](https://github.com/egorribun/university_ecosystem/pull/1549) → `fc92e183`.
+  [#1549](https://github.com/egorribun/university_ecosystem/pull/1549) → `fc92e183`,
+  [#1554](https://github.com/egorribun/university_ecosystem/pull/1554) → `4e9246c99`,
+  [#1556](https://github.com/egorribun/university_ecosystem/pull/1556) → `71ea9616c`.
   Подробности по каждому — в описании PR и в истории этого файла.
-- [PR #1554](https://github.com/egorribun/university_ecosystem/pull/1554) открыт, ещё не слит.
+- #1556 при каждом ответе провайдера 404 или 410 записывает закрытый класс возраста подписки
+  (`lt_10s` … `ge_600s`, `unknown`) без самого времени, и в строках `push 410` наблюдения worker.
+  Полный Core на `71ea9616c` запущен: [run 45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734).
+- Закрыты черновики облачного агента: устаревшие или перенесённые #1523, #1547, #1550, #1553,
+  #1555 и мутационные #1542, #1543, #1551, #1552. Для доработки открыты #1426, #1506, #1507.
+  Перенесены #1557 (R14), #1558 и #1559 (Stories), #1560 (AUD-381), #1561 (тест PATCH) вместе с
+  исправлением API.
+- Состав #1554:
   - **RUSTSEC-2026-0592.** `b77621408` упал на Cargo Deny и Rust vulnerability gate из-за
     переполнения стека в `Url::origin()` в `url` 2.5.8. Это транзитивная зависимость `ammonia`
     в `wasm-sanitizer`.
@@ -30,46 +39,36 @@
   - **Story memory.** Добавлена диагностика `firstMismatch`. Она записывает первый цикл, в котором
     счётчики DOM разошлись с прогретым снимком.
 
-### Полный Core на `main` `fc92e183`
+### Полный Core на `main`
 
-| Запуск | Итог | Сбои первой попытки | Receipt (SHA-256) |
-| --- | --- | --- | --- |
-| [44993593499](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922) | 220 passed, 1 failed, 8 skipped, 3 flaky | desktop notification-topics (обе попытки); flaky: reflow расписания, MapLibre phase 2, группа Messenger | [14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230) `46bcd88b…f9611` |
-| [45014106658](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658) | 220 passed, 2 failed, 8 skipped, 2 flaky | Story memory desktop и mobile (обе попытки); flaky: фокус в расписании, mobile notification-topics | [14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011) `7773d74e…e991e` |
+| Запуск | SHA | Итог | Сбои первой попытки | Receipt (SHA-256) |
+| --- | --- | --- | --- | --- |
+| [45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/job/137337440218) | `71ea9616c` | **224 passed, 0 failed, 8 skipped, 0 flaky** | нет | [14772751398](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/artifacts/14772751398) `1499f38b…4a816` |
+| [45014106658](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658) | `fc92e183` | 220 passed, 2 failed, 8 skipped, 2 flaky | Story memory desktop и mobile | [14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011) `7773d74e…e991e` |
+| [44993593499](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922) | `fc92e183` | 220 passed, 1 failed, 8 skipped, 3 flaky | desktop notification-topics | [14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230) `46bcd88b…f9611` |
 
-- В обоих запусках все шесть именных случаев AUD-154 прошли с первой попытки, включая desktop и
-  mobile read-receipt. Красный запуск не заменяет требуемые два зелёных подряд.
-- **Push.** Во всех трёх сбоях notification-topics worker записал `push 410` ровно для того
-  endpoint, который браузер получил при подписке. Это видно по префиксам SHA-256: `eff98e4577`,
-  `2d318bab88` и `39be2760a4`.
-  - Перед ожиданием и при сбое браузер держал ту же подписку (`subscription=same`). Ротации не было.
-  - 410 приходил на первую доставку (`scenario=news`) в свежую подписку. Остальные отправки в том
-    же хвосте получили 2xx.
-  - Строку подписки удаляет только ответ провайдера 404 или 410 (`app/services/webpush.py`).
-    Лимита или вытеснения подписок нет.
-  - Почему FCM отозвал подписку, не установлено.
-- **Story memory.** Счётчики DOM цикла 0 совпали с прогретым снимком, расхождение — в одном из
-  следующих циклов. Его цикл и значения запишет `firstMismatch` после слияния #1554.
-- Предыдущие полные Core на `main` (`149814844`, `c506c637c`, `d8a010b4`) тоже были красными.
-  Каждый раз из-за одного-восьми flaky, при зелёных именных случаях AUD-154.
+- **`71ea9616c` — первый зелёный полный Core для AUD-154.** Все шесть именных случаев AUD-154,
+  включая desktop и mobile read-receipt, прошли с первой попытки; `push 410` в журнале нет. Job
+  «Validate frozen-RC full-smoke request» красный при каждом dispatch: `quality/frozen-rc.json` ещё не
+  называет RC (этап 6). Нужен второй зелёный запуск подряд на `main`.
+- **Push на `fc92e183`.** Worker получал `push 410` на первую доставку в свежую подписку, которую
+  браузер продолжал держать. Причина отзыва FCM не установлена; при повторе её покажет класс
+  возраста из #1556.
 
-### DAST на `main` `fc92e183`
+### DAST на `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
 
-- [Run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918):
-  проверка доверенного source прошла.
-- **Nuclei** прошёл, санитизированный отчёт пуст.
-  [Артефакт 14748396373](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14748396373)
-  имеет SHA-256 `e88643c475a19cddb70bbe0cf420c43dc9336ddfe916615646cba9a8eda0b402`.
-- **ZAP** не прошёл severity gate: 17 informational, 7 low, 0 medium, 1 high (40024, «SQL
-  Injection — SQLite»), `coverage_complete=false`.
-  [Артефакт 14747819065](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918/artifacts/14747819065)
-  имеет SHA-256 `628574e9a608342faaa499203d5b2bf08d5e3fd6e3a8c4dba23a64323c0a053e`.
-  Место срабатывания не публикуется по дизайну приватного отчёта.
-- Локально 40024 не воспроизвёлся на Core-стенде того же дерева с тем же закреплённым образом.
-  Проверены два варианта: только это правило, и полный активный скан с AJAX spider и лимитами
-  hosted-запуска. В обоих 0 FAIL.
-- Прежний DAST на `7c0af5d42` (до #1541) давал 4 medium (10055, 10202, 20012). Их закрыли решения
-  владельца от 2026-11-21 (см. ниже).
+- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
+  (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
+- **ZAP.** Gate «medium or high» прошёл: 0 high, 0 medium, 6 low, 18 informational. 40024 не
+  повторился. Provenance привязывает отчёт к `source_sha` `4e9246c99`, этому запуску и
+  закреплённому образу ZAP; `origin_response_verified=true`. `coverage_complete=false` записывается
+  всегда, по дизайну. [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
+  имеет SHA-256 `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`.
+- **Nuclei** прошёл, отчёт пуст.
+  [Артефакт 14768600299](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299)
+  имеет SHA-256 `2a2cdadbe68f11f8092ba731dbf26c6707593323d654ecc6e8e85e72fac5be4f`.
+- Прежний DAST на `fc92e183` ([run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918))
+  давал 1 high (40024). Локально он не воспроизвёлся, ни на одном правиле, ни на полном скане.
 
 ### Справочно
 
@@ -81,10 +80,10 @@
   изображений: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, событий OOM нет.
   `/api/v1/img` имеет отдельный бюджет `RATE_LIMIT_STATIC`.
 
-## Аудит: текущий итог — 510/512
+## Аудит: текущий итог — 511/512
 
-Формальный итог: **510/512 (99.6%) accepted or resolved, 2 open**, **1S / 1P / 0U / 0N**.
-Границы решений: [Current scoped supplement — 2026-11-17](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-17).
+Формальный итог: **511/512 (99.8%) accepted or resolved, 1 open**, **1S / 0P / 0U / 0N**.
+Границы решений: [Scoped AUD-381 acceptance — 2026-11-22](../../audits/AUDIT-2026-11-06-full-reassessment.md#scoped-aud-381-acceptance--2026-11-22).
 
 Счёт поддерживается в шести файлах: `docs/audits/INDEX.md`, reassessment, reconciliation,
 `AUDIT-2026-10.md`, этот файл и `docs/README.md`. `docs/audits/*` меняются только по hosted-доказательствам
@@ -94,12 +93,11 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ### Открытые находки
 
-Состав — из [current 2-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-2-finding-reconciliation--2026-11-17).
+Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
 | AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Notification-topics падает, когда FCM отвечает 410 на первую доставку в свежую подписку, которую браузер продолжает держать; причина отзыва не установлена. |
-| AUD-381 | P | Успешные подтверждённые отчёты ZAP и Nuclei на эфемерном Compose-стенде для точного SHA `main`. На `fc92e183` Nuclei прошёл с пустым отчётом; ZAP не прошёл severity gate (1 high, `coverage_complete=false`). |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -121,20 +119,21 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
   другое исключение — только с согласия владельца.
 - Демо-изображения хранятся в репозитории (2026-11-21).
 - Новые PR облачного агента интегрируются пачкой, без экспериментов с новыми workflow.
-- Dependabot npm принимается коммитом владельца только для неудерживаемых пакетов. Удерживаются
-  maplibre-gl 6.15.0, jsdom 30.1.3, playwright и @playwright/test 1.64.1. Манифесты привязаны
-  проекцией D1–D4 (ADR-047, одобрено 2026-11-15).
+- Dependabot npm принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
+  привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят: его чанк весит 289,41 KiB, и
+  ADR-049 поднят до 290 KiB для этой версии (2026-11-22). jsdom 31 принят: проверки inline-стилей
+  читают объявление через `expectInlineStyle`, а не вычисленный стиль, который теперь раскрывает
+  `var()`. Удерживается @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией
+  FSL-1.1-Apache-2.0, которой нет в `allow-licenses` в `.github/dependency-review-config.yml`.
 - Мутационные линии вне объёма MVP (2026-11-13).
 
 ## Следующие шаги
 
-1. Получить все обязательные проверки на #1554 и слить его обычным merge.
-2. Запустить DAST на новом `main`. Если ZAP снова сообщит 40024, установить его место, не публикуя
-   приватный отчёт. Зелёные ZAP и Nuclei с проверенным отчётом закрывают AUD-381.
-3. AUD-154: установить, почему FCM отвечает 410 на свежую подписку. Для этого отдельная
-   ограниченная диагностика: возраст подписки и прежние успешные отправки на момент 410. По
-   `firstMismatch` из следующего полного Core исправить story memory. Затем два последовательных
-   зелёных полных Core на `main` с read-receipt, не чаще одного запуска в два часа.
-4. Dependabot #1548: принять девять неудерживаемых обновлений коммитом владельца. glob закреплён в
-   `security/audit-allowlist.yaml`; @lhci/cli 0.16 меняет зависимые закрепления Lighthouse.
-5. Обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+1. Слить #1562: обновления из #1548 (восемь, Playwright 1.65.1, maplibre-gl 6.18.0, jsdom 31),
+   перенесённые черновики облачного агента и STATUS. Затем закрыть #1548 и перенесённые черновики.
+2. AUD-381 закрыт по DAST на `4e9246c99`. Повторить DAST, только если изменится стенд или код,
+   который проверяет ZAP.
+3. AUD-154: первый зелёный полный Core на `main` есть (run 45064476734). Нужен второй подряд, не
+   раньше чем через два часа после первого. При красном запуске разобрать класс возраста подписки
+   при 410 и `firstMismatch` story memory.
+4. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.

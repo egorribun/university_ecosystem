@@ -62,7 +62,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
             aria-valuenow="30000"
             class="h-full bg-brand rounded-full origin-left will-change-transform shadow-glow-primary"
             role="progressbar"
-            style="transform: scaleX(0.16666666666666663); transition: transform 0.2s ease-out;"
+            style="transform: scaleX(0.166667); transition: transform 0.2s ease-out;"
           />
         </div>
         <span
@@ -135,7 +135,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
             aria-valuenow="30000"
             class="h-full bg-brand rounded-full origin-left will-change-transform shadow-glow-primary"
             role="progressbar"
-            style="transform: scaleX(0.16666666666666663); transition: transform 0.2s ease-out;"
+            style="transform: scaleX(0.166667); transition: transform 0.2s ease-out;"
           />
         </div>
         <span

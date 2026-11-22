@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
@@ -187,7 +188,7 @@ describe("DashboardHero closure", () => {
       "greeting-morning"
     )
     expectInlineBackground(header, "var(--hero-card-bg)")
-    expect(header).toHaveStyle({
+    expectInlineStyle(header, {
       boxShadow:
         "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
     })

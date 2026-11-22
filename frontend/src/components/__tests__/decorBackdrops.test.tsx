@@ -301,12 +301,12 @@ describe("Presentational Backdrops Coverage Sweep", () => {
 
     expect(digests).toEqual([
       expectedDigest(
-        "4d4f_0bf4_2cae",
-        "1746_55b1_8d6d",
-        "7c12_1afa_8b7c",
-        "6f82_d81c_b8f8",
-        "60af_4639_4204",
-        "028b"
+        "990f_dd16_3bcb",
+        "9236_94d8_0417",
+        "8864_753b_3495",
+        "a332_99e9_2964",
+        "56b0_e49a_20f8",
+        "0a02"
       ),
       expectedDigest(
         "61f1_00d0_8610",

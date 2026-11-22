@@ -1,3 +1,4 @@
+import { expectInlineStyle, expectInlineStyleAbsent } from "@/tests/helpers/expectInlineStyle"
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { readFileSync } from "node:fs"
@@ -937,7 +938,7 @@ describe("NotificationsBell", () => {
     await user.click(trigger)
     const dropdown = screen.getByRole("dialog", { name: "Notifications" })
     expect(dropdown).toHaveStyle({ top: "54px", right: "540px" })
-    expect(dropdown).not.toHaveStyle({ width: "calc(100vw - 2rem)" })
+    expectInlineStyleAbsent(dropdown, { width: "calc(100vw - 2rem)" })
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -960,7 +961,7 @@ describe("NotificationsBell", () => {
       await user.click(screen.getByRole("button", { name: "Open notifications" }))
       const dropdown = screen.getByRole("dialog", { name: "Notifications" })
       expect(dropdown).toHaveAttribute("data-motion-x", "-50%")
-      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+      expectInlineStyle(dropdown, { width: "calc(100vw - 2rem)" })
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
@@ -1248,7 +1249,7 @@ describe("NotificationsBell", () => {
       expect(dropdown.style.top).toBe("12px")
       // Mobile branch sets right to null → undefined → empty string
       expect(dropdown.style.right).toBe("")
-      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+      expectInlineStyle(dropdown, { width: "calc(100vw - 2rem)" })
       const variants = JSON.parse(dropdown.getAttribute("data-motion-variants") ?? "null") as {
         hidden: { x: number | string }
         visible: { x: number | string }
@@ -1284,7 +1285,7 @@ describe("NotificationsBell", () => {
 
       const dropdown = findDropdown()
       expect(dropdown.style.right).toBe("")
-      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+      expectInlineStyle(dropdown, { width: "calc(100vw - 2rem)" })
     })
   })
 

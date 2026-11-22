@@ -1042,8 +1042,8 @@ jobs:
               packageInfo.declared === manifest.dependencies?.["maplibre-gl"] &&
               typeof packageInfo.declared === "string" && packageInfo.declared.length <= 128 &&
               packageInfo.installedName === "maplibre-gl" && installed.name === "maplibre-gl" &&
-              packageInfo.installedVersion === "6.15.0" && installed.version === "6.15.0" &&
-              packageInfo.lockVersion === "6.15.0" && entry?.version === "6.15.0" &&
+              packageInfo.installedVersion === "6.18.0" && installed.version === "6.18.0" &&
+              packageInfo.lockVersion === "6.18.0" && entry?.version === "6.18.0" &&
               packageInfo.lockIntegrity === entry?.integrity &&
               typeof packageInfo.lockIntegrity === "string" &&
               /^sha(?:256|384|512)-[A-Za-z0-9+/=]{1,256}$/u.test(packageInfo.lockIntegrity)
@@ -1386,7 +1386,7 @@ jobs:
             const require = createRequire(path.join(frontend, "package.json"))
             const toolchain = {}
             for (const [name, label, version] of [
-              ["jsdom", "jsdom", "30.1.3"],
+              ["jsdom", "jsdom", "31.0.1"],
               ["@babel/parser", "babelParser", "8.1.2"],
             ]) {
               const packageFile = require.resolve(name + "/package.json")

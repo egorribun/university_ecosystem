@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -101,7 +102,7 @@ describe("POIMarker", () => {
     const pin = screen.getByRole("button", {
       name: "poi.items.cafe-1.name — poi.categories.food",
     })
-    expect(pin).toHaveStyle({
+    expectInlineStyle(pin, {
       minWidth: "44px",
       minHeight: "44px",
       "--_poi-color": "var(--map-poi-food, var(--color-slate-400, #94a3b8))",
@@ -188,7 +189,7 @@ describe("POIMarker", () => {
       "false"
     )
     expect(document.querySelector(".map-popup-premium")).toHaveAttribute("data-max-width", "240px")
-    expect(document.querySelector(".map-popup-card--compact .rounded-full")).toHaveStyle({
+    expectInlineStyle(document.querySelector(".map-popup-card--compact .rounded-full"), {
       backgroundColor: "var(--map-poi-food, var(--color-slate-400, #94a3b8))",
     })
     expect(screen.getByRole("link", { name: /poi\.openInMaps/ })).toHaveAttribute(

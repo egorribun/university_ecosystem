@@ -1,3 +1,4 @@
+import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ForwardRefExoticComponent, ReactNode, RefAttributes } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
@@ -526,13 +527,13 @@ describe("ChatArea motion and delegation contract", () => {
     )
     expectInlineBackground(card, "var(--messenger-card-bg)")
     expect(card.querySelector("svg")).toHaveClass("size-20", "text-(--color-violet-500)")
-    expect(card.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expectInlineStyle(card.querySelector("svg"), { opacity: "var(--opacity-strong)" })
 
     const heading = screen.getByRole("heading", { name: "messenger:selectChat", level: 3 })
     const subtitle = screen.getByText("messenger:selectChatDesc")
     expect(heading).toHaveClass("mx-auto", "max-w-[42rem]", "self-stretch", "text-center")
-    expect(heading).toHaveStyle({ fontSize: "var(--fs-messenger-hero)" })
+    expectInlineStyle(heading, { fontSize: "var(--fs-messenger-hero)" })
     expect(subtitle).toHaveClass("mx-auto", "max-w-[32rem]", "self-stretch", "text-center")
-    expect(subtitle).toHaveStyle({ fontSize: "var(--fs-messenger-subtitle)" })
+    expectInlineStyle(subtitle, { fontSize: "var(--fs-messenger-subtitle)" })
   })
 })

@@ -2,8 +2,9 @@
 
 - Status: Accepted scoped decision; implementation requires exact-source CI validation
 - Owner: egorribun
-- Decision approved: 2026-10-28
-- Scope: one MapLibre 6.15.0 client chunk
+- Decision approved: 2026-10-28 (MapLibre 6.15.0, 286 KiB)
+- Revised: 2026-11-22 (MapLibre 6.18.0, 290 KiB)
+- Scope: one MapLibre 6.18.0 client chunk
 
 ## Context
 
@@ -14,13 +15,27 @@ reports exactly one violation: that chunk exceeds the 280 KiB general lazy limit
 Keeping MapLibre 6.15.0 therefore requires an explicit 6 KiB increase for this
 one proven chunk. This is a budget decision, not an optimization.
 
+### Revision for MapLibre 6.18.0 (2026-11-22)
+
+Dependabot #1548 proposed `maplibre-gl` 6.18.0. As this ADR requires for any
+dependency upgrade, the 6.15.0 allowance stopped applying. A local production
+build with 6.18.0 measured the vendor-map chunk at 296,360 gzip bytes
+(289.41 KiB), using the analyzer's level-9 gzip measurement. That is above the
+286 KiB ceiling. The
+package exports and the three admitted module records are unchanged.
+
+On 2026-11-22 the owner chose to raise the separate ceiling to 290 KiB for
+exactly this version, rather than keep 6.15.0. All checks below stay as they
+were. Only the bound version and the admitted ceiling change. The general
+280 KiB lazy limit and every other ceiling are unchanged.
+
 The final-HTML inventory and compiler metadata are evidence inputs, not blanket
 admission proofs. In particular, the observed 79 computed dynamic imports remain
 unresolved. The decision below concerns static initial reachability only.
 
 ## Decision
 
-The general lazy JavaScript limit remains 280 KiB. A separate 286 KiB ceiling
+The general lazy JavaScript limit remains 280 KiB. A separate 290 KiB ceiling
 may apply to exactly one `assets/vendor-map-<build-id>.js` chunk only after all
 checks below succeed for the artifact actually analyzed.
 
@@ -46,7 +61,7 @@ checks below succeed for the artifact actually analyzed.
    binding is insufficient.
 
 3. **Exact package and composition.** Both the lock entry and installed package
-   must identify `maplibre-gl` version `6.15.0`. Their integrity and manifest
+   must identify `maplibre-gl` version `6.18.0`. Their integrity and manifest
    fingerprints must agree with the owned checkout and the installed package.
    Exactly one metadata candidate and one matching output vendor-map asset are
    permitted. The candidate must contain exactly these package module records,
@@ -87,7 +102,7 @@ checks below succeed for the artifact actually analyzed.
    admitted by this auxiliary rule. These two tracked sources are included in
    the consumer's source-byte verification, not trusted by filename alone.
 
-6. **Independent ceilings.** The admitted candidate is checked against 286 KiB.
+6. **Independent ceilings.** The admitted candidate is checked against 290 KiB.
    Every other general lazy asset is checked against 280 KiB, not only the
    previous maximum. Main-JS, initial-JS, CSS and password-dictionary ceilings
    remain unchanged. Absent evidence leaves the original 280 KiB rule active;
@@ -121,6 +136,12 @@ actual Rolldown compilation. The 29 negative mutations and both independent
 ceiling variants were not reached in that RED run. Their later exact-source
 execution and the separate real 285.83 KiB production artifact remain required.
 
+For the 6.18.0 revision, the synthetic fixture stays inside the separate ceiling
+at 282.51 KiB. Its oversized variant measures 291.93 KiB, so it still exceeds
+290 KiB. The 289.41 KiB local measurement is not hosted evidence. The real
+6.18.0 production artifact must pass the hosted Bundle Analysis job on the exact
+source.
+
 Required before treating the implementation as validated:
 
 - Exact-source frontend lint, existing suites and focused budget tests pass.
@@ -129,7 +150,7 @@ Required before treating the implementation as validated:
   run/attempt, artifact bindings, any graph/document byte, initial MapLibre
   reachability and missing/duplicate candidates.
 - A non-Map lazy asset over 280 KiB still fails even when a larger admitted Map
-  chunk is present; the Map chunk over 286 KiB also fails.
+  chunk is present; the Map chunk over 290 KiB also fails.
 - Existing direct-HTML grammar, size ceilings and artifact catalog contracts
   remain enforced. No report-count or registry acceptance is inferred solely
   from this ADR.

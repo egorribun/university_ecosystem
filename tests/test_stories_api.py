@@ -141,6 +141,37 @@ async def test_story_admin_permissions(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["title", "short_text", "is_active"])
+async def test_story_patch_rejects_null_for_required_fields(
+    async_client: AsyncClient, user_factory, story_factory, field
+):
+    password = "StoryAdmin123!"
+    admin = await user_factory(
+        role="admin", hashed_password=await get_password_hash(password)
+    )
+    headers = await _login(async_client, admin.email, password)
+    story = await story_factory(
+        title="Original", short_text="Original text", is_active=True
+    )
+    story_id = story.id
+    payload = {"title": "Unsaved", "short_text": "Unsaved text"}
+
+    response = await async_client.patch(
+        f"/stories/{story_id}",
+        json={**payload, field: None},
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    async with async_session() as observer:
+        unchanged = await observer.get(models.Story, story_id)
+        assert unchanged is not None
+        assert unchanged.title == "Original"
+        assert unchanged.short_text == "Original text"
+        assert unchanged.is_active is True
+
+
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_handles_naive_now(db_session, story_factory):
     past_story = await story_factory(
         title="Past",

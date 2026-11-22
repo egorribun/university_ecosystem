@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { collectMotionDurationViolations } from "../../../tests/e2e/utils/motionDurationViolations"
 import { ANIMATION_VARIANTS, DURATIONS, EASING } from "../motion"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -31,32 +31,36 @@ describe("motion presets", () => {
 
 describe("regular E2E reduced-motion duration collector", () => {
   it.each([
-    { property: "transitionDuration", duration: "0s, 0.25s" },
-    { property: "transitionDuration", duration: "0ms, 250ms" },
-    { property: "animationDuration", duration: "0s, 0.25s" },
-    { property: "animationDuration", duration: "0ms, 250ms" },
-  ] as const)("detects the second component of $property=$duration", ({ property, duration }) => {
-    const root = document.createElement("div")
-    root.id = "motion-list"
-    root.style.transitionDuration = "0s"
-    root.style.animationDuration = "0s"
-    root.style[property] = duration
-    document.body.append(root)
+    { property: "transitionDuration", duration: "0s, 0.25s", computed: "0s, 0.25s" },
+    { property: "transitionDuration", duration: "0ms, 250ms", computed: "0s, 0.25s" },
+    { property: "animationDuration", duration: "0s, 0.25s", computed: "0s, 0.25s" },
+    { property: "animationDuration", duration: "0ms, 250ms", computed: "0s, 0.25s" },
+  ] as const)(
+    "detects the second component of $property=$duration",
+    ({ property, duration, computed }) => {
+      const root = document.createElement("div")
+      root.id = "motion-list"
+      root.style.transitionDuration = "0s"
+      root.style.animationDuration = "0s"
+      root.style[property] = duration
+      document.body.append(root)
 
-    try {
-      const styles = getComputedStyle(root)
-      expect(styles[property]).toBe(duration)
-      expect(collectMotionDurationViolations(root)).toEqual([
-        {
-          selector: "div#motion-list",
-          transitionDuration: styles.transitionDuration,
-          animationDuration: styles.animationDuration,
-        },
-      ])
-    } finally {
-      root.remove()
+      try {
+        const styles = getComputedStyle(root)
+        // Computed durations serialize in seconds, as browsers report them.
+        expect(styles[property]).toBe(computed)
+        expect(collectMotionDurationViolations(root)).toEqual([
+          {
+            selector: "div#motion-list",
+            transitionDuration: styles.transitionDuration,
+            animationDuration: styles.animationDuration,
+          },
+        ])
+      } finally {
+        root.remove()
+      }
     }
-  })
+  )
 
   it("does not apply the final component's unit to the first duration", () => {
     const root = document.createElement("div")
@@ -65,7 +69,7 @@ describe("regular E2E reduced-motion duration collector", () => {
     document.body.append(root)
 
     try {
-      expect(getComputedStyle(root).transitionDuration).toBe("1ms, 0s")
+      expect(getComputedStyle(root).transitionDuration).toBe("0.001s, 0s")
       expect(collectMotionDurationViolations(root)).toEqual([])
     } finally {
       root.remove()
@@ -89,33 +93,71 @@ describe("regular E2E reduced-motion duration collector", () => {
   })
 
   it.each([
-    { duration: "1ms", expectedCount: 0 },
-    { duration: "0.001s", expectedCount: 0 },
-    { duration: "2ms", expectedCount: 1 },
-    { duration: "0.002s", expectedCount: 1 },
-  ])("preserves the one-millisecond boundary for $duration", ({ duration, expectedCount }) => {
+    { duration: "1ms", computed: "0.001s", expectedCount: 0 },
+    { duration: "0.001s", computed: "0.001s", expectedCount: 0 },
+    { duration: "2ms", computed: "0.002s", expectedCount: 1 },
+    { duration: "0.002s", computed: "0.002s", expectedCount: 1 },
+  ])(
+    "preserves the one-millisecond boundary for $duration",
+    ({ duration, computed, expectedCount }) => {
+      const root = document.createElement("div")
+      root.id = "motion-boundary"
+      root.style.transitionDuration = duration
+      root.style.animationDuration = duration
+      document.body.append(root)
+
+      try {
+        const styles = getComputedStyle(root)
+        expect(styles.transitionDuration).toBe(computed)
+        expect(styles.animationDuration).toBe(computed)
+        const violations = collectMotionDurationViolations(root)
+        expect(violations).toHaveLength(expectedCount)
+        if (expectedCount === 1) {
+          expect(violations).toEqual([
+            {
+              selector: "div#motion-boundary",
+              transitionDuration: computed,
+              animationDuration: computed,
+            },
+          ])
+        }
+      } finally {
+        root.remove()
+      }
+    }
+  )
+
+  it("reads each component of a millisecond serialization in its own unit", () => {
+    // Browsers and jsdom serialize computed durations in seconds; the collector
+    // still accepts engines that keep milliseconds.
     const root = document.createElement("div")
-    root.id = "motion-boundary"
-    root.style.transitionDuration = duration
-    root.style.animationDuration = duration
+    root.id = "motion-ms"
     document.body.append(root)
+    const computed = vi.spyOn(globalThis, "getComputedStyle").mockReturnValue({
+      transitionDuration: "1ms, 0s",
+      animationDuration: "0ms, 250ms",
+    } as CSSStyleDeclaration)
 
     try {
-      const styles = getComputedStyle(root)
-      expect(styles.transitionDuration).toBe(duration)
-      expect(styles.animationDuration).toBe(duration)
-      const violations = collectMotionDurationViolations(root)
-      expect(violations).toHaveLength(expectedCount)
-      if (expectedCount === 1) {
-        expect(violations).toEqual([
-          {
-            selector: "div#motion-boundary",
-            transitionDuration: duration,
-            animationDuration: duration,
-          },
-        ])
-      }
+      expect(collectMotionDurationViolations(root)).toEqual([
+        {
+          selector: "div#motion-ms",
+          transitionDuration: "1ms, 0s",
+          animationDuration: "0ms, 250ms",
+        },
+      ])
+      computed.mockReturnValue({
+        transitionDuration: "1ms, 0s",
+        animationDuration: "2ms",
+      } as CSSStyleDeclaration)
+      expect(collectMotionDurationViolations(root)).toHaveLength(1)
+      computed.mockReturnValue({
+        transitionDuration: "1ms, 0s",
+        animationDuration: "0s",
+      } as CSSStyleDeclaration)
+      expect(collectMotionDurationViolations(root)).toEqual([])
     } finally {
+      computed.mockRestore()
       root.remove()
     }
   })
@@ -153,31 +195,31 @@ describe("regular E2E reduced-motion duration collector", () => {
     document.body.append(root)
 
     try {
-      expect(getComputedStyle(root).transitionDuration).toBe("2ms")
-      expect(getComputedStyle(child).transitionDuration).toBe("3ms")
-      expect(getComputedStyle(svg).transitionDuration).toBe("4ms")
-      expect(getComputedStyle(circle).transitionDuration).toBe("6ms")
-      expect(getComputedStyle(hidden).transitionDuration).toBe("5ms")
+      expect(getComputedStyle(root).transitionDuration).toBe("0.002s")
+      expect(getComputedStyle(child).transitionDuration).toBe("0.003s")
+      expect(getComputedStyle(svg).transitionDuration).toBe("0.004s")
+      expect(getComputedStyle(circle).transitionDuration).toBe("0.006s")
+      expect(getComputedStyle(hidden).transitionDuration).toBe("0.005s")
       expect(getComputedStyle(hidden).display).toBe("none")
       expect(collectMotionDurationViolations(root)).toEqual([
         {
           selector: "section#motion-root.first.second.third",
-          transitionDuration: "2ms",
+          transitionDuration: "0.002s",
           animationDuration: "0s",
         },
         {
           selector: "div#motion-child",
-          transitionDuration: "3ms",
+          transitionDuration: "0.003s",
           animationDuration: "0s",
         },
         {
           selector: "circle#motion-circle",
-          transitionDuration: "6ms",
+          transitionDuration: "0.006s",
           animationDuration: "0s",
         },
         {
           selector: "div#motion-hidden",
-          transitionDuration: "5ms",
+          transitionDuration: "0.005s",
           animationDuration: "0s",
         },
       ])
@@ -202,13 +244,13 @@ describe("regular E2E reduced-motion duration collector", () => {
 
     try {
       for (const child of children) {
-        expect(getComputedStyle(child).transitionDuration).toBe("2ms")
+        expect(getComputedStyle(child).transitionDuration).toBe("0.002s")
         expect(getComputedStyle(child).animationDuration).toBe("0s")
       }
       expect(collectMotionDurationViolations(root)).toEqual(
         children.slice(0, 10).map((child) => ({
           selector: `div#${child.id}`,
-          transitionDuration: "2ms",
+          transitionDuration: "0.002s",
           animationDuration: "0s",
         }))
       )

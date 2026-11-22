@@ -3,12 +3,12 @@
 npm:
   overrides:
     - package: glob
-      pinned_version: "14.0.2"
+      pinned_version: "14.0.6"
       owner: frontend@university.example
       expires: 2026-12-31
       reason: |
         Build tooling spans workbox-build (^11.0.1) and Storybook docgen
-        (^13.0.1). Pinning the shared override to glob 14.0.2 removes
+        (^13.0.1). Pinning the shared override to glob 14.0.6 removes
         GHSA-3g3m-2fjr-6pw4 while retaining one dependency graph on Node.js 24.
         The patched minimatch graph is separately pinned to mature releases.
   advisories: []
