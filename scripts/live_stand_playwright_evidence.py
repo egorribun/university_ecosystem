@@ -367,12 +367,15 @@ _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS = (
     "afterCloseSettled",
 )
 _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS = ("documents", "nodes", "jsEventListeners")
+_STORY_MEMORY_CYCLE_TRACE_MISMATCH_KEYS = ("cycle", "warmDOM", "actualDOM")
 _STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT = 2048
 _STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT = 4
 
 
 def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | None:
-    record = _story_memory_object(value, _STORY_MEMORY_CYCLE_TRACE_KEYS)
+    has_mismatch = isinstance(value, dict) and "mismatch" in value
+    keys = _STORY_MEMORY_CYCLE_TRACE_KEYS + (("mismatch",) if has_mismatch else ())
+    record = _story_memory_object(value, keys)
     if record is None or type(record["schema"]) is not int or record["schema"] != 1:
         return None
     project = record["project"]
@@ -416,12 +419,41 @@ def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | No
         or (status == "unavailable" and present != 0)
     ):
         return None
-    return {
+    normalized_record: dict[str, object] = {
         "schema": 1,
         "project": project,
         "diagnosticStatus": status,
         "samples": normalized_samples,
     }
+    if has_mismatch:
+        mismatch = _story_memory_object(
+            record["mismatch"], _STORY_MEMORY_CYCLE_TRACE_MISMATCH_KEYS
+        )
+        if mismatch is None:
+            return None
+        cycle = mismatch["cycle"]
+        if type(cycle) is not int or not 0 <= cycle < 20:
+            return None
+        warm = _story_memory_counts(
+            mismatch["warmDOM"], _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS, unavailable=False
+        )
+        actual = _story_memory_counts(
+            mismatch["actualDOM"],
+            _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS,
+            unavailable=False,
+        )
+        if warm is None or actual is None:
+            return None
+        if warm != normalized_samples["baseline"]:
+            return None
+        if cycle == 0 and actual != normalized_samples["afterCloseSettled"]:
+            return None
+        normalized_record["mismatch"] = {
+            "cycle": cycle,
+            "warmDOM": warm,
+            "actualDOM": actual,
+        }
+    return normalized_record
 
 
 def _live_playwright_story_memory_cycle_trace_diagnostics(

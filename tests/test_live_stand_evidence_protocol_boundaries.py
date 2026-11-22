@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
 from scripts import live_stand_playwright_evidence as evidence
 from tests import test_live_stand as contracts
 
@@ -113,6 +119,118 @@ def test_story_memory_cycle_deduplicates_before_applying_its_record_cap() -> Non
     parsed = evidence._live_playwright_story_memory_cycle_trace_diagnostics(output)
     assert parsed == records[:4]
     assert len(parsed) == 4
+
+
+def test_story_memory_cycle_preserves_bounded_mismatch_and_historical_rows() -> None:
+    historical = contracts._story_memory_cycle_trace_record()
+    samples = historical["samples"]
+    assert isinstance(samples, dict)
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    actual = {**warm, "nodes": 789}
+    for cycle, observed in ((0, actual), (19, actual), (17, warm), (0, warm)):
+        current = {
+            **historical,
+            "samples": {**samples, "afterCloseSettled": observed},
+            "mismatch": {"cycle": cycle, "warmDOM": warm, "actualDOM": observed},
+        }
+        rows = contracts._story_memory_cycle_trace_row(historical)
+        rows += contracts._story_memory_cycle_trace_row(current)
+        assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(rows) == [
+            historical,
+            current,
+        ]
+
+
+def test_story_memory_cycle_rejects_malformed_mismatch_records() -> None:
+    valid = contracts._story_memory_cycle_trace_record()
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    actual = {**warm, "nodes": 789}
+    mismatch = {"cycle": 1, "warmDOM": warm, "actualDOM": actual}
+    bad_mismatches = (
+        None,
+        {**mismatch, "cycle": True},
+        {**mismatch, "cycle": -1},
+        {**mismatch, "cycle": 20},
+        {**mismatch, "cycle": 1.5},
+        {**mismatch, "extra": "private-value"},
+        {**mismatch, "warmDOM": {**warm, "extra": "private-value"}},
+        {**mismatch, "actualDOM": {**actual, "nodes": True}},
+        {**mismatch, "actualDOM": {**actual, "nodes": -1}},
+        {**mismatch, "actualDOM": {**actual, "nodes": 2**53}},
+        {**mismatch, "actualDOM": None},
+        {**mismatch, "warmDOM": {**warm, "nodes": 999}},
+    )
+    rows = "".join(
+        contracts._story_memory_cycle_trace_row({**valid, "mismatch": bad})
+        for bad in bad_mismatches
+    )
+    assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(rows) == []
+    bad_cycle_zero = {**mismatch, "cycle": 0}
+    assert (
+        evidence._live_playwright_story_memory_cycle_trace_diagnostics(
+            contracts._story_memory_cycle_trace_row(
+                {**valid, "mismatch": bad_cycle_zero}
+            )
+        )
+        == []
+    )
+    samples = valid["samples"]
+    assert isinstance(samples, dict)
+    for cycle, missing in ((1, "baseline"), (0, "afterCloseSettled")):
+        incomplete = {
+            **valid,
+            "diagnosticStatus": "partial",
+            "samples": {**samples, missing: None},
+            "mismatch": {**mismatch, "cycle": cycle},
+        }
+        assert (
+            evidence._live_playwright_story_memory_cycle_trace_diagnostics(
+                contracts._story_memory_cycle_trace_row(incomplete)
+            )
+            == []
+        )
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+@pytest.mark.parametrize("equal_counts", [False, True])
+def test_story_memory_mismatch_is_projected_on_failure_only(
+    exit_code: int,
+    equal_counts: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = contracts._story_memory_cycle_trace_record()
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    record["mismatch"] = {
+        "cycle": 17 if equal_counts else 7,
+        "warmDOM": warm,
+        "actualDOM": warm if equal_counts else {**warm, "jsEventListeners": 459},
+    }
+    row = contracts._story_memory_cycle_trace_row(record)
+    completed = subprocess.CompletedProcess(
+        contracts.live_stand._live_e2e_command(mode="smoke"),
+        exit_code,
+        stdout=(row + "private-body\n").encode(),
+        stderr=b"private-stack\n",
+    )
+    contracts._patch_live_playwright_result(monkeypatch, completed)
+    if exit_code:
+        with pytest.raises(contracts.live_stand.StandError, match="exit code 1"):
+            contracts.live_stand._run_live_playwright(
+                cwd=tmp_path, environment={}, mode="smoke"
+            )
+    else:
+        contracts.live_stand._run_live_playwright(
+            cwd=tmp_path, environment={}, mode="smoke"
+        )
+    printed = capsys.readouterr()
+    expected = "live E2E story memory cycle trace " + json.dumps(
+        record, separators=(",", ":")
+    )
+    assert (expected in printed.out.splitlines()) is bool(exit_code)
+    assert "private-body" not in printed.out + printed.err
+    assert "private-stack" not in printed.out + printed.err
 
 
 def test_password_forgot_stats_reject_impossible_request_outcomes() -> None:

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
+import { runInNewContext } from "node:vm"
 import test from "node:test"
 
 const specUrl = new URL("./story-viewer-memory.live.spec.ts", import.meta.url)
@@ -324,4 +325,171 @@ test("live Stories acceptance proves heap plateau and hidden-tab pause after vie
 
   // The seeded cover is served by the owned stand, so no image host is stubbed.
   assert.doesNotMatch(spec, /picsum|\.route\(/u)
+})
+
+function storyMemoryEmitter(spec, lines) {
+  const domStart = spec.indexOf("function safeStoryMemoryDOM(")
+  const domEnd = spec.indexOf("\nasync function readStoryDOMCounters(", domStart)
+  const emitStart = spec.indexOf("function emitStoryMemoryCycleTraceDiagnostic(")
+  const emitEnd = spec.indexOf("\nfunction safeStoryMemoryListeners(", emitStart)
+  assert.ok(domStart >= 0 && domEnd > domStart && emitStart > domEnd && emitEnd > emitStart)
+  const safeDom = spec
+    .slice(domStart, domEnd)
+    .replace("counters: DOMCounters", "counters")
+    .replace("): StoryMemoryDiagnosticDOM | null {", ") {")
+  const emitter = spec
+    .slice(emitStart, emitEnd)
+    .replace("projectName: string,", "projectName,")
+    .replace("trace: StoryMemoryCycle0Trace", "trace")
+    .replace("): void {", ") {")
+  return runInNewContext(
+    `${safeDom}\n${emitter}\n({ emitStoryMemoryCycleTraceDiagnostic, safeStoryMemoryDOM })`,
+    {
+      STORY_MEMORY_CYCLE_TRACE_PREFIX: "STORY_MEMORY_CYCLE_TRACE_DIAG ",
+      MEASURED_CYCLES: 20,
+      process: { stdout: { write: (line) => lines.push(line) } },
+    }
+  )
+}
+
+test("the full DOM assertion retains its original error and records only a mismatch", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const loop = spec.indexOf("for (let cycle = 0; cycle < MEASURED_CYCLES; cycle += 1)")
+  const assertion = spec.indexOf(
+    "expect(snapshot.domCounters).toEqual(warmSnapshot.domCounters)",
+    loop
+  )
+  const start = spec.lastIndexOf("          try {", assertion)
+  const end = spec.indexOf("\n          measuredHeapSamples.push", assertion)
+  assert.ok(loop >= 0 && start > loop && end > assertion)
+  const assertionBlock = spec.slice(start, end)
+  const warm = { documents: 2, nodes: 788, jsEventListeners: 458 }
+  const failure = new Error("original assertion failure")
+
+  for (const [actual, shouldFail] of [
+    [{ ...warm }, false],
+    [{ ...warm, nodes: 789 }, true],
+    [{ ...warm, extra: "PRIVATE_MARKER" }, true],
+  ]) {
+    const trace = {
+      baseline: warm,
+      dialogOpen: null,
+      hiddenResumed: null,
+      afterCloseSettled: actual,
+    }
+    const expectedCalls = []
+    const context = {
+      cycle: 17,
+      cycle0Trace: trace,
+      warmSnapshot: { domCounters: warm },
+      snapshot: { domCounters: actual },
+      expect(value) {
+        expectedCalls.push(value)
+        return {
+          toEqual(expected) {
+            try {
+              assert.deepEqual(value, expected)
+            } catch {
+              throw failure
+            }
+          },
+        }
+      },
+    }
+    if (shouldFail) {
+      assert.throws(
+        () => runInNewContext(assertionBlock, context),
+        (error) => error === failure
+      )
+      assert.deepEqual(JSON.parse(JSON.stringify(trace.mismatch)), {
+        cycle: 17,
+        warmDOM: warm,
+        actualDOM: actual,
+      })
+      if (actual.extra === "PRIVATE_MARKER") {
+        const lines = []
+        storyMemoryEmitter(spec, lines).emitStoryMemoryCycleTraceDiagnostic("desktop", trace)
+        const record = JSON.parse(lines[0].slice("STORY_MEMORY_CYCLE_TRACE_DIAG ".length))
+        assert.deepEqual(record.mismatch, { cycle: 17, warmDOM: warm, actualDOM: warm })
+        assert.ok(!lines[0].includes("PRIVATE_MARKER"))
+      }
+    } else {
+      runInNewContext(assertionBlock, context)
+      assert.equal("mismatch" in trace, false)
+    }
+    assert.deepEqual(expectedCalls, [actual])
+  }
+  assert.throws(
+    () =>
+      runInNewContext(assertionBlock, {
+        cycle: 2,
+        cycle0Trace: undefined,
+        warmSnapshot: { domCounters: warm },
+        snapshot: { domCounters: { ...warm, nodes: 789 } },
+        expect: () => ({
+          toEqual() {
+            throw failure
+          },
+        }),
+      }),
+    (error) => error === failure
+  )
+})
+
+test("cycle trace emits bounded counters only for a captured mismatch", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const lines = []
+  const { emitStoryMemoryCycleTraceDiagnostic: emit, safeStoryMemoryDOM } = storyMemoryEmitter(
+    spec,
+    lines
+  )
+  for (const invalid of [null, undefined]) {
+    assert.throws(() => safeStoryMemoryDOM(invalid), { name: "TypeError" })
+  }
+  const warm = { documents: 2, nodes: 788, jsEventListeners: 458 }
+  const actual = { ...warm, nodes: 789 }
+  const trace = { baseline: warm, dialogOpen: null, hiddenResumed: null, afterCloseSettled: warm }
+  emit("desktop", trace)
+  emit("mobile", { ...trace, mismatch: { cycle: 19, warmDOM: warm, actualDOM: actual } })
+  const invalidMismatches = [
+    { cycle: 20, warmDOM: warm, actualDOM: actual },
+    { cycle: 0.5, warmDOM: warm, actualDOM: actual },
+    { cycle: 1, warmDOM: warm, actualDOM: null },
+    { cycle: 1, warmDOM: warm, actualDOM: undefined },
+    { cycle: 1, warmDOM: null, actualDOM: actual },
+    { cycle: 1, warmDOM: warm, actualDOM: { ...actual, nodes: -1 } },
+  ]
+  for (const mismatch of invalidMismatches) emit("mobile", { ...trace, mismatch })
+  emit("unknown", { ...trace, mismatch: { cycle: 1, warmDOM: warm, actualDOM: actual } })
+  const records = lines.map((line) =>
+    JSON.parse(line.slice("STORY_MEMORY_CYCLE_TRACE_DIAG ".length))
+  )
+  assert.equal(records.length, 2 + invalidMismatches.length)
+  assert.equal("mismatch" in records[0], false)
+  assert.deepEqual(records[1].mismatch, { cycle: 19, warmDOM: warm, actualDOM: actual })
+  for (const record of records.slice(2)) assert.equal("mismatch" in record, false)
+})
+
+test("a trace failure cannot replace the original acceptance error", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const heapAssertion = spec.indexOf("expect(lateHeapMean)")
+  const start = spec.indexOf("recordStorySetupFailure(page, error)", heapAssertion)
+  const end = spec.indexOf("\n      }\n\n      let cleanupFailed", start)
+  assert.ok(heapAssertion >= 0 && start > heapAssertion && end > start)
+  const original = new Error("original acceptance error")
+  const context = {
+    error: original,
+    page: {},
+    cycle0Trace: {},
+    testInfo: { project: { name: "desktop" } },
+    bodyFailed: false,
+    bodyError: undefined,
+    recordStorySetupFailure() {},
+    emitStoryMemoryCycleTraceDiagnostic() {
+      throw new Error("diagnostic failure")
+    },
+  }
+  runInNewContext(spec.slice(start, end), context)
+  assert.equal(context.bodyFailed, true)
+  assert.equal(context.bodyError, original)
 })
