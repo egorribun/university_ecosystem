@@ -5,7 +5,7 @@ go 1.26.11
 require (
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/lestrrat-go/jwx/v3 v3.4.0
 	github.com/nats-io/nats.go v1.55.0

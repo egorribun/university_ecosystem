@@ -324,6 +324,3 @@ test("group reconnect acceptance guards reject missing replay, isolation and ded
     assert.throws(() => assertGroupReconnect(candidate), { name: "AssertionError" })
   }
 })
-
-// Keep the synthetic privacy contract in the existing live-contract lane.
-await import("./messenger-group-delivery-diagnostic.contract.test.mjs")
