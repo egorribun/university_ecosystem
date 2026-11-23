@@ -597,7 +597,7 @@ test("chat message reaches Chromium through its real push subscription", async (
 
   const { createPushRotationObservation } = await import("./push-rotation-observation.mjs")
   const rotationObservation =
-    testInfo.project.name === "mobile"
+    testInfo.project.name === "mobile" || testInfo.project.name === "desktop"
       ? createPushRotationObservation(
           page,
           testInfo.project.name,

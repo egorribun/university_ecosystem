@@ -8,8 +8,10 @@ The separate success summary distinguishes HTTP 201 from other 2xx responses
 only for rows classified as sent; it is not proof of browser delivery.
 The separate 410 prefixes are candidate correlation hints from the bounded tail;
 they do not establish browser identity, timing, or notification attribution.
-Each prefix carries the closed age class of its subscription at the first 410
-in the tail (``unknown`` when the worker did not record one).
+Each 410 prefix carries the closed age class of its subscription at the first
+410 in the tail (``unknown`` when the worker did not record one). Separate
+201 prefixes are also run-level candidate hints, not proof of a specific
+notification, recipient, arrival, or browser delivery.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ _SOURCE_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _MASKED_ENDPOINT = re.compile(r"(?:https?://[A-Za-z0-9.\-\[\]:]+/…|…)#([0-9a-f]{10})\Z")
 _FINGERPRINT = re.compile(r"[0-9a-f]{10}\Z")
 _410_PREFIX_LIMIT = 16
+_201_PREFIX_LIMIT = 16
 _SUBSCRIPTION_AGES = ("lt_10s", "lt_60s", "lt_600s", "ge_600s", "unknown")
 
 
@@ -62,6 +65,10 @@ class WorkerSummary:
     gone_410_incomplete: bool = False
     gone_410_truncated: bool = False
     gone_410_ages: tuple[str, ...] = ()
+    sent_201_prefixes: tuple[str, ...] = ()
+    sent_201_seen: bool = False
+    sent_201_incomplete: bool = False
+    sent_201_truncated: bool = False
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -109,6 +116,10 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
     gone_410_seen = False
     gone_410_incomplete = False
     gone_410_truncated = False
+    sent_201_prefixes: list[str] = []
+    sent_201_seen = False
+    sent_201_incomplete = False
+    sent_201_truncated = False
     for line in lines:
         if len(line) > MAX_LINE_BYTES:
             return None
@@ -176,6 +187,21 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
                     else:
                         gone_410_prefixes.append(prefix)
                         gone_410_ages.append(age)
+        if status == "sent" and code == 201:
+            sent_201_seen = True
+            endpoint = extra.get("endpoint")
+            masked = (
+                _MASKED_ENDPOINT.fullmatch(endpoint) if type(endpoint) is str else None
+            )
+            if stage != "none" or masked is None:
+                sent_201_incomplete = True
+            else:
+                prefix = masked.group(1)
+                if prefix not in sent_201_prefixes:
+                    if len(sent_201_prefixes) == _201_PREFIX_LIMIT:
+                        sent_201_truncated = True
+                    else:
+                        sent_201_prefixes.append(prefix)
         if status == "sent" and code is not None and 200 <= code <= 299:
             success_index = 0 if code == 201 else 1
             success_http[success_index] = min(
@@ -197,6 +223,10 @@ def project_worker_logs(stdout: bytes, stderr: bytes) -> WorkerSummary | None:
         gone_410_incomplete,
         gone_410_truncated,
         tuple(gone_410_ages),
+        tuple(sent_201_prefixes),
+        sent_201_seen,
+        sent_201_incomplete,
+        sent_201_truncated,
     )
 
 
@@ -295,6 +325,43 @@ def render_410_prefixes(summary: WorkerSummary) -> list[str]:
     return result
 
 
+def render_201_prefixes(summary: WorkerSummary) -> list[str]:
+    """Output only bounded candidate prefixes, never provider URLs or payloads."""
+    render_summary(summary)
+    prefixes = summary.sent_201_prefixes
+    flags = (
+        summary.sent_201_seen,
+        summary.sent_201_incomplete,
+        summary.sent_201_truncated,
+    )
+    if (
+        type(prefixes) is not tuple
+        or len(prefixes) > _201_PREFIX_LIMIT
+        or any(
+            type(value) is not str or not _FINGERPRINT.fullmatch(value)
+            for value in prefixes
+        )
+        or len(set(prefixes)) != len(prefixes)
+        or any(type(flag) is not bool for flag in flags)
+        or (
+            not summary.sent_201_seen
+            and (prefixes or summary.sent_201_incomplete or summary.sent_201_truncated)
+        )
+    ):
+        raise ValueError
+    if not summary.sent_201_seen:
+        return []
+    return [
+        "live E2E worker push 201 sample=tail "
+        f"incomplete={str(summary.sent_201_incomplete).lower()} "
+        f"truncated={str(summary.sent_201_truncated).lower()}",
+        *(
+            f"live E2E worker push 201 sample=tail endpoint_sha256={value}"
+            for value in prefixes
+        ),
+    ]
+
+
 def _snapshot(
     owner: live_stand.StandOwner,
     context: live_stand._LiveDockerReadContext,
@@ -381,11 +448,17 @@ def main() -> int:
         output = "live E2E worker push sample=unavailable"
         success_output = None
         gone_outputs = []
+    sent_outputs = []
+    if success_output is not None:
+        try:
+            sent_outputs = render_201_prefixes(summary)
+        except Exception:
+            sent_outputs = ["live E2E worker push 201 sample=unavailable"]
     try:
         print(output, flush=True)
         if success_output is not None:
             print(success_output, flush=True)
-        for line in gone_outputs:
+        for line in (*gone_outputs, *sent_outputs):
             print(line, flush=True)
     except OSError:
         pass

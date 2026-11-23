@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/r
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { AuthBootstrapContext } from "@/contexts/AuthBootstrapContext"
 import { allEventsApiV1EventsGet } from "@/api/generated/sdk.gen"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -205,5 +206,23 @@ describe("events hooks SSR fallbacks", () => {
     expect(renderNavigation(populatedRequest, current.id)).toBe(
       `<output>${before.id}|Opening talk|${after.id}|Closing talk</output>`
     )
+  })
+  it("leaves server event query enabled while bootstrap is pending", () => {
+    expect(typeof window).toBe("undefined")
+    const client = createClient()
+    const filter = { language: "en", limit: 12 }
+    function EnabledProbe() {
+      useEventsListQuery(filter)
+      return null
+    }
+    renderToString(
+      <QueryClientProvider client={client}>
+        <AuthBootstrapContext.Provider value={true}>
+          <EnabledProbe />
+        </AuthBootstrapContext.Provider>
+      </QueryClientProvider>
+    )
+    const query = client.getQueryCache().find({ queryKey: eventsListQueryKey(filter), exact: true })
+    expect(query?.options).toMatchObject({ enabled: true })
   })
 })

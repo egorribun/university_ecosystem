@@ -51,6 +51,8 @@ test("reflow contract checks key content, horizontal overflow, and keyboard dial
   assert.match(spec, /getByRole\(["']heading["'],\s*\{\s*level:\s*1\s*\}\)/u)
   assert.match(spec, /getByRole\(["']tablist["']\)/u)
   assert.match(spec, /aria-selected[\s\S]{0,80}visible|selected:\s*true/u)
+  assert.match(spec, /expect\(selectedDay\)\.toBeVisible\(\)/u)
+  assert.match(spec, /expect\(selectedDay\)\.toBeInViewport\(\)/u)
   assert.match(spec, /width:\s*window\.innerWidth/u)
   assert.match(
     spec,

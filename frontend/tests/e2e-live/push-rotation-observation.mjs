@@ -17,7 +17,7 @@ export function createPushRotationObservation(
   const validScope =
     (project === "desktop" || project === "mobile") &&
     (retry === 0 || retry === 1) &&
-    (scope === "topics" || ((scope === "reply" || scope === "chat") && project === "mobile"))
+    (scope === "topics" || scope === "chat" || (scope === "reply" && project === "mobile"))
   const snapshots = []
   let scenario = scope === "topics" ? "unknown" : scope
   let reported = false

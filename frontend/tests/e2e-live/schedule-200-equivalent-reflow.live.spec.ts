@@ -19,7 +19,9 @@ test("schedule reflows and remains keyboard-usable at a 200%-equivalent CSS view
   await expect(dayTabs).toBeVisible()
   const selectedDay = dayTabs.getByRole("tab", { selected: true })
   await expect(selectedDay).toBeVisible()
-  await selectedDay.scrollIntoViewIfNeeded()
+  await selectedDay.evaluate((tab) =>
+    tab.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" })
+  )
   await expect(selectedDay).toBeInViewport()
 
   const viewport = await page.evaluate(() => ({

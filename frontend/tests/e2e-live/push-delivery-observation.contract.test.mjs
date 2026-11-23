@@ -1274,7 +1274,7 @@ test("reply rotation rejects other scenarios and never emits raw observation dat
   assert.equal(lines.length, 1)
 })
 
-test("chat rotation captures bounded phases and stays mobile-only", async () => {
+test("chat rotation captures bounded phases for mobile and desktop", async () => {
   const { createPushRotationObservation } = await import(rotationHelper.href)
   const lines = []
   const page = { evaluate: async () => "0123456789ab" }
@@ -1296,16 +1296,23 @@ test("chat rotation captures bounded phases and stays mobile-only", async () => 
     "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=chat phase=before-wait ordinal=2 endpoint_sha256=0123456789ab\n",
     "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=chat phase=failure ordinal=3 endpoint_sha256=0123456789ab\n",
   ])
-  const invalid = createPushRotationObservation(
+  const desktop = createPushRotationObservation(
     page,
     "desktop",
     0,
     (line) => lines.push(line),
     "chat"
   )
-  await invalid.optIn(100)
-  await invalid.reportFailure(100)
+  await desktop.optIn(100)
+  desktop.arm("chat")
+  await desktop.beforeWait("chat", 100)
   assert.equal(lines.length, 3)
+  await desktop.reportFailure(100)
+  assert.deepEqual(lines.slice(3), [
+    "UE_LIVE_PUSH_ROTATION_V1 project=desktop retry=0 scenario=chat phase=opt-in ordinal=1 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=desktop retry=0 scenario=chat phase=before-wait ordinal=2 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=desktop retry=0 scenario=chat phase=failure ordinal=3 endpoint_sha256=0123456789ab\n",
+  ])
 
   const unsafe = []
   const privatePage = { evaluate: async () => privateEndpoint }
@@ -1322,6 +1329,19 @@ test("chat rotation captures bounded phases and stays mobile-only", async () => 
   assert.deepEqual(unsafe, [
     "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=1 scenario=chat phase=failure ordinal=1 endpoint_sha256=unavailable\n",
   ])
+  const desktopUnsafe = []
+  const desktopBounded = createPushRotationObservation(
+    privatePage,
+    "desktop",
+    1,
+    (line) => desktopUnsafe.push(line),
+    "chat"
+  )
+  await desktopBounded.reportFailure(100)
+  assert.deepEqual(desktopUnsafe, [
+    "UE_LIVE_PUSH_ROTATION_V1 project=desktop retry=1 scenario=chat phase=failure ordinal=1 endpoint_sha256=unavailable\n",
+  ])
+  assert.doesNotMatch(desktopUnsafe.join(""), /private|example|https/u)
   assert.doesNotMatch(unsafe.join(""), /private|example|https/u)
 })
 
@@ -1540,6 +1560,10 @@ test("chat delivery observes the bound endpoint without changing native acceptan
   const end = source.indexOf('test("quoted group author', start)
   const chat = source.slice(start, end)
   assert.match(chat, /createPushRotationObservation\([\s\S]*?"chat"/u)
+  assert.match(
+    chat,
+    /testInfo\.project\.name === "mobile" \|\| testInfo\.project\.name === "desktop"/u
+  )
   assert.match(chat, /subscriptionBound = true[\s\S]*?rotationObservation\?\.optIn\(/u)
   assert.match(chat, /rotationObservation\?\.beforeWait\("chat"[\s\S]*?await expect/u)
   assert.match(

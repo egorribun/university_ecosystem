@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query"
 
 import { logWarning } from "@/app/logger"
-import { useAuthBootstrapPending } from "@/contexts/AuthBootstrapContext"
+import { useAuthBootstrapPending, useAuthBootstrapQueryGate } from "@/contexts/AuthBootstrapContext"
 import { resolveNotificationAppPath } from "@/notifications/contract"
 import {
   getCurrentPushUserId,
@@ -135,6 +135,7 @@ function flattenNotificationPages(data: NotificationPages): NormalizedNotificati
 export function useNotifications() {
   const qc = useQueryClient()
   const bootstrapPending = useAuthBootstrapPending()
+  const gate = useAuthBootstrapQueryGate(qc, NOTIFICATIONS_QUERY_KEY)
   const identity = useSyncExternalStore(
     subscribeToPushIdentity,
     getCurrentPushIdentitySnapshot,
@@ -295,8 +296,9 @@ export function useNotifications() {
   // history that was paged in stays visible and its read state stays current.
   const list = useInfiniteQuery({
     queryKey: NOTIFICATIONS_QUERY_KEY,
-    enabled: !bootstrapPending || ownerId !== null,
+    enabled: !bootstrapPending || (ownerId !== null && !gate.blocked),
     queryFn: async ({ pageParam }) => {
+      gate.cancelIfBlocked()
       const data = pageParam
         ? await fetchNotificationsList({ cursor: pageParam })
         : await fetchNotificationsList()
@@ -448,7 +450,7 @@ export function useNotifications() {
     nextCursor: list.data?.nextCursor ?? null,
     // List data can arrive before auth confirms who may mutate it. Keep the
     // existing data visible, but expose readiness consistently to the bell.
-    isLoading: list.isLoading || ownerId === null,
+    isLoading: list.isLoading || ownerId === null || (gate.blocked && list.isPending),
     isError: list.isError,
     error: list.error,
     isRefetching: list.isRefetching,
