@@ -115,7 +115,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
 | 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
 | 4. Визуал и performance | Проверка Stage 4 — 96 PNG с sidecars, 2 serious `color-contrast` на dark390 `/schedule` RU/EN (белый на `#38bdf8`, 2.14:1). На `a2d295bc7` serious-находки были в 28 вариантах. Утверждён только Home12, approval нового пакета не получен. |
-| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён на одном disposable owned stand. Avatar не загружен. |
+| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён на disposable owned stand. Отдельно проверены S3 и API avatar. Браузерная проверка на кандидате ожидается. |
 | 6. Выпуск | Собраны предварительные проверки на `7e54feee`. Freeze и публикация v1.0.0 ожидаются. |
 
 Галерея — aggregate SHA-256 `6dd69c38516e8f4bf7d52d863bf0321fe873d5b85f69f146987d67d2d0671a0b`, safe summary SHA-256 `42df1d91ca9607015a39959ab41f64338c0a6f8b93febadc8646da7b01bd4dee`.
@@ -132,6 +132,18 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 Две DB→S3Storage пробы story/news совпали побайтно. SHA-256 manifest `0b296bb76e904327b518136e3dd1afd0f3f4b783b338f9fcc99253ba31ec5cd6`, dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`, source DB `2d2876e29d77f9f614c8b951ae693aa220e487455abdfac05823c0d47bd930f1`, table counts `a79a3014a35901321ad030a0d938658acfe5725800552ea13aa9511d477823f1`.
 Это quiesced локальная проверка без гарантии отсутствия внешнего writer и без RPO/RTO.
 Teardown подтверждён по signed preinventory и bounded Docker events. Удалены 24 контейнера, 5 сетей и 7 томов, остатков нет. Приватные PNG, sidecars и receipts сохранены, другие проекты не затронуты. Заключительная проверка привязок API для avatar после адресного старта не прошла, загрузка не выполнялась.
+
+### Изолированные проверки S3 и avatar
+
+На точном локальном `24f312fa260f92759266d4271367fcb98ec4fce8` подтвердились операции S3 записи, проверки наличия, чтения
+и удаления. Подписанный SDK GET дал HTTP 200, а неподписанный запрос и подмена пути дали 403.
+SHA-256 receipt `1b20dbd5792d00a484111a41931e6d933af6822a959a4e5e4fc0681cc90b98bf`.
+
+На том же SHA ASGI-маршрут avatar принял PNG (HTTP 200), сохранил ссылку в SQLite и записал WebP в реальный S3.
+Некорректный файл получил 415, ссылка и объект сохранились. DELETE удалил ссылку и объект. В обоих запусках
+временные контейнеры и сети очищены. В проверке avatar пользователь передан тестовой зависимостью,
+malware scanner выключен тестовой конфигурацией. Браузер и Caddy не запускались.
+SHA-256 receipt `280a9e50992d10582e9a3c4a3ddd305cc368c6c378c0abe4e1abba98bf015e74`.
 
 ## Решения владельца (действующие)
 
@@ -163,5 +175,5 @@ Teardown подтверждён по signed preinventory и bounded Docker event
 1. Разобрать две serious-находки визуального аудита и итоги последнего Core.
 2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
 3. Проверить учёт skipped и разобраться с нестабильной доставкой Web Push.
-4. Повторить проверку привязок API для avatar и подготовить визуальный пакет к утверждению.
+4. Проверить avatar через браузер на выбранном кандидате и подготовить визуальный пакет к утверждению.
 5. Сохранять scoped DAST-доказательства для AUD-381.

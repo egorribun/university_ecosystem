@@ -476,3 +476,115 @@ async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_activity_populated_summary_combines_persisted_sections(
+    async_client, db_session, user_factory, monkeypatch
+):
+    """The R40 summary combines the student's real rows for both locales."""
+    from app.services.user import analytics_service
+
+    now = datetime(2026, 11, 14, 12, tzinfo=UTC)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz) if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(analytics_service, "datetime", FixedDatetime)
+    monkeypatch.setattr(settings, "campus_timezone", "UTC")
+    password = f"Aa1!{uuid.uuid4().hex}"
+    creator = await user_factory(role="admin")
+    student = await user_factory(hashed_password=await get_password_hash(password))
+    other = await user_factory()
+    events = [
+        models.Event(
+            title=f"Synthetic event {days}",
+            starts_at=now - timedelta(days=days),
+            ends_at=now - timedelta(days=days) + timedelta(hours=2),
+            event_type="lecture",
+            created_by=creator.id,
+            is_active=True,
+        )
+        for days in (2, 1, 100)
+    ]
+    db_session.add_all(events)
+    await db_session.flush()
+    for event, owner in zip(events, (student, other, student), strict=True):
+        token = attendance_tokens.generate_secret()
+        db_session.add(
+            models.EventAttendance(
+                user_id=owner.id,
+                event_id=event.id,
+                registered_at=event.starts_at - timedelta(minutes=30),
+                qr_secret=token,
+                qr_hmac=attendance_tokens.compute_secret_hmac(token),
+            )
+        )
+    db_session.add_all(
+        [
+            models.Grade(
+                student_id=owner.id,
+                subject=f"Synthetic subject {days}",
+                score=score,
+                created_at=now - timedelta(days=days),
+            )
+            for owner, score, days in (
+                (student, 4.5, 2),
+                (student, 4.0, 100),
+                (other, 1.0, 2),
+            )
+        ]
+    )
+    await db_session.commit()
+    await _login(async_client, student.email, password)
+
+    for locale, label in (("ru", "За последние 90 дней"), ("en", "Last 90 days")):
+        response = await async_client.get(
+            "/stats/summary",
+            params={"period": "90d", "skip_cache": "true"},
+            headers={"Accept-Language": locale},
+        )
+        assert response.status_code == 200
+        assert response.headers["content-language"] == locale
+        payload = response.json()
+        attendance = payload["attendance"]
+        grades = payload["grades"]
+        participation = payload["participation"]
+        for section in (attendance, grades, participation):
+            assert section["period_key"] == "90d"
+            assert section["period_label"] == label
+            assert len(section["recent"]) == 1
+        assert (
+            attendance["present"],
+            attendance["total"],
+            attendance["percent"],
+            attendance["trend"],
+        ) == (1, 2, 50.0, -50.0)
+        assert attendance["daily"] == [
+            {"date": "2026-11-12", "registered": 1, "total": 1},
+            {"date": "2026-11-13", "registered": 0, "total": 1},
+        ]
+        assert (
+            grades["average"],
+            grades["total_grades"],
+            grades["scale"],
+            grades["trend"],
+        ) == (4.5, 1, "5", 0.5)
+        assert (
+            participation["events"],
+            participation["hours"],
+            participation["groups"],
+            participation["trend"],
+        ) == (1, 2.0, 1, 0)
+        # The UI merges the ISO date prefix of all three recent lists.
+        recent_dates = [
+            item["date"][:10]
+            for section in (attendance, grades, participation)
+            for item in section["recent"]
+        ]
+        assert recent_dates == ["2026-11-12"] * 3
+        assert attendance["percent"] - attendance["trend"] == 100.0
+        assert grades["average"] - grades["trend"] == 4.0
+        assert participation["events"] - participation["trend"] == 1
