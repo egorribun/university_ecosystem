@@ -7,12 +7,14 @@
 
 ### `main` и пакет PR
 
-- `main` = `a2d295bc7b710a3db58956841146d43a6b086cbe` после обычного merge
-  [#1576](https://github.com/egorribun/university_ecosystem/pull/1576). На этом SHA прошли
-  [main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892).
-- Для [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152)
-  независимо проверены SHA-256 архива и манифеста, схема и 13 компонентов.
+- `main` = `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` после обычного merge [#1577](https://github.com/egorribun/university_ecosystem/pull/1577) 2026-11-23 в 19:22:45 UTC.
+  На PR head `df56a3bb17d6cee3dced215f62b17b0c533aa94f` проверены 78 обязательных пар контекст/app и блокирующий CodeQL.
+  [PR receipt 14852279190](https://github.com/egorribun/university_ecosystem/actions/runs/45242979321/artifacts/14852279190) относится к synthetic merge `0db0bb681a64246be9aa76dfb9afb05379c7a332`, SHA-256 `9350e127d050e623ce74938d23b46d1198f6d533bf861f820eec96ffa4ad2c39`.
+- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383) и [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45248331850) прошли на `7e54feee`.
+- [Quality evidence 14856563853](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14856563853) — SHA-256 архива `dd85291cb583dad0ec912f859b9e3622801f5c27ca84afb15f1216130ec726b8`,
+  манифеста `0a10dd0ce0e59541e831ac9a31257c7e2b2ad97659b39237919d13ea3bf0300f`. Проверены 13 компонентов, Tier 0 ready.
+- Исторический `main` `a2d295bc7b710a3db58956841146d43a6b086cbe` получен merge [#1576](https://github.com/egorribun/university_ecosystem/pull/1576).
+  [CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353), [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892) и [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152) относятся к этому SHA. SHA-256 архива и манифеста, схема и 13 компонентов сверены.
 - Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
   [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
   [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли. У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
@@ -23,11 +25,17 @@
 
 ### Полный Core на `main`
 
-На `a2d295bc7b710a3db58956841146d43a6b086cbe` первая попытка [run 45216520095, job 137839027140](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/job/137839027140)
-завершилась неуспешно из-за нестабильного desktop-теста footer с ошибкой консоли. Итог **223 passed, 0 failed, 8 skipped, 1 flaky**.
-Все шесть результатов AUD-154 получены с первой попытки. [Receipt 14842876037](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/artifacts/14842876037)
-имеет SHA-256 `290234f080d1ac92671b8fc551c11209c193b91fe191ed22cd594d54daa3c964`.
-Следующая пара нужна на стабильном SHA `main`.
+На `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` [run 45248403311, job 137951197987](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/job/137951197987)
+начался 2026-11-23 в 19:24:45 UTC и завершился неуспешно. Итог **222 passed, 1 failed, 8 skipped, 1 flaky**.
+Все шесть результатов AUD-154 получены с retry 0, `stand_stop` прошёл. Учёт skipped ещё не подтверждён.
+[Receipt 14858397170](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/artifacts/14858397170) имеет SHA-256 `b8457ddf032c51598df063fd54245f1ae4dad05aa9b063217850ddf5bcb1154b`.
+Диагностические локации — mobile `notification-topics-delivery.live.spec.ts`, объявление 1111 и кадры 557, 584, 1265. Desktop `messenger-group-isolation.live.spec.ts` — объявление 254 и кадр 387.
+Обе mobile-попытки дошли до ожидания нативного уведомления после записи in-app. Обе подписки совпали по короткому отпечатку с ответами HTTP 410 в ограниченной выборке worker. Для привязки 410 к конкретному событию требуется дополнительное доказательство.
+Для desktop R23 редактированный лог фиксирует неуспешное ожидание входящего сообщения. Получатель и этап доставки по этому логу не установлены.
+Зачтённой пары нет. Нужны два последовательных green на неизменном стабильном SHA `main`.
+
+Исторический [run 45216520095, job 137839027140](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/job/137839027140) на `a2d295bc7` не прошёл из-за ошибки консоли во flaky desktop footer. Итог **223 passed, 0 failed, 8 skipped, 1 flaky**.
+Все шесть результатов AUD-154 получены с первой попытки. [Receipt 14842876037](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/artifacts/14842876037), SHA-256 `290234f080d1ac92671b8fc551c11209c193b91fe191ed22cd594d54daa3c964`.
 
 Серия на `15d7cadf4` сброшена, её история приведена ниже.
 
@@ -97,9 +105,18 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | 1. Решение и документы | Выполнен. |
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
 | 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
-| 4. Визуал и performance | Утверждён только Home12. На `a2d295bc7` сняты 96 приватных PNG, в 28 вариантах найдены serious `color-contrast` и `label-content-name-mismatch`. Предстоят исправление находок и утверждение пакета. |
-| 5. Security, ledger, данные | Предстоят подготовка avatar и восстановление DB/S3. Оба локальных owned-стенда остановлены, данные сохранены. |
+| 4. Визуал и performance | Проверка Stage 4 — 96 PNG с sidecars, 2 serious `color-contrast` на dark390 `/schedule` RU/EN (белый на `#38bdf8`, 2.14:1). На `a2d295bc7` serious-находки были в 28 вариантах. Утверждён только Home12, approval нового пакета не получен. |
+| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён на одном disposable owned stand. Avatar не загружен. |
 | 6. Выпуск | Не начат. |
+
+Галерея — aggregate SHA-256 `6dd69c38516e8f4bf7d52d863bf0321fe873d5b85f69f146987d67d2d0671a0b`, safe summary SHA-256 `42df1d91ca9607015a39959ab41f64338c0a6f8b93febadc8646da7b01bd4dee`.
+
+### Scoped restore DB/S3 (§7.3)
+
+На одном disposable owned stand на `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` проверены Alembic `202611200001`, 155 таблиц и 385 строк, 35 исходных объектов и 35 версий, multipart 0 и семь DB reference columns. Source DB и bucket совпали с baseline, два manifest receipts совпали.
+Две DB→S3Storage пробы story/news совпали побайтно. SHA-256 manifest `0b296bb76e904327b518136e3dd1afd0f3f4b783b338f9fcc99253ba31ec5cd6`, dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`, source DB `2d2876e29d77f9f614c8b951ae693aa220e487455abdfac05823c0d47bd930f1`, table counts `a79a3014a35901321ad030a0d938658acfe5725800552ea13aa9511d477823f1`.
+Это quiesced локальная проверка без гарантии отсутствия внешнего writer и без RPO/RTO.
+Teardown подтверждён по signed preinventory и bounded Docker events. Удалены 24 контейнера, 5 сетей и 7 томов, остатков нет. Приватные PNG, sidecars и receipts сохранены, другие проекты не затронуты. Заключительная проверка привязок API для avatar после адресного старта не прошла, загрузка не выполнялась.
 
 ## Решения владельца (действующие)
 
@@ -128,8 +145,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Исправить serious-находки визуального аудита и разобраться с flaky desktop footer.
+1. Разобрать две serious-находки визуального аудита и итоги последнего Core.
 2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
-3. Разобрать нестабильную доставку Web Push.
-4. Повторить пакет скриншотов и выполнить restore на том же локальном стенде.
+3. Проверить учёт skipped и разобраться с нестабильной доставкой Web Push.
+4. Повторить проверку привязок API для avatar и подготовить визуальный пакет к утверждению.
 5. Сохранять scoped DAST-доказательства для AUD-381.

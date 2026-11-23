@@ -105,9 +105,22 @@ After the snapshot has reported success, resume the same owned Core stand with:
 uv run python -m scripts.live_stand up --stack core --ref HEAD --in-place --state-dir $stateDirectory
 ```
 
-The existing `up` path checks the owner and source binding and reuses verified
-owned volumes. It may reallocate published ports; read the resulting live URLs.
-Do not use `teardown` to resume, since it removes owned data resources.
+For a complete, verified in-place Core owner at the same source SHA, `up` keeps
+the signed port map and reuses the verified owned volumes. It stops the selected
+Core services, including the two data stores, before checking that their ports
+are free and starting the stand. If another listener occupies a signed port at
+the post-stop check, startup fails before the owner marker is rewritten. A port
+claimed later can also fail the pre-build check, after the marker has been
+rebound with the same map. Resolve the conflict and retry. Do not use `teardown`
+to resume, since it removes owned data resources.
+
+If a previous startup stopped after recording a current-schema resume
+fingerprint, a retry keeps that marker's signed port map only when the source
+SHA and resume schema still match. Those ports must already be free before
+preparation; an incomplete marker does not authorize stopping containers.
+Other incomplete or older ownership states retain their existing recovery
+rules and may allocate different ports or refuse an upgrade. Port preservation
+does not repair object URLs written against an earlier, different base URL.
 
 The required flag is an operator attestation; the script cannot pause or prove
 that external writers have stopped. It records the confirmation timestamp,

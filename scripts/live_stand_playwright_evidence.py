@@ -3750,6 +3750,75 @@ def _validated_read_receipt_diagnostic(value: object) -> dict[str, object] | Non
     return {key: record[key] for key in _READ_RECEIPT_KEYS}
 
 
+_GROUP_DELIVERY_KEYS = (
+    "schema",
+    "scenario",
+    "project",
+    "attempt",
+    "owner",
+    "teacher",
+    "secondMember",
+)
+_GROUP_DELIVERY_ROLE_KEYS = (
+    "sockets",
+    "closedSockets",
+    "joinSentSockets",
+    "openJoinSentSockets",
+    "pongAfterJoinSentSockets",
+    "targetFrames",
+    "matchingFrames",
+    "socketsCapped",
+    "framesCapped",
+    "pongBeforeSend",
+)
+
+
+def _validated_group_delivery_diagnostic(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _GROUP_DELIVERY_KEYS)
+    if record is None or type(record["schema"]) is not int or record["schema"] != 4:
+        return None
+    if record["scenario"] != "group-initial-delivery" or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not _reconnect_integer(record["attempt"], 1):
+        return None
+    projected: dict[str, object] = {
+        key: record[key] for key in _GROUP_DELIVERY_KEYS[:4]
+    }
+    for name in ("owner", "teacher", "secondMember"):
+        role = _auth_diag_object(record[name], _GROUP_DELIVERY_ROLE_KEYS)
+        if role is None or any(
+            not _reconnect_integer(role[key], 32)
+            for key in _GROUP_DELIVERY_ROLE_KEYS[:7]
+        ):
+            return None
+        if any(type(role[key]) is not bool for key in _GROUP_DELIVERY_ROLE_KEYS[7:9]):
+            return None
+        if (
+            role["pongBeforeSend"] is not None
+            and type(role["pongBeforeSend"]) is not bool
+        ):
+            return None
+        if (
+            role["closedSockets"] > role["sockets"]
+            or role["joinSentSockets"] > role["sockets"]
+            or role["openJoinSentSockets"] > role["joinSentSockets"]
+            or role["pongAfterJoinSentSockets"] > role["joinSentSockets"]
+            or role["openJoinSentSockets"] > role["sockets"] - role["closedSockets"]
+            or role["joinSentSockets"] - role["openJoinSentSockets"]
+            > role["closedSockets"]
+            or role["matchingFrames"] > role["targetFrames"]
+            or (role["sockets"] == 0 and role["targetFrames"] != 0)
+            or (role["socketsCapped"] and role["sockets"] != 32)
+            or (role["framesCapped"] and role["targetFrames"] != 32)
+        ):
+            return None
+        projected[name] = {key: role[key] for key in _GROUP_DELIVERY_ROLE_KEYS}
+    return projected
+
+
 def _live_playwright_reconnect_diagnostics(
     output: str,
     *,
@@ -3759,6 +3828,7 @@ def _live_playwright_reconnect_diagnostics(
 
     Schema 1 records reconnects. Schema 2 records initial forwarding receipt.
     Schema 3 records a peer read-receipt observation.
+    Schema 4 records the group initial-delivery observers.
     """
     prefix = "live E2E reconnect " if retained else "UE_LIVE_RECONNECT_V1 "
     records: list[dict[str, object]] = []
@@ -3779,6 +3849,7 @@ def _live_playwright_reconnect_diagnostics(
                 _validated_reconnect_diagnostic(value)
                 or _validated_forwarding_diagnostic(value)
                 or _validated_read_receipt_diagnostic(value)
+                or _validated_group_delivery_diagnostic(value)
             )
         except (ValueError, RecursionError):
             continue
