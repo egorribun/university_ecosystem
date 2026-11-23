@@ -297,7 +297,7 @@ _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
 
 _PLAYWRIGHT_PUSH_ROTATION_LINE = re.compile(
     r"UE_LIVE_PUSH_ROTATION_V1 project=(?P<project>desktop|mobile) "
-    r"retry=(?P<retry>[01]) scenario=(?P<scenario>setup|news|events|schedule|release|unknown) "
+    r"retry=(?P<retry>[01]) scenario=(?P<scenario>setup|news|events|schedule|release|reply|unknown) "
     r"phase=(?P<phase>opt-in|before-wait|failure) ordinal=(?P<ordinal>[1-8]) "
     r"endpoint_sha256=(?P<prefix>[0-9a-f]{12}|missing|unavailable)"
 )
@@ -368,6 +368,16 @@ _STORY_MEMORY_CYCLE_TRACE_SAMPLE_KEYS = (
 )
 _STORY_MEMORY_CYCLE_TRACE_COUNT_KEYS = ("documents", "nodes", "jsEventListeners")
 _STORY_MEMORY_CYCLE_TRACE_MISMATCH_KEYS = ("cycle", "warmDOM", "actualDOM")
+_STORY_MEMORY_CYCLE_TRACE_REGION_KEYS = (
+    "connectedDocumentNodes",
+    "mainNodes",
+    "scheduleNodes",
+    "newsNodes",
+    "eventsNodes",
+    "navNodes",
+    "dialogNodes",
+    "statusNodes",
+)
 _STORY_MEMORY_CYCLE_TRACE_LINE_BYTES_LIMIT = 2048
 _STORY_MEMORY_CYCLE_TRACE_RECORD_LIMIT = 4
 
@@ -376,8 +386,14 @@ def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | No
     has_mismatch = isinstance(value, dict) and "mismatch" in value
     keys = _STORY_MEMORY_CYCLE_TRACE_KEYS + (("mismatch",) if has_mismatch else ())
     record = _story_memory_object(value, keys)
-    if record is None or type(record["schema"]) is not int or record["schema"] != 1:
+    if (
+        record is None
+        or type(record["schema"]) is not int
+        or record["schema"] not in (1, 2)
+        or (record["schema"] == 2 and not has_mismatch)
+    ):
         return None
+    schema = record["schema"]
     project = record["project"]
     status = record["diagnosticStatus"]
     if project not in ("desktop", "mobile") or status not in (
@@ -420,15 +436,16 @@ def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | No
     ):
         return None
     normalized_record: dict[str, object] = {
-        "schema": 1,
+        "schema": schema,
         "project": project,
         "diagnosticStatus": status,
         "samples": normalized_samples,
     }
     if has_mismatch:
-        mismatch = _story_memory_object(
-            record["mismatch"], _STORY_MEMORY_CYCLE_TRACE_MISMATCH_KEYS
+        mismatch_keys = _STORY_MEMORY_CYCLE_TRACE_MISMATCH_KEYS + (
+            ("regions",) if schema == 2 else ()
         )
+        mismatch = _story_memory_object(record["mismatch"], mismatch_keys)
         if mismatch is None:
             return None
         cycle = mismatch["cycle"]
@@ -448,11 +465,31 @@ def _validated_story_memory_cycle_trace(value: object) -> dict[str, object] | No
             return None
         if cycle == 0 and actual != normalized_samples["afterCloseSettled"]:
             return None
-        normalized_record["mismatch"] = {
+        normalized_mismatch: dict[str, object] = {
             "cycle": cycle,
             "warmDOM": warm,
             "actualDOM": actual,
         }
+        if schema == 2:
+            regions = _story_memory_object(
+                mismatch["regions"], ("baseline", "afterMismatch")
+            )
+            if regions is None:
+                return None
+            normalized_regions: dict[str, dict[str, int | None] | None] = {}
+            for phase in ("baseline", "afterMismatch"):
+                region = regions[phase]
+                if region is None:
+                    normalized_regions[phase] = None
+                    continue
+                counts = _story_memory_counts(
+                    region, _STORY_MEMORY_CYCLE_TRACE_REGION_KEYS, unavailable=False
+                )
+                if counts is None:
+                    return None
+                normalized_regions[phase] = counts
+            normalized_mismatch["regions"] = normalized_regions
+        normalized_record["mismatch"] = normalized_mismatch
     return normalized_record
 
 
@@ -2606,15 +2643,20 @@ def _live_playwright_push_rotation_observations(
     output: str,
 ) -> list[tuple[str, int, str, str, int, str]]:
     """Accept bounded hash prefixes only; conflicting ordinal records fail closed."""
-    records: dict[tuple[str, int, int], tuple[str, int, str, str, int, str]] = {}
-    conflicts: set[tuple[str, int, int]] = set()
+    records: dict[tuple[str, int, str, int], tuple[str, int, str, str, int, str]] = {}
+    conflicts: set[tuple[str, int, str, int]] = set()
     for line in output.split("\n")[:-1]:
         line = line.removesuffix("\r")
         if len(line) > 180 or not line.isprintable():
             continue
         match = _PLAYWRIGHT_PUSH_ROTATION_LINE.fullmatch(line)
-        if match is None or (
-            (match["phase"] == "opt-in") != (match["scenario"] == "setup")
+        if (
+            match is None
+            or (match["scenario"] == "reply" and match["project"] != "mobile")
+            or (
+                match["scenario"] != "reply"
+                and (match["phase"] == "opt-in") != (match["scenario"] == "setup")
+            )
         ):
             continue
         project, retry, ordinal = (
@@ -2622,7 +2664,8 @@ def _live_playwright_push_rotation_observations(
             int(match["retry"]),
             int(match["ordinal"]),
         )
-        identity = (project, retry, ordinal)
+        scope = "reply" if match["scenario"] == "reply" else "topics"
+        identity = (project, retry, scope, ordinal)
         record = (
             project,
             retry,

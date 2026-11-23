@@ -120,6 +120,43 @@ def test_rotation_records_are_bounded_closed_and_reject_conflicting_ordinals() -
     assert len(parse("".join(rows))) == 32
 
 
+def test_reply_rotation_preserves_topic_records_with_matching_ordinals() -> None:
+    parse = evidence._live_playwright_push_rotation_observations
+    topic = (
+        "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=setup "
+        "phase=opt-in ordinal=1 endpoint_sha256=0123456789ab\n"
+    )
+    reply = (
+        "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=reply "
+        "phase=opt-in ordinal=1 endpoint_sha256=aaaaaaaaaaaa\n"
+    )
+    expected_topic = ("mobile", 0, "setup", "opt-in", 1, "0123456789ab")
+    expected_reply = ("mobile", 0, "reply", "opt-in", 1, "aaaaaaaaaaaa")
+    assert parse(topic + reply + reply) == [expected_topic, expected_reply]
+    assert parse(reply.replace("phase=opt-in", "phase=before-wait")) == [
+        ("mobile", 0, "reply", "before-wait", 1, "aaaaaaaaaaaa")
+    ]
+    assert parse(reply.replace("phase=opt-in", "phase=failure")) == [
+        ("mobile", 0, "reply", "failure", 1, "aaaaaaaaaaaa")
+    ]
+    conflict = reply.replace("aaaaaaaaaaaa", "bbbbbbbbbbbb")
+    assert parse(topic + reply + conflict + reply) == [expected_topic]
+    conflicting_topic = topic.replace("scenario=setup", "scenario=news").replace(
+        "phase=opt-in", "phase=before-wait"
+    )
+    assert parse(topic + conflicting_topic + reply) == [expected_reply]
+    for invalid in (
+        reply[:-1],
+        reply.rstrip() + " private\n",
+        reply.replace("aaaaaaaaaaaa", "https://private"),
+        reply.replace("aaaaaaaaaaaa", "AAAAAAAAAAAA"),
+        reply.replace("project=mobile", "project=desktop"),
+        reply.replace("scenario=reply", "scenario=private"),
+        reply.replace("phase=opt-in", "phase=private"),
+    ):
+        assert parse(invalid) == []
+
+
 def test_live_runner_relays_rotation_prefix_only_from_closed_stdout_records(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -129,19 +166,26 @@ def test_live_runner_relays_rotation_prefix_only_from_closed_stdout_records(
         "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=news "
         "phase=before-wait ordinal=2 endpoint_sha256=0123456789ab\n"
     )
+    reply = row.replace("scenario=news", "scenario=reply").replace(
+        "0123456789ab", "aaaaaaaaaaaa"
+    )
     private = "private endpoint user payload token"
     stand = stand_tests.live_stand
     result = subprocess.CompletedProcess(
         stand._live_e2e_command(mode="smoke"),
         1,
-        stdout=(row + row.rstrip() + " " + private + "\n").encode(),
+        stdout=(row + reply + row.rstrip() + " " + private + "\n").encode(),
         stderr=(row + private + "\n").encode(),
     )
     stand_tests._patch_live_playwright_result(monkeypatch, result)
     with pytest.raises(stand.StandError, match="exit code 1"):
         stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
-    assert captured.out.count("live E2E push rotation project=mobile") == 1
+    assert captured.out.count("live E2E push rotation project=mobile") == 2
     assert "phase=before-wait ordinal=2 endpoint_sha256=0123456789ab" in captured.out
+    assert (
+        "scenario=reply phase=before-wait ordinal=2 endpoint_sha256=aaaaaaaaaaaa"
+        in (captured.out)
+    )
     assert private not in captured.out + captured.err
     assert captured.err == ""

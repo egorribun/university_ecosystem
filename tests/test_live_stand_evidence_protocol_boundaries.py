@@ -191,6 +191,160 @@ def test_story_memory_cycle_rejects_malformed_mismatch_records() -> None:
         )
 
 
+def test_story_memory_cycle_regions_accept_only_closed_v2_counts() -> None:
+    historical = contracts._story_memory_cycle_trace_record()
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    actual = {**warm, "nodes": 852}
+    region_counts = {
+        "connectedDocumentNodes": 100,
+        "mainNodes": 80,
+        "scheduleNodes": 10,
+        "newsNodes": 11,
+        "eventsNodes": 12,
+        "navNodes": 13,
+        "dialogNodes": 0,
+        "statusNodes": 2,
+    }
+    regions = {
+        "baseline": region_counts,
+        "afterMismatch": {**region_counts, "mainNodes": 81},
+    }
+    current = {
+        **historical,
+        "schema": 2,
+        "mismatch": {
+            "cycle": 17,
+            "warmDOM": warm,
+            "actualDOM": actual,
+            "regions": regions,
+        },
+    }
+    rows = contracts._story_memory_cycle_trace_row(historical)
+    rows += contracts._story_memory_cycle_trace_row(current)
+    assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(rows) == [
+        historical,
+        current,
+    ]
+    for baseline, after_mismatch in (
+        (None, region_counts),
+        (region_counts, None),
+        (None, None),
+    ):
+        partial = {
+            **current,
+            "mismatch": {
+                **current["mismatch"],
+                "regions": {"baseline": baseline, "afterMismatch": after_mismatch},
+            },
+        }
+        assert evidence._validated_story_memory_cycle_trace(partial) == partial
+
+
+def test_story_memory_cycle_regions_reject_private_or_malformed_values() -> None:
+    record = contracts._story_memory_cycle_trace_record()
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    counts = {
+        "connectedDocumentNodes": 100,
+        "mainNodes": 80,
+        "scheduleNodes": 10,
+        "newsNodes": 11,
+        "eventsNodes": 12,
+        "navNodes": 13,
+        "dialogNodes": 0,
+        "statusNodes": 2,
+    }
+    mismatch = {
+        "cycle": 2,
+        "warmDOM": warm,
+        "actualDOM": {**warm, "nodes": 852},
+        "regions": {"baseline": counts, "afterMismatch": counts},
+    }
+    bad_regions = (
+        None,
+        {"baseline": counts},
+        {"baseline": counts, "afterMismatch": counts, "private": "PRIVATE"},
+        {"baseline": {**counts, "private": "PRIVATE"}, "afterMismatch": counts},
+        {"baseline": {**counts, "mainNodes": True}, "afterMismatch": counts},
+        {"baseline": {**counts, "mainNodes": -1}, "afterMismatch": counts},
+        {"baseline": {**counts, "mainNodes": 2**53}, "afterMismatch": counts},
+    )
+    for regions in bad_regions:
+        candidate = {
+            **record,
+            "schema": 2,
+            "mismatch": {**mismatch, "regions": regions},
+        }
+        assert evidence._validated_story_memory_cycle_trace(candidate) is None
+    assert evidence._validated_story_memory_cycle_trace({**record, "schema": 2}) is None
+    assert (
+        evidence._validated_story_memory_cycle_trace(
+            {**record, "schema": 1, "mismatch": mismatch}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_story_memory_cycle_regions_are_bounded_and_emitted_on_failure_only(
+    exit_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    record = contracts._story_memory_cycle_trace_record()
+    warm = {"documents": 2, "nodes": 788, "jsEventListeners": 458}
+    counts = {
+        "connectedDocumentNodes": 100,
+        "mainNodes": 80,
+        "scheduleNodes": 10,
+        "newsNodes": 11,
+        "eventsNodes": 12,
+        "navNodes": 13,
+        "dialogNodes": 0,
+        "statusNodes": 2,
+    }
+    record.update(
+        schema=2,
+        mismatch={
+            "cycle": 17,
+            "warmDOM": warm,
+            "actualDOM": {**warm, "nodes": 852},
+            "regions": {"baseline": counts, "afterMismatch": None},
+        },
+    )
+    row = contracts._story_memory_cycle_trace_row(record)
+    malformed = contracts._story_memory_cycle_trace_row(
+        {**record, "mismatch": {**record["mismatch"], "private": "PRIVATE"}}
+    )
+    oversized = "STORY_MEMORY_CYCLE_TRACE_DIAG " + "x" * 2049 + "\n"
+    output = row + row + malformed + oversized + "PRIVATE_BODY\n"
+    assert evidence._live_playwright_story_memory_cycle_trace_diagnostics(output) == [
+        record
+    ]
+    completed = subprocess.CompletedProcess(
+        contracts.live_stand._live_e2e_command(mode="smoke"),
+        exit_code,
+        stdout=output.encode(),
+        stderr=b"PRIVATE_STACK\n",
+    )
+    contracts._patch_live_playwright_result(monkeypatch, completed)
+    if exit_code:
+        with pytest.raises(contracts.live_stand.StandError, match="exit code 1"):
+            contracts.live_stand._run_live_playwright(
+                cwd=tmp_path, environment={}, mode="smoke"
+            )
+    else:
+        contracts.live_stand._run_live_playwright(
+            cwd=tmp_path, environment={}, mode="smoke"
+        )
+    printed = capsys.readouterr()
+    expected = "live E2E story memory cycle trace " + json.dumps(
+        record, separators=(",", ":")
+    )
+    assert (expected in printed.out.splitlines()) is bool(exit_code)
+    assert "PRIVATE" not in printed.out + printed.err
+
+
 @pytest.mark.parametrize("exit_code", [0, 1])
 @pytest.mark.parametrize("equal_counts", [False, True])
 def test_story_memory_mismatch_is_projected_on_failure_only(

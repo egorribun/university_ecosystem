@@ -897,6 +897,18 @@ test("quoted group author gets one chat.reply push with group context and no gen
 }, testInfo) => {
   test.skip(browserName !== "chromium", "native Notifications and PushManager require Chromium")
 
+  const { createPushRotationObservation } = await import("./push-rotation-observation.mjs")
+  const rotationObservation =
+    testInfo.project.name === "mobile"
+      ? createPushRotationObservation(
+          page,
+          testInfo.project.name,
+          testInfo.retry,
+          undefined,
+          "reply"
+        )
+      : null
+
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
   const recipientObservation = createPushRecipientObservation(
@@ -1041,6 +1053,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
     )
     expect(subscribed.endpoint === subscriptionEndpoint).toBe(true)
     subscriptionBound = true
+    await rotationObservation?.optIn(livePushObservationBudgetMs(testInfo))
     await expect(pushSwitch).toBeChecked()
 
     await groupOwnerPage.goto("/messenger")
@@ -1116,6 +1129,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
       )
     })
     recipientObservation.arm("reply", quotedAuthor.id)
+    rotationObservation?.arm("reply")
     await groupOwnerPage.locator("#chat-message-input").fill(replyText)
     await groupOwnerPage.locator("#chat-send-btn").click()
     const replyMessageResponse = await replyMessageResponsePromise
@@ -1242,8 +1256,15 @@ test("quoted group author gets one chat.reply push with group context and no gen
     if (!expectedNotificationId) {
       throw new Error("the persisted group reply notification did not have an identity")
     }
+    await rotationObservation?.beforeWait("reply", livePushObservationBudgetMs(testInfo))
+    const reportReplyFailure = async () => {
+      await Promise.all([
+        recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo)),
+        rotationObservation?.reportFailure(livePushObservationBudgetMs(testInfo)),
+      ])
+    }
     failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId, () =>
-      recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
+      reportReplyFailure()
     )
     await expect
       .poll(

@@ -101,7 +101,7 @@ type StoryMemoryCycle0Trace = {
   dialogOpen: DOMCounters | null
   hiddenResumed: DOMCounters | null
   afterCloseSettled: DOMCounters | null
-  mismatch?: { cycle: number; warmDOM: DOMCounters; actualDOM: DOMCounters }
+  mismatch?: StoryMemoryMismatch
 }
 type StoryMemoryRemoteObject = { objectId?: string }
 type StoryMemoryEventListener = {
@@ -257,7 +257,6 @@ async function readStoryDOMCounters(cdp: CDPSession): Promise<DOMCounters | null
     return null
   }
 }
-
 function emitStoryMemoryCycleTraceDiagnostic(
   projectName: string,
   trace: StoryMemoryCycle0Trace
@@ -273,6 +272,7 @@ function emitStoryMemoryCycleTraceDiagnostic(
   }
   const availableCount = Object.values(samples).filter((sample) => sample !== null).length
   const mismatch = trace.mismatch
+  const regions = projectStoryMemoryRegionComparison(mismatch?.regions)
   const warmDOM =
     mismatch && typeof mismatch.warmDOM === "object" && mismatch.warmDOM !== null
       ? safeStoryMemoryDOM(mismatch.warmDOM)
@@ -282,7 +282,7 @@ function emitStoryMemoryCycleTraceDiagnostic(
       ? safeStoryMemoryDOM(mismatch.actualDOM)
       : null
   const record = {
-    schema: 1,
+    schema: regions === null ? 1 : 2,
     project,
     diagnosticStatus:
       availableCount === 0 ? "unavailable" : availableCount === 4 ? "available" : "partial",
@@ -293,7 +293,7 @@ function emitStoryMemoryCycleTraceDiagnostic(
     mismatch.cycle < MEASURED_CYCLES &&
     warmDOM !== null &&
     actualDOM !== null
-      ? { mismatch: { cycle: mismatch.cycle, warmDOM, actualDOM } }
+      ? { mismatch: projectStoryMemoryMismatch(mismatch, warmDOM, actualDOM, regions) }
       : {}),
   }
   try {
@@ -494,8 +494,8 @@ storyVisibilityTest(
         }
         return snapshot
       }
-
       let cycle0Trace: StoryMemoryCycle0Trace | undefined
+      let warmRegions: StoryMemoryRegionCounts | null = null
       let bodyFailed = false
       let bodyError: unknown
       try {
@@ -503,7 +503,6 @@ storyVisibilityTest(
         for (let cycle = 0; cycle < WARM_UP_CYCLES; cycle += 1) {
           await openAndClose(true)
         }
-
         markStorySetupStage(page, "baseline")
         // The warm-up cycle above is the interaction that promotes the deferred global overlays
         // (SearchDialog, LivePushToasts, InstallPrompt; see DeferredGlobalOverlays.tsx). The
@@ -514,6 +513,7 @@ storyVisibilityTest(
             (window as StoryDeferredOverlaysProbeWindow).__ueDeferredGlobalOverlaysReady === true
         )
         const warmSnapshot = await settleViewerCleanup(page, cdp)
+        warmRegions = await captureStoryMemoryRegions(page)
         const warmListenerCounts = await captureStoryMemoryListeners(cdp)
         cycle0Trace = {
           baseline: warmSnapshot.domCounters,
@@ -563,6 +563,12 @@ storyVisibilityTest(
         recordStorySetupFailure(page, error)
         if (cycle0Trace !== undefined) {
           try {
+            if (cycle0Trace.mismatch !== undefined) {
+              cycle0Trace.mismatch.regions = {
+                baseline: warmRegions,
+                afterMismatch: await captureStoryMemoryRegions(page),
+              }
+            }
             emitStoryMemoryCycleTraceDiagnostic(testInfo.project.name, cycle0Trace)
           } catch {
             // A diagnostic failure must not replace the original acceptance error.
@@ -589,3 +595,125 @@ storyVisibilityTest(
     }
   }
 )
+
+type StoryMemoryRegionCounts = {
+  connectedDocumentNodes: number
+  mainNodes: number
+  scheduleNodes: number
+  newsNodes: number
+  eventsNodes: number
+  navNodes: number
+  dialogNodes: number
+  statusNodes: number
+}
+
+type StoryMemoryRegionComparison = {
+  baseline: StoryMemoryRegionCounts | null
+  afterMismatch: StoryMemoryRegionCounts | null
+}
+
+type StoryMemoryMismatch = {
+  cycle: number
+  warmDOM: DOMCounters
+  actualDOM: DOMCounters
+  regions?: StoryMemoryRegionComparison
+}
+
+function projectStoryMemoryRegionCounts(value: unknown): StoryMemoryRegionCounts | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null
+  const counts = value as Record<keyof StoryMemoryRegionCounts, unknown>
+  const projected = {
+    connectedDocumentNodes: counts.connectedDocumentNodes,
+    mainNodes: counts.mainNodes,
+    scheduleNodes: counts.scheduleNodes,
+    newsNodes: counts.newsNodes,
+    eventsNodes: counts.eventsNodes,
+    navNodes: counts.navNodes,
+    dialogNodes: counts.dialogNodes,
+    statusNodes: counts.statusNodes,
+  }
+  if (
+    !Object.values(projected).every((count) => Number.isSafeInteger(count) && Number(count) >= 0)
+  ) {
+    return null
+  }
+  return projected as StoryMemoryRegionCounts
+}
+
+function projectStoryMemoryRegionComparison(value: unknown): StoryMemoryRegionComparison | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null
+  const candidate = value as Record<string, unknown>
+  const baseline =
+    candidate.baseline === null ? null : projectStoryMemoryRegionCounts(candidate.baseline)
+  const afterMismatch =
+    candidate.afterMismatch === null
+      ? null
+      : projectStoryMemoryRegionCounts(candidate.afterMismatch)
+  if (
+    (candidate.baseline !== null && baseline === null) ||
+    (candidate.afterMismatch !== null && afterMismatch === null)
+  )
+    return null
+  return { baseline, afterMismatch }
+}
+
+function projectStoryMemoryMismatch(
+  mismatch: StoryMemoryMismatch,
+  warmDOM: StoryMemoryDiagnosticDOM,
+  actualDOM: StoryMemoryDiagnosticDOM,
+  regions: StoryMemoryRegionComparison | null
+) {
+  return {
+    cycle: mismatch.cycle,
+    warmDOM,
+    actualDOM,
+    ...(regions === null ? {} : { regions }),
+  }
+}
+
+async function captureStoryMemoryRegions(page: Page): Promise<StoryMemoryRegionCounts | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const deadline = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), 1_000)
+    })
+    const result = await Promise.race([
+      page.evaluate(() => {
+        const limit = 100_000
+        const countTree = (root: Node) => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL)
+          let count = 1
+          while (walker.nextNode()) {
+            count += 1
+            if (count > limit) throw new Error("Story memory region too large")
+          }
+          return count
+        }
+        const countMatches = (selector: string) => {
+          let count = 0
+          for (const element of document.querySelectorAll(selector)) {
+            count += countTree(element)
+            if (count > limit) throw new Error("Story memory regions too large")
+          }
+          return count
+        }
+        return {
+          connectedDocumentNodes: countTree(document),
+          mainNodes: countMatches("main"),
+          scheduleNodes: countMatches(".dash-panel-schedule"),
+          newsNodes: countMatches(".dash-panel-news"),
+          eventsNodes: countMatches(".dash-panel-events"),
+          navNodes: countMatches("nav"),
+          dialogNodes: countMatches('[role="dialog"]'),
+          statusNodes: countMatches('[role="status"]'),
+        }
+      }),
+      deadline,
+    ])
+    return projectStoryMemoryRegionCounts(result)
+  } catch {
+    return null
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}

@@ -2,7 +2,7 @@ import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
-import { useEffect, type ReactNode } from "react"
+import { Activity, StrictMode, useEffect, type ReactNode } from "react"
 import { renderToString } from "react-dom/server"
 import { AppShellProvider, useAppShell } from "@/contexts/AppShellContext"
 import { StoryViewer } from "../StoryViewer"
@@ -188,6 +188,130 @@ describe("StoryViewer", () => {
       screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
     ).toEqual(["100", "65"])
     expect(document.body.style.overflow).toBe("hidden")
+  })
+
+  it("releases a detached cover without disrupting a newly selected story", async () => {
+    const stories = [
+      { ...mockStories[0]!, cover_url: "/media/story-first.png" },
+      { ...mockStories[1]!, cover_url: "/media/story-second.png" },
+    ]
+    const { rerender } = renderViewerDirect({ stories })
+    const firstImage = screen.getByRole("img", { name: "Story 1" })
+    expect(firstImage.getAttribute("src")).toContain("story-first.png")
+    expect(firstImage).toHaveAttribute("srcset")
+
+    rerender(<StoryViewer {...defaultProps} stories={stories} activeStoryIndex={1} />)
+    const selectedImage = screen.getByRole("img", { name: "Story 2" })
+    await Promise.resolve()
+    expect(selectedImage).toBeInTheDocument()
+    expect(selectedImage.getAttribute("src")).toContain("story-second.png")
+    expect(selectedImage).toHaveAttribute("srcset")
+
+    rerender(<StoryViewer {...defaultProps} stories={stories} activeStoryIndex={null} />)
+    expect(selectedImage).not.toBeInTheDocument()
+    await Promise.resolve()
+    expect(selectedImage).not.toHaveAttribute("srcset")
+    expect(selectedImage).not.toHaveAttribute("src")
+  })
+
+  it("keeps an attached cover intact during StrictMode ref reattachment", async () => {
+    const stories = [{ ...mockStories[0]!, cover_url: "/media/strict-story.png" }]
+    const view = render(
+      <StrictMode>
+        <AppShellProvider>
+          <StoryViewer {...defaultProps} stories={stories} />
+        </AppShellProvider>
+      </StrictMode>
+    )
+    const image = screen.getByRole("img", { name: "Story 1" })
+    await Promise.resolve()
+    expect(image).toBeInTheDocument()
+    expect(image.getAttribute("src")).toContain("strict-story.png")
+    expect(image).toHaveAttribute("srcset")
+
+    view.unmount()
+    await Promise.resolve()
+    expect(image).not.toHaveAttribute("srcset")
+    expect(image).not.toHaveAttribute("src")
+  })
+
+  it("releases a cover when switching to a story without an image", () => {
+    const stories = [
+      { ...mockStories[0]!, cover_url: "/media/story-first.png" },
+      { ...mockStories[1]!, cover_url: null },
+    ]
+    const { rerender } = renderViewerDirect({ stories })
+    const image = screen.getByRole("img", { name: "Story 1" })
+
+    rerender(<StoryViewer {...defaultProps} stories={stories} activeStoryIndex={1} />)
+
+    expect(screen.getByRole("heading", { name: "Story 2" })).toBeInTheDocument()
+    expect(image).not.toBeInTheDocument()
+    expect(image).not.toHaveAttribute("srcset")
+    expect(image).not.toHaveAttribute("src")
+  })
+
+  it("preserves an attached fallback without adding srcset during StrictMode replay", () => {
+    const stories = [{ ...mockStories[0]!, cover_url: " " }]
+    const view = render(
+      <StrictMode>
+        <AppShellProvider>
+          <StoryViewer {...defaultProps} stories={stories} />
+        </AppShellProvider>
+      </StrictMode>
+    )
+    const image = screen.getByRole("img", { name: "Story 1" })
+    expect(image).toBeInTheDocument()
+    expect(image.getAttribute("src")).toContain("placeholder.png")
+    expect(image).not.toHaveAttribute("srcset")
+
+    view.unmount()
+    expect(image).not.toHaveAttribute("src")
+  })
+
+  it("does not restore an old srcset after a hidden cover changes to a blob", () => {
+    const withCover = (mode: "hidden" | "visible", cover: string) => (
+      <Activity mode={mode}>
+        <AppShellProvider>
+          <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, cover_url: cover }]} />
+        </AppShellProvider>
+      </Activity>
+    )
+    const view = render(withCover("visible", "/media/original-story.png"))
+    const image = screen.getByRole("img", { name: "Story 1" })
+    expect(image).toHaveAttribute("srcset")
+
+    view.rerender(withCover("hidden", "/media/original-story.png"))
+    view.rerender(withCover("hidden", "blob:http://localhost/updated-story"))
+    view.rerender(withCover("visible", "blob:http://localhost/updated-story"))
+
+    const updated = screen.getByRole("img", { name: "Story 1" })
+    expect(updated).toBe(image)
+    expect(updated).toHaveAttribute("src", "blob:http://localhost/updated-story")
+    expect(updated).not.toHaveAttribute("srcset")
+  })
+
+  it("does not restore srcset when the replacement has the same resolved src", () => {
+    const withCover = (mode: "hidden" | "visible", cover: string) => (
+      <Activity mode={mode}>
+        <AppShellProvider>
+          <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, cover_url: cover }]} />
+        </AppShellProvider>
+      </Activity>
+    )
+    const view = render(withCover("visible", "/media/original-story.png"))
+    const image = screen.getByRole("img", { name: "Story 1" })
+    const resolvedSource = image.getAttribute("src")!
+    expect(image).toHaveAttribute("srcset")
+
+    view.rerender(withCover("hidden", "/media/original-story.png"))
+    view.rerender(withCover("hidden", resolvedSource))
+    view.rerender(withCover("visible", resolvedSource))
+
+    const updated = screen.getByRole("img", { name: "Story 1" })
+    expect(updated).toBe(image)
+    expect(updated).toHaveAttribute("src", resolvedSource)
+    expect(updated).not.toHaveAttribute("srcset")
   })
 
   it("is inert during server rendering and uses the browser integration contracts", async () => {

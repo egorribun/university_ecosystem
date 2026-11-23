@@ -187,6 +187,7 @@ export const StoryViewer = ({
         >
           {viewerStory.cover_url ? (
             <SmartImage
+              releaseOnDetach
               srcRaw={viewerStory.cover_url}
               alt={viewerStory.title}
               className="h-full w-full bg-page object-contain object-center"

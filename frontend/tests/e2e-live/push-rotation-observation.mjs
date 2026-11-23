@@ -11,11 +11,15 @@ export function createPushRotationObservation(
   page,
   project,
   retry,
-  emit = (line) => process.stdout.write(line)
+  emit = (line) => process.stdout.write(line),
+  scope = "topics"
 ) {
-  const validScope = (project === "desktop" || project === "mobile") && (retry === 0 || retry === 1)
+  const validScope =
+    (project === "desktop" || project === "mobile") &&
+    (retry === 0 || retry === 1) &&
+    (scope === "topics" || (scope === "reply" && project === "mobile"))
   const snapshots = []
-  let scenario = "unknown"
+  let scenario = scope === "reply" ? "reply" : "unknown"
   let reported = false
   let reportTask
 
@@ -67,19 +71,30 @@ export function createPushRotationObservation(
     }
     snapshots.push({
       phase,
-      scenario: phase === "opt-in" ? "setup" : scenario,
+      scenario: phase === "opt-in" && scope === "topics" ? "setup" : scenario,
       fingerprint,
     })
   }
 
   return {
     arm(value) {
+      if (scope === "reply" && value !== "reply") return
+      if (scope === "reply") {
+        scenario = "reply"
+        return
+      }
       scenario = scenarios.has(value) ? value : "unknown"
     },
     async optIn(timeoutMs) {
       await capture("opt-in", timeoutMs)
     },
     async beforeWait(value, timeoutMs) {
+      if (scope === "reply" && value !== "reply") return
+      if (scope === "reply") {
+        scenario = "reply"
+        await capture("before-wait", timeoutMs)
+        return
+      }
       scenario = scenarios.has(value) ? value : "unknown"
       await capture("before-wait", timeoutMs)
     },
