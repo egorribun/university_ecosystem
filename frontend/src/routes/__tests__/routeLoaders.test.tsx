@@ -302,20 +302,20 @@ describe("Route Loaders & validateSearch validation", () => {
 
       // Valid parameters
       const parsedValid = (validateSearch as any)({
-        tab: "upcoming",
+        tab: "archive",
         q: "hackathon",
-        dr: "2026-07-13",
+        dr: "week",
         loc: "hall",
-        sort: "date",
-        cat: "study",
+        sort: "upcoming",
+        cat: "lecture",
       })
       expect(parsedValid).toEqual({
-        tab: "upcoming",
+        tab: "archive",
         q: "hackathon",
-        dr: "2026-07-13",
+        dr: "week",
         loc: "hall",
-        sort: "date",
-        cat: "study",
+        sort: "upcoming",
+        cat: "lecture",
       })
     })
 

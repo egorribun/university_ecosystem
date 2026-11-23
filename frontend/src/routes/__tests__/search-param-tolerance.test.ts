@@ -25,12 +25,56 @@ describe("route search validation tolerates JSON-parsed URL values", () => {
     expect(validate({ q: "exam", sort: "popular" })).toMatchObject({ q: "exam", sort: "popular" })
   })
 
-  it("keeps numeric event filters as text", () => {
-    expect(validatorOf(EventsRoute)({ q: 12, tab: 3, dr: null })).toMatchObject({
+  it("drops unsupported event choices while preserving free-text filters", () => {
+    expect(
+      validatorOf(EventsRoute)({
+        tab: "upcoming",
+        q: 12,
+        dr: "2026-07-13",
+        loc: false,
+        sort: "date",
+        cat: "study",
+      })
+    ).toEqual({
+      tab: undefined,
       q: "12",
-      tab: "3",
       dr: undefined,
+      loc: "false",
+      sort: undefined,
+      cat: undefined,
     })
+  })
+
+  it("drops non-string event choices without throwing", () => {
+    expect(
+      validatorOf(EventsRoute)({ tab: 3, dr: null, sort: ["newest"], cat: { id: "lecture" } })
+    ).toEqual({ tab: undefined, dr: undefined, sort: undefined, cat: undefined })
+  })
+
+  it("uses blank event choices as defaults while preserving blank free text", () => {
+    expect(
+      validatorOf(EventsRoute)({ tab: "", q: "", dr: "", loc: "", sort: "", cat: "" })
+    ).toEqual({
+      tab: undefined,
+      q: "",
+      dr: "",
+      loc: "",
+      sort: undefined,
+      cat: undefined,
+    })
+  })
+
+  it.each([
+    { tab: "active", dr: "", sort: "newest", cat: "all" },
+    { tab: "archive", dr: "today", sort: "popular", cat: "lecture" },
+    { tab: "my", dr: "week", sort: "upcoming", cat: "sport" },
+    { dr: "month", cat: "other" },
+    { cat: "seminar" },
+    { cat: "conference" },
+    { cat: "workshop" },
+    { cat: "social" },
+  ])("preserves supported event choices in shared links: %j", (search) => {
+    expect(validatorOf(EventsRoute)(search)).toEqual(search)
   })
 
   it("keeps the settings tab and tolerates a numeric Spotify marker", () => {
