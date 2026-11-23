@@ -10,6 +10,26 @@ type CampusClockParts = {
   second: number
 }
 
+let clockFormatter: { timeZone: string; formatter: Intl.DateTimeFormat } | null = null
+
+function getClockFormatter(timeZone: string): Intl.DateTimeFormat {
+  if (clockFormatter?.timeZone === timeZone) return clockFormatter.formatter
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    calendar: "gregory",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    numberingSystem: "latn",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  })
+  clockFormatter = { timeZone, formatter }
+  return formatter
+}
+
 const datePartFormatter = (timeZone: string) =>
   new Intl.DateTimeFormat("en-CA", {
     calendar: "gregory",
@@ -37,18 +57,7 @@ export function getCampusClockParts(
   const date = toDate(input)
   if (!timeZone || Number.isNaN(date.getTime())) return null
   try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      calendar: "gregory",
-      day: "2-digit",
-      hour: "2-digit",
-      hourCycle: "h23",
-      minute: "2-digit",
-      month: "2-digit",
-      numberingSystem: "latn",
-      second: "2-digit",
-      timeZone,
-      year: "numeric",
-    }).formatToParts(date)
+    const parts = getClockFormatter(timeZone).formatToParts(date)
     const read = (type: string) => Number(parts.find((part) => part.type === type)!.value)
     const year = read("year")
     const month = read("month")

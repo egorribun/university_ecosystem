@@ -7,17 +7,25 @@
 
 ### `main` и пакет PR
 
-- `main` = `15d7cadf46b4846b2ec56c6a054993357351b226`, обычный merge
+- `main` = `07b59b1470a916f0dc01872c311e15b0ebba8205`, обычный merge
+  [#1574](https://github.com/egorribun/university_ecosystem/pull/1574) в 15:04:45 UTC. Для PR head
+  `e13694bfc6d26b2a162f80e62ec282be5dfbdee9` проверены все 78 обязательных пар app/context и
+  блокирующий CodeQL. На 15:29 UTC [main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45201148642)
+  в очереди, [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45201147708) прошёл на новом SHA.
+- Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
   [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли; у [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
-  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов.
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли. У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
+  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов. Эти доказательства относятся к тому SHA.
 - Все черновики облачного агента и старые черновики закрыты по решению владельца 2026-11-23: #1426,
   #1506, #1507, #1557–#1561, #1563, #1565. Обновления Dependabot #1571 (кроме @lhci/cli) и #1572
   перенесены коммитами владельца.
 
 ### Полный Core на `main`
 
-Серия на `15d7cadf4` не набрана; следующая начинается на новом `main` после merge текущего PR.
+Серия на `15d7cadf4` сброшена. На новом `main` квалифицирующего полного Core пока нет.
+Следующая пара планируется на следующем стабильном SHA `main`.
+
+История серии на `15d7cadf4` приведена ниже.
 
 | Запуск | Итог | Receipt и SHA-256 |
 | --- | --- | --- |
@@ -116,7 +124,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. После merge текущего PR запустить новую пару полных Core на новом `main` с интервалом не менее двух часов.
-2. Разобрать long task зума карты на mobile и нестабильную доставку Web Push.
-3. Этапы 4 и 5 одним стендом на новом `main`: сначала скриншоты, затем restore.
-4. Сохранять scoped DAST-доказательства для AUD-381.
+1. Изменение B2 для зума карты локально прошло тесты. Эффект относительно hosted-порога 50 мс ещё не подтверждён.
+2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
+3. Разобрать нестабильную доставку Web Push.
+4. Этапы 4 и 5 одним стендом на новом `main`: сначала скриншоты, затем restore.
+5. Сохранять scoped DAST-доказательства для AUD-381.

@@ -19,7 +19,6 @@ import { MapHeader } from "@/components/map/MapHeader"
 import { MapSidebar } from "@/components/map/MapSidebar"
 import { MapSearchBar } from "@/components/map/MapSearchBar"
 import { MapCategoryFilter } from "@/components/map/MapCategoryFilter"
-import { useDebounced } from "@/hooks/useDebounced"
 import { useNextLesson } from "@/hooks/useNextLesson"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { useMapWeather } from "@/hooks/useMapWeather"
@@ -133,8 +132,19 @@ export function MapFeature() {
   // pattern), so useState is the right tool here, not useRef.
   const [latchedInitialViewport] = useState<MapViewport | null>(() => parseMapViewport(urlParams))
 
-  const [pendingViewport, setPendingViewport] = useState<MapSearch | null>(null)
-  const debouncedViewport = useDebounced(pendingViewport, 500)
+  const moveEndDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setUrlParamsRef = useRef(setUrlParams)
+
+  useEffect(() => {
+    setUrlParamsRef.current = setUrlParams
+  }, [setUrlParams])
+
+  useEffect(
+    () => () => {
+      if (moveEndDebounceRef.current !== null) clearTimeout(moveEndDebounceRef.current)
+    },
+    []
+  )
 
   const handleMapMoveEnd = useCallback(
     (state: {
@@ -144,16 +154,15 @@ export function MapFeature() {
       pitch: number
       bearing: number
     }) => {
-      setPendingViewport(serializeMapViewport(state))
+      if (moveEndDebounceRef.current !== null) clearTimeout(moveEndDebounceRef.current)
+      const viewport = serializeMapViewport(state)
+      moveEndDebounceRef.current = setTimeout(() => {
+        moveEndDebounceRef.current = null
+        setUrlParamsRef.current(viewport)
+      }, 500)
     },
     []
   )
-
-  useEffect(() => {
-    if (debouncedViewport) {
-      setUrlParams(debouncedViewport)
-    }
-  }, [debouncedViewport, setUrlParams])
 
   /* ── Building selection ── */
   const handleBuildingClick = useCallback(

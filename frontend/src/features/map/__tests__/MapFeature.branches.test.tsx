@@ -355,6 +355,41 @@ describe("MapFeature — orchestration handlers", () => {
     })
   })
 
+  it("keeps the map page from rerendering while move-end writes are debounced", async () => {
+    renderFeature()
+    await whenMapMounted()
+    vi.useFakeTimers()
+    const initialMapProps = mapProps.current
+    const onMoveEnd = initialMapProps!.onMapMoveEnd as (state: {
+      zoom: number
+      latitude: number
+      longitude: number
+      pitch: number
+      bearing: number
+    }) => void
+
+    act(() => {
+      onMoveEnd({ zoom: 16, latitude: 55.714, longitude: 37.818, pitch: 30, bearing: 90 })
+    })
+    expect(mapProps.current).toBe(initialMapProps)
+    act(() => vi.advanceTimersByTime(250))
+    act(() => {
+      onMoveEnd({ zoom: 17, latitude: 55.715, longitude: 37.819, pitch: 40, bearing: 120 })
+    })
+    expect(mapProps.current).toBe(initialMapProps)
+    act(() => vi.advanceTimersByTime(499))
+    expect(urlState.setParams).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(urlState.setParams).toHaveBeenCalledOnce()
+    expect(urlState.setParams).toHaveBeenCalledWith({
+      z: 17,
+      lat: 55.715,
+      lng: 37.819,
+      p: 40,
+      b: 120,
+    })
+  })
+
   it("clears the pending move-end timer on unmount (cleanup branch 137)", async () => {
     const { unmount } = renderFeature()
     await whenMapMounted()
@@ -373,7 +408,36 @@ describe("MapFeature — orchestration handlers", () => {
     unmount()
     // Unmount cleanup clears the still-pending debounce timer.
     expect(clearSpy).toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(500))
+    expect(urlState.setParams).not.toHaveBeenCalled()
     clearSpy.mockRestore()
+  })
+
+  it("uses the latest URL setter when it changes before the debounce fires", async () => {
+    const { rerender } = renderFeature()
+    await whenMapMounted()
+    vi.useFakeTimers()
+    const previousSetter = urlState.setParams
+    const onMoveEnd = mapProps.current!.onMapMoveEnd as (state: {
+      zoom: number
+      latitude: number
+      longitude: number
+      pitch: number
+      bearing: number
+    }) => void
+    act(() => {
+      onMoveEnd({ zoom: 16, latitude: 55.714, longitude: 37.818, pitch: 30, bearing: 90 })
+    })
+
+    urlState.setParams = vi.fn((..._a: unknown[]) => undefined)
+    rerender(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+    act(() => vi.advanceTimersByTime(500))
+    expect(previousSetter).not.toHaveBeenCalled()
+    expect(urlState.setParams).toHaveBeenCalledOnce()
   })
 
   it("latches the initial viewport from URL params and forwards it to MapLibre", async () => {
