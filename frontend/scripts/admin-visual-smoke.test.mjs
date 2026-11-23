@@ -17,6 +17,7 @@ import {
   classifyAdminPageSnapshot,
   createAdminSmokeRunDirectory,
   createAdminSmokeSidecar,
+  describeAdminSmokeFatalError,
   isAdminCaptureSuccessful,
   parseAdminVisualCaptureMatrix,
 } from "./admin-visual-smoke.mjs"
@@ -983,4 +984,29 @@ test("original axe failure remains unchanged and does not invoke diagnostics", a
   ])
   assert.equal(classification.axeErrors.length, 1)
   assert.equal(classification.axeIssues.length, 0)
+})
+
+test("fatal diagnostics echo only fixed login preflight messages", () => {
+  for (const message of [
+    "Required cookie _csrf_anon_nonce is missing",
+    "csrf-cookie failed: HTTP 503",
+    "Login failed: HTTP 401",
+    "Login failed: HTTP null",
+    "Login request failed",
+  ]) {
+    assert.equal(describeAdminSmokeFatalError(new Error(message)), message)
+  }
+  for (const message of [
+    "Login failed: HTTP 401 for admin@university.dev",
+    "page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:8080/admin?token=x",
+    "Required cookie access_token_v2=eyJ.a.b is missing",
+  ]) {
+    assert.equal(describeAdminSmokeFatalError(new Error(message)), "Error (message withheld)")
+  }
+  assert.equal(describeAdminSmokeFatalError(new TypeError("x")), "TypeError (message withheld)")
+  const forged = new Error("x")
+  forged.name = "Error: admin@university.dev"
+  assert.equal(describeAdminSmokeFatalError(forged), "Error (message withheld)")
+  assert.equal(describeAdminSmokeFatalError(null), "Error (message withheld)")
+  assert.equal(describeAdminSmokeFatalError("Login request failed"), "Error (message withheld)")
 })
