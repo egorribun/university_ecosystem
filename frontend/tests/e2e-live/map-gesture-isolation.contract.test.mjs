@@ -184,8 +184,35 @@ test("live map gesture acceptance covers browser isolation and camera invariants
 
   assert.match(mapFeature, /urlInitialViewport=\{latchedInitialViewport\}/u)
   assert.match(mapFeature, /onMapMoveEnd=\{handleMapMoveEnd\}/u)
-  assert.match(mapFeature, /setUrlParams\(debouncedViewport\)/u)
+  assert.match(mapFeature, /setParams:\s*setUrlParams\s*\}\s*=\s*useURLState<MapSearch>\(\)/u)
+  assert.match(
+    mapFeature,
+    /const moveEndDebounceRef = useRef<ReturnType<typeof setTimeout> \| null>\(null\)/u,
+    "the pending timer persists without rerendering the page"
+  )
+  assert.match(
+    mapFeature,
+    /const setUrlParamsRef = useRef\(setUrlParams\)[\s\S]*?useEffect\(\(\) => \{\s*setUrlParamsRef\.current = setUrlParams\s*\}, \[setUrlParams\]\)/u,
+    "the scheduled write uses the latest URL setter"
+  )
+  assert.match(
+    mapFeature,
+    /useEffect\(\s*\(\) => \(\) => \{\s*if \(moveEndDebounceRef\.current !== null\) clearTimeout\(moveEndDebounceRef\.current\)\s*\},\s*\[\]\s*\)/u,
+    "unmount cancels a pending viewport write"
+  )
+  const moveEndHandler = mapFeature.match(
+    /const handleMapMoveEnd = useCallback\([\s\S]*?\n {2}\)/u
+  )?.[0]
+  assert.ok(moveEndHandler, "the move-end callback must remain stable")
+  assert.match(
+    moveEndHandler,
+    /if \(moveEndDebounceRef\.current !== null\) clearTimeout\(moveEndDebounceRef\.current\)\s*const viewport = serializeMapViewport\(state\)\s*moveEndDebounceRef\.current = setTimeout\(\(\) => \{\s*moveEndDebounceRef\.current = null\s*setUrlParamsRef\.current\(viewport\)\s*\}, 500\)\s*\},\s*\[\]\s*\)/u,
+    "each move replaces the pending 500 ms write with its serialized final viewport"
+  )
   assert.match(mapLibre, /overscrollBehavior:\s*["']contain["']/u)
+  assert.match(mapSchema, /z:\s*Number\(state\.zoom\.toFixed\(1\)\)/u)
   assert.match(mapSchema, /lat:\s*Number\(state\.latitude\.toFixed\(5\)\)/u)
   assert.match(mapSchema, /lng:\s*Number\(state\.longitude\.toFixed\(5\)\)/u)
+  assert.match(mapSchema, /p:\s*Math\.round\(state\.pitch\)/u)
+  assert.match(mapSchema, /b:\s*Math\.round\(\(\(state\.bearing % 360\) \+ 360\) % 360\)/u)
 })
