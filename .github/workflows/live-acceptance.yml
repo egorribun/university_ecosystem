@@ -102,6 +102,10 @@ jobs:
         working-directory: frontend
         run: npm run test:e2e:live:contract
 
+      - name: Run isolated production SSR error contract
+        working-directory: frontend
+        run: npm run test:e2e:ssr-error
+
       # This is a dependency-consumer regression, not LHCI/performance acceptance.
       - name: Verify browser dependency runtime compatibility
         id: browser-dependency-smoke
@@ -363,6 +367,10 @@ jobs:
       - name: Validate live acceptance contracts before starting Docker
         working-directory: frontend
         run: npm run test:e2e:live:contract
+
+      - name: Run isolated production SSR error contract
+        working-directory: frontend
+        run: npm run test:e2e:ssr-error
 
       - name: Select unique owned frozen-RC state directory
         run: |

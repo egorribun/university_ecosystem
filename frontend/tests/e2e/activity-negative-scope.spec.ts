@@ -11,6 +11,10 @@ import { useMockApi } from "./utils/mockApi"
 
 const LANGUAGE_STORAGE_KEY = "ue:language"
 
+// Heatmap dates use the browser's local calendar. Pin it explicitly so the
+// fixed clock and inclusive range have the same meaning on every runner.
+test.use({ timezoneId: "UTC" })
+
 // Visible copy that would announce a learning goal, a learning target or an
 // attendance target (RU and EN). Event "registration" copy is allowed.
 const FORBIDDEN_TEXT =
@@ -32,8 +36,12 @@ const LOCALES = [
 
 const VIEWPORTS = [
   { width: 1440, height: 900, label: "1440" },
+  { width: 768, height: 1024, label: "768" },
   { width: 390, height: 844, label: "390" },
 ] as const
+
+const THEMES = ["light", "dark"] as const
+type ActivityTheme = (typeof THEMES)[number]
 
 const SUMMARY_ENVELOPE = {
   attendance: {
@@ -52,6 +60,8 @@ const SUMMARY_ENVELOPE = {
     recent: [
       { date: "2026-11-10", status: "present", course: "Algorithms" },
       { date: "2026-11-11", status: "late", course: "Databases" },
+      { date: "2026-11-12", status: "present", course: "Algorithms" },
+      { date: "2026-11-12", status: "present", course: "Databases" },
     ],
   },
   grades: {
@@ -62,6 +72,7 @@ const SUMMARY_ENVELOPE = {
       { course: "Algorithms", score: 80, date: "2026-11-10" },
       { course: "Algorithms", score: 90, date: "2026-11-11" },
       { course: "Databases", score: 82, date: "2026-11-10" },
+      { course: "Algorithms", score: 85, date: "2026-11-12" },
     ],
   },
   participation: {
@@ -69,7 +80,10 @@ const SUMMARY_ENVELOPE = {
     hours: 6,
     groups: 2,
     trend: -1,
-    recent: [{ title: "Tech talk", date: "2026-11-09", role: "participant" }],
+    recent: [
+      { title: "Tech talk", date: "2026-11-09", role: "participant" },
+      { title: "Campus tour", date: "2026-11-12", role: "participant" },
+    ],
   },
 }
 
@@ -104,16 +118,30 @@ const POPULATED_COPY = {
   },
 } as const
 
-async function expectPopulatedValues(page: Page, locale: keyof typeof POPULATED_COPY) {
+async function expectHeatmapWindow(page: Page, first: string, last: string) {
+  const heatmap = page.getByRole("group", { name: POPULATED_COPY.en.heatmap, exact: true })
+  const rows = heatmap.locator("tbody tr")
+  await expect(rows).toHaveCount(90)
+  await expect(rows.first().getByRole("rowheader")).toHaveText(first)
+  await expect(rows.last().getByRole("rowheader")).toHaveText(last)
+}
+
+async function expectPopulatedValues(
+  page: Page,
+  locale: keyof typeof POPULATED_COPY,
+  theme: ActivityTheme
+) {
   const copy = POPULATED_COPY[locale]
   const heatmap = page.getByRole("group", { name: copy.heatmap, exact: true })
   await expect(heatmap).toBeVisible()
   // Counts merge all three recent arrays; daily registration totals are not
   // heatmap counts. Each section is below the five-item truncation boundary.
+  const resolvedColors: string[] = []
   for (const [date, count, level] of [
-    ["2026-11-09", 1, 2],
-    ["2026-11-10", 3, 4],
-    ["2026-11-11", 2, 3],
+    ["2026-11-09", 1, 1],
+    ["2026-11-10", 3, 3],
+    ["2026-11-11", 2, 2],
+    ["2026-11-12", 4, 4],
     ["2026-11-14", 0, 0],
   ] as const) {
     const cell = heatmap.getByRole("img", {
@@ -122,6 +150,49 @@ async function expectPopulatedValues(page: Page, locale: keyof typeof POPULATED_
     })
     await expect(cell).toBeVisible()
     await expect(cell).toHaveAttribute("style", `background-color: var(--activity-heat-${level});`)
+    // Resolve the token independently on a temporary sibling. Checking the
+    // painted value catches CSS overrides while following palette changes.
+    const colors = await cell.evaluate(
+      (element, { heatLevel, selectedTheme }) => {
+        const token = `--activity-heat-${heatLevel}`
+        const tokenValue = getComputedStyle(element).getPropertyValue(token).trim()
+        const probe = document.createElement("span")
+        probe.style.backgroundColor = `var(${token})`
+        element.parentElement?.appendChild(probe)
+        try {
+          const current = getComputedStyle(probe).backgroundColor
+          let light = current
+          if (selectedTheme === "dark") {
+            const roots = [document.documentElement, document.body]
+            const classes = roots.map((root) => ({
+              dark: root.classList.contains("dark"),
+              light: root.classList.contains("light"),
+            }))
+            try {
+              for (const root of roots) {
+                root.classList.remove("dark")
+                root.classList.add("light")
+              }
+              light = getComputedStyle(probe).backgroundColor
+            } finally {
+              roots.forEach((root, index) => {
+                root.classList.toggle("dark", classes[index]?.dark ?? false)
+                root.classList.toggle("light", classes[index]?.light ?? false)
+              })
+            }
+          }
+          return { tokenValue, current, light }
+        } finally {
+          probe.remove()
+        }
+      },
+      { heatLevel: level, selectedTheme: theme }
+    )
+    expect(colors.tokenValue).not.toBe("")
+    expect(colors.current).not.toBe("rgba(0, 0, 0, 0)")
+    await expect(cell).toHaveCSS("background-color", colors.current)
+    if (theme === "dark") expect(colors.current).not.toBe(colors.light)
+    resolvedColors.push(colors.current)
     await expect(
       heatmap
         .getByRole("row")
@@ -129,7 +200,10 @@ async function expectPopulatedValues(page: Page, locale: keyof typeof POPULATED_
         .getByRole("cell")
     ).toHaveText(String(count))
   }
+  expect(new Set(resolvedColors).size).toBe(5)
   await expect(heatmap.locator("tbody tr")).toHaveCount(90)
+  await expect(heatmap.locator("tbody tr").first().getByRole("rowheader")).toHaveText("2026-08-17")
+  await expect(heatmap.locator("tbody tr").last().getByRole("rowheader")).toHaveText("2026-11-14")
 
   const trend = page.getByRole("img", { name: copy.trend, exact: true })
   await expect(trend).toBeVisible()
@@ -173,10 +247,16 @@ async function expectPopulatedValues(page: Page, locale: keyof typeof POPULATED_
 }
 
 async function mockActivitySummary(page: Page): Promise<void> {
-  // Registered after the shared mock, so this handler runs first and falls back
-  // to it for every other request.
+  const baseURL = test.info().project.use.baseURL ?? "http://127.0.0.1:5173"
+  const origin = new URL(baseURL).origin
+  // Registered after the shared mock: keep the fixture on this server and
+  // fall back to the shared routes for all other same-origin requests.
   await page.route("**/*", async (route: Route) => {
     const url = new URL(route.request().url())
+    if (url.origin !== origin) {
+      await route.abort("blockedbyclient")
+      return
+    }
     if (route.request().method() !== "GET" || !/\/stats\/summary\/?$/u.test(url.pathname)) {
       await route.fallback()
       return
@@ -189,55 +269,72 @@ async function mockActivitySummary(page: Page): Promise<void> {
   })
 }
 
-async function openActivity(page: Page, locale: string): Promise<void> {
-  // Registered after the shared mock, so this init script runs last and keeps
-  // the requested language instead of the shared RU default.
-  await page.addInitScript(
-    ({ key, lang }: { key: string; lang: string }) => {
-      window.localStorage.setItem(key, lang)
-    },
-    { key: LANGUAGE_STORAGE_KEY, lang: locale }
-  )
-  // The shared mock sets the ue:language cookie to ru for every context. Set
-  // the requested locale after it so SSR and the client agree on EN.
+async function openActivity(page: Page, locale: string, theme: ActivityTheme): Promise<void> {
+  await page.addInitScript((selectedTheme: ActivityTheme) => {
+    window.localStorage.setItem("ue-mode", selectedTheme)
+  }, theme)
+  // Keep SSR cookies aligned with the shared mock's language and selected theme.
   const baseURL = test.info().project.use.baseURL ?? "http://127.0.0.1:5173"
-  await page
-    .context()
-    .addCookies([{ name: LANGUAGE_STORAGE_KEY, value: locale, url: new URL(baseURL).origin }])
+  const origin = new URL(baseURL).origin
+  await page.context().addCookies([
+    { name: LANGUAGE_STORAGE_KEY, value: locale, url: origin },
+    { name: "ue-mode", value: theme, url: origin },
+  ])
   await page.goto("/activity", { waitUntil: "domcontentloaded" })
   await page.waitForFunction(() => window.__APP_HYDRATED === true, null, { timeout: 15_000 })
   await page.waitForURL(/\/activity$/u)
+  await expect(page.locator("html")).toHaveAttribute("lang", locale)
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", theme)
+  await expect(page.locator("body")).toHaveAttribute("data-color-scheme", theme)
+  await expect(page.locator("html")).toHaveClass(theme === "dark" ? /\bdark\b/u : /\blight\b/u)
 }
 
 for (const { locale, label: localeLabel } of LOCALES) {
   for (const viewport of VIEWPORTS) {
-    test(`activity page has no learning goal or attendance target UI at ${viewport.label}px ${localeLabel}`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height })
-      await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })
-      // Keep heatmap calendar cells stable without freezing animation/network timers.
-      await page.clock.setFixedTime(new Date("2026-11-14T12:00:00Z"))
+    for (const theme of THEMES) {
+      const themeSuffix = theme === "dark" ? " dark" : ""
+      test(`activity page has no learning goal or attendance target UI at ${viewport.label}px ${localeLabel}${themeSuffix}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height })
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+        // Keep heatmap calendar cells stable without freezing animation/network timers.
+        await page.clock.setFixedTime(new Date("2026-11-14T12:00:00Z"))
 
-      await useMockApi(page, { authenticated: true })
-      await mockActivitySummary(page)
-      await openActivity(page, locale)
+        await useMockApi(page, { authenticated: true, language: locale })
+        await mockActivitySummary(page)
+        await openActivity(page, locale, theme)
 
-      // The populated page must render its registration section with values,
-      // and no error alert may be shown, before the negative checks run.
-      await expect(
-        page.getByText(POPULATED_SECTION_TITLE[locale] ?? "", { exact: false }).first()
-      ).toBeVisible({ timeout: 30_000 })
-      await expect(page.getByText("72", { exact: false }).first()).toBeVisible()
-      // The route announcer is an empty role="alert"; only alerts with text count.
-      await expect(page.getByRole("alert").filter({ hasText: /\S/u })).toHaveCount(0)
+        // The populated page must render its registration section with values,
+        // and no error alert may be shown, before the negative checks run.
+        await expect(
+          page.getByText(POPULATED_SECTION_TITLE[locale] ?? "", { exact: false }).first()
+        ).toBeVisible({ timeout: 30_000 })
+        await expect(page.getByText("72", { exact: false }).first()).toBeVisible()
+        // The route announcer is an empty role="alert"; only alerts with text count.
+        await expect(page.getByRole("alert").filter({ hasText: /\S/u })).toHaveCount(0)
 
-      await expectPopulatedValues(page, locale)
+        await expectPopulatedValues(page, locale, theme)
 
-      const visibleText = await page.locator("body").innerText()
-      expect(visibleText).not.toMatch(FORBIDDEN_TEXT)
+        const visibleText = await page.locator("body").innerText()
+        expect(visibleText).not.toMatch(FORBIDDEN_TEXT)
 
-      await expect(page.locator(FORBIDDEN_TEST_ID)).toHaveCount(0)
-    })
+        await expect(page.locator(FORBIDDEN_TEST_ID)).toHaveCount(0)
+      })
+    }
   }
+}
+
+for (const { clock, first, last } of [
+  { clock: "2026-11-13T23:59:59.999Z", first: "2026-08-16", last: "2026-11-13" },
+  { clock: "2026-11-14T00:00:00.000Z", first: "2026-08-17", last: "2026-11-14" },
+]) {
+  test(`heatmap uses the inclusive UTC date window at ${clock}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" })
+    await page.clock.setFixedTime(new Date(clock))
+    await useMockApi(page, { authenticated: true, language: "en" })
+    await mockActivitySummary(page)
+    await openActivity(page, "en", "dark")
+    await expectHeatmapWindow(page, first, last)
+  })
 }

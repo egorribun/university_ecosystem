@@ -790,12 +790,29 @@ def test_live_contracts_run_after_browser_setup_and_before_docker(
         for index, step in enumerate(steps)
         if "npm run test:e2e:live:contract" in step.get("run", "")
     )
+    ssr_error = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("run") == "npm run test:e2e:ssr-error"
+    )
     stand = next(
         index
         for index, step in enumerate(steps)
         if "python -m scripts.live_stand up" in step.get("run", "")
     )
-    assert browser < contract < stand
+    assert browser < contract < ssr_error < stand
+    assert steps[ssr_error]["working-directory"] == "frontend"
+    assert steps[ssr_error].get("continue-on-error", False) is False
+
+
+def test_ssr_error_contract_uses_isolated_chromium_without_retries() -> None:
+    frontend = ROOT / "frontend"
+    package = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    assert package["scripts"]["test:e2e:ssr-error"] == (
+        "cross-env SKIP_WEBSERVER=true playwright test "
+        "--config=playwright.ssr-error.config.ts "
+        "--project=chromium --workers=1 --retries=0 --reporter=list"
+    )
 
 
 @pytest.mark.parametrize("job_name", ("live-acceptance", "frozen-rc-full-smoke"))
