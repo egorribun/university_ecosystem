@@ -2652,7 +2652,7 @@ def _live_playwright_push_rotation_observations(
         match = _PLAYWRIGHT_PUSH_ROTATION_LINE.fullmatch(line)
         if (
             match is None
-            or (match["scenario"] in ("reply", "chat") and match["project"] != "mobile")
+            or (match["scenario"] == "reply" and match["project"] != "mobile")
             or (
                 match["scenario"] not in ("reply", "chat")
                 and (match["phase"] == "opt-in") != (match["scenario"] == "setup")

@@ -8,6 +8,7 @@ import runpy
 import subprocess
 import sys
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -675,3 +676,212 @@ def test_cli_emits_bounded_410_prefixes_after_existing_summaries(
         *observation.render_410_prefixes(summary),
     ]
     assert PRIVATE not in output
+
+
+def _sent_201_row(endpoint, *, status="sent", code=201, stage=None):
+    extra = {
+        "event": "send",
+        "status": status,
+        "status_code": code,
+        "endpoint": endpoint,
+        "user_id": PRIVATE,
+    }
+    if stage is not None:
+        extra["error_stage"] = stage
+    return (
+        json.dumps(
+            {
+                "logger": "app.services.webpush",
+                "message": "webpush.send",
+                "extra": extra,
+                "payload": PRIVATE,
+            }
+        )
+        + "\n"
+    ).encode()
+
+
+def test_projects_only_sent_201_unique_prefixes_and_preserves_410():
+    rows = (
+        _sent_201_row("…#0123456789") * 2
+        + _sent_201_row("…#aaaaaaaaaa", code=202)
+        + _sent_201_row(
+            "…#bbbbbbbbbb", status="gone", code=410, stage="webpush_request"
+        )
+        + _sent_201_row("…#cccccccccc", status="error", code=201)
+    )
+    summary = observation.project_worker_logs(rows, b"")
+    assert summary is not None
+    assert summary.sent_201_prefixes == ("0123456789",)
+    assert summary.success_http == (2, 1)
+    assert summary.gone_410_prefixes == ("bbbbbbbbbb",)
+    assert observation.render_201_prefixes(summary) == [
+        "live E2E worker push 201 sample=tail incomplete=false truncated=false",
+        "live E2E worker push 201 sample=tail endpoint_sha256=0123456789",
+    ]
+    assert "subscription_age=unknown" in observation.render_410_prefixes(summary)[1]
+    assert all(
+        value not in repr(summary) + "".join(observation.render_201_prefixes(summary))
+        for value in (PRIVATE, "aaaaaaaaaa", "cccccccccc")
+    )
+
+
+@pytest.mark.parametrize(
+    "endpoint,stage",
+    [
+        (None, None),
+        ("https://provider.invalid/raw-private#aaaaaaaaaa", None),
+        ("…#AAAAAAAAAA", None),
+        ("…#aaaaaaaaaa", "webpush_request"),
+    ],
+)
+def test_incomplete_when_endpoint_or_stage_cannot_be_validated(endpoint, stage):
+    summary = observation.project_worker_logs(_sent_201_row(endpoint, stage=stage), b"")
+    assert summary is not None
+    assert summary.sent_201_prefixes == ()
+    assert summary.sent_201_seen is True
+    assert summary.sent_201_incomplete is True
+    rendered = "".join(observation.render_201_prefixes(summary))
+    assert "incomplete=true" in rendered
+    assert PRIVATE not in repr(summary) + rendered
+    assert "provider.invalid" not in repr(summary) + rendered
+    assert "raw-private" not in repr(summary) + rendered
+
+
+def test_prefix_count_is_bounded_and_duplicates_do_not_consume_limit():
+    rows = _sent_201_row("…#0000000000") * 2 + b"".join(
+        _sent_201_row("…#" + format(i, "010x")) for i in range(1, 17)
+    )
+    summary = observation.project_worker_logs(rows, b"")
+    assert summary is not None
+    assert len(summary.sent_201_prefixes) == 16
+    assert summary.sent_201_truncated is True
+    assert summary.success_http == (9, 0)
+    assert "truncated=true" in observation.render_201_prefixes(summary)[0]
+    assert len(observation.render_201_prefixes(summary)) == 17
+    assert "0000000010" not in "".join(observation.render_201_prefixes(summary))
+
+
+@pytest.mark.parametrize(
+    "values,seen,incomplete,truncated",
+    [
+        ((PRIVATE,), True, False, False),
+        (("aaaaaaaaaa", "aaaaaaaaaa"), True, False, False),
+        (("aaaaaaaaaa",), False, False, False),
+        ((), True, PRIVATE, False),
+        (tuple(format(i, "010x") for i in range(17)), True, False, False),
+        (["aaaaaaaaaa"], True, False, False),
+        ((), False, True, False),
+    ],
+)
+def test_renderer_rejects_spoofed_prefixes_and_flags(
+    values, seen, incomplete, truncated
+):
+    base = observation.WorkerSummary((0,) * 3, (0,) * 7, (0,) * 6)
+    invalid = replace(
+        base,
+        sent_201_prefixes=values,
+        sent_201_seen=seen,
+        sent_201_incomplete=incomplete,
+        sent_201_truncated=truncated,
+    )
+    with pytest.raises(ValueError):
+        observation.render_201_prefixes(invalid)
+
+
+def test_no_success_201_produces_no_extra_output():
+    for row in (
+        _sent_201_row("…#aaaaaaaaaa", code=202),
+        _sent_201_row("…#aaaaaaaaaa", status="gone", code=410, stage="webpush_request"),
+    ):
+        summary = observation.project_worker_logs(row, b"")
+        assert summary is not None
+        assert observation.render_201_prefixes(summary) == []
+
+
+def test_cli_preserves_existing_summaries_and_adds_safe_201_rows(monkeypatch, capsys):
+    summary = observation.project_worker_logs(_sent_201_row("…#0123456789"), b"")
+    assert summary is not None
+    monkeypatch.setattr(observation, "collect_worker_sample", lambda *_args: summary)
+    assert observation.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        observation.render_summary(summary),
+        observation.render_success_summary(summary),
+        *observation.render_410_prefixes(summary),
+        *observation.render_201_prefixes(summary),
+    ]
+    assert PRIVATE not in captured.out + captured.err
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "endpoint,retained",
+    [
+        ("https://push.example.invalid/private-token", True),
+        ("https://provider.invalid/private-synthetic-token", False),
+    ],
+    ids=["retained", "redacted"],
+)
+def test_existing_structured_logger_feeds_only_masked_201_prefix(
+    monkeypatch, endpoint, retained
+):
+    from hashlib import sha256
+    from types import SimpleNamespace
+
+    from app.core.logging import _redact_pii
+    from app.services import webpush
+
+    captured = []
+
+    class Capture:
+        def log(self, _level, _message, _event, *, extra):
+            captured.append(
+                {
+                    "logger": "app.services.webpush",
+                    "message": "webpush.send",
+                    "extra": extra,
+                }
+            )
+
+    logger = Capture()
+    monkeypatch.setattr(webpush, "logger", logger)
+    monkeypatch.setattr(webpush, "logging", SimpleNamespace(getLogger=lambda: logger))
+    webpush._log_event("send", status="sent", status_code=201, endpoint=endpoint)
+    assert len(captured) == 1
+    redacted = _redact_pii(None, None, captured[0])
+    summary = observation.project_worker_logs(
+        (json.dumps(redacted) + "\n").encode(), b""
+    )
+    assert summary is not None
+    expected = sha256(endpoint.encode()).hexdigest()[:10]
+    assert summary.sent_201_prefixes == ((expected,) if retained else ())
+    assert summary.sent_201_incomplete is not retained
+    output = "".join(observation.render_201_prefixes(summary))
+    assert endpoint not in output + repr(summary)
+    assert "private-synthetic-token" not in output + repr(summary)
+    assert "provider.invalid" not in output + repr(summary)
+    assert "push.example.invalid" not in output + repr(summary)
+
+
+def test_invalid_new_projection_does_not_hide_existing_410(monkeypatch, capsys):
+    summary = observation.project_worker_logs(
+        _sent_201_row("…#bbbbbbbbbb", status="gone", code=410, stage="webpush_request"),
+        b"",
+    )
+    assert summary is not None
+    monkeypatch.setattr(observation, "collect_worker_sample", lambda *_args: summary)
+
+    def reject(_summary):
+        raise ValueError(PRIVATE)
+
+    monkeypatch.setattr(observation, "render_201_prefixes", reject)
+    assert observation.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        observation.render_summary(summary),
+        observation.render_success_summary(summary),
+        *observation.render_410_prefixes(summary),
+        "live E2E worker push 201 sample=unavailable",
+    ]
+    assert PRIVATE not in captured.out + captured.err

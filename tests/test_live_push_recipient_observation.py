@@ -180,10 +180,11 @@ def test_chat_rotation_is_separate_from_reply_and_topics() -> None:
         assert parse(chat.replace("phase=opt-in", f"phase={phase}")) == [
             ("mobile", 0, "chat", phase, 1, "bbbbbbbbbbbb")
         ]
+    desktop_chat = chat.replace("project=mobile", "project=desktop")
+    assert parse(desktop_chat) == [("desktop", 0, "chat", "opt-in", 1, "bbbbbbbbbbbb")]
     for invalid in (
         chat[:-1],
         chat.rstrip() + " private\n",
-        chat.replace("project=mobile", "project=desktop"),
         chat.replace("bbbbbbbbbbbb", "https://private"),
         chat.replace("bbbbbbbbbbbb", "BBBBBBBBBBBB"),
         chat.replace("scenario=chat", "scenario=private"),
@@ -207,12 +208,15 @@ def test_live_runner_relays_rotation_prefix_only_from_closed_stdout_records(
     chat = row.replace("scenario=news", "scenario=chat").replace(
         "0123456789ab", "bbbbbbbbbbbb"
     )
+    desktop_chat = chat.replace("project=mobile", "project=desktop")
     private = "private endpoint user payload token"
     stand = stand_tests.live_stand
     result = subprocess.CompletedProcess(
         stand._live_e2e_command(mode="smoke"),
         1,
-        stdout=(row + reply + chat + row.rstrip() + " " + private + "\n").encode(),
+        stdout=(
+            row + reply + chat + desktop_chat + row.rstrip() + " " + private + "\n"
+        ).encode(),
         stderr=(row + private + "\n").encode(),
     )
     stand_tests._patch_live_playwright_result(monkeypatch, result)
@@ -220,6 +224,7 @@ def test_live_runner_relays_rotation_prefix_only_from_closed_stdout_records(
         stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
     assert captured.out.count("live E2E push rotation project=mobile") == 3
+    assert captured.out.count("live E2E push rotation project=desktop") == 1
     assert "phase=before-wait ordinal=2 endpoint_sha256=0123456789ab" in captured.out
     assert (
         "scenario=reply phase=before-wait ordinal=2 endpoint_sha256=aaaaaaaaaaaa"

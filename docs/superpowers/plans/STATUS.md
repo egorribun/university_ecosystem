@@ -7,21 +7,22 @@
 
 ### `main` и пакет PR
 
-- `main` = `ea78b1fcf9d8240ff21a9d73cc3a63a014d9dcbc`, обычный merge
-  [#1568](https://github.com/egorribun/university_ecosystem/pull/1568) после 78 обязательных проверок
-  и CodeQL на `64d9eb3fd95b8d7969e44171543261483f87b267`.
-- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45090470515) прошли на `ea78b1fcf`.
-  Проверены SHA-256 [quality evidence](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650/artifacts/14781434469)
-  и его манифеста, привязка к исходному SHA и наличие отчётов.
-- [PR Core smoke и NATS outage](https://github.com/egorribun/university_ecosystem/actions/runs/45087708578/job/137409982146)
-  прошли на merge tree `56bdfc517`. Итог smoke — 52 passed и 2 skipped.
-  [Receipt 14780642464](https://github.com/egorribun/university_ecosystem/actions/runs/45087708578/artifacts/14780642464)
-  `688687070ffa2ef56d5a6aff40316ed70a6dfbea065908b9f6220e88ad64fae6`.
-- Предыдущий merge [#1567](https://github.com/egorribun/university_ecosystem/pull/1567) — `05a462ffd`.
-  [Main-push CI этого SHA](https://github.com/egorribun/university_ecosystem/actions/runs/45085392607/attempts/2)
-  прошёл после точечного повтора job покрытия. Первоначально каталог ещё не возвращал `node_actions`
-  сразу после успешной загрузки.
+- `main` = `facb80d35119c27f6698048834568376859b2734`, обычный merge
+  [#1569](https://github.com/egorribun/university_ecosystem/pull/1569) после 78 обязательных проверок
+  и CodeQL на `43de426103dea9b817258ea271a1e76308bcaa68`. Дерево совпадает с проверенным деревом PR.
+- [PR Core smoke и NATS outage](https://github.com/egorribun/university_ecosystem/actions/runs/45097083669/job/137439171173)
+  прошли на `439a5f378`. Итог smoke — 52 passed и 2 skipped.
+  [Receipt 14784052711](https://github.com/egorribun/university_ecosystem/actions/runs/45097083669/artifacts/14784052711)
+  `31a4f5bac26c4026eef982a8a30b308c968cd97fd0d4b166a3470c17a2964224`.
+- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45100057262) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45100057026) прошли на `facb80d35`.
+  У [quality evidence 14785987098](https://github.com/egorribun/university_ecosystem/actions/runs/45100057262/artifacts/14785987098)
+  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов без пропавших отчётов.
+- На предыдущем `ea78b1fcf` прошли [CI](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45090470515), проверен
+  [quality evidence 14781434469](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650/artifacts/14781434469).
+- [Main-push CI на `05a462ffd`](https://github.com/egorribun/university_ecosystem/actions/runs/45085392607/attempts/2)
+  прошёл после точечного повтора job покрытия.
 - [#1548](https://github.com/egorribun/university_ecosystem/pull/1548) закрыт без merge;
   #1557–#1561 остаются открыты. История перенесённых изменений — в соответствующих PR.
 
@@ -34,7 +35,11 @@
 [Receipt 14782648878](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/artifacts/14782648878)
 `8f6448f3af9a8c704f567817f263e5058b1422b336ee268b3b15538b54a4bb16`.
 В журнале worker есть 410 для записи подписки моложе 10 секунд, связь с этим сбоем не установлена.
-Ближайший штатный полный Core запланирован на 06:00 по Стамбулу.
+[Core 45103643982 на `facb80d35`](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/job/137459900882)
+стартовал в 06:03:06 по Стамбулу. Результат — 221 passed, 0 failed, 8 skipped, 3 flaky; все шесть AUD-154
+прошли с первой попытки. Повтор потребовался desktop-сценариям notification topics, direct Web Push и
+schedule reflow. Стенд остановлен. [Receipt 14788721066](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/artifacts/14788721066)
+`beae20efc8d46c600be636cdfc8a5f071f973d8b0f419df076e111ee16bc27ee` проверен. Серия пока не началась.
 
 Два предыдущих запуска были инициированы на тогдашнем `main` `71ea9616ccb7d950b3baee3855f38f5a64c62c62`.
 Второй стартовал за десять секунд до merge #1562 и завершился уже после изменения `main`.
@@ -137,8 +142,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Проверить в следующем полном Core исправления двух воспроизводимых условий прерывания жеста карты
-   и собрать корреляцию подписки при повторении сбоя доставки сообщения.
+1. Разобрать три desktop flaky на `facb80d35` и подтвердить исправления по точному источнику.
 2. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
    не менее двух часов между запусками и всеми именными случаями; затем оценить доказательства по
    критерию аудита.
