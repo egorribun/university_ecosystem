@@ -7,21 +7,36 @@
 
 ### `main` и пакет PR
 
-- `main` = `05a462ffd648b9492e49ef001aba0cc5fdca434e`, обычный merge
-  [#1567](https://github.com/egorribun/university_ecosystem/pull/1567) после 78 обязательных проверок
-  и CodeQL на `116eb7dab290b62ea50efbee1d78a18115a71a80`. Предыдущий merge
-  [#1562](https://github.com/egorribun/university_ecosystem/pull/1562) — `4fd3fbac9`.
-- В #1567 восстановлены пять проверяемых условий мастер-плана. Все 13 адресных тестов прошли.
-  [PR Core smoke](https://github.com/egorribun/university_ecosystem/actions/runs/45083110629/job/137395496781)
-  на merge tree `08ee72e30` завершился с 52 passed и 2 skipped.
-  [Receipt 14779020658](https://github.com/egorribun/university_ecosystem/actions/runs/45083110629/artifacts/14779020658)
-  `753a480ccb304fff8059b7efeb141ff86ea3f52d914609e6cae0ac7a4551ace0`.
+- `main` = `ea78b1fcf9d8240ff21a9d73cc3a63a014d9dcbc`, обычный merge
+  [#1568](https://github.com/egorribun/university_ecosystem/pull/1568) после 78 обязательных проверок
+  и CodeQL на `64d9eb3fd95b8d7969e44171543261483f87b267`.
+- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45090470515) прошли на `ea78b1fcf`.
+  Проверены SHA-256 [quality evidence](https://github.com/egorribun/university_ecosystem/actions/runs/45090470650/artifacts/14781434469)
+  и его манифеста, привязка к исходному SHA и наличие отчётов.
+- [PR Core smoke и NATS outage](https://github.com/egorribun/university_ecosystem/actions/runs/45087708578/job/137409982146)
+  прошли на merge tree `56bdfc517`. Итог smoke — 52 passed и 2 skipped.
+  [Receipt 14780642464](https://github.com/egorribun/university_ecosystem/actions/runs/45087708578/artifacts/14780642464)
+  `688687070ffa2ef56d5a6aff40316ed70a6dfbea065908b9f6220e88ad64fae6`.
+- Предыдущий merge [#1567](https://github.com/egorribun/university_ecosystem/pull/1567) — `05a462ffd`.
+  [Main-push CI этого SHA](https://github.com/egorribun/university_ecosystem/actions/runs/45085392607/attempts/2)
+  прошёл после точечного повтора job покрытия. Первоначально каталог ещё не возвращал `node_actions`
+  сразу после успешной загрузки.
 - [#1548](https://github.com/egorribun/university_ecosystem/pull/1548) закрыт без merge;
   #1557–#1561 остаются открыты. История перенесённых изменений — в соответствующих PR.
 
 ### Полный Core на `main`
 
-Оба запуска были инициированы на тогдашнем `main` `71ea9616ccb7d950b3baee3855f38f5a64c62c62`.
+[Первый полный Core на `ea78b1fcf`](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/job/137418821836)
+начался 2026-11-23 в 03:44:22 по Стамбулу и завершился с 222 passed, 0 failed, 8 skipped и 2 flaky.
+Все шесть AUD-154 прошли с первой попытки. Повтор потребовался мобильным сценариям pinch на карте
+и доставке обычного сообщения через Web Push. Стенд остановлен, серия зелёных прогонов ещё не началась.
+[Receipt 14782648878](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/artifacts/14782648878)
+`8f6448f3af9a8c704f567817f263e5058b1422b336ee268b3b15538b54a4bb16`.
+В журнале worker есть 410 для записи подписки моложе 10 секунд, связь с этим сбоем не установлена.
+Ближайший штатный полный Core запланирован на 06:00 по Стамбулу.
+
+Два предыдущих запуска были инициированы на тогдашнем `main` `71ea9616ccb7d950b3baee3855f38f5a64c62c62`.
 Второй стартовал за десять секунд до merge #1562 и завершился уже после изменения `main`.
 
 | Запуск | Итог | Receipt и SHA-256 |
@@ -122,10 +137,9 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Проверить результаты main-push CI на `05a462ffd`.
-2. Интегрировать исправление освобождения изображений Stories и ограниченную диагностику mobile push
-   отдельным PR. Использовать новый полный Core для проверки исправления и разбора сбоев доставки.
-3. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
+1. Проверить в следующем полном Core исправления двух воспроизводимых условий прерывания жеста карты
+   и собрать корреляцию подписки при повторении сбоя доставки сообщения.
+2. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
    не менее двух часов между запусками и всеми именными случаями; затем оценить доказательства по
    критерию аудита.
-4. Сохранять scoped DAST-доказательства для AUD-381 и проверять требования этапов 3–6 по мастер-плану.
+3. Сохранять scoped DAST-доказательства для AUD-381 и проверять требования этапов 3–6 по мастер-плану.

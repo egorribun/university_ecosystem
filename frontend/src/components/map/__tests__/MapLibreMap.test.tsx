@@ -1,7 +1,7 @@
 import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
-import { createElement, type ReactNode } from "react"
+import { StrictMode, createElement, type ReactNode } from "react"
 import type { MapRef } from "react-map-gl/maplibre"
 
 const translationState = vi.hoisted(() => ({
@@ -380,6 +380,7 @@ describe("MapLibreMap", () => {
     const region = screen.getByRole("application", { name: "a11y.mapContainer" })
     expect(region).toHaveStyle({ overscrollBehavior: "contain" })
     expect(renderedMapProps.current.reuseMaps).not.toBe(true)
+    expect(renderedMapProps.current).not.toHaveProperty("trackResize")
   })
 
   it("assigns distinct deterministic offsets to collocated focusable markers", () => {
@@ -651,7 +652,7 @@ describe("MapLibreMap", () => {
           "fog-ground-blend": 0.5,
         })
       )
-      expect(map.resize).toHaveBeenCalledTimes(2)
+      expect(map.resize).toHaveBeenCalledTimes(1)
       expect(map.jumpTo).toHaveBeenCalledTimes(1)
     } finally {
       requestFrame.mockRestore()
@@ -756,6 +757,10 @@ describe("MapLibreMap", () => {
       })
     const map = makeMap()
     const ref = makeRef(map)
+    let resizeInterruptedGesture = false
+    map.resize.mockImplementation(() => {
+      resizeInterruptedGesture = true
+    })
     const event = {
       id: "late-event",
       buildingId: "ГУК",
@@ -767,12 +772,106 @@ describe("MapLibreMap", () => {
         <MapLibreMapComponent {...baseProps} mapRef={ref} mapEvents={[]} />
       )
       await waitFor(() => expect(map.project).toHaveBeenCalled())
+      expect(map.resize).toHaveBeenCalledTimes(1)
+      expect(resizeInterruptedGesture).toBe(true)
+      resizeInterruptedGesture = false
       map.project.mockClear()
       renderedMarkerProps.events = []
 
       rerender(<MapLibreMapComponent {...baseProps} mapRef={ref} mapEvents={[event]} />)
       await waitFor(() => expect(map.project).toHaveBeenCalledWith([12.3, 45.6]))
       expect(latestEvent("late-event")?.offset).toEqual(expect.any(Array))
+      expect(map.resize).toHaveBeenCalledTimes(1)
+      expect(resizeInterruptedGesture).toBe(false)
+    } finally {
+      requestFrame.mockRestore()
+    }
+  })
+
+  it("resizes each new map instance once while preserving marker projection", () => {
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
+    const firstMap = makeMap()
+    const secondMap = makeMap()
+    const sharedRef = makeRef(firstMap)
+    const event = {
+      id: "replacement-event",
+      buildingId: "ГУК",
+      geoCoords: [45.6, 12.3],
+    } as never
+
+    try {
+      const { rerender } = render(<MapLibreMapComponent {...baseProps} mapRef={sharedRef} />)
+      expect(firstMap.resize).toHaveBeenCalledTimes(1)
+      rerender(<MapLibreMapComponent {...baseProps} mapRef={sharedRef} mapEvents={[event]} />)
+      expect(firstMap.resize).toHaveBeenCalledTimes(1)
+      expect(firstMap.project).toHaveBeenCalledWith([12.3, 45.6])
+
+      sharedRef.current = makeRef(secondMap).current
+      rerender(<MapLibreMapComponent {...baseProps} mapRef={sharedRef} mapEvents={[event]} />)
+      expect(secondMap.resize).toHaveBeenCalledTimes(1)
+      expect(secondMap.project).toHaveBeenCalledWith([12.3, 45.6])
+      rerender(<MapLibreMapComponent {...baseProps} mapRef={sharedRef} isDark />)
+      expect(secondMap.resize).toHaveBeenCalledTimes(1)
+      expect(secondMap.setSky).toHaveBeenCalled()
+    } finally {
+      requestFrame.mockRestore()
+    }
+  })
+
+  it("marks a map initialized only after its first resize succeeds", () => {
+    let frame: FrameRequestCallback | undefined
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frame = callback
+        return 1
+      })
+    const map = makeMap()
+    map.resize.mockImplementationOnce(() => {
+      throw new Error("resize failed")
+    })
+    const ref = makeRef(map)
+    const event = {
+      id: "retry-event",
+      buildingId: "ГУК",
+      geoCoords: [45.6, 12.3],
+    } as never
+
+    try {
+      const { rerender } = render(<MapLibreMapComponent {...baseProps} mapRef={ref} />)
+      expect(() => act(() => frame?.(0))).toThrow("resize failed")
+      expect(map.resize).toHaveBeenCalledTimes(1)
+      act(() => frame?.(0))
+      expect(map.resize).toHaveBeenCalledTimes(2)
+      rerender(<MapLibreMapComponent {...baseProps} mapRef={ref} mapEvents={[event]} />)
+      act(() => frame?.(0))
+      expect(map.resize).toHaveBeenCalledTimes(2)
+      expect(map.project).toHaveBeenCalledWith([12.3, 45.6])
+    } finally {
+      requestFrame.mockRestore()
+    }
+  })
+
+  it("does not resize the same instance twice when StrictMode repeats effects", () => {
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
+    const map = makeMap()
+    try {
+      render(
+        <StrictMode>
+          <MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />
+        </StrictMode>
+      )
+      expect(map.resize).toHaveBeenCalledTimes(1)
     } finally {
       requestFrame.mockRestore()
     }

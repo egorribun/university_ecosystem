@@ -595,6 +595,18 @@ test("chat message reaches Chromium through its real push subscription", async (
 }, testInfo) => {
   test.skip(browserName !== "chromium", "native Notifications and PushManager require Chromium")
 
+  const { createPushRotationObservation } = await import("./push-rotation-observation.mjs")
+  const rotationObservation =
+    testInfo.project.name === "mobile"
+      ? createPushRotationObservation(
+          page,
+          testInfo.project.name,
+          testInfo.retry,
+          undefined,
+          "chat"
+        )
+      : null
+
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
   const recipientObservation = createPushRecipientObservation(
@@ -619,6 +631,13 @@ test("chat message reaches Chromium through its real push subscription", async (
   let testFailure: unknown
   let testFailed = false
   let failureObservation: ReturnType<typeof nativePushProfiles.armFailureObservation> | undefined
+  const reportChatFailure = async () => {
+    const budgetMs = livePushObservationBudgetMs(testInfo)
+    await Promise.all([
+      recipientObservation.report(subscriptionEndpoint, budgetMs),
+      subscriptionBound ? rotationObservation?.reportFailure(budgetMs) : undefined,
+    ])
+  }
   try {
     const origin = new URL(liveBaseUrl).origin
     await page.context().grantPermissions(["notifications"], { origin })
@@ -713,6 +732,7 @@ test("chat message reaches Chromium through its real push subscription", async (
       "the persisted server binding belongs to this native browser endpoint"
     ).toBe(true)
     subscriptionBound = true
+    await rotationObservation?.optIn(livePushObservationBudgetMs(testInfo))
     await expect(pushSwitch).toBeChecked()
 
     await senderPage.goto("/messenger")
@@ -743,6 +763,7 @@ test("chat message reaches Chromium through its real push subscription", async (
         new URL(response.url()).pathname === `/api/v1/chats/${chatId}/messages`
     )
     recipientObservation.arm("chat", identityBody.id)
+    rotationObservation?.arm("chat")
     await senderPage.locator("#chat-message-input").fill(message)
     await senderPage.locator("#chat-send-btn").click()
     const messageResponse = await messageResponsePromise
@@ -777,8 +798,10 @@ test("chat message reaches Chromium through its real push subscription", async (
       throw new Error("the persisted test notification did not have an identity")
     }
 
-    failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId, () =>
-      recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
+    await rotationObservation?.beforeWait("chat", livePushObservationBudgetMs(testInfo))
+    failureObservation = nativePushProfiles.armFailureObservation(
+      expectedNotificationId,
+      reportChatFailure
     )
     await expect
       .poll(
@@ -827,7 +850,7 @@ test("chat message reaches Chromium through its real push subscription", async (
     testFailure = error
     testFailed = true
     await failureObservation?.capture()
-    await recipientObservation.report(subscriptionEndpoint, livePushObservationBudgetMs(testInfo))
+    await reportChatFailure()
   }
   recipientObservation.dispose()
   {

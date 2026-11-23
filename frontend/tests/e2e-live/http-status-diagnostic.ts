@@ -337,7 +337,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "password-reset.live.spec.ts": [129],
   "profile-csrf.live.spec.ts": [99],
   "profile-persistence.live.spec.ts": [102, 302],
-  "push-delivery.live.spec.ts": [492, 590, 892],
+  "push-delivery.live.spec.ts": [492, 590, 915],
   "push-permission-default.live.spec.ts": [17],
   "push-permission-denied.live.spec.ts": [44],
   "push-subscription.live.spec.ts": [115],
