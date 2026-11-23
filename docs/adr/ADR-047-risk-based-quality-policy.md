@@ -2040,6 +2040,15 @@ or weakened. The pinned upstream action and output capture remain unchanged;
 upstream failures are not masked. This record does not establish passing
 tests, scans or hosted checks for any source revision.
 
+### Rebind 2026-11-23 UTC - TruffleHog v3.99.9
+
+Owner `egorribun` approved moving this exception to revision
+`3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc` (v3.99.9), proposed by Dependabot #1572. The
+[pinned LICENSE](https://github.com/trufflesecurity/trufflehog/blob/3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc/LICENSE)
+is the same Git blob `d2bc34f9900abd088bfd0d914641ecf434aa5a52`, so the recorded license stays
+`AGPL-3.0`. The expiry stays 2027-01-10, and every other condition above is unchanged. Revision
+`ea68ca03c865c5f324e86e849ced20ed3cf9dbbb` is no longer approved.
+
 ## Owner-approved Helm rendered-target Semgrep model (2026-11-05 UTC)
 
 On 2026-11-05 UTC, the owner approved the exact rendered-target model and 11-file implementation package in the owner-reviewed Helm proposal. The package identity is manifest SHA-256 dc4d0ad607fa2679567bd3c84f718e522594c9ceacc77e5cc8038a7b6366d036; its reviewed patch SHA-256 is cb608f73a994d8e3b648af6f5ecd1cf85d2ba52059c489275ae80071ae7755b0. This records approval of the target model; it does not activate the scan-target change before the required final source-bound scan and gate review.
