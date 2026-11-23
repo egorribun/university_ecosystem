@@ -447,8 +447,6 @@ link-check result does not establish the current documentation state.
   decisions, sequence, and acceptance criteria.
 - [Active closure status](../superpowers/plans/STATUS.md) — current state and
   next actions.
-- [Scoped platform review template](../superpowers/plans/AUDIT_PROMPT.md) —
-  reusable input for an explicitly assigned review.
 - [Machine-enforced quality contract](../../quality/quality-contract.json) —
   mandatory quality gates.
 - [October audit checkpoint](AUDIT-2026-10.md) — current accepted count, local integration

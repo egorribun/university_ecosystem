@@ -7,22 +7,27 @@
 
 ### `main` и пакет PR
 
-- `main` = `bfc2b1a3272ad50c8582a2778ae47fb2dee06cd6`, обычный merge
-  [#1570](https://github.com/egorribun/university_ecosystem/pull/1570) после 78 обязательных проверок
-  и CodeQL на `8b8ec3593760a7967ff5b13a5c8db324fd3a9673`. Дерево совпадает с проверенным деревом PR.
-- [PR Core smoke и NATS](https://github.com/egorribun/university_ecosystem/actions/runs/45120967066/job/137514397672)
-  прошли на `1ad2ec020`. Итог smoke — 52 passed и 2 skipped.
-  [Receipt 14794167648](https://github.com/egorribun/university_ecosystem/actions/runs/45120967066/artifacts/14794167648)
-  `86043476651bd0598c99cb13acfdb5bca4748e4bd3417d134016d63abf8f3aae`.
-- [Realtime/visual](https://github.com/egorribun/university_ecosystem/actions/runs/45120967166/job/137514399729)
-  прошёл на `8b8ec359`, включая 24 визуальных случая. У `/events` EN/light/390 ошибок запросов и консоли нет.
-- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45124348128) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45124347868) прошли на `bfc2b1a32`.
-  У [quality evidence 14795997695](https://github.com/egorribun/university_ecosystem/actions/runs/45124348128/artifacts/14795997695)
+- `main` = `15d7cadf46b4846b2ec56c6a054993357351b226`, обычный merge
+  [#1573](https://github.com/egorribun/university_ecosystem/pull/1573) после 78 обязательных проверок
+  и CodeQL на `93e9ff2f90125b2766a986366158b415da80f403`. Дерево совпадает с проверенным деревом PR.
+- [PR Core smoke и NATS](https://github.com/egorribun/university_ecosystem/actions/runs/45132547291/job/137551129083)
+  прошли на `74f19fa87`. Итог smoke — 52 passed и 2 skipped.
+  [Receipt 14799565742](https://github.com/egorribun/university_ecosystem/actions/runs/45132547291/artifacts/14799565742)
+  `2e966c5625dd2f6d75d3ca3aea8171e59c87f4b998e299c7026cb9612cb605f0`.
+- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли на `15d7cadf4`.
+  У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
   сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов без пропавших отчётов.
 - [#1548](https://github.com/egorribun/university_ecosystem/pull/1548) закрыт без merge, #1557–#1561 открыты.
 
 ### Полный Core на `main`
+
+[Полный Core 45139263654 на `15d7cadf4`](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/job/137572924120)
+прошёл с 224 passed, 0 failed, 0 flaky и 8 сверенными skips. Все шесть AUD-154 прошли с первой попытки.
+[Receipt 14803902142](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/artifacts/14803902142)
+`2dbc08cb2a65c1e46f34b9c7e87d92c40a43423d2ca3b991960c6df2c3013dce` проверен. Серия — **1/2**.
+[Второй зачётный Core 45166882952](https://github.com/egorribun/university_ecosystem/actions/runs/45166882952)
+запущен на том же SHA в 14:37:35 по Стамбулу, через шесть часов после первого; `main` не меняется до его итога.
 
 [Core 45124404884 на `bfc2b1a32`](https://github.com/egorribun/university_ecosystem/actions/runs/45124404884/job/137525350714)
 стартовал в 09:29:12 по Стамбулу. Итог — 223 passed, 0 failed, 8 skipped, 1 flaky. Все шесть AUD-154
@@ -30,18 +35,11 @@
 [Receipt 14796648840](https://github.com/egorribun/university_ecosystem/actions/runs/45124404884/artifacts/14796648840)
 `1c9231101e1b8dbf9a5251b2f0fc47478c1633b6603bb59ddae2b763e84e6439` проверен.
 
-[Первый полный Core на `ea78b1fcf`](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/job/137418821836)
-начался 2026-11-23 в 03:44:22 по Стамбулу и завершился с 222 passed, 0 failed, 8 skipped и 2 flaky.
-Все шесть AUD-154 прошли с первой попытки. Повтор потребовался мобильным сценариям pinch на карте
-и доставке обычного сообщения через Web Push. Стенд остановлен, серия зелёных прогонов ещё не началась.
-[Receipt 14782648878](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/artifacts/14782648878)
-`8f6448f3af9a8c704f567817f263e5058b1422b336ee268b3b15538b54a4bb16`.
-В журнале worker есть 410 для записи подписки моложе 10 секунд, связь с этим сбоем не установлена.
 [Core 45103643982 на `facb80d35`](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/job/137459900882)
 стартовал в 06:03:06 по Стамбулу. Результат — 221 passed, 0 failed, 8 skipped, 3 flaky; все шесть AUD-154
 прошли с первой попытки. Повтор потребовался desktop-сценариям notification topics, direct Web Push и
 schedule reflow. Стенд остановлен. [Receipt 14788721066](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/artifacts/14788721066)
-`beae20efc8d46c600be636cdfc8a5f071f973d8b0f419df076e111ee16bc27ee` проверен. Серия пока не началась.
+`beae20efc8d46c600be636cdfc8a5f071f973d8b0f419df076e111ee16bc27ee` проверен.
 
 Прежняя серия на `71ea9616c` завершилась после изменения `main` перед вторым результатом.
 
@@ -143,8 +141,6 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Разобрать возврат фокуса после Escape на `bfc2b1a32`, затем проверить новую серию Core.
-2. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
-   не менее двух часов между запусками и всеми именными случаями; затем оценить доказательства по
-   критерию аудита.
-3. Сохранять scoped DAST-доказательства для AUD-381 и проверять требования этапов 3–6 по мастер-плану.
+1. Подтвердить второй зелёный полный Core на `15d7cadf4`, соблюсти двухчасовой интервал и сверить оба receipt.
+2. По подтверждённой паре обновить AUD-154 и начать следующие этапы по мастер-плану.
+3. Сохранять scoped DAST-доказательства для AUD-381.
