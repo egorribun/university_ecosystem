@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import Schedule from "@/pages/Schedule"
 import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
+import { AuthBootstrapContext } from "@/contexts/AuthBootstrapContext"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
@@ -41,6 +42,7 @@ const {
     authState: {
       user: { role: "student" } as { role: string; id?: string } | null,
       loading: false,
+      bootstrapPending: false,
     },
     scheduleState: {
       isLoading: false,
@@ -199,11 +201,12 @@ vi.mock("@/components/schedule/ScheduleSkeleton", () => ({
 }))
 
 vi.mock("@/components/schedule/ScheduleHeader", () => ({
-  ScheduleHeader: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
-    <button type="button" onClick={onOpenSettings}>
-      Open settings
-    </button>
-  ),
+  ScheduleHeader: ({ onOpenSettings }: { onOpenSettings?: () => void }) =>
+    onOpenSettings ? (
+      <button type="button" onClick={onOpenSettings}>
+        Open settings
+      </button>
+    ) : null,
 }))
 
 vi.mock("@/components/schedule/ScheduleDesktopTable", () => ({
@@ -368,7 +371,11 @@ function ScheduleRerenderHarness() {
     }
   }, [forceRender])
 
-  return <Schedule />
+  return (
+    <AuthBootstrapContext.Provider value={authState.bootstrapPending}>
+      <Schedule />
+    </AuthBootstrapContext.Provider>
+  )
 }
 
 describe("Schedule page behavior", () => {
@@ -377,8 +384,10 @@ describe("Schedule page behavior", () => {
     localStorage.setItem("ue:language", "en")
     vi.clearAllMocks()
 
-    authState.user = { role: "student" }
+    acceptBrowserSessionGeneration()
+    authState.user = { id: "fixture-account", role: "student" }
     authState.loading = false
+    authState.bootstrapPending = false
     scheduleState.isLoading = false
     scheduleState.error = null
     scheduleState.schedule = [baseLesson]
@@ -414,6 +423,124 @@ describe("Schedule page behavior", () => {
 
   afterEach(() => {
     cleanup()
+    vi.unstubAllEnvs()
+  })
+
+  it.each([
+    { name: "loading", user: null, loading: true, pending: true },
+    { name: "auth loading after bootstrap", user: null, loading: true, pending: false },
+    { name: "pending bootstrap", user: null, loading: false, pending: true },
+    {
+      name: "a role-only placeholder",
+      user: { id: "ssr-stub", role: "student" },
+      loading: false,
+      pending: true,
+    },
+    {
+      name: "a synthetic Lighthouse identity in a normal build",
+      user: { id: "lhci-synthetic", role: "student" },
+      loading: false,
+      pending: true,
+    },
+  ])("offers settings only after an owner replaces $name", async ({ user, loading, pending }) => {
+    authState.user = user
+    authState.loading = loading
+    authState.bootstrapPending = pending
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+    const rerender = rerenderMountedSchedule
+    if (!rerender) throw new Error("Schedule rerender harness is not mounted")
+
+    expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument()
+    act(() => {
+      authState.user = { id: "fixture-account", role: "student" }
+      authState.loading = false
+      authState.bootstrapPending = false
+      rerender()
+    })
+    const settings = screen.getByRole("button", { name: "Open settings" })
+    expect(settings).toBeEnabled()
+    fireEvent.click(settings)
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+  })
+
+  it("keeps settings available for a confirmed owner while offline and verifying", async () => {
+    mediaState.online = false
+    authState.bootstrapPending = true
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+    const rerender = rerenderMountedSchedule
+    if (!rerender) throw new Error("Schedule rerender harness is not mounted")
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+    act(() => {
+      authState.loading = true
+      rerender()
+    })
+    expect(screen.getByRole("button", { name: "Open settings" })).toBeEnabled()
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+  })
+
+  it("offers settings when an ownerless bootstrap settles signed out", async () => {
+    authState.user = null
+    authState.loading = false
+    authState.bootstrapPending = true
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+    const rerender = rerenderMountedSchedule
+    if (!rerender) throw new Error("Schedule rerender harness is not mounted")
+
+    expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument()
+    act(() => {
+      authState.bootstrapPending = false
+      rerender()
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+  })
+
+  it("offers settings when a placeholder is settled without a confirmed owner", async () => {
+    authState.user = { id: "ssr-stub", role: "student" }
+    authState.bootstrapPending = true
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+    const rerender = rerenderMountedSchedule
+    if (!rerender) throw new Error("Schedule rerender harness is not mounted")
+
+    expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument()
+    act(() => {
+      authState.bootstrapPending = false
+      rerender()
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+  })
+
+  it("offers settings when browser storage is unavailable and bootstrap has settled without a confirmed owner", async () => {
+    const originalGetItem = Storage.prototype.getItem
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+      this: Storage,
+      key: string
+    ) {
+      if (key === "ecosystem.session.generation.v1") throw new Error("storage unavailable")
+      return originalGetItem.call(this, key)
+    })
+    try {
+      expect(getConfirmedUserId({ user: authState.user as UserState, loading: false })).toBeNull()
+      await renderSchedule(undefined, ScheduleRerenderHarness)
+      fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+      expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
+    } finally {
+      getItem.mockRestore()
+    }
+  })
+
+  it("keeps the Lighthouse build settings available without an owner", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    authState.user = { id: "lhci-synthetic", role: "student" }
+    authState.loading = false
+    authState.bootstrapPending = true
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }))
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument()
   })
 
   it("keeps settings during same-account verification and clears them on sign-out", async () => {
