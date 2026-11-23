@@ -1,10 +1,10 @@
 """Keep every Knip exception tied to a concrete frontend tool or generated file.
 
-The exceptions are deliberately exact: browser-loaded axe-core, command-line
-tools invoked through config strings, generated outputs, and platform
-binaries. Knip follows CSS and MDX imports, so Tailwind and the trusted-types
-declarations need no exception. Vitest source tests and handwritten MSW
-fixtures stay in Knip's graph so new unused code is still reported.
+The exceptions are deliberately exact: command-line tools invoked through
+config strings, a required peer dependency, generated outputs, and platform
+binaries. Knip follows the local axe-core rule catalog and CSS and MDX imports.
+Vitest source tests and handwritten MSW fixtures stay in Knip's graph so new
+unused code is still reported.
 """
 
 from __future__ import annotations
@@ -146,7 +146,6 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     expected_ignored_dependencies = [
         "@lhci/cli",
         "^@stryker-mutator/\\*$",
-        "axe-core",
         "openapi-types",
     ]
     asset_users = {
@@ -184,7 +183,12 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     # matches only that one config token.
     assert '"@stryker-mutator/*"' in _read_frontend("stryker.config.mjs")
 
-    # Knip cannot follow this local browser asset load as npm package usage.
+    # The rule catalog makes the dependency discoverable to Knip. The audits
+    # still inject the installed browser asset by path.
+    assert "axe-core" in package["devDependencies"]
+    assert 'requireFromProject("axe-core")' in _read_frontend(
+        "scripts/authenticated-visual-audit.mjs"
+    )
     actual_asset_users = {
         path.relative_to(FRONTEND).as_posix()
         for root in (FRONTEND / "scripts", FRONTEND / "tests")
