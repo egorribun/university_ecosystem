@@ -130,9 +130,8 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
 
-    /* ── On-accent text — the solid blue-600 brand surface is shared by
-         light and dark themes. White provides 5.17:1 contrast for badges,
-         controls, and the current-day marker in both modes. */
+    /* ── On-accent text for existing schedule badges and controls.
+         The calendar marker uses its own theme-paired tokens below. */
     --sched-on-accent: white;
 
     /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
@@ -210,10 +209,7 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-700) 15%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
 
-    /* Keep the foreground explicit: dark mode's brand surface is still the
-       blue-600 token in the rendered schedule shell (WCAG AA 5.17:1). Using
-       --text-inverse here would resolve to slate-950 and regress Lighthouse
-       color-contrast on the today badge. */
+    /* Preserve the existing foreground for other schedule badges and controls. */
     --sched-on-accent: white;
 
     /* FIX-72-03: dark heat map tokens — increased opacity for visibility */
@@ -1578,10 +1574,10 @@
   transform: scale(0.95);
 }
 
-/* FIX-70-CAL: use on-accent token instead of hardcoded white */
+/* Pair the current date's theme-resolved brand surface and foreground. */
 .sched-cal-day[data-today="true"] {
-  background: var(--color-brand);
-  color: var(--sched-on-accent);
+  background: var(--primary-main);
+  color: var(--text-inverse);
   font-weight: 700;
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-brand) 40%, transparent);
 }
@@ -1599,7 +1595,7 @@
 }
 
 .sched-cal-day[data-today="true"]::after {
-  background: white;
+  background: currentColor;
 }
 
 /* ═══════════════════════════════════════════════════════

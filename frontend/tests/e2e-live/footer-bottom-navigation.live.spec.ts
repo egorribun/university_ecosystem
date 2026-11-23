@@ -1,6 +1,6 @@
 import { expect, loginAs, test } from "./fixtures"
 import type { ConsoleMessage, Page } from "@playwright/test"
-import { reportLiveFooterGeometry } from "./live-ui-diagnostic"
+import { reportLiveFooterGeometry, createFooterConsoleDiagnostic } from "./live-ui-diagnostic"
 
 const NAVIGATION_PATHS = ["/dashboard", "/news", "/events", "/schedule", "/profile"] as const
 const SHORT_ACTIVITY_EMPTY_STATE = '.activity-theme section[aria-live="polite"]'
@@ -346,8 +346,24 @@ async function verifyRapidMobileNavigation(page: Page, hasTouch: boolean): Promi
   }
 
   let consoleErrorCount = 0
+  const consoleDiagnostic = createFooterConsoleDiagnostic()
   const onConsole = (message: ConsoleMessage) => {
-    if (message.type() === "error") consoleErrorCount += 1
+    if (message.type() === "error") {
+      consoleErrorCount += 1
+      if (consoleErrorCount === 1) {
+        let text: unknown
+        try {
+          text = message.text()
+        } catch {
+          text = undefined
+        }
+        try {
+          consoleDiagnostic.record(text)
+        } catch {
+          // Classification must not alter the console-error count.
+        }
+      }
+    }
   }
   page.on("console", onConsole)
   try {
@@ -359,6 +375,7 @@ async function verifyRapidMobileNavigation(page: Page, hasTouch: boolean): Promi
     }
     await expectCurrentRoute("/news")
 
+    consoleDiagnostic.setPhase("repeat")
     const historyLength = await page.evaluate(() => window.history.length)
     const newsPoint = points[3]
     if (newsPoint === undefined) throw new Error("rapid news target is missing")
@@ -372,6 +389,7 @@ async function verifyRapidMobileNavigation(page: Page, hasTouch: boolean): Promi
 
     // The drawer supplies a settled, known history boundary. Intermediate
     // entries from the rapid burst are intentionally not assumed to commit.
+    consoleDiagnostic.setPhase("drawer-open")
     const drawerTrigger = page.locator('button[aria-controls="mobile-drawer"]')
     if (hasTouch) await drawerTrigger.tap()
     else await drawerTrigger.click()
@@ -379,18 +397,28 @@ async function verifyRapidMobileNavigation(page: Page, hasTouch: boolean): Promi
     await expect(drawer).toBeVisible()
     await expect(drawerTrigger).toHaveAttribute("aria-expanded", "true")
     const drawerEvents = drawer.locator("#mobile-nav-link-events")
+    consoleDiagnostic.setPhase("drawer-route")
     if (hasTouch) await drawerEvents.tap()
     else await drawerEvents.click()
     await expectCurrentRoute("/events")
     await expect(drawer).toHaveCount(0)
     await expect(drawerTrigger).toHaveAttribute("aria-expanded", "false")
 
+    consoleDiagnostic.setPhase("back")
     await page.goBack()
     await expectCurrentRoute("/news")
     await expect(drawer).toHaveCount(0)
+    consoleDiagnostic.setPhase("forward")
     await page.goForward()
     await expectCurrentRoute("/events")
     await expect(drawer).toHaveCount(0)
+    if (consoleErrorCount > 0) {
+      try {
+        consoleDiagnostic.report(test.info().project.name, consoleErrorCount)
+      } catch {
+        // A diagnostic must not replace the console-error assertion.
+      }
+    }
     expect(consoleErrorCount, "rapid navigation must not emit console errors").toBe(0)
   } finally {
     page.off("console", onConsole)

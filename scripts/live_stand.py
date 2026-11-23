@@ -121,6 +121,9 @@ from scripts.live_stand_playwright_evidence import (
     _live_playwright_failure_locations as _live_playwright_failure_locations,
 )
 from scripts.live_stand_playwright_evidence import (
+    _live_playwright_footer_console_diagnostics as _live_playwright_footer_console_diagnostics,
+)
+from scripts.live_stand_playwright_evidence import (
     _live_playwright_footer_geometries as _live_playwright_footer_geometries,
 )
 from scripts.live_stand_playwright_evidence import (
@@ -5823,6 +5826,7 @@ def _run_live_playwright(
     a11y_paint_states = _live_playwright_a11y_paint_states(stdout)
     a11y_phase_states = _live_playwright_a11y_phase_states(stdout)
     map_zoom_tasks = _live_playwright_map_zoom_tasks(stdout) if return_code != 0 else []
+    footer_console_diagnostics = _live_playwright_footer_console_diagnostics(stdout)
     footer_geometries = _live_playwright_footer_geometries(stdout)
     events_geometries = _live_playwright_events_geometries(stdout)
     news_viewports = _live_playwright_news_viewports(stdout)
@@ -5916,6 +5920,17 @@ def _run_live_playwright(
         print(
             f"live E2E map zoom project={project} attempt={attempt} sample={sample} "
             f"total={total} step={step} phase={phase} duration_ms={duration}",
+            flush=True,
+        )
+    for (
+        console_project,
+        console_phase,
+        console_kind,
+        console_count,
+    ) in footer_console_diagnostics:
+        print(
+            f"live E2E footer console project={console_project} phase={console_phase} "
+            f"kind={console_kind} count={console_count}",
             flush=True,
         )
     for project, check, status in http_statuses:

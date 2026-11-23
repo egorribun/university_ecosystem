@@ -160,6 +160,15 @@ _PLAYWRIGHT_MAP_ZOOM_LINE = re.compile(
 _PLAYWRIGHT_MAP_ZOOM_LIMIT = 32
 _PlaywrightMapZoomTask = tuple[str, int, int, int, int, int, int]
 
+_PLAYWRIGHT_FOOTER_CONSOLE_LINE = re.compile(
+    r"UE_LIVE_FOOTER_CONSOLE_V1 project=(?P<project>desktop|mobile) "
+    r"phase=(?P<phase>burst|repeat|drawer-open|drawer-route|back|forward) "
+    r"kind=(?P<kind>http-4xx|http-5xx|network|csp|react-418|other|unavailable) "
+    r"count=(?P<count>[1-9][0-9]{0,2})"
+)
+_PLAYWRIGHT_FOOTER_CONSOLE_LIMIT = 4
+_PlaywrightFooterConsole = tuple[str, str, str, int]
+
 _PLAYWRIGHT_FOOTER_GEOMETRY_LINE = re.compile(
     r"UE_LIVE_FOOTER_GEOM_V1 project=(?P<project>desktop|mobile) "
     r"req_w_milli=(?P<requested_width>-?(?:0|[1-9][0-9]{0,6})) "
@@ -2325,6 +2334,32 @@ def _live_playwright_map_zoom_tasks(output: str) -> list[_PlaywrightMapZoomTask]
         seen.add(identity)
         totals[attempt_id] = total
         if len(records) == _PLAYWRIGHT_MAP_ZOOM_LIMIT:
+            break
+    return records
+
+
+def _live_playwright_footer_console_diagnostics(
+    output: str,
+) -> list[_PlaywrightFooterConsole]:
+    """Retain only bounded, complete footer console classifications."""
+    records: list[_PlaywrightFooterConsole] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_FOOTER_CONSOLE_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record: _PlaywrightFooterConsole = (
+            _PLAYWRIGHT_FAILURE_PROJECTS[match["project"]],
+            match["phase"],
+            match["kind"],
+            int(match["count"]),
+        )
+        if record in records:
+            continue
+        records.append(record)
+        if len(records) == _PLAYWRIGHT_FOOTER_CONSOLE_LIMIT:
             break
     return records
 

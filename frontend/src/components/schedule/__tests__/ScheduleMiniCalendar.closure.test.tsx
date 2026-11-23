@@ -2,6 +2,10 @@ import { useState } from "react"
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
+import * as axeCore from "axe-core"
+
+import compiledCss from "@/styles/tailwind.css?inline"
+import scheduleCss from "@/styles/tokens/schedule.css?inline"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -11,6 +15,24 @@ vi.mock("react-i18next", () => ({
 }))
 
 import { ScheduleMiniCalendar } from "../ScheduleMiniCalendar"
+
+type AxeColor = { parseString: (value: string) => void }
+const contrastColors = (
+  axeCore.commons as unknown as {
+    color: {
+      Color: new () => AxeColor
+      getContrast: (background: AxeColor, foreground: AxeColor) => number | null
+    }
+  }
+).color
+
+function contrastRatio(foreground: string, background: string): number {
+  const text = new contrastColors.Color()
+  const surface = new contrastColors.Color()
+  text.parseString(foreground)
+  surface.parseString(background)
+  return contrastColors.getContrast(surface, text) ?? 0
+}
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -22,6 +44,34 @@ afterEach(() => {
 })
 
 describe("ScheduleMiniCalendar", () => {
+  it.each(["light", "dark"] as const)(
+    "renders the current date with readable contrast in %s mode",
+    (theme) => {
+      const style = document.createElement("style")
+      style.textContent = `${compiledCss}\n${scheduleCss}`
+      document.head.append(style)
+      const rootClass = document.documentElement.className
+      const bodyClass = document.body.className
+      document.documentElement.classList.toggle("dark", theme === "dark")
+      document.body.classList.toggle("dark", theme === "dark")
+      try {
+        render(
+          <div className="schedule-theme">
+            <ScheduleMiniCalendar lessonDays={new Set([15])} />
+          </div>
+        )
+        const today = screen.getByRole("button", { name: "June 15, 2026" })
+        expect(today).toHaveAttribute("aria-current", "date")
+        const computed = getComputedStyle(today)
+        expect(contrastRatio(computed.color, computed.backgroundColor)).toBeGreaterThanOrEqual(4.5)
+      } finally {
+        document.documentElement.className = rootClass
+        document.body.className = bodyClass
+        style.remove()
+      }
+    }
+  )
+
   it("renders the current month, marks lesson days, and emits day clicks", () => {
     const onDayClick = vi.fn()
 

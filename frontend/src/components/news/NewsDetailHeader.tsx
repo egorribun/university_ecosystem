@@ -1,4 +1,3 @@
-import { useId } from "react"
 import {
   Bookmark as BookmarkIcon,
   BookmarkCheck as BookmarkCheckIcon,
@@ -56,8 +55,6 @@ export function NewsDetailHeader({
   onDeleteOpen,
 }: NewsDetailHeaderProps) {
   const { t } = useTranslation(["news", "common"])
-  const likesCountId = useId()
-
   return (
     <header className="space-y-4">
       <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary leading-tight">
@@ -115,13 +112,10 @@ export function NewsDetailHeader({
             isLiked &&
               "border-(--error-text)/[calc(var(--opacity-dim)*100%)] bg-(--error-text)/[calc(var(--opacity-subtle)*100%)]"
           )}
-          aria-label={t("common:aria.like")}
+          aria-label={`${t("common:aria.like")} ${likesCount}`}
           aria-pressed={isLiked}
-          aria-describedby={likesCountId}
         >
-          <span id={likesCountId} className="tabular-nums">
-            {likesCount}
-          </span>
+          <span className="tabular-nums">{likesCount}</span>
         </Button>
 
         {/* Bookmark */}

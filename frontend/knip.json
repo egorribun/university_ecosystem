@@ -1,12 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "treatConfigHintsAsErrors": true,
-  "ignoreDependencies": [
-    "@lhci/cli",
-    "^@stryker-mutator/\\*$",
-    "axe-core",
-    "openapi-types"
-  ],
+  "ignoreDependencies": ["@lhci/cli", "^@stryker-mutator/\\*$", "openapi-types"],
   "ignore": ["src/api/generated/**", "src/tests/mocks/generated/**"],
   "ignoreIssues": {
     "src/theme/tokens.ts": ["exports"]

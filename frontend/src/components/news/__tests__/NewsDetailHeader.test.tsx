@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
+import enCommon from "@/i18n/locales/en/common.json"
+import ruCommon from "@/i18n/locales/ru/common.json"
 
 const { translationMock, namespaceMock } = vi.hoisted(() => ({
   translationMock: vi.fn((key: string, _options?: unknown) => key),
@@ -129,7 +131,7 @@ describe("NewsDetailHeader", () => {
   it("keeps the localized like toggle name stable across pressed states", () => {
     const { rerender } = render(<NewsDetailHeader {...baseProps} />)
     let likeButton = screen.getByRole("button", {
-      name: "common:aria.like",
+      name: "common:aria.like 42",
       pressed: false,
     })
 
@@ -137,34 +139,58 @@ describe("NewsDetailHeader", () => {
 
     rerender(<NewsDetailHeader {...baseProps} isLiked />)
     likeButton = screen.getByRole("button", {
-      name: "common:aria.like",
+      name: "common:aria.like 42",
       pressed: true,
     })
 
     expect(likeButton).toHaveAttribute("aria-pressed", "true")
   })
 
-  it("describes the visible like count and updates it when the count changes", () => {
+  it("includes the visible like count in the accessible name as the count changes", () => {
     const { rerender } = render(<NewsDetailHeader {...baseProps} />)
     let likeButton = screen.getByRole("button", {
-      name: "common:aria.like",
-      description: "42",
+      name: "common:aria.like 42",
     })
-    const countId = likeButton.getAttribute("aria-describedby")
-
-    expect(countId).toBeTruthy()
-    expect(document.getElementById(countId!)).toHaveTextContent("42")
+    expect(likeButton).toHaveTextContent("42")
+    expect(likeButton).not.toHaveAttribute("aria-describedby")
 
     rerender(<NewsDetailHeader {...baseProps} isLiked likesCount={43} />)
     likeButton = screen.getByRole("button", {
-      name: "common:aria.like",
+      name: "common:aria.like 43",
       pressed: true,
-      description: "43",
     })
-
-    expect(likeButton).toHaveAttribute("aria-describedby", countId)
-    expect(document.getElementById(countId!)).toHaveTextContent("43")
+    expect(likeButton).toHaveTextContent("43")
+    expect(likeButton).not.toHaveAttribute("aria-describedby")
   })
+
+  it.each([
+    ["English", enCommon],
+    ["Russian", ruCommon],
+  ])(
+    "keeps visible counts in the %s like button name in both states",
+    async (_language, common) => {
+      translationMock.mockImplementation((key: string) =>
+        key === "common:aria.like" ? common.aria.like : key
+      )
+      const onToggleLike = vi.fn()
+      const user = userEvent.setup()
+      const { rerender } = render(
+        <NewsDetailHeader {...baseProps} likesCount={0} onToggleLike={onToggleLike} />
+      )
+      let likeButton = screen.getByRole("button", { name: `${common.aria.like} 0`, pressed: false })
+      expect(likeButton).toHaveTextContent("0")
+      await user.click(likeButton)
+      expect(onToggleLike).toHaveBeenCalledOnce()
+
+      rerender(
+        <NewsDetailHeader {...baseProps} likesCount={123} isLiked onToggleLike={onToggleLike} />
+      )
+      likeButton = screen.getByRole("button", { name: `${common.aria.like} 123`, pressed: true })
+      expect(likeButton).toHaveTextContent("123")
+      await user.click(likeButton)
+      expect(onToggleLike).toHaveBeenCalledTimes(2)
+    }
+  )
 
   it("keeps inactive action styling neutral and applies active state classes", () => {
     const { rerender } = render(<NewsDetailHeader {...baseProps} />)

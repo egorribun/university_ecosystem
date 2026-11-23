@@ -3,15 +3,36 @@ import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
+import * as axeCore from "axe-core"
 
 import Register, { resolveRegistrationEmailErrorKey } from "../Register"
 import api from "@/api/client"
+import compiledCss from "@/styles/tailwind.css?inline"
+import authCss from "@/styles/tokens/auth.css?inline"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options: Record<string, unknown> = {}) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
+
+type AxeColor = { parseString: (value: string) => void }
+const contrastColors = (
+  axeCore.commons as unknown as {
+    color: {
+      Color: new () => AxeColor
+      getContrast: (background: AxeColor, foreground: AxeColor) => number | null
+    }
+  }
+).color
+
+function contrastRatio(foreground: string, background: string): number {
+  const text = new contrastColors.Color()
+  const surface = new contrastColors.Color()
+  text.parseString(foreground)
+  surface.parseString(background)
+  return contrastColors.getContrast(surface, text) ?? 0
+}
 
 const passwordAnalysis = vi.hoisted(() => ({
   mode: "normal" as "normal" | "throw" | "unknown" | "locale",
@@ -288,7 +309,7 @@ describe("Register page", () => {
     const matchChip = screen.getByText(tAuth("register.passwordChip.match"))
 
     await user.type(password, "1234567")
-    expect(minLengthChip).toHaveClass("text-text-muted-subtle")
+    expect(minLengthChip).toHaveClass("text-[color:var(--text-secondary)]")
     await user.type(password, "8")
     expect(minLengthChip).toHaveClass("text-brand")
     expect(document.querySelector('[style="width: 75%;"]')).toBeInTheDocument()
@@ -297,8 +318,60 @@ describe("Register page", () => {
     await user.type(confirm, "12345678")
     expect(matchChip).toHaveClass("text-brand")
     await user.clear(confirm)
-    expect(matchChip).toHaveClass("text-text-muted-subtle")
+    expect(matchChip).toHaveClass("text-[color:var(--text-secondary)]")
   })
+
+  it.each(["light", "dark"] as const)(
+    "keeps registration guidance and unsatisfied chips readable in %s mode",
+    async (theme) => {
+      const style = document.createElement("style")
+      style.textContent = `${compiledCss}\n${authCss}`
+      document.head.append(style)
+      const rootClass = document.documentElement.className
+      const bodyClass = document.body.className
+      document.documentElement.classList.toggle("dark", theme === "dark")
+      document.body.classList.toggle("dark", theme === "dark")
+      try {
+        await renderRegister()
+        const card = document.querySelector<HTMLElement>(".auth-card-matte")
+        expect(card).not.toBeNull()
+        const background = getComputedStyle(card!).backgroundColor
+        const nodes = [
+          document.getElementById("register-role-description"),
+          document.getElementById("register-password-hint"),
+          screen.getByText(tAuth("register.passwordChip.minLength")),
+          screen.getByText(tAuth("register.passwordChip.match")),
+        ]
+        for (const node of nodes) {
+          expect(node).not.toBeNull()
+          expect(contrastRatio(getComputedStyle(node!).color, background)).toBeGreaterThanOrEqual(
+            4.5
+          )
+        }
+
+        const user = userEvent.setup()
+        const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+        const confirmation = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+        await user.type(password, "1234567")
+        const strength = await screen.findByText(tAuth("register.passwordStrengthLevel.good"))
+        expect(contrastRatio(getComputedStyle(strength).color, background)).toBeGreaterThanOrEqual(
+          4.5
+        )
+        await user.type(password, "8")
+        await user.type(confirmation, "12345678")
+        for (const chip of nodes.slice(2)) {
+          expect(chip).not.toBeNull()
+          expect(contrastRatio(getComputedStyle(chip!).color, background)).toBeGreaterThanOrEqual(
+            4.5
+          )
+        }
+      } finally {
+        document.documentElement.className = rootClass
+        document.body.className = bodyClass
+        style.remove()
+      }
+    }
+  )
 
   it("suggests and accepts a corrected email domain", async () => {
     const user = userEvent.setup()
@@ -633,10 +706,10 @@ describe("Register behaviour details", () => {
 
     expect(screen.queryByText(tAuth("messages.capsLock"))).not.toBeInTheDocument()
     expect(screen.getByText(tAuth("register.passwordChip.minLength"))).toHaveClass(
-      "text-text-muted-subtle"
+      "text-[color:var(--text-secondary)]"
     )
     expect(screen.getByText(tAuth("register.passwordChip.match"))).toHaveClass(
-      "text-text-muted-subtle"
+      "text-[color:var(--text-secondary)]"
     )
   })
 
@@ -648,7 +721,7 @@ describe("Register behaviour details", () => {
     await user.type(field("fields.confirmPassword"), "password124")
 
     expect(screen.getByText(tAuth("register.passwordChip.match"))).toHaveClass(
-      "text-text-muted-subtle"
+      "text-[color:var(--text-secondary)]"
     )
   })
 

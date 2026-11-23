@@ -68,7 +68,7 @@ describe("MapWeatherBadge defensive branches", () => {
     render(<MapWeatherBadge />)
 
     expect(useTranslationMock).toHaveBeenCalledWith("map")
-    const weatherButton = screen.getByRole("button", { name: "weather.ariaLabel:weather.rain:0" })
+    const weatherButton = screen.getByRole("button", { name: "weather.ariaLabel:weather.rain:0°" })
     expect(weatherButton).toBeInTheDocument()
     expect(screen.getByText("weather.rain")).toBeInTheDocument()
     expect(weatherButton.querySelector("svg")).toHaveClass("lucide-cloud-rain")

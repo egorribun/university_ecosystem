@@ -7,11 +7,12 @@
 
 ### `main` и пакет PR
 
-- `main` = `07b59b1470a916f0dc01872c311e15b0ebba8205`, обычный merge
-  [#1574](https://github.com/egorribun/university_ecosystem/pull/1574) в 15:04:45 UTC. Для PR head
-  `e13694bfc6d26b2a162f80e62ec282be5dfbdee9` проверены все 78 обязательных пар app/context и
-  блокирующий CodeQL. На 15:29 UTC [main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45201148642)
-  в очереди, [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45201147708) прошёл на новом SHA.
+- `main` = `a2d295bc7b710a3db58956841146d43a6b086cbe` после обычного merge
+  [#1576](https://github.com/egorribun/university_ecosystem/pull/1576). На этом SHA прошли
+  [main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892).
+- Для [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152)
+  независимо проверены SHA-256 архива и манифеста, схема и 13 компонентов.
 - Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
   [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
   [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли. У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
@@ -22,10 +23,13 @@
 
 ### Полный Core на `main`
 
-Серия на `15d7cadf4` сброшена. На новом `main` квалифицирующего полного Core пока нет.
-Следующая пара планируется на следующем стабильном SHA `main`.
+На `a2d295bc7b710a3db58956841146d43a6b086cbe` первая попытка [run 45216520095, job 137839027140](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/job/137839027140)
+завершилась неуспешно из-за нестабильного desktop-теста footer с ошибкой консоли. Итог **223 passed, 0 failed, 8 skipped, 1 flaky**.
+Все шесть результатов AUD-154 получены с первой попытки. [Receipt 14842876037](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/artifacts/14842876037)
+имеет SHA-256 `290234f080d1ac92671b8fc551c11209c193b91fe191ed22cd594d54daa3c964`.
+Следующая пара нужна на стабильном SHA `main`.
 
-История серии на `15d7cadf4` приведена ниже.
+Серия на `15d7cadf4` сброшена, её история приведена ниже.
 
 | Запуск | Итог | Receipt и SHA-256 |
 | --- | --- | --- |
@@ -93,8 +97,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | 1. Решение и документы | Выполнен. |
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
 | 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
-| 4. Визуал и performance | Утверждён только визуальный пакет Home12. |
-| 5. Security, ledger, данные | Восстановление DB/S3 backup никогда не запускалось. |
+| 4. Визуал и performance | Утверждён только Home12. На `a2d295bc7` сняты 96 приватных PNG, в 28 вариантах найдены serious `color-contrast` и `label-content-name-mismatch`. Предстоят исправление находок и утверждение пакета. |
+| 5. Security, ledger, данные | Предстоят подготовка avatar и восстановление DB/S3. Оба локальных owned-стенда остановлены, данные сохранены. |
 | 6. Выпуск | Не начат. |
 
 ## Решения владельца (действующие)
@@ -124,8 +128,8 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Изменение B2 для зума карты локально прошло тесты. Эффект относительно hosted-порога 50 мс ещё не подтверждён.
+1. Исправить serious-находки визуального аудита и разобраться с flaky desktop footer.
 2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
 3. Разобрать нестабильную доставку Web Push.
-4. Этапы 4 и 5 одним стендом на новом `main`: сначала скриншоты, затем restore.
+4. Повторить пакет скриншотов и выполнить restore на том же локальном стенде.
 5. Сохранять scoped DAST-доказательства для AUD-381.

@@ -38,21 +38,19 @@ export function MapWeatherBadge() {
   const icons = CONDITION_ICONS[data.condition] ?? CONDITION_ICONS.clear!
   const Icon = data.isDay ? icons.day : icons.night
   const conditionText = t(`weather.${data.condition}`)
+  const temperatureText = `${data.temperature > 0 ? "+" : ""}${data.temperature}°`
 
   return (
     <div className="relative mb-4">
       <button
         type="button"
         aria-expanded={isExpanded}
-        aria-label={t("weather.ariaLabel", { condition: conditionText, temp: data.temperature })}
+        aria-label={t("weather.ariaLabel", { condition: conditionText, temp: temperatureText })}
         className="map-weather-badge cursor-pointer"
         onClick={() => setIsExpanded((prev) => !prev)}
       >
         <Icon size={14} strokeWidth={2.5} />
-        <span className="font-bold">
-          {data.temperature > 0 ? "+" : ""}
-          {data.temperature}°
-        </span>
+        <span className="font-bold">{temperatureText}</span>
         <span className="hidden sm:inline text-[var(--text-tertiary)]">{conditionText}</span>
       </button>
 
