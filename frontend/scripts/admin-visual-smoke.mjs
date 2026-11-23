@@ -1035,9 +1035,26 @@ async function main() {
   })
 }
 
+// Only fixed login-preflight messages are echoed; any other message may carry
+// URLs or response text, so only the error class is reported.
+const SAFE_FATAL_MESSAGES = [
+  /^Required cookie [A-Za-z0-9_]+ is missing$/u,
+  /^csrf-cookie failed: HTTP \d{3}$/u,
+  /^Login failed: HTTP (?:\d{3}|null)$/u,
+  /^Login request failed$/u,
+]
+
+export function describeAdminSmokeFatalError(error) {
+  const message = typeof error?.message === "string" ? error.message : ""
+  if (SAFE_FATAL_MESSAGES.some((pattern) => pattern.test(message))) return message
+  const name =
+    typeof error?.name === "string" && /^[A-Za-z]+$/u.test(error.name) ? error.name : "Error"
+  return `${name} (message withheld)`
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch((err) => {
-    console.error("Fatal error: admin visual capture failed.")
+    console.error(`Fatal error: admin visual capture failed: ${describeAdminSmokeFatalError(err)}`)
     process.exitCode = Number.isInteger(err?.visualExitCode) ? err.visualExitCode : 1
   })
 }

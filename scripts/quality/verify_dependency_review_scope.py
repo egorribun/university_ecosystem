@@ -279,7 +279,7 @@ TRUFFLEHOG_PURL_TYPE = "githubactions"
 TRUFFLEHOG_PURL_NAMESPACE, _, TRUFFLEHOG_PURL_NAME = TRUFFLEHOG_ACTION_NAME.partition(
     "/"
 )
-TRUFFLEHOG_LICENSE_SOURCE = "https://github.com/trufflesecurity/trufflehog/blob/ea68ca03c865c5f324e86e849ced20ed3cf9dbbb/LICENSE"
+TRUFFLEHOG_LICENSE_SOURCE = "https://github.com/trufflesecurity/trufflehog/blob/3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc/LICENSE"
 TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
     "owner": "egorribun",
     "decided": date(2026, 11, 5),

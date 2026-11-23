@@ -17430,7 +17430,23 @@ def _frozen_rc_selector_workflow_predecessor(actual: bytes) -> bytes:
     return actual
 
 
+# Dependabot #1572 (adopted 2026-11-23) refreshed only the setup-helm pin here.
+_NATS_WORKFLOW_HELM_PIN = (
+    b"azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1",
+    b"azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0",
+)
+
+
+def _nats_helm_pin_workflow_predecessor(actual: bytes) -> bytes:
+    """Restore the reviewed pin; the caller still validates every other byte."""
+    previous, current = _NATS_WORKFLOW_HELM_PIN
+    if actual.count(current) == 1 and previous not in actual:
+        return actual.replace(current, previous, 1)
+    return actual
+
+
 def _nats_sqlite_workflow_predecessor(actual: bytes) -> bytes:
+    actual = _nats_helm_pin_workflow_predecessor(actual)
     actual = _frozen_rc_selector_workflow_predecessor(actual)
     assert hashlib.sha256(actual).digest() == _NATS_SQLITE_CURRENT, (
         "exact reviewed NATS workflow SQLite postimage changed"
@@ -34921,7 +34937,10 @@ def test_ammonia_rebind_preserves_exact_predecessor() -> None:
         actual = _rustsec_2026_source_predecessor(path, (root / path).read_bytes())
         assert _projected_sha256(actual).hex() == current
     ledger_bytes = _rustsec_2026_source_predecessor(
-        _AMMONIA_LEDGER_PATH, (root / _AMMONIA_LEDGER_PATH).read_bytes()
+        _AMMONIA_LEDGER_PATH,
+        _helm_pin_source_predecessor(
+            _AMMONIA_LEDGER_PATH, (root / _AMMONIA_LEDGER_PATH).read_bytes()
+        ),
     )
     # The newer actions layer owns the live ledger; project through it first.
     assert (
@@ -34967,7 +34986,7 @@ def test_ammonia_projection_rejects_drift(
         )
         policy = _rustsec_2026_policy_predecessor(policy)
         policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
-        expected_historical_case = copy.deepcopy(policy)
+        expected_historical_case = _helm_pin_policy_predecessor(copy.deepcopy(policy))
 
         def exact_historical_case(candidate: dict[str, Any]) -> dict[str, Any]:
             assert candidate == expected_historical_case
@@ -36431,7 +36450,9 @@ def test_nats_sqlite_isolation_preserves_other_database_steps() -> None:
     previous = _nats_sqlite_workflow_predecessor(actual)
     assert previous.replace(
         _NATS_SQLITE_PREDECESSOR, _NATS_SQLITE_BLOCK, 1
-    ) == _frozen_rc_selector_workflow_predecessor(actual)
+    ) == _frozen_rc_selector_workflow_predecessor(
+        _nats_helm_pin_workflow_predecessor(actual)
+    )
     job = yaml.safe_load(actual)["jobs"]["integration-tests"]
     old_job = yaml.safe_load(previous)["jobs"]["integration-tests"]
     assert job["env"] == old_job["env"]
@@ -37968,7 +37989,429 @@ _NOV21_AUDIT_REVERSALS = (
 )
 
 
+# Exact source predecessor for the visual package route and readiness extension.
+# The Semgrep context and companion remain unchanged; no policy row is rebound.
+_VISUAL_PACKAGE_CURRENT_SHA256 = bytes.fromhex(
+    "81 0d 1b f6 fc 2f 44 a2 be 63 bd 2a 9d ac ff dd "
+    "7f a9 d3 1b 33 fd 1e a4 eb 72 f8 5e a9 40 2d fd"
+)
+# Each tuple replaces the half-open byte range in the exact current source.
+_VISUAL_PACKAGE_REVERSE_EDITS = (
+    (
+        276,
+        350,
+        (
+            b" * /dashboard is\n * the first target (highest traffi"
+            b"c; W128 SSR enabled it).\n"
+        ),
+    ),
+    (2894, 2919, b""),
+    (7595, 7800, b""),
+    (
+        7972,
+        8047,
+        (
+            b"    routes.some(\n      (route) =>\n        route === "
+            b"null || (!DEFAULT_ROUTE_SET.has(route) && !SEEDED_CH"
+            b"AT_DETAIL_ROUTE.test(route))\n    )\n"
+        ),
+    ),
+    (16387, 19308, b""),
+    (19433, 19508, (b"  if (!captureConfig) return route\n")),
+    (53066, 53163, b""),
+    (53501, 53599, b""),
+    (
+        66880,
+        67008,
+        b"async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {\n",
+    ),
+    (67095, 67270, b""),
+    (
+        67307,
+        67451,
+        (b"    consoleMessages.push({ type: msg.type(), text: msg.text() })\n"),
+    ),
+    (
+        67600,
+        67954,
+        (
+            b"    networkRequests.push({ method: req.method(), url"
+            b": safeAuditUrl(req.url()) })\n"
+        ),
+    ),
+    (
+        67995,
+        68363,
+        (
+            b"    const responseUrl = safeAuditUrl(res.url())\n    "
+            b"const idx = networkRequests.findLastIndex((r) => r.u"
+            b'rl === responseUrl && !("status" in r))\n    if (idx '
+            b">= 0) networkRequests[idx].status = res.status()\n"
+        ),
+    ),
+    (68898, 68913, (b"  let finalUrl = null\n")),
+    (70769, 71495, b""),
+    (
+        73262,
+        73333,
+        (
+            b"      const browserState = await page.evaluate(() =>"
+            b" ({\n        locale: globalThis.document.documentElem"
+            b'ent.getAttribute("lang"),\n        theme: globalThis.'
+            b"document.documentElement.dataset.colorScheme,\n      "
+            b"  width: globalThis.innerWidth,\n        height: glob"
+            b"alThis.innerHeight,\n      }))\n      visualConfigurat"
+            b"ionMatches =\n        browserState.locale === capture"
+            b"Config.locale &&\n        browserState.theme === capt"
+            b"ureConfig.theme &&\n        browserState.width === ca"
+            b"ptureConfig.width &&\n        browserState.height ==="
+            b" captureConfig.height\n"
+        ),
+    ),
+    (73457, 73748, b""),
+    (78448, 80721, b""),
+    (
+        80931,
+        81682,
+        (
+            b"  const errors = consoleMessages.filter((m) => m.typ"
+            b'e === "error" || m.type === "pageerror")\n  const fai'
+            b"ledNetworkRequests = networkRequests.filter(\n    (re"
+            b'quest) => typeof request.status === "number" && requ'
+            b"est.status >= 400\n  )\n"
+        ),
+    ),
+    (
+        82113,
+        82113,
+        (
+            b"  const redirectedToLogin =\n    finalUrl && (finalUr"
+            b'l.endsWith("/login") || finalUrl.includes("/login?")'
+            b")\n\n  if (\n    canCaptureAuthenticatedScreenshot({\n  "
+            b"    captureConfig,\n      visualConfigurationMatches,"
+            b"\n      routePath,\n      httpStatus,\n      redirected"
+            b"ToLogin,\n      finalUrl,\n      dashboardCardsVisible"
+            b",\n      newsReadinessRequired,\n      newsReady,\n    "
+            b"  eventsReadinessRequired,\n      eventsReady,\n      "
+            b"scheduleReadinessRequired,\n      scheduleReady,\n    "
+            b"})\n  ) {\n    if (captureConfig.width === 1440) {\n   "
+            b"   try {\n        navbarGeometry = await page.evaluat"
+            b"e(measureAuthenticatedNavbarGeometry)\n      } catch "
+            b"{\n        navbarGeometry = null\n      }\n    }\n    co"
+            b"nst filename = `${buildAuthenticatedCaptureBasename("
+            b"routePath, captureConfig)}.png`\n    screenshotPath ="
+            b" path.join(outDir, filename)\n    try {\n      await p"
+            b"age.screenshot({ path: screenshotPath, fullPage: fal"
+            b"se, timeout: 10_000 })\n    } catch (error) {\n      s"
+            b"creenshotPath = null\n      visualConfigurationError "
+            b"= `screenshot_failed:${redactDiagnostic(error.messag"
+            b"e)}`\n    }\n  }\n"
+        ),
+    ),
+    (82342, 82364, b""),
+    (82468, 82594, b""),
+    (84749, 84767, b""),
+    (84862, 84972, b""),
+    (
+        86521,
+        86599,
+        b'  console.log("Wave 138 SW3 \xe2\x80\x94 visual audit (authed Docker chain + axe-core a11y)")\n',
+    ),
+    (86895, 87094, b'    const auth = s.redirectedToLogin ? "REDIRECT" : "AUTHED"\n'),
+    (
+        88910,
+        89097,
+        b'      `  Matrix: ${captureCount} authenticated captures (${captureMatrix.locales.join(",")}; ${captureMatrix.themes.join(",")}; ${captureMatrix.widths.join(",")}px x ${captureMatrix.height}px)`\n',
+    ),
+    (
+        92903,
+        92903,
+        (
+            b"      let loginResult\n      try {\n        loginResul"
+            b"t = await performLogin(context, ownSession, credenti"
+            b"als)\n        if (captureMatrix) await verifySyntheti"
+            b"cStudent(context, credentials.email)\n      } catch ("
+            b"err) {\n        if (err instanceof RS256Error) throw "
+            b"setVisualExitCode(err, 3)\n        throw setVisualExi"
+            b"tCode(err, 1)\n      }\n\n      await writeFile(\n      "
+            b'  path.join(outputDir, "login.json"),\n        JSON.s'
+            b"tringify(createAuthenticatedLoginSidecar(loginResult"
+            b"), null, 2)\n      )\n\n      if (captureMatrix) {\n    "
+            b"    await writeFile(\n          path.join(outputDir, "
+            b'"matrix.json"),\n          JSON.stringify(\n          '
+            b'  {\n              evidenceKind: "real-authenticated-'
+            b'browser-pinned-weather-fixture",\n              exter'
+            b"nalWeatherFixture: {\n                route: PINNED_W"
+            b'EATHER_ROUTE,\n                source: "inline pinned'
+            b' Open-Meteo forecast",\n              },\n            '
+            b"  browserTransport: remoteBrowserConnection\n        "
+            b'        ? "playwright-websocket"\n                : "'
+            b'local-bundled-chromium",\n              remoteBrowser'
+            b"Required: process.env.VISUAL_REMOTE_CHROMIUM_REQUIRE"
+            b'D === "1",\n              sourceSha: captureMatrix.so'
+            b"urceSha,\n              origin: captureMatrix.origin,"
+            b"\n              routes,\n              ...(captureMatr"
+            b"ix.selectedRoute\n                ? { selectedRoute: "
+            b"captureMatrix.selectedRoute }\n                : {}),"
+            b"\n              locales: captureMatrix.locales,\n     "
+            b"         themes: captureMatrix.themes,\n             "
+            b" widths: captureMatrix.widths,\n              height:"
+            b" captureMatrix.height,\n              screenshots: tr"
+            b"ue,\n            },\n            null,\n            2\n "
+            b"         )\n        )\n      }\n\n      await page.close"
+            b"()\n\n"
+        ),
+    ),
+    (
+        93349,
+        95471,
+        (
+            b"      for (const captureConfig of configurations) {\n"
+            b"        if (captureConfig) await setStudentCapturePr"
+            b"eferences(context, captureConfig)\n        for (const"
+            b" route of routes) {\n"
+        ),
+    ),
+    (95944, 96020, b"            captureMatrix?.sourceSha ?? sourceSha\n"),
+    (96205, 96348, b""),
+    (97290, 97310, (b"        }\n      }\n")),
+    (
+        97342,
+        97807,
+        (
+            b"      const {\n        failedRoutes: failed,\n        "
+            b"hydrationIssues,\n        axeErrors,\n        axeIssue"
+            b"s,\n        runtimeIssues,\n      } = classifyAuthenti"
+            b"catedAuditSummaries(summaries)\n"
+        ),
+    ),
+    (
+        98075,
+        98181,
+        (
+            b"            `${failed.length}/${summaries.length} ro"
+            b"utes failed (non-200 OR redirected to /login)`\n"
+        ),
+    ),
+    (
+        106320,
+        106470,
+        (
+            b"      summary.viewportWidth === 1440 && !isAuthentic"
+            b"atedNavbarGeometryValid(summary.navbarGeometry)\n"
+        ),
+    ),
+)
+
+
+def _visual_package_source_predecessor(path: str, actual: bytes) -> bytes:
+    if path != _NOV21_AUDIT:
+        return actual
+    digest = hashlib.sha256(actual).digest()
+    prior_epochs = {
+        *_NOV21_SOURCE_PINS[path],
+        *_VISUAL_READINESS_SOURCE_PINS[path],
+    }
+    if digest in prior_epochs:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == _VISUAL_PACKAGE_CURRENT_SHA256, message
+    pieces = []
+    cursor = 0
+    for start, end, previous in _VISUAL_PACKAGE_REVERSE_EDITS:
+        assert cursor <= start <= end <= len(actual), message
+        pieces.extend((actual[cursor:start], previous))
+        cursor = end
+    pieces.append(actual[cursor:])
+    restored = b"".join(pieces)
+    assert hashlib.sha256(restored).digest() == _NOV21_SOURCE_PINS[path][1], message
+    return restored
+
+
+def test_visual_package_projection_restores_exact_predecessor() -> None:
+    source = (Path(__file__).resolve().parents[1] / _NOV21_AUDIT).read_bytes()
+    restored = _visual_package_source_predecessor(_NOV21_AUDIT, source)
+    assert hashlib.sha256(restored).digest() == _NOV21_SOURCE_PINS[_NOV21_AUDIT][1]
+    assert _visual_package_source_predecessor(_NOV21_AUDIT, restored) == restored
+    prior = _nov21_source_predecessor(_NOV21_AUDIT, restored)
+    assert _visual_package_source_predecessor(_NOV21_AUDIT, prior) == prior
+    older = _visual_readiness_source_predecessor(_NOV21_AUDIT, prior)
+    assert _visual_package_source_predecessor(_NOV21_AUDIT, older) == older
+    assert _visual_package_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+def test_visual_package_projection_rejects_unrelated_drift() -> None:
+    source = (Path(__file__).resolve().parents[1] / _NOV21_AUDIT).read_bytes()
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _visual_package_source_predecessor(_NOV21_AUDIT, source + b"\n")
+
+
+@pytest.mark.parametrize("mutation", ["appended", "changed"])
+def test_visual_package_projection_rejects_spoofed_postimage(
+    mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (Path(__file__).resolve().parents[1] / _NOV21_AUDIT).read_bytes()
+    changed = source + b"\n" if mutation == "appended" else b"!" + source[1:]
+    monkeypatch.setitem(
+        globals(), "_VISUAL_PACKAGE_CURRENT_SHA256", hashlib.sha256(changed).digest()
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _visual_package_source_predecessor(_NOV21_AUDIT, changed)
+
+
+# Dependabot #1572 (adopted by the owner on 2026-11-23) moves azure/setup-helm
+# v5.0.1 -> v5.1.0. The reusable security audit pin is asserted exactly by
+# tests/test_quality_workflow_contract.py, the Semgrep row-13 companion, so its
+# companion digest (one ledger occurrence) and the SHA-1 identity of that hex in
+# policy record 505 are rebound one-to-one. No identity is added and the inventory
+# stays at 524 records. This is the newest projection: it restores the exact
+# predecessor before the visual package layer runs.
+_HELM_PIN_PATH = "tests/test_quality_workflow_contract.py"
+_HELM_PIN_LEDGER_PATH = "quality/semgrep-dispositions.json"
+_HELM_PIN_ROW = 505
+_HELM_PIN_SOURCE_SHA256 = (
+    # (previous, current)
+    _rust_hex(
+        "82 0d c7 08 df db 1f 5f 72 f6 b7 f4 de 0d 73 0c e5 c5 9c 4a 7f ab 09 69 95 e4 e4 e2 4f a1 7a d1"
+    ),
+    _rust_hex(
+        "48 10 b4 96 79 5b 7c 6b 17 6a 3c db 5b c9 b7 3b df 0d 8f 5d 23 c9 7d 4f 99 e8 57 68 cc 66 82 1e"
+    ),
+)
+_HELM_PIN_LEDGER_SHA256 = (
+    # (previous, current)
+    bytes.fromhex(
+        _rust_hex(
+            "f1 9d d5 6b f6 52 05 f7 bf 4f 67 d5 4e 97 35 9a aa b9 ed 77 30 d0 d3 73 f7 db dc e8 46 17 c5 cc"
+        )
+    ),
+    bytes.fromhex(
+        _rust_hex(
+            "06 c7 02 bf 07 83 4d 39 f7 91 34 a5 e3 14 ae ed 97 34 14 12 21 db 03 ac 18 4c 0a 3e d7 4b 8e 68"
+        )
+    ),
+)
+_HELM_PIN_REVERSAL = (
+    b'"azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e"',
+    b'"azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"',
+)
+# Canonical SHA-256 of policy record 505 after the rebind; approval metadata is
+# otherwise unchanged.
+_HELM_PIN_ROW_AFTER_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "34 5a d0 8d bb eb c5 63 79 7c 74 12 c4 35 e6 9c 4e e2 6e 2b a4 96 a0 9b 4e d9 e3 8d 5e 83 64 83"
+    )
+)
+
+
+def _helm_pin_source_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    previous_hex, current_hex = _HELM_PIN_SOURCE_SHA256
+    if path == _HELM_PIN_PATH:
+        if hashlib.sha256(actual).hexdigest() != current_hex:
+            # Older epochs and changed bytes are validated by the older layers.
+            return actual
+        current, previous = _HELM_PIN_REVERSAL
+        assert actual.count(current) == 1 and previous not in actual, message
+        restored = actual.replace(current, previous, 1)
+        assert hashlib.sha256(restored).hexdigest() == previous_hex, message
+        return restored
+    if path == _HELM_PIN_LEDGER_PATH:
+        previous_ledger, current_ledger = _HELM_PIN_LEDGER_SHA256
+        digest = hashlib.sha256(actual).digest()
+        if digest != current_ledger:
+            # Older ledger layers validate their own exact inputs.
+            return actual
+        current = current_hex.encode("ascii")
+        assert actual.count(current) == 1, message
+        restored = actual.replace(current, previous_hex.encode("ascii"), 1)
+        assert hashlib.sha256(restored).digest() == previous_ledger, message
+        return restored
+    return actual
+
+
+def _helm_pin_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    records = policy["records"]
+    if len(records) <= _HELM_PIN_ROW:
+        # Older layers own the record inventory checks.
+        return policy
+    row = records[_HELM_PIN_ROW]
+    identity = row["identity"]
+    previous_hex, current_hex = _HELM_PIN_SOURCE_SHA256
+    if identity["hashed_secret_bytes"] != _nov15_identity(current_hex):
+        # Older layers reject unrecognized or otherwise changed records.
+        return policy
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _HELM_PIN_ROW_AFTER_SHA256, (
+        "setup-helm companion disposition approval metadata changed"
+    )
+    assert identity["path"] == _HELM_PIN_LEDGER_PATH
+    assert identity["type"] == "Hex High Entropy String"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous_hex)
+    return policy
+
+
+def test_helm_pin_rebind_restores_exact_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    previous_hex, current_hex = _HELM_PIN_SOURCE_SHA256
+    source = (root / _HELM_PIN_PATH).read_bytes()
+    assert hashlib.sha256(source).hexdigest() == current_hex
+    restored = _helm_pin_source_predecessor(_HELM_PIN_PATH, source)
+    assert hashlib.sha256(restored).hexdigest() == previous_hex
+    assert _helm_pin_source_predecessor(_HELM_PIN_PATH, restored) == restored
+    ledger = (root / _HELM_PIN_LEDGER_PATH).read_bytes()
+    assert hashlib.sha256(ledger).digest() == _HELM_PIN_LEDGER_SHA256[1]
+    companions = [
+        item["sha256"]
+        for disposition in json.loads(ledger)["dispositions"]
+        for item in disposition.get("companions", [])
+        if item["path"] == _HELM_PIN_PATH
+    ]
+    assert companions == [current_hex]
+    restored_ledger = _helm_pin_source_predecessor(_HELM_PIN_LEDGER_PATH, ledger)
+    assert hashlib.sha256(restored_ledger).digest() == _HELM_PIN_LEDGER_SHA256[0]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert policy["records"][_HELM_PIN_ROW]["identity"]["hashed_secret_bytes"] == (
+        _nov15_identity(current_hex)
+    )
+    previous_policy = _helm_pin_policy_predecessor(policy)
+    assert previous_policy["records"][_HELM_PIN_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _nov15_identity(previous_hex)
+    assert _helm_pin_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+@pytest.mark.parametrize("mutation", ["source_extra", "ledger_extra", "metadata"])
+def test_helm_pin_rebind_rejects_drift(mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    if mutation == "metadata":
+        policy = json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
+        policy["records"][_HELM_PIN_ROW]["expires_on"] = "2027-12-31"
+        with pytest.raises(AssertionError, match="approval metadata changed"):
+            _helm_pin_policy_predecessor(policy)
+        return
+    if mutation == "ledger_extra":
+        ledger = (root / _HELM_PIN_LEDGER_PATH).read_bytes()
+        # A changed ledger is not this layer's postimage; older layers reject it.
+        assert _helm_pin_source_predecessor(_HELM_PIN_LEDGER_PATH, ledger + b"\n") == (
+            ledger + b"\n"
+        )
+        return
+    source = (root / _HELM_PIN_PATH).read_bytes() + b"\n"
+    assert _helm_pin_source_predecessor(_HELM_PIN_PATH, source) == source
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _nov17_integration_predecessor(_HELM_PIN_PATH, source)
+
+
 def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _helm_pin_source_predecessor(path, actual)
+    actual = _visual_package_source_predecessor(path, actual)
     actual = _rustsec_2026_source_predecessor(path, actual)
     actual = _npm_projection_source_predecessor(path, actual)
     rotation = _AUD154_ROTATION_SOURCE_PINS.get(path)
@@ -38013,7 +38456,9 @@ def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
 
 def _nov21_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _nats_inventory_policy_predecessor(
-        _npm_projection_policy_predecessor(_rustsec_2026_policy_predecessor(policy))
+        _npm_projection_policy_predecessor(
+            _rustsec_2026_policy_predecessor(_helm_pin_policy_predecessor(policy))
+        )
     )
     records = restored["records"]
     for row_index, companion in _NOV21_POLICY_ROWS.items():
@@ -38881,7 +39326,13 @@ def _npm_companion_live_digest(companion: dict[str, str], source: bytes) -> str:
 def _npm_projection_disk_bytes(path: str) -> bytes:
     root = Path(__file__).resolve().parents[1]
     return _npm_projection_source_predecessor(
-        path, _rustsec_2026_source_predecessor(path, (root / path).read_bytes())
+        path,
+        _rustsec_2026_source_predecessor(
+            path,
+            _visual_package_source_predecessor(
+                path, _helm_pin_source_predecessor(path, (root / path).read_bytes())
+            ),
+        ),
     )
 
 
@@ -38925,7 +39376,10 @@ def test_npm_projection_companions_are_bound_to_current_manifests() -> None:
 def test_npm_projection_ledger_restores_exact_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     actual = _rustsec_2026_source_predecessor(
-        _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+        _NPM_PROJECTION_LEDGER,
+        _helm_pin_source_predecessor(
+            _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+        ),
     )
     previous, current = _NPM_PROJECTION_LEDGER_SHA256
     assert hashlib.sha256(actual).digest() == current
@@ -38944,7 +39398,10 @@ def test_npm_projection_ledger_rejects_changed_companions_even_with_spoofed_hash
 ) -> None:
     root = Path(__file__).resolve().parents[1]
     actual = _rustsec_2026_source_predecessor(
-        _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+        _NPM_PROJECTION_LEDGER,
+        _helm_pin_source_predecessor(
+            _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+        ),
     )
     _row, path, projection, _whole, _size, projected, _before = (
         _NPM_PROJECTION_COMPANIONS[companion_index]
@@ -39409,7 +39866,9 @@ def _rustsec_2026_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
 
 def test_rustsec_2026_rebind_restores_exact_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
-    ledger = (root / _RUSTSEC_2026_LEDGER).read_bytes()
+    ledger = _helm_pin_source_predecessor(
+        _RUSTSEC_2026_LEDGER, (root / _RUSTSEC_2026_LEDGER).read_bytes()
+    )
     assert (
         hashlib.sha256(
             _rustsec_2026_source_predecessor(_RUSTSEC_2026_LEDGER, ledger)

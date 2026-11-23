@@ -7,59 +7,32 @@
 
 ### `main` и пакет PR
 
-- `main` = `bfc2b1a3272ad50c8582a2778ae47fb2dee06cd6`, обычный merge
-  [#1570](https://github.com/egorribun/university_ecosystem/pull/1570) после 78 обязательных проверок
-  и CodeQL на `8b8ec3593760a7967ff5b13a5c8db324fd3a9673`. Дерево совпадает с проверенным деревом PR.
-- [PR Core smoke и NATS](https://github.com/egorribun/university_ecosystem/actions/runs/45120967066/job/137514397672)
-  прошли на `1ad2ec020`. Итог smoke — 52 passed и 2 skipped.
-  [Receipt 14794167648](https://github.com/egorribun/university_ecosystem/actions/runs/45120967066/artifacts/14794167648)
-  `86043476651bd0598c99cb13acfdb5bca4748e4bd3417d134016d63abf8f3aae`.
-- [Realtime/visual](https://github.com/egorribun/university_ecosystem/actions/runs/45120967166/job/137514399729)
-  прошёл на `8b8ec359`, включая 24 визуальных случая. У `/events` EN/light/390 ошибок запросов и консоли нет.
-- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45124348128) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45124347868) прошли на `bfc2b1a32`.
-  У [quality evidence 14795997695](https://github.com/egorribun/university_ecosystem/actions/runs/45124348128/artifacts/14795997695)
-  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов без пропавших отчётов.
-- [#1548](https://github.com/egorribun/university_ecosystem/pull/1548) закрыт без merge, #1557–#1561 открыты.
+- `main` = `15d7cadf46b4846b2ec56c6a054993357351b226`, обычный merge
+  [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли; у [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
+  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов.
+- Все черновики облачного агента и старые черновики закрыты по решению владельца 2026-11-23: #1426,
+  #1506, #1507, #1557–#1561, #1563, #1565. Обновления Dependabot #1571 (кроме @lhci/cli) и #1572
+  перенесены коммитами владельца.
 
 ### Полный Core на `main`
 
-[Core 45124404884 на `bfc2b1a32`](https://github.com/egorribun/university_ecosystem/actions/runs/45124404884/job/137525350714)
-стартовал в 09:29:12 по Стамбулу. Итог — 223 passed, 0 failed, 8 skipped, 1 flaky. Все шесть AUD-154
-прошли с первой попытки. Desktop schedule reflow упал при возврате фокуса после Escape. Стенд остановлен.
-[Receipt 14796648840](https://github.com/egorribun/university_ecosystem/actions/runs/45124404884/artifacts/14796648840)
-`1c9231101e1b8dbf9a5251b2f0fc47478c1633b6603bb59ddae2b763e84e6439` проверен.
-
-[Первый полный Core на `ea78b1fcf`](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/job/137418821836)
-начался 2026-11-23 в 03:44:22 по Стамбулу и завершился с 222 passed, 0 failed, 8 skipped и 2 flaky.
-Все шесть AUD-154 прошли с первой попытки. Повтор потребовался мобильным сценариям pinch на карте
-и доставке обычного сообщения через Web Push. Стенд остановлен, серия зелёных прогонов ещё не началась.
-[Receipt 14782648878](https://github.com/egorribun/university_ecosystem/actions/runs/45090531201/artifacts/14782648878)
-`8f6448f3af9a8c704f567817f263e5058b1422b336ee268b3b15538b54a4bb16`.
-В журнале worker есть 410 для записи подписки моложе 10 секунд, связь с этим сбоем не установлена.
-[Core 45103643982 на `facb80d35`](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/job/137459900882)
-стартовал в 06:03:06 по Стамбулу. Результат — 221 passed, 0 failed, 8 skipped, 3 flaky; все шесть AUD-154
-прошли с первой попытки. Повтор потребовался desktop-сценариям notification topics, direct Web Push и
-schedule reflow. Стенд остановлен. [Receipt 14788721066](https://github.com/egorribun/university_ecosystem/actions/runs/45103643982/artifacts/14788721066)
-`beae20efc8d46c600be636cdfc8a5f071f973d8b0f419df076e111ee16bc27ee` проверен. Серия пока не началась.
-
-Прежняя серия на `71ea9616c` завершилась после изменения `main` перед вторым результатом.
+Серия на `15d7cadf4` не набрана; следующая начинается на новом `main` после merge текущего PR.
 
 | Запуск | Итог | Receipt и SHA-256 |
 | --- | --- | --- |
-| [45064476734, job 137337440218](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/job/137337440218) | **224 passed, 0 failed, 8 skipped, 0 flaky** | [14772751398](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/artifacts/14772751398) `1499f38b11f6b1cd1177ccb09cafa05ef12cb4d50fdd2f75fe4829355cf4a816` |
-| [45076129899, job 137373641322](https://github.com/egorribun/university_ecosystem/actions/runs/45076129899/job/137373641322) | **221 passed, 1 failed, 8 skipped, 2 flaky** | [14776214511](https://github.com/egorribun/university_ecosystem/actions/runs/45076129899/artifacts/14776214511) `739c2603ca0de9c84018555e8e1460891b6198cf40ee98a1d087d13e7b46637c` |
+| [45139263654, job 137572924120](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/job/137572924120), `workflow_dispatch` | **224 passed, 0 failed, 8 skipped, 0 flaky** | [14803902142](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/artifacts/14803902142) `2dbc08cb2a65c1e46f34b9c7e87d92c40a43423d2ca3b991960c6df2c3013dce` |
+| [45166882952](https://github.com/egorribun/university_ecosystem/actions/runs/45166882952), `workflow_dispatch` | отменён, результата Core нет | — |
+| [45169213982, job 137709440731](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/job/137709440731), `schedule` | **222 passed, 1 failed, 8 skipped, 1 flaky** | [14824608244](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/artifacts/14824608244) `90d42470c6b089514deb5c9dffbda817a042c7b1c424b6510d78bb0d097c506c` (digest GitHub) |
 
-- Во втором запуске все шесть именных случаев AUD-154, включая desktop и mobile read-receipt,
-  прошли с первой попытки. Сбои первой попытки: mobile Story memory, desktop notification-topics
-  и mobile push; итог — один failed и два flaky. Серия зелёных полных Core сброшена.
-- В локальном Chrome зависшие ответы изображений удерживали закрытую разметку Stories и слушателей.
-  После очистки источников изображения при отсоединении рост исчез в пяти циклах с незавершёнными
-  ответами. Причину hosted-сбоя нужно подтвердить следующим полным Core.
-- В ограниченной выборке журнала worker есть ответ провайдера `410` с `subscription_age=lt_10s`.
-  Этот класс отражает возраст серверной DB-записи, а не установленную причину ответа. Отпечаток
-  endpoint в журнале не совпадает с endpoint сбоя desktop topics; endpoint mobile в доказательствах
-  не записан. Связь наблюдения 410 со сбоями доставки не установлена.
+- Run 45166882952: attempt 1 завис на установке Chromium (шаг 9 шёл 82 минуты вместо обычных
+  ~36 секунд) и отменён до старта стенда. Attempt 2 отменён до старта, чтобы не дублировать плановый
+  прогон и не нарушить двухчасовой интервал.
+- В плановом прогоне все шесть случаев AUD-154 прошли с первой попытки. Упал mobile
+  `map-zoom-longtask`: long task 52–55 мс при пороге 50 мс в обеих попытках (фаза обновления камеры
+  после клика). Mobile notification topics прошёл со второй попытки: push `news` не пришёл в первой.
+- Нестабильность карты на mobile и доставки Web Push уже встречалась в прогонах 2026-11-23 на `ea78b1fcf`
+  и `facb80d35`.
 
 ### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
 
@@ -143,8 +116,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 ## Следующие шаги
 
-1. Разобрать возврат фокуса после Escape на `bfc2b1a32`, затем проверить новую серию Core.
-2. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
-   не менее двух часов между запусками и всеми именными случаями; затем оценить доказательства по
-   критерию аудита.
-3. Сохранять scoped DAST-доказательства для AUD-381 и проверять требования этапов 3–6 по мастер-плану.
+1. После merge текущего PR запустить новую пару полных Core на новом `main` с интервалом не менее двух часов.
+2. Разобрать long task зума карты на mobile и нестабильную доставку Web Push.
+3. Этапы 4 и 5 одним стендом на новом `main`: сначала скриншоты, затем restore.
+4. Сохранять scoped DAST-доказательства для AUD-381.

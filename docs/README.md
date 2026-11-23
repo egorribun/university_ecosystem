@@ -82,7 +82,6 @@ The formal total is **511/512 (99.8%) accepted or resolved, 1 open**: **1S / 0P 
 - Audit material:
   - [audit index and retention policy](audits/INDEX.md)
   - [full platform audit, October 2026](audits/AUDIT-2026-10.md)
-  - [scoped review template](superpowers/plans/AUDIT_PROMPT.md)
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
 Legacy audit and plan archives were reconciled and removed from the working tree, without rewriting Git

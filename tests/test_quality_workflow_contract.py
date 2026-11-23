@@ -1219,7 +1219,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
 
     helm_setup = next(step for step in steps if step.get("name") == "Set up Helm")
     assert helm_setup["uses"] == (
-        "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"
+        "azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e"
     )
     assert re.fullmatch(r"4\.2\.\d+", str(helm_setup["with"]["version"]))
 

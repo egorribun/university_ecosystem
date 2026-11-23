@@ -130,7 +130,7 @@ jobs:
       - name: Install wasm-pack
         # Use the rustwasm installer; the alternate installer can resolve to a
         # retired download URL.
-        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: wasm-pack@0.15.0
 
@@ -207,9 +207,20 @@ jobs:
         working-directory: frontend
         run: bash ../scripts/ci/install-playwright-with-deps.sh chromium chrome
 
+      - name: Generate masked CSRF signing key
+        # Signed Double-Submit issues the `_csrf_anon_nonce` binding cookie that
+        # the shared browser login requires. The key exists only for this run.
+        id: csrf_signing_key
+        shell: bash
+        run: |
+          key="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+          printf '::add-mask::%s\n' "$key"
+          printf 'value=%s\n' "$key" >> "$GITHUB_OUTPUT"
+
       - name: Start backend
         env:
           JWT_ISSUER: university-ecosystem
+          CSRF_HMAC_SECRET: ${{ steps.csrf_signing_key.outputs.value }}
         # Mirrors visual-audit.yml:285-287.
         run: |
           uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level debug > /tmp/backend.log 2>&1 &

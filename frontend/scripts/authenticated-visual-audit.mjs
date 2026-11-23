@@ -4,8 +4,7 @@
  *
  * Verifies authenticated SSR routes through the real Caddy → Node SSR →
  * gateway → backend chain, then adds axe-core a11y assertions per route.
- * /dashboard is
- * the first target (highest traffic; W128 SSR enabled it).
+ * /dashboard is the first target (highest traffic; W128 SSR enabled it).
  *
  * Per-route flow:
  *   1. JWKS pre-check (RS256 keys must exist) — same as wave137.
@@ -61,6 +60,7 @@ import { fileURLToPath } from "node:url"
 import { loginBrowserContext, withOwnedSessionCleanup } from "./visual-smoke-auth.mjs"
 import {
   classifyAuthenticatedAuditSummaries,
+  classifySmokeFailures,
   emitAxeDiagnostics,
   requestFailureRecord,
 } from "./visual-smoke-contract.mjs"
@@ -198,15 +198,15 @@ export function parseAuthenticatedVisualRoutes(environment = process.env) {
   // W140 SW4 iter7 fix: an empty workflow_dispatch value falls through to the
   // original defaults. MSYS callers may omit leading slashes; normalize those
   // before matching against the exact route allowlist.
+  // Public pages and content details use the same closed route preflight.
+  // A UUID proves only the identifier shape; callers must obtain seeded IDs
+  // from the stand before requesting a detail page.
   const routesEnv = configuredRoutes?.trim()
   const routes = routesEnv ? routesEnv.split(",").map(normalizeRoute) : [...DEFAULT_ROUTES]
 
   if (
     routes.length === 0 ||
-    routes.some(
-      (route) =>
-        route === null || (!DEFAULT_ROUTE_SET.has(route) && !SEEDED_CHAT_DETAIL_ROUTE.test(route))
-    )
+    routes.some((route) => route === null || !isAllowedVisualRoute(route))
   ) {
     throw new Error("ROUTES contains an unsupported application path")
   }
@@ -455,9 +455,93 @@ export function parseAuthenticatedRemoteBrowserConnection(environment = process.
   }
 }
 
+const PUBLIC_VISUAL_ROUTES = new Set(["/login", "/register"])
+const SEEDED_CONTENT_DETAIL_ROUTE =
+  /^\/(?:news|events)\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/u
+
+export function isPublicVisualRoute(route) {
+  return PUBLIC_VISUAL_ROUTES.has(route)
+}
+
+function isAllowedVisualRoute(route) {
+  return (
+    DEFAULT_ROUTE_SET.has(route) ||
+    isPublicVisualRoute(route) ||
+    SEEDED_CHAT_DETAIL_ROUTE.test(route) ||
+    SEEDED_CONTENT_DETAIL_ROUTE.test(route)
+  )
+}
+
+export function visualPageReadinessSelector(route) {
+  if (route === "/login") return "#login-heading"
+  if (route === "/register") return "#register-heading"
+  if (!SEEDED_CONTENT_DETAIL_ROUTE.test(route)) return null
+  return route.startsWith("/news/") ? ".news-theme article h1" : ".events-theme article h1"
+}
+
+export function isVisualPageHeadingReady(selector) {
+  const heading = globalThis.document.querySelector(selector)
+  if (!heading?.textContent?.trim()) return false
+  const bounds = heading.getBoundingClientRect()
+  if (
+    !Number.isFinite(bounds.width) ||
+    !Number.isFinite(bounds.height) ||
+    bounds.width <= 0 ||
+    bounds.height <= 0
+  )
+    return false
+  for (let element = heading; element; element = element.parentElement) {
+    const style = globalThis.window.getComputedStyle(element)
+    const opacity = Number.parseFloat(style.opacity || "1")
+    if (
+      style.display === "none" ||
+      style.visibility !== "visible" ||
+      !Number.isFinite(opacity) ||
+      opacity < 0.999
+    )
+      return false
+  }
+  return true
+}
+
+export function classifyVisualNavigation(route, finalUrl) {
+  let finalLocation = null
+  try {
+    if (finalUrl) finalLocation = new URL(finalUrl)
+  } catch {
+    // Invalid or absent locations cannot prove that a public route loaded.
+  }
+  const publicRoute = isPublicVisualRoute(route)
+  const exactNavigationMismatch = Boolean(
+    (publicRoute || SEEDED_CONTENT_DETAIL_ROUTE.test(route)) &&
+    (!finalLocation ||
+      finalLocation.origin !== new URL(ORIGIN).origin ||
+      finalLocation.pathname !== route ||
+      finalLocation.search ||
+      finalLocation.hash)
+  )
+  return {
+    redirectedToLogin: Boolean(route !== "/login" && finalLocation?.pathname === "/login"),
+    publicNavigationMismatch: publicRoute && exactNavigationMismatch,
+    exactNavigationMismatch,
+  }
+}
+
+export async function captureVisualRoutePhases({ routes, configurations, capture, authenticate }) {
+  const publicRoutes = routes.filter(isPublicVisualRoute)
+  const authenticatedRoutes = routes.filter((route) => !isPublicVisualRoute(route))
+  for (const configuration of configurations) {
+    for (const route of publicRoutes) await capture(route, configuration, "pre-login")
+  }
+  await authenticate()
+  for (const configuration of configurations) {
+    for (const route of authenticatedRoutes) await capture(route, configuration, "post-login")
+  }
+}
+
 export function buildAuthenticatedCaptureBasename(routePath, captureConfig = null) {
   const route = safeFilename(routePath)
-  if (!captureConfig) return route
+  if (!captureConfig) return routePath === "/login" ? "login-page" : route
   return `${route}_${captureConfig.locale}_${captureConfig.theme}_w${captureConfig.width}`
 }
 
@@ -1361,6 +1445,9 @@ export function canCaptureAuthenticatedScreenshot({
   routePath,
   httpStatus,
   redirectedToLogin,
+  publicNavigationMismatch = false,
+  exactNavigationMismatch = false,
+  visualPageReady = null,
   finalUrl,
   dashboardCardsVisible,
   newsReadinessRequired = false,
@@ -1375,6 +1462,9 @@ export function canCaptureAuthenticatedScreenshot({
     visualConfigurationMatches &&
     httpStatus === 200 &&
     !redirectedToLogin &&
+    !publicNavigationMismatch &&
+    !exactNavigationMismatch &&
+    visualPageReady !== false &&
     finalUrl &&
     new URL(finalUrl).pathname === routePath &&
     (routePath !== "/dashboard" || dashboardCardsVisible === true) &&
@@ -1758,24 +1848,50 @@ export function emitAuthenticatedVisualRuntimeDiagnostics(
   }
 }
 
-async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
+async function auditRoute(
+  page,
+  routePath,
+  outDir,
+  captureConfig = null,
+  sourceSha = null,
+  capturePhase = null
+) {
   const consoleMessages = []
   const networkRequests = []
   const networkFailures = []
+  const publicRoute = isPublicVisualRoute(routePath)
+  const publicNetworkRequests = []
+  const networkRequestsByObject = new Map()
+  const publicRequestsByObject = new Map()
 
   const consoleHandler = (msg) => {
-    consoleMessages.push({ type: msg.type(), text: msg.text() })
+    consoleMessages.push({
+      type: msg.type(),
+      text: msg.text(),
+      ...(publicRoute ? { location: msg.location?.() } : {}),
+    })
   }
   const pageErrorHandler = (err) => {
     consoleMessages.push({ type: "pageerror", text: err.message })
   }
   const requestHandler = (req) => {
-    networkRequests.push({ method: req.method(), url: safeAuditUrl(req.url()) })
+    const request = { method: req.method(), url: safeAuditUrl(req.url()) }
+    networkRequests.push(request)
+    networkRequestsByObject.set(req, request)
+    if (publicRoute) {
+      const publicRequest = { method: req.method(), url: req.url() }
+      publicNetworkRequests.push(publicRequest)
+      publicRequestsByObject.set(req, publicRequest)
+    }
   }
   const responseHandler = (res) => {
-    const responseUrl = safeAuditUrl(res.url())
-    const idx = networkRequests.findLastIndex((r) => r.url === responseUrl && !("status" in r))
-    if (idx >= 0) networkRequests[idx].status = res.status()
+    const requestObject = res.request()
+    const request = networkRequestsByObject.get(requestObject)
+    if (request && !("status" in request)) request.status = res.status()
+    if (publicRoute) {
+      const publicRequest = publicRequestsByObject.get(requestObject)
+      if (publicRequest && !("status" in publicRequest)) publicRequest.status = res.status()
+    }
   }
   const requestFailedHandler = (request) => {
     const failure = requestFailureRecord(request)
@@ -1794,7 +1910,7 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
 
   const targetUrl = new URL(routePath, ORIGIN).toString()
   let httpStatus = null
-  let finalUrl = null
+  let finalUrl
   let navError = null
   let axeViolations = []
   let axeError = null
@@ -1827,6 +1943,23 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   let scheduleReadinessError = null
   let screenshotPath = null
   let navbarGeometry = null
+  const visualPageSelector = visualPageReadinessSelector(routePath)
+  let visualPageReady = visualPageSelector ? false : null
+  let visualPageReadinessError = null
+  const captureConfigurationMatches = async () => {
+    const browserState = await page.evaluate(() => ({
+      locale: globalThis.document.documentElement.getAttribute("lang"),
+      theme: globalThis.document.documentElement.dataset.colorScheme,
+      width: globalThis.innerWidth,
+      height: globalThis.innerHeight,
+    }))
+    return (
+      browserState.locale === captureConfig.locale &&
+      browserState.theme === captureConfig.theme &&
+      browserState.width === captureConfig.width &&
+      browserState.height === captureConfig.height
+    )
+  }
 
   // emulateMedia + reducedMotion settles Framer Motion at end-state for
   // axe-core sampling (W113 SW1 + W114 SW2b + W115 SW1 pattern).
@@ -1869,19 +2002,20 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     console.log(`[${routePath}] after-waitTimeout`)
 
     if (captureConfig) {
-      const browserState = await page.evaluate(() => ({
-        locale: globalThis.document.documentElement.getAttribute("lang"),
-        theme: globalThis.document.documentElement.dataset.colorScheme,
-        width: globalThis.innerWidth,
-        height: globalThis.innerHeight,
-      }))
-      visualConfigurationMatches =
-        browserState.locale === captureConfig.locale &&
-        browserState.theme === captureConfig.theme &&
-        browserState.width === captureConfig.width &&
-        browserState.height === captureConfig.height
+      visualConfigurationMatches = await captureConfigurationMatches()
       if (!visualConfigurationMatches) {
         visualConfigurationError = "requested_locale_theme_or_viewport_not_active"
+      }
+    }
+
+    if (visualPageSelector) {
+      try {
+        await page.waitForFunction(isVisualPageHeadingReady, visualPageSelector, {
+          timeout: 30_000,
+        })
+        visualPageReady = true
+      } catch {
+        visualPageReadinessError = "required_heading_not_visible"
       }
     }
 
@@ -2012,6 +2146,73 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   } catch (err) {
     navError = err
   }
+  try {
+    finalUrl = page.url()
+  } catch {
+    finalUrl = null
+  }
+
+  let { redirectedToLogin, publicNavigationMismatch, exactNavigationMismatch } =
+    classifyVisualNavigation(routePath, finalUrl)
+
+  const canCapture = () =>
+    canCaptureAuthenticatedScreenshot({
+      captureConfig,
+      visualConfigurationMatches,
+      routePath,
+      httpStatus,
+      redirectedToLogin,
+      publicNavigationMismatch,
+      exactNavigationMismatch,
+      visualPageReady,
+      finalUrl,
+      dashboardCardsVisible,
+      newsReadinessRequired,
+      newsReady,
+      eventsReadinessRequired,
+      eventsReady,
+      scheduleReadinessRequired,
+      scheduleReady,
+    })
+
+  if (canCapture()) {
+    if (captureConfig.width === 1440 && !publicRoute) {
+      try {
+        navbarGeometry = await page.evaluate(measureAuthenticatedNavbarGeometry)
+      } catch {
+        navbarGeometry = null
+      }
+    }
+    try {
+      const screenshot = await page.screenshot({ fullPage: false, timeout: 10_000 })
+      if (visualPageSelector) {
+        visualPageReady = false
+        visualPageReady = Boolean(await page.evaluate(isVisualPageHeadingReady, visualPageSelector))
+        if (!visualPageReady) visualPageReadinessError = "required_heading_not_visible"
+        visualConfigurationMatches = false
+        visualConfigurationMatches = await captureConfigurationMatches()
+        if (!visualConfigurationMatches) {
+          visualConfigurationError = "requested_locale_theme_or_viewport_not_active"
+        }
+      }
+      finalUrl = page.url()
+      ;({ redirectedToLogin, publicNavigationMismatch, exactNavigationMismatch } =
+        classifyVisualNavigation(routePath, finalUrl))
+      if (canCapture()) {
+        const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
+        screenshotPath = path.join(outDir, filename)
+        await writeFile(screenshotPath, screenshot)
+      } else {
+        visualConfigurationError =
+          visualPageReady === false
+            ? "required_heading_not_visible"
+            : (visualConfigurationError ?? "navigation_changed_during_capture")
+      }
+    } catch (error) {
+      screenshotPath = null
+      visualConfigurationError = `screenshot_failed:${redactDiagnostic(error.message)}`
+    }
+  }
 
   page.off("console", consoleHandler)
   page.off("pageerror", pageErrorHandler)
@@ -2019,10 +2220,27 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
   page.off("response", responseHandler)
   page.off("requestfailed", requestFailedHandler)
 
-  const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
-  const failedNetworkRequests = networkRequests.filter(
-    (request) => typeof request.status === "number" && request.status >= 400
-  )
+  const publicFailures = publicRoute
+    ? classifySmokeFailures({
+        consoleMessages,
+        networkResponses: publicNetworkRequests.filter(
+          (request) => typeof request.status === "number"
+        ),
+        allowUnauthenticatedProfileProbe: true,
+        expectedOrigin: ORIGIN,
+      })
+    : null
+  const errors =
+    publicFailures?.consoleErrors ??
+    consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
+  const failedNetworkRequests = publicFailures
+    ? publicFailures.nonSuccessfulResponses.map((request) => ({
+        ...request,
+        url: safeAuditUrl(request.url),
+      }))
+    : networkRequests.filter(
+        (request) => typeof request.status === "number" && request.status >= 400
+      )
 
   const visualDiagnostics = summarizeAuthenticatedVisualDiagnostics({
     consoleMessages,
@@ -2035,42 +2253,6 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     (m) =>
       m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
   )
-  const redirectedToLogin =
-    finalUrl && (finalUrl.endsWith("/login") || finalUrl.includes("/login?"))
-
-  if (
-    canCaptureAuthenticatedScreenshot({
-      captureConfig,
-      visualConfigurationMatches,
-      routePath,
-      httpStatus,
-      redirectedToLogin,
-      finalUrl,
-      dashboardCardsVisible,
-      newsReadinessRequired,
-      newsReady,
-      eventsReadinessRequired,
-      eventsReady,
-      scheduleReadinessRequired,
-      scheduleReady,
-    })
-  ) {
-    if (captureConfig.width === 1440) {
-      try {
-        navbarGeometry = await page.evaluate(measureAuthenticatedNavbarGeometry)
-      } catch {
-        navbarGeometry = null
-      }
-    }
-    const filename = `${buildAuthenticatedCaptureBasename(routePath, captureConfig)}.png`
-    screenshotPath = path.join(outDir, filename)
-    try {
-      await page.screenshot({ path: screenshotPath, fullPage: false, timeout: 10_000 })
-    } catch (error) {
-      screenshotPath = null
-      visualConfigurationError = `screenshot_failed:${redactDiagnostic(error.message)}`
-    }
-  }
 
   const basename = buildAuthenticatedCaptureBasename(routePath, captureConfig)
   const sidecarPath = path.join(outDir, `${basename}.json`)
@@ -2079,8 +2261,13 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
     JSON.stringify(
       {
         path: routePath,
+        capturePhase,
         targetUrl: safeAuditUrl(targetUrl),
         finalUrl: finalUrl ? safeAuditUrl(finalUrl) : null,
+        publicNavigationMismatch,
+        exactNavigationMismatch,
+        visualPageReady,
+        visualPageReadinessError,
         httpStatus,
         navigationError: navError ? redactDiagnostic(navError.message) : null,
         visualDiagnostics,
@@ -2148,9 +2335,14 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
 
   return {
     path: routePath,
+    capturePhase,
     httpStatus,
     finalUrl: finalUrl ? safeAuditUrl(finalUrl) : null,
     redirectedToLogin,
+    publicNavigationMismatch,
+    exactNavigationMismatch,
+    visualPageReady,
+    visualPageReadinessError,
     consoleErrorCount: errors.length,
     failedNetworkRequestCount: failedNetworkRequests.length + networkFailures.length,
     hydrationErrorCount: hydrationErrors.length,
@@ -2198,7 +2390,7 @@ function printSummary(summaries) {
   const padR = (s, n) => String(s).padEnd(n, " ")
   console.log("")
   console.log("=".repeat(120))
-  console.log("Wave 138 SW3 — visual audit (authed Docker chain + axe-core a11y)")
+  console.log("Wave 138 SW3 — visual audit (Docker chain + axe-core a11y)")
   console.log("=".repeat(120))
   console.log(
     `${padR("Path", 14)}${padR("HTTP", 8)}${padR("Auth", 10)}${padR("Console err", 14)}${padR(
@@ -2208,7 +2400,13 @@ function printSummary(summaries) {
   )
   console.log("-".repeat(120))
   for (const s of summaries) {
-    const auth = s.redirectedToLogin ? "REDIRECT" : "AUTHED"
+    const auth = s.redirectedToLogin
+      ? "REDIRECT"
+      : s.capturePhase === "pre-login"
+        ? "PUBLIC"
+        : s.capturePhase === "post-login"
+          ? "AUTHED"
+          : "UNKNOWN"
     console.log(
       `${padR(s.path, 14)}${padR(s.httpStatus ?? "-", 8)}${padR(auth, 10)}${padR(
         s.consoleErrorCount,
@@ -2258,7 +2456,7 @@ async function main() {
       captureMatrix.themes.length *
       captureMatrix.widths.length
     console.log(
-      `  Matrix: ${captureCount} authenticated captures (${captureMatrix.locales.join(",")}; ${captureMatrix.themes.join(",")}; ${captureMatrix.widths.join(",")}px x ${captureMatrix.height}px)`
+      `  Matrix: ${captureCount} visual captures (${captureMatrix.locales.join(",")}; ${captureMatrix.themes.join(",")}; ${captureMatrix.widths.join(",")}px x ${captureMatrix.height}px)`
     )
     console.log("  Output: caller-selected private directory outside the checkout")
   } else {
@@ -2363,54 +2561,6 @@ async function main() {
       page.setDefaultTimeout(30_000)
       page.setDefaultNavigationTimeout(30_000)
 
-      let loginResult
-      try {
-        loginResult = await performLogin(context, ownSession, credentials)
-        if (captureMatrix) await verifySyntheticStudent(context, credentials.email)
-      } catch (err) {
-        if (err instanceof RS256Error) throw setVisualExitCode(err, 3)
-        throw setVisualExitCode(err, 1)
-      }
-
-      await writeFile(
-        path.join(outputDir, "login.json"),
-        JSON.stringify(createAuthenticatedLoginSidecar(loginResult), null, 2)
-      )
-
-      if (captureMatrix) {
-        await writeFile(
-          path.join(outputDir, "matrix.json"),
-          JSON.stringify(
-            {
-              evidenceKind: "real-authenticated-browser-pinned-weather-fixture",
-              externalWeatherFixture: {
-                route: PINNED_WEATHER_ROUTE,
-                source: "inline pinned Open-Meteo forecast",
-              },
-              browserTransport: remoteBrowserConnection
-                ? "playwright-websocket"
-                : "local-bundled-chromium",
-              remoteBrowserRequired: process.env.VISUAL_REMOTE_CHROMIUM_REQUIRED === "1",
-              sourceSha: captureMatrix.sourceSha,
-              origin: captureMatrix.origin,
-              routes,
-              ...(captureMatrix.selectedRoute
-                ? { selectedRoute: captureMatrix.selectedRoute }
-                : {}),
-              locales: captureMatrix.locales,
-              themes: captureMatrix.themes,
-              widths: captureMatrix.widths,
-              height: captureMatrix.height,
-              screenshots: true,
-            },
-            null,
-            2
-          )
-        )
-      }
-
-      await page.close()
-
       const summaries = []
       const configurations = captureMatrix
         ? captureMatrix.locales.flatMap((locale) =>
@@ -2425,9 +2575,60 @@ async function main() {
             )
           )
         : [null]
-      for (const captureConfig of configurations) {
-        if (captureConfig) await setStudentCapturePreferences(context, captureConfig)
-        for (const route of routes) {
+      await captureVisualRoutePhases({
+        routes,
+        configurations,
+        authenticate: async () => {
+          let loginResult
+          try {
+            loginResult = await performLogin(context, ownSession, credentials)
+            if (captureMatrix) await verifySyntheticStudent(context, credentials.email)
+          } catch (err) {
+            if (err instanceof RS256Error) throw setVisualExitCode(err, 3)
+            throw setVisualExitCode(err, 1)
+          }
+
+          await writeFile(
+            path.join(outputDir, "login.json"),
+            JSON.stringify(createAuthenticatedLoginSidecar(loginResult), null, 2)
+          )
+
+          if (captureMatrix) {
+            await writeFile(
+              path.join(outputDir, "matrix.json"),
+              JSON.stringify(
+                {
+                  evidenceKind: "real-authenticated-browser-pinned-weather-fixture",
+                  externalWeatherFixture: {
+                    route: PINNED_WEATHER_ROUTE,
+                    source: "inline pinned Open-Meteo forecast",
+                  },
+                  browserTransport: remoteBrowserConnection
+                    ? "playwright-websocket"
+                    : "local-bundled-chromium",
+                  remoteBrowserRequired: process.env.VISUAL_REMOTE_CHROMIUM_REQUIRED === "1",
+                  sourceSha: captureMatrix.sourceSha,
+                  origin: captureMatrix.origin,
+                  routes,
+                  ...(captureMatrix.selectedRoute
+                    ? { selectedRoute: captureMatrix.selectedRoute }
+                    : {}),
+                  locales: captureMatrix.locales,
+                  themes: captureMatrix.themes,
+                  widths: captureMatrix.widths,
+                  height: captureMatrix.height,
+                  screenshots: true,
+                },
+                null,
+                2
+              )
+            )
+          }
+
+          await page.close()
+        },
+        capture: async (route, captureConfig, capturePhase) => {
+          if (captureConfig) await setStudentCapturePreferences(context, captureConfig)
           console.log(
             `→ ${route}${captureConfig ? ` [${captureConfig.locale}/${captureConfig.theme}/${captureConfig.width}x${captureConfig.height}]` : ""}`
           )
@@ -2439,13 +2640,17 @@ async function main() {
             route,
             outputDir,
             captureConfig,
-            captureMatrix?.sourceSha ?? sourceSha
+            captureMatrix?.sourceSha ?? sourceSha,
+            capturePhase
           )
           await routePage.close()
           summaries.push(result)
           const glyph =
             result.httpStatus === 200 &&
             !result.redirectedToLogin &&
+            !result.publicNavigationMismatch &&
+            !result.exactNavigationMismatch &&
+            result.visualPageReady !== false &&
             !result.axeError &&
             result.axeViolationCount === 0 &&
             result.captureConfigMatches !== false &&
@@ -2459,18 +2664,21 @@ async function main() {
           console.log(
             `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} axe_viol=${result.axeViolationCount}${captureConfig ? ` config=${result.captureConfigMatches ? "verified" : "failed"} screenshot=${result.screenshotPath ? "yes" : "no"}` : ""}`
           )
-        }
-      }
+        },
+      })
 
       printSummary(summaries)
 
-      const {
-        failedRoutes: failed,
-        hydrationIssues,
-        axeErrors,
-        axeIssues,
-        runtimeIssues,
-      } = classifyAuthenticatedAuditSummaries(summaries)
+      const { failedRoutes, hydrationIssues, axeErrors, axeIssues, runtimeIssues } =
+        classifyAuthenticatedAuditSummaries(summaries)
+      const failed = [
+        ...new Set([
+          ...failedRoutes,
+          ...summaries.filter((summary) => summary.publicNavigationMismatch),
+          ...summaries.filter((summary) => summary.exactNavigationMismatch),
+          ...summaries.filter((summary) => summary.visualPageReady === false),
+        ]),
+      ]
       const visualConfigurationIssues = summaries.filter(
         (summary) =>
           summary.captureConfigMatches === false || (captureMatrix && !summary.screenshotPath)
@@ -2479,7 +2687,7 @@ async function main() {
       if (failed.length > 0) {
         throw setVisualExitCode(
           new Error(
-            `${failed.length}/${summaries.length} routes failed (non-200 OR redirected to /login)`
+            `${failed.length}/${summaries.length} routes failed navigation or required content readiness`
           ),
           1
         )
@@ -2702,6 +2910,8 @@ export function isAuthenticatedNavbarGeometryValid(state) {
 export function findNavbarGeometryIssues(summaries) {
   return summaries.filter(
     (summary) =>
-      summary.viewportWidth === 1440 && !isAuthenticatedNavbarGeometryValid(summary.navbarGeometry)
+      summary.viewportWidth === 1440 &&
+      !isPublicVisualRoute(summary.path) &&
+      !isAuthenticatedNavbarGeometryValid(summary.navbarGeometry)
   )
 }

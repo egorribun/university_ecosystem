@@ -27,9 +27,9 @@ REQUIRED_CONTEXTS = {"CI Success", "Coverage & Quality Policy Gate"}
 # and their version comments. Keep the v4 fixture immutable and compare every
 # remaining byte and parsed job against it.
 _REVIEWED_WORKFLOW_PIN_COUNTS = {
-    "nightly-full-gate.yml": (7, 4),
-    "manual-mutation-evidence.yml": (5, 2),
-    "reusable-full-backend-mutation.yml": (5, 5),
+    "nightly-full-gate.yml": (7, 4, 0),
+    "manual-mutation-evidence.yml": (5, 2, 0),
+    "reusable-full-backend-mutation.yml": (5, 5, 4),
 }
 _REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
     (
@@ -39,6 +39,10 @@ _REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
     (
         b"astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3",
         b"astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0",
+    ),
+    (
+        b"azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0",
+        b"azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1",
     ),
 )
 
