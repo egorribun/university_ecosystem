@@ -5,6 +5,7 @@ import path from "node:path"
 import vm from "node:vm"
 import {
   classifyAuthenticatedAuditSummaries,
+  classifySmokeFailures,
   requestFailureRecord,
 } from "./visual-smoke-contract.mjs"
 import * as audit from "./authenticated-visual-audit.mjs"
@@ -187,6 +188,11 @@ test("route event capture emits classifications without changing runtime failure
       },
       redactDiagnostic: (value) => value,
       requestFailureRecord,
+      classifySmokeFailures,
+      isPublicVisualRoute: audit.isPublicVisualRoute,
+      classifyVisualNavigation: audit.classifyVisualNavigation,
+      visualPageReadinessSelector: audit.visualPageReadinessSelector,
+      isVisualPageHeadingReady: audit.isVisualPageHeadingReady,
       summarizeAuthenticatedVisualDiagnostics: audit.summarizeAuthenticatedVisualDiagnostics,
       emitAuthenticatedVisualRuntimeDiagnostics: (...args) =>
         audit.emitAuthenticatedVisualRuntimeDiagnostics(...args, (line) => {
@@ -221,7 +227,7 @@ test("route event capture emits classifications without changing runtime failure
           failure: () => ({ errorText: "net::ERR_CONNECTION_RESET private-marker" }),
         }
         listeners.get("request")(request)
-        listeners.get("response")({ url: request.url, status: () => 503 })
+        listeners.get("response")({ url: request.url, request: () => request, status: () => 503 })
         listeners.get("requestfailed")(request)
         return { status: () => 200 }
       },
@@ -250,6 +256,452 @@ test("route event capture emits classifications without changing runtime failure
     return JSON.stringify(result)
   }
   assert.equal(await run(false), await run(true))
+})
+
+test("visual routes accept only exact public pages and UUID detail paths", () => {
+  const id = "018f1234-5678-7123-8123-123456789abc"
+  const routes = ["/login", "/register", `/news/${id}`, `/events/${id}`, `/messenger/${id}`]
+  assert.deepEqual(audit.parseAuthenticatedVisualRoutes({ ROUTES: routes.join(",") }), routes)
+  assert.deepEqual(audit.parseAuthenticatedVisualRoutes({ ROUTES: "login,register" }), [
+    "/login",
+    "/register",
+  ])
+  for (const invalid of [
+    "/sign-up",
+    "/login/",
+    "/register?next=dashboard",
+    "/news/article-slug",
+    "/news/00000000-0000-0000-0000-000000000000",
+    `/news/${id}/edit`,
+    `/events/${id}?x=1`,
+    `/events/${id}#x`,
+    `/events/%2f${id}`,
+    `/messenger/${id}/extra`,
+    "/../login",
+  ]) {
+    assert.throws(
+      () => audit.parseAuthenticatedVisualRoutes({ ROUTES: invalid }),
+      { message: "ROUTES contains an unsupported application path" },
+      invalid
+    )
+  }
+})
+
+test("public captures cover every matrix configuration before the owned login", async () => {
+  const id = "018f1234-5678-7123-8123-123456789abc"
+  const routes = ["/register", "/dashboard", "/login", `/news/${id}`, `/events/${id}`]
+  const configurations = ["ru", "en"].flatMap((locale) =>
+    ["light", "dark"].flatMap((theme) =>
+      [1440, 390].map((width) => ({ locale, theme, width, height: 800 }))
+    )
+  )
+  const operations = []
+  await audit.captureVisualRoutePhases({
+    routes,
+    configurations,
+    capture: async (route, configuration, capturePhase) =>
+      operations.push({ route, configuration, capturePhase }),
+    authenticate: async () => operations.push("login"),
+  })
+  const loginIndex = operations.indexOf("login")
+  assert.equal(loginIndex, 16)
+  assert.equal(operations.length, routes.length * configurations.length + 1)
+  for (const configuration of configurations) {
+    for (const route of routes) {
+      const index = operations.findIndex(
+        (operation) => operation.route === route && operation.configuration === configuration
+      )
+      assert.ok(index >= 0, `missing ${route} matrix cell`)
+      assert.equal(index < loginIndex, route === "/login" || route === "/register")
+      assert.equal(operations[index].capturePhase, index < loginIndex ? "pre-login" : "post-login")
+    }
+  }
+})
+
+test("a failed public capture or login prevents later authenticated captures", async () => {
+  const operations = []
+  await assert.rejects(
+    audit.captureVisualRoutePhases({
+      routes: ["/login", "/dashboard"],
+      configurations: [null],
+      capture: async (route) => {
+        operations.push(route)
+        throw new Error("capture failed")
+      },
+      authenticate: async () => operations.push("login"),
+    }),
+    /capture failed/u
+  )
+  assert.deepEqual(operations, ["/login"])
+  operations.length = 0
+  await assert.rejects(
+    audit.captureVisualRoutePhases({
+      routes: ["/login", "/dashboard"],
+      configurations: [null],
+      capture: async (route) => operations.push(route),
+      authenticate: async () => {
+        operations.push("login")
+        throw new Error("login failed")
+      },
+    }),
+    /login failed/u
+  )
+  assert.deepEqual(operations, ["/login", "login"])
+})
+
+test("public login sidecars do not overwrite the owned session report", () => {
+  assert.notEqual(audit.buildAuthenticatedCaptureBasename("/login"), "login")
+  assert.equal(
+    audit.buildAuthenticatedCaptureBasename("/login", {
+      locale: "ru",
+      theme: "dark",
+      width: 390,
+    }),
+    "login_ru_dark_w390"
+  )
+})
+
+test("public pages require their exact destination but no authenticated navbar", () => {
+  for (const route of ["/login", "/register"]) {
+    assert.deepEqual(audit.classifyVisualNavigation(route, `http://localhost${route}`), {
+      redirectedToLogin: false,
+      publicNavigationMismatch: false,
+      exactNavigationMismatch: false,
+    })
+    assert.equal(
+      audit.classifyVisualNavigation(route, "http://localhost/dashboard").publicNavigationMismatch,
+      true
+    )
+    assert.equal(
+      audit.classifyVisualNavigation(route, `http://localhost${route}?next=%2Fdashboard`)
+        .publicNavigationMismatch,
+      true
+    )
+    assert.deepEqual(
+      audit.findNavbarGeometryIssues([{ path: route, viewportWidth: 1440, navbarGeometry: null }]),
+      []
+    )
+  }
+  assert.equal(
+    audit.classifyVisualNavigation("/dashboard", "http://localhost/login?next=%2Fdashboard")
+      .redirectedToLogin,
+    true
+  )
+})
+
+test("public and detail destinations reject a different origin, query, fragment, or path", () => {
+  const id = "018f1234-5678-7123-8123-123456789abc"
+  for (const route of ["/login", "/register", `/news/${id}`, `/events/${id}`]) {
+    assert.equal(
+      audit.classifyVisualNavigation(route, `http://localhost${route}`).exactNavigationMismatch,
+      false
+    )
+    for (const destination of [
+      `http://elsewhere.invalid${route}`,
+      `http://localhost${route}?x=1`,
+      `http://localhost${route}#x`,
+      "http://localhost/dashboard",
+      null,
+    ]) {
+      assert.equal(audit.classifyVisualNavigation(route, destination).exactNavigationMismatch, true)
+    }
+  }
+})
+
+test("new public and seeded detail captures require the correct loaded heading", async () => {
+  const id = "018f1234-5678-7123-8123-123456789abc"
+  for (const [route, selector] of [
+    ["/login", "#login-heading"],
+    ["/register", "#register-heading"],
+    [`/news/${id}`, ".news-theme article h1"],
+    [`/events/${id}`, ".events-theme article h1"],
+  ]) {
+    assert.equal(audit.visualPageReadinessSelector(route), selector)
+  }
+  for (const route of ["/dashboard", "/news", "/events", `/messenger/${id}`]) {
+    assert.equal(audit.visualPageReadinessSelector(route), null)
+  }
+
+  const { JSDOM } = await import("jsdom")
+  const dom = new JSDOM('<div class="news-theme"><article><h1>Seeded title</h1></article></div>')
+  const originals = ["document", "window"].map((key) => [
+    key,
+    Object.getOwnPropertyDescriptor(globalThis, key),
+  ])
+  try {
+    Object.defineProperty(globalThis, "document", {
+      value: dom.window.document,
+      configurable: true,
+    })
+    Object.defineProperty(globalThis, "window", { value: dom.window, configurable: true })
+    const heading = dom.window.document.querySelector("h1")
+    heading.getBoundingClientRect = () => ({ width: 100, height: 30 })
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), true)
+    assert.equal(audit.isVisualPageHeadingReady("#login-heading"), false)
+    heading.textContent = " "
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), false)
+    heading.textContent = "Seeded title"
+    heading.parentElement.style.opacity = "0"
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), false)
+    heading.parentElement.style.opacity = "1"
+    heading.style.display = "none"
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), false)
+    heading.style.display = "block"
+    heading.getBoundingClientRect = () => ({ width: 0, height: 30 })
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), false)
+    heading.getBoundingClientRect = () => ({ width: Number.NaN, height: 30 })
+    assert.equal(audit.isVisualPageHeadingReady(".news-theme article h1"), false)
+  } finally {
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else delete globalThis[key]
+    }
+    dom.window.close()
+  }
+})
+
+test("public capture classifies only the exact unauthenticated profile probe as expected", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("async function auditRoute(")
+  const end = source.indexOf("\nfunction printSummary", start)
+  const run = async (probeUrl, status = 401, route = "/login", options = {}) => {
+    const listeners = new Map()
+    const sidecars = []
+    const screenshots = []
+    const context = {
+      URL,
+      path,
+      setTimeout,
+      clearTimeout,
+      ORIGIN: "http://localhost",
+      AXE_SOURCE_PATH: "/unused/axe.js",
+      console: { log() {} },
+      safeAuditUrl: (value) => {
+        const url = new URL(value)
+        return url.origin + url.pathname
+      },
+      redactDiagnostic: (value) => value,
+      requestFailureRecord,
+      classifySmokeFailures,
+      isPublicVisualRoute: audit.isPublicVisualRoute,
+      classifyVisualNavigation: audit.classifyVisualNavigation,
+      visualPageReadinessSelector: audit.visualPageReadinessSelector,
+      isVisualPageHeadingReady: audit.isVisualPageHeadingReady,
+      summarizeAuthenticatedVisualDiagnostics: audit.summarizeAuthenticatedVisualDiagnostics,
+      emitAuthenticatedVisualRuntimeDiagnostics() {},
+      emitAxeDiagnostics() {},
+      requireFromProject: () => ({ getRules: () => [] }),
+      canCaptureAuthenticatedScreenshot: audit.canCaptureAuthenticatedScreenshot,
+      buildAuthenticatedCaptureBasename: audit.buildAuthenticatedCaptureBasename,
+      createAuthenticatedCaptureMetadata: audit.createAuthenticatedCaptureMetadata,
+      writeFile: async (name, contents) => {
+        if (typeof contents === "string") sidecars.push([name, JSON.parse(contents)])
+        else screenshots.push([name, contents])
+      },
+    }
+    const auditRoute = vm.runInNewContext(`(${source.slice(start, end).trim()})`, context)
+    let urlReadCount = 0
+    let screenshotComplete = false
+    const page = {
+      on: (event, listener) => listeners.set(event, listener),
+      off: (event) => listeners.delete(event),
+      emulateMedia: async () => {},
+      setViewportSize: async () => {},
+      addInitScript: async () => {},
+      goto: async () => {
+        const request = { method: () => "GET", url: () => probeUrl }
+        let consoleStatus = status
+        if (options.concurrentRequests) {
+          const post = { method: () => "POST", url: () => probeUrl }
+          const secondGet = { method: () => "GET", url: () => probeUrl }
+          for (const candidate of [request, post, secondGet]) listeners.get("request")(candidate)
+          const getStatus = options.concurrentRequests === "get-probe" ? 401 : 200
+          const postStatus = options.concurrentRequests === "get-probe" ? 200 : 401
+          for (const [candidate, responseStatus] of [
+            [secondGet, 200],
+            [request, getStatus],
+            [post, postStatus],
+          ]) {
+            listeners.get("response")({
+              url: candidate.url,
+              request: () => candidate,
+              status: () => responseStatus,
+            })
+          }
+          consoleStatus = 401
+        } else {
+          listeners.get("request")(request)
+          listeners.get("response")({
+            url: request.url,
+            request: () => request,
+            status: () => status,
+          })
+        }
+        if (consoleStatus !== 200) {
+          listeners.get("console")({
+            type: () => "error",
+            text: () =>
+              `Failed to load resource: the server responded with a status of ${consoleStatus}`,
+            location: () => ({ url: probeUrl }),
+          })
+        }
+        return { status: () => 200 }
+      },
+      url: () =>
+        screenshotComplete && options.screenshotRedirect
+          ? options.screenshotRedirect
+          : `http://localhost${++urlReadCount === 1 ? route : (options.finalRoute ?? route)}`,
+      waitForTimeout: async () => {},
+      waitForFunction: async (fn, selector, { timeout } = {}) => {
+        if (fn === audit.isVisualPageHeadingReady) {
+          assert.equal(selector, audit.visualPageReadinessSelector(route))
+          assert.equal(timeout, 30_000)
+          if (options.unready) throw new Error("heading unavailable")
+        }
+      },
+      evaluate: async (fn) => {
+        if (fn === audit.isVisualPageHeadingReady) return !options.headingMissingAfterScreenshot
+        if (String(fn).includes("documentElement")) {
+          return screenshotComplete && options.configurationAfterScreenshot
+            ? options.configurationAfterScreenshot
+            : { locale: "en", theme: "light", width: 1440, height: 800 }
+        }
+        return { violations: [] }
+      },
+      screenshot: async () => {
+        screenshotComplete = true
+        if (options.failureDuringScreenshot) {
+          const request = { method: () => "GET", url: () => "http://localhost/api/v1/news" }
+          listeners.get("request")?.(request)
+          listeners.get("response")?.({
+            request: () => request,
+            status: () => 503,
+          })
+          listeners.get("console")?.({
+            type: () => "error",
+            text: () => "Failed to load resource: the server responded with a status of 503",
+            location: () => ({ url: request.url() }),
+          })
+        }
+        return Buffer.from("local screenshot")
+      },
+    }
+    const result = await auditRoute(
+      page,
+      route,
+      "/private",
+      { locale: "en", theme: "light", width: 1440, height: 800 },
+      null,
+      audit.isPublicVisualRoute(route) ? "pre-login" : "post-login"
+    )
+    assert.equal(listeners.size, 0)
+    assert.equal(sidecars.length, 1)
+    return { result, sidecar: sidecars[0][1], screenshots }
+  }
+  const expected = await run("http://localhost/api/v1/users/me")
+  assert.equal(expected.result.redirectedToLogin, false)
+  assert.equal(expected.result.consoleErrorCount, 0)
+  assert.equal(expected.result.failedNetworkRequestCount, 0)
+  assert.equal(expected.result.visualPageReady, true)
+  assert.equal(expected.result.screenshotPath, "login_en_light_w1440.png")
+  assert.equal(expected.sidecar.networkRequests[0].status, 401)
+  assert.equal(expected.sidecar.capturePhase, "pre-login")
+  assert.equal(expected.sidecar.captureMode, "authenticated-live-matrix")
+  for (const [url, status] of [
+    ["http://localhost/api/v1/users/me?x=1", 401],
+    ["http://localhost/api/v1/users/me", 403],
+    ["http://elsewhere.invalid/api/v1/users/me", 401],
+  ]) {
+    const actual = await run(url, status, "/register")
+    assert.equal(actual.sidecar.capturePhase, "pre-login")
+    assert.equal(actual.result.consoleErrorCount, 1)
+    assert.equal(actual.result.failedNetworkRequestCount, 1)
+  }
+  const legitimateProbe = await run("http://localhost/api/v1/users/me", 200, "/login", {
+    concurrentRequests: "get-probe",
+  })
+  assert.equal(legitimateProbe.result.consoleErrorCount, 0)
+  assert.equal(legitimateProbe.result.failedNetworkRequestCount, 0)
+  assert.deepEqual(
+    legitimateProbe.sidecar.networkRequests.map(({ method, status }) => [method, status]),
+    [
+      ["GET", 401],
+      ["POST", 200],
+      ["GET", 200],
+    ]
+  )
+  const failedPost = await run("http://localhost/api/v1/users/me", 200, "/login", {
+    concurrentRequests: "post-failed",
+  })
+  assert.equal(failedPost.result.consoleErrorCount, 1)
+  assert.equal(failedPost.result.failedNetworkRequestCount, 1)
+  assert.deepEqual(
+    failedPost.sidecar.networkRequests.map(({ method, status }) => [method, status]),
+    [
+      ["GET", 200],
+      ["POST", 401],
+      ["GET", 200],
+    ]
+  )
+  const unready = await run("http://localhost/api/v1/users/me", 401, "/login", { unready: true })
+  assert.equal(unready.result.visualPageReady, false)
+  assert.equal(unready.result.screenshotPath, null)
+  assert.equal(unready.sidecar.visualPageReadinessError, "required_heading_not_visible")
+  const redirected = await run("http://localhost/api/v1/users/me", 401, "/login", {
+    finalRoute: "/dashboard",
+  })
+  assert.equal(redirected.result.publicNavigationMismatch, true)
+  assert.equal(redirected.result.screenshotPath, null)
+  assert.equal(redirected.sidecar.finalUrl, "http://localhost/dashboard")
+  const id = "018f1234-5678-7123-8123-123456789abc"
+  for (const route of [`/news/${id}`, `/events/${id}`]) {
+    const loaded = await run("http://localhost/api/v1/users/me", 200, route)
+    assert.equal(loaded.result.visualPageReady, true)
+    assert.equal(loaded.sidecar.capturePhase, "post-login")
+    assert.equal(loaded.sidecar.captureMode, "authenticated-live-matrix")
+    assert.ok(loaded.result.screenshotPath)
+    const pending = await run("http://localhost/api/v1/users/me", 200, route, { unready: true })
+    assert.equal(pending.result.visualPageReady, false)
+    assert.equal(pending.result.screenshotPath, null)
+  }
+  for (const route of ["/login", `/news/${id}`, `/events/${id}`]) {
+    const destination = `http://elsewhere.invalid${route}?private=private-marker`
+    const changed = await run("http://localhost/api/v1/users/me", 200, route, {
+      screenshotRedirect: destination,
+    })
+    assert.equal(changed.result.exactNavigationMismatch, true)
+    assert.equal(changed.result.screenshotPath, null)
+    assert.equal(changed.sidecar.screenshotPath, null)
+    assert.equal(changed.screenshots.length, 0)
+    assert.doesNotMatch(JSON.stringify(changed.sidecar), /private-marker/)
+    const missingHeading = await run("http://localhost/api/v1/users/me", 200, route, {
+      headingMissingAfterScreenshot: true,
+    })
+    assert.equal(missingHeading.result.visualPageReady, false)
+    assert.equal(missingHeading.sidecar.visualPageReadinessError, "required_heading_not_visible")
+    assert.equal(missingHeading.sidecar.screenshotPath, null)
+    assert.equal(missingHeading.screenshots.length, 0)
+    for (const changedConfig of [
+      { locale: "ru", theme: "light", width: 1440, height: 800 },
+      { locale: "en", theme: "dark", width: 1440, height: 800 },
+      { locale: "en", theme: "light", width: 390, height: 800 },
+    ]) {
+      const changed = await run("http://localhost/api/v1/users/me", 200, route, {
+        configurationAfterScreenshot: changedConfig,
+      })
+      assert.equal(changed.result.captureConfigMatches, false)
+      assert.equal(changed.sidecar.screenshotPath, null)
+      assert.equal(changed.screenshots.length, 0)
+    }
+  }
+  const lateFailure = await run("http://localhost/api/v1/users/me", 200, "/login", {
+    failureDuringScreenshot: true,
+  })
+  assert.equal(lateFailure.result.consoleErrorCount, 1)
+  assert.equal(lateFailure.result.failedNetworkRequestCount, 1)
 })
 
 test("stateful getters cannot swap allowed values for private payloads during projection", () => {
@@ -522,5 +974,49 @@ test("navbar observation measures clipping and full-name references without retu
       else delete globalThis[key]
     }
     dom.window.close()
+  }
+})
+
+test("capture summary labels the recorded authentication phase", async () => {
+  const source = await readFile(
+    new URL("./authenticated-visual-audit.mjs", import.meta.url),
+    "utf8"
+  )
+  const start = source.indexOf("function printSummary(")
+  const end = source.indexOf("\nasync function connectAuthenticatedRemoteChromium", start)
+  assert.ok(start >= 0 && end > start)
+  const lines = []
+  const printSummary = vm.runInNewContext(`(${source.slice(start, end).trim()})`, {
+    console: { log: (line) => lines.push(line) },
+  })
+  const summary = (path, capturePhase, redirectedToLogin = false) => ({
+    path,
+    capturePhase,
+    redirectedToLogin,
+    httpStatus: 200,
+    consoleErrorCount: 0,
+    hydrationErrorCount: 0,
+    axeViolationCount: 0,
+    networkRequestCount: 0,
+    finalUrl: null,
+  })
+  printSummary([
+    summary("/login", "pre-login"),
+    summary("/register", "pre-login"),
+    summary("/dashboard", "post-login"),
+    summary("/profile", "post-login", true),
+    summary("/unknown", null),
+  ])
+  for (const [route, label] of [
+    ["/login", "PUBLIC"],
+    ["/register", "PUBLIC"],
+    ["/dashboard", "AUTHED"],
+    ["/profile", "REDIRECT"],
+    ["/unknown", "UNKNOWN"],
+  ]) {
+    assert.match(
+      lines.find((line) => line.startsWith(route)),
+      new RegExp(`^${route}\\s+200\\s+${label}\\b`)
+    )
   }
 })
