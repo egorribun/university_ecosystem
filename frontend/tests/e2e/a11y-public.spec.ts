@@ -13,10 +13,13 @@ import path from "node:path"
  *
  * Coverage:
  *   - /login           — unauth form (most touched public surface)
+ *   - /register        — registration form
  *   - 404 / fallback   — error-route a11y
  *
  * Each route is scanned in both themes via emulated `prefers-color-scheme`
- * so light/dark contrast violations surface separately.
+ * so light/dark contrast violations surface separately. The layout suite at
+ * the end sets the application's own language and theme and checks that the
+ * login and registration cards stay inside 390/768/1440 px viewports.
  *
  * Wave 115 SW1 — partial A11Y-113-04 closure (10 → 14 pass / 6 → 2 skip).
  * The WebKit skip (webkit /login × 2 + all mobile-webkit × 4) was mostly
@@ -110,8 +113,16 @@ const AXE_SOURCE = readFileSync(AXE_SOURCE_PATH, "utf-8")
 
 const PUBLIC_ROUTES = [
   { path: "/login", name: "login" },
+  { path: "/register", name: "register" },
   { path: "/this-route-does-not-exist", name: "fallback" },
 ] as const
+
+const AUTH_LAYOUT_ROUTES = [
+  { path: "/login", name: "login", card: "section.auth-shell--login" },
+  { path: "/register", name: "register", card: "section.auth-shell--register" },
+] as const
+const AUTH_LAYOUT_WIDTHS = [390, 768, 1440] as const
+const AUTH_LAYOUT_LANGUAGES = ["ru", "en"] as const
 
 const THEMES = [
   { scheme: "light" as const, name: "light" },
@@ -258,6 +269,104 @@ test.describe("@a11y public routes axe scan", () => {
         ).toBe(1)
         // Surface the violation list in the test failure for fast triage.
         expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([])
+      })
+    }
+  }
+})
+
+type AuthCardGeometry = {
+  viewportWidth: number
+  scrollWidth: number
+  card: { left: number; right: number; width: number } | null
+  form: { left: number; right: number; width: number } | null
+}
+
+// One CSS pixel of tolerance absorbs sub-pixel rounding at fractional DPRs.
+function authCardLayoutIssues(geometry: AuthCardGeometry): string[] {
+  const issues: string[] = []
+  const limit = geometry.viewportWidth + 1
+  if (geometry.scrollWidth > limit) {
+    issues.push(`page overflows horizontally: ${geometry.scrollWidth} > ${geometry.viewportWidth}`)
+  }
+  for (const [name, box] of [
+    ["card", geometry.card],
+    ["form", geometry.form],
+  ] as const) {
+    if (!box) {
+      issues.push(`${name} is missing`)
+    } else if (box.width <= 0 || box.left < -1 || box.right > limit) {
+      issues.push(`${name} leaves the viewport: ${JSON.stringify(box)}`)
+    }
+  }
+  return issues
+}
+
+test.describe("public auth form layout", () => {
+  test.use({ serviceWorkers: "block" })
+
+  for (const route of AUTH_LAYOUT_ROUTES) {
+    for (const width of AUTH_LAYOUT_WIDTHS) {
+      test(`${route.name} card stays inside a ${width}px viewport in RU and EN, light and dark`, async ({
+        page,
+        context,
+        baseURL,
+      }) => {
+        if (!baseURL) throw new Error("The auth layout check requires a configured baseURL")
+        await page.setViewportSize({ width, height: 900 })
+
+        for (const language of AUTH_LAYOUT_LANGUAGES) {
+          for (const theme of THEMES) {
+            const label = `${route.name} ${width}px ${language} ${theme.name}`
+            // The application reads its saved language and theme from these
+            // keys; emulating the browser locale or color scheme alone does
+            // not prove which settings the app applied.
+            await context.addCookies([
+              { name: "ue:language", value: language, url: baseURL },
+              { name: "ue-mode", value: theme.name, url: baseURL },
+            ])
+            // Init scripts run in registration order, so the last one wins.
+            await page.addInitScript(
+              ({ savedLanguage, savedTheme }) => {
+                window.localStorage.setItem("ue:language", savedLanguage)
+                window.localStorage.setItem("ue-mode", savedTheme)
+              },
+              { savedLanguage: language, savedTheme: theme.name }
+            )
+            await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
+            await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 30_000 })
+
+            const card = page.locator(route.card)
+            await expect(card, label).toBeVisible()
+            await expect(page.locator("html"), label).toHaveAttribute("lang", language)
+            await expect(page.locator("html"), label).toHaveClass(
+              theme.name === "dark" ? /\bdark\b/u : /\blight\b/u
+            )
+
+            await expect
+              .poll(
+                async () =>
+                  authCardLayoutIssues(
+                    await page.evaluate((selector): AuthCardGeometry => {
+                      const root = document.documentElement
+                      const box = (element: Element | null | undefined) => {
+                        if (!element) return null
+                        const rect = element.getBoundingClientRect()
+                        return { left: rect.left, right: rect.right, width: rect.width }
+                      }
+                      const cardElement = document.querySelector(selector)
+                      return {
+                        viewportWidth: root.clientWidth,
+                        scrollWidth: root.scrollWidth,
+                        card: box(cardElement),
+                        form: box(cardElement?.querySelector("form")),
+                      }
+                    }, route.card)
+                  ),
+                { message: `${label}: the auth card must fit the viewport`, timeout: 10_000 }
+              )
+              .toEqual([])
+          }
+        }
       })
     }
   }
