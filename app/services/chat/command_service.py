@@ -76,6 +76,7 @@ from app.api.ws.presence import (
 )
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
+from app.core.localization import normalize_locale
 from app.core.logging import get_logger
 from app.deps.cache import StrictCacheInvalidationError, current_cache_key_version
 from app.models import Message
@@ -1411,11 +1412,18 @@ class ChatMaintenanceService:
         fan-out → the other participants' live TypingIndicator. No DB write — typing is
         ephemeral. check_participant (a single EXISTS) is the light authz for this
         ~2/sec hot path; a non-participant (or unknown chat) → 403, no existence leak.
-        The user_name resolution + frame shape mirror dispatcher.py exactly (profile is
-        lazy="noload", so it falls back to the email when not eager-loaded).
+        A missing profile name uses a neutral label in the sender's locale.
         """
         if not await self.repository.check_participant(chat_id, user.id):
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        user_name = getattr(getattr(user, "profile", None), "full_name", None)
+        if not isinstance(user_name, str) or not user_name.strip():
+            user_name = (
+                "Неизвестный пользователь"
+                if normalize_locale(locale) == "ru"
+                else "Unknown User"
+            )
 
         await ws_manager.broadcast_to_chat(
             chat_id,
@@ -1423,9 +1431,7 @@ class ChatMaintenanceService:
                 "type": "typing",
                 "chat_id": str(chat_id),
                 "user_id": str(user.id),
-                "user_name": getattr(user.profile, "full_name", None)
-                if getattr(user, "profile", None)
-                else str(user.email),
+                "user_name": user_name,
             },
             exclude_user_id=user.id,
             db_session=self.uow.session,
