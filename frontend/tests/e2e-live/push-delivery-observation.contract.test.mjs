@@ -354,7 +354,7 @@ test("chat failure paths report before disposal without duplicating a captured r
     const source = spec.slice(start, next < 0 ? undefined : next)
     assert.match(
       source,
-      /catch \(error\) \{[\s\S]*?await failureObservation\?\.capture\(\)\s*await recipientObservation\.report\(subscriptionEndpoint, livePushObservationBudgetMs\(testInfo\)\)\s*\}\s*recipientObservation\.dispose\(\)/u
+      /catch \(error\) \{[\s\S]*?await failureObservation\?\.capture\(\)\s*await (?:reportChatFailure\(\)|recipientObservation\.report\(subscriptionEndpoint, livePushObservationBudgetMs\(testInfo\)\))\s*\}\s*recipientObservation\.dispose\(\)/u
     )
   }
 
@@ -385,7 +385,7 @@ test("both live specs preserve cleanup time while keeping the existing browser d
     chat.match(
       /recipientObservation\.report\(subscriptionEndpoint, livePushObservationBudgetMs\(testInfo\)\)/gu
     )?.length,
-    4
+    2
   )
   assert.match(
     topics,
@@ -692,10 +692,13 @@ test("failure observation is captured before cleanup around each unchanged nativ
     const next = spec.indexOf('\ntest("', start + declaration.length)
     const scenario = spec.slice(start, next < 0 ? undefined : next)
     const pollStart = scenario.indexOf(expected)
-    const armIndex = scenario.indexOf(
-      "failureObservation = nativePushProfiles.armFailureObservation(expectedNotificationId,",
-      pollStart
-    )
+    const armIndex =
+      pollStart +
+      scenario
+        .slice(pollStart)
+        .search(
+          /failureObservation = nativePushProfiles\.armFailureObservation\(\s*expectedNotificationId,/u
+        )
     const timeoutIndex = scenario.indexOf("timeout: 60_000", armIndex)
     const pollSuccess = scenario.indexOf(".toBe(1)", timeoutIndex)
     const disarmIndex = scenario.indexOf("failureObservation.disarm()", pollSuccess)
@@ -1271,6 +1274,57 @@ test("reply rotation rejects other scenarios and never emits raw observation dat
   assert.equal(lines.length, 1)
 })
 
+test("chat rotation captures bounded phases and stays mobile-only", async () => {
+  const { createPushRotationObservation } = await import(rotationHelper.href)
+  const lines = []
+  const page = { evaluate: async () => "0123456789ab" }
+  const observation = createPushRotationObservation(
+    page,
+    "mobile",
+    0,
+    (line) => lines.push(line),
+    "chat"
+  )
+  await observation.optIn(100)
+  observation.arm("chat")
+  await observation.beforeWait("chat", 100)
+  assert.deepEqual(lines, [])
+  await observation.reportFailure(100)
+  await observation.reportFailure(100)
+  assert.deepEqual(lines, [
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=chat phase=opt-in ordinal=1 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=chat phase=before-wait ordinal=2 endpoint_sha256=0123456789ab\n",
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=0 scenario=chat phase=failure ordinal=3 endpoint_sha256=0123456789ab\n",
+  ])
+  const invalid = createPushRotationObservation(
+    page,
+    "desktop",
+    0,
+    (line) => lines.push(line),
+    "chat"
+  )
+  await invalid.optIn(100)
+  await invalid.reportFailure(100)
+  assert.equal(lines.length, 3)
+
+  const unsafe = []
+  const privatePage = { evaluate: async () => privateEndpoint }
+  const bounded = createPushRotationObservation(
+    privatePage,
+    "mobile",
+    1,
+    (line) => unsafe.push(line),
+    "chat"
+  )
+  bounded.arm("reply")
+  await bounded.beforeWait("reply", 100)
+  await bounded.reportFailure(100)
+  assert.deepEqual(unsafe, [
+    "UE_LIVE_PUSH_ROTATION_V1 project=mobile retry=1 scenario=chat phase=failure ordinal=1 endpoint_sha256=unavailable\n",
+  ])
+  assert.doesNotMatch(unsafe.join(""), /private|example|https/u)
+})
+
 test("rotation capture bounds failures, input classes, output and the failure slot", async () => {
   const { createPushRotationObservation } = await import(rotationHelper.href)
   const lines = []
@@ -1478,4 +1532,20 @@ test("reply delivery observes the bound endpoint without changing native accepta
   )
   assert.match(reply, /failureObservation\.disarm\(\)/u)
   assert.match(reply, /native reply push is tagged with the persisted notification identity/u)
+})
+
+test("chat delivery observes the bound endpoint without changing native acceptance", async () => {
+  const source = await readFile(new URL("./push-delivery.live.spec.ts", import.meta.url), "utf8")
+  const start = source.indexOf('test("chat message reaches Chromium')
+  const end = source.indexOf('test("quoted group author', start)
+  const chat = source.slice(start, end)
+  assert.match(chat, /createPushRotationObservation\([\s\S]*?"chat"/u)
+  assert.match(chat, /subscriptionBound = true[\s\S]*?rotationObservation\?\.optIn\(/u)
+  assert.match(chat, /rotationObservation\?\.beforeWait\("chat"[\s\S]*?await expect/u)
+  assert.match(
+    chat,
+    /const reportChatFailure = async[\s\S]*?const budgetMs = livePushObservationBudgetMs\(testInfo\)[\s\S]*?recipientObservation\.report\(subscriptionEndpoint, budgetMs\)[\s\S]*?subscriptionBound \? rotationObservation\?\.reportFailure\(budgetMs\)[\s\S]*?armFailureObservation\(\s*expectedNotificationId,\s*reportChatFailure\s*\)/u
+  )
+  assert.match(chat, /failureObservation\.disarm\(\)/u)
+  assert.match(chat, /a real Web Push shows a notification tagged with its persisted identity/u)
 })

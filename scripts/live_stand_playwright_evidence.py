@@ -297,7 +297,7 @@ _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
 
 _PLAYWRIGHT_PUSH_ROTATION_LINE = re.compile(
     r"UE_LIVE_PUSH_ROTATION_V1 project=(?P<project>desktop|mobile) "
-    r"retry=(?P<retry>[01]) scenario=(?P<scenario>setup|news|events|schedule|release|reply|unknown) "
+    r"retry=(?P<retry>[01]) scenario=(?P<scenario>setup|news|events|schedule|release|reply|chat|unknown) "
     r"phase=(?P<phase>opt-in|before-wait|failure) ordinal=(?P<ordinal>[1-8]) "
     r"endpoint_sha256=(?P<prefix>[0-9a-f]{12}|missing|unavailable)"
 )
@@ -2652,9 +2652,9 @@ def _live_playwright_push_rotation_observations(
         match = _PLAYWRIGHT_PUSH_ROTATION_LINE.fullmatch(line)
         if (
             match is None
-            or (match["scenario"] == "reply" and match["project"] != "mobile")
+            or (match["scenario"] in ("reply", "chat") and match["project"] != "mobile")
             or (
-                match["scenario"] != "reply"
+                match["scenario"] not in ("reply", "chat")
                 and (match["phase"] == "opt-in") != (match["scenario"] == "setup")
             )
         ):
@@ -2664,7 +2664,9 @@ def _live_playwright_push_rotation_observations(
             int(match["retry"]),
             int(match["ordinal"]),
         )
-        scope = "reply" if match["scenario"] == "reply" else "topics"
+        scope = (
+            match["scenario"] if match["scenario"] in ("reply", "chat") else "topics"
+        )
         identity = (project, retry, scope, ordinal)
         record = (
             project,
@@ -3798,7 +3800,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "password-reset.live.spec.ts": (129,),
     "profile-csrf.live.spec.ts": (99,),
     "profile-persistence.live.spec.ts": (102, 302),
-    "push-delivery.live.spec.ts": (492, 590, 892),
+    "push-delivery.live.spec.ts": (492, 590, 915),
     "push-permission-default.live.spec.ts": (17,),
     "push-permission-denied.live.spec.ts": (44,),
     "push-subscription.live.spec.ts": (115,),

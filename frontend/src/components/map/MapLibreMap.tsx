@@ -166,6 +166,7 @@ export function MapLibreMapComponent({
   // get an immediate usable viewport instead of a long-running camera tween.
   const lowPowerDevice = isLowPowerDevice()
   const hasAnimatedIntro = useRef(false)
+  const resizedMapInstancesRef = useRef(new WeakSet<ReturnType<MapRef["getMap"]>>())
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
@@ -304,8 +305,12 @@ export function MapLibreMapComponent({
 
       // ── Map is ready ──
 
-      // Canvas resize (FIX-109-01: fixes stale drag handlers after View Transition)
-      map.resize()
+      // Keep the initial canvas resize, but do not interrupt gestures when
+      // marker data or theme changes rerun this readiness effect.
+      if (!resizedMapInstancesRef.current.has(map)) {
+        map.resize()
+        resizedMapInstancesRef.current.add(map)
+      }
       updateCollisionProjection(map)
 
       // Sky/fog atmosphere

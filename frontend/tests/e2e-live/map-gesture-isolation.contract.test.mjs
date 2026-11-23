@@ -101,6 +101,23 @@ test("live map gesture acceptance covers browser isolation and camera invariants
   assert.ok(/type:\s*["']touchStart["']/u.test(spec), "touch begins through Chromium input")
   assert.ok(/type:\s*["']touchMove["']/u.test(spec), "touch moves through Chromium input")
   assert.ok(/type:\s*["']touchEnd["']/u.test(spec), "touch ends through Chromium input")
+  const mobileScenario = spec.slice(spec.indexOf('test("live mobile map keeps pinch'))
+  assert.match(mobileScenario, /canvas\.scrollIntoViewIfNeeded\(\)/u)
+  assert.match(
+    mobileScenario,
+    /element\.closest\(["']\.maplibregl-canvas-container["']\)[\s\S]*?document\.elementFromPoint\(x \+ offset, y\)[\s\S]*?container\.contains\(target\)/u,
+    "touch starts must hit the actual MapLibre canvas container"
+  )
+  assert.match(
+    mobileScenario,
+    /canvas\.evaluate\([\s\S]*?document\.elementFromPoint[\s\S]*?new URLSearchParams\(window\.location\.search\)[\s\S]*?window\.visualViewport[\s\S]*?pagePosition:/u,
+    "the target, camera, and viewport baselines are sampled in the same browser turn"
+  )
+  assert.match(
+    mobileScenario,
+    /waitForTouchOrigin\(\[-24,\s*24\]\)[\s\S]*?type:\s*["']touchStart["']/u
+  )
+  assert.match(mobileScenario, /waitForTouchOrigin\(\[0\]\)[\s\S]*?type:\s*["']touchStart["']/u)
   const pinchScenario = spec.slice(
     spec.indexOf("const pagePositionBeforePinch"),
     spec.indexOf("const beforePan")

@@ -256,14 +256,58 @@ test("live mobile map keeps pinch and one-finger pan inside the map", async ({
   expect(touchSession).not.toBeNull()
 
   try {
-    const bounds = await canvas.boundingBox()
-    expect(bounds).not.toBeNull()
-    const centerX = bounds!.x + bounds!.width / 2
-    const centerY = bounds!.y + bounds!.height / 2
-    const initialCamera = await readCamera(page)
+    await canvas.scrollIntoViewIfNeeded()
+    const waitForTouchOrigin = async (offsets: readonly number[]) => {
+      const result: {
+        value: { x: number; y: number; camera: Camera; pagePosition: PagePosition } | null
+      } = { value: null }
+      await expect
+        .poll(
+          async () => {
+            const candidate = await canvas.evaluate((element, xOffsets) => {
+              const container = element.closest(".maplibregl-canvas-container")
+              const rect = element.getBoundingClientRect()
+              if (!container || rect.width <= 0 || rect.height <= 0) return null
+              const x = rect.x + rect.width / 2
+              const y = rect.y + rect.height / 2
+              const targets = xOffsets.map((offset) => document.elementFromPoint(x + offset, y))
+              if (!targets.every((target) => target && container.contains(target))) return null
+              // Snapshot the same URL and viewport fields as the assertions in this task,
+              // in the same browser turn as the hit test.
+              const query = new URLSearchParams(window.location.search)
+              const visualViewport = window.visualViewport
+              return {
+                x,
+                y,
+                camera: {
+                  zoom: Number(query.get("z")),
+                  latitude: Number(query.get("lat")),
+                  longitude: Number(query.get("lng")),
+                },
+                pagePosition: {
+                  scrollX: Math.round(window.scrollX),
+                  scrollY: Math.round(window.scrollY),
+                  viewportOffsetLeft: Math.round(visualViewport?.offsetLeft ?? 0),
+                  viewportOffsetTop: Math.round(visualViewport?.offsetTop ?? 0),
+                  viewportScale: Number((visualViewport?.scale ?? 1).toFixed(2)),
+                },
+              }
+            }, offsets)
+            if (candidate) result.value = candidate
+            return candidate !== null
+          },
+          { message: "touch origins must hit the live map interaction surface" }
+        )
+        .toBe(true)
+      if (!result.value) throw new Error("touch origin was not captured")
+      return result.value
+    }
+    const pinchOrigin = await waitForTouchOrigin([-24, 24])
+    const initialCamera = pinchOrigin.camera
     expect(initialCamera.zoom).toBe(17)
     expectCenterNear(initialCamera, CAMPUS_CENTER)
-    const pagePositionBeforePinch = await readPagePosition(page)
+    const pagePositionBeforePinch = pinchOrigin.pagePosition
+    const { x: centerX, y: centerY } = pinchOrigin
 
     await touchSession!.send("Input.dispatchTouchEvent", {
       type: "touchStart",
@@ -299,21 +343,22 @@ test("live mobile map keeps pinch and one-finger pan inside the map", async ({
     await expectPagePositionStableForFrames(page, pagePositionBeforePinch, "pinch")
     expectCenterNear(await readCamera(page), initialCamera)
 
-    const beforePan = await readCamera(page)
-    const pagePositionBeforePan = await readPagePosition(page)
+    const panOrigin = await waitForTouchOrigin([0])
+    const beforePan = panOrigin.camera
+    const pagePositionBeforePan = panOrigin.pagePosition
     await touchSession!.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [{ id: 0, x: centerX, y: centerY, force: 1 }],
+      touchPoints: [{ id: 0, x: panOrigin.x, y: panOrigin.y, force: 1 }],
     })
     await page.waitForTimeout(60)
     await touchSession!.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ id: 0, x: centerX, y: centerY + 70, force: 1 }],
+      touchPoints: [{ id: 0, x: panOrigin.x, y: panOrigin.y + 70, force: 1 }],
     })
     await page.waitForTimeout(60)
     await touchSession!.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ id: 0, x: centerX, y: centerY + 145, force: 1 }],
+      touchPoints: [{ id: 0, x: panOrigin.x, y: panOrigin.y + 145, force: 1 }],
     })
     await touchSession!.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
 

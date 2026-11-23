@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 
-type Scenario = "news" | "events" | "schedule" | "release" | "reply"
+type Scenario = "news" | "events" | "schedule" | "release" | "reply" | "chat"
 export type PushRotationObservation = {
   arm: (scenario: Scenario) => void
   optIn: (timeoutMs: number) => Promise<void>
@@ -12,5 +12,5 @@ export function createPushRotationObservation(
   project: string,
   retry: number,
   emit?: (line: string) => unknown,
-  scope?: "topics" | "reply"
+  scope?: "topics" | "reply" | "chat"
 ): PushRotationObservation
