@@ -55,3 +55,4 @@ This directory contains architectural decision records (ADRs) for the University
 53. [ADR-053: Operator-Scoped Single-Organization MVP Authentication](ADR-053-operator-scoped-mvp-authentication.md)
 54. [ADR-054: Docker Compose Is the MVP Deployment Target](ADR-054-mvp-docker-compose-deployment-target.md)
 55. [ADR-055: Retention Cleanup Under Tenant RLS](ADR-055-retention-cleanup-under-tenant-rls.md)
+56. [ADR-056: Account Lockout Keyed on Email](ADR-056-account-lockout-keyed-on-email.md)

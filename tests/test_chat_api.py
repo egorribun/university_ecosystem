@@ -73,6 +73,58 @@ async def test_create_chat_idempotency(async_client, user_factory):
 
 
 @pytest.mark.asyncio
+async def test_chat_responses_never_expose_participant_email(
+    async_client, user_factory
+):
+    password = "TestPassword123!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    other = await user_factory()
+    third = await user_factory()
+    headers = await _login(async_client, user.email, password)
+    private_emails = {user.email, other.email, third.email}
+
+    def assert_public(participants: list[dict[str, object]]) -> None:
+        assert participants
+        for participant in participants:
+            assert set(participant) == {
+                "id",
+                "full_name",
+                "avatar_url",
+                "is_active",
+                "email",
+            }
+            assert participant["email"] == ""
+            assert not private_emails & {str(value) for value in participant.values()}
+
+    created = await async_client.post(
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
+    )
+    assert created.status_code == 200
+    assert_public(created.json()["participants"])
+    repeated = await async_client.post(
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
+    )
+    assert repeated.status_code == 200
+    assert_public(repeated.json()["participants"])
+    group = await async_client.post(
+        "/chats/groups",
+        json={"name": "Privacy", "participant_ids": [str(other.id), str(third.id)]},
+        headers=headers,
+    )
+    assert group.status_code == 200
+    assert_public(group.json()["participants"])
+
+    listed = await async_client.get("/chats", headers=headers)
+    assert listed.status_code == 200
+    assert len(listed.json()["items"]) == 2
+    for item in listed.json()["items"]:
+        assert_public(item["participants"])
+    detail = await async_client.get(f"/chats/{created.json()['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert_public(detail.json()["participants"])
+
+
+@pytest.mark.asyncio
 async def test_get_chats_list_simple(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=await get_password_hash(password))

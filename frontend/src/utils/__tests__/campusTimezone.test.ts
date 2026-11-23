@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   formatCampusDate,
   getCampusClockParts,
@@ -85,6 +85,27 @@ describe("campus clock parts", () => {
       minute: 15,
       second: 45,
     })
+  })
+
+  it("reuses a clock formatter without retaining invalid or older timezones", () => {
+    const formatter = vi.spyOn(Intl, "DateTimeFormat")
+    try {
+      expect(getCampusClockParts(instant, "Australia/Adelaide")?.hour).toBe(8)
+      expect(getCampusClockParts(instant, "Australia/Adelaide")?.minute).toBe(0)
+      expect(formatter).toHaveBeenCalledTimes(1)
+
+      expect(getCampusClockParts(instant, "Invalid/Timezone")).toBeNull()
+      expect(getCampusClockParts(instant, "Australia/Adelaide")?.hour).toBe(8)
+      expect(formatter).toHaveBeenCalledTimes(2)
+
+      expect(getCampusClockParts(instant, "Asia/Kathmandu")?.hour).toBe(3)
+      expect(getCampusClockParts(instant, "Asia/Kathmandu")?.minute).toBe(15)
+      expect(formatter).toHaveBeenCalledTimes(3)
+      expect(getCampusClockParts(instant, "Australia/Adelaide")?.hour).toBe(8)
+      expect(formatter).toHaveBeenCalledTimes(4)
+    } finally {
+      formatter.mockRestore()
+    }
   })
 
   it("returns null without a usable timezone or instant", () => {

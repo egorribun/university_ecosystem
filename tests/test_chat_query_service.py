@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.chat import ChatParticipant, MessageResponse, PresenceStatus
 from app.services.chat.query_service import ChatQueryService
@@ -502,6 +503,45 @@ class TestGetMessages:
         ]
 
 
+def test_participant_projection_does_not_read_private_email():
+    class Participant:
+        id = uuid.uuid4()
+        full_name = "Public Name"
+        avatar_url = None
+        is_active = True
+
+        @property
+        def email(self) -> str:
+            raise AssertionError("Private email must not be read")
+
+    participant = ChatParticipant.model_validate(Participant())
+    assert participant.model_dump()["email"] == ""
+
+
+def test_participant_email_stays_redacted_for_explicit_and_copied_values():
+    participant = ChatParticipant.model_validate(
+        {
+            "id": uuid.uuid4(),
+            "is_active": True,
+            "__chat_redacted_email__": "private@example.com",
+        }
+    )
+    assert participant.email == ""
+    assert participant.model_dump()["email"] == ""
+    with pytest.raises(ValidationError):
+        participant.email = "private@example.com"
+    copied = participant.model_copy(update={"email": "private@example.com"})
+    assert copied.model_dump()["email"] == ""
+    assert (
+        "email"
+        not in ChatParticipant.model_json_schema(mode="validation")["properties"]
+    )
+    with pytest.raises(ValidationError):
+        ChatParticipant.model_validate(
+            {"id": uuid.uuid4(), "is_active": True, "email": "private@example.com"}
+        )
+
+
 def test_message_sender_output_filters_legacy_producer_fields():
     sender_id = uuid.uuid4()
     sender_values = {
@@ -513,9 +553,10 @@ def test_message_sender_output_filters_legacy_producer_fields():
     }
     now = datetime.now(UTC)
 
+    participant_values = {k: v for k, v in sender_values.items() if k != "email"}
     for sender in (
         sender_values,
-        ChatParticipant(**sender_values),
+        ChatParticipant(**participant_values),
     ):
         response = MessageResponse(
             id=uuid.uuid4(),

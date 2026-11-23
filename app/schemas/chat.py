@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AfterValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.schemas.base import SecureBaseModel
@@ -45,15 +52,34 @@ def _validate_reaction_emoji(value: str) -> str:
 ReactionEmoji = Annotated[str, AfterValidator(_validate_reaction_emoji)]
 
 
-# Simplified User schema for chat participants (avoids lazy-loaded relationships)
+# Public participant projection for chat responses and realtime events. ORM rows
+# and DTOs validate by attribute, so the legacy email output below never reads
+# the participant's private email address.
 class ChatParticipant(SecureBaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
     id: UUID
-    email: str
+    email: str = Field(
+        default="",
+        validation_alias="__chat_redacted_email__",
+        frozen=True,
+        description="Legacy compatibility field. Participant email is always redacted.",
+        json_schema_extra={"deprecated": True, "readOnly": True},
+    )
     full_name: str | None = None
     avatar_url: str | None = None
     is_active: bool
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _redact_email_input(cls, _value: object) -> str:
+        return ""
+
+    @field_serializer("email")
+    def _serialize_redacted_email(self, _value: str) -> str:
+        return ""
 
 
 class MessageSenderInfo(SecureBaseModel):

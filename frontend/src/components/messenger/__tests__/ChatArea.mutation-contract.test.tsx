@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Message } from "@/components/messenger/types"
 import type { Chat } from "@/api/chat"
-import type { User } from "@/types/User"
+import type { ChatParticipant } from "@/api/generated"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 /** Observe ChatArea's animation contract without changing production props. */
@@ -142,16 +142,20 @@ vi.mock("@/components/messenger", () => ({
 
 import { ChatArea, shouldFocusSearchInput } from "@/components/messenger/ChatArea"
 
-const user = (id: string, name = "Alice", avatar_url = "") =>
-  ({ id, full_name: name, avatar_url }) as unknown as User
-const chat = ({ group = false }: { group?: boolean } = {}) =>
-  ({
-    id: "chat-1",
-    participants: [user("me", "Me"), user("peer", group ? "Group peer" : "Alice")],
-    unread_count: 0,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  }) as unknown as Chat
+const user = (id: string, name = "Alice", avatar_url = ""): ChatParticipant => ({
+  id,
+  full_name: name,
+  avatar_url,
+  email: "",
+  is_active: true,
+})
+const chat = ({ group = false }: { group?: boolean } = {}): Chat => ({
+  id: "chat-1",
+  participants: [user("me", "Me"), user("peer", group ? "Group peer" : "Alice")],
+  unread_count: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+})
 const message: Message = {
   id: "m1",
   senderId: "peer",

@@ -1,6 +1,7 @@
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { User } from "@/types/User"
+import type { UserPublicOut } from "@/api/generated"
+import type { User } from "@/types/User"
 
 import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
@@ -10,7 +11,7 @@ import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ProfileModalProps {
-  user: User | null
+  user: User | UserPublicOut | null
   loading: boolean
   error: string | null
   onClose: () => void
@@ -136,7 +137,9 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                       )}
                     </div>
                     <h4 className="sf-pro text-2xl font-bold tracking-tight">{user.full_name}</h4>
-                    <p className="font-medium text-(--text-secondary)">{user.email}</p>
+                    {"email" in user && user.email ? (
+                      <p className="font-medium text-(--text-secondary)">{user.email}</p>
+                    ) : null}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pb-2">

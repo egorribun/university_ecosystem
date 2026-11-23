@@ -148,7 +148,6 @@ class ChatQueryService:
                     participants=[
                         ChatParticipant(
                             id=participant.id,
-                            email=participant.email or "",
                             full_name=participant_names.get(participant.id),
                             avatar_url=participant.avatar_url,
                             is_active=participant.is_active,
@@ -199,7 +198,10 @@ class ChatQueryService:
 
             enriched_chats.append(
                 ChatResponse(
-                    **chat_resp.model_dump(exclude={"last_message", "presence"}),
+                    **chat_resp.model_dump(
+                        exclude={"last_message", "participants", "presence"}
+                    ),
+                    participants=chat_resp.participants,
                     last_message=l_msg,
                     presence=participant_status,
                 )

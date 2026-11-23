@@ -28,6 +28,7 @@ import {
   layoutMapMarkerOffsets,
   layoutProjectedMapMarkerOffsets,
   type MapMarkerCollisionItem,
+  type MapMarkerOffset,
   type ScreenPoint,
 } from "@/features/map/markerCollisionLayout"
 import "maplibre-gl/dist/maplibre-gl.css"
@@ -145,6 +146,23 @@ interface MapLibreMapProps {
   }) => void
 }
 
+type ProjectedMarkerLayout = {
+  markers: readonly MapMarkerCollisionItem[]
+  offsets: ReadonlyMap<string, MapMarkerOffset>
+}
+
+function haveSameMarkerOffsets(
+  offsets: ReadonlyMap<string, MapMarkerOffset>,
+  previousOffsets: ReadonlyMap<string, MapMarkerOffset>
+): boolean {
+  // Both layouts are produced from the same marker array, so their ids match.
+  for (const [id, offset] of offsets) {
+    const previous = previousOffsets.get(id)!
+    if (previous[0] !== offset[0] || previous[1] !== offset[1]) return false
+  }
+  return true
+}
+
 export function MapLibreMapComponent({
   selectedBuilding,
   activeCategory,
@@ -180,10 +198,10 @@ export function MapLibreMapComponent({
    *  programmatic easeTo for building selection) sync to URL since they
    *  represent user intent. */
   const enableUrlSyncRef = useRef(!!urlInitialViewport)
-  const [projectedMarkerLayout, setProjectedMarkerLayout] = useState<{
-    markers: readonly MapMarkerCollisionItem[]
-    points: ReadonlyMap<string, ScreenPoint>
-  } | null>(null)
+  const projectedMarkerLayoutRef = useRef<ProjectedMarkerLayout | null>(null)
+  const [projectedMarkerLayout, setProjectedMarkerLayout] = useState<ProjectedMarkerLayout | null>(
+    null
+  )
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -253,7 +271,7 @@ export function MapLibreMapComponent({
   const markerOffsets = useMemo(
     () =>
       projectedMarkerLayout?.markers === collisionMarkers
-        ? layoutProjectedMapMarkerOffsets(collisionMarkers, projectedMarkerLayout.points)
+        ? projectedMarkerLayout.offsets
         : layoutMapMarkerOffsets(collisionMarkers),
     [collisionMarkers, projectedMarkerLayout]
   )
@@ -265,7 +283,17 @@ export function MapLibreMapComponent({
         const point = map.project([marker.longitude, marker.latitude])
         nextPoints.set(marker.id, { x: point.x, y: point.y })
       }
-      setProjectedMarkerLayout({ markers: collisionMarkers, points: nextPoints })
+      const offsets = layoutProjectedMapMarkerOffsets(collisionMarkers, nextPoints)
+      const previous = projectedMarkerLayoutRef.current
+      if (
+        previous?.markers === collisionMarkers &&
+        haveSameMarkerOffsets(offsets, previous.offsets)
+      ) {
+        return
+      }
+      const nextLayout = { markers: collisionMarkers, offsets }
+      projectedMarkerLayoutRef.current = nextLayout
+      setProjectedMarkerLayout(nextLayout)
     },
     [collisionMarkers]
   )

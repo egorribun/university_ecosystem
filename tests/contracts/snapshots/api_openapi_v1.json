@@ -750,6 +750,9 @@
             "title": "Avatar Url"
           },
           "email": {
+            "deprecated": true,
+            "description": "Legacy compatibility field. Participant email is always redacted.",
+            "readOnly": true,
             "title": "Email",
             "type": "string",
             "x-pii": true
@@ -778,6 +781,8 @@
         "required": [
           "id",
           "email",
+          "full_name",
+          "avatar_url",
           "is_active"
         ],
         "title": "ChatParticipant",

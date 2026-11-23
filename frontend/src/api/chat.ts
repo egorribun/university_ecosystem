@@ -1,4 +1,5 @@
 import client from "./client"
+import type { ChatParticipant } from "@/api/generated"
 import type { User } from "@/types/User"
 
 export interface Attachment {
@@ -67,12 +68,12 @@ export interface Chat {
   chat_type?: "dm" | "group"
   name?: string | null
   created_by?: string | null
-  participants: User[]
-  last_message?: Message
+  participants: ChatParticipant[]
+  last_message?: Message | null
   unread_count: number
   created_at: string
   updated_at: string
-  presence?: Record<string, PresenceStatus>
+  presence?: Record<string, PresenceStatus> | null
   // Wave 210 G2 — per-member read high-water-marks (group-only; absent/[] for a
   // DM, which keeps using Message.read_status). Populated by GET /chats/{id}
   // (get_chat_details); the FE folds these + live `read` frames into a "seen by

@@ -1310,4 +1310,37 @@ describe("MapLibreMap", () => {
       cancelFrame.mockRestore()
     }
   })
+
+  it("rerenders markers only when a projected collision layout changes", () => {
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 9)
+    const map = makeMap()
+    try {
+      render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+      const initialCount = renderedMarkerProps.buildings.length
+      const buildingCount = new Set(
+        renderedMarkerProps.buildings.map((props) => (props.building as { letter: string }).letter)
+      ).size
+      const initialOffsets = renderedMarkerProps.buildings
+        .slice(-buildingCount)
+        .map((props) => props.offset)
+
+      // Translating all projected points preserves their relative positions.
+      map.project.mockImplementation(([longitude, latitude]: [number, number]) => ({
+        x: longitude * 10_000 + 100,
+        y: latitude * 10_000 + 100,
+      }))
+      act(() => currentMoveEndHandler()({}))
+      expect(renderedMarkerProps.buildings.length).toBe(initialCount)
+
+      // A dense cluster needs different offsets to keep targets separated.
+      map.project.mockReturnValue({ x: 400, y: 300 })
+      act(() => currentMoveEndHandler()({}))
+      expect(renderedMarkerProps.buildings.length).toBeGreaterThan(initialCount)
+      expect(
+        renderedMarkerProps.buildings.slice(-buildingCount).map((props) => props.offset)
+      ).not.toEqual(initialOffsets)
+    } finally {
+      requestFrame.mockRestore()
+    }
+  })
 })
