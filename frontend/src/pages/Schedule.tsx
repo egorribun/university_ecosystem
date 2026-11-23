@@ -37,13 +37,14 @@ import { buildTable } from "@/components/schedule/scheduleUtils"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
 import { useAuth } from "@/contexts/AuthContext"
+import { useAuthBootstrapPending } from "@/contexts/AuthBootstrapContext"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import {
   generateGoogleCalendarUrl,
   selectGoogleCalendarLesson,
 } from "@/utils/scheduleCalendarExport"
 
-function ScheduleContent() {
+function ScheduleContent({ settingsReady }: { settingsReady: boolean }) {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
   const timeZone = useCampusTimezone()
@@ -340,7 +341,7 @@ function ScheduleContent() {
         <ScheduleHeader
           {...scheduleData}
           nowTick={nowTick}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={settingsReady ? () => setSettingsOpen(true) : undefined}
         />
 
         <div className="flex gap-4 lg:gap-6">
@@ -500,15 +501,20 @@ function ScheduleContent() {
 
 export default function Schedule() {
   const { user, loading } = useAuth()
+  const bootstrapPending = useAuthBootstrapPending()
   const confirmedOwner = getConfirmedUserId({ user, loading })
   const [scopeOwner, setScopeOwner] = useState(confirmedOwner)
   if (confirmedOwner !== null && confirmedOwner !== scopeOwner) setScopeOwner(confirmedOwner)
   if (!loading && user === null && scopeOwner !== null) setScopeOwner(null)
+  // A first confirmed owner rekeys the whole page. Do not offer a focusable
+  // dialog trigger until the initial identity attempt settles.
+  const settingsReady =
+    import.meta.env.VITE_LHCI === "true" || scopeOwner !== null || (!bootstrapPending && !loading)
 
   return (
     <SchedulePageProvider key={scopeOwner === null ? "unowned" : `owner:${scopeOwner}`}>
       <FeatureErrorBoundary featureName="schedule">
-        <ScheduleContent />
+        <ScheduleContent settingsReady={settingsReady} />
       </FeatureErrorBoundary>
     </SchedulePageProvider>
   )
