@@ -16,6 +16,130 @@ const helperExports = [
   "reportLiveFooterGeometry",
 ].join(", ")
 
+test("footer console diagnostics emit only closed first-error categories", () => {
+  const output = reportInChild(`
+    const examples = [
+      ["burst", "Failed to load resource: the server responded with a status of 403 (private-token)", "http-4xx"],
+      ["repeat", "Failed to load resource: the server responded with a status of 503 (private-token)", "http-5xx"],
+      ["drawer-open", "Failed to load resource: net::ERR_FAILED private-url", "network"],
+      ["drawer-route", "Connecting to private-url violates the following Content Security Policy directive", "csp"],
+      ["back", "Error: Minified React error #418; private-token", "react-418"],
+      ["forward", "private-message", "other"],
+    ];
+    for (const [phase, message] of examples) {
+      const diagnostic = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      diagnostic.setPhase(phase);
+      diagnostic.record(message);
+      diagnostic.report("desktop", 1);
+    }
+    const unavailable = liveUiDiagnostics.createFooterConsoleDiagnostic();
+    unavailable.record({ toString() { throw new Error("private-object"); } });
+    unavailable.report("mobile", 1);
+  `)
+  assert.equal(
+    output,
+    [
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=burst kind=http-4xx count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=repeat kind=http-5xx count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=drawer-open kind=network count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=drawer-route kind=csp count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=back kind=react-418 count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=forward kind=other count=1",
+      "UE_LIVE_FOOTER_CONSOLE_V1 project=mobile phase=burst kind=unavailable count=1",
+      "",
+    ].join("\n")
+  )
+  assert.doesNotMatch(output, /private|https?:/u)
+})
+
+test("footer console diagnostics retain the first observation and cap the total", () => {
+  assert.equal(
+    reportInChild(`
+      const diagnostic = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      diagnostic.setPhase("repeat");
+      diagnostic.record("Failed to load resource: the server responded with a status of 503 private");
+      diagnostic.setPhase("forward");
+      diagnostic.record("Minified React error #418; private");
+      diagnostic.report("desktop", 1200);
+      diagnostic.report("desktop", 1200);
+    `),
+    "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=repeat kind=http-5xx count=999\n"
+  )
+})
+
+test("footer console diagnostics reject invalid labels and counts without coercion", () => {
+  assert.equal(
+    reportInChild(`
+      const empty = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      empty.report("desktop", 1);
+      const diagnostic = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      diagnostic.setPhase("private-phase");
+      diagnostic.record("private-message");
+      diagnostic.report("desktop\\nprivate", 1);
+      diagnostic.report({ toString() { throw Error("private"); } }, 1);
+      diagnostic.report("desktop", "1");
+      diagnostic.report("desktop", 0);
+      diagnostic.report("desktop", -1);
+      diagnostic.report("desktop", 1.5);
+      diagnostic.report("desktop", NaN);
+      diagnostic.report("desktop", Infinity);
+      diagnostic.report("desktop", 1);
+    `),
+    "UE_LIVE_FOOTER_CONSOLE_V1 project=desktop phase=burst kind=other count=1\n"
+  )
+})
+
+test("footer console diagnostic write failures do not throw", () => {
+  assert.equal(
+    reportInChild(`
+      const diagnostic = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      diagnostic.record("private-message");
+      const originalWrite = process.stdout.write;
+      try {
+        process.stdout.write = () => { throw new Error("private-write-failure"); };
+        assert.doesNotThrow(() => diagnostic.report("desktop", 1));
+      } finally {
+        process.stdout.write = originalWrite;
+      }
+    `),
+    ""
+  )
+})
+
+test("footer console records are deduplicated and capped per worker", () => {
+  const output = reportInChild(`
+    for (let count = 1; count <= 20; count += 1) {
+      const diagnostic = liveUiDiagnostics.createFooterConsoleDiagnostic();
+      diagnostic.record("private-message");
+      diagnostic.report("desktop", count);
+    }
+    const duplicate = liveUiDiagnostics.createFooterConsoleDiagnostic();
+    duplicate.record("private-message");
+    duplicate.report("desktop", 1);
+  `)
+  assert.equal(output.trimEnd().split("\n").length, 16)
+  assert.doesNotMatch(output, /private/u)
+})
+
+test("footer console observation stays gated by the existing zero-error assertion", async () => {
+  const source = await readFile(
+    new URL("./footer-bottom-navigation.live.spec.ts", import.meta.url),
+    "utf8"
+  )
+  const lines = source.split(/\r?\n/u)
+  assert.match(lines[97], /^test\("bottom navigation fits phones/u)
+  assert.match(lines[281], /^test\("footer clears the bottom navigation/u)
+  const rapid = source.slice(source.indexOf("async function verifyRapidMobileNavigation"))
+  const gate = rapid.indexOf("if (consoleErrorCount > 0)")
+  const report = rapid.indexOf("consoleDiagnostic.report(", gate)
+  const assertion = rapid.indexOf(
+    'expect(consoleErrorCount, "rapid navigation must not emit console errors").toBe(0)'
+  )
+  assert.ok(gate >= 0 && gate < report && report < assertion)
+  assert.match(rapid, /if \(message\.type\(\) === "error"\)\s*\{\s*consoleErrorCount \+= 1/u)
+  assert.match(rapid, /finally\s*\{\s*page\.off\("console", onConsole\)/u)
+})
+
 function reportInChild(calls) {
   const result = spawnSync(
     process.execPath,

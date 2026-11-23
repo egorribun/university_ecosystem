@@ -230,7 +230,10 @@ const Register = () => {
                       />
                     )}
                   />
-                  <span id="register-role-description" className="text-text-muted-subtle text-sm">
+                  <span
+                    id="register-role-description"
+                    className="text-[color:var(--text-secondary)] text-sm"
+                  >
                     {inviteHint}
                   </span>
                 </div>
@@ -339,7 +342,7 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p id="register-password-hint" className="text-xs text-text-muted-subtle">
+              <p id="register-password-hint" className="text-xs text-[color:var(--text-secondary)]">
                 {t("auth:register.passwordHint")}
               </p>
               {passwordStrengthPercent !== null ? (
@@ -351,7 +354,7 @@ const Register = () => {
                     />
                   </div>
                   {passwordStrengthLabel ? (
-                    <p className="text-xs font-semibold text-text-muted-subtle">
+                    <p className="text-xs font-semibold text-[color:var(--text-secondary)]">
                       {passwordStrengthLabel}
                     </p>
                   ) : null}
@@ -363,7 +366,7 @@ const Register = () => {
                     "badge-brand",
                     minLenOk
                       ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
-                      : "text-text-muted-subtle"
+                      : "text-[color:var(--text-secondary)]"
                   )}
                 >
                   {t("auth:register.passwordChip.minLength")}
@@ -373,7 +376,7 @@ const Register = () => {
                     "badge-brand",
                     matchOk
                       ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
-                      : "text-text-muted-subtle"
+                      : "text-[color:var(--text-secondary)]"
                   )}
                 >
                   {t("auth:register.passwordChip.match")}

@@ -281,7 +281,7 @@
     "fog": "Fog",
     "storm": "Storm",
     "loading": "Loading weather...",
-    "ariaLabel": "Current weather: {{condition}}, {{temp}}°C",
+    "ariaLabel": "Current weather (°C): {{temp}} {{condition}}",
     "feelsLike": "Feels like",
     "wind": "Wind",
     "humidity": "Humidity",

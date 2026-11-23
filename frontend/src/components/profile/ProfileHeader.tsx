@@ -137,7 +137,7 @@ export const ProfileHeader = ({
           <span className="text-xl font-bold text-(--brand-main)">
             {user?.education_path?.course || "—"}
           </span>
-          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
             {t("profile:labels.course")}
           </span>
         </div>
@@ -149,7 +149,7 @@ export const ProfileHeader = ({
               </span>
             </div>
           </div>
-          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
             {t("profile:labels.recordBook")}
           </span>
         </div>
@@ -185,7 +185,7 @@ export const ProfileHeader = ({
 
       {/* vCard QR Section */}
       <SectionCard className="p-5 flex flex-col gap-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium flex items-center gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) flex items-center gap-2">
           <QrCodeIcon className="h-3.5 w-3.5" />
           {t("profile:labels.vcard")}
         </h2>

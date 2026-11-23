@@ -281,7 +281,7 @@
     "fog": "Туман",
     "storm": "Гроза",
     "loading": "Загрузка погоды…",
-    "ariaLabel": "Погода сейчас: {{condition}}, {{temp}}°C",
+    "ariaLabel": "Погода сейчас (°C): {{temp}} {{condition}}",
     "feelsLike": "Ощущается",
     "wind": "Ветер",
     "humidity": "Влажность",

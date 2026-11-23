@@ -427,3 +427,80 @@ export function reportLivePasswordResetRegistrationFailure(project: string, step
     6
   )
 }
+
+const FOOTER_CONSOLE_PHASES = [
+  "burst",
+  "repeat",
+  "drawer-open",
+  "drawer-route",
+  "back",
+  "forward",
+] as const
+type FooterConsolePhase = (typeof FOOTER_CONSOLE_PHASES)[number]
+type FooterConsoleKind =
+  "http-4xx" | "http-5xx" | "network" | "csp" | "react-418" | "other" | "unavailable"
+const emittedFooterConsoleRecords = new Set<string>()
+const MAX_FOOTER_CONSOLE_RECORDS = 16
+
+function footerConsoleKind(value: unknown): FooterConsoleKind {
+  if (typeof value !== "string") return "unavailable"
+  const text = value.slice(0, 2048)
+  if (
+    /^Failed to load resource: the server responded with a status of 4\d\d(?:\s|\(|$)/u.test(text)
+  ) {
+    return "http-4xx"
+  }
+  if (
+    /^Failed to load resource: the server responded with a status of 5\d\d(?:\s|\(|$)/u.test(text)
+  ) {
+    return "http-5xx"
+  }
+  const reactText = text.startsWith("Error: ") ? text.slice(7) : text
+  if (
+    reactText === "Minified React error #418" ||
+    reactText.startsWith("Minified React error #418;")
+  ) {
+    return "react-418"
+  }
+  if (/^(?:Refused to |Connecting to |Loading |Executing ).*Content Security Policy/u.test(text)) {
+    return "csp"
+  }
+  if (/^Failed to load resource: net::ERR_/u.test(text) || /^Failed to fetch(?:\s|$)/u.test(text)) {
+    return "network"
+  }
+  return "other"
+}
+
+/** Capture the first error's phase and kind; report the total console error count. */
+export function createFooterConsoleDiagnostic() {
+  let phase: FooterConsolePhase = "burst"
+  let first: { phase: FooterConsolePhase; kind: FooterConsoleKind } | undefined
+  let reported = false
+  return {
+    setPhase(next: FooterConsolePhase): void {
+      if (FOOTER_CONSOLE_PHASES.includes(next)) phase = next
+    },
+    record(text: unknown): void {
+      if (!first) first = { phase, kind: footerConsoleKind(text) }
+    },
+    report(project: unknown, count: unknown): void {
+      if (
+        reported ||
+        !first ||
+        (project !== "desktop" && project !== "mobile") ||
+        typeof count !== "number" ||
+        !Number.isSafeInteger(count) ||
+        count < 1
+      ) {
+        return
+      }
+      reported = true
+      const boundedCount = Math.min(count, 999)
+      writeRecord(
+        `UE_LIVE_FOOTER_CONSOLE_V1 project=${project} phase=${first.phase} kind=${first.kind} count=${boundedCount}\n`,
+        emittedFooterConsoleRecords,
+        MAX_FOOTER_CONSOLE_RECORDS
+      )
+    },
+  }
+}

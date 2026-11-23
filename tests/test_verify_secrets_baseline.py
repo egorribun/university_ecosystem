@@ -38418,6 +38418,206 @@ def test_helm_pin_rebind_rejects_drift(mutation: str) -> None:
         _nov17_integration_predecessor(_HELM_PIN_PATH, source)
 
 
+_FOOTER_CONSOLE_LIVE = "scripts/live_stand.py"
+_FOOTER_CONSOLE_LEDGER = "quality/semgrep-dispositions.json"
+_FOOTER_CONSOLE_ROW = 495
+_FOOTER_CONSOLE_PINS = {
+    _FOOTER_CONSOLE_LIVE: (
+        bytes.fromhex(
+            "e2 ec 7d e9 61 e3 87 34 4d 58 fe c6 6a ab cd 5c"
+            " 12 03 a8 9e 09 4d 9d 2f e0 eb 0a f8 7f c2 57 af"
+        ),
+        bytes.fromhex(
+            "e0 98 f8 09 05 64 f7 d4 07 29 8e cb 26 4c d4 b6"
+            " 6e 7b 2a e7 27 23 e8 f6 c8 c5 9f 34 27 14 f6 dd"
+        ),
+    ),
+    _FOOTER_CONSOLE_LEDGER: (
+        bytes.fromhex(
+            "71 2e a1 30 0d 97 38 94 55 de b1 0c d6 5d 2d 31"
+            " 9f 50 0e c5 ce 6d a8 a2 c0 7c a0 9d dd 68 8b 2f"
+        ),
+        bytes.fromhex(
+            "4d 8f 21 3e e7 de de a6 fd 03 ae 52 ad d3 ed 2e"
+            " e1 8c d4 bd c6 2c 2f ed 22 36 e3 c3 88 35 14 96"
+        ),
+    ),
+}
+_FOOTER_CONSOLE_ROW_BEFORE = bytes.fromhex(
+    "33 3d 9a da 04 6c 87 0d 43 bf ae 73 27 70 ce 02"
+    " 0c 8f f2 98 67 17 4e b2 bc 6c 36 63 13 4e 4c ee"
+)
+_FOOTER_CONSOLE_ROW_AFTER = bytes.fromhex(
+    "6e db 9f 66 63 95 88 58 97 67 b3 1d 58 4a 2e ce"
+    " 04 b0 70 93 94 8b 47 88 a5 07 66 62 7b fa 61 fe"
+)
+_FOOTER_CONSOLE_INSERTIONS = (
+    b"from scripts.live_stand_playwright_evidence import (\n"
+    b"    _live_playwright_footer_console_diagnostics as _live_playwright_footer_console_diagnostics,\n"
+    b")\n",
+    b"    footer_console_diagnostics = _live_playwright_footer_console_diagnostics(stdout)\n",
+    b"    for (\n"
+    b"        console_project,\n"
+    b"        console_phase,\n"
+    b"        console_kind,\n"
+    b"        console_count,\n"
+    b"    ) in footer_console_diagnostics:\n"
+    b"        print(\n"
+    b'            f"live E2E footer console project={console_project} phase={console_phase} "\n'
+    b'            f"kind={console_kind} count={console_count}",\n'
+    b"            flush=True,\n"
+    b"        )\n",
+)
+
+
+def _footer_console_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _FOOTER_CONSOLE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    if path == _FOOTER_CONSOLE_LEDGER and digest != current:
+        # Earlier projections validate their own ledger generations.
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    restored = actual
+    if path == _FOOTER_CONSOLE_LEDGER:
+        old_live, new_live = _FOOTER_CONSOLE_PINS[_FOOTER_CONSOLE_LIVE]
+        current_token = new_live.hex().encode("ascii")
+        assert restored.count(current_token) == 1, message
+        restored = restored.replace(current_token, old_live.hex().encode("ascii"), 1)
+    else:
+        for insertion in _FOOTER_CONSOLE_INSERTIONS:
+            assert restored.count(insertion) == 1, message
+            restored = restored.replace(insertion, b"", 1)
+    assert hashlib.sha256(restored).digest() == previous, message
+    return restored
+
+
+def _footer_console_source_if_current(path: str, actual: bytes) -> bytes:
+    pins = _FOOTER_CONSOLE_PINS.get(path)
+    if pins is not None and hashlib.sha256(actual).digest() == pins[1]:
+        return _footer_console_source_predecessor(path, actual)
+    return actual
+
+
+def _footer_console_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _FOOTER_CONSOLE_ROW:
+        return restored
+    row = records[_FOOTER_CONSOLE_ROW]
+    identity = row["identity"]
+    previous, current = _FOOTER_CONSOLE_PINS[_FOOTER_CONSOLE_LIVE]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Earlier projections validate earlier or unknown identities.
+        return restored
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _FOOTER_CONSOLE_ROW_AFTER, (
+        "footer console disposition approval metadata changed"
+    )
+    assert identity["path"] == _FOOTER_CONSOLE_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _FOOTER_CONSOLE_ROW_BEFORE, (
+        "footer console predecessor approval metadata changed"
+    )
+    return restored
+
+
+def test_footer_console_source_projection_reconstructs_predecessor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for path, (previous, current) in _FOOTER_CONSOLE_PINS.items():
+        actual = (root / path).read_bytes()
+        assert hashlib.sha256(actual).digest() == current
+        restored = _footer_console_source_predecessor(path, actual)
+        assert hashlib.sha256(restored).digest() == previous
+        assert _footer_console_source_predecessor(path, restored) == restored
+
+
+def test_footer_console_policy_rebind_changes_one_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / _FOOTER_CONSOLE_LEDGER).read_bytes())
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(ledger["dispositions"]) == 15
+    assert len(policy["records"]) == 524
+    live_pin = hashlib.sha256((root / _FOOTER_CONSOLE_LIVE).read_bytes()).hexdigest()
+    assert [
+        item["sha256"]
+        for item in ledger["dispositions"][6]["companions"]
+        if item["path"] == _FOOTER_CONSOLE_LIVE
+    ] == [live_pin]
+    restored = _footer_console_policy_predecessor(policy)
+    assert [
+        index
+        for index, (current, previous) in enumerate(
+            zip(policy["records"], restored["records"], strict=True)
+        )
+        if current != previous
+    ] == [_FOOTER_CONSOLE_ROW]
+    previous_row = copy.deepcopy(restored["records"][_FOOTER_CONSOLE_ROW])
+    previous_row["identity"]["hashed_secret_bytes"] = _nov15_identity(live_pin)
+    assert previous_row == policy["records"][_FOOTER_CONSOLE_ROW]
+    assert _footer_console_policy_predecessor(restored) == restored
+
+
+@pytest.mark.parametrize(
+    ("path", "fragment_index"),
+    [
+        (_FOOTER_CONSOLE_LIVE, 0),
+        (_FOOTER_CONSOLE_LIVE, 1),
+        (_FOOTER_CONSOLE_LIVE, 2),
+        (_FOOTER_CONSOLE_LEDGER, None),
+    ],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_footer_console_projection_rejects_spoofed_source(
+    path: str,
+    fragment_index: int | None,
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    fragment = (
+        _FOOTER_CONSOLE_INSERTIONS[fragment_index]
+        if fragment_index is not None
+        else _FOOTER_CONSOLE_PINS[_FOOTER_CONSOLE_LIVE][1].hex().encode("ascii")
+    )
+    assert actual.count(fragment) == 1
+    replacement = b"" if mutation == "missing" else fragment + fragment
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _ = _FOOTER_CONSOLE_PINS[path]
+    monkeypatch.setitem(
+        _FOOTER_CONSOLE_PINS, path, (previous, hashlib.sha256(changed).digest())
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _footer_console_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize(
+    "field", ["owner", "expires_on", "evidence", "approval_status"]
+)
+def test_footer_console_projection_rejects_approval_drift(field: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    policy["records"][_FOOTER_CONSOLE_ROW][field] += " changed"
+    with pytest.raises(AssertionError, match="approval metadata changed"):
+        _footer_console_policy_predecessor(policy)
+
+
 # The chat privacy change rebinds one existing Semgrep companion and its
 # corresponding public-integrity identity. Restore the exact predecessor before
 # the earlier projections; the inventory and approval metadata do not change.
@@ -38497,6 +38697,7 @@ _CHAT_PRIVACY_REVERSALS = (
 
 
 def _chat_privacy_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _footer_console_source_if_current(path, actual)
     message = f"conditional disposition source file SHA-256 changed: {path}"
     previous_hex, current_hex = _CHAT_PRIVACY_SOURCE_SHA256
     if path == _CHAT_PRIVACY_PATH:
@@ -38553,7 +38754,9 @@ def test_chat_privacy_rebind_restores_exact_predecessors() -> None:
     restored = _chat_privacy_source_predecessor(_CHAT_PRIVACY_PATH, source)
     assert hashlib.sha256(restored).hexdigest() == previous_hex
     assert _chat_privacy_source_predecessor(_CHAT_PRIVACY_PATH, restored) == restored
-    ledger = (root / _CHAT_PRIVACY_LEDGER).read_bytes()
+    ledger = _footer_console_source_predecessor(
+        _CHAT_PRIVACY_LEDGER, (root / _CHAT_PRIVACY_LEDGER).read_bytes()
+    )
     assert hashlib.sha256(ledger).digest() == _CHAT_PRIVACY_LEDGER_SHA256[1]
     dispositions = json.loads(ledger)["dispositions"]
     assert len(dispositions) == 15
@@ -38838,6 +39041,7 @@ _NATS_INVENTORY_LIVE_REVERSALS = (
 
 
 def _nats_inventory_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _footer_console_source_if_current(path, actual)
     rotation = _AUD154_ROTATION_SOURCE_PINS.get(path)
     if rotation is not None and hashlib.sha256(actual).digest() == rotation[1]:
         actual = _aud154_rotation_source_predecessor(path, actual)
@@ -39075,7 +39279,7 @@ def _aud154_rotation_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _aud154_rotation_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _footer_console_policy_predecessor(policy)
     records = restored["records"]
     if len(records) <= _NATS_INVENTORY_ROW:
         return restored
