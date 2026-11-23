@@ -11,8 +11,10 @@
   На PR head `df56a3bb17d6cee3dced215f62b17b0c533aa94f` проверены 78 обязательных пар контекст/app и блокирующий CodeQL.
   [PR receipt 14852279190](https://github.com/egorribun/university_ecosystem/actions/runs/45242979321/artifacts/14852279190) относится к synthetic merge `0db0bb681a64246be9aa76dfb9afb05379c7a332`, SHA-256 `9350e127d050e623ce74938d23b46d1198f6d533bf861f820eec96ffa4ad2c39`.
 - [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383) и [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45248331850) прошли на `7e54feee`.
+- На `7e54feee` штатные collector и validator подтвердили все 12 main-push проверок политики выпуска.
+  Bundle `check-runs.json`, SHA-256 `29208c5d5a05ce950a23dcf16d088995bf54929091e602ce0227037156743e32`.
 - [Quality evidence 14856563853](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14856563853) — SHA-256 архива `dd85291cb583dad0ec912f859b9e3622801f5c27ca84afb15f1216130ec726b8`,
-  манифеста `0a10dd0ce0e59541e831ac9a31257c7e2b2ad97659b39237919d13ea3bf0300f`. Проверены 13 компонентов, Tier 0 ready.
+  манифеста `0a10dd0ce0e59541e831ac9a31257c7e2b2ad97659b39237919d13ea3bf0300f`. Проверены 13 компонентов, Tier 0 ready. Повторно сверены все 16 файлов отчётов.
 - Исторический `main` `a2d295bc7b710a3db58956841146d43a6b086cbe` получен merge [#1576](https://github.com/egorribun/university_ecosystem/pull/1576).
   [CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353), [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892) и [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152) относятся к этому SHA. SHA-256 архива и манифеста, схема и 13 компонентов сверены.
 - Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
@@ -22,6 +24,13 @@
 - Все черновики облачного агента и старые черновики закрыты по решению владельца 2026-11-23: #1426,
   #1506, #1507, #1557–#1561, #1563, #1565. Обновления Dependabot #1571 (кроме @lhci/cli) и #1572
   перенесены коммитами владельца.
+
+- [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) заблокирован на опубликованном head
+  `23fcae763696cb76cba909ef04bfe95876f6379a`. Повтор [CI, attempt 2](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/attempts/2)
+  завершился ошибкой выбора `libcrypto3=3.5.9-r0` и `libssl3=3.5.9-r0` в двух сборках Caddy.
+  Затронуты [Trivy](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138066650807),
+  [log proof](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138066649472)
+  и итоговый [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138067629129).
 
 ### Полный Core на `main`
 
@@ -107,9 +116,15 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
 | 4. Визуал и performance | Проверка Stage 4 — 96 PNG с sidecars, 2 serious `color-contrast` на dark390 `/schedule` RU/EN (белый на `#38bdf8`, 2.14:1). На `a2d295bc7` serious-находки были в 28 вариантах. Утверждён только Home12, approval нового пакета не получен. |
 | 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён на одном disposable owned stand. Avatar не загружен. |
-| 6. Выпуск | Не начат. |
+| 6. Выпуск | Собраны предварительные проверки на `7e54feee`. Freeze и публикация v1.0.0 ожидаются. |
 
 Галерея — aggregate SHA-256 `6dd69c38516e8f4bf7d52d863bf0321fe873d5b85f69f146987d67d2d0671a0b`, safe summary SHA-256 `42df1d91ca9607015a39959ab41f64338c0a6f8b93febadc8646da7b01bd4dee`.
+
+Бюджеты сборки на `7e54feee` подтверждены: main JS 199,10 KiB raw, начальный JS 412,67 KiB gzip,
+крупнейший обычный lazy-чанк 217,69 KiB gzip, MapLibre 6.18.0 289,41 KiB gzip.
+[Bundle report 14855552498](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14855552498),
+[MapLibre inventory 14854778672](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14854778672).
+Значение `runtimeClosure=unproved` сохранено в артефакте.
 
 ### Scoped restore DB/S3 (§7.3)
 
