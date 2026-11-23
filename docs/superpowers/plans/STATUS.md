@@ -3,59 +3,44 @@
 Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
 в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
 
-## Текущий срез — 2026-11-22
+## Текущий срез — 2026-11-23
 
 ### `main` и пакет PR
 
-- `main` = `71ea9616ccb7d950b3baee3855f38f5a64c62c62`. Слиты обычным merge после всех
-  обязательных проверок:
-  [#1541](https://github.com/egorribun/university_ecosystem/pull/1541) → `149814844`,
-  [#1544](https://github.com/egorribun/university_ecosystem/pull/1544) → `c506c637c`,
-  [#1545](https://github.com/egorribun/university_ecosystem/pull/1545) → `d8a010b4`,
-  [#1549](https://github.com/egorribun/university_ecosystem/pull/1549) → `fc92e183`,
-  [#1554](https://github.com/egorribun/university_ecosystem/pull/1554) → `4e9246c99`,
-  [#1556](https://github.com/egorribun/university_ecosystem/pull/1556) → `71ea9616c`.
-  Подробности по каждому — в описании PR и в истории этого файла.
-- #1556 при каждом ответе провайдера 404 или 410 записывает закрытый класс возраста подписки
-  (`lt_10s` … `ge_600s`, `unknown`) без самого времени, и в строках `push 410` наблюдения worker.
-  Полный Core на `71ea9616c` запущен: [run 45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734).
-- Закрыты черновики облачного агента: устаревшие или перенесённые #1523, #1547, #1550, #1553,
-  #1555 и мутационные #1542, #1543, #1551, #1552. Для доработки открыты #1426, #1506, #1507.
-  Перенесены #1557 (R14), #1558 и #1559 (Stories), #1560 (AUD-381), #1561 (тест PATCH) вместе с
-  исправлением API.
-- Состав #1554:
-  - **RUSTSEC-2026-0592.** `b77621408` упал на Cargo Deny и Rust vulnerability gate из-за
-    переполнения стека в `Url::origin()` в `url` 2.5.8. Это транзитивная зависимость `ammonia`
-    в `wasm-sanitizer`.
-    - Исправление обновляет `url` до 2.5.9 в основном и fuzz-lockfile и пересобирает WASM.
-    - Переподвязка один к одному: записи 444, 447 и 450. Инвентарь остаётся 524.
-  - **R29.** Матрица трассируемости приведена к коду и ТЗ §6: добавлять участников и
-    переименовывать группу может любой участник, удалять других — только владелец, выйти может
-    каждый. Взято из черновика облачного агента #1550.
-  - **ws-hub.** На `93d677662` покрытие ws-hub упало до 99,9%: не покрыта ветка отмены в ожидании
-    разрешения на запись в комнату. Тест считал первый вызов `Done()` признаком ожидания, но
-    `authorizeSession` раньше вызывает `Done()` через `context.WithTimeout`. Теперь проверка
-    сессии в тесте кешируется, как в соседнем тесте, и отмена всегда попадает в ожидание.
-  - **Story memory.** Добавлена диагностика `firstMismatch`. Она записывает первый цикл, в котором
-    счётчики DOM разошлись с прогретым снимком.
+- `main` = `05a462ffd648b9492e49ef001aba0cc5fdca434e`, обычный merge
+  [#1567](https://github.com/egorribun/university_ecosystem/pull/1567) после 78 обязательных проверок
+  и CodeQL на `116eb7dab290b62ea50efbee1d78a18115a71a80`. Предыдущий merge
+  [#1562](https://github.com/egorribun/university_ecosystem/pull/1562) — `4fd3fbac9`.
+- В #1567 восстановлены пять проверяемых условий мастер-плана. Все 13 адресных тестов прошли.
+  [PR Core smoke](https://github.com/egorribun/university_ecosystem/actions/runs/45083110629/job/137395496781)
+  на merge tree `08ee72e30` завершился с 52 passed и 2 skipped.
+  [Receipt 14779020658](https://github.com/egorribun/university_ecosystem/actions/runs/45083110629/artifacts/14779020658)
+  `753a480ccb304fff8059b7efeb141ff86ea3f52d914609e6cae0ac7a4551ace0`.
+- [#1548](https://github.com/egorribun/university_ecosystem/pull/1548) закрыт без merge;
+  #1557–#1561 остаются открыты. История перенесённых изменений — в соответствующих PR.
 
 ### Полный Core на `main`
 
-| Запуск | SHA | Итог | Сбои первой попытки | Receipt (SHA-256) |
-| --- | --- | --- | --- | --- |
-| [45064476734](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/job/137337440218) | `71ea9616c` | **224 passed, 0 failed, 8 skipped, 0 flaky** | нет | [14772751398](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/artifacts/14772751398) `1499f38b…4a816` |
-| [45014106658](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/job/137182595658) | `fc92e183` | 220 passed, 2 failed, 8 skipped, 2 flaky | Story memory desktop и mobile | [14752895011](https://github.com/egorribun/university_ecosystem/actions/runs/45014106658/artifacts/14752895011) `7773d74e…e991e` |
-| [44993593499](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/job/137119776922) | `fc92e183` | 220 passed, 1 failed, 8 skipped, 3 flaky | desktop notification-topics | [14744561230](https://github.com/egorribun/university_ecosystem/actions/runs/44993593499/artifacts/14744561230) `46bcd88b…f9611` |
+Оба запуска были инициированы на тогдашнем `main` `71ea9616ccb7d950b3baee3855f38f5a64c62c62`.
+Второй стартовал за десять секунд до merge #1562 и завершился уже после изменения `main`.
 
-- **`71ea9616c` — первый зелёный полный Core для AUD-154.** Все шесть именных случаев AUD-154,
-  включая desktop и mobile read-receipt, прошли с первой попытки; `push 410` в журнале нет. Job
-  «Validate frozen-RC full-smoke request» красный при каждом dispatch: `quality/frozen-rc.json` ещё не
-  называет RC (этап 6). Нужен второй зелёный запуск подряд на `main`.
-- **Push на `fc92e183`.** Worker получал `push 410` на первую доставку в свежую подписку, которую
-  браузер продолжал держать. Причина отзыва FCM не установлена; при повторе её покажет класс
-  возраста из #1556.
+| Запуск | Итог | Receipt и SHA-256 |
+| --- | --- | --- |
+| [45064476734, job 137337440218](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/job/137337440218) | **224 passed, 0 failed, 8 skipped, 0 flaky** | [14772751398](https://github.com/egorribun/university_ecosystem/actions/runs/45064476734/artifacts/14772751398) `1499f38b11f6b1cd1177ccb09cafa05ef12cb4d50fdd2f75fe4829355cf4a816` |
+| [45076129899, job 137373641322](https://github.com/egorribun/university_ecosystem/actions/runs/45076129899/job/137373641322) | **221 passed, 1 failed, 8 skipped, 2 flaky** | [14776214511](https://github.com/egorribun/university_ecosystem/actions/runs/45076129899/artifacts/14776214511) `739c2603ca0de9c84018555e8e1460891b6198cf40ee98a1d087d13e7b46637c` |
 
-### DAST на `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
+- Во втором запуске все шесть именных случаев AUD-154, включая desktop и mobile read-receipt,
+  прошли с первой попытки. Сбои первой попытки: mobile Story memory, desktop notification-topics
+  и mobile push; итог — один failed и два flaky. Серия зелёных полных Core сброшена.
+- В локальном Chrome зависшие ответы изображений удерживали закрытую разметку Stories и слушателей.
+  После очистки источников изображения при отсоединении рост исчез в пяти циклах с незавершёнными
+  ответами. Причину hosted-сбоя нужно подтвердить следующим полным Core.
+- В ограниченной выборке журнала worker есть ответ провайдера `410` с `subscription_age=lt_10s`.
+  Этот класс отражает возраст серверной DB-записи, а не установленную причину ответа. Отпечаток
+  endpoint в журнале не совпадает с endpoint сбоя desktop topics; endpoint mobile в доказательствах
+  не записан. Связь наблюдения 410 со сбоями доставки не установлена.
+
+### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
 
 - [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
   (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
@@ -97,7 +82,7 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на `main` (эквивалентность принята владельцем), включая read-receipt live spec. Notification-topics падает, когда FCM отвечает 410 на первую доставку в свежую подписку, которую браузер продолжает держать; причина отзыва не установлена. |
+| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на неизменном source `main` (эквивалентность принята владельцем), включая read-receipt live spec. После красного второго запуска серия сброшена; для текущего `main` нужны новые доказательства. |
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -126,14 +111,21 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
   `var()`. Удерживается @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией
   FSL-1.1-Apache-2.0, которой нет в `allow-licenses` в `.github/dependency-review-config.yml`.
 - Мутационные линии вне объёма MVP (2026-11-13).
+- Для frozen RC использовать smoke на X и release с Y после проверки ancestry и единственной
+  разницы `quality/frozen-rc.json`. Нужны успешный доверенный full-smoke receipt для X и
+  собственные обязательные проверки для Y.
+- Для R83 обязательны базовые mocked-сценарии Messenger в desktop Firefox и WebKit. Физический
+  Safari проверяется отдельно. PR Owned Live остаётся advisory, Chromatic выключен.
+- Независимое review auth, сессий и данных провести на финальном кандидате до freeze. Риск
+  шифртекста reset-ссылок в JetStream допускается для синтетического демо после подтверждения
+  изоляции Compose и отсутствия реальных данных. Записать условия и ограничения в release notes.
 
 ## Следующие шаги
 
-1. Слить #1562: обновления из #1548 (восемь, Playwright 1.65.1, maplibre-gl 6.18.0, jsdom 31),
-   перенесённые черновики облачного агента и STATUS. Затем закрыть #1548 и перенесённые черновики.
-2. AUD-381 закрыт по DAST на `4e9246c99`. Повторить DAST, только если изменится стенд или код,
-   который проверяет ZAP.
-3. AUD-154: первый зелёный полный Core на `main` есть (run 45064476734). Нужен второй подряд, не
-   раньше чем через два часа после первого. При красном запуске разобрать класс возраста подписки
-   при 410 и `firstMismatch` story memory.
-4. После AUD-154 обновить `docs/audits/*` до 512/512 по hosted-доказательствам, затем этапы 3–6 мастер-плана.
+1. Проверить результаты main-push CI на `05a462ffd`.
+2. Интегрировать исправление освобождения изображений Stories и ограниченную диагностику mobile push
+   отдельным PR. Использовать новый полный Core для проверки исправления и разбора сбоев доставки.
+3. Для AUD-154 получить два последовательных зелёных полных Core на неизменном `main`, с интервалом
+   не менее двух часов между запусками и всеми именными случаями; затем оценить доказательства по
+   критерию аудита.
+4. Сохранять scoped DAST-доказательства для AUD-381 и проверять требования этапов 3–6 по мастер-плану.

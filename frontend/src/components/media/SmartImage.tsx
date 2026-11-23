@@ -1,4 +1,11 @@
-import { useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react"
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ImgHTMLAttributes,
+} from "react"
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
 import {
   addVersionParam,
@@ -16,6 +23,7 @@ export type SmartImageProps = {
   cacheV?: string | number
   fallback?: string
   responsiveWidths?: readonly number[]
+  releaseOnDetach?: boolean
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
 function buildSrcSet(rawUrl: string, widths: readonly number[], cacheV?: string | number): string {
@@ -37,6 +45,7 @@ export default function SmartImage({
   cacheV,
   fallback = IMAGE_PLACEHOLDER_URL,
   responsiveWidths = RESPONSIVE_DEFAULT_WIDTHS,
+  releaseOnDetach = false,
   alt = "",
   style,
   onError = NOOP_IMAGE_EVENT,
@@ -76,9 +85,38 @@ export default function SmartImage({
   }, [srcRaw, responsiveWidths, isBlobUrl, useFallback, cacheV])
 
   const mergedStyle: CSSProperties = { objectFit: "cover", ...(style ?? {}) }
+  const safeSrc = sanitizeUrl(finalSrc || "") || undefined
+  const safeSrcSet = srcSet || undefined
+  const releasedSources = useRef(new WeakSet<HTMLImageElement>())
+  const releaseSourceOnDetach = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (image === null) return undefined
+      // A hidden or StrictMode-replayed tree can reuse this node with new props.
+      if (releasedSources.current.has(image)) {
+        releasedSources.current.delete(image)
+        for (const [attribute, value] of [
+          ["srcset", safeSrcSet],
+          ["src", safeSrc],
+        ] as const) {
+          if (image.getAttribute(attribute) !== (value ?? null)) {
+            if (value === undefined) image.removeAttribute(attribute)
+            else image.setAttribute(attribute, value)
+          }
+        }
+      }
+      if (!releaseOnDetach) return undefined
+      return () => {
+        releasedSources.current.add(image)
+        image.removeAttribute("srcset")
+        image.removeAttribute("src")
+      }
+    },
+    [releaseOnDetach, safeSrc, safeSrcSet]
+  )
 
   return (
     <img
+      ref={releaseSourceOnDetach}
       // Wave 112 SW5 — defaults FIRST, `{...rest}` AFTER so callers can
       // override `loading="eager"` + `fetchpriority="high"` for LCP-critical
       // above-the-fold images (Core Web Vitals optimisation). Pre-Wave 112
@@ -88,8 +126,8 @@ export default function SmartImage({
       {...rest}
       alt={alt}
       style={mergedStyle}
-      src={sanitizeUrl(finalSrc || "") || undefined}
-      srcSet={srcSet || undefined}
+      src={safeSrc}
+      srcSet={safeSrcSet}
       sizes={srcSet ? sizes : undefined}
       onLoad={(event) => {
         onLoad(event)

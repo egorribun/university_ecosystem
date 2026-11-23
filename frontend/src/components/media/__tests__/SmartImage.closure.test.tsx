@@ -1,9 +1,81 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import { Activity } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import SmartImage from "@/components/media/SmartImage"
 
 describe("SmartImage defensive and responsive branches", () => {
+  it("releases only opted-in sources when images unmount", () => {
+    const view = render(
+      <>
+        <SmartImage srcRaw="/media/story.png" alt="story" releaseOnDetach />
+        <SmartImage srcRaw="/media/ordinary.png" alt="ordinary" />
+      </>
+    )
+    const story = screen.getByRole("img", { name: "story" })
+    const ordinary = screen.getByRole("img", { name: "ordinary" })
+    const originalSource = ordinary.getAttribute("src")
+
+    view.unmount()
+    expect(story).not.toHaveAttribute("srcset")
+    expect(story).not.toHaveAttribute("src")
+    expect(ordinary).toHaveAttribute("src", originalSource)
+    expect(ordinary).toHaveAttribute("srcset")
+  })
+
+  it("keeps the current image when detach cleanup is toggled", () => {
+    const view = render(<SmartImage srcRaw="/media/toggled.png" alt="toggled" releaseOnDetach />)
+    const image = screen.getByRole("img", { name: "toggled" })
+    const source = image.getAttribute("src")
+    const candidates = image.getAttribute("srcset")
+
+    view.rerender(<SmartImage srcRaw="/media/toggled.png" alt="toggled" />)
+    expect(image).toHaveAttribute("src", source)
+    expect(image).toHaveAttribute("srcset", candidates)
+
+    view.rerender(<SmartImage srcRaw="/media/toggled.png" alt="toggled" releaseOnDetach />)
+    expect(image).toHaveAttribute("src", source)
+    expect(image).toHaveAttribute("srcset", candidates)
+  })
+
+  it("clears stale sources when a source-less image is revealed", () => {
+    const imageInActivity = (mode: "hidden" | "visible") => (
+      <Activity mode={mode}>
+        <SmartImage fallback="" alt="source-less" releaseOnDetach />
+      </Activity>
+    )
+    const view = render(imageInActivity("visible"))
+    const image = screen.getByRole("img", { name: "source-less" })
+    expect(image).not.toHaveAttribute("src")
+    expect(image).not.toHaveAttribute("srcset")
+
+    view.rerender(imageInActivity("hidden"))
+    image.setAttribute("src", "/stale.png")
+    image.setAttribute("srcset", "/stale.png 1x")
+    view.rerender(imageInActivity("visible"))
+
+    expect(screen.getByRole("img", { name: "source-less" })).toBe(image)
+    expect(image).not.toHaveAttribute("src")
+    expect(image).not.toHaveAttribute("srcset")
+  })
+
+  it("preserves the fallback when an opted-in image fails", () => {
+    render(
+      <SmartImage
+        srcRaw="/media/unavailable.png"
+        fallback="/fallback.png"
+        alt="fallback"
+        releaseOnDetach
+      />
+    )
+    const image = screen.getByRole("img", { name: "fallback" })
+    expect(image).toHaveAttribute("srcset")
+
+    fireEvent.error(image)
+    expect(image).toHaveAttribute("src", "http://localhost:3000/fallback.png")
+    expect(image).not.toHaveAttribute("srcset")
+  })
+
   it("uses the media proxy and deduplicated positive responsive widths", () => {
     render(
       <SmartImage
