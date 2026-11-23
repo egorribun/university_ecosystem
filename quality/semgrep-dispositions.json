@@ -350,7 +350,7 @@
         },
         {
           "path": "app/schemas/chat.py",
-          "sha256": "bf6d9b891145e0569218c5ff5d4b3c792b3e8f1a2bf3cbda11b479404e2c3ef4"
+          "sha256": "00465512c6b56797c677160b6801b7a3330c23f8ad7194e7cabaed43adf86e8d"
         },
         {
           "path": "tests/test_chat_reaction_emoji_validation.py",

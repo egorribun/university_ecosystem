@@ -424,15 +424,19 @@ export type ChatParticipant = {
   /**
    * Avatar Url
    */
-  avatar_url?: string | null
+  avatar_url: string | null
   /**
    * Email
+   *
+   * Legacy compatibility field. Participant email is always redacted.
+   *
+   * @deprecated
    */
-  email: string
+  readonly email: string
   /**
    * Full Name
    */
-  full_name?: string | null
+  full_name: string | null
   /**
    * Id
    */
@@ -3383,6 +3387,97 @@ export type WsTicketResponse = {
    * Ticket
    */
   ticket: string
+}
+
+/**
+ * ChatParticipant
+ */
+export type ChatParticipantWritable = {
+  /**
+   * Avatar Url
+   */
+  avatar_url: string | null
+  /**
+   * Full Name
+   */
+  full_name: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Is Active
+   */
+  is_active: boolean
+}
+
+/**
+ * ChatResponse
+ */
+export type ChatResponseWritable = {
+  /**
+   * Chat Type
+   */
+  chat_type?: string
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Created By
+   */
+  created_by?: string | null
+  /**
+   * Id
+   */
+  id: string
+  last_message?: MessageResponse | null
+  /**
+   * Name
+   */
+  name?: string | null
+  /**
+   * Participants
+   */
+  participants: Array<ChatParticipantWritable>
+  /**
+   * Presence
+   */
+  presence?: {
+    [key: string]: PresenceStatus
+  } | null
+  /**
+   * Read Receipts
+   */
+  read_receipts?: Array<ReadReceiptInfo>
+  /**
+   * Unread Count
+   */
+  unread_count?: number
+  /**
+   * Updated At
+   */
+  updated_at: string
+}
+
+/**
+ * ChatsListOut
+ *
+ * Paginated list of chats.
+ */
+export type ChatsListOutWritable = {
+  /**
+   * Has More
+   */
+  has_more?: boolean
+  /**
+   * Items
+   */
+  items: Array<ChatResponseWritable>
+  /**
+   * Next Cursor
+   */
+  next_cursor?: string | null
 }
 
 export type GetRootGetData = {

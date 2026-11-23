@@ -370,6 +370,8 @@ class TestMessageSerialization:
         assert result["content"] == "Hello!"
         assert result["read_status"] is False
         assert result["sender"] is not None
+        assert result["sender"]["email"] == ""
+        assert user.email not in result["sender"].values()
         assert "attachments" in result
 
     @pytest.mark.asyncio

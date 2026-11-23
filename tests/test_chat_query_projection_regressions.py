@@ -45,9 +45,9 @@ async def test_chat_list_projects_persisted_participant_avatars(
     await db_session.commit()
     group_id = group.id
     expected = {
-        owner.id: ("Owner", owner.email, "/static/owner.png"),
-        peer.id: ("Peer", peer.email, "/static/peer.png"),
-        no_profile.id: (None, no_profile.email, None),
+        owner.id: ("Owner", "/static/owner.png"),
+        peer.id: ("Peer", "/static/peer.png"),
+        no_profile.id: (None, None),
     }
     db_session.expunge_all()
     service = ChatQueryService(db_session, ChatRepository(db_session))
@@ -65,13 +65,13 @@ async def test_chat_list_projects_persisted_participant_avatars(
         owner.id,
     )
     assert {
-        participant.id: (
-            participant.full_name,
-            participant.email,
-            participant.avatar_url,
-        )
+        participant.id: (participant.full_name, participant.avatar_url)
         for participant in item.participants
     } == expected
+    # Chat members must not learn each other's email (owner decision 2026-11-23).
+    assert all(
+        participant.model_dump()["email"] == "" for participant in item.participants
+    )
     assert item.last_message is None
     assert item.unread_count == 0
     assert response.has_more is False

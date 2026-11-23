@@ -6,7 +6,7 @@ import { ChatArea } from "@/components/messenger/ChatArea"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { Message } from "@/components/messenger/types"
 import type { Chat } from "@/api/chat"
-import type { User } from "@/types/User"
+import type { ChatParticipant } from "@/api/generated"
 
 type ChatAreaProps = ComponentProps<typeof ChatArea>
 type ChatAreaCapabilityProps = ChatAreaProps & { canManageChat?: boolean }
@@ -141,29 +141,27 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 )
 
-// Test fixtures — minimal Chat + User shapes covering only fields ChatArea
-// reads. Wave 189 SW4 — Phase 3 verified ChatArea consumes activeChat (header),
-// getOtherParticipant(activeChat) (avatar + name + online dot), and
-// presenceMap[userId]?.active (online status). User extends UserOut from
-// generated OpenAPI types — fields beyond {id, full_name, avatar_url} are not
-// referenced by ChatArea, so a partial fixture cast via `as unknown as User`
-// avoids needing to satisfy the full openapi schema in unit tests.
-const makeUser = (overrides: { id: string; full_name?: string; avatar_url?: string }): User =>
-  ({
-    id: overrides.id,
-    full_name: overrides.full_name ?? "Alice Anderson",
-    avatar_url: overrides.avatar_url ?? "",
-  }) as unknown as User
+// ChatArea reads the public participant projection for the header and presence.
+const makeParticipant = (overrides: {
+  id: string
+  full_name?: string
+  avatar_url?: string
+}): ChatParticipant => ({
+  id: overrides.id,
+  full_name: overrides.full_name ?? "Alice Anderson",
+  avatar_url: overrides.avatar_url ?? "",
+  email: "",
+  is_active: true,
+})
 
-const makeChat = (overrides: Partial<Chat> = {}): Chat =>
-  ({
-    id: "chat-1",
-    participants: [makeUser({ id: "user-me" }), makeUser({ id: "user-alice" })],
-    unread_count: 0,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-    ...overrides,
-  }) as Chat
+const makeChat = (overrides: Partial<Chat> = {}): Chat => ({
+  id: "chat-1",
+  participants: [makeParticipant({ id: "user-me" }), makeParticipant({ id: "user-alice" })],
+  unread_count: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  ...overrides,
+})
 
 const baseMessages: Message[] = [
   {
@@ -201,7 +199,7 @@ const baseProps: ChatAreaCapabilityProps = {
   handleViewProfile: vi.fn(),
   handleClearChat: vi.fn(),
   handleDeleteChat: vi.fn(),
-  // getOtherParticipant signature is `(chat: Chat) => User | undefined`
+  // getOtherParticipant returns a public chat participant or undefined.
   // per useMessengerController.ts:367-372.
   getOtherParticipant: (chat) => chat.participants.find((p) => p.id !== "user-me"),
   presenceMap: {},
@@ -573,7 +571,7 @@ describe("ChatArea — group header and typing delegation", () => {
   })
 
   it("falls back safely when a direct chat has no other participant", () => {
-    const chat = makeChat({ participants: [makeUser({ id: "user-me" })] })
+    const chat = makeChat({ participants: [makeParticipant({ id: "user-me" })] })
     render(
       <ChatArea
         {...baseProps}

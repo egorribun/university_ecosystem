@@ -34939,7 +34939,10 @@ def test_ammonia_rebind_preserves_exact_predecessor() -> None:
     ledger_bytes = _rustsec_2026_source_predecessor(
         _AMMONIA_LEDGER_PATH,
         _helm_pin_source_predecessor(
-            _AMMONIA_LEDGER_PATH, (root / _AMMONIA_LEDGER_PATH).read_bytes()
+            _AMMONIA_LEDGER_PATH,
+            _chat_privacy_source_predecessor(
+                _AMMONIA_LEDGER_PATH, (root / _AMMONIA_LEDGER_PATH).read_bytes()
+            ),
         ),
     )
     # The newer actions layer owns the live ledger; project through it first.
@@ -34986,7 +34989,9 @@ def test_ammonia_projection_rejects_drift(
         )
         policy = _rustsec_2026_policy_predecessor(policy)
         policy["records"][447]["identity"]["hashed_secret_bytes"][0] ^= 1
-        expected_historical_case = _helm_pin_policy_predecessor(copy.deepcopy(policy))
+        expected_historical_case = _helm_pin_policy_predecessor(
+            _chat_privacy_policy_predecessor(copy.deepcopy(policy))
+        )
 
         def exact_historical_case(candidate: dict[str, Any]) -> dict[str, Any]:
             assert candidate == expected_historical_case
@@ -38361,7 +38366,9 @@ def test_helm_pin_rebind_restores_exact_predecessors() -> None:
     restored = _helm_pin_source_predecessor(_HELM_PIN_PATH, source)
     assert hashlib.sha256(restored).hexdigest() == previous_hex
     assert _helm_pin_source_predecessor(_HELM_PIN_PATH, restored) == restored
-    ledger = (root / _HELM_PIN_LEDGER_PATH).read_bytes()
+    ledger = _chat_privacy_source_predecessor(
+        _HELM_PIN_LEDGER_PATH, (root / _HELM_PIN_LEDGER_PATH).read_bytes()
+    )
     assert hashlib.sha256(ledger).digest() == _HELM_PIN_LEDGER_SHA256[1]
     companions = [
         item["sha256"]
@@ -38372,8 +38379,10 @@ def test_helm_pin_rebind_restores_exact_predecessors() -> None:
     assert companions == [current_hex]
     restored_ledger = _helm_pin_source_predecessor(_HELM_PIN_LEDGER_PATH, ledger)
     assert hashlib.sha256(restored_ledger).digest() == _HELM_PIN_LEDGER_SHA256[0]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _chat_privacy_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     assert policy["records"][_HELM_PIN_ROW]["identity"]["hashed_secret_bytes"] == (
         _nov15_identity(current_hex)
@@ -38409,7 +38418,206 @@ def test_helm_pin_rebind_rejects_drift(mutation: str) -> None:
         _nov17_integration_predecessor(_HELM_PIN_PATH, source)
 
 
+# The chat privacy change rebinds one existing Semgrep companion and its
+# corresponding public-integrity identity. Restore the exact predecessor before
+# the earlier projections; the inventory and approval metadata do not change.
+_CHAT_PRIVACY_PATH = "app/schemas/chat.py"
+_CHAT_PRIVACY_LEDGER = "quality/semgrep-dispositions.json"
+_CHAT_PRIVACY_ROW = 422
+_CHAT_PRIVACY_SOURCE_SHA256 = (
+    _rust_hex(
+        "bf 6d 9b 89 11 45 e0 56 92 18 c5 ff 5d 4b 3c 79 2b 3e 8f 1a 2b f3 cb da 11 b4 79 40 4e 2c 3e f4"
+    ),
+    _rust_hex(
+        "00 46 55 12 c6 b5 67 97 c6 77 16 0b 68 01 b7 a3 33 0c 23 f8 ad 71 94 e7 ca ba ed 43 ad f8 6e 8d"
+    ),
+)
+_CHAT_PRIVACY_LEDGER_SHA256 = (
+    bytes.fromhex(
+        _rust_hex(
+            "06 c7 02 bf 07 83 4d 39 f7 91 34 a5 e3 14 ae ed 97 34 14 12 21 db 03 ac 18 4c 0a 3e d7 4b 8e 68"
+        )
+    ),
+    bytes.fromhex(
+        _rust_hex(
+            "71 2e a1 30 0d 97 38 94 55 de b1 0c d6 5d 2d 31 9f 50 0e c5 ce 6d a8 a2 c0 7c a0 9d dd 68 8b 2f"
+        )
+    ),
+)
+_CHAT_PRIVACY_ROW_AFTER_SHA256 = bytes.fromhex(
+    _rust_hex(
+        "bb dd 87 e5 7d da c0 42 95 ce a2 55 16 3e 51 02 ab 06 0b c0 84 28 73 b0 2f fb 7a a4 d8 60 a7 33"
+    )
+)
+_CHAT_PRIVACY_REVERSALS = (
+    (
+        b"from pydantic import (\n"
+        b"    AfterValidator,\n"
+        b"    ConfigDict,\n"
+        b"    Field,\n"
+        b"    field_serializer,\n"
+        b"    field_validator,\n"
+        b"    model_validator,\n"
+        b")\n",
+        b"from pydantic import AfterValidator, ConfigDict, Field, model_validator\n",
+    ),
+    (
+        b"# Public participant projection for chat responses and realtime events. ORM rows\n"
+        b"# and DTOs validate by attribute, so the legacy email output below never reads\n"
+        b"# the participant's private email address.\n",
+        b"# Simplified User schema for chat participants (avoids lazy-loaded relationships)\n",
+    ),
+    (
+        b"    model_config = ConfigDict(\n"
+        b"        from_attributes=True, json_schema_serialization_defaults_required=True\n"
+        b"    )\n",
+        b"    model_config = ConfigDict(from_attributes=True)\n",
+    ),
+    (
+        b"    email: str = Field(\n"
+        b'        default="",\n'
+        b'        validation_alias="__chat_redacted_email__",\n'
+        b"        frozen=True,\n"
+        b'        description="Legacy compatibility field. Participant email is always redacted.",\n'
+        b'        json_schema_extra={"deprecated": True, "readOnly": True},\n'
+        b"    )\n",
+        b"    email: str\n",
+    ),
+    (
+        b'    @field_validator("email", mode="before")\n'
+        b"    @classmethod\n"
+        b"    def _redact_email_input(cls, _value: object) -> str:\n"
+        b'        return ""\n\n'
+        b'    @field_serializer("email")\n'
+        b"    def _serialize_redacted_email(self, _value: str) -> str:\n"
+        b'        return ""\n\n',
+        b"",
+    ),
+)
+
+
+def _chat_privacy_source_predecessor(path: str, actual: bytes) -> bytes:
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    previous_hex, current_hex = _CHAT_PRIVACY_SOURCE_SHA256
+    if path == _CHAT_PRIVACY_PATH:
+        digest = hashlib.sha256(actual).hexdigest()
+        if digest == previous_hex:
+            return actual
+        assert digest == current_hex, message
+        restored = actual
+        for current, previous in _CHAT_PRIVACY_REVERSALS:
+            assert restored.count(current) == 1, message
+            restored = restored.replace(current, previous, 1)
+        assert hashlib.sha256(restored).hexdigest() == previous_hex, message
+        return restored
+    if path == _CHAT_PRIVACY_LEDGER:
+        previous_ledger, current_ledger = _CHAT_PRIVACY_LEDGER_SHA256
+        if hashlib.sha256(actual).digest() != current_ledger:
+            # Earlier ledger epochs are validated by the older layers.
+            return actual
+        current = current_hex.encode("ascii")
+        assert actual.count(current) == 1, message
+        restored = actual.replace(current, previous_hex.encode("ascii"), 1)
+        assert hashlib.sha256(restored).digest() == previous_ledger, message
+        return restored
+    return actual
+
+
+def _chat_privacy_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    records = policy["records"]
+    if len(records) <= _CHAT_PRIVACY_ROW:
+        return policy
+    row = records[_CHAT_PRIVACY_ROW]
+    identity = row["identity"]
+    previous_hex, current_hex = _CHAT_PRIVACY_SOURCE_SHA256
+    if identity["hashed_secret_bytes"] != _nov15_identity(current_hex):
+        # Older layers validate earlier or unrecognized identities.
+        return policy
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _CHAT_PRIVACY_ROW_AFTER_SHA256, (
+        "chat companion disposition approval metadata changed"
+    )
+    assert identity["path"] == _CHAT_PRIVACY_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous_hex)
+    return policy
+
+
+def test_chat_privacy_rebind_restores_exact_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    previous_hex, current_hex = _CHAT_PRIVACY_SOURCE_SHA256
+    source = (root / _CHAT_PRIVACY_PATH).read_bytes()
+    assert hashlib.sha256(source).hexdigest() == current_hex
+    restored = _chat_privacy_source_predecessor(_CHAT_PRIVACY_PATH, source)
+    assert hashlib.sha256(restored).hexdigest() == previous_hex
+    assert _chat_privacy_source_predecessor(_CHAT_PRIVACY_PATH, restored) == restored
+    ledger = (root / _CHAT_PRIVACY_LEDGER).read_bytes()
+    assert hashlib.sha256(ledger).digest() == _CHAT_PRIVACY_LEDGER_SHA256[1]
+    dispositions = json.loads(ledger)["dispositions"]
+    assert len(dispositions) == 15
+    assert dispositions[11]["companions"][2] == {
+        "path": _CHAT_PRIVACY_PATH,
+        "sha256": current_hex,
+    }
+    restored_ledger = _chat_privacy_source_predecessor(_CHAT_PRIVACY_LEDGER, ledger)
+    assert hashlib.sha256(restored_ledger).digest() == _CHAT_PRIVACY_LEDGER_SHA256[0]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(policy["records"]) == 524
+    previous = _chat_privacy_policy_predecessor(copy.deepcopy(policy))
+    assert [
+        i
+        for i, (before, after) in enumerate(
+            zip(policy["records"], previous["records"], strict=True)
+        )
+        if before != after
+    ] == [_CHAT_PRIVACY_ROW]
+    assert previous["records"][_CHAT_PRIVACY_ROW]["identity"][
+        "hashed_secret_bytes"
+    ] == _nov15_identity(previous_hex)
+    assert _chat_privacy_policy_predecessor(previous) == previous
+    assert _chat_privacy_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+@pytest.mark.parametrize("path", [_CHAT_PRIVACY_PATH, _CHAT_PRIVACY_LEDGER])
+def test_chat_privacy_rebind_rejects_spoofed_drift(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    changed = (root / path).read_bytes() + b"\n"
+    if path == _CHAT_PRIVACY_PATH:
+        previous, _ = _CHAT_PRIVACY_SOURCE_SHA256
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "_CHAT_PRIVACY_SOURCE_SHA256",
+            (previous, hashlib.sha256(changed).hexdigest()),
+        )
+    else:
+        previous, _ = _CHAT_PRIVACY_LEDGER_SHA256
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "_CHAT_PRIVACY_LEDGER_SHA256",
+            (previous, hashlib.sha256(changed).digest()),
+        )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _chat_privacy_source_predecessor(path, changed)
+
+
+def test_chat_privacy_rebind_rejects_approval_metadata_drift() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    policy["records"][_CHAT_PRIVACY_ROW]["expires_on"] = "2027-12-31"
+    with pytest.raises(AssertionError, match="approval metadata changed"):
+        _chat_privacy_policy_predecessor(policy)
+
+
 def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _chat_privacy_source_predecessor(path, actual)
     actual = _helm_pin_source_predecessor(path, actual)
     actual = _visual_package_source_predecessor(path, actual)
     actual = _rustsec_2026_source_predecessor(path, actual)
@@ -38457,7 +38665,9 @@ def _nov21_source_predecessor(path: str, actual: bytes) -> bytes:
 def _nov21_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
     restored = _nats_inventory_policy_predecessor(
         _npm_projection_policy_predecessor(
-            _rustsec_2026_policy_predecessor(_helm_pin_policy_predecessor(policy))
+            _rustsec_2026_policy_predecessor(
+                _helm_pin_policy_predecessor(_chat_privacy_policy_predecessor(policy))
+            )
         )
     )
     records = restored["records"]
@@ -39330,7 +39540,11 @@ def _npm_projection_disk_bytes(path: str) -> bytes:
         _rustsec_2026_source_predecessor(
             path,
             _visual_package_source_predecessor(
-                path, _helm_pin_source_predecessor(path, (root / path).read_bytes())
+                path,
+                _helm_pin_source_predecessor(
+                    path,
+                    _chat_privacy_source_predecessor(path, (root / path).read_bytes()),
+                ),
             ),
         ),
     )
@@ -39378,7 +39592,10 @@ def test_npm_projection_ledger_restores_exact_predecessor() -> None:
     actual = _rustsec_2026_source_predecessor(
         _NPM_PROJECTION_LEDGER,
         _helm_pin_source_predecessor(
-            _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+            _NPM_PROJECTION_LEDGER,
+            _chat_privacy_source_predecessor(
+                _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+            ),
         ),
     )
     previous, current = _NPM_PROJECTION_LEDGER_SHA256
@@ -39400,7 +39617,10 @@ def test_npm_projection_ledger_rejects_changed_companions_even_with_spoofed_hash
     actual = _rustsec_2026_source_predecessor(
         _NPM_PROJECTION_LEDGER,
         _helm_pin_source_predecessor(
-            _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+            _NPM_PROJECTION_LEDGER,
+            _chat_privacy_source_predecessor(
+                _NPM_PROJECTION_LEDGER, (root / _NPM_PROJECTION_LEDGER).read_bytes()
+            ),
         ),
     )
     _row, path, projection, _whole, _size, projected, _before = (
@@ -39867,7 +40087,10 @@ def _rustsec_2026_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
 def test_rustsec_2026_rebind_restores_exact_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
     ledger = _helm_pin_source_predecessor(
-        _RUSTSEC_2026_LEDGER, (root / _RUSTSEC_2026_LEDGER).read_bytes()
+        _RUSTSEC_2026_LEDGER,
+        _chat_privacy_source_predecessor(
+            _RUSTSEC_2026_LEDGER, (root / _RUSTSEC_2026_LEDGER).read_bytes()
+        ),
     )
     assert (
         hashlib.sha256(

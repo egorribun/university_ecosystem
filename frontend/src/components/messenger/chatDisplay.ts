@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next"
 import type { Chat } from "@/api/chat"
-import type { User } from "@/types/User"
+import type { ChatParticipant } from "@/api/generated"
 
 /**
  * Wave 211 G4 — resolved display identity for a chat row / header.
@@ -19,7 +19,7 @@ export interface ChatDisplayInfo {
   /** participants.length — drives the group header "{count} members" subtitle. */
   memberCount: number
   /** The DM counterpart (undefined for a group) — for presence + profile-view. */
-  otherParticipant?: User
+  otherParticipant?: ChatParticipant
 }
 
 export function chatDisplayInfo(

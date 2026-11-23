@@ -101,7 +101,7 @@ const incoming: Message = {
 }
 const chat: Chat = {
   id: ids.chat,
-  participants: [{ id: ids.peer, email: "peer@example.test", is_active: true }],
+  participants: [{ id: ids.peer, email: "", full_name: null, avatar_url: null, is_active: true }],
   unread_count: 1,
   last_message: original,
   created_at: original.created_at,

@@ -45,8 +45,8 @@ async def test_chat_list_retains_group_identity_and_participant_projection(
     await db_session.commit()
     group_id = group.id
     expected = {
-        owner.id: (owner.email, "Owner", True),
-        peer.id: (peer.email, "Peer", False),
+        owner.id: ("", "Owner", True),
+        peer.id: ("", "Peer", False),
     }
     db_session.expunge_all()
     presence = {owner.id: PresenceStatus(active=True, last_seen_at=_NOW)}

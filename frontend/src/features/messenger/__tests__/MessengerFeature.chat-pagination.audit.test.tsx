@@ -79,12 +79,23 @@ const peer = {
   full_name: "Peer User",
   is_active: true,
 }
+const participant = (user: {
+  id: string
+  full_name: string
+  is_active: boolean
+}): Chat["participants"][number] => ({
+  id: user.id,
+  full_name: user.full_name,
+  avatar_url: null,
+  is_active: user.is_active,
+  email: "",
+})
 const chats: Chat[] = Array.from({ length: 21 }, (_, index): Chat => ({
   id: "chat-" + String(index + 1),
   chat_type: "group",
   name: "Conversation " + String(index + 1),
   created_by: state.user.id,
-  participants: [state.user, peer],
+  participants: [participant(state.user), participant(peer)],
   unread_count: 0,
   created_at: "2026-10-30T00:00:00Z",
   updated_at: "2026-10-30T00:00:00Z",
@@ -373,7 +384,7 @@ describe("AUD030 loaded chat-list lifetime", () => {
       id: "next-account-chat",
       name: "Next account conversation",
       created_by: nextUser.id,
-      participants: [nextUser, peer],
+      participants: [participant(nextUser), participant(peer)],
     }
     const nextAccountPage: ChatsListResponse = {
       items: [nextAccountChat],

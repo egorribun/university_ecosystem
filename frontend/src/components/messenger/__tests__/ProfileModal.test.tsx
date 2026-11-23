@@ -152,6 +152,36 @@ describe("ProfileModal", () => {
     expect(statusBadge).toBeTruthy()
   })
 
+  it("omits the email line when the public profile carries no email", () => {
+    const publicUser = {
+      id: testUser.id,
+      full_name: testUser.full_name,
+      avatar_url: testUser.avatar_url,
+      is_active: testUser.is_active,
+    }
+    const { container } = render(
+      <ProfileModal user={publicUser} loading={false} error={null} onClose={() => {}} />
+    )
+
+    expect(container.querySelector("h4.sf-pro")?.textContent).toBe(testUser.full_name)
+    expect(screen.queryByText(testUser.email)).toBeNull()
+    // No empty email paragraph follows the name heading.
+    expect(container.querySelector("h4.sf-pro + p")).toBeNull()
+  })
+
+  it("omits the email line when the email is empty", () => {
+    const { container } = render(
+      <ProfileModal
+        user={{ ...testUser, email: "" }}
+        loading={false}
+        error={null}
+        onClose={() => {}}
+      />
+    )
+
+    expect(container.querySelector("h4.sf-pro + p")).toBeNull()
+  })
+
   it("user state renders status badge with data-status=offline when inactive", () => {
     const inactiveUser = { ...testUser, is_active: false }
     render(<ProfileModal user={inactiveUser} loading={false} error={null} onClose={() => {}} />)

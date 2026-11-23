@@ -35,6 +35,7 @@ import {
   messagesQueryOptions,
 } from "@/api/hooks/messenger"
 import client from "@/api/client"
+import type { UserPublicOut } from "@/api/generated"
 import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
@@ -266,7 +267,7 @@ export const useMessengerController = () => {
   const [forwardSourceMessageId, setForwardSourceMessageId] = useState<string | null>(null)
 
   // Profile State
-  const [profileUser, setProfileUser] = useState<User | null>(null)
+  const [profileUser, setProfileUser] = useState<User | UserPublicOut | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const profileRequestIdRef = useRef(0)
@@ -1439,7 +1440,7 @@ export const useMessengerController = () => {
     setIsProfileLoading(true)
     setProfileError(null)
     client
-      .get<User>(`/users/${other.id}`)
+      .get<User | UserPublicOut>(`/users/${other.id}`)
       .then((response) => {
         if (
           profileRequestIdRef.current === requestId &&
